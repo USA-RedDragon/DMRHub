@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	v1Controllers "github.com/USA-RedDragon/dmrserver-in-a-box/api/controllers/v1"
+	v1Controllers "github.com/USA-RedDragon/dmrserver-in-a-box/http/api/controllers/v1"
 	"github.com/gorilla/mux"
 )
 

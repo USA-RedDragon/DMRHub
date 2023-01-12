@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/api"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/gorilla/mux"
 )
 

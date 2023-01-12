@@ -40,8 +40,26 @@ Name=AREDN
 
 ## Todos
 
-- Add a Parrot
 - Add a frontend (lastheard + self-service registration and repeater management)
 - Add ability to link/unlink from talkgroups
-- `vcsbk` call types
-- document talkgroups in-app
+- Implement authentication
+- Fix MSTCL on master shutdown (signal trap)
+- Add logic to route repeaters with -01, -02, etc repeater suffixes
+- Change callsign in parrot to parrot. Any other fields?
+
+## To test
+
+- DMR sms
+
+## Feature ideas
+
+- Setting to use any free slot if possible. (i.e. timeslot routing where both slots are maximally active)
+
+## Relational ideas
+
+A scratchboard for my database:
+
+Users
+User hasMany Repeaters
+Repeater hasMany Talkgroups
+Lastheard hasMany Users, Talkgroups, repeaters

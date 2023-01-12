@@ -93,7 +93,7 @@ func (s ThreadedUDPServer) validPeer(peerID int, connection string, remoteAddr n
 }
 
 func (s ThreadedUDPServer) Listen() {
-	log("Opening Server Socket at %s", s.SocketAddress.String())
+	log("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	s.Server = server
 	s.Started = true

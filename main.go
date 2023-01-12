@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/sdk"
 	"k8s.io/klog/v2"
@@ -20,8 +21,8 @@ func main() {
 
 	flag.Parse()
 
-	server := makeThreadedUDPServer(*listen, *dmrPort, *redisHost, *verbose)
-	go server.Listen()
-	defer server.Stop()
+	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose)
+	go dmrServer.Listen()
+	defer dmrServer.Stop()
 	http.Start(*listen, *frontendPort)
 }

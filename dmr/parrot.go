@@ -1,4 +1,4 @@
-package main
+package dmr
 
 import (
 	"encoding/binary"
@@ -40,9 +40,13 @@ func (p *Parrot) recordPacket(stream_id int, data []byte) {
 
 	// Grab the peer ID to go ahead and mark the packet as being routed back
 	peer_id_str, err := p.Redis.Get(fmt.Sprintf("parrot:stream:%d", stream_id)).Result()
-	handleError("Error getting parrot stream from redis", err)
+	if err != nil {
+		klog.Exitf("Error getting parrot stream from redis", err)
+	}
 	peer_id, err := strconv.Atoi(peer_id_str)
-	handleError("Error parsing parrot stream from redis", err)
+	if err != nil {
+		klog.Exitf("Error parsing parrot stream from redis", err)
+	}
 	peerBinary := make([]byte, 4)
 	binary.BigEndian.PutUint32(peerBinary, uint32(peer_id))
 	pkt := append(data[:11], peerBinary[:4]...)
@@ -65,11 +69,15 @@ func (p *Parrot) getStream(stream_id int) [][]byte {
 	// Empty array of packet byte arrays
 	var packets [][]byte
 	packetSize, err := p.Redis.LLen(fmt.Sprintf("parrot:stream:%d:packets", stream_id)).Result()
-	handleError("Error getting parrot stream from redis", err)
+	if err != nil {
+		klog.Exitf("Error getting parrot stream from redis", err)
+	}
 	// Loop through the packets and add them to the array
 	for i := int64(0); i < packetSize; i++ {
 		packet, err := p.Redis.LIndex(fmt.Sprintf("parrot:stream:%d:packets", stream_id), i).Bytes()
-		handleError("Error getting parrot stream from redis", err)
+		if err != nil {
+			klog.Exitf("Error getting parrot stream from redis", err)
+		}
 		packets = append(packets, packet)
 	}
 	// Delete the stream

@@ -1,4 +1,4 @@
-package main
+package dmr
 
 const (
 	// Command Types

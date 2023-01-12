@@ -32,7 +32,7 @@ pack-frontend:
 
 build: install-dependencies build-frontend pack-frontend
 	@echo "--> Building"
-	@go generate
+	@go generate ./...
 	@go build -o bin/$(APP_NAME)
 	@echo "--> Done"
 

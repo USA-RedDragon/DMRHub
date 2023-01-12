@@ -231,7 +231,7 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 							for _, packet := range packets {
 								s.sendPacket(peer_id_int, packet)
 								// Just enough delay to avoid overloading the peer host
-								time.Sleep(4 * time.Millisecond)
+								time.Sleep(60 * time.Millisecond)
 							}
 						}
 						go f()

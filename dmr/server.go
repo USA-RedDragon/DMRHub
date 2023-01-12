@@ -1,4 +1,4 @@
-package main
+package dmr
 
 import (
 	"crypto/rand"
@@ -15,7 +15,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type ThreadedUDPServer struct {
+type DMRServer struct {
 	Buffer        []byte
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
@@ -25,8 +25,8 @@ type ThreadedUDPServer struct {
 	Verbose       bool
 }
 
-func makeThreadedUDPServer(addr string, port int, redisHost string, verbose bool) ThreadedUDPServer {
-	return ThreadedUDPServer{
+func MakeServer(addr string, port int, redisHost string, verbose bool) DMRServer {
+	return DMRServer{
 		Buffer: make([]byte, 4096),
 		SocketAddress: net.UDPAddr{
 			IP:   net.ParseIP(addr),
@@ -41,18 +41,22 @@ func makeThreadedUDPServer(addr string, port int, redisHost string, verbose bool
 	}
 }
 
-func (s ThreadedUDPServer) Stop() {
+func (s DMRServer) Stop() {
 	// Send a MSTCL command to each peer
 	var cursor uint64
 	for {
 		keys, cursor, err := s.Redis.Scan(cursor, "peer:*", 0).Result()
-		handleError("Error scanning redis for peers", err)
+		if err != nil {
+			klog.Exitf("Error scanning redis for peers", err)
+		}
 		for _, key := range keys {
 			if s.Verbose {
 				klog.Info("Sending MSTCL to", key)
 			}
 			peernum, err := strconv.Atoi(strings.Replace(key, "peer:", "", 1))
-			handleError("Error converting peer key to int", err)
+			if err != nil {
+				klog.Exitf("Error converting peer key to int", err)
+			}
 			s.updatePeerConnection(peernum, "DISCONNECTED")
 			peerBinary := make([]byte, 4)
 			binary.BigEndian.PutUint32(peerBinary, uint32(peernum))
@@ -66,20 +70,20 @@ func (s ThreadedUDPServer) Stop() {
 	s.Started = false
 }
 
-func (s ThreadedUDPServer) bumpPeerPing(peerID int) {
+func (s DMRServer) bumpPeerPing(peerID int) {
 	peer := s.getPeer(peerID)
 	peer.LastPing = time.Now()
 	s.storePeer(peerID, peer)
 	s.Redis.Expire(fmt.Sprintf("peer:%d", peerID), 5*time.Minute)
 }
 
-func (s ThreadedUDPServer) updatePeerConnection(peerID int, connection string) {
+func (s DMRServer) updatePeerConnection(peerID int, connection string) {
 	peer := s.getPeer(peerID)
 	peer.Connection = connection
 	s.storePeer(peerID, peer)
 }
 
-func (s ThreadedUDPServer) validPeer(peerID int, connection string, remoteAddr net.UDPAddr) bool {
+func (s DMRServer) validPeer(peerID int, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
 	if !s.peerExists(peerID) {
 		klog.Warningf("Peer %d does not exist", peerID)
@@ -97,12 +101,14 @@ func (s ThreadedUDPServer) validPeer(peerID int, connection string, remoteAddr n
 	return valid
 }
 
-func (s ThreadedUDPServer) Listen() {
+func (s DMRServer) Listen() {
 	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	s.Server = server
 	s.Started = true
-	handleError("Error opening UDP Socket", err)
+	if err != nil {
+		klog.Exitf("Error opening UDP Socket", err)
+	}
 
 	for {
 		len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
@@ -117,27 +123,33 @@ func (s ThreadedUDPServer) Listen() {
 	}
 }
 
-func (s ThreadedUDPServer) deletePeer(peer_id int) bool {
+func (s DMRServer) deletePeer(peer_id int) bool {
 	return s.Redis.Del(fmt.Sprintf("peer:%d", peer_id)).Val() == 1
 }
 
-func (s ThreadedUDPServer) storePeer(peer_id int, peer HomeBrewProtocolPeer) {
+func (s DMRServer) storePeer(peer_id int, peer HomeBrewProtocolPeer) {
 	peerBytes, err := peer.MarshalMsg(nil)
-	handleError("Error marshalling peer", err)
+	if err != nil {
+		klog.Exitf("Error marshalling peer", err)
+	}
 	// Expire peers after 5 minutes, this function called often enough to keep them alive
 	s.Redis.Set(fmt.Sprintf("peer:%d", peer_id), peerBytes, 5*time.Minute)
 }
 
-func (s ThreadedUDPServer) getPeer(peer_id int) HomeBrewProtocolPeer {
+func (s DMRServer) getPeer(peer_id int) HomeBrewProtocolPeer {
 	peerBits, err := s.Redis.Get(fmt.Sprintf("peer:%d", peer_id)).Result()
-	handleError("Error getting peer from redis", err)
+	if err != nil {
+		klog.Exitf("Error getting peer from redis", err)
+	}
 	var peer HomeBrewProtocolPeer
 	_, err = peer.UnmarshalMsg([]byte(peerBits))
-	handleError("Error unmarshalling peer", err)
+	if err != nil {
+		klog.Exitf("Error unmarshalling peer", err)
+	}
 	return peer
 }
 
-func (s ThreadedUDPServer) sendCommand(peer_id int, command string, data []byte) {
+func (s DMRServer) sendCommand(peer_id int, command string, data []byte) {
 	if !s.Started {
 		klog.Warningf("Server not started, not sending command")
 		return
@@ -151,10 +163,12 @@ func (s ThreadedUDPServer) sendCommand(peer_id int, command string, data []byte)
 		IP:   net.ParseIP(peer.IP),
 		Port: peer.Port,
 	})
-	handleError("Error writing to UDP Socket", err)
+	if err != nil {
+		klog.Exitf("Error writing to UDP Socket", err)
+	}
 }
 
-func (s ThreadedUDPServer) sendPacket(peer_id int, data []byte) {
+func (s DMRServer) sendPacket(peer_id int, data []byte) {
 	if s.Verbose {
 		klog.Infof("Sending Packet: %v\n", data)
 		klog.Infof("Sending DMR packet to Peer ID: %d", peer_id)
@@ -164,14 +178,16 @@ func (s ThreadedUDPServer) sendPacket(peer_id int, data []byte) {
 		IP:   net.ParseIP(peer.IP),
 		Port: peer.Port,
 	})
-	handleError("Error writing to UDP Socket", err)
+	if err != nil {
+		klog.Exitf("Error writing to UDP Socket", err)
+	}
 }
 
-func (s ThreadedUDPServer) peerExists(peer_id int) bool {
+func (s DMRServer) peerExists(peer_id int) bool {
 	return s.Redis.Exists(fmt.Sprintf("peer:%d", peer_id)).Val() == 1
 }
 
-func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
+func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	klog.Infof("Handling Packet from %v", remoteAddr)
 	if s.Verbose {
 		klog.Infof("Data: %s", string(data[:]))
@@ -273,14 +289,18 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				var cursor uint64
 				for {
 					keys, cursor, err := s.Redis.Scan(cursor, "peer:*", 0).Result()
-					handleError("Error scanning redis for peers", err)
+					if err != nil {
+						klog.Exitf("Error scanning redis for peers", err)
+					}
 					for _, key := range keys {
 						if key != fmt.Sprintf("peer:%d", peer_id_int) {
 							if s.Verbose {
 								klog.Infof("Peer found: %s", key)
 							}
 							peernum, err := strconv.Atoi(strings.Replace(key, "peer:", "", 1))
-							handleError("Error converting peer key to int", err)
+							if err != nil {
+								klog.Exitf("Error converting peer key to int", err)
+							}
 							peerBinary := make([]byte, 4)
 							binary.BigEndian.PutUint32(peerBinary, uint32(peernum))
 							pkt := append(data[:11], peerBinary[:4]...)
@@ -329,7 +349,9 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 		} else {
 			bigSalt, err := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
-			handleError("Error generating random salt", err)
+			if err != nil {
+				klog.Exitf("Error generating random salt", err)
+			}
 			peer := makePeer(peer_id_int, uint32(bigSalt.Uint64()), *remoteAddr)
 			peer.Connection = "RPTL-RECEIVED"
 			peer.LastPing = time.Now()
@@ -389,30 +411,46 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 				peer.Callsign = strings.TrimRight(string(data[8:16]), " ")
 				rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
-				handleError("Error parsing RXFreq", err)
+				if err != nil {
+					klog.Exitf("Error parsing RXFreq", err)
+				}
 				peer.RXFrequency = int(rxFreq)
 				txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
-				handleError("Error parsing TXFreq", err)
+				if err != nil {
+					klog.Exitf("Error parsing TXFreq", err)
+				}
 				peer.TXFrequency = int(txFreq)
 				txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
-				handleError("Error parsing TXPower", err)
+				if err != nil {
+					klog.Exitf("Error parsing TXPower", err)
+				}
 				peer.TXPower = int(txPower)
 				colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
-				handleError("Error parsing ColorCode", err)
+				if err != nil {
+					klog.Exitf("Error parsing ColorCode", err)
+				}
 				peer.ColorCode = int(colorCode)
 				lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
-				handleError("Error parsing Latitude", err)
+				if err != nil {
+					klog.Exitf("Error parsing Latitude", err)
+				}
 				peer.Latitude = float32(lat)
 				long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
-				handleError("Error parsing Longitude", err)
+				if err != nil {
+					klog.Exitf("Error parsing Longitude", err)
+				}
 				peer.Longitude = float32(long)
 				height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
-				handleError("Error parsing Height", err)
+				if err != nil {
+					klog.Exitf("Error parsing Height", err)
+				}
 				peer.Height = int(height)
 				peer.Location = strings.TrimRight(string(data[58:78]), " ")
 				peer.Description = strings.TrimRight(string(data[78:97]), " ")
 				slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
-				handleError("Error parsing Slots", err)
+				if err != nil {
+					klog.Exitf("Error parsing Slots", err)
+				}
 				peer.Slots = int(slots)
 				peer.URL = strings.TrimRight(string(data[98:222]), " ")
 				peer.SoftwareID = strings.TrimRight(string(data[222:262]), " ")

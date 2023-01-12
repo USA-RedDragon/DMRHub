@@ -19,5 +19,6 @@ func main() {
 
 	server := makeThreadedUDPServer(*listen, *dmrPort, *redisHost)
 	go server.Listen()
+	defer server.Stop()
 	http.Start(*listen, *frontendPort)
 }

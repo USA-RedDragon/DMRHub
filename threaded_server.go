@@ -20,6 +20,7 @@ type ThreadedUDPServer struct {
 	Server        *net.UDPConn
 	Redis         *redis.Client
 	Started       bool
+	Parrot        *Parrot
 }
 
 func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPServer {
@@ -33,6 +34,7 @@ func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPS
 			Addr: redisHost,
 		}),
 		Started: false,
+		Parrot:  newParrot(redisHost),
 	}
 }
 
@@ -63,6 +65,7 @@ func (s ThreadedUDPServer) bumpPeerPing(peerID int) {
 	peer := s.getPeer(peerID)
 	peer.LastPing = time.Now()
 	s.storePeer(peerID, peer)
+	s.Redis.Expire(fmt.Sprintf("peer:%d", peerID), 5*time.Minute)
 }
 
 func (s ThreadedUDPServer) updatePeerConnection(peerID int, connection string) {
@@ -114,7 +117,8 @@ func (s ThreadedUDPServer) deletePeer(peer_id int) bool {
 func (s ThreadedUDPServer) storePeer(peer_id int, peer HomeBrewProtocolPeer) {
 	peerBytes, err := peer.MarshalMsg(nil)
 	handleError("Error marshalling peer", err)
-	s.Redis.Set(fmt.Sprintf("peer:%d", peer_id), peerBytes, 0)
+	// Expire peers after 5 minutes, this function called often enough to keep them alive
+	s.Redis.Set(fmt.Sprintf("peer:%d", peer_id), peerBytes, 5*time.Minute)
 }
 
 func (s ThreadedUDPServer) getPeer(peer_id int) HomeBrewProtocolPeer {
@@ -200,11 +204,38 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			dtype_vseq := (bits & 0xF) // data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
 			stream_id := int(data[16])<<24 | int(data[17])<<16 | int(data[18])<<8 | int(data[19])
 			fmt.Printf("DMR Data: seq %d rfSrc %d dstID %d bits %d slot %d call_type %s frame_type %d dtype_vseq %d stream_id %d\n", seq, rfSrc, dstID, bits, slot, call_type, frame_type, dtype_vseq, stream_id)
-
+			switch frame_type {
+			case HBPF_DATA_SYNC:
+				log("BLUG data sync")
+				break
+			case HBPF_VOICE_SYNC:
+				log("BLUG voice sync")
+				break
+			case HBPF_VOICE:
+				log("BLUG voice")
+				break
+			}
+			log("BLUG dtype_vseq %d", dtype_vseq)
 			if dstID == 9990 {
 				if call_type == "unit" {
-					log("TODO: Parrot")
-					// TODO: Only route to Parrot
+					log("Parrot call from %d", rfSrc)
+					if !s.Parrot.isStarted(stream_id) {
+						s.Parrot.startStream(stream_id, peer_id_int)
+					}
+					s.Parrot.recordPacket(stream_id, data)
+					if frame_type == HBPF_DATA_SYNC && dtype_vseq == HBPF_SLT_VTERM {
+						s.Parrot.stopStream(stream_id)
+						f := func() {
+							packets := s.Parrot.getStream(stream_id)
+							time.Sleep(3 * time.Second)
+							for _, packet := range packets {
+								s.sendPacket(peer_id_int, packet)
+								// Just enough delay to avoid overloading the peer host
+								time.Sleep(4 * time.Millisecond)
+							}
+						}
+						go f()
+					}
 					return
 				} else {
 					// Don't route parrot group calls

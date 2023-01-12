@@ -24,5 +24,5 @@ func main() {
 	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose)
 	go dmrServer.Listen()
 	defer dmrServer.Stop()
-	http.Start(*listen, *frontendPort)
+	http.Start(*listen, *frontendPort, *verbose)
 }

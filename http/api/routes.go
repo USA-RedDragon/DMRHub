@@ -1,18 +1,17 @@
 package api
 
 import (
-	"fmt"
-
 	v1Controllers "github.com/USA-RedDragon/dmrserver-in-a-box/http/api/controllers/v1"
-	"github.com/gorilla/mux"
+	"github.com/gin-gonic/gin"
 )
 
 // ApplyRoutes to the HTTP Mux
-func ApplyRoutes(router *mux.Router) {
-	v1(router.PathPrefix(fmt.Sprintf("/api/v1/")).Subrouter())
+func ApplyRoutes(router *gin.Engine) {
+	apiV1 := router.Group("/api/v1")
+	v1(apiV1)
 }
 
-func v1(router *mux.Router) {
-	router.HandleFunc("/version", v1Controllers.GETVersion)
-	router.HandleFunc("/ping", v1Controllers.GETPing)
+func v1(group *gin.RouterGroup) {
+	group.GET("/version", v1Controllers.GETVersion)
+	group.GET("/ping", v1Controllers.GETPing)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"k8s.io/klog/v2"
 )
 
 type Parrot struct {
@@ -26,7 +27,7 @@ func (p *Parrot) startStream(stream_id int, peer_id int) bool {
 		p.Redis.Set(fmt.Sprintf("parrot:stream:%d", stream_id), peer_id, 5*time.Minute)
 		return true
 	}
-	log("Parrot: Stream %d already started", stream_id)
+	klog.Warningf("Parrot: Stream %d already started", stream_id)
 	return false
 }
 

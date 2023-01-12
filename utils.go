@@ -1,19 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"k8s.io/klog/v2"
 )
-
-func log(log string, a ...interface{}) {
-	if *verbose {
-		fmt.Printf(log+"\n", a...)
-	}
-}
 
 func handleError(log string, err error) {
 	if err != nil {
-		fmt.Println(log, err)
-		os.Exit(1)
+		klog.Exit(log, err)
 	}
 }

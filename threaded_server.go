@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"k8s.io/klog/v2"
 )
 
 type ThreadedUDPServer struct {
@@ -21,9 +22,10 @@ type ThreadedUDPServer struct {
 	Redis         *redis.Client
 	Started       bool
 	Parrot        *Parrot
+	Verbose       bool
 }
 
-func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPServer {
+func makeThreadedUDPServer(addr string, port int, redisHost string, verbose bool) ThreadedUDPServer {
 	return ThreadedUDPServer{
 		Buffer: make([]byte, 4096),
 		SocketAddress: net.UDPAddr{
@@ -35,6 +37,7 @@ func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPS
 		}),
 		Started: false,
 		Parrot:  newParrot(redisHost),
+		Verbose: verbose,
 	}
 }
 
@@ -45,7 +48,9 @@ func (s ThreadedUDPServer) Stop() {
 		keys, cursor, err := s.Redis.Scan(cursor, "peer:*", 0).Result()
 		handleError("Error scanning redis for peers", err)
 		for _, key := range keys {
-			fmt.Println("Sending MSTCL to", key)
+			if s.Verbose {
+				klog.Info("Sending MSTCL to", key)
+			}
 			peernum, err := strconv.Atoi(strings.Replace(key, "peer:", "", 1))
 			handleError("Error converting peer key to int", err)
 			s.updatePeerConnection(peernum, "DISCONNECTED")
@@ -77,23 +82,23 @@ func (s ThreadedUDPServer) updatePeerConnection(peerID int, connection string) {
 func (s ThreadedUDPServer) validPeer(peerID int, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
 	if !s.peerExists(peerID) {
-		log("Peer %d does not exist", peerID)
+		klog.Warningf("Peer %d does not exist", peerID)
 		valid = false
 	}
 	peer := s.getPeer(peerID)
 	if peer.IP != remoteAddr.IP.String() {
-		log("Peer %d IP %s does not match remote %s", peerID, peer.IP, remoteAddr.IP.String())
+		klog.Warningf("Peer %d IP %s does not match remote %s", peerID, peer.IP, remoteAddr.IP.String())
 		valid = false
 	}
 	if peer.Connection != connection {
-		log("Peer %d state %s does not match expected %s", peerID, peer.Connection, connection)
+		klog.Warningf("Peer %d state %s does not match expected %s", peerID, peer.Connection, connection)
 		valid = false
 	}
 	return valid
 }
 
 func (s ThreadedUDPServer) Listen() {
-	log("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	s.Server = server
 	s.Started = true
@@ -101,9 +106,11 @@ func (s ThreadedUDPServer) Listen() {
 
 	for {
 		len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-		fmt.Printf("Read a message from %v\n", remoteaddr)
+		if s.Verbose {
+			klog.Infof("Read a message from %v\n", remoteaddr)
+		}
 		if err != nil {
-			log("Error reading from UDP Socket, Swallowing Error: %v", err)
+			klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
 			continue
 		}
 		go s.handlePacket(remoteaddr, s.Buffer[:len])
@@ -132,10 +139,12 @@ func (s ThreadedUDPServer) getPeer(peer_id int) HomeBrewProtocolPeer {
 
 func (s ThreadedUDPServer) sendCommand(peer_id int, command string, data []byte) {
 	if !s.Started {
-		log("Server not started, not sending command")
+		klog.Warningf("Server not started, not sending command")
 		return
 	}
-	log("Sending Command %s to Peer ID: %d", command, peer_id)
+	if s.Verbose {
+		klog.Infof("Sending Command %s to Peer ID: %d", command, peer_id)
+	}
 	command_prefixed_data := append([]byte(command), data...)
 	peer := s.getPeer(peer_id)
 	_, err := s.Server.WriteToUDP(command_prefixed_data, &net.UDPAddr{
@@ -146,8 +155,10 @@ func (s ThreadedUDPServer) sendCommand(peer_id int, command string, data []byte)
 }
 
 func (s ThreadedUDPServer) sendPacket(peer_id int, data []byte) {
-	fmt.Printf("Sending Packet: %v\n", data)
-	log("Sending DMR packet to Peer ID: %d", peer_id)
+	if s.Verbose {
+		klog.Infof("Sending Packet: %v\n", data)
+		klog.Infof("Sending DMR packet to Peer ID: %d", peer_id)
+	}
 	peer := s.getPeer(peer_id)
 	_, err := s.Server.WriteToUDP(data, &net.UDPAddr{
 		IP:   net.ParseIP(peer.IP),
@@ -161,22 +172,28 @@ func (s ThreadedUDPServer) peerExists(peer_id int) bool {
 }
 
 func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
-	log("Handling Packet from %v", remoteAddr)
-	log("Data: %s", string(data[:]))
+	klog.Infof("Handling Packet from %v", remoteAddr)
+	if s.Verbose {
+		klog.Infof("Data: %s", string(data[:]))
+	}
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
 	command := string(data[:4])
 	if command == COMMAND_DMRA {
 		peer_id := data[4:8]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("DMR talk alias from Peer ID: %d", peer_id_int)
+		if s.Verbose {
+			klog.Infof("DMR talk alias from Peer ID: %d", peer_id_int)
+		}
 		if s.validPeer(peer_id_int, "YES", *remoteAddr) {
 			s.bumpPeerPing(peer_id_int)
-			log("TODO: DMRA")
+			klog.Warning("TODO: DMRA")
 		}
 	} else if command == COMMAND_DMRD {
 		peer_id := data[11:15]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("DMR Data from Peer ID: %d", peer_id_int)
+		if s.Verbose {
+			klog.Infof("DMR Data from Peer ID: %d", peer_id_int)
+		}
 		if s.validPeer(peer_id_int, "YES", *remoteAddr) {
 			s.bumpPeerPing(peer_id_int)
 			seq := data[4]
@@ -203,22 +220,24 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			frame_type := (bits & 0x30) >> 4
 			dtype_vseq := (bits & 0xF) // data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
 			stream_id := int(data[16])<<24 | int(data[17])<<16 | int(data[18])<<8 | int(data[19])
-			fmt.Printf("DMR Data: seq %d rfSrc %d dstID %d bits %d slot %d call_type %s frame_type %d dtype_vseq %d stream_id %d\n", seq, rfSrc, dstID, bits, slot, call_type, frame_type, dtype_vseq, stream_id)
-			switch frame_type {
-			case HBPF_DATA_SYNC:
-				log("BLUG data sync")
-				break
-			case HBPF_VOICE_SYNC:
-				log("BLUG voice sync")
-				break
-			case HBPF_VOICE:
-				log("BLUG voice")
-				break
+			if s.Verbose {
+				klog.Infof("DMR Data: seq %d rfSrc %d dstID %d bits %d slot %d call_type %s frame_type %d dtype_vseq %d stream_id %d\n", seq, rfSrc, dstID, bits, slot, call_type, frame_type, dtype_vseq, stream_id)
+				switch frame_type {
+				case HBPF_DATA_SYNC:
+					klog.Info("BLUG data sync")
+					break
+				case HBPF_VOICE_SYNC:
+					klog.Info("BLUG voice sync")
+					break
+				case HBPF_VOICE:
+					klog.Info("BLUG voice")
+					break
+				}
+				klog.Infof("BLUG dtype_vseq %d", dtype_vseq)
 			}
-			log("BLUG dtype_vseq %d", dtype_vseq)
 			if dstID == 9990 {
 				if call_type == "unit" {
-					log("Parrot call from %d", rfSrc)
+					klog.Infof("Parrot call from %d", rfSrc)
 					if !s.Parrot.isStarted(stream_id) {
 						s.Parrot.startStream(stream_id, peer_id_int)
 					}
@@ -245,7 +264,7 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 			if dstID == 4000 {
 				// TODO: Handle unlink
-				log("TODO: unlink")
+				klog.Warning("TODO: unlink")
 				return
 			}
 
@@ -257,7 +276,9 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					handleError("Error scanning redis for peers", err)
 					for _, key := range keys {
 						if key != fmt.Sprintf("peer:%d", peer_id_int) {
-							fmt.Println("Peer found: ", key)
+							if s.Verbose {
+								klog.Infof("Peer found: %s", key)
+							}
 							peernum, err := strconv.Atoi(strings.Replace(key, "peer:", "", 1))
 							handleError("Error converting peer key to int", err)
 							peerBinary := make([]byte, 4)
@@ -280,28 +301,32 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					pkt = append(pkt, data[15:]...)
 					s.sendPacket(peer_id_int, pkt)
 				} else {
-					log("Unit call to non-existent peer %d", dstID)
+					klog.Warning("Unit call to non-existent peer %d", dstID)
 				}
 			}
 		}
 	} else if command == COMMAND_RPTO {
 		peer_id := data[4:8]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("Set options from %d", peer_id_int)
+		if s.Verbose {
+			klog.Infof("Set options from %d", peer_id_int)
+		}
 
 		if s.validPeer(peer_id_int, "YES", *remoteAddr) {
 			s.bumpPeerPing(peer_id_int)
-			log("TODO: RPTO")
+			klog.Warning("TODO: RPTO")
 			s.sendCommand(peer_id_int, COMMAND_RPTACK, peer_id)
 		}
 	} else if command == COMMAND_RPTL {
 		peer_id := data[4:8]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("Login from Peer ID: %d", peer_id_int)
+		klog.Infof("Login from Peer ID: %d", peer_id_int)
 		// TODO: Validate radio ID
 		if valid := true; !valid {
 			s.sendCommand(peer_id_int, COMMAND_MSTNAK, peer_id)
-			log("Peer ID %d is not valid, sending NAK", peer_id_int)
+			if s.Verbose {
+				klog.Infof("Peer ID %d is not valid, sending NAK", peer_id_int)
+			}
 		} else {
 			bigSalt, err := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
 			handleError("Error generating random salt", err)
@@ -316,7 +341,9 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	} else if command == COMMAND_RPTK {
 		peer_id := data[4:8]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("Challenge Response from Peer ID: %d", peer_id_int)
+		if s.Verbose {
+			klog.Infof("Challenge Response from Peer ID: %d", peer_id_int)
+		}
 		if s.validPeer(peer_id_int, "CHALLENGE_SENT", *remoteAddr) {
 			s.bumpPeerPing(peer_id_int)
 			peer := s.getPeer(peer_id_int)
@@ -327,7 +354,7 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			hash := sha256.Sum256(append(saltBytes, []byte("s3cr37w0rd")...))
 			calcedSalt := binary.BigEndian.Uint32(hash[:])
 			if calcedSalt == rxSalt {
-				log("Peer ID %d authed, sending ACK", peer_id_int)
+				klog.Infof("Peer ID %d authed, sending ACK", peer_id_int)
 				s.updatePeerConnection(peer_id_int, "WAITING_CONFIG")
 				s.sendCommand(peer_id_int, COMMAND_RPTACK, peer_id)
 			} else {
@@ -340,17 +367,19 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		if string(data[:5]) == COMMAND_RPTCL {
 			peer_id := data[5:9]
 			peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-			log("Disconnect from Peer ID: %d", peer_id_int)
+			klog.Infof("Disconnect from Peer ID: %d", peer_id_int)
 			if s.validPeer(peer_id_int, "YES", *remoteAddr) {
 				s.sendCommand(peer_id_int, COMMAND_MSTNAK, peer_id)
 			}
 			if !s.deletePeer(peer_id_int) {
-				log("Peer ID %d not deleted", peer_id_int)
+				klog.Warningf("Peer ID %d not deleted", peer_id_int)
 			}
 		} else {
 			peer_id := data[4:8]
 			peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-			log("Repeater config from %d", peer_id_int)
+			if s.Verbose {
+				klog.Infof("Repeater config from %d", peer_id_int)
+			}
 
 			if s.validPeer(peer_id_int, "WAITING_CONFIG", *remoteAddr) {
 				s.bumpPeerPing(peer_id_int)
@@ -390,7 +419,7 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				peer.PackageID = strings.TrimRight(string(data[262:302]), " ")
 				peer.Connection = "YES"
 				s.storePeer(peer_id_int, peer)
-				fmt.Printf("Peer ID %d (%s) connected\n", peer_id_int, peer.Callsign)
+				klog.Infof("Peer ID %d (%s) connected\n", peer_id_int, peer.Callsign)
 				s.sendCommand(peer_id_int, COMMAND_RPTACK, peer_id)
 			} else {
 				s.sendCommand(peer_id_int, COMMAND_MSTNAK, peer_id)
@@ -399,7 +428,7 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	} else if command == COMMAND_RPTP {
 		peer_id := data[7:11]
 		peer_id_int := int(binary.BigEndian.Uint32(peer_id))
-		log("Ping from %d", peer_id_int)
+		klog.Infof("Ping from %d", peer_id_int)
 
 		if s.validPeer(peer_id_int, "YES", *remoteAddr) {
 			s.bumpPeerPing(peer_id_int)
@@ -411,26 +440,26 @@ func (s ThreadedUDPServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			s.sendCommand(peer_id_int, COMMAND_MSTNAK, peer_id)
 		}
 	} else if command == COMMAND_RPTACK[:4] {
-		log("TODO: RPTACK")
+		klog.Warning("TODO: RPTACK")
 	} else if command == COMMAND_MSTCL[:4] {
-		log("TODO: MSTCL")
+		klog.Warning("TODO: MSTCL")
 	} else if command == COMMAND_MSTNAK[:4] {
-		log("TODO: MSTNAK")
+		klog.Warning("TODO: MSTNAK")
 	} else if command == COMMAND_MSTPONG[:4] {
-		log("TODO: MSTPONG")
+		klog.Warning("TODO: MSTPONG")
 	} else if command == COMMAND_MSTN {
-		log("TODO: MSTN")
+		klog.Warning("TODO: MSTN")
 	} else if command == COMMAND_MSTP {
-		log("TODO: MSTP")
+		klog.Warning("TODO: MSTP")
 	} else if command == COMMAND_MSTC {
-		log("TODO: MSTC")
+		klog.Warning("TODO: MSTC")
 	} else if command == COMMAND_RPTA {
-		log("TODO: RPTA")
+		klog.Warning("TODO: RPTA")
 	} else if command == COMMAND_RPTS {
-		log("TODO: RPTS")
+		klog.Warning("TODO: RPTS")
 	} else if command == COMMAND_RPTSBKN[:4] {
-		log("TODO: RPTSBKN")
+		klog.Warning("TODO: RPTSBKN")
 	} else {
-		log("Unknown Command: %s", command)
+		klog.Warning("Unknown Command: %s", command)
 	}
 }

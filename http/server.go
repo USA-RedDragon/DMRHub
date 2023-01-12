@@ -7,6 +7,7 @@ import (
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/gorilla/mux"
+	"k8s.io/klog/v2"
 )
 
 // Start the HTTP server
@@ -24,7 +25,7 @@ func Start(host string, port int) {
 
 	http.Handle("/", router)
 
-	fmt.Printf("HTTP Server listening at %s on port %d\n", host, port)
+	klog.Infof("HTTP Server listening at %s on port %d\n", host, port)
 	http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), router)
 }
 

@@ -19,6 +19,7 @@ type ThreadedUDPServer struct {
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
 	Redis         *redis.Client
+	Started       bool
 }
 
 func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPServer {
@@ -31,7 +32,31 @@ func makeThreadedUDPServer(addr string, port int, redisHost string) ThreadedUDPS
 		Redis: redis.NewClient(&redis.Options{
 			Addr: redisHost,
 		}),
+		Started: false,
 	}
+}
+
+func (s ThreadedUDPServer) Stop() {
+	// Send a MSTCL command to each peer
+	var cursor uint64
+	for {
+		keys, cursor, err := s.Redis.Scan(cursor, "peer:*", 0).Result()
+		handleError("Error scanning redis for peers", err)
+		for _, key := range keys {
+			fmt.Println("Sending MSTCL to", key)
+			peernum, err := strconv.Atoi(strings.Replace(key, "peer:", "", 1))
+			handleError("Error converting peer key to int", err)
+			s.updatePeerConnection(peernum, "DISCONNECTED")
+			peerBinary := make([]byte, 4)
+			binary.BigEndian.PutUint32(peerBinary, uint32(peernum))
+			s.sendCommand(peernum, COMMAND_MSTCL, peerBinary)
+		}
+
+		if cursor == 0 {
+			break
+		}
+	}
+	s.Started = false
 }
 
 func (s ThreadedUDPServer) bumpPeerPing(peerID int) {
@@ -68,6 +93,7 @@ func (s ThreadedUDPServer) Listen() {
 	log("Opening Server Socket at %s", s.SocketAddress.String())
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	s.Server = server
+	s.Started = true
 	handleError("Error opening UDP Socket", err)
 
 	for {
@@ -101,6 +127,10 @@ func (s ThreadedUDPServer) getPeer(peer_id int) HomeBrewProtocolPeer {
 }
 
 func (s ThreadedUDPServer) sendCommand(peer_id int, command string, data []byte) {
+	if !s.Started {
+		log("Server not started, not sending command")
+		return
+	}
 	log("Sending Command %s to Peer ID: %d", command, peer_id)
 	command_prefixed_data := append([]byte(command), data...)
 	peer := s.getPeer(peer_id)

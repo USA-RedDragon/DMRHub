@@ -3,3 +3,4 @@ dmrserver-in-a-box
 bindata_assetfs.go
 pkg/
 bin/
+*.db

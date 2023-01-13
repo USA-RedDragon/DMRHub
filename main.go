@@ -9,6 +9,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/sdk"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/userdb"
 	"k8s.io/klog/v2"
 
 	"gorm.io/driver/sqlite"
@@ -44,6 +45,9 @@ func main() {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	// Dummy call to get the data decoded early
+	userdb.GetDMRUsers()
 
 	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose, db)
 	go dmrServer.Listen()

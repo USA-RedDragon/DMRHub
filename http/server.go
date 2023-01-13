@@ -9,7 +9,12 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
 
@@ -17,10 +22,19 @@ import (
 var FS embed.FS
 
 // Start the HTTP server
-func Start(host string, port int, verbose bool) {
+func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB) {
 	// Setup API
-	r := gin.New()
-	api.ApplyRoutes(r)
+	r := gin.Default()
+	r.Use(middleware.DatabaseProvider(db))
+
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"*"}
+	r.Use(cors.New(config))
+
+	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte("secret"))
+	r.Use(sessions.Sessions("sessions", store))
+
+	api.ApplyRoutes(r, redisHost)
 
 	staticGroup := r.Group("/")
 

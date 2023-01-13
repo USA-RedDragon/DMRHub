@@ -53,5 +53,5 @@ func main() {
 	go dmrServer.Listen()
 	defer dmrServer.Stop()
 
-	http.Start(*listen, *frontendPort, *verbose)
+	http.Start(*listen, *frontendPort, *verbose, *redisHost, db)
 }

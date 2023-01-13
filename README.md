@@ -39,8 +39,13 @@ Name=AREDN
 
 ## Todos
 
-- Add a frontend (lastheard + self-service registration and repeater management)
-- Add ability to link/unlink from talkgroups
+- Track calls for lastheard
+- Add a frontend
+  - lastheard
+  - self-service registration
+  - repeater management
+  - admin panels
+- Add ability to link/unlink static talkgroups
 - Implement authentication
 - Fix MSTCL on master shutdown (signal trap)
 

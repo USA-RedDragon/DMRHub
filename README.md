@@ -56,3 +56,5 @@ Name=AREDN
 ## Feature ideas
 
 - Setting to use any free slot if possible. (i.e. timeslot routing where both slots are maximally active)
+- Admin panels
+  - see users where callsign and DMR ID don't match

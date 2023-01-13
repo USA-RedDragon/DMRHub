@@ -42,7 +42,7 @@ type Repeater struct {
 	TS2DynamicTalkgroup   Talkgroup      `msg:"-" gorm:"foreignKey:TS2DynamicTalkgroupID"`
 	Owner                 User           `msg:"-" json:"-" gorm:"foreignKey:OwnerID"`
 	OwnerID               uint           `msg:"-"`
-	OnlyMe                bool           `msg:"-"`
+	SecureMode            bool           `msg:"-"`
 	CreatedAt             time.Time      `msg:"-" json:"-"`
 	UpdatedAt             time.Time      `msg:"-" json:"-"`
 	DeletedAt             gorm.DeletedAt `gorm:"index" msg:"-" json:"-"`
@@ -79,7 +79,7 @@ func MakeRepeater(radioId uint, salt uint32, socketAddr net.UDPAddr) Repeater {
 		Password:              "",
 		Owner:                 User{},
 		OwnerID:               0,
-		OnlyMe:                false,
+		SecureMode:            false,
 	}
 }
 

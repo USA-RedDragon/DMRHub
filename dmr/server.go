@@ -218,7 +218,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if dbRepeater.OnlyMe {
+			if dbRepeater.SecureMode {
 				if packet.Src != dbRepeater.OwnerID {
 					klog.Infof("OnlyMe mode on and packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
 					return

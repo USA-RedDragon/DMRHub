@@ -253,13 +253,13 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if packet.Dst == 4000 {
-					if packet.Slot {
-						klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
+				if packet.Slot {
+					klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
 					dbRepeater.TS2DynamicTalkgroupID = 0
-					} else {
-						klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
+				} else {
+					klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
 					dbRepeater.TS1DynamicTalkgroupID = 0
-					}
+				}
 				s.DB.Save(&dbRepeater)
 				return
 			}
@@ -279,11 +279,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						want, slot := dbRepeater.WantRX(packet)
 						if want {
 							packet.Slot = slot
-					if s.Verbose {
+							if s.Verbose {
 								slotNum := 1
 								if packet.Slot {
 									slotNum = 2
-					}
+								}
 								klog.Infof("Sending packet to repeater %d on slot %d", dbRepeater.RadioID, slotNum)
 							}
 							packet.Repeater = dbRepeater.RadioID

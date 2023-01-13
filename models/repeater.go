@@ -11,7 +11,7 @@ import (
 
 //go:generate msgp
 type Repeater struct {
-	RadioID       int            `msg:"radio_id" gorm:"primaryKey"`
+	RadioID       uint           `msg:"radio_id" gorm:"primaryKey"`
 	Connection    string         `msg:"connection"`
 	Connected     time.Time      `msg:"connected"`
 	PingsReceived int            `msg:"pings_received"`
@@ -40,7 +40,7 @@ type Repeater struct {
 	DeletedAt     gorm.DeletedAt `gorm:"index" msg:"-" json:"-"`
 }
 
-func MakeRepeater(radioId int, salt uint32, socketAddr net.UDPAddr) Repeater {
+func MakeRepeater(radioId uint, salt uint32, socketAddr net.UDPAddr) Repeater {
 	return Repeater{
 		Connection:    "DISCONNECTED",
 		Connected:     time.UnixMilli(0),

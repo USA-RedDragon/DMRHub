@@ -446,6 +446,24 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				s.Redis.store(repeaterId, repeater)
 				klog.Infof("Repeater ID %d (%s) connected\n", repeaterId, repeater.Callsign)
 				s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
+				dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+				dbRepeater.Connected = repeater.Connected
+				dbRepeater.LastPing = repeater.LastPing
+				dbRepeater.Callsign = repeater.Callsign
+				dbRepeater.RXFrequency = repeater.RXFrequency
+				dbRepeater.TXFrequency = repeater.TXFrequency
+				dbRepeater.TXPower = repeater.TXPower
+				dbRepeater.ColorCode = repeater.ColorCode
+				dbRepeater.Latitude = repeater.Latitude
+				dbRepeater.Longitude = repeater.Longitude
+				dbRepeater.Height = repeater.Height
+				dbRepeater.Location = repeater.Location
+				dbRepeater.Description = repeater.Description
+				dbRepeater.Slots = repeater.Slots
+				dbRepeater.URL = repeater.URL
+				dbRepeater.SoftwareID = repeater.SoftwareID
+				dbRepeater.PackageID = repeater.PackageID
+				s.DB.Save(&dbRepeater)
 			} else {
 				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			}

@@ -174,6 +174,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				}
 				klog.Infof("BLUG dtype_vseq %d", packet.DTypeOrVSeq)
 			}
+
+			if packet.Dst == 0 {
+				return
+			}
+
 			if packet.Dst == 9990 {
 				if !packet.GroupCall {
 					klog.Infof("Parrot call from %d", packet.Src)

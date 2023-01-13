@@ -8,13 +8,16 @@ import (
 
 type Call struct {
 	gorm.Model
-	Time        time.Time
-	Duration    time.Duration
+	StartTime   time.Time
+	EndTime     time.Time
 	Active      bool
 	User        User
+	UserID      uint
 	Repeater    Repeater
+	RepeaterID  uint
 	TimeSlot    bool
 	GroupCall   bool
 	Talkgroup   Talkgroup
+	TalkgroupID uint
 	Destination int
 }

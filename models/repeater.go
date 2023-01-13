@@ -12,14 +12,14 @@ import (
 //go:generate msgp
 type Repeater struct {
 	RadioID               uint           `msg:"radio_id" gorm:"primaryKey"`
-	Connection            string         `msg:"connection"`
+	Connection            string         `msg:"connection" gorm:"-"`
 	Connected             time.Time      `msg:"connected"`
-	PingsReceived         int            `msg:"pings_received"`
+	PingsReceived         int            `msg:"pings_received" gorm:"-"`
 	LastPing              time.Time      `msg:"last_ping"`
 	IP                    string         `msg:"ip"`
 	Port                  int            `msg:"port"`
-	Salt                  uint32         `msg:"salt"`
-	Callsign              string         `msg:"callsign"`
+	Salt                  uint32         `msg:"salt" gorm:"-"`
+	Callsign              string         `msg:"callsign" gorm:"uniqueIndex"`
 	RXFrequency           int            `msg:"rx_frequency"`
 	TXFrequency           int            `msg:"tx_frequency"`
 	TXPower               int            `msg:"tx_power"`
@@ -38,8 +38,11 @@ type Repeater struct {
 	TS2StaticTalkgroups   []Talkgroup    `msg:"-" gorm:"many2many:repeater_ts2_static_talkgroups;"`
 	TS1DynamicTalkgroupID uint           `msg:"-"`
 	TS2DynamicTalkgroupID uint           `msg:"-"`
+	TS1DynamicTalkgroup   Talkgroup      `msg:"-" gorm:"foreignKey:TS1DynamicTalkgroupID"`
+	TS2DynamicTalkgroup   Talkgroup      `msg:"-" gorm:"foreignKey:TS2DynamicTalkgroupID"`
 	Owner                 User           `msg:"-" json:"-" gorm:"foreignKey:OwnerID"`
 	OwnerID               uint           `msg:"-"`
+	OnlyMe                bool           `msg:"-"`
 	CreatedAt             time.Time      `msg:"-" json:"-"`
 	UpdatedAt             time.Time      `msg:"-" json:"-"`
 	DeletedAt             gorm.DeletedAt `gorm:"index" msg:"-" json:"-"`
@@ -76,6 +79,7 @@ func MakeRepeater(radioId uint, salt uint32, socketAddr net.UDPAddr) Repeater {
 		Password:              "",
 		Owner:                 User{},
 		OwnerID:               0,
+		OnlyMe:                false,
 	}
 }
 
@@ -96,13 +100,13 @@ func FindRepeaterByID(db *gorm.DB, ID uint) Repeater {
 
 func RepeaterExists(db *gorm.DB, repeater Repeater) bool {
 	var count int64
-	db.Model(&User{}).Where("RadioID = ?", repeater.RadioID).Limit(1).Count(&count)
+	db.Model(&Repeater{}).Where("radio_id = ?", repeater.RadioID).Limit(1).Count(&count)
 	return count > 0
 }
 
 func RepeaterIDExists(db *gorm.DB, id uint) bool {
 	var count int64
-	db.Model(&User{}).Where("RadioID = ?", id).Limit(1).Count(&count)
+	db.Model(&Repeater{}).Where("radio_id = ?", id).Limit(1).Count(&count)
 	return count > 0
 }
 

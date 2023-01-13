@@ -1,17 +1,18 @@
 package models
 
+//go:generate msgp
 type Packet struct {
-	Signature   string
-	Seq         uint
-	Src         uint
-	Dst         uint
-	Repeater    uint
-	Slot        bool
-	GroupCall   bool
-	FrameType   uint
-	DTypeOrVSeq uint
-	StreamId    uint
-	DMRData     [33]byte
+	Signature   string   `msg:"signature"`
+	Seq         uint     `msg:"seq"`
+	Src         uint     `msg:"src"`
+	Dst         uint     `msg:"dst"`
+	Repeater    uint     `msg:"repeater"`
+	Slot        bool     `msg:"slot"`
+	GroupCall   bool     `msg:"groupCall"`
+	FrameType   uint     `msg:"frameType"`
+	DTypeOrVSeq uint     `msg:"dtypeOrVSeq"`
+	StreamId    uint     `msg:"streamId"`
+	DMRData     [33]byte `msg:"dmrData"`
 }
 
 func UnpackPacket(data []byte) Packet {

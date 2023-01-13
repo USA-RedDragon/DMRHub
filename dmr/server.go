@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"math/big"
 	"net"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
-	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -21,11 +19,11 @@ type DMRServer struct {
 	Buffer        []byte
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
-	Redis         *redis.Client
 	Started       bool
 	Parrot        *Parrot
 	Verbose       bool
 	DB            *gorm.DB
+	Redis         redisRepeaterStorage
 }
 
 func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.DB) DMRServer {
@@ -35,66 +33,39 @@ func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.
 			IP:   net.ParseIP(addr),
 			Port: port,
 		},
-		Redis: redis.NewClient(&redis.Options{
-			Addr: redisHost,
-		}),
 		Started: false,
-		Parrot:  newParrot(redisHost),
+		Parrot:  NewParrot(redisHost),
 		Verbose: verbose,
 		DB:      db,
+		Redis:   makeRedisRepeaterStorage(redisHost),
 	}
 }
 
 func (s DMRServer) Stop() {
 	// Send a MSTCL command to each repeater
-	var cursor uint64
-	for {
-		keys, cursor, err := s.Redis.Scan(cursor, "repeater:*", 0).Result()
-		if err != nil {
-			klog.Errorf("Error scanning redis for repeaters", err)
-			break
+	repeaters, err := s.Redis.list()
+	if err != nil {
+		klog.Errorf("Error scanning redis for repeaters", err)
+	}
+	for _, repeater := range repeaters {
+		if s.Verbose {
+			klog.Infof("Repeater found: %d", repeater)
 		}
-		for _, key := range keys {
-			if s.Verbose {
-				klog.Info("Sending MSTCL to", key)
-			}
-			repeaterNum, err := strconv.Atoi(strings.Replace(key, "repeater:", "", 1))
-			if err != nil {
-				klog.Errorf("Error converting repeater key to int", err)
-			}
-			s.updateRepeaterConnection(repeaterNum, "DISCONNECTED")
-			repeaterBinary := make([]byte, 4)
-			binary.BigEndian.PutUint32(repeaterBinary, uint32(repeaterNum))
-			s.sendCommand(repeaterNum, COMMAND_MSTCL, repeaterBinary)
-		}
-
-		if cursor == 0 {
-			break
-		}
+		s.Redis.updateConnection(repeater, "DISCONNECTED")
+		repeaterBinary := make([]byte, 4)
+		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
+		s.sendCommand(repeater, COMMAND_MSTCL, repeaterBinary)
 	}
 	s.Started = false
 }
 
-func (s DMRServer) bumpRepeaterPing(repeaterID int) {
-	repeater := s.getRepeater(repeaterID)
-	repeater.LastPing = time.Now()
-	s.storeRepeater(repeaterID, repeater)
-	s.Redis.Expire(fmt.Sprintf("repeater:%d", repeaterID), 5*time.Minute)
-}
-
-func (s DMRServer) updateRepeaterConnection(repeaterID int, connection string) {
-	repeater := s.getRepeater(repeaterID)
-	repeater.Connection = connection
-	s.storeRepeater(repeaterID, repeater)
-}
-
-func (s DMRServer) validRepeater(repeaterID int, connection string, remoteAddr net.UDPAddr) bool {
+func (s DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
-	if !s.repeaterExists(repeaterID) {
+	if !s.Redis.exists(repeaterID) {
 		klog.Warningf("Repeater %d does not exist", repeaterID)
 		valid = false
 	}
-	repeater := s.getRepeater(repeaterID)
+	repeater := s.Redis.get(repeaterID)
 	if repeater.IP != remoteAddr.IP.String() {
 		klog.Warningf("Repeater %d IP %s does not match remote %s", repeaterID, repeater.IP, remoteAddr.IP.String())
 		valid = false
@@ -128,44 +99,16 @@ func (s DMRServer) Listen() {
 	}
 }
 
-func (s DMRServer) deleteRepeater(repeaterId int) bool {
-	return s.Redis.Del(fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
-}
-
-func (s DMRServer) storeRepeater(repeaterId int, repeater models.Repeater) {
-	repeaterBytes, err := repeater.MarshalMsg(nil)
-	if err != nil {
-		klog.Errorf("Error marshalling repeater", err)
-		return
-	}
-	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	s.Redis.Set(fmt.Sprintf("repeater:%d", repeaterId), repeaterBytes, 5*time.Minute)
-}
-
-func (s DMRServer) getRepeater(repeaterId int) models.Repeater {
-	repeaterBits, err := s.Redis.Get(fmt.Sprintf("repeater:%d", repeaterId)).Result()
-	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
-	}
-	var repeater models.Repeater
-	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
-	if err != nil {
-		klog.Errorf("Error unmarshalling repeater", err)
-		return models.Repeater{}
-	}
-	return repeater
-}
-
-func (s DMRServer) sendCommand(repeaterId int, command string, data []byte) {
+func (s DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte) {
 	if !s.Started {
 		klog.Warningf("Server not started, not sending command")
 		return
 	}
 	if s.Verbose {
-		klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterId)
+		klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIdBytes)
 	}
 	command_prefixed_data := append([]byte(command), data...)
-	repeater := s.getRepeater(repeaterId)
+	repeater := s.Redis.get(repeaterIdBytes)
 	_, err := s.Server.WriteToUDP(command_prefixed_data, &net.UDPAddr{
 		IP:   net.ParseIP(repeater.IP),
 		Port: repeater.Port,
@@ -175,23 +118,19 @@ func (s DMRServer) sendCommand(repeaterId int, command string, data []byte) {
 	}
 }
 
-func (s DMRServer) sendPacket(repeaterId int, data []byte) {
+func (s DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 	if s.Verbose {
-		klog.Infof("Sending Packet: %v\n", data)
-		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterId)
+		klog.Infof("Sending Packet: %v\n", packet)
+		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
 	}
-	repeater := s.getRepeater(repeaterId)
-	_, err := s.Server.WriteToUDP(data, &net.UDPAddr{
+	repeater := s.Redis.get(repeaterIdBytes)
+	_, err := s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
 		IP:   net.ParseIP(repeater.IP),
 		Port: repeater.Port,
 	})
 	if err != nil {
 		klog.Errorf("Error writing to UDP Socket", err)
 	}
-}
-
-func (s DMRServer) repeaterExists(repeaterId int) bool {
-	return s.Redis.Exists(fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
 }
 
 func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
@@ -202,23 +141,23 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
 	command := string(data[:4])
 	if command == COMMAND_DMRA {
-		repeaterId := data[4:8]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
+		repeaterIdBytes := data[4:8]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
-			klog.Infof("DMR talk alias from Repeater ID: %d", repeaterIdInt)
+			klog.Infof("DMR talk alias from Repeater ID: %d", repeaterIdBytes)
 		}
-		if s.validRepeater(repeaterIdInt, "YES", *remoteAddr) {
-			s.bumpRepeaterPing(repeaterIdInt)
+		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
+			s.Redis.ping(repeaterId)
 			klog.Warning("TODO: DMRA")
 		}
 	} else if command == COMMAND_DMRD {
-		repeaterId := data[11:15]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
+		repeaterIdBytes := data[11:15]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
-			klog.Infof("DMR Data from Repeater ID: %d", repeaterIdInt)
+			klog.Infof("DMR Data from Repeater ID: %d", repeaterId)
 		}
-		if s.validRepeater(repeaterIdInt, "YES", *remoteAddr) {
-			s.bumpRepeaterPing(repeaterIdInt)
+		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
+			s.Redis.ping(repeaterId)
 			packet := models.UnpackPacket(data[:])
 			if s.Verbose {
 				klog.Infof("DMR Data: %v", packet)
@@ -238,17 +177,17 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if packet.Dst == 9990 {
 				if !packet.GroupCall {
 					klog.Infof("Parrot call from %d", packet.Src)
-					if !s.Parrot.isStarted(packet.StreamId) {
-						s.Parrot.startStream(packet.StreamId, repeaterIdInt)
+					if !s.Parrot.IsStarted(packet.StreamId) {
+						s.Parrot.StartStream(packet.StreamId, repeaterId)
 					}
-					s.Parrot.recordPacket(packet.StreamId, packet)
+					s.Parrot.RecordPacket(packet.StreamId, packet)
 					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
-						s.Parrot.stopStream(packet.StreamId)
+						s.Parrot.StopStream(packet.StreamId)
 						f := func() {
-							packets := s.Parrot.getStream(packet.StreamId)
+							packets := s.Parrot.GetStream(packet.StreamId)
 							time.Sleep(3 * time.Second)
-							for _, packet := range packets {
-								s.sendPacket(repeaterIdInt, packet)
+							for _, pkt := range packets {
+								s.sendPacket(repeaterId, pkt)
 								// Just enough delay to avoid overloading the repeater host
 								time.Sleep(60 * time.Millisecond)
 							}
@@ -270,90 +209,73 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 			if packet.GroupCall {
 				// For each repeater in Redis
-				var cursor uint64
-				for {
-					keys, cursor, err := s.Redis.Scan(cursor, "repeater:*", 0).Result()
-					if err != nil {
-						klog.Errorf("Error scanning redis for repeaters", err)
-						break
+				repeaters, err := s.Redis.list()
+				if err != nil {
+					klog.Errorf("Error scanning redis for repeaters", err)
+				}
+				for _, repeater := range repeaters {
+					if s.Verbose {
+						klog.Infof("Repeater found: %d", repeater)
 					}
-					for _, key := range keys {
-						if key != fmt.Sprintf("repeater:%d", repeaterIdInt) {
-							if s.Verbose {
-								klog.Infof("Repeater found: %s", key)
-							}
-							repeaterNum, err := strconv.Atoi(strings.Replace(key, "repeater:", "", 1))
-							if err != nil {
-								klog.Errorf("Error converting repeater key to int", err)
-							}
-							repeaterBinary := make([]byte, 4)
-							binary.BigEndian.PutUint32(repeaterBinary, uint32(repeaterNum))
-							pkt := append(data[:11], repeaterBinary[:4]...)
-							pkt = append(pkt, data[15:]...)
-							s.sendPacket(repeaterNum, pkt)
-						}
-					}
-
-					if cursor == 0 {
-						break
+					if repeater != repeaterId {
+						packet.Repeater = repeater
+						s.sendPacket(repeater, packet)
 					}
 				}
+
 			} else {
-				if s.repeaterExists(int(packet.Dst)) {
-					repeaterBinary := make([]byte, 4)
-					binary.BigEndian.PutUint32(repeaterBinary, uint32(packet.Dst))
-					pkt := append(data[:11], repeaterBinary[:4]...)
-					pkt = append(pkt, data[15:]...)
-					s.sendPacket(repeaterIdInt, pkt)
+				if s.Redis.exists(packet.Dst) {
+					packet.Repeater = packet.Dst
+					s.sendPacket(repeaterId, packet)
 				} else {
 					klog.Warning("Unit call to non-existent repeater %d", packet.Dst)
 				}
 			}
 		}
 	} else if command == COMMAND_RPTO {
-		repeaterId := data[4:8]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
+		repeaterIdBytes := data[4:8]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
-			klog.Infof("Set options from %d", repeaterIdInt)
+			klog.Infof("Set options from %d", repeaterId)
 		}
 
-		if s.validRepeater(repeaterIdInt, "YES", *remoteAddr) {
-			s.bumpRepeaterPing(repeaterIdInt)
+		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
+			s.Redis.ping(repeaterId)
 			klog.Warning("TODO: RPTO")
-			s.sendCommand(repeaterIdInt, COMMAND_RPTACK, repeaterId)
+			s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
 		}
 	} else if command == COMMAND_RPTL {
-		repeaterId := data[4:8]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
-		klog.Infof("Login from Repeater ID: %d", repeaterIdInt)
+		repeaterIdBytes := data[4:8]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
+		klog.Infof("Login from Repeater ID: %d", repeaterId)
 		// TODO: Validate radio ID
 		if valid := true; !valid {
-			s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+			s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			if s.Verbose {
-				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterIdInt)
+				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
 			}
 		} else {
 			bigSalt, err := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
 			if err != nil {
 				klog.Exitf("Error generating random salt", err)
 			}
-			repeater := models.MakeRepeater(repeaterIdInt, uint32(bigSalt.Uint64()), *remoteAddr)
+			repeater := models.MakeRepeater(repeaterId, uint32(bigSalt.Uint64()), *remoteAddr)
 			repeater.Connection = "RPTL-RECEIVED"
 			repeater.LastPing = time.Now()
 			repeater.Connected = time.Now()
-			s.storeRepeater(repeaterIdInt, repeater)
-			s.sendCommand(repeaterIdInt, COMMAND_RPTACK, bigSalt.Bytes()[0:4])
-			s.updateRepeaterConnection(repeaterIdInt, "CHALLENGE_SENT")
+			s.Redis.store(repeaterId, repeater)
+			s.sendCommand(repeaterId, COMMAND_RPTACK, bigSalt.Bytes()[0:4])
+			s.Redis.updateConnection(repeaterId, "CHALLENGE_SENT")
 		}
 	} else if command == COMMAND_RPTK {
-		repeaterId := data[4:8]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
+		repeaterIdBytes := data[4:8]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
-			klog.Infof("Challenge Response from Repeater ID: %d", repeaterIdInt)
+			klog.Infof("Challenge Response from Repeater ID: %d", repeaterId)
 		}
-		if s.validRepeater(repeaterIdInt, "CHALLENGE_SENT", *remoteAddr) {
-			s.bumpRepeaterPing(repeaterIdInt)
-			repeater := s.getRepeater(repeaterIdInt)
+		if s.validRepeater(repeaterId, "CHALLENGE_SENT", *remoteAddr) {
+			s.Redis.ping(repeaterId)
+			repeater := s.Redis.get(repeaterId)
 			rxSalt := binary.BigEndian.Uint32(data[8:])
 			// sha256 hash repeater.Salt + the passphrase
 			saltBytes := make([]byte, 4)
@@ -361,36 +283,36 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			hash := sha256.Sum256(append(saltBytes, []byte("s3cr37w0rd")...))
 			calcedSalt := binary.BigEndian.Uint32(hash[:])
 			if calcedSalt == rxSalt {
-				klog.Infof("Repeater ID %d authed, sending ACK", repeaterIdInt)
-				s.updateRepeaterConnection(repeaterIdInt, "WAITING_CONFIG")
-				s.sendCommand(repeaterIdInt, COMMAND_RPTACK, repeaterId)
+				klog.Infof("Repeater ID %d authed, sending ACK", repeaterId)
+				s.Redis.updateConnection(repeaterId, "WAITING_CONFIG")
+				s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
 			} else {
-				s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			}
 		} else {
-			s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+			s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 		}
 	} else if command == COMMAND_RPTC {
 		if string(data[:5]) == COMMAND_RPTCL {
-			repeaterId := data[5:9]
-			repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
-			klog.Infof("Disconnect from Repeater ID: %d", repeaterIdInt)
-			if s.validRepeater(repeaterIdInt, "YES", *remoteAddr) {
-				s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+			repeaterIdBytes := data[5:9]
+			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
+			klog.Infof("Disconnect from Repeater ID: %d", repeaterId)
+			if s.validRepeater(repeaterId, "YES", *remoteAddr) {
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			}
-			if !s.deleteRepeater(repeaterIdInt) {
-				klog.Warningf("Repeater ID %d not deleted", repeaterIdInt)
+			if !s.Redis.delete(repeaterId) {
+				klog.Warningf("Repeater ID %d not deleted", repeaterId)
 			}
 		} else {
-			repeaterId := data[4:8]
-			repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
+			repeaterIdBytes := data[4:8]
+			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 			if s.Verbose {
-				klog.Infof("Repeater config from %d", repeaterIdInt)
+				klog.Infof("Repeater config from %d", repeaterId)
 			}
 
-			if s.validRepeater(repeaterIdInt, "WAITING_CONFIG", *remoteAddr) {
-				s.bumpRepeaterPing(repeaterIdInt)
-				repeater := s.getRepeater(repeaterIdInt)
+			if s.validRepeater(repeaterId, "WAITING_CONFIG", *remoteAddr) {
+				s.Redis.ping(repeaterId)
+				repeater := s.Redis.get(repeaterId)
 				repeater.Connected = time.Now()
 				repeater.LastPing = time.Now()
 
@@ -449,26 +371,26 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
 				repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
 				repeater.Connection = "YES"
-				s.storeRepeater(repeaterIdInt, repeater)
-				klog.Infof("Repeater ID %d (%s) connected\n", repeaterIdInt, repeater.Callsign)
-				s.sendCommand(repeaterIdInt, COMMAND_RPTACK, repeaterId)
+				s.Redis.store(repeaterId, repeater)
+				klog.Infof("Repeater ID %d (%s) connected\n", repeaterId, repeater.Callsign)
+				s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
 			} else {
-				s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			}
 		}
 	} else if command == COMMAND_RPTP {
-		repeaterId := data[7:11]
-		repeaterIdInt := int(binary.BigEndian.Uint32(repeaterId))
-		klog.Infof("Ping from %d", repeaterIdInt)
+		repeaterIdBytes := data[7:11]
+		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
+		klog.Infof("Ping from %d", repeaterId)
 
-		if s.validRepeater(repeaterIdInt, "YES", *remoteAddr) {
-			s.bumpRepeaterPing(repeaterIdInt)
-			repeater := s.getRepeater(repeaterIdInt)
+		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
+			s.Redis.ping(repeaterId)
+			repeater := s.Redis.get(repeaterId)
 			repeater.PingsReceived++
-			s.storeRepeater(repeaterIdInt, repeater)
-			s.sendCommand(repeaterIdInt, COMMAND_MSTPONG, repeaterId)
+			s.Redis.store(repeaterId, repeater)
+			s.sendCommand(repeaterId, COMMAND_MSTPONG, repeaterIdBytes)
 		} else {
-			s.sendCommand(repeaterIdInt, COMMAND_MSTNAK, repeaterId)
+			s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 		}
 	} else if command == COMMAND_RPTACK[:4] {
 		klog.Warning("TODO: RPTACK")

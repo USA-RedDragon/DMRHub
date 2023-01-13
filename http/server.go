@@ -28,7 +28,7 @@ func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB) {
 	r.Use(middleware.DatabaseProvider(db))
 
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"*"}
+	config.AllowOrigins = []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173"}
 	r.Use(cors.New(config))
 
 	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte("secret"))

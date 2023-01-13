@@ -48,6 +48,7 @@ Name=AREDN
 - Fix MSTCL on master shutdown (signal trap)
 - Implement API tests
 - Implement UDP server tests
+- metrics
 - CI
 
 ## To test
@@ -59,3 +60,4 @@ Name=AREDN
 - Setting to use any free slot if possible. (i.e. timeslot routing where both slots are maximally active)
 - Admin panels
   - see users where callsign and DMR ID don't match
+  - connected UDP peers dashboard

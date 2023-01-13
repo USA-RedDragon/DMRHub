@@ -2,7 +2,11 @@
   <div class="footer">
     <p>
       This project proudly open
-      <a href="https://github.com/USA-RedDragon/dmrserver-in-a-box">source</a>
+      <a
+        href="https://github.com/USA-RedDragon/dmrserver-in-a-box"
+        target="_blank"
+        >source</a
+      >
     </p>
     <p>Copyright &copy; 2023-{{ year }} Jacob McSwain</p>
     <p id="version">Version {{ version }}</p>

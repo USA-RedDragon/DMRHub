@@ -174,6 +174,9 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
+			dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+			dbRepeater.LastPing = time.Now()
+			s.DB.Save(&dbRepeater)
 			klog.Warning("TODO: DMRA")
 		}
 	} else if command == COMMAND_DMRD {
@@ -184,6 +187,16 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
+
+			var dbRepeater models.Repeater
+			if models.RepeaterIDExists(s.DB, repeaterId) {
+				dbRepeater = models.FindRepeaterByID(s.DB, repeaterId)
+				dbRepeater.LastPing = time.Now()
+				s.DB.Save(&dbRepeater)
+			} else {
+				klog.Warningf("Repeater %d not found in DB", repeaterId)
+				return
+			}
 			packet := models.UnpackPacket(data[:])
 			if s.Verbose {
 				klog.Infof("DMR Data: %v", packet)
@@ -233,19 +246,14 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if packet.Dst == 4000 {
-				if models.RepeaterIDExists(s.DB, packet.Repeater) {
-					repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
 					if packet.Slot {
 						klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
-						repeater.TS2DynamicTalkgroupID = 0
+					dbRepeater.TS2DynamicTalkgroupID = 0
 					} else {
 						klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
-						repeater.TS1DynamicTalkgroupID = 0
+					dbRepeater.TS1DynamicTalkgroupID = 0
 					}
-					s.DB.Save(&repeater)
-				} else if s.Verbose {
-					klog.Infof("Repeater %d not found in DB", packet.Repeater)
-				}
+				s.DB.Save(&dbRepeater)
 				return
 			}
 
@@ -260,8 +268,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				for _, repeater := range repeaters {
 					if repeater == repeaterId {
 						continue
-					} else if models.RepeaterIDExists(s.DB, repeater) {
-						dbRepeater := models.FindRepeaterByID(s.DB, repeater)
+					} else {
 						want, slot := dbRepeater.WantRX(packet)
 						if want {
 							packet.Slot = slot
@@ -275,8 +282,6 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 							packet.Repeater = dbRepeater.RadioID
 							go s.sendPacket(dbRepeater.RadioID, packet)
 						}
-					} else if s.Verbose {
-						klog.Infof("Repeater %d not found in DB", repeater)
 					}
 				}
 			} else {
@@ -284,7 +289,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					packet.Repeater = packet.Dst
 					s.sendPacket(repeaterId, packet)
 				} else {
-					klog.Warning("Unit call to non-existent repeater %d", packet.Dst)
+					klog.Warning("Private call to non-existent repeater %d", packet.Dst)
 				}
 			}
 		}
@@ -297,6 +302,13 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
+			if models.RepeaterIDExists(s.DB, repeaterId) {
+				dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+				dbRepeater.LastPing = time.Now()
+				s.DB.Save(&dbRepeater)
+			} else {
+				return
+			}
 			klog.Warning("TODO: RPTO")
 			s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
 		}
@@ -304,8 +316,12 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		klog.Infof("Login from Repeater ID: %d", repeaterId)
-		// TODO: Validate radio ID
-		if valid := true; !valid {
+		if !models.RepeaterIDExists(s.DB, repeaterId) {
+			repeater := models.MakeRepeater(repeaterId, 0, *remoteAddr)
+			repeater.Connection = "RPTL-RECEIVED"
+			repeater.LastPing = time.Now()
+			repeater.Connected = time.Now()
+			s.Redis.store(repeaterId, repeater)
 			s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 			if s.Verbose {
 				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
@@ -441,6 +457,9 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
+			dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+			dbRepeater.LastPing = time.Now()
+			s.DB.Save(&dbRepeater)
 			repeater := s.Redis.get(repeaterId)
 			repeater.PingsReceived++
 			s.Redis.store(repeaterId, repeater)

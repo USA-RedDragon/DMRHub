@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
@@ -31,6 +32,10 @@ func main() {
 		klog.Errorf("Failed to open database: %s", err)
 	}
 	db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	if db.Error != nil {
+		//We have an error
+		klog.Exitf(fmt.Sprintf("Failed with error %s", db.Error))
+	}
 	sqlDB, err := db.DB()
 	if err != nil {
 		klog.Exitf("Failed to open database: %s", err)

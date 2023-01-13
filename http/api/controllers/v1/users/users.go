@@ -14,6 +14,10 @@ import (
 )
 
 func GETUsers(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	var users []models.User
+	db.Find(&users)
+	c.JSON(http.StatusOK, users)
 }
 
 // Registration is JSON data from the frontend
@@ -148,13 +152,109 @@ func POSTUserApprove(c *gin.Context) {
 }
 
 func GETUser(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	var user models.User
+	db.Find(&user, "id = ?", c.Param("id"))
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	c.JSON(http.StatusOK, user)
 }
 
 func GETUserAdmins(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	var users []models.User
+	db.Find(&users, "admin = ?", true)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, users)
 }
 
 func PATCHUser(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	var json apimodels.UserPatch
+	err := c.ShouldBindJSON(&json)
+	if err != nil {
+		klog.Errorf("PATCHUser: JSON data is invalid: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+	} else {
+		// Update callsign, username, and/or password
+		var user models.User
+		db.Find(&user, "id = ?", id)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		}
+		if user.ID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+			return
+		}
+		if json.Callsign != "" {
+			matchesCallsign := false
+			// Check DMR ID is in the database
+			userDB := *userdb.GetDMRUsers()
+			for _, user := range userDB {
+				if user.ID == json.ID && strings.EqualFold(user.Callsign, json.Callsign) {
+					matchesCallsign = true
+					break
+				}
+			}
+			if !matchesCallsign {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
+				return
+			}
+			user.Callsign = json.Callsign
+		}
+
+		if json.Username != "" {
+			// Check if the username is already taken
+			var user models.User
+			db.Find(&user, "username = ?", json.Username)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			} else if user.ID != 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+				return
+			}
+			user.Username = json.Username
+		}
+
+		if json.Password != "" {
+			user.Password = utils.HashPassword(json.Password)
+		}
+
+		db.Save(&user)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User updated"})
+	}
 }
 
 func DELETEUser(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	var json apimodels.UserDelete
+	err := c.ShouldBindJSON(&json)
+	if err != nil {
+		klog.Errorf("DELETEUser: JSON data is invalid: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+	} else {
+		db.Delete(&models.User{}, "id = ?", id)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	}
 }

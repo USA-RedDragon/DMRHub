@@ -2,7 +2,7 @@ package apimodels
 
 import "regexp"
 
-type Registration struct {
+type UserRegistration struct {
 	DMRId    uint   `json:"dmr_id" binding:"required"`
 	Callsign string `json:"callsign" binding:"required"`
 	Username string `json:"username" binding:"required"`
@@ -11,7 +11,7 @@ type Registration struct {
 
 var isValidUsernameCharset = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString
 
-func (r *Registration) IsValidUsername() (bool, string) {
+func (r *UserRegistration) IsValidUsername() (bool, string) {
 	if len(r.Username) < 3 {
 		return false, "Username must be at least 3 characters"
 	}
@@ -22,4 +22,10 @@ func (r *Registration) IsValidUsername() (bool, string) {
 		return false, "Username must be alphanumeric, _, -, or ."
 	}
 	return true, ""
+}
+
+type UserPatch struct {
+	Callsign string `json:"callsign"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }

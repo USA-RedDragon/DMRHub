@@ -1,6 +1,7 @@
 package users
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -23,7 +24,7 @@ func GETUsers(c *gin.Context) {
 // Registration is JSON data from the frontend
 func POSTUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	var json apimodels.Registration
+	var json apimodels.UserRegistration
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
 		klog.Errorf("POSTUser: JSON data is invalid: %v", err)
@@ -93,68 +94,80 @@ func POSTUser(c *gin.Context) {
 	}
 }
 
-func POSTUserAdmins(c *gin.Context) {
+func POSTUserDemote(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	var json apimodels.UserAdmins
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("POSTUser: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		// Grab the user from the database
-		var user models.User
-		db.Find(&user, "id = ?", json.ID)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		if user.ID == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-			return
-		}
-		user.Admin = json.Admin
-		db.Save(&user)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
+	id := c.Param("id")
+	// Grab the user from the database
+	var user models.User
+	db.Find(&user, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
 	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	user.Admin = false
+	db.Save(&user)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User demoted"})
+}
+
+func POSTUserPromote(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	// Grab the user from the database
+	var user models.User
+	db.Find(&user, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	user.Admin = true
+	db.Save(&user)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
 }
 
 func POSTUserApprove(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	var json apimodels.UserApprove
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("POSTUserApprove: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		// Grab the user from the database
-		var user models.User
-		db.Find(&user, "id = ?", json.ID)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		if user.ID == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-			return
-		}
-		user.Approved = true
-		db.Save(&user)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "User approved"})
+	id := c.Param("id")
+	// Grab the user from the database
+	var user models.User
+	db.Find(&user, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
 	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	user.Approved = true
+	db.Save(&user)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User approved"})
 }
 
 func GETUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
 	var user models.User
-	db.Find(&user, "id = ?", c.Param("id"))
+	db.Find(&user, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -202,7 +215,7 @@ func PATCHUser(c *gin.Context) {
 			// Check DMR ID is in the database
 			userDB := *userdb.GetDMRUsers()
 			for _, user := range userDB {
-				if user.ID == json.ID && strings.EqualFold(user.Callsign, json.Callsign) {
+				if fmt.Sprintf("%d", user.ID) == id && strings.EqualFold(user.Callsign, json.Callsign) {
 					matchesCallsign = true
 					break
 				}
@@ -244,17 +257,33 @@ func PATCHUser(c *gin.Context) {
 func DELETEUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
-	var json apimodels.UserDelete
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("DELETEUser: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		db.Delete(&models.User{}, "id = ?", id)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	db.Delete(&models.User{}, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
 	}
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+func POSTUserSuspend(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	// Grab the user from the database
+	var user models.User
+	db.Find(&user, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	user.Approved = false
+	db.Save(&user)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User suspended"})
 }

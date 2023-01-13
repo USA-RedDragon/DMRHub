@@ -346,13 +346,38 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			klog.Infof("Challenge Response from Repeater ID: %d", repeaterId)
 		}
 		if s.validRepeater(repeaterId, "CHALLENGE_SENT", *remoteAddr) {
+			password := ""
+			var dbRepeater models.Repeater
+
+			if models.RepeaterIDExists(s.DB, repeaterId) {
+				dbRepeater = models.FindRepeaterByID(s.DB, repeaterId)
+				password = dbRepeater.Password
+			} else {
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				if s.Verbose {
+					klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
+				}
+				return
+			}
+
+			if password == "" {
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				if s.Verbose {
+					klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
+				}
+				return
+			}
+
 			s.Redis.ping(repeaterId)
+			dbRepeater.LastPing = time.Now()
+			s.DB.Save(&dbRepeater)
+
 			repeater := s.Redis.get(repeaterId)
 			rxSalt := binary.BigEndian.Uint32(data[8:])
 			// sha256 hash repeater.Salt + the passphrase
 			saltBytes := make([]byte, 4)
 			binary.BigEndian.PutUint32(saltBytes, repeater.Salt)
-			hash := sha256.Sum256(append(saltBytes, []byte("s3cr37w0rd")...))
+			hash := sha256.Sum256(append(saltBytes, []byte(password)...))
 			calcedSalt := binary.BigEndian.Uint32(hash[:])
 			if calcedSalt == rxSalt {
 				klog.Infof("Repeater ID %d authed, sending ACK", repeaterId)

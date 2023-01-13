@@ -45,9 +45,10 @@ Name=AREDN
   - self-service registration
   - repeater management
   - admin panels
-- Add ability to link/unlink static talkgroups
-- Implement authentication
 - Fix MSTCL on master shutdown (signal trap)
+- Implement API tests
+- Implement UDP server tests
+- CI
 
 ## To test
 

@@ -1,8 +1,6 @@
 package userdb
 
 import (
-	"bufio"
-	"bytes"
 	_ "embed"
 	"encoding/json"
 
@@ -36,12 +34,7 @@ var dmrUsers dmrUserDB
 
 func GetDMRUsers() *[]DMRUser {
 	if len(dmrUsers.Users) == 0 {
-		dbFile := bytes.NewReader(dmrUsersDB)
-
-		r := bufio.NewReader(dbFile)
-		d := json.NewDecoder(r)
-
-		if err := d.Decode(&dmrUsers); err != nil {
+		if err := json.Unmarshal(dmrUsersDB, &dmrUsers); err != nil {
 			klog.Exitf("Error decoding DMR users database: %v", err)
 		}
 	}

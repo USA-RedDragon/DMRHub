@@ -10,6 +10,7 @@ type Call struct {
 	gorm.Model
 	Time        time.Time
 	Duration    time.Duration
+	Active      bool
 	User        User
 	Repeater    Repeater
 	TimeSlot    bool

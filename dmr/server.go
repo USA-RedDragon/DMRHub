@@ -99,6 +99,32 @@ func (s DMRServer) Listen() {
 	}
 }
 
+func (s DMRServer) switchDynamicTalkgroup(packet models.Packet) {
+	// If the source repeater's (`packet.Repeater`) database entry's
+	// `TS1DynamicTalkgroupID` or `TS2DynamicTalkgroupID` (respective
+	// of the current `packet.Slot`) doesn't match the packet's `Dst`
+	// field, then we need to update the database entry to reflect
+	// the new dynamic talkgroup on the appropriate slot.
+	if models.RepeaterIDExists(s.DB, packet.Repeater) {
+		repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
+		if packet.Slot {
+			if repeater.TS2DynamicTalkgroupID != packet.Dst {
+				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
+				repeater.TS2DynamicTalkgroupID = packet.Dst
+				s.DB.Save(&repeater)
+			}
+		} else {
+			if repeater.TS1DynamicTalkgroupID != packet.Dst {
+				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
+				repeater.TS1DynamicTalkgroupID = packet.Dst
+				s.DB.Save(&repeater)
+			}
+		}
+	} else if s.Verbose {
+		klog.Infof("Repeater %d not found in DB", packet.Repeater)
+	}
+}
+
 func (s DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte) {
 	if !s.Started {
 		klog.Warningf("Server not started, not sending command")
@@ -207,27 +233,52 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if packet.Dst == 4000 {
-				// TODO: Handle unlink
-				klog.Warning("TODO: unlink")
+				if models.RepeaterIDExists(s.DB, packet.Repeater) {
+					repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
+					if packet.Slot {
+						klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
+						repeater.TS2DynamicTalkgroupID = 0
+					} else {
+						klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
+						repeater.TS1DynamicTalkgroupID = 0
+					}
+					s.DB.Save(&repeater)
+				} else if s.Verbose {
+					klog.Infof("Repeater %d not found in DB", packet.Repeater)
+				}
 				return
 			}
 
 			if packet.GroupCall {
+				go s.switchDynamicTalkgroup(packet)
+
 				// For each repeater in Redis
 				repeaters, err := s.Redis.list()
 				if err != nil {
 					klog.Errorf("Error scanning redis for repeaters", err)
 				}
 				for _, repeater := range repeaters {
+					if repeater == repeaterId {
+						continue
+					} else if models.RepeaterIDExists(s.DB, repeater) {
+						dbRepeater := models.FindRepeaterByID(s.DB, repeater)
+						want, slot := dbRepeater.WantRX(packet)
+						if want {
+							packet.Slot = slot
 					if s.Verbose {
-						klog.Infof("Repeater found: %d", repeater)
+								slotNum := 1
+								if packet.Slot {
+									slotNum = 2
 					}
-					if repeater != repeaterId {
-						packet.Repeater = repeater
-						s.sendPacket(repeater, packet)
+								klog.Infof("Sending packet to repeater %d on slot %d", dbRepeater.RadioID, slotNum)
+							}
+							packet.Repeater = dbRepeater.RadioID
+							go s.sendPacket(dbRepeater.RadioID, packet)
+						}
+					} else if s.Verbose {
+						klog.Infof("Repeater %d not found in DB", repeater)
 					}
 				}
-
 			} else {
 				if s.Redis.exists(packet.Dst) {
 					packet.Repeater = packet.Dst

@@ -65,7 +65,7 @@ func POSTRepeater(c *gin.Context) {
 		var repeater models.Repeater
 
 		// Validate repeater.RadioID matches the userId or the userId suffixed by a two-digit number between 01 and 10
-		re := regexp.MustCompile(`^` + fmt.Sprintf("%d", userId) + `(\d{2})?$`)
+		re := regexp.MustCompile(`^` + fmt.Sprintf("%d", userId) + `([0][1-9]|[1-9][0-9])?$`)
 		if !re.MatchString(fmt.Sprintf("%d", json.RadioID)) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID does not match the user id"})
 			return

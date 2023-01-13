@@ -43,7 +43,6 @@ Name=AREDN
 - Add ability to link/unlink from talkgroups
 - Implement authentication
 - Fix MSTCL on master shutdown (signal trap)
-- Add logic to route repeaters with -01, -02, etc repeater suffixes
 
 ## To test
 

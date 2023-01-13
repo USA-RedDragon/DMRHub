@@ -7,11 +7,12 @@ import (
 )
 
 type User struct {
-	ID        uint   `gorm:"primaryKey"`
-	Callsign  string `gorm:"uniqueIndex"`
-	Username  string `gorm:"uniqueIndex"`
-	Password  string
-	Admin     bool
+	ID        uint           `gorm:"primaryKey" json:"dmrid" binding:"required"`
+	Callsign  string         `gorm:"uniqueIndex" json:"callsign" binding:"required"`
+	Username  string         `gorm:"uniqueIndex" json:"username" binding:"required"`
+	Password  string         `json:"-"`
+	Admin     bool           `json:"admin"`
+	Approved  bool           `json:"approved" binding:"required"`
 	Repeaters []Repeater     `gorm:"foreignKey:OwnerID"`
 	CreatedAt time.Time      `json:"-"`
 	UpdatedAt time.Time      `json:"-"`

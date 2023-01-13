@@ -2,11 +2,16 @@ package main
 
 import (
 	"flag"
+	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/sdk"
 	"k8s.io/klog/v2"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 var verbose = flag.Bool("verbose", false, "Whether to display verbose logs")
@@ -21,8 +26,23 @@ func main() {
 
 	flag.Parse()
 
-	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose)
+	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	if err != nil {
+		klog.Errorf("Failed to open database: %s", err)
+	}
+	db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	sqlDB, err := db.DB()
+	if err != nil {
+		klog.Exitf("Failed to open database: %s", err)
+		return
+	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose, db)
 	go dmrServer.Listen()
 	defer dmrServer.Stop()
+
 	http.Start(*listen, *frontendPort, *verbose)
 }

@@ -18,6 +18,8 @@ func RequireAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			return
 		} else {
 			// Open up the DB and check if the user is an admin
 			db := c.MustGet("DB").(*gorm.DB)
@@ -41,6 +43,8 @@ func RequireLogin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			return
 		} else {
 			// Open up the DB and check if the user exists
 			db := c.MustGet("DB").(*gorm.DB)
@@ -65,6 +69,8 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if they own repeater with id = id
@@ -95,6 +101,8 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if they own talkgroup with id = id
@@ -128,6 +136,8 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if their ID matches id

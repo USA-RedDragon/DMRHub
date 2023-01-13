@@ -218,6 +218,13 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
+			if dbRepeater.OnlyMe {
+				if packet.Src != dbRepeater.OwnerID {
+					klog.Infof("OnlyMe mode on and packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
+					return
+				}
+			}
+
 			if packet.Dst == 9990 {
 				if !packet.GroupCall {
 					klog.Infof("Parrot call from %d", packet.Src)

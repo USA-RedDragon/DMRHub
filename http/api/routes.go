@@ -6,7 +6,7 @@ import (
 )
 
 // ApplyRoutes to the HTTP Mux
-func ApplyRoutes(router *gin.Engine) {
+func ApplyRoutes(router *gin.Engine, redisHost string) {
 	apiV1 := router.Group("/api/v1")
 	v1(apiV1)
 }

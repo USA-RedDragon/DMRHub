@@ -37,7 +37,6 @@ Location=1
 Name=AREDN
 ```
 
-
 ## Todos
 
 - Add a frontend (lastheard + self-service registration and repeater management)
@@ -45,7 +44,6 @@ Name=AREDN
 - Implement authentication
 - Fix MSTCL on master shutdown (signal trap)
 - Add logic to route repeaters with -01, -02, etc repeater suffixes
-- Change callsign in parrot to parrot. Any other fields?
 
 ## To test
 
@@ -54,12 +52,3 @@ Name=AREDN
 ## Feature ideas
 
 - Setting to use any free slot if possible. (i.e. timeslot routing where both slots are maximally active)
-
-## Relational ideas
-
-A scratchboard for my database:
-
-Users
-User hasMany Repeaters
-Repeater hasMany Talkgroups
-Lastheard hasMany Users, Talkgroups, repeaters

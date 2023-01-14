@@ -22,7 +22,7 @@ import (
 var FS embed.FS
 
 // Start the HTTP server
-func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB) {
+func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB, sessionSecret string) {
 	// Setup API
 	r := gin.Default()
 	r.Use(middleware.DatabaseProvider(db))
@@ -32,7 +32,7 @@ func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB) {
 	config.AllowOrigins = []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005"}
 	r.Use(cors.New(config))
 
-	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte("secret"))
+	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte(sessionSecret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	api.ApplyRoutes(r, redisHost)

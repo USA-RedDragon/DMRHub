@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"k8s.io/klog/v2"
 )
 
 type argon2_params struct {
@@ -32,6 +34,11 @@ func HashPassword(password string) string {
 		saltLength:  16,
 		keyLength:   32,
 		salt:        make([]byte, 16),
+	}
+	// Fill the salt with cryptographically secure random bytes.
+	_, err := rand.Read(params.salt)
+	if err != nil {
+		klog.Errorf("HashPassword: %v", err)
 	}
 
 	bytes := argon2.IDKey([]byte(password), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)

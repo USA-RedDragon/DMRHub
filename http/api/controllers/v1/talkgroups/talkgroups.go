@@ -14,7 +14,7 @@ import (
 func GETTalkgroups(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var talkgroups []models.Talkgroup
-	db.Find(&talkgroups)
+	db.Preload("Admins").Find(&talkgroups)
 	c.JSON(http.StatusOK, talkgroups)
 }
 
@@ -46,7 +46,7 @@ func GETTalkgroup(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
-	db.Find(&talkgroup, "id = ?", id)
+	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -72,7 +72,7 @@ func POSTTalkgroupAdminAppoint(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
-	db.Find(&talkgroup, "id = ?", id)
+	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -109,6 +109,7 @@ func POSTTalkgroupAdminAppoint(c *gin.Context) {
 				return
 			}
 			db.Model(&talkgroup).Association("Admins").Append(&user)
+			db.Save(&talkgroup)
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
@@ -122,7 +123,7 @@ func POSTTalkgroupAdminDemote(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
-	db.Find(&talkgroup, "id = ?", id)
+	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

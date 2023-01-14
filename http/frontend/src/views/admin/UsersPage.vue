@@ -24,9 +24,7 @@
               <Checkbox v-model="slotProps.data.admin" :binary="true" />
             </template>
           </Column>
-          <Column field="Repeaters" header="Repeaters">
-            <template #body="slotProps"> </template>
-          </Column>
+          <Column field="repeaters" header="Repeaters"></Column>
           <Column field="created_at" header="Created At"></Column>
           <template #expansion="slotProps">
             <Button

@@ -39,7 +39,7 @@ func POSTLogin(c *gin.Context) {
 			db.Find(&user, "callsign = ?", json.Callsign)
 		}
 		if user.ID == 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "message": "1 Authentication failed"})
+			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "message": "Authentication failed"})
 			return
 		}
 		verified, err := utils.VerifyPassword(json.Password, user.Password)
@@ -47,7 +47,6 @@ func POSTLogin(c *gin.Context) {
 		if verified && err == nil {
 			if user.Approved {
 				session.Set("user_id", user.ID)
-				session.Set("admin", user.Admin)
 				session.Save()
 				c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged in"})
 				return
@@ -60,7 +59,7 @@ func POSTLogin(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "message": "2 Authentication failed"})
+	c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "message": "Authentication failed"})
 }
 
 func GETLogout(c *gin.Context) {

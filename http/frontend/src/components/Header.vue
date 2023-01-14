@@ -6,9 +6,11 @@
     <div class="wrapper">
       <nav>
         <RouterLink to="/">Home</RouterLink>
-        <RouterLink v-if="loggedIn" to="/repeaters">Repeaters</RouterLink>
+        <RouterLink v-if="this.userStore.loggedIn" to="/repeaters"
+          >Repeaters</RouterLink
+        >
 
-        <router-link v-if="loggedIn" to="#" custom>
+        <router-link v-if="this.userStore.loggedIn" to="#" custom>
           <a
             href="#"
             @click="toggleTalkgroupsMenu"
@@ -20,7 +22,7 @@
           >
         </router-link>
         <Menu
-          v-if="loggedIn"
+          v-if="this.userStore.loggedIn"
           ref="talkgroupsMenu"
           :popup="true"
           :model="[
@@ -55,7 +57,11 @@
           </template>
         </Menu>
 
-        <router-link v-if="loggedIn && user && user.admin" to="#" custom>
+        <router-link
+          v-if="this.userStore.loggedIn && this.userStore.admin"
+          to="#"
+          custom
+        >
           <a
             href="#"
             @click="toggleAdminMenu"
@@ -67,7 +73,7 @@
           >
         </router-link>
         <Menu
-          v-if="loggedIn && user && user.admin"
+          v-if="this.userStore.loggedIn && this.userStore.admin"
           ref="adminMenu"
           :popup="true"
           :model="[
@@ -109,8 +115,12 @@
             </router-link>
           </template>
         </Menu>
-        <RouterLink v-if="!loggedIn" to="/register">Register</RouterLink>
-        <RouterLink v-if="!loggedIn" to="/login">Login</RouterLink>
+        <RouterLink v-if="!this.userStore.loggedIn" to="/register"
+          >Register</RouterLink
+        >
+        <RouterLink v-if="!this.userStore.loggedIn" to="/login"
+          >Login</RouterLink
+        >
         <a v-else href="#" @click="logout()">Logout</a>
       </nav>
     </div>
@@ -121,33 +131,23 @@
 import Menu from "primevue/menu/sfc";
 import API from "@/services/API";
 
+import { mapStores } from "pinia";
+import { useUserStore } from "@/store";
+
 export default {
   name: "Header",
   components: {
     Menu,
   },
   data: function () {
-    return {
-      loggedIn: false,
-      user: {},
-    };
+    return {};
   },
-  mounted() {
-    API.get(`/users/me`)
-      .then((res) => {
-        this.loggedIn = true;
-        this.user = res.data;
-      })
-      .catch((_err) => {
-        this.loggedIn = false;
-      });
-  },
+  mounted() {},
   methods: {
     logout() {
       API.get("/auth/logout")
         .then((_res) => {
-          this.loggedIn = false;
-          this.user = {};
+          this.userStore.loggedIn = false;
           this.$router.push("/login");
         })
         .catch((err) => {
@@ -160,6 +160,9 @@ export default {
     toggleTalkgroupsMenu(event) {
       this.$refs.talkgroupsMenu.toggle(event);
     },
+  },
+  computed: {
+    ...mapStores(useUserStore),
   },
 };
 </script>

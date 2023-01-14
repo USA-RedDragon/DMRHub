@@ -39,6 +39,9 @@ import Button from "primevue/button/sfc";
 import Card from "primevue/card/sfc";
 import API from "@/services/API";
 
+import { mapStores } from "pinia";
+import { useUserStore } from "@/store";
+
 export default {
   components: {
     Checkbox,
@@ -61,12 +64,23 @@ export default {
         password: this.password,
       })
         .then((_res) => {
-          this.$router.push("/");
+          API.get("/users/me").then((res) => {
+            this.userStore.id = res.data.id;
+            this.userStore.callsign = res.data.callsign;
+            this.userStore.username = res.data.username;
+            this.userStore.admin = res.data.admin;
+            this.userStore.created_at = res.data.created_at;
+            this.userStore.loggedIn = true;
+            this.$router.push("/");
+          });
         })
         .catch((err) => {
           console.error(err);
         });
     },
+  },
+  computed: {
+    ...mapStores(useUserStore),
   },
 };
 </script>

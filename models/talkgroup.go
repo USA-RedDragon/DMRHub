@@ -15,3 +15,15 @@ type Talkgroup struct {
 	UpdatedAt   time.Time      `json:"-"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
+
+func TalkgroupIDExists(db *gorm.DB, id uint) bool {
+	var count int64
+	db.Model(&Talkgroup{}).Where("ID = ?", id).Limit(1).Count(&count)
+	return count > 0
+}
+
+func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
+	var talkgroup Talkgroup
+	db.Preload("Admins").First(&talkgroup, ID)
+	return talkgroup
+}

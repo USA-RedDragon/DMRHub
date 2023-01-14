@@ -23,7 +23,7 @@
           </template>
           <Column :expander="true" />
           <Column field="id" header="DMR Radio ID"></Column>
-          <Column field="connected_time" header="Connected Time"></Column>
+          <Column field="connected_time" header="Last Connected"></Column>
           <Column field="last_ping_time" header="Last Ping"></Column>
           <Column
             field="ts1_static_talkgroups"
@@ -41,7 +41,6 @@
             field="ts2_dynamic_talkgroup"
             header="TS2 Dynamic TG"
           ></Column>
-          <Column field="created_at" header="Created At"></Column>
           <template #expansion="slotProps">
             <Button
               class="p-button-raised p-button-rounded p-button-primary"
@@ -95,7 +94,7 @@ export default {
   },
   methods: {
     fetchData() {
-      API.get("/repeaters")
+      API.get("/repeaters/my")
         .then((res) => {
           this.repeaters = res.data;
           for (let i = 0; i < this.repeaters.length; i++) {
@@ -142,7 +141,7 @@ export default {
               console.error(err);
               this.$toast.add({
                 severity: "danger",
-                summary: "Confirmed",
+                summary: "Error",
                 detail: `Error deleting repeater ${repeater.id}`,
                 life: 3000,
               });

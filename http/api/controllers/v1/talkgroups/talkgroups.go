@@ -5,6 +5,7 @@ import (
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
@@ -14,6 +15,30 @@ func GETTalkgroups(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var talkgroups []models.Talkgroup
 	db.Find(&talkgroups)
+	c.JSON(http.StatusOK, talkgroups)
+}
+
+func GETMyTalkgroups(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	session := sessions.Default(c)
+
+	userId := session.Get("user_id").(uint)
+	if userId == 0 {
+		klog.Error("userId not found")
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+		return
+	}
+
+	var talkgroups []models.Talkgroup
+	db.Table("talkgroup_admins")
+	if err := db.Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
+		Joins("JOIN users on talkgroup_admins.user_id=users.id").Where("users.id=?", userId).
+		Group("talkgroups.id").Find(&talkgroups).Error; err != nil {
+		klog.Errorf("Error getting talkgroups owned by user %d: %v", userId, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting talkgroups owned by user"})
+		return
+	}
+
 	c.JSON(http.StatusOK, talkgroups)
 }
 

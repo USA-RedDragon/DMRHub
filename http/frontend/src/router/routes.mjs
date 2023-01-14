@@ -30,9 +30,9 @@ export default [
     component: () => import("../views/TalkgroupsPage.vue"),
   },
   {
-    path: "/settings",
-    name: "Settings",
-    component: () => import("../views/SettingsPage.vue"),
+    path: "/talkgroups/owned",
+    name: "OwnedTalkgroups",
+    component: () => import("../views/OwnedTalkgroupsPage.vue"),
   },
   {
     path: "/admin/repeaters",
@@ -43,6 +43,11 @@ export default [
     path: "/admin/talkgroups",
     name: "AdminTalkgroups",
     component: () => import("../views/admin/TalkgroupsPage.vue"),
+  },
+  {
+    path: "/admin/talkgroups/new",
+    name: "NewTalkgroups",
+    component: () => import("../views/admin/NewTalkgroupsPage.vue"),
   },
   {
     path: "/admin/users",

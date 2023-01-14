@@ -20,6 +20,29 @@ func GETRepeaters(c *gin.Context) {
 	c.JSON(http.StatusOK, repeaters)
 }
 
+func GETMyRepeaters(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	session := sessions.Default(c)
+
+	userId := session.Get("user_id").(uint)
+	if userId == 0 {
+		klog.Error("userId not found")
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+		return
+	}
+
+	user := models.FindUserByID(db, userId)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	c.JSON(http.StatusOK, user.Repeaters)
+}
+
 func GETRepeater(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")

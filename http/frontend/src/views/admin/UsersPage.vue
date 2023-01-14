@@ -1,9 +1,16 @@
 <template>
   <div>
+    <Toast />
+    <ConfirmDialog></ConfirmDialog>
     <Card>
       <template #title>Users</template>
       <template #content>
-        <DataTable :value="users">
+        <DataTable
+          :value="users"
+          v-model:expandedRows="expandedRows"
+          dataKey="id"
+        >
+          <Column :expander="true" />
           <Column field="id" header="DMR ID"></Column>
           <Column field="callsign" header="Callsign"></Column>
           <Column field="username" header="Username"></Column>
@@ -20,6 +27,22 @@
           <Column field="Repeaters" header="Repeaters">
             <template #body="slotProps"> </template>
           </Column>
+          <Column field="created_at" header="Created At"></Column>
+          <template #expansion="slotProps">
+            <Button
+              class="p-button-raised p-button-rounded p-button-primary"
+              icon="pi pi-pencil"
+              label="Edit"
+              @click="editUser(slotProps.data)"
+            ></Button>
+            <Button
+              class="p-button-raised p-button-rounded p-button-danger"
+              icon="pi pi-trash"
+              label="Delete"
+              style="margin-left: 0.5em"
+              @click="deleteUser(slotProps.data)"
+            ></Button>
+          </template>
         </DataTable>
       </template>
     </Card>
@@ -53,6 +76,7 @@ export default {
   data: function () {
     return {
       users: [],
+      expandedRows: [],
     };
   },
   methods: {
@@ -66,6 +90,38 @@ export default {
         });
     },
     handleApprove(event, user) {},
+    handleAdmin(event, user) {},
+    editUser(user) {},
+    deleteUser(user) {
+      this.$confirm.require({
+        message: "Are you sure you want to delete this user?",
+        header: "Delete User",
+        icon: "pi pi-exclamation-triangle",
+        acceptClass: "p-button-danger",
+        accept: () => {
+          API.delete("/users/" + user.id)
+            .then((res) => {
+              this.$toast.add({
+                summary: "Confirmed",
+                severity: "success",
+                detail: `User ${user.id} deleted`,
+                life: 3000,
+              });
+              this.fetchData();
+            })
+            .catch((err) => {
+              console.error(err);
+              this.$toast.add({
+                severity: "danger",
+                summary: "Error",
+                detail: `Error deleting user ${user.id}`,
+                life: 3000,
+              });
+            });
+        },
+        reject: () => {},
+      });
+    },
   },
 };
 </script>

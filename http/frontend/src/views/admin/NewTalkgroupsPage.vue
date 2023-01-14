@@ -19,7 +19,14 @@
         </span>
         <br />
         <span class="p-float-label">
-          <InputText id="admins" type="text" v-model="admins" />
+          <MultiSelect
+            id="admins"
+            v-model="admins"
+            :options="allUsers"
+            :filter="true"
+            optionLabel="callsign"
+            display="chip"
+          />
           <label for="admins">Admins</label>
         </span>
       </template>
@@ -42,6 +49,7 @@ import Card from "primevue/card/sfc";
 import Checkbox from "primevue/checkbox/sfc";
 import Button from "primevue/button/sfc";
 import InputText from "primevue/inputtext/sfc";
+import MultiSelect from "primevue/multiselect";
 import API from "@/services/API";
 
 export default {
@@ -50,18 +58,31 @@ export default {
     Checkbox,
     Button,
     InputText,
+    MultiSelect,
   },
   created() {},
-  mounted() {},
+  mounted() {
+    this.getData();
+  },
   data: function () {
     return {
       id: "",
       name: "",
       description: "",
       admins: [],
+      allUsers: [],
     };
   },
   methods: {
+    getData() {
+      API.get("/users")
+        .then((res) => {
+          this.allUsers = res.data;
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    },
     handleTalkgroup() {
       var numericID = parseInt(this.id);
       if (!numericID) {
@@ -75,7 +96,7 @@ export default {
         .then((_res) => {
           for (var i = 0; i < this.admins.length; i++) {
             API.post(`/talkgroups/${numericID}/appoint`, {
-              user_id: this.admins[i],
+              user_id: this.admins[i].id,
             }).catch((err) => {
               console.error(err);
             });

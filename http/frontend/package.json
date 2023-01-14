@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e": "start-server-and-test preview :4173 'cypress run --e2e'",
@@ -13,6 +13,9 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
   },
   "dependencies": {
+    "pinia": "^2.0.28",
+    "primeicons": "^6.0.1",
+    "primevue": "^3.22.1",
     "vue": "^3.2.45",
     "vue-router": "^4.1.6"
   },

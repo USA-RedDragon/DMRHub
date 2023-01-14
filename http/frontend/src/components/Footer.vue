@@ -16,7 +16,7 @@
 <script>
 import API from "@/services/API";
 export default {
-  name: "SiteFooter",
+  name: "Footer",
   data: function () {
     return {
       year: new Date().getFullYear(),

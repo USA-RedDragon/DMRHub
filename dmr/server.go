@@ -238,30 +238,27 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if packet.Dst == 9990 {
-				if !packet.GroupCall {
-					klog.Infof("Parrot call from %d", packet.Src)
-					if !s.Parrot.IsStarted(packet.StreamId) {
-						s.Parrot.StartStream(packet.StreamId, repeaterId)
-					}
-					s.Parrot.RecordPacket(packet.StreamId, packet)
-					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
-						s.Parrot.StopStream(packet.StreamId)
-						f := func() {
-							packets := s.Parrot.GetStream(packet.StreamId)
-							time.Sleep(3 * time.Second)
-							for _, pkt := range packets {
-								s.sendPacket(repeaterId, pkt)
-								// Just enough delay to avoid overloading the repeater host
-								time.Sleep(60 * time.Millisecond)
-							}
-						}
-						go f()
-					}
-					return
-				} else {
-					// Don't route parrot group calls
-					return
+				klog.Infof("Parrot call from %d", packet.Src)
+				if !s.Parrot.IsStarted(packet.StreamId) {
+					s.Parrot.StartStream(packet.StreamId, repeaterId)
 				}
+				s.Parrot.RecordPacket(packet.StreamId, packet)
+				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+					s.Parrot.StopStream(packet.StreamId)
+					f := func() {
+						packets := s.Parrot.GetStream(packet.StreamId)
+						time.Sleep(3 * time.Second)
+						for _, pkt := range packets {
+							pkt.GroupCall = false
+							s.sendPacket(repeaterId, pkt)
+							// Delay in step with DMR symbol rate
+							time.Sleep(60 * time.Millisecond)
+						}
+					}
+					go f()
+				}
+				// Don't route parrot calls
+				return
 			}
 
 			if packet.Dst == 4000 {

@@ -31,16 +31,16 @@ func GETMyRepeaters(c *gin.Context) {
 		return
 	}
 
-	user := models.FindUserByID(db, userId)
+	// Get all repeaters owned by user
+	var repeaters []models.Repeater
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Where("owner_id = ?", userId).Find(&repeaters)
 	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		klog.Errorf("Error getting repeaters owned by user %d: %v", userId, db.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
-	if user.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-		return
-	}
-	c.JSON(http.StatusOK, user.Repeaters)
+
+	c.JSON(http.StatusOK, repeaters)
 }
 
 func GETRepeater(c *gin.Context) {

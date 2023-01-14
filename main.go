@@ -27,11 +27,11 @@ func main() {
 	var dmrPort = flag.Int("dmr-port", 62031, "The Port to listen on")
 	var frontendPort = flag.Int("frontend-port", 3005, "The Port to listen on")
 
+	flag.Parse()
+
 	if *secret == "" {
 		klog.Exit("You must specify a secret")
 	}
-
-	flag.Parse()
 
 	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 	if err != nil {
@@ -58,5 +58,6 @@ func main() {
 	go dmrServer.Listen()
 	defer dmrServer.Stop()
 
-	http.Start(*listen, *frontendPort, *verbose, *redisHost, db)
+	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005"}
+	http.Start(*listen, *frontendPort, *verbose, *redisHost, db, *secret, corsHosts)
 }

@@ -23,8 +23,13 @@ func main() {
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
 	var redisHost = flag.String("redis", "localhost:6379", "The hostname of redis")
 	var listen = flag.String("listen", "0.0.0.0", "The IP to listen on")
+	var secret = flag.String("secret", "", "The session encryption secret")
 	var dmrPort = flag.Int("dmr-port", 62031, "The Port to listen on")
 	var frontendPort = flag.Int("frontend-port", 3005, "The Port to listen on")
+
+	if *secret == "" {
+		klog.Exit("You must specify a secret")
+	}
 
 	flag.Parse()
 

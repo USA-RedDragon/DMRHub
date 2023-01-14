@@ -1,0 +1,73 @@
+<template>
+  <div>
+    <Card>
+      <template #title>Users</template>
+      <template #content>
+        <DataTable :value="users">
+          <Column field="id" header="DMR ID"></Column>
+          <Column field="callsign" header="Callsign"></Column>
+          <Column field="username" header="Username"></Column>
+          <Column field="approved" header="Approve?">
+            <template #body="slotProps">
+              <Checkbox v-model="slotProps.data.approved" :binary="true" />
+            </template>
+          </Column>
+          <Column field="admin" header="Admin?">
+            <template #body="slotProps">
+              <Checkbox v-model="slotProps.data.admin" :binary="true" />
+            </template>
+          </Column>
+          <Column field="Repeaters" header="Repeaters">
+            <template #body="slotProps"> </template>
+          </Column>
+        </DataTable>
+      </template>
+    </Card>
+  </div>
+</template>
+
+<script>
+import Button from "primevue/button/sfc";
+import Card from "primevue/card/sfc";
+import Checkbox from "primevue/checkbox/sfc";
+import DataTable from "primevue/datatable/sfc";
+import Column from "primevue/column/sfc";
+import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
+import Row from "primevue/row/sfc";
+import API from "@/services/API";
+
+export default {
+  components: {
+    Button,
+    Card,
+    Checkbox,
+    DataTable,
+    Column,
+    ColumnGroup,
+    Row,
+  },
+  created() {},
+  mounted() {
+    this.fetchData();
+  },
+  data: function () {
+    return {
+      users: [],
+    };
+  },
+  methods: {
+    fetchData() {
+      API.get("/users")
+        .then((res) => {
+          this.users = res.data;
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    },
+    handleApprove(event, user) {},
+  },
+};
+</script>
+
+<style scoped></style>

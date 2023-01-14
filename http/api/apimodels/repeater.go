@@ -1,12 +1,10 @@
 package apimodels
 
 type RepeaterPost struct {
-	RadioID    uint   `json:"radio_id" binding:"required"`
-	Password   string `json:"password" binding:"required"`
-	SecureMode bool   `json:"secure_mode"`
+	RadioID  uint   `json:"id" binding:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 type RepeaterPatch struct {
-	Password   string `json:"password"`
-	SecureMode bool   `json:"secure_mode"`
+	Password string `json:"password"`
 }

@@ -35,7 +35,7 @@ func GETTalkgroup(c *gin.Context) {
 
 func DELETETalkgroup(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	db.Delete(&models.Talkgroup{}, "id = ?", c.Param("id"))
+	db.Unscoped().Delete(&models.Talkgroup{}, "id = ?", c.Param("id"))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

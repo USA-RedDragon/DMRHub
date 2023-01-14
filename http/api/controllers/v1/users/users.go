@@ -3,12 +3,14 @@ package users
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/userdb"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
@@ -16,8 +18,7 @@ import (
 
 func GETUsers(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	var users []models.User
-	db.Find(&users)
+	users := models.ListUsers(db)
 	c.JSON(http.StatusOK, users)
 }
 
@@ -45,6 +46,8 @@ func POSTUser(c *gin.Context) {
 					break
 				}
 			}
+			registeredDMRID = false
+			matchesCallsign = false
 		}
 		if !registeredDMRID || !matchesCallsign {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not registered or Callsign does not match"})
@@ -166,23 +169,24 @@ func POSTUserApprove(c *gin.Context) {
 func GETUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
-	var user models.User
-	db.Find(&user, "id = ?", id)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+	// Convert string id into uint
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
 		return
 	}
-	if user.ID == 0 {
+	if models.UserIDExists(db, uint(userID)) {
+		user := models.FindUserByID(db, uint(userID))
+		c.JSON(http.StatusOK, user)
+	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-		return
 	}
-	c.JSON(http.StatusOK, user)
 }
 
 func GETUserAdmins(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var users []models.User
-	db.Find(&users, "admin = ?", true)
+	db.Preload("Repeaters").Find(&users, "admin = ?", true)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -257,7 +261,7 @@ func PATCHUser(c *gin.Context) {
 func DELETEUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
-	db.Delete(&models.User{}, "id = ?", id)
+	db.Unscoped().Delete(&models.User{}, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -286,4 +290,27 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User suspended"})
+}
+
+func GETUserSelf(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	session := sessions.Default(c)
+
+	userId := session.Get("user_id").(uint)
+	if userId == 0 {
+		klog.Error("userId not found")
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+		return
+	}
+
+	user := models.FindUserByID(db, userId)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	c.JSON(http.StatusOK, user)
 }

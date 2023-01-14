@@ -2,7 +2,6 @@ package models
 
 import (
 	"encoding/json"
-	"net"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,76 +10,40 @@ import (
 
 //go:generate msgp
 type Repeater struct {
-	RadioID               uint           `msg:"radio_id" gorm:"primaryKey"`
-	Connection            string         `msg:"connection" gorm:"-"`
-	Connected             time.Time      `msg:"connected"`
-	PingsReceived         int            `msg:"pings_received" gorm:"-"`
-	LastPing              time.Time      `msg:"last_ping"`
-	IP                    string         `msg:"ip"`
-	Port                  int            `msg:"port"`
-	Salt                  uint32         `msg:"salt" gorm:"-"`
-	Callsign              string         `msg:"callsign" gorm:"uniqueIndex"`
-	RXFrequency           int            `msg:"rx_frequency"`
-	TXFrequency           int            `msg:"tx_frequency"`
-	TXPower               int            `msg:"tx_power"`
-	ColorCode             int            `msg:"color_code"`
-	Latitude              float32        `msg:"latitude"`
-	Longitude             float32        `msg:"longitude"`
-	Height                int            `msg:"height"`
-	Location              string         `msg:"location"`
-	Description           string         `msg:"description"`
-	Slots                 int            `msg:"slots"`
-	URL                   string         `msg:"url"`
-	SoftwareID            string         `msg:"software_id"`
-	PackageID             string         `msg:"package_id"`
-	Password              string         `msg:"-" json:"-"`
-	TS1StaticTalkgroups   []Talkgroup    `msg:"-" gorm:"many2many:repeater_ts1_static_talkgroups;"`
-	TS2StaticTalkgroups   []Talkgroup    `msg:"-" gorm:"many2many:repeater_ts2_static_talkgroups;"`
-	TS1DynamicTalkgroupID uint           `msg:"-"`
-	TS2DynamicTalkgroupID uint           `msg:"-"`
-	TS1DynamicTalkgroup   Talkgroup      `msg:"-" gorm:"foreignKey:TS1DynamicTalkgroupID"`
-	TS2DynamicTalkgroup   Talkgroup      `msg:"-" gorm:"foreignKey:TS2DynamicTalkgroupID"`
-	Owner                 User           `msg:"-" json:"-" gorm:"foreignKey:OwnerID"`
-	OwnerID               uint           `msg:"-"`
-	SecureMode            bool           `msg:"-"`
-	CreatedAt             time.Time      `msg:"-" json:"-"`
-	UpdatedAt             time.Time      `msg:"-" json:"-"`
-	DeletedAt             gorm.DeletedAt `gorm:"index" msg:"-" json:"-"`
-}
-
-func MakeRepeater(radioId uint, salt uint32, socketAddr net.UDPAddr) Repeater {
-	return Repeater{
-		Connection:            "DISCONNECTED",
-		Connected:             time.UnixMilli(0),
-		PingsReceived:         0,
-		LastPing:              time.UnixMilli(0),
-		IP:                    socketAddr.IP.String(),
-		Port:                  socketAddr.Port,
-		Salt:                  salt,
-		RadioID:               radioId,
-		Callsign:              "",
-		RXFrequency:           0,
-		TXFrequency:           0,
-		TXPower:               0,
-		ColorCode:             0,
-		Latitude:              0,
-		Longitude:             0,
-		Height:                0,
-		Location:              "",
-		Description:           "",
-		Slots:                 0,
-		URL:                   "",
-		SoftwareID:            "",
-		PackageID:             "",
-		TS1StaticTalkgroups:   []Talkgroup{},
-		TS2StaticTalkgroups:   []Talkgroup{},
-		TS1DynamicTalkgroupID: 0,
-		TS2DynamicTalkgroupID: 0,
-		Password:              "",
-		Owner:                 User{},
-		OwnerID:               0,
-		SecureMode:            false,
-	}
+	RadioID               uint           `json:"id" gorm:"primaryKey" msg:"radio_id"`
+	Connection            string         `json:"-" gorm:"-" msg:"connection"`
+	Connected             time.Time      `json:"connected_time" msg:"connected"`
+	PingsReceived         int            `json:"-" gorm:"-" msg:"pings_received"`
+	LastPing              time.Time      `json:"last_ping_time" msg:"last_ping"`
+	IP                    string         `json:"-" gorm:"-" msg:"ip"`
+	Port                  int            `json:"-" gorm:"-" msg:"port"`
+	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
+	Callsign              string         `json:"callsign" msg:"callsign"`
+	RXFrequency           int            `json:"rx_frequency" msg:"rx_frequency"`
+	TXFrequency           int            `json:"tx_frequency" msg:"tx_frequency"`
+	TXPower               int            `json:"tx_power" msg:"tx_power"`
+	ColorCode             int            `json:"color_code" msg:"color_code"`
+	Latitude              float32        `json:"latitude" msg:"latitude"`
+	Longitude             float32        `json:"longitude" msg:"longitude"`
+	Height                int            `json:"height" msg:"height"`
+	Location              string         `json:"location" msg:"location"`
+	Description           string         `json:"description" msg:"description"`
+	Slots                 int            `json:"slots" msg:"slots"`
+	URL                   string         `json:"url" msg:"url"`
+	SoftwareID            string         `json:"software_id" msg:"software_id"`
+	PackageID             string         `json:"package_id" msg:"package_id"`
+	Password              string         `json:"-" msg:"-"`
+	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
+	TS2StaticTalkgroups   []Talkgroup    `json:"ts2_static_talkgroups" gorm:"many2many:repeater_ts2_static_talkgroups;" msg:"-"`
+	TS1DynamicTalkgroupID uint           `json:"-" msg:"-"`
+	TS2DynamicTalkgroupID uint           `json:"-" msg:"-"`
+	TS1DynamicTalkgroup   Talkgroup      `json:"ts1_dynamic_talkgroup" gorm:"foreignKey:TS1DynamicTalkgroupID" msg:"-"`
+	TS2DynamicTalkgroup   Talkgroup      `json:"ts2_dynamic_talkgroup" gorm:"foreignKey:TS2DynamicTalkgroupID" msg:"-"`
+	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
+	OwnerID               uint           `json:"-" msg:"-"`
+	CreatedAt             time.Time      `json:"created_at" msg:"-"`
+	UpdatedAt             time.Time      `json:"-" msg:"-"`
+	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
 }
 
 func (p Repeater) String() string {
@@ -92,9 +55,15 @@ func (p Repeater) String() string {
 	return string(jsn)
 }
 
+func ListRepeaters(db *gorm.DB) []Repeater {
+	var repeaters []Repeater
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Find(&repeaters)
+	return repeaters
+}
+
 func FindRepeaterByID(db *gorm.DB, ID uint) Repeater {
 	var repeater Repeater
-	db.First(&repeater, ID)
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").First(&repeater, ID)
 	return repeater
 }
 

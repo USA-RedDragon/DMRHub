@@ -7,7 +7,54 @@
       <nav>
         <RouterLink to="/">Home</RouterLink>
         <RouterLink v-if="loggedIn" to="/repeaters">Repeaters</RouterLink>
-        <RouterLink v-if="loggedIn" to="/talkgroups">Talkgroups</RouterLink>
+
+        <router-link v-if="loggedIn" to="#" custom>
+          <a
+            href="#"
+            @click="toggleTalkgroupsMenu"
+            :class="{
+              adminNavLink: true,
+              'router-link-active': this.$route.path.startsWith('/talkgroups'),
+            }"
+            >Talkgroups</a
+          >
+        </router-link>
+        <Menu
+          v-if="loggedIn"
+          ref="talkgroupsMenu"
+          :popup="true"
+          :model="[
+            {
+              label: '&nbsp;&nbsp;List',
+              to: '/talkgroups',
+            },
+            {
+              label: '&nbsp;&nbsp;Owned',
+              to: '/talkgroups/owned',
+            },
+          ]"
+        >
+          <template #item="{ item }">
+            <router-link
+              :to="item.to"
+              custom
+              v-slot="{ href, navigate, isActive, isExactActive }"
+            >
+              <a
+                :href="href"
+                @click="navigate"
+                :class="{
+                  adminNavLink: true,
+                  'router-link-active': isActive,
+                  'router-link-active-exact': isExactActive,
+                }"
+              >
+                <div>{{ item.label }}</div>
+              </a>
+            </router-link>
+          </template>
+        </Menu>
+
         <router-link v-if="loggedIn && user && user.admin" to="#" custom>
           <a
             href="#"
@@ -62,7 +109,6 @@
             </router-link>
           </template>
         </Menu>
-        <RouterLink v-if="loggedIn" to="/settings">Settings</RouterLink>
         <RouterLink v-if="!loggedIn" to="/register">Register</RouterLink>
         <RouterLink v-if="!loggedIn" to="/login">Login</RouterLink>
         <a v-else href="#" @click="logout()">Logout</a>
@@ -110,6 +156,9 @@ export default {
     },
     toggleAdminMenu(event) {
       this.$refs.adminMenu.toggle(event);
+    },
+    toggleTalkgroupsMenu(event) {
+      this.$refs.talkgroupsMenu.toggle(event);
     },
   },
 };

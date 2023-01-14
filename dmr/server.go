@@ -106,16 +106,25 @@ func (s DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 	// field, then we need to update the database entry to reflect
 	// the new dynamic talkgroup on the appropriate slot.
 	if models.RepeaterIDExists(s.DB, packet.Repeater) {
+		if !models.TalkgroupIDExists(s.DB, packet.Dst) {
+			if s.Verbose {
+				klog.Infof("Repeater %d not found in DB", packet.Repeater)
+			}
+			return
+		}
 		repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
+		talkgroup := models.FindTalkgroupByID(s.DB, packet.Dst)
 		if packet.Slot {
 			if repeater.TS2DynamicTalkgroupID != packet.Dst {
 				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
+				repeater.TS2DynamicTalkgroup = talkgroup
 				repeater.TS2DynamicTalkgroupID = packet.Dst
 				s.DB.Save(&repeater)
 			}
 		} else {
 			if repeater.TS1DynamicTalkgroupID != packet.Dst {
 				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
+				repeater.TS1DynamicTalkgroup = talkgroup
 				repeater.TS1DynamicTalkgroupID = packet.Dst
 				s.DB.Save(&repeater)
 			}

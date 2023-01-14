@@ -1,37 +1,63 @@
 <template>
   <div>
-    <h1>Talkgroups</h1>
-    <div class="content">
-      <Card>
-        <template #header>
-          <p>Header</p>
-        </template>
-        <template #title> Advanced Card </template>
-        <template #content>
-          Lorem ipsum dolor sit amet, consectetur adipisicing elit. Inventore
-          sed consequuntur error repudiandae numquam deserunt quisquam repellat
-          libero asperiores earum nam nobis, culpa ratione quam perferendis
-          esse, cupiditate neque quas!
-        </template>
-        <template #footer>
-          <p>Footer</p>
-        </template>
-      </Card>
-    </div>
+    <Toast />
+    <ConfirmDialog></ConfirmDialog>
+    <Card>
+      <template #title>Talkgroups</template>
+      <template #content>
+        <DataTable :value="talkgroups">
+          <Column field="id" header="Channel"></Column>
+          <Column field="name" header="Name"></Column>
+          <Column field="description" header="Description"></Column>
+          <Column field="admins" header="Admins"></Column>
+          <Column field="created_at" header="Created At"></Column>
+        </DataTable>
+      </template>
+    </Card>
   </div>
 </template>
 
 <script>
+import Button from "primevue/button/sfc";
 import Card from "primevue/card/sfc";
+import Checkbox from "primevue/checkbox/sfc";
+import DataTable from "primevue/datatable/sfc";
+import Column from "primevue/column/sfc";
+import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
+import Row from "primevue/row/sfc";
+import API from "@/services/API";
 
 export default {
-  components: {},
-  created() {},
-  mounted() {},
-  data: function () {
-    return {};
+  components: {
+    Button,
+    Card,
+    Checkbox,
+    DataTable,
+    Column,
+    ColumnGroup,
+    Row,
   },
-  methods: {},
+  created() {},
+  mounted() {
+    this.fetchData();
+  },
+  data: function () {
+    return {
+      talkgroups: [],
+      expandedRows: [],
+    };
+  },
+  methods: {
+    fetchData() {
+      API.get("/talkgroups")
+        .then((res) => {
+          this.talkgroups = res.data;
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    },
+  },
 };
 </script>
 

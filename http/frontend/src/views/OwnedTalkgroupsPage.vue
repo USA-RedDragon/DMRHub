@@ -3,24 +3,13 @@
     <Toast />
     <ConfirmDialog></ConfirmDialog>
     <Card>
-      <template #title>Talkgroups</template>
+      <template #title>Owned Talkgroups</template>
       <template #content>
         <DataTable
           :value="talkgroups"
           v-model:expandedRows="expandedRows"
           dataKey="id"
         >
-          <template #header>
-            <div class="table-header-container">
-              <RouterLink to="/admin/talkgroups/new">
-                <Button
-                  class="p-button-raised p-button-rounded p-button-success"
-                  icon="pi pi-plus"
-                  label="Add New Talkgroup"
-                />
-              </RouterLink>
-            </div>
-          </template>
           <Column :expander="true" />
           <Column field="id" header="Channel"></Column>
           <Column field="name" header="Name"></Column>
@@ -33,13 +22,6 @@
               icon="pi pi-pencil"
               label="Edit"
               @click="editTalkgroup(slotProps.data)"
-            ></Button>
-            <Button
-              class="p-button-raised p-button-rounded p-button-danger"
-              icon="pi pi-trash"
-              label="Delete"
-              style="margin-left: 0.5em"
-              @click="deleteTalkgroup(slotProps.data)"
             ></Button>
           </template>
         </DataTable>
@@ -80,7 +62,7 @@ export default {
   },
   methods: {
     fetchData() {
-      API.get("/talkgroups")
+      API.get("/talkgroups/my")
         .then((res) => {
           this.talkgroups = res.data;
         })
@@ -88,7 +70,7 @@ export default {
           console.error(err);
         });
     },
-    deleteTalkgroup(talkgroup) {
+    editTalkgroup(talkgroup) {
       // First, show a confirmation dialog
       this.$confirm.require({
         message: "Are you sure you want to delete this talkgroup?",
@@ -123,9 +105,4 @@ export default {
 };
 </script>
 
-<style scoped>
-.table-header-container {
-  display: flex;
-  justify-content: flex-end;
-}
-</style>
+<style scoped></style>

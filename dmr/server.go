@@ -175,6 +175,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
 			dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+			if dbRepeater.RadioID == 0 {
+				// Repeater not found, drop
+				klog.Warningf("Repeater %d not found in DB", repeaterId)
+				return
+			}
 			dbRepeater.LastPing = time.Now()
 			s.DB.Save(&dbRepeater)
 			klog.Warning("TODO: DMRA")
@@ -218,11 +223,9 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if dbRepeater.SecureMode {
-				if packet.Src != dbRepeater.OwnerID {
-					klog.Infof("OnlyMe mode on and packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
-					return
-				}
+			if packet.Src != dbRepeater.OwnerID {
+				klog.Infof("Packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
+				return
 			}
 
 			if packet.Dst == 9990 {
@@ -324,7 +327,10 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		klog.Infof("Login from Repeater ID: %d", repeaterId)
 		if !models.RepeaterIDExists(s.DB, repeaterId) {
-			repeater := models.MakeRepeater(repeaterId, 0, *remoteAddr)
+			repeater := models.Repeater{}
+			repeater.RadioID = repeaterId
+			repeater.IP = remoteAddr.IP.String()
+			repeater.Port = remoteAddr.Port
 			repeater.Connection = "RPTL-RECEIVED"
 			repeater.LastPing = time.Now()
 			repeater.Connected = time.Now()
@@ -334,11 +340,14 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
 			}
 		} else {
+			repeater := models.FindRepeaterByID(s.DB, repeaterId)
 			bigSalt, err := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
 			if err != nil {
 				klog.Exitf("Error generating random salt", err)
 			}
-			repeater := models.MakeRepeater(repeaterId, uint32(bigSalt.Uint64()), *remoteAddr)
+			repeater.Salt = uint32(bigSalt.Uint64())
+			repeater.IP = remoteAddr.IP.String()
+			repeater.Port = remoteAddr.Port
 			repeater.Connection = "RPTL-RECEIVED"
 			repeater.LastPing = time.Now()
 			repeater.Connected = time.Now()
@@ -508,6 +517,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		if s.validRepeater(repeaterId, "YES", *remoteAddr) {
 			s.Redis.ping(repeaterId)
 			dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
+			if dbRepeater.RadioID == 0 {
+				// No repeater found, drop
+				klog.Warningf("No repeater found for ID %d", repeaterId)
+				return
+			}
 			dbRepeater.LastPing = time.Now()
 			s.DB.Save(&dbRepeater)
 			repeater := s.Redis.get(repeaterId)

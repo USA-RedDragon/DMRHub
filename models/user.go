@@ -7,16 +7,16 @@ import (
 )
 
 type User struct {
-	ID        uint           `gorm:"primaryKey" json:"dmrid" binding:"required"`
-	Callsign  string         `gorm:"uniqueIndex" json:"callsign" binding:"required"`
-	Username  string         `gorm:"uniqueIndex" json:"username" binding:"required"`
+	ID        uint           `json:"id" gorm:"primaryKey" binding:"required"`
+	Callsign  string         `json:"callsign" gorm:"uniqueIndex" binding:"required"`
+	Username  string         `json:"username" gorm:"uniqueIndex" binding:"required"`
 	Password  string         `json:"-"`
 	Admin     bool           `json:"admin"`
 	Approved  bool           `json:"approved" binding:"required"`
-	Repeaters []Repeater     `gorm:"foreignKey:OwnerID"`
-	CreatedAt time.Time      `json:"-"`
+	Repeaters []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
+	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"-"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func UserExists(db *gorm.DB, user User) bool {
@@ -25,8 +25,20 @@ func UserExists(db *gorm.DB, user User) bool {
 	return count > 0
 }
 
+func UserIDExists(db *gorm.DB, id uint) bool {
+	var count int64
+	db.Model(&User{}).Where("ID = ?", id).Limit(1).Count(&count)
+	return count > 0
+}
+
 func FindUserByID(db *gorm.DB, ID uint) User {
 	var user User
-	db.First(&user, ID)
+	db.Preload("Repeaters").First(&user, ID)
 	return user
+}
+
+func ListUsers(db *gorm.DB) []User {
+	var users []User
+	db.Preload("Repeaters").Find(&users)
+	return users
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
@@ -15,31 +16,31 @@ import (
 
 func GETRepeaters(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	var repeaters []models.Repeater
-	db.Find(&repeaters)
+	repeaters := models.ListRepeaters(db)
 	c.JSON(http.StatusOK, repeaters)
 }
 
 func GETRepeater(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
-	var repeater models.Repeater
-	db.Find(&repeater, "radio_id = ?", id)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+	// Convert string id into uint
+	repeaterID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Repeater ID"})
 		return
 	}
-	if repeater.RadioID == 0 {
+	if models.RepeaterIDExists(db, uint(repeaterID)) {
+		repeater := models.FindRepeaterByID(db, uint(repeaterID))
+		c.JSON(http.StatusOK, repeater)
+	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
-		return
 	}
-	c.JSON(http.StatusOK, repeater)
 }
 
 func DELETERepeater(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
-	db.Delete(&models.Talkgroup{}, "radio_id = ?", id)
+	db.Unscoped().Delete(&models.Repeater{}, "radio_id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -80,8 +81,19 @@ func POSTRepeater(c *gin.Context) {
 		}
 
 		repeater.Password = json.Password
-		repeater.OwnerID = userId
-		repeater.SecureMode = json.SecureMode
+		// Find user by userId
+		var user models.User
+		db.Find(&user, "id = ?", userId)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		}
+		if user.ID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+			return
+		}
+		repeater.Owner = user
+		repeater.OwnerID = user.ID
 		db.Create(&repeater)
 		if db.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
@@ -116,7 +128,6 @@ func PATCHRepeater(c *gin.Context) {
 			return
 		}
 		repeater.Password = json.Password
-		repeater.SecureMode = json.SecureMode
 
 		db.Save(&repeater)
 		if db.Error != nil {

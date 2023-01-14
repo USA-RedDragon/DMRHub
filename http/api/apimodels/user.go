@@ -3,7 +3,7 @@ package apimodels
 import "regexp"
 
 type UserRegistration struct {
-	DMRId    uint   `json:"dmr_id" binding:"required"`
+	DMRId    uint   `json:"id" binding:"required"`
 	Callsign string `json:"callsign" binding:"required"`
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`

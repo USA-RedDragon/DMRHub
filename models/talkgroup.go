@@ -7,11 +7,11 @@ import (
 )
 
 type Talkgroup struct {
-	ID          uint `gorm:"primaryKey"`
-	Name        string
-	Description string
-	Admins      []User         `gorm:"many2many:talkgroup_admins;"`
-	CreatedAt   time.Time      `json:"-"`
+	ID          uint           `json:"id" gorm:"primaryKey"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Admins      []User         `json:"admins" gorm:"many2many:talkgroup_admins;"`
+	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"-"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }

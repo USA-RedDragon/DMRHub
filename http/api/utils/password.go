@@ -1,11 +1,11 @@
 package utils
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -96,4 +96,23 @@ func VerifyPassword(password, compareHash string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+const allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const allowedNumbers = "0123456789"
+const allowedSpecial = "!@#$%^&*-_"
+
+func RandomPassword(length int, minNumbers, minSpecial int) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = allowedChars[rand.Intn(len(allowedChars))]
+	}
+	for i := 0; i < minNumbers; i++ {
+		b[rand.Intn(length)] = allowedNumbers[rand.Intn(len(allowedNumbers))]
+	}
+	for i := 0; i < minSpecial; i++ {
+		b[rand.Intn(length)] = allowedSpecial[rand.Intn(len(allowedSpecial))]
+	}
+	rand.Shuffle(length, func(i, j int) { b[i], b[j] = b[j], b[i] })
+	return string(b)
 }

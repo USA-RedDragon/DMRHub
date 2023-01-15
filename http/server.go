@@ -72,6 +72,54 @@ func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB, s
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
+	staticGroup.GET("/:wild/:wild2", func(c *gin.Context) {
+		wild, have := c.Params.Get("wild")
+		if !have {
+			klog.Errorf("Failed to get wildcard: %s", err)
+		}
+		wild2, have := c.Params.Get("wild2")
+		if !have {
+			klog.Errorf("Failed to get wildcard: %s", err)
+		}
+		file, err := FS.Open(path.Join("frontend/dist", wild, wild2))
+		if err != nil {
+			file, err = FS.Open("frontend/dist/index.html")
+			if err != nil {
+				klog.Errorf("Failed to open file: %s", err)
+			}
+		}
+		fileContent, err := io.ReadAll(file)
+		if err != nil {
+			klog.Errorf("Failed to read file: %s", err)
+		}
+		c.Data(http.StatusOK, "text/html", fileContent)
+	})
+	staticGroup.GET("/:wild/:wild2/:wild3", func(c *gin.Context) {
+		wild, have := c.Params.Get("wild")
+		if !have {
+			klog.Errorf("Failed to get wildcard: %s", err)
+		}
+		wild2, have := c.Params.Get("wild2")
+		if !have {
+			klog.Errorf("Failed to get wildcard: %s", err)
+		}
+		wild3, have := c.Params.Get("wild3")
+		if !have {
+			klog.Errorf("Failed to get wildcard: %s", err)
+		}
+		file, err := FS.Open(path.Join("frontend/dist", wild, wild2, wild3))
+		if err != nil {
+			file, err = FS.Open("frontend/dist/index.html")
+			if err != nil {
+				klog.Errorf("Failed to open file: %s", err)
+			}
+		}
+		fileContent, err := io.ReadAll(file)
+		if err != nil {
+			klog.Errorf("Failed to read file: %s", err)
+		}
+		c.Data(http.StatusOK, "text/html", fileContent)
+	})
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
 		if verbose {

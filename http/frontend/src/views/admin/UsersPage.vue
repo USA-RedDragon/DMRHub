@@ -16,12 +16,20 @@
           <Column field="username" header="Username"></Column>
           <Column field="approved" header="Approve?">
             <template #body="slotProps">
-              <Checkbox v-model="slotProps.data.approved" :binary="true" />
+              <Checkbox
+                v-model="slotProps.data.approved"
+                :binary="true"
+                @change="handleApprove($event, slotProps.data)"
+              />
             </template>
           </Column>
           <Column field="admin" header="Admin?">
             <template #body="slotProps">
-              <Checkbox v-model="slotProps.data.admin" :binary="true" />
+              <Checkbox
+                v-model="slotProps.data.admin"
+                :binary="true"
+                @change="handleAdmin($event, slotProps.data)"
+              />
             </template>
           </Column>
           <Column field="repeaters" header="Repeater Count"></Column>
@@ -96,6 +104,7 @@ export default {
         });
     },
     handleApprove(event, user) {
+      this.fetchData();
       this.$toast.add({
         summary: "Not Implemented",
         severity: "error",
@@ -104,6 +113,8 @@ export default {
       });
     },
     handleAdmin(event, user) {
+      // Don't allow the user to uncheck the admin box
+      this.fetchData();
       this.$toast.add({
         summary: "Not Implemented",
         severity: "error",

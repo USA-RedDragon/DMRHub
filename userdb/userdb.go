@@ -1,14 +1,20 @@
 package userdb
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
+	"io"
 
+	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
 )
 
-//go:embed users.json
-var dmrUsersDB []byte
+//go:embed users.json.xz
+var comressedDMRUsersDB []byte
+
+var uncompressedDB []byte
+var uncompressedJson []byte
 
 type dmrUserDB struct {
 	Users []DMRUser `json:"users"`
@@ -34,7 +40,15 @@ var dmrUsers dmrUserDB
 
 func GetDMRUsers() *[]DMRUser {
 	if len(dmrUsers.Users) == 0 {
-		if err := json.Unmarshal(dmrUsersDB, &dmrUsers); err != nil {
+		uncompressedDB, err := xz.NewReader(bytes.NewReader(comressedDMRUsersDB))
+		if err != nil {
+			klog.Fatalf("NewReader error %s", err)
+		}
+		uncompressedJson, err = io.ReadAll(uncompressedDB)
+		if err != nil {
+			klog.Fatalf("ReadAll error %s", err)
+		}
+		if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
 			klog.Exitf("Error decoding DMR users database: %v", err)
 		}
 	}

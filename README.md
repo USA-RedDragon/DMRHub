@@ -14,7 +14,6 @@ Right now, Redis is the only requirement
 
 ### Before first release
 
-- CI
 - CI build and release
 - user needs to be able to map static talkgroups
 - database configurable either postgres or sqlite

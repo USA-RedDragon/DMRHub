@@ -83,6 +83,7 @@ export default {
   created() {},
   mounted() {
     this.fetchData();
+    setInterval(this.fetchData, 3000);
   },
   data: function () {
     return {

@@ -13,7 +13,7 @@
             >
             <br /><br />
           </p>
-          <pre style="background-color: #444; padding: 1em">
+          <pre style="background-color: #444; padding: 1em; font-size: 12px">
 [DMR Network 2]
 Name=AREDN
 Enabled=1

@@ -1,5 +1,6 @@
 <template>
   <div>
+    <Toast />
     <Card>
       <template #title>New Talkgroup</template>
       <template #content>
@@ -97,15 +98,47 @@ export default {
           for (var i = 0; i < this.admins.length; i++) {
             API.post(`/talkgroups/${numericID}/appoint`, {
               user_id: this.admins[i].id,
-            }).catch((err) => {
-              console.error(err);
-            });
+            })
+              .then((res) => {
+                this.$router.push("/admin/talkgroups");
+              })
+              .catch((err) => {
+                console.error(err);
+                if (!err.response && !err.response.error) {
+                  this.$toast.add({
+                    summary: "Error",
+                    severity: "error",
+                    detail: `Error creating talkgroup`,
+                    life: 3000,
+                  });
+                } else {
+                  this.$toast.add({
+                    summary: "Error",
+                    severity: "error",
+                    detail: err.response.data.error,
+                    life: 3000,
+                  });
+                }
+              });
           }
-
-          this.$router.push("/admin/talkgroups");
         })
         .catch((err) => {
           console.error(err);
+          if (!err.response && !err.response.error) {
+            this.$toast.add({
+              summary: "Error",
+              severity: "error",
+              detail: `Error creating talkgroup`,
+              life: 3000,
+            });
+          } else {
+            this.$toast.add({
+              summary: "Error",
+              severity: "error",
+              detail: err.response.data.error,
+              life: 3000,
+            });
+          }
         });
     },
   },

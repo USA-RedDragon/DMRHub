@@ -110,11 +110,11 @@ export default {
         })
         .catch((err) => {
           console.error(err);
-          if (err.response && err.response.data) {
+          if (err.response && err.response.error) {
             this.$toast.add({
               severity: "error",
               summary: "Error",
-              detail: err.response.data.message,
+              detail: err.response.error,
               life: 3000,
             });
           } else {

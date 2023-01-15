@@ -11,7 +11,7 @@ import Header from "./components/Header.vue";
 import API from "@/services/API";
 
 import { mapStores } from "pinia";
-import { useUserStore } from "@/store";
+import { useUserStore, useSettingsStore } from "@/store";
 
 export default {
   name: "App",
@@ -34,7 +34,10 @@ export default {
   },
   mounted() {
     this.fetchData();
-    this.refresh = setInterval(this.fetchData, 3000);
+    this.refresh = setInterval(
+      this.fetchData,
+      this.settingsStore.refreshInterval
+    );
   },
   unmounted() {
     clearInterval(this.refresh);
@@ -57,7 +60,7 @@ export default {
     },
   },
   computed: {
-    ...mapStores(useUserStore),
+    ...mapStores(useUserStore, useSettingsStore),
   },
 };
 </script>

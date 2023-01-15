@@ -40,6 +40,9 @@ import Row from "primevue/row/sfc";
 import moment from "moment";
 import API from "@/services/API";
 
+import { mapStores } from "pinia";
+import { useSettingsStore } from "@/store";
+
 export default {
   components: {
     Button,
@@ -53,7 +56,10 @@ export default {
   created() {},
   mounted() {
     this.fetchData();
-    this.refresh = setInterval(this.fetchData, 3000);
+    this.refresh = setInterval(
+      this.fetchData,
+      this.settingsStore.refreshInterval
+    );
   },
   unmounted() {
     clearInterval(this.refresh);
@@ -88,6 +94,9 @@ export default {
         life: 3000,
       });
     },
+  },
+  computed: {
+    ...mapStores(useSettingsStore),
   },
 };
 </script>

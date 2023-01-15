@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -97,13 +98,9 @@ func POSTRepeater(c *gin.Context) {
 
 		repeater.RadioID = json.RadioID
 
-		// Validate password is at least 5 characters
-		if len(json.Password) < 5 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 5 characters"})
-			return
-		}
+		// Generate a random password of 8 characters
+		repeater.Password = utils.RandomPassword(8, 1, 2)
 
-		repeater.Password = json.Password
 		// Find user by userId
 		var user models.User
 		db.Find(&user, "id = ?", userId)
@@ -122,42 +119,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Repeater created"})
-	}
-}
-
-func PATCHRepeater(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
-	id := c.Param("id")
-	var json apimodels.RepeaterPatch
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("PATCHRepeater: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		var repeater models.Repeater
-		db.Find(&repeater, "radio_id = ?", id)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		if repeater.RadioID == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
-			return
-		}
-		// Validate password is at least 5 characters
-		if len(json.Password) < 5 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 5 characters"})
-			return
-		}
-		repeater.Password = json.Password
-
-		db.Save(&repeater)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "Repeater updated"})
+		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
 

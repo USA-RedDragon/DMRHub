@@ -83,12 +83,16 @@ export default {
   created() {},
   mounted() {
     this.fetchData();
-    setInterval(this.fetchData, 3000);
+    this.refresh = setInterval(this.fetchData, 3000);
+  },
+  unmounted() {
+    clearInterval(this.refresh);
   },
   data: function () {
     return {
       talkgroups: [],
       expandedRows: [],
+      refresh: null,
     };
   },
   methods: {

@@ -24,8 +24,8 @@
               <Checkbox v-model="slotProps.data.admin" :binary="true" />
             </template>
           </Column>
-          <Column field="repeaters" header="Repeaters"></Column>
-          <Column field="created_at" header="Created At"></Column>
+          <Column field="repeaters" header="Repeater Count"></Column>
+          <Column field="created_at" header="Created"></Column>
           <template #expansion="slotProps">
             <Button
               class="p-button-raised p-button-rounded p-button-primary"
@@ -56,6 +56,7 @@ import Column from "primevue/column/sfc";
 import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
 import Row from "primevue/row/sfc";
 import API from "@/services/API";
+import moment from "moment";
 
 export default {
   components: {
@@ -82,14 +83,42 @@ export default {
       API.get("/users")
         .then((res) => {
           this.users = res.data;
+          for (let i = 0; i < this.users.length; i++) {
+            this.users[i].repeaters = this.users[i].repeaters.length;
+
+            this.users[i].created_at = moment(
+              this.users[i].created_at
+            ).fromNow();
+          }
         })
         .catch((err) => {
           console.error(err);
         });
     },
-    handleApprove(event, user) {},
-    handleAdmin(event, user) {},
-    editUser(user) {},
+    handleApprove(event, user) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Users cannot be edited yet.`,
+        life: 3000,
+      });
+    },
+    handleAdmin(event, user) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Users cannot be edited yet.`,
+        life: 3000,
+      });
+    },
+    editUser(user) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Users cannot be edited yet.`,
+        life: 3000,
+      });
+    },
     deleteUser(user) {
       this.$confirm.require({
         message: "Are you sure you want to delete this user?",
@@ -110,7 +139,7 @@ export default {
             .catch((err) => {
               console.error(err);
               this.$toast.add({
-                severity: "danger",
+                severity: "error",
                 summary: "Error",
                 detail: `Error deleting user ${user.id}`,
                 life: 3000,

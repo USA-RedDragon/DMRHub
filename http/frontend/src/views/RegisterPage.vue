@@ -75,7 +75,7 @@ export default {
       var numericID = parseInt(this.dmr_id);
       if (!numericID) {
         this.$toast.add({
-          severity: "danger",
+          severity: "error",
           summary: "Error",
           detail: `DMR ID must be a number`,
           life: 3000,
@@ -84,7 +84,7 @@ export default {
       }
       if (this.confirmPassword != this.password) {
         this.$toast.add({
-          severity: "danger",
+          severity: "error",
           summary: "Error",
           detail: `Passwords do not match`,
           life: 3000,
@@ -112,14 +112,14 @@ export default {
           console.error(err);
           if (err.response && err.response.data) {
             this.$toast.add({
-              severity: "danger",
+              severity: "error",
               summary: "Error",
               detail: err.response.data.message,
               life: 3000,
             });
           } else {
             this.$toast.add({
-              severity: "danger",
+              severity: "error",
               summary: "Error",
               detail: "An unknown error occurred",
               life: 3000,

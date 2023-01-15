@@ -25,22 +25,57 @@
           <Column field="id" header="DMR Radio ID"></Column>
           <Column field="connected_time" header="Last Connected"></Column>
           <Column field="last_ping_time" header="Last Ping"></Column>
-          <Column
-            field="ts1_static_talkgroups"
-            header="TS1 Static TGs"
-          ></Column>
-          <Column
-            field="ts2_static_talkgroups"
-            header="TS2 Static TGs"
-          ></Column>
-          <Column
-            field="ts1_dynamic_talkgroup"
-            header="TS1 Dynamic TG"
-          ></Column>
-          <Column
-            field="ts2_dynamic_talkgroup"
-            header="TS2 Dynamic TG"
-          ></Column>
+          <Column field="ts1_static_talkgroups" header="TS1 Static TGs">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.ts1_static_talkgroups.length == 0"
+                >None</span
+              >
+              <span
+                v-else
+                v-bind:key="tg.id"
+                v-for="tg in slotProps.data.ts1_static_talkgroups"
+              >
+                {{ tg.id }} - {{ tg.name }},&nbsp;
+              </span>
+            </template>
+          </Column>
+          <Column field="ts2_static_talkgroups" header="TS2 Static TGs">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.ts2_static_talkgroups.length == 0"
+                >None</span
+              >
+              <span
+                v-else
+                v-bind:key="tg.id"
+                v-for="tg in slotProps.data.ts2_static_talkgroups"
+              >
+                {{ tg.id }} - {{ tg.name }}&nbsp;
+              </span>
+            </template></Column
+          >
+          <Column field="ts1_dynamic_talkgroup" header="TS1 Dynamic TG">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.ts1_dynamic_talkgroup.id == null"
+                >None</span
+              >
+              <span v-else>
+                {{ slotProps.data.ts1_dynamic_talkgroup.id }} -
+                {{ slotProps.data.ts1_dynamic_talkgroup.name }}
+              </span>
+            </template>
+          </Column>
+          <Column field="ts2_dynamic_talkgroup" header="TS2 Dynamic TG">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.ts2_dynamic_talkgroup.id == null"
+                >None</span
+              >
+              <span v-else>
+                {{ slotProps.data.ts2_dynamic_talkgroup.id }} -
+                {{ slotProps.data.ts2_dynamic_talkgroup.name }}
+              </span>
+            </template></Column
+          >
+          <Column field="created_at" header="Created"></Column>
           <template #expansion="slotProps">
             <Button
               class="p-button-raised p-button-rounded p-button-primary"
@@ -71,6 +106,7 @@ import Column from "primevue/column/sfc";
 import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
 import Row from "primevue/row/sfc";
 import API from "@/services/API";
+import moment from "moment";
 
 export default {
   components: {
@@ -113,11 +149,39 @@ export default {
             if (this.repeaters[i].ts2_static_talkgroups == null) {
               this.repeaters[i].ts2_static_talkgroups = "None";
             }
+
+            if (this.repeaters[i].connected_time == "0001-01-01T00:00:00Z") {
+              this.repeaters[i].connected_time = "Never";
+            } else {
+              this.repeaters[i].connected_time = moment(
+                this.repeaters[i].connected_time
+              ).fromNow();
+            }
+
+            this.repeaters[i].created_at = moment(
+              this.repeaters[i].created_at
+            ).fromNow();
+
+            if (this.repeaters[i].last_ping_time == "0001-01-01T00:00:00Z") {
+              this.repeaters[i].last_ping_time = "Never";
+            } else {
+              this.repeaters[i].last_ping_time = moment(
+                this.repeaters[i].last_ping_time
+              ).fromNow();
+            }
           }
         })
         .catch((err) => {
           console.error(err);
         });
+    },
+    editRepeater(repeater) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Repeaters cannot be edited yet.`,
+        life: 3000,
+      });
     },
     deleteRepeater(repeater) {
       // First, show a confirmation dialog
@@ -128,7 +192,7 @@ export default {
         acceptClass: "p-button-danger",
         accept: () => {
           API.delete("/repeaters/" + repeater.id)
-            .then((res) => {
+            .then((_res) => {
               this.$toast.add({
                 summary: "Confirmed",
                 severity: "success",
@@ -140,7 +204,7 @@ export default {
             .catch((err) => {
               console.error(err);
               this.$toast.add({
-                severity: "danger",
+                severity: "error",
                 summary: "Error",
                 detail: `Error deleting repeater ${repeater.id}`,
                 life: 3000,

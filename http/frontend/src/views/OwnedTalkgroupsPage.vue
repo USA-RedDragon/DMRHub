@@ -14,8 +14,7 @@
           <Column field="id" header="Channel"></Column>
           <Column field="name" header="Name"></Column>
           <Column field="description" header="Description"></Column>
-          <Column field="admins" header="Admins"></Column>
-          <Column field="created_at" header="Created At"></Column>
+          <Column field="created_at" header="Created"></Column>
           <template #expansion="slotProps">
             <Button
               class="p-button-raised p-button-rounded p-button-primary"
@@ -38,6 +37,7 @@ import DataTable from "primevue/datatable/sfc";
 import Column from "primevue/column/sfc";
 import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
 import Row from "primevue/row/sfc";
+import moment from "moment";
 import API from "@/services/API";
 
 export default {
@@ -65,12 +65,24 @@ export default {
       API.get("/talkgroups/my")
         .then((res) => {
           this.talkgroups = res.data;
+          for (let i = 0; i < this.talkgroups.length; i++) {
+            this.talkgroups[i].created_at = moment(
+              this.talkgroups[i].created_at
+            ).fromNow();
+          }
         })
         .catch((err) => {
           console.error(err);
         });
     },
-    editTalkgroup(talkgroup) {},
+    editTalkgroup(talkgroup) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Talkgroups cannot be edited yet.`,
+        life: 3000,
+      });
+    },
   },
 };
 </script>

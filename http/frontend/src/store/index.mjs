@@ -12,3 +12,11 @@ export const useUserStore = defineStore("user", {
   getters: {},
   actions: {},
 });
+
+export const useSettingsStore = defineStore("settings", {
+  state: () => ({
+    refreshInterval: 3000,
+  }),
+  getters: {},
+  actions: {},
+});

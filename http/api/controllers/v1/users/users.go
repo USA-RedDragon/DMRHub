@@ -31,25 +31,11 @@ func POSTUser(c *gin.Context) {
 		klog.Errorf("POSTUser: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
-		registeredDMRID := false
-		matchesCallsign := false
-		// Check DMR ID is in the database
-		userDB := *userdb.GetDMRUsers()
-		for _, user := range userDB {
-			if user.ID == json.DMRId {
-				registeredDMRID = true
-			}
-
-			if strings.EqualFold(user.Callsign, json.Callsign) {
-				matchesCallsign = true
-				if registeredDMRID {
-					break
-				}
-			}
-			registeredDMRID = false
-			matchesCallsign = false
+		if !userdb.IsValidUserID(json.DMRId) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not valid"})
+			return
 		}
-		if !registeredDMRID || !matchesCallsign {
+		if !userdb.IsInDB(json.DMRId, json.Callsign) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not registered or Callsign does not match"})
 			return
 		}

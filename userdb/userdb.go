@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"io"
+	"strings"
 
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
@@ -32,6 +33,38 @@ type DMRUser struct {
 	Country  string `json:"country"`
 	Name     string `json:"name"`
 	FName    string `json:"fname"`
+}
+
+func IsValidUserID(DMRId uint) bool {
+	// Check that the user id is 7 digits
+	if DMRId < 1000000 || DMRId > 9999999 {
+		return false
+	}
+	return true
+}
+
+func IsInDB(DMRId uint, callsign string) bool {
+	matchesCallsign := false
+	registeredDMRID := false
+
+	for _, user := range *GetDMRUsers() {
+		if user.ID == DMRId {
+			registeredDMRID = true
+		}
+
+		if strings.EqualFold(user.Callsign, callsign) {
+			matchesCallsign = true
+			if registeredDMRID {
+				break
+			}
+		}
+		registeredDMRID = false
+		matchesCallsign = false
+	}
+	if registeredDMRID && matchesCallsign {
+		return true
+	}
+	return false
 }
 
 func (e *dmrUserDB) Unmarshal(b []byte) error {

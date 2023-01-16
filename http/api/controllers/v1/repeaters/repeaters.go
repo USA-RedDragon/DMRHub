@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
@@ -116,7 +117,46 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
 				return
 			}
-			// TODO: grab the repeaterdb info and preload the repeater struct
+			for _, r := range *repeaterdb.GetDMRRepeaters() {
+				repeater.Callsign = r.Callsign
+				repeater.ColorCode = r.ColorCode
+				// Location is a string with r.City, r.State, and r.Country, set repeater.Location
+				repeater.Location = r.City + ", " + r.State + ", " + r.Country
+				repeater.Description = r.MapInfo
+				// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
+				mhZFloat, err := strconv.ParseFloat(r.Frequency, 32)
+				if err != nil {
+					klog.Errorf("Error converting frequency to float: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
+					return
+				}
+				repeater.TXFrequency = int(mhZFloat * 1000000)
+				// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
+				positiveOffset := false
+				if strings.HasPrefix(r.Offset, "-") {
+					positiveOffset = false
+				} else {
+					positiveOffset = true
+				}
+				// strip the +/- from the offset
+				r.Offset = strings.TrimPrefix(r.Offset, "-")
+				r.Offset = strings.TrimPrefix(r.Offset, "+")
+				// convert the offset to a float
+				offsetFloat, err := strconv.ParseFloat(r.Offset, 32)
+				if err != nil {
+					klog.Errorf("Error converting offset to float: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
+					return
+				}
+				// convert the offset to an int in Hz
+				offsetInt := int(offsetFloat * 1000000)
+				if positiveOffset {
+					repeater.RXFrequency = repeater.TXFrequency + offsetInt
+				} else {
+					repeater.RXFrequency = repeater.TXFrequency - offsetInt
+				}
+				// TODO: maybe handle TSLinked?
+			}
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
 			return
@@ -128,16 +168,6 @@ func POSTRepeater(c *gin.Context) {
 		repeater.Password = utils.RandomPassword(8, 1, 2)
 
 		// Find user by userId
-		var user models.User
-		db.Find(&user, "id = ?", userId)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-			return
-		}
-		if user.ID == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-			return
-		}
 		repeater.Owner = user
 		repeater.OwnerID = user.ID
 		db.Create(&repeater)

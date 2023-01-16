@@ -9,6 +9,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -77,10 +78,19 @@ func POSTRepeater(c *gin.Context) {
 	usId := session.Get("user_id")
 	if usId == nil {
 		klog.Error("userId not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	userId := usId.(uint)
 	db := c.MustGet("DB").(*gorm.DB)
+
+	var user models.User
+	db.First(&user, userId)
+	if db.Error != nil {
+		klog.Errorf("Error getting user %d: %v", userId, db.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		return
+	}
+
 	var json apimodels.RepeaterPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
@@ -89,10 +99,26 @@ func POSTRepeater(c *gin.Context) {
 	} else {
 		var repeater models.Repeater
 
-		// Validate repeater.RadioID matches the userId or the userId suffixed by a two-digit number between 01 and 10
-		re := regexp.MustCompile(`^` + fmt.Sprintf("%d", userId) + `([0][1-9]|[1-9][0-9])?$`)
-		if !re.MatchString(fmt.Sprintf("%d", json.RadioID)) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID does not match the user id"})
+		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userId
+		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userId) + `([0][1-9]|[1-9][0-9])?$`)
+		// if json.RadioID is a repeater, then it must be 6 digits long
+		repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
+
+		if hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)) {
+			repeater.Hotspot = true
+		} else if repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)) {
+			repeater.Hotspot = false
+			if !repeaterdb.IsValidRepeaterID(json.RadioID) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
+				return
+			}
+			if !repeaterdb.IsInDB(json.RadioID, user.Callsign) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
+				return
+			}
+			// TODO: grab the repeaterdb info and preload the repeater struct
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
 			return
 		}
 

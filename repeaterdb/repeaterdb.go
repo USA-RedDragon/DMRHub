@@ -4,7 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
@@ -23,21 +25,53 @@ type dmrRepeaterDB struct {
 }
 
 type DMRRepeater struct {
-	Locator     uint    `json:"locator"`
-	ID          uint    `json:"id"`
-	Callsign    string  `json:"callsign"`
-	City        string  `json:"city"`
-	State       string  `json:"state"`
-	Country     string  `json:"country"`
-	Frequency   float32 `json:"frequency"`
-	ColorCode   uint    `json:"color_code"`
-	Offset      float32 `json:"offset"`
-	Assigned    string  `json:"assigned"`
-	TSLinked    string  `json:"ts_linked"`
-	Trustee     string  `json:"trustee"`
-	MapInfo     string  `json:"map_info"`
-	Map         uint    `json:"map"`
-	IPSCNetwork string  `json:"ipsc_network"`
+	Locator     string `json:"locator"`
+	ID          string `json:"id"`
+	Callsign    string `json:"callsign"`
+	City        string `json:"city"`
+	State       string `json:"state"`
+	Country     string `json:"country"`
+	Frequency   string `json:"frequency"`
+	ColorCode   uint   `json:"color_code"`
+	Offset      string `json:"offset"`
+	Assigned    string `json:"assigned"`
+	TSLinked    string `json:"ts_linked"`
+	Trustee     string `json:"trustee"`
+	MapInfo     string `json:"map_info"`
+	Map         uint   `json:"map"`
+	IPSCNetwork string `json:"ipsc_network"`
+}
+
+func IsValidRepeaterID(DMRId uint) bool {
+	// Check that the repeater id is 6 digits
+	if DMRId < 100000 || DMRId > 999999 {
+		return false
+	}
+	return true
+}
+
+func IsInDB(DMRId uint, callsign string) bool {
+	matchesCallsign := false
+	registeredDMRID := false
+
+	for _, repeater := range *GetDMRRepeaters() {
+		if repeater.ID == fmt.Sprintf("%d", DMRId) {
+			registeredDMRID = true
+		}
+
+		if strings.EqualFold(repeater.Assigned, callsign) {
+			matchesCallsign = true
+			if registeredDMRID {
+				break
+			}
+		}
+		registeredDMRID = false
+		matchesCallsign = false
+	}
+	if registeredDMRID && matchesCallsign {
+		return true
+	}
+	return false
 }
 
 func (e *dmrRepeaterDB) Unmarshal(b []byte) error {

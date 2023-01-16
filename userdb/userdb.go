@@ -10,6 +10,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// https://www.radioid.net/static/users.json
+//
 //go:embed users.json.xz
 var comressedDMRUsersDB []byte
 

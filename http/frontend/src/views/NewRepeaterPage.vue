@@ -96,7 +96,7 @@ export default {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: `Error deletng repeater`,
+              detail: `Error registering repeater`,
               life: 3000,
             });
           } else {

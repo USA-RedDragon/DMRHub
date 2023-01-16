@@ -75,6 +75,7 @@
               </span>
             </template></Column
           >
+          <Column field="hotspot" header="Hotspot"></Column>
           <Column field="created_at" header="Created"></Column>
           <template #expansion="slotProps">
             <Button

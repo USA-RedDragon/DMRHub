@@ -22,7 +22,7 @@ type Repeater struct {
 	RXFrequency           int            `json:"rx_frequency" msg:"rx_frequency"`
 	TXFrequency           int            `json:"tx_frequency" msg:"tx_frequency"`
 	TXPower               int            `json:"tx_power" msg:"tx_power"`
-	ColorCode             int            `json:"color_code" msg:"color_code"`
+	ColorCode             uint           `json:"color_code" msg:"color_code"`
 	Latitude              float32        `json:"latitude" msg:"latitude"`
 	Longitude             float32        `json:"longitude" msg:"longitude"`
 	Height                int            `json:"height" msg:"height"`

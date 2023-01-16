@@ -461,7 +461,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					klog.Errorf("Error parsing ColorCode", err)
 					return
 				}
-				repeater.ColorCode = int(colorCode)
+				repeater.ColorCode = uint(colorCode)
 				lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 				if err != nil {
 					klog.Errorf("Error parsing Latitude", err)

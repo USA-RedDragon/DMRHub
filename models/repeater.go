@@ -41,6 +41,7 @@ type Repeater struct {
 	TS2DynamicTalkgroup   Talkgroup      `json:"ts2_dynamic_talkgroup" gorm:"foreignKey:TS2DynamicTalkgroupID" msg:"-"`
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID               uint           `json:"-" msg:"-"`
+	Hotspot               bool           `json:"hotspot" msg:"hotspot"`
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`

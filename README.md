@@ -24,6 +24,7 @@ Right now, Redis is the only requirement
 
 ### Soon
 
+- preload the repeater info into the db on register
 - Track packets for lastheard
 - details page for talkgroup with lastheard
 - details page for repeater with lastheard

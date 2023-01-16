@@ -232,7 +232,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if packet.Src != dbRepeater.OwnerID {
+			if dbRepeater.Hotspot && packet.Src != dbRepeater.OwnerID {
 				klog.Infof("Packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
 				return
 			}

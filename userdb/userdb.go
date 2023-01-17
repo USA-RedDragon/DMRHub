@@ -4,7 +4,9 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/ulikunitz/xz"
@@ -14,9 +16,8 @@ import (
 // https://www.radioid.net/static/users.json
 //
 //go:embed users.json.xz
-var comressedDMRUsersDB []byte
+var compressedDMRUsersDB []byte
 
-var uncompressedDB []byte
 var uncompressedJson []byte
 
 type dmrUserDB struct {
@@ -75,11 +76,11 @@ var dmrUsers dmrUserDB
 
 func GetDMRUsers() *[]DMRUser {
 	if len(dmrUsers.Users) == 0 {
-		uncompressedDB, err := xz.NewReader(bytes.NewReader(comressedDMRUsersDB))
+		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
 		}
-		uncompressedJson, err = io.ReadAll(uncompressedDB)
+		uncompressedJson, err = io.ReadAll(dbReader)
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
@@ -92,4 +93,32 @@ func GetDMRUsers() *[]DMRUser {
 		klog.Exit("No DMR users found in database")
 	}
 	return &dmrUsers.Users
+}
+
+func Update() error {
+	resp, err := http.Get("https://www.radioid.net/static/users.json")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	uncompressedJson, err = io.ReadAll(resp.Body)
+	if err != nil {
+		klog.Fatalf("ReadAll error %s", err)
+		return err
+	}
+	if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
+		klog.Fatalf("Error decoding DMR users database: %v", err)
+		return err
+	}
+
+	if len(dmrUsers.Users) == 0 {
+		klog.Exit("No DMR users found in database")
+	}
+
+	return nil
 }

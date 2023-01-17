@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -99,4 +100,13 @@ func GetDMRRepeaters() *[]DMRRepeater {
 		klog.Exit("No DMR repeaters found in database")
 	}
 	return &dmrRepeaters.Repeaters
+}
+
+func GetRepeater(id uint) (DMRRepeater, error) {
+	for _, repeater := range *GetDMRRepeaters() {
+		if repeater.ID == fmt.Sprintf("%d", id) {
+			return repeater, nil
+		}
+	}
+	return DMRRepeater{}, errors.New("repeater not found")
 }

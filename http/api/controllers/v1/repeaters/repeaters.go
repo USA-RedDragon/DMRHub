@@ -174,7 +174,7 @@ func POSTRepeater(c *gin.Context) {
 		// Find user by userId
 		repeater.Owner = user
 		repeater.OwnerID = user.ID
-		db.Create(&repeater)
+		db.Preload("Owner").Create(&repeater)
 		if db.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return

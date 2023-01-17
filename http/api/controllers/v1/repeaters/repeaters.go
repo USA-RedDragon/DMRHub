@@ -30,7 +30,7 @@ func GETMyRepeaters(c *gin.Context) {
 	userId := session.Get("user_id").(uint)
 	if userId == 0 {
 		klog.Error("userId not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 

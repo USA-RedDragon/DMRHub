@@ -18,7 +18,7 @@ func RequireAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {
 			// Open up the DB and check if the user is an admin
@@ -31,7 +31,7 @@ func RequireAdmin() gin.HandlerFunc {
 		}
 
 		if !valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
 }
@@ -43,7 +43,7 @@ func RequireLogin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {
 			// Open up the DB and check if the user exists
@@ -56,7 +56,7 @@ func RequireLogin() gin.HandlerFunc {
 		}
 
 		if !valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
 }
@@ -69,7 +69,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
@@ -88,7 +88,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		}
 
 		if !valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
 }
@@ -101,7 +101,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
@@ -123,7 +123,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		}
 
 		if !valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
 }
@@ -136,7 +136,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		userId := session.Get("user_id")
 		if userId == nil {
 			klog.Error("userId not found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {
 			db := c.MustGet("DB").(*gorm.DB)
@@ -153,7 +153,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		}
 
 		if !valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
 }

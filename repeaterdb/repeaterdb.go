@@ -51,7 +51,7 @@ func IsValidRepeaterID(DMRId uint) bool {
 }
 
 func IsInDB(DMRId uint, callsign string) bool {
-	matchesCallsign := false
+	matchesTrustee := false
 	registeredDMRID := false
 
 	for _, repeater := range *GetDMRRepeaters() {
@@ -59,16 +59,16 @@ func IsInDB(DMRId uint, callsign string) bool {
 			registeredDMRID = true
 		}
 
-		if strings.EqualFold(repeater.Assigned, callsign) {
-			matchesCallsign = true
+		if strings.EqualFold(repeater.Trustee, callsign) {
+			matchesTrustee = true
 			if registeredDMRID {
 				break
 			}
 		}
 		registeredDMRID = false
-		matchesCallsign = false
+		matchesTrustee = false
 	}
-	if registeredDMRID && matchesCallsign {
+	if registeredDMRID && matchesTrustee {
 		return true
 	}
 	return false

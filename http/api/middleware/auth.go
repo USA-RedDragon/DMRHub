@@ -112,7 +112,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 				valid = true
 			} else {
 				var talkgroup models.Talkgroup
-				db.Find(&talkgroup, "id = ?", id)
+				db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 				for _, admin := range talkgroup.Admins {
 					if admin.ID == user.ID {
 						valid = true

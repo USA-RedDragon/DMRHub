@@ -117,46 +117,50 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
 				return
 			}
-			for _, r := range *repeaterdb.GetDMRRepeaters() {
-				repeater.Callsign = r.Callsign
-				repeater.ColorCode = r.ColorCode
-				// Location is a string with r.City, r.State, and r.Country, set repeater.Location
-				repeater.Location = r.City + ", " + r.State + ", " + r.Country
-				repeater.Description = r.MapInfo
-				// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
-				mhZFloat, err := strconv.ParseFloat(r.Frequency, 32)
-				if err != nil {
-					klog.Errorf("Error converting frequency to float: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
-					return
-				}
-				repeater.TXFrequency = int(mhZFloat * 1000000)
-				// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
-				positiveOffset := false
-				if strings.HasPrefix(r.Offset, "-") {
-					positiveOffset = false
-				} else {
-					positiveOffset = true
-				}
-				// strip the +/- from the offset
-				r.Offset = strings.TrimPrefix(r.Offset, "-")
-				r.Offset = strings.TrimPrefix(r.Offset, "+")
-				// convert the offset to a float
-				offsetFloat, err := strconv.ParseFloat(r.Offset, 32)
-				if err != nil {
-					klog.Errorf("Error converting offset to float: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
-					return
-				}
-				// convert the offset to an int in Hz
-				offsetInt := int(offsetFloat * 1000000)
-				if positiveOffset {
-					repeater.RXFrequency = repeater.TXFrequency + offsetInt
-				} else {
-					repeater.RXFrequency = repeater.TXFrequency - offsetInt
-				}
-				// TODO: maybe handle TSLinked?
+			r, err := repeaterdb.GetRepeater(json.RadioID)
+			if err != nil {
+				klog.Errorf("Error getting repeater from database: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
+				return
 			}
+			repeater.Callsign = r.Callsign
+			repeater.ColorCode = r.ColorCode
+			// Location is a string with r.City, r.State, and r.Country, set repeater.Location
+			repeater.Location = r.City + ", " + r.State + ", " + r.Country
+			repeater.Description = r.MapInfo
+			// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
+			mhZFloat, err := strconv.ParseFloat(r.Frequency, 32)
+			if err != nil {
+				klog.Errorf("Error converting frequency to float: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
+				return
+			}
+			repeater.TXFrequency = int(mhZFloat * 1000000)
+			// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
+			positiveOffset := false
+			if strings.HasPrefix(r.Offset, "-") {
+				positiveOffset = false
+			} else {
+				positiveOffset = true
+			}
+			// strip the +/- from the offset
+			r.Offset = strings.TrimPrefix(r.Offset, "-")
+			r.Offset = strings.TrimPrefix(r.Offset, "+")
+			// convert the offset to a float
+			offsetFloat, err := strconv.ParseFloat(r.Offset, 32)
+			if err != nil {
+				klog.Errorf("Error converting offset to float: %v\nError:", r.Offset, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
+				return
+			}
+			// convert the offset to an int in Hz
+			offsetInt := int(offsetFloat * 1000000)
+			if positiveOffset {
+				repeater.RXFrequency = repeater.TXFrequency + offsetInt
+			} else {
+				repeater.RXFrequency = repeater.TXFrequency - offsetInt
+			}
+			// TODO: maybe handle TSLinked?
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
 			return

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/go-co-op/gocron"
@@ -23,6 +24,7 @@ var verbose = flag.Bool("verbose", false, "Whether to display verbose logs")
 var scheduler = gocron.NewScheduler(time.UTC)
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
 	var redisHost = flag.String("redis", "localhost:6379", "The hostname of redis")

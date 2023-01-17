@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-co-op/gocron"
+
 	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
@@ -18,6 +20,7 @@ import (
 )
 
 var verbose = flag.Bool("verbose", false, "Whether to display verbose logs")
+var scheduler = gocron.NewScheduler(time.UTC)
 
 func main() {
 	defer klog.Flush()
@@ -53,8 +56,31 @@ func main() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Dummy call to get the data decoded into memory early
-	userdb.GetDMRUsers()
+	err = repeaterdb.Update()
+	if err != nil {
+		klog.Errorf("Failed to update repeater database: %s using built in one", err)
+	}
+	scheduler.Every(1).Day().At("00:00").Do(func() {
+		err = repeaterdb.Update()
+		if err != nil {
+			klog.Errorf("Failed to update repeater database: %s", err)
+		}
+	})
 	repeaterdb.GetDMRRepeaters()
+
+	err = userdb.Update()
+	if err != nil {
+		klog.Errorf("Failed to update user database: %s using built in one", err)
+	}
+	scheduler.Every(1).Day().At("00:00").Do(func() {
+		err = userdb.Update()
+		if err != nil {
+			klog.Errorf("Failed to update repeater database: %s", err)
+		}
+	})
+	userdb.GetDMRUsers()
+
+	scheduler.StartAsync()
 
 	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose, db)
 	go dmrServer.Listen()

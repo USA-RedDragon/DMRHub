@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/ulikunitz/xz"
@@ -18,7 +19,6 @@ import (
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
-var uncompressedDB []byte
 var uncompressedJson []byte
 
 type dmrRepeaterDB struct {
@@ -83,11 +83,11 @@ var dmrRepeaters dmrRepeaterDB
 
 func GetDMRRepeaters() *[]DMRRepeater {
 	if len(dmrRepeaters.Repeaters) == 0 {
-		uncompressedDB, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
+		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
 		}
-		uncompressedJson, err = io.ReadAll(uncompressedDB)
+		uncompressedJson, err = io.ReadAll(dbReader)
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
@@ -109,4 +109,32 @@ func GetRepeater(id uint) (DMRRepeater, error) {
 		}
 	}
 	return DMRRepeater{}, errors.New("repeater not found")
+}
+
+func Update() error {
+	resp, err := http.Get("https://www.radioid.net/static/rptrs.json")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	uncompressedJson, err = io.ReadAll(resp.Body)
+	if err != nil {
+		klog.Fatalf("ReadAll error %s", err)
+		return err
+	}
+	if err := json.Unmarshal(uncompressedJson, &dmrRepeaters); err != nil {
+		klog.Fatalf("Error decoding DMR repeaters database: %v", err)
+		return err
+	}
+
+	if len(dmrRepeaters.Repeaters) == 0 {
+		klog.Exit("No DMR repeaters found in database")
+	}
+
+	return nil
 }

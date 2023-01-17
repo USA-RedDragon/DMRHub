@@ -3,5 +3,6 @@ version: '3'
 services:
   redis:
     image: redis:5-alpine
+    restart: unless-stopped
     ports:
       - 6379:6379

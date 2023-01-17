@@ -211,6 +211,12 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Warningf("Repeater %d not found in DB", repeaterId)
 				return
 			}
+			// If the packet length is 11 exactly, it's a packet header without any data
+			// we may drop it
+			if len(data) == 11 {
+				klog.Warningf("Packet header without data, dropping")
+				return
+			}
 			packet := models.UnpackPacket(data[:])
 			if s.Verbose {
 				klog.Infof("DMR Data: %v", packet)

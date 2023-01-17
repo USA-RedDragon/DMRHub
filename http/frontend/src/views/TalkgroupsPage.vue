@@ -21,7 +21,11 @@
               </span>
             </template></Column
           >
-          <Column field="created_at" header="Created"></Column>
+          <Column field="created_at" header="Created">
+            <template #body="slotProps">{{
+              slotProps.data.created_at.fromNow()
+            }}</template>
+          </Column>
         </DataTable>
       </template>
     </Card>
@@ -78,7 +82,7 @@ export default {
           for (let i = 0; i < this.talkgroups.length; i++) {
             this.talkgroups[i].created_at = moment(
               this.talkgroups[i].created_at
-            ).fromNow();
+            );
           }
         })
         .catch((err) => {

@@ -74,6 +74,40 @@ func DELETERepeater(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater deleted"})
 }
 
+func POSTRepeaterTalkgroups(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	// Convert string id into uint
+	rid, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Repeater ID"})
+		return
+	}
+	repeaterID := uint(rid)
+
+	var json apimodels.RepeaterTalkgroupsPost
+	err = c.ShouldBindJSON(&json)
+	if err != nil {
+		klog.Errorf("POSTRepeaterTalkgroups: JSON data is invalid: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		return
+	} else {
+		if models.RepeaterIDExists(db, repeaterID) {
+			repeater := models.FindRepeaterByID(db, repeaterID)
+			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
+			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
+			repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
+			repeater.TS1DynamicTalkgroupID = json.TS1DynamicTalkgroup.ID
+			repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
+			repeater.TS2DynamicTalkgroupID = json.TS2DynamicTalkgroup.ID
+			db.Save(&repeater)
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
+			return
+		}
+	}
+}
+
 func POSTRepeater(c *gin.Context) {
 	session := sessions.Default(c)
 	usId := session.Get("user_id")
@@ -238,6 +272,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
 		}
 	}
+	db.Save(&repeater)
 }
 
 func POSTRepeaterUnink(c *gin.Context) {
@@ -246,16 +281,7 @@ func POSTRepeaterUnink(c *gin.Context) {
 	linkType := c.Param("type")
 	slot := c.Param("slot")
 	target := c.Param("target")
-	var repeater models.Repeater
-	db.Find(&repeater, "radio_id = ?", id)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-		return
-	}
-	if repeater.RadioID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
-		return
-	}
+
 	// LinkType should be either "dynamic" or "static"
 	if linkType != "dynamic" && linkType != "static" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid link type"})
@@ -267,12 +293,33 @@ func POSTRepeaterUnink(c *gin.Context) {
 		return
 	}
 	// Validate target is a valid talkgroup
-	var talkgroup models.Talkgroup
-	db.Find(&talkgroup, "talkgroup_id = ?", target)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+	targetUint64, err := strconv.ParseUint(target, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Talkgroup ID"})
 		return
 	}
+	targetUint := uint(targetUint64)
+	if !models.TalkgroupIDExists(db, targetUint) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup does not exist"})
+		return
+	}
+	talkgroup := models.FindTalkgroupByID(db, targetUint)
+
+	// Convert id to a uint
+	idUint64, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Repeater ID"})
+		return
+	}
+	idUint := uint(idUint64)
+
+	if !models.RepeaterIDExists(db, idUint) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
+		return
+	}
+
+	repeater := models.FindRepeaterByID(db, idUint)
+
 	switch linkType {
 	case "dynamic":
 		switch slot {
@@ -292,6 +339,8 @@ func POSTRepeaterUnink(c *gin.Context) {
 			// Set TS2DynamicTalkgroup association on repeater to target
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS2DynamicTalkgroupID = 0
+
+			db.Save(&repeater)
 		}
 	case "static":
 		switch slot {
@@ -302,6 +351,7 @@ func POSTRepeaterUnink(c *gin.Context) {
 			for _, tg := range repeater.TS1StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
 					db.Model(&repeater).Association("TS1StaticTalkgroups").Delete(&talkgroup)
+					db.Save(&repeater)
 					found = true
 					break
 				}
@@ -318,6 +368,7 @@ func POSTRepeaterUnink(c *gin.Context) {
 			for _, tg := range repeater.TS2StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
 					db.Model(&repeater).Association("TS2StaticTalkgroups").Delete(&talkgroup)
+					db.Save(&repeater)
 					found = true
 					break
 				}
@@ -328,4 +379,5 @@ func POSTRepeaterUnink(c *gin.Context) {
 			}
 		}
 	}
+	c.JSON(http.StatusOK, gin.H{"message": "Timeslot unlinked"})
 }

@@ -10,6 +10,9 @@ instance.interceptors.response.use(
     return response;
   },
   (error) => {
+    if (error.response === undefined) {
+      return Promise.reject(error);
+    }
     const status = error.response.status;
     if (
       window.location.pathname !== "/login" &&

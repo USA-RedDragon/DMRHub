@@ -2,6 +2,7 @@ package talkgroups
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
@@ -143,6 +144,7 @@ func POSTTalkgroupAdminDemote(c *gin.Context) {
 		for _, admin := range talkgroup.Admins {
 			if admin.ID == json.UserID {
 				db.Model(&talkgroup).Association("Admins").Delete(&admin)
+				db.Save(&talkgroup)
 				removedAdmin = true
 			}
 		}
@@ -180,12 +182,25 @@ func PATCHTalkgroup(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be less than 20 characters"})
 				return
 			}
+			// Trim any whitespace
+			json.Name = strings.TrimSpace(json.Name)
+			// Check that length isn't 0
+			if len(json.Name) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be defined"})
+				return
+			}
 			talkgroup.Name = json.Name
 		}
 		if json.Description != "" {
 			// Validate length less than 240 characters
 			if len(json.Description) > 240 {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be less than 240 characters"})
+				return
+			}
+			json.Description = strings.TrimSpace(json.Description)
+			// Check that length isn't 0
+			if len(json.Description) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be defined"})
 				return
 			}
 			talkgroup.Description = json.Description

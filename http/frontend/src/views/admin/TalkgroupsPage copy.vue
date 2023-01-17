@@ -3,36 +3,40 @@
     <Toast />
     <ConfirmDialog></ConfirmDialog>
     <Card>
-      <template #title>Users</template>
+      <template #title>Talkgroups</template>
       <template #content>
         <DataTable
-          :value="users"
+          :value="talkgroups"
           v-model:expandedRows="expandedRows"
           dataKey="id"
         >
+          <template #header>
+            <div class="table-header-container">
+              <RouterLink to="/admin/talkgroups/new">
+                <Button
+                  class="p-button-raised p-button-rounded p-button-success"
+                  icon="pi pi-plus"
+                  label="Add New Talkgroup"
+                />
+              </RouterLink>
+            </div>
+          </template>
           <Column :expander="true" />
-          <Column field="id" header="DMR ID"></Column>
-          <Column field="callsign" header="Callsign"></Column>
-          <Column field="username" header="Username"></Column>
-          <Column field="approved" header="Approve?">
+          <Column field="id" header="Channel"></Column>
+          <Column field="name" header="Name"></Column>
+          <Column field="description" header="Description"></Column>
+          <Column field="admins" header="Admins">
             <template #body="slotProps">
-              <Checkbox
-                v-model="slotProps.data.approved"
-                :binary="true"
-                @change="handleApprove($event, slotProps.data)"
-              />
+              <span v-if="slotProps.data.admins.length == 0">None</span>
+              <span
+                v-else
+                v-bind:key="admin.callsign"
+                v-for="admin in slotProps.data.admins"
+              >
+                {{ admin.callsign }}&nbsp;
+              </span>
             </template>
           </Column>
-          <Column field="admin" header="Admin?">
-            <template #body="slotProps">
-              <Checkbox
-                v-model="slotProps.data.admin"
-                :binary="true"
-                @change="handleAdmin($event, slotProps.data)"
-              />
-            </template>
-          </Column>
-          <Column field="repeaters" header="Repeater Count"></Column>
           <Column field="created_at" header="Created">
             <template #body="slotProps">{{
               slotProps.data.created_at.fromNow()
@@ -43,14 +47,14 @@
               class="p-button-raised p-button-rounded p-button-primary"
               icon="pi pi-pencil"
               label="Edit"
-              @click="editUser(slotProps.data)"
+              @click="editTalkgroup(slotProps.data)"
             ></Button>
             <Button
               class="p-button-raised p-button-rounded p-button-danger"
               icon="pi pi-trash"
               label="Delete"
               style="margin-left: 0.5em"
-              @click="deleteUser(slotProps.data)"
+              @click="deleteTalkgroup(slotProps.data)"
             ></Button>
           </template>
         </DataTable>
@@ -67,8 +71,8 @@ import DataTable from "primevue/datatable/sfc";
 import Column from "primevue/column/sfc";
 import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
 import Row from "primevue/row/sfc";
-import API from "@/services/API";
 import moment from "moment";
+import API from "@/services/API";
 
 import { mapStores } from "pinia";
 import { useSettingsStore } from "@/store";
@@ -96,66 +100,40 @@ export default {
   },
   data: function () {
     return {
-      users: [],
+      talkgroups: [],
       expandedRows: [],
       refresh: null,
     };
   },
   methods: {
     fetchData() {
-      API.get("/users")
+      API.get("/talkgroups")
         .then((res) => {
-          this.users = res.data;
-          for (let i = 0; i < this.users.length; i++) {
-            this.users[i].repeaters = this.users[i].repeaters.length;
-
-            this.users[i].created_at = moment(this.users[i].created_at);
+          this.talkgroups = res.data;
+          for (let i = 0; i < this.talkgroups.length; i++) {
+            this.talkgroups[i].created_at = moment(
+              this.talkgroups[i].created_at
+            );
           }
         })
         .catch((err) => {
           console.error(err);
         });
     },
-    handleApprove(event, user) {
-      this.fetchData();
-      this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
-    },
-    handleAdmin(event, user) {
-      // Don't allow the user to uncheck the admin box
-      this.fetchData();
-      this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
-    },
-    editUser(user) {
-      this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
-    },
-    deleteUser(user) {
+    deleteTalkgroup(talkgroup) {
+      // First, show a confirmation dialog
       this.$confirm.require({
-        message: "Are you sure you want to delete this user?",
-        header: "Delete User",
+        message: "Are you sure you want to delete this talkgroup?",
+        header: "Delete Talkgroup",
         icon: "pi pi-exclamation-triangle",
         acceptClass: "p-button-danger",
         accept: () => {
-          API.delete("/users/" + user.id)
+          API.delete("/talkgroups/" + talkgroup.id)
             .then((res) => {
               this.$toast.add({
                 summary: "Confirmed",
                 severity: "success",
-                detail: `User ${user.id} deleted`,
+                detail: `Talkgroup ${talkgroup.id} deleted`,
                 life: 3000,
               });
               this.fetchData();
@@ -165,12 +143,20 @@ export default {
               this.$toast.add({
                 severity: "error",
                 summary: "Error",
-                detail: `Error deleting user ${user.id}`,
+                detail: `Error deleting talkgroup ${talkgroup.id}`,
                 life: 3000,
               });
             });
         },
         reject: () => {},
+      });
+    },
+    editTalkgroup(talkgroup) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Talkgroups cannot be edited yet.`,
+        life: 3000,
       });
     },
   },
@@ -180,4 +166,9 @@ export default {
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+.table-header-container {
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

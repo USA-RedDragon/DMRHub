@@ -50,7 +50,7 @@ import Card from "primevue/card/sfc";
 import Checkbox from "primevue/checkbox/sfc";
 import Button from "primevue/button/sfc";
 import InputText from "primevue/inputtext/sfc";
-import MultiSelect from "primevue/multiselect";
+import MultiSelect from "primevue/multiselect/sfc";
 import API from "@/services/API";
 
 export default {
@@ -98,29 +98,35 @@ export default {
           for (var i = 0; i < this.admins.length; i++) {
             API.post(`/talkgroups/${numericID}/appoint`, {
               user_id: this.admins[i].id,
-            })
-              .then((res) => {
-                this.$router.push("/admin/talkgroups");
-              })
-              .catch((err) => {
-                console.error(err);
-                if (!err.response && !err.response.error) {
-                  this.$toast.add({
-                    summary: "Error",
-                    severity: "error",
-                    detail: `Error creating talkgroup`,
-                    life: 3000,
-                  });
-                } else {
-                  this.$toast.add({
-                    summary: "Error",
-                    severity: "error",
-                    detail: err.response.data.error,
-                    life: 3000,
-                  });
-                }
-              });
+            }).catch((err) => {
+              console.error(err);
+              if (!err.response && !err.response.error) {
+                this.$toast.add({
+                  summary: "Error",
+                  severity: "error",
+                  detail: `Error creating talkgroup`,
+                  life: 3000,
+                });
+              } else {
+                this.$toast.add({
+                  summary: "Error",
+                  severity: "error",
+                  detail: err.response.data.error,
+                  life: 3000,
+                });
+              }
+            });
           }
+          // Now show a toast for a few seconds before redirecting to /admin/talkgroups
+          this.$toast.add({
+            summary: "Success",
+            severity: "success",
+            detail: `Talkgroup created, redirecting...`,
+            life: 3000,
+          });
+          setTimeout(() => {
+            this.$router.push("/admin/talkgroups");
+          }, 3000);
         })
         .catch((err) => {
           console.error(err);

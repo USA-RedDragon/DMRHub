@@ -18,6 +18,11 @@
               />
             </template>
           </Column>
+          <Column field="created_at" header="Created">
+            <template #body="slotProps">{{
+              slotProps.data.created_at.fromNow()
+            }}</template>
+          </Column>
         </DataTable>
       </template>
     </Card>
@@ -33,6 +38,7 @@ import Column from "primevue/column/sfc";
 import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
 import Row from "primevue/row/sfc";
 import API from "@/services/API";
+import moment from "moment";
 
 import { mapStores } from "pinia";
 import { useSettingsStore } from "@/store";
@@ -71,6 +77,9 @@ export default {
           this.users = res.data.filter(function (itm) {
             return itm.approved == false;
           });
+          for (let i = 0; i < this.users.length; i++) {
+            this.users[i].created_at = moment(this.users[i].created_at);
+          }
         })
         .catch((err) => {
           console.error(err);

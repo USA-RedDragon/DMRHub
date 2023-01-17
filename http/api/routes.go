@@ -28,6 +28,7 @@ func v1(group *gin.RouterGroup) {
 	v1Repeaters.POST("", middleware.RequireLogin(), v1RepeatersControllers.POSTRepeater)
 	v1Repeaters.POST("/:id/link/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.POSTRepeaterLink)
 	v1Repeaters.POST("/:id/unlink/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.POSTRepeaterUnink)
+	v1Repeaters.POST("/:id/talkgroups", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.POSTRepeaterTalkgroups)
 	v1Repeaters.GET("/:id", middleware.RequireLogin(), v1RepeatersControllers.GETRepeater)
 	v1Repeaters.DELETE("/:id", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.DELETERepeater)
 

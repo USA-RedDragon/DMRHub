@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/argon2"
 	"k8s.io/klog/v2"
@@ -104,7 +103,6 @@ const allowedNumbers = "0123456789"
 const allowedSpecial = "!@#$%^&*-_"
 
 func RandomPassword(length int, minNumbers, minSpecial int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, length)
 	for i := range b {
 		b[i] = allowedChars[rand.Intn(len(allowedChars))]

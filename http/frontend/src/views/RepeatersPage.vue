@@ -81,7 +81,7 @@
             <Button
               class="p-button-raised p-button-rounded p-button-primary"
               icon="pi pi-pencil"
-              label="Edit"
+              label="Edit Static Talkgroups"
               @click="editRepeater(slotProps.data)"
             ></Button>
             <Button
@@ -90,6 +90,20 @@
               label="Delete"
               style="margin-left: 0.5em"
               @click="deleteRepeater(slotProps.data)"
+            ></Button>
+            <Button
+              class="p-button-raised p-button-rounded p-button-danger"
+              icon="pi pi-trash"
+              label="Unlink Dynamic TS1"
+              style="margin-left: 0.5em"
+              @click="unlinkRepeater(1, slotProps.data)"
+            ></Button>
+            <Button
+              class="p-button-raised p-button-rounded p-button-danger"
+              icon="pi pi-trash"
+              label="Unlink Dynamic TS2"
+              style="margin-left: 0.5em"
+              @click="unlinkRepeater(2, slotProps.data)"
             ></Button>
           </template>
         </DataTable>
@@ -188,6 +202,14 @@ export default {
         });
     },
     editRepeater(repeater) {
+      this.$toast.add({
+        summary: "Not Implemented",
+        severity: "error",
+        detail: `Repeaters cannot be edited yet.`,
+        life: 3000,
+      });
+    },
+    unlinkRepeater(ts, repeater) {
       this.$toast.add({
         summary: "Not Implemented",
         severity: "error",

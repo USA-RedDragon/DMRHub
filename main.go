@@ -58,29 +58,33 @@ func main() {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Dummy call to get the data decoded into memory early
-	err = repeaterdb.Update()
-	if err != nil {
-		klog.Errorf("Failed to update repeater database: %s using built in one", err)
-	}
+	go func() {
+		repeaterdb.GetDMRRepeaters()
+		err = repeaterdb.Update()
+		if err != nil {
+			klog.Errorf("Failed to update repeater database: %s using built in one", err)
+		}
+	}()
 	scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = repeaterdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
-	repeaterdb.GetDMRRepeaters()
 
-	err = userdb.Update()
-	if err != nil {
-		klog.Errorf("Failed to update user database: %s using built in one", err)
-	}
+	go func() {
+		userdb.GetDMRUsers()
+		err = userdb.Update()
+		if err != nil {
+			klog.Errorf("Failed to update user database: %s using built in one", err)
+		}
+	}()
 	scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = userdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
-	userdb.GetDMRUsers()
 
 	scheduler.StartAsync()
 

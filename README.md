@@ -35,6 +35,7 @@ Right now, Redis is the only requirement, though the database will be externaliz
 - Paginate APIs
 - Rework frontend to not carry around so many objects
 - componentize the frontend
+- seed an initial user + dummy parrot user
 
 ### Soon
 

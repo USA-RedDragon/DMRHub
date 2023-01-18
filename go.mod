@@ -10,6 +10,7 @@ require (
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
+	github.com/wk8/go-ordered-map v1.0.0
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	gorm.io/driver/sqlite v1.4.4
 	gorm.io/gorm v1.24.3

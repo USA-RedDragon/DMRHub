@@ -3,7 +3,9 @@ package models
 import (
 	"time"
 
+	orderedmap "github.com/wk8/go-ordered-map"
 	"gorm.io/gorm"
+	"k8s.io/klog/v2"
 )
 
 type Call struct {
@@ -51,6 +53,35 @@ func FindRepeaterCalls(db *gorm.DB, repeaterID uint, limit int) []Call {
 	// Find calls where (IsToRepeater is true and ToRepeaterID is repeaterID) or (RepeaterID is repeaterID)
 	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_repeater = ? AND to_repeater_id = ?", true, repeaterID).Order("start_time desc").Limit(limit).Find(&toRepeaterCalls)
 	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("repeater_id = ?", repeaterID).Order("start_time desc").Limit(limit).Find(&fromRepeaterCalls)
+	// Find calls where (IsToTalkgroup is true and either Repeater.TS1StaticTalkgroups, TS2StaticTalkgroups, TS1DynamicTalkgroupID, or TS2DynamicTalkgroupID contains talkgroup)
+	var talkgroupCalls []Call
+	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_talkgroup = ?", true).Order("start_time desc").Limit(limit).Find(&talkgroupCalls)
+	for _, call := range talkgroupCalls {
+		if call.Repeater.TS1StaticTalkgroups != nil {
+			for _, talkgroup := range call.Repeater.TS1StaticTalkgroups {
+				if talkgroup.ID == call.ToTalkgroup.ID {
+					fromRepeaterCalls = append(fromRepeaterCalls, call)
+					continue
+				}
+			}
+		}
+		if call.Repeater.TS2StaticTalkgroups != nil {
+			for _, talkgroup := range call.Repeater.TS2StaticTalkgroups {
+				if talkgroup.ID == call.ToTalkgroup.ID {
+					fromRepeaterCalls = append(fromRepeaterCalls, call)
+					continue
+				}
+			}
+		}
+		if call.Repeater.TS1DynamicTalkgroupID == call.ToTalkgroup.ID {
+			fromRepeaterCalls = append(fromRepeaterCalls, call)
+			continue
+		}
+		if call.Repeater.TS2DynamicTalkgroupID == call.ToTalkgroup.ID {
+			fromRepeaterCalls = append(fromRepeaterCalls, call)
+			continue
+		}
+	}
 	// Merge the two slices in order of start time
 	var i, j int
 	var mergedCalls []Call
@@ -65,15 +96,45 @@ func FindRepeaterCalls(db *gorm.DB, repeaterID uint, limit int) []Call {
 	}
 	mergedCalls = append(mergedCalls, toRepeaterCalls[i:]...)
 	mergedCalls = append(mergedCalls, fromRepeaterCalls[j:]...)
-	return mergedCalls
+
+	// Remove duplicates and take the first limit
+	var uniqueCalls []Call
+	uniqueCallsMap := orderedmap.New()
+	for _, call := range mergedCalls {
+		if _, exists := uniqueCallsMap.Get(call.ID); !exists {
+			uniqueCallsMap.Set(call.ID, call)
+		}
+	}
+	l := 0
+	for pair := uniqueCallsMap.Oldest(); pair != nil; pair = pair.Next() {
+		if pair.Value == nil {
+			klog.Errorf("Call with index %d does not exist", pair.Key)
+			continue
+		}
+		call := pair.Value.(Call)
+		uniqueCalls = append(uniqueCalls, call)
+		l++
+		if l >= limit {
+			break
+		}
+	}
+
+	return uniqueCalls
 }
 
 func FindUserCalls(db *gorm.DB, userID uint, limit int) []Call {
 	var toUserCalls []Call
 	var fromUserCalls []Call
-	// Find calls where (IsToUser is true and ToUserID is userID) or (UserID is userID)
+	// Find calls where (IsToUser is true and ToUserID is userID) or (UserID is userID) or (IsToTalkgroup and User.Repeaters contains repeaters that listen to talkgroup)
 	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_user = ? AND to_user_id = ?", true, userID).Order("start_time desc").Limit(limit).Find(&toUserCalls)
 	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("user_id = ?", userID).Order("start_time desc").Limit(limit).Find(&fromUserCalls)
+	// Find calls where (IsToTalkgroup is true and User.Repeaters contains repeaters that listen to talkgroup)
+	// Get the user
+	user := FindUserByID(db, userID)
+	// For each user.Repeaters
+	for _, repeater := range user.Repeaters {
+		fromUserCalls = append(fromUserCalls, FindRepeaterCalls(db, repeater.RadioID, limit)...)
+	}
 	// Merge the two slices in order of start time
 	var i, j int
 	var mergedCalls []Call
@@ -89,7 +150,29 @@ func FindUserCalls(db *gorm.DB, userID uint, limit int) []Call {
 	mergedCalls = append(mergedCalls, toUserCalls[i:]...)
 	mergedCalls = append(mergedCalls, fromUserCalls[j:]...)
 
-	return mergedCalls
+	// Remove duplicates and take the first limit
+	var uniqueCalls []Call
+	uniqueCallsMap := orderedmap.New()
+	for _, call := range mergedCalls {
+		if _, exists := uniqueCallsMap.Get(call.ID); !exists {
+			uniqueCallsMap.Set(call.ID, call)
+		}
+	}
+	l := 0
+	for pair := uniqueCallsMap.Oldest(); pair != nil; pair = pair.Next() {
+		if pair.Value == nil {
+			klog.Errorf("Call with index %d does not exist", pair.Key)
+			continue
+		}
+		call := pair.Value.(Call)
+		uniqueCalls = append(uniqueCalls, call)
+		l++
+		if l >= limit {
+			break
+		}
+	}
+
+	return uniqueCalls
 }
 
 func FindTalkgroupCalls(db *gorm.DB, talkgroupID uint, limit int) []Call {

@@ -37,8 +37,6 @@ Right now, Redis is the only requirement, though the database will be externaliz
 
 ### Soon
 
-- Track packets for lastheard
-- calculate loss by tracking seq progression and determining lost packets
 - details page for talkgroup with lastheard
 - details page for repeater with lastheard
 - details page for user with lastheard and repeaters

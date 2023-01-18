@@ -25,9 +25,16 @@
             v-model="admins"
             :options="allUsers"
             :filter="true"
-            optionLabel="callsign"
+            optionLabel="display"
             display="chip"
-          />
+          >
+            <template #chip="slotProps">
+              {{ slotProps.value.display }}
+            </template>
+            <template #option="slotProps">
+              {{ slotProps.option.display }}
+            </template>
+          </MultiSelect>
           <label for="admins">Admins</label>
         </span>
       </template>
@@ -79,6 +86,11 @@ export default {
       API.get("/users")
         .then((res) => {
           this.allUsers = res.data;
+          for (let i = 0; i < this.allUsers.length; i++) {
+            this.allUsers[
+              i
+            ].display = `${this.allUsers[i].id} - ${this.allUsers[i].callsign}`;
+          }
         })
         .catch((err) => {
           console.error(err);

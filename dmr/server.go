@@ -223,7 +223,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 			packet := models.UnpackPacket(data[:])
-			klog.Infof("DMR Data: %d -> %d -> %d", packet.Src, packet.Repeater, packet.Dst)
+			klog.Infof("DMR Data: %d, %d -> %d -> %d", packet.Seq, packet.Src, packet.Repeater, packet.Dst)
 			if s.Verbose {
 				switch int(packet.FrameType) {
 				case HBPF_DATA_SYNC:

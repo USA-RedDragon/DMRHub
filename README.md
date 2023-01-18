@@ -16,6 +16,7 @@ Right now, Redis is the only requirement, though the database will be externaliz
 
 #### Things the user sees
 
+- Out of order packets causing loss
 - Make user admins appointable and implement user suspend in the UI
 - Add ability to add and remove talkgroup admins in the UI
 - Superadmin class that can add and remove admin

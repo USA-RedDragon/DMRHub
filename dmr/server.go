@@ -29,7 +29,7 @@ type DMRServer struct {
 
 func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.DB) DMRServer {
 	return DMRServer{
-		Buffer: make([]byte, 4096),
+		Buffer: make([]byte, 302),
 		SocketAddress: net.UDPAddr{
 			IP:   net.ParseIP(addr),
 			Port: port,
@@ -82,6 +82,9 @@ func (s DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr 
 func (s DMRServer) Listen() {
 	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
+	// 1MB buffers, say what?
+	server.SetReadBuffer(1000000)
+	server.SetWriteBuffer(1000000)
 	s.Server = server
 	s.Started = true
 	if err != nil {

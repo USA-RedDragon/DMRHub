@@ -293,18 +293,28 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					if repeater == repeaterId {
 						continue
 					} else {
-						want, slot := dbRepeater.WantRX(packet)
+						var destDbRepeater models.Repeater
+						if !models.RepeaterIDExists(s.DB, repeater) {
+							klog.Warningf("Repeater %d not found in DB", repeater)
+							return
+						}
+						destDbRepeater = models.FindRepeaterByID(s.DB, repeater)
+						klog.Infof("Checking if repeater %d wants packets", repeater)
+						want, slot := destDbRepeater.WantRX(packet)
 						if want {
+							klog.Infof("Repeater %d wants packet", destDbRepeater.RadioID)
 							packet.Slot = slot
 							if s.Verbose {
 								slotNum := 1
 								if packet.Slot {
 									slotNum = 2
 								}
-								klog.Infof("Sending packet to repeater %d on slot %d", dbRepeater.RadioID, slotNum)
+								klog.Infof("Sending packet to repeater %d on slot %d", destDbRepeater.RadioID, slotNum)
 							}
-							packet.Repeater = dbRepeater.RadioID
-							go s.sendPacket(dbRepeater.RadioID, packet)
+							packet.Repeater = destDbRepeater.RadioID
+							go s.sendPacket(destDbRepeater.RadioID, packet)
+						} else {
+							klog.Infof("Repeater %d does not want packet", dbRepeater.RadioID)
 						}
 					}
 				}

@@ -20,11 +20,8 @@
           </Column>
           <Column field="user" header="User">
             <template #body="slotProps">
-              <span v-if="slotProps.data.user.id == 9990">Parrot | 9990</span>
-              <span v-else
-                >{{ slotProps.data.user.callsign }} |
-                {{ slotProps.data.user.id }}</span
-              >
+              {{ slotProps.data.user.callsign }} |
+              {{ slotProps.data.user.id }}
             </template>
           </Column>
           <Column field="destination_id" header="Destination">
@@ -36,20 +33,9 @@
                 {{ slotProps.data.to_repeater.callsign }} |
                 {{ slotProps.data.to_repeater.radio_id }}
               </span>
-              <span
-                v-if="
-                  slotProps.data.is_to_user && slotProps.data.to_user.id != 9990
-                "
-              >
+              <span v-if="slotProps.data.is_to_user">
                 {{ slotProps.data.to_user.callsign }} |
                 {{ slotProps.data.to_user.id }}
-              </span>
-              <span
-                v-if="
-                  slotProps.data.is_to_user && slotProps.data.to_user.id == 9990
-                "
-              >
-                Parrot | 9990
               </span>
             </template>
           </Column>

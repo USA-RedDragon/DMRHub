@@ -4,34 +4,48 @@ Run a DMR network server with a single binary. Includes private and group calls 
 
 ## Current Status
 
-This project is budding, deployment is expected in days. Future revisions will help clean it up and separate concerns a bit better. Everything is functional so far (excluding potential bugs) but some of the web interface needs finishing. The most major web components to register and get a repeater on the system are implemented, as well as to view the currently active talkgroups. The 9990 Parrot and 4000 Unlink are implemented.
+This project is deployed in the Oklahoma AREDN mesh. Future revisions will help clean it up and separate concerns a bit better. Everything is functional so far (excluding potential bugs) but some of the web interface needs finishing. 9990 Parrot and 4000 Unlink are implemented.
 
 ## External requirements
 
-Right now, Redis is the only requirement
+Right now, Redis is the only requirement, though the database will be externalized in the future.
 
 ## Todos
 
 ### Before first release
 
+#### Things the user sees
+
+- Make user admins appointable and implement user suspend in the UI
+- Add ability to add and remove talkgroup admins in the UI
+- Superadmin class that can add and remove admin
+- Admin class that can make and delete talkgroups, suspend and enable users, appoint and demote talkgroup owners, and see the master repeater and user list
+- Finalize color scheme
+
+#### Things the dev sees
+
 - CI build and release
-- user needs to be able to map static talkgroups
 - database configurable either postgres or sqlite
 - Dockerize
 - flags to env vars
 - make cors hosts configurable
 - redis auth
+- Document deployment
+- Paginate APIs
+- Rework frontend to not carry around so many objects
+- componentize the frontend
 
 ### Soon
 
 - Track packets for lastheard
+- calculate loss by tracking seq progression and determining lost packets
 - details page for talkgroup with lastheard
 - details page for repeater with lastheard
 - details page for user with lastheard and repeaters
 - users should be able to edit their name and callsign
-- I should be able to update the dmrdb on the fly
 - error handling needs to be double checked
 - Fix MSTCL on master shutdown (signal trap)
+- distributed database? Maybe OLSR can help with the "where do I point my pi-star" problem that isn't a SPOF?
 
 ### Long Term
 

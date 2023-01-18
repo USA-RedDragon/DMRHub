@@ -42,6 +42,7 @@ func (p *Parrot) RecordPacket(streamId uint, packet models.Packet) {
 	tmp_src := packet.Src
 	packet.Src = packet.Dst
 	packet.Dst = tmp_src
+	packet.GroupCall = false
 
 	p.Redis.stream(streamId, packet)
 }

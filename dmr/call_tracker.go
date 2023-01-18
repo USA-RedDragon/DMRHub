@@ -46,22 +46,31 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 	var destTalkgroup models.Talkgroup
 
 	// Try the different targets for the given call destination
-	if !models.RepeaterIDExists(c.DB, packet.Dst) {
+	// if packet.GroupCall is true, then packet.Dst is either a talkgroup or a repeater
+	// if packet.GroupCall is false, then packet.Dst is a user
+	if packet.GroupCall {
+		// Decide between talkgroup and repeater
 		if !models.TalkgroupIDExists(c.DB, packet.Dst) {
-			if !models.UserIDExists(c.DB, packet.Dst) {
+			if !models.RepeaterIDExists(c.DB, packet.Dst) {
 				klog.Errorf("Cannot find packet destination %d", packet.Dst)
 				return
 			} else {
-				isToUser = true
-				destUser = models.FindUserByID(c.DB, packet.Dst)
+				isToRepeater = true
+				destRepeater = models.FindRepeaterByID(c.DB, packet.Dst)
 			}
 		} else {
 			isToTalkgroup = true
 			destTalkgroup = models.FindTalkgroupByID(c.DB, packet.Dst)
 		}
 	} else {
-		isToRepeater = true
-		destRepeater = models.FindRepeaterByID(c.DB, packet.Dst)
+		// Find the user
+		if !models.UserIDExists(c.DB, packet.Dst) {
+			klog.Errorf("Cannot find packet destination %d", packet.Dst)
+			return
+		} else {
+			isToUser = true
+			destUser = models.FindUserByID(c.DB, packet.Dst)
+		}
 	}
 
 	call := models.Call{

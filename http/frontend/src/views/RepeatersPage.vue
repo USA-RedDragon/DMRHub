@@ -298,9 +298,18 @@ export default {
       API.get("/talkgroups")
         .then((res) => {
           this.talkgroups = res.data;
+          var parrotIndex = -1;
           for (let i = 0; i < this.talkgroups.length; i++) {
             this.talkgroups[i].display =
               this.talkgroups[i].id + " - " + this.talkgroups[i].name;
+
+            if (this.talkgroups[i].id == 9990) {
+              parrotIndex = i;
+            }
+          }
+          // Remove i from the array
+          if (parrotIndex > -1) {
+            this.talkgroups.splice(parrotIndex, 1);
           }
         })
         .catch((err) => {

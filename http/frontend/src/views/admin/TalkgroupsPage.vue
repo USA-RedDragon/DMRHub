@@ -3,7 +3,7 @@
     <Toast />
     <ConfirmDialog></ConfirmDialog>
     <Card>
-      <template #title>Owned Talkgroups</template>
+      <template #title>Talkgroups</template>
       <template #content>
         <DataTable
           :value="talkgroups"

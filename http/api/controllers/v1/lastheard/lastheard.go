@@ -13,14 +13,14 @@ import (
 func GETLastheard(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
-	userId := session.Get("user_id").(uint)
+	userId := session.Get("user_id")
 	var calls []models.Call
-	if userId == 0 {
+	if userId == nil {
 		// This is okay, we just query the latest X calls
 		calls = models.FindCalls(db, 10)
 	} else {
 		// Get the last calls for the user
-		calls = models.FindUserCalls(db, userId, 10)
+		calls = models.FindUserCalls(db, userId.(uint), 10)
 	}
 	c.JSON(http.StatusOK, calls)
 }

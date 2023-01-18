@@ -282,14 +282,14 @@ func GETUserSelf(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
-	userId := session.Get("user_id").(uint)
-	if userId == 0 {
+	userId := session.Get("user_id")
+	if userId == nil {
 		klog.Error("userId not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
-	user := models.FindUserByID(db, userId)
+	user := models.FindUserByID(db, userId.(uint))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

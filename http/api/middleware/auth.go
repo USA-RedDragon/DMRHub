@@ -24,7 +24,7 @@ func RequireAdmin() gin.HandlerFunc {
 			// Open up the DB and check if the user is an admin
 			db := c.MustGet("DB").(*gorm.DB)
 			var user models.User
-			db.Find(&user, "id = ?", userId)
+			db.Find(&user, "id = ?", userId.(uint))
 			if user.Admin {
 				valid = true
 			}
@@ -49,7 +49,7 @@ func RequireLogin() gin.HandlerFunc {
 			// Open up the DB and check if the user exists
 			db := c.MustGet("DB").(*gorm.DB)
 			var user models.User
-			db.Find(&user, "id = ?", userId)
+			db.Find(&user, "id = ?", userId.(uint))
 			if user.Approved {
 				valid = true
 			}
@@ -75,7 +75,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if they own repeater with id = id
 			var user models.User
-			db.Find(&user, "id = ?", userId)
+			db.Find(&user, "id = ?", userId.(uint))
 			if user.Admin {
 				valid = true
 			} else {
@@ -107,7 +107,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if they own talkgroup with id = id
 			var user models.User
-			db.Find(&user, "id = ?", userId)
+			db.Find(&user, "id = ?", userId.(uint))
 			if user.Admin {
 				valid = true
 			} else {
@@ -142,7 +142,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 			db := c.MustGet("DB").(*gorm.DB)
 			// Open up the DB and check if the user is an admin or if their ID matches id
 			var user models.User
-			db.Find(&user, "id = ?", userId)
+			db.Find(&user, "id = ?", userId.(uint))
 			if user.Admin {
 				valid = true
 			} else {

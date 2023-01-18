@@ -27,8 +27,8 @@ func GETMyRepeaters(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
-	userId := session.Get("user_id").(uint)
-	if userId == 0 {
+	userId := session.Get("user_id")
+	if userId == nil {
 		klog.Error("userId not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
@@ -36,7 +36,7 @@ func GETMyRepeaters(c *gin.Context) {
 
 	// Get all repeaters owned by user
 	var repeaters []models.Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Where("owner_id = ?", userId).Find(&repeaters)
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Where("owner_id = ?", userId.(uint)).Find(&repeaters)
 	if db.Error != nil {
 		klog.Errorf("Error getting repeaters owned by user %d: %v", userId, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})

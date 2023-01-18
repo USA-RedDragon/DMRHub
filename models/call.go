@@ -8,8 +8,8 @@ import (
 
 type Call struct {
 	ID             uint           `json:"-" gorm:"primarykey"`
-	StreamID       uint           `json:"stream_id"`
-	StartTime      time.Time      `json:"-"`
+	StreamID       uint           `json:"-"`
+	StartTime      time.Time      `json:"start_time"`
 	Duration       time.Duration  `json:"duration"`
 	Active         bool           `json:"active"`
 	User           User           `json:"user" gorm:"foreignKey:UserID"`
@@ -34,9 +34,9 @@ type Call struct {
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
 	LastPacketTime time.Time      `json:"-"`
-	CreatedAt      time.Time      `json:"created_at" msg:"-"`
-	UpdatedAt      time.Time      `json:"-" msg:"-"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
+	CreatedAt      time.Time      `json:"-"`
+	UpdatedAt      time.Time      `json:"-"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index`
 }
 
 func FindCalls(db *gorm.DB, limit int) []Call {

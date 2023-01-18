@@ -182,6 +182,12 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 	timer.Stop()
 	delete(c.CallEndTimers, call.ID)
 
+	if time.Since(call.StartTime) < 100*time.Millisecond {
+		// This is probably a key-up, so delete the call from the db
+		c.DB.Delete(&call)
+		return
+	}
+
 	call.Active = false
 	call.Duration = time.Since(call.StartTime)
 	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)

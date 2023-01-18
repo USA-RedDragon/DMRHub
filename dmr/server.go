@@ -24,6 +24,7 @@ type DMRServer struct {
 	Verbose       bool
 	DB            *gorm.DB
 	Redis         redisRepeaterStorage
+	CallTracker   *CallTracker
 }
 
 func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.DB) DMRServer {
@@ -33,11 +34,12 @@ func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.
 			IP:   net.ParseIP(addr),
 			Port: port,
 		},
-		Started: false,
-		Parrot:  NewParrot(redisHost),
-		Verbose: verbose,
-		DB:      db,
-		Redis:   makeRedisRepeaterStorage(redisHost),
+		Started:     false,
+		Parrot:      NewParrot(redisHost),
+		Verbose:     verbose,
+		DB:          db,
+		Redis:       makeRedisRepeaterStorage(redisHost),
+		CallTracker: NewCallTracker(db),
 	}
 }
 
@@ -238,6 +240,18 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
+			// Don't call track unlink
+			if packet.Dst != 4000 {
+				if !s.CallTracker.IsCallActive(packet) {
+					s.CallTracker.StartCall(packet)
+				} else {
+					s.CallTracker.ProcessCallPacket(packet)
+					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+						s.CallTracker.EndCall(packet)
+					}
+				}
+			}
+
 			if dbRepeater.Hotspot && packet.Src != dbRepeater.OwnerID {
 				klog.Infof("Packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
 				return
@@ -254,11 +268,33 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					f := func() {
 						packets := s.Parrot.GetStream(packet.StreamId)
 						time.Sleep(3 * time.Second)
-						for _, pkt := range packets {
-							pkt.GroupCall = false
+						started := false
+						// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
+						// This is to ensure that the DMR repeater doesn't drop the packet
+						startedTime := time.Now()
+						for j, pkt := range packets {
 							s.sendPacket(repeaterId, pkt)
-							// Delay in step with DMR symbol rate
-							time.Sleep(60 * time.Millisecond)
+							if !started {
+								s.CallTracker.StartCall(pkt)
+								started = true
+							}
+							s.CallTracker.ProcessCallPacket(pkt)
+							if j == len(packets)-1 {
+								s.CallTracker.EndCall(pkt)
+							}
+							// Calculate the time since the call started
+							elapsed := time.Since(startedTime)
+							// If elapsed is greater than 60ms, we're behind and need to catch up
+							if elapsed > 60*time.Millisecond {
+								klog.Warningf("Parrot call took too long to send, elapsed: %s", elapsed)
+								// Sleep for 60ms minus the difference between the elapsed time and 60ms
+								time.Sleep(60*time.Millisecond - (elapsed - 60*time.Millisecond))
+							} else {
+								// Now subtract the elapsed time from 60ms to get the true delay
+								delay := 60*time.Millisecond - elapsed
+								time.Sleep(delay)
+							}
+							startedTime = time.Now()
 						}
 					}
 					go f()

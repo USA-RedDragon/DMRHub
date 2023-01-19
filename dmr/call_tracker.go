@@ -86,10 +86,13 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 		DestinationID:  packet.Dst,
 		TotalPackets:   1,
 		LostSequences:  0,
-		LastSeq:        packet.Seq,
 		LastPacketTime: time.Now(),
 		Loss:           0.0,
 		Jitter:         0.0,
+		FrameNum:       0,
+		LastFrameNum:   5,
+		HasHeader:      false,
+		HasTerm:        false,
 	}
 
 	call.IsToRepeater = isToRepeater
@@ -112,7 +115,7 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 	klog.Infof("Started call %d", call.StreamID)
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.CallEndTimers[call.ID] = time.AfterFunc(2*time.Second, endCallHandler(c, packet))
+	c.CallEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(c, packet))
 }
 
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
@@ -132,31 +135,51 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		return
 	}
 
+	// Reset call end timer
+	c.CallEndTimers[call.ID].Reset(2 * time.Second)
+
 	elapsed := time.Since(call.LastPacketTime)
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
 	// time the last packet was. We'll use this to calculate the average jitter.
 	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-60)) / 2
 	call.LastPacketTime = time.Now()
 
-	// Reset call end timer
-	c.CallEndTimers[call.ID].Reset(2 * time.Second)
-
-	// If packet.Seq is not equal to the last sequence number + 1, we've lost some packets and should update call.LostSequences.
-	// But this can roll over at 255 and start at 0 again, so we need to check for that.
-	seqThreshold := uint(128)
-	prevLost := call.LostSequences
-
-	if packet.Seq < call.LastSeq && packet.Seq+seqThreshold < call.LastSeq {
-		// We've rolled over and lost some packets.
-		call.LostSequences += (255 - call.LastSeq) + packet.Seq
-	} else if packet.Seq > call.LastSeq+1 {
-		call.LostSequences += packet.Seq - call.LastSeq
-	}
-
-	if call.LastSeq != packet.Seq {
-		// Account for the lost packets and the current packet.
-		call.TotalPackets += call.LostSequences - prevLost + 1
-		call.LastSeq = packet.Seq
+	// The first packet of a call will have a FrameType of HBPF_DATA_SYNC and a DTypeOrVSeq of HBPF_SLT_VHEAD. This does not count towards the FrameNum, but we need to check the order
+	if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
+		// Voice header kicks off the call, so we need to set the FrameNum to 0
+		call.HasHeader = true
+		call.TotalPackets++
+	} else if packet.FrameType == HBPF_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
+		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
+		if !call.HasHeader {
+			klog.Errorf("Voice sync packet without header")
+			call.LostSequences++
+		}
+		call.FrameNum = 0
+		call.LastFrameNum = 5
+		call.TotalPackets++
+	} else if packet.FrameType == HBPF_VOICE && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 6 {
+		// These are voice packets, so check for a header and LastFrameNum == packet.DTypeOrVSeq+1
+		if !call.HasHeader {
+			klog.Errorf("Voice packet without header")
+		}
+		// If the last frame number is not equal to the current frame number - 1, then we've lost a packet
+		if call.LastFrameNum != 0 && call.LastFrameNum != packet.DTypeOrVSeq-1 {
+			call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
+		}
+		call.LastFrameNum = call.FrameNum
+		call.FrameNum = packet.DTypeOrVSeq
+		call.TotalPackets++
+	} else if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+		// This is the end of a call, so we need to set the FrameNum to 0
+		// Check if LastFrameNum is 5, if not, we've lost some packets
+		if call.LastFrameNum != 5 {
+			call.LostSequences += 5 - call.LastFrameNum
+		}
+		call.FrameNum = 0
+		call.HasTerm = true
+		call.LastFrameNum = 5
+		call.TotalPackets++
 	}
 
 	call.Duration = time.Since(call.StartTime)
@@ -190,6 +213,16 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 		// This is probably a key-up, so delete the call from the db
 		c.DB.Delete(&call)
 		return
+	}
+
+	// If the call doesn't have a term, we lost that packet
+	if !call.HasTerm {
+		call.LostSequences++
+	}
+
+	// If lastFrameNum != 5, Calculate the number of lost packets by subtracting the last frame number from 5 and adding it to the lost sequences
+	if call.LastFrameNum != 5 {
+		call.LostSequences += 5 - call.LastFrameNum
 	}
 
 	call.Active = false

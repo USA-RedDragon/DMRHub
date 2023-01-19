@@ -275,11 +275,10 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if packet.Dst != 4000 && isVoice {
 				if !s.CallTracker.IsCallActive(packet) {
 					s.CallTracker.StartCall(packet)
-				} else {
-					s.CallTracker.ProcessCallPacket(packet)
-					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
-						s.CallTracker.EndCall(packet)
-					}
+				}
+				s.CallTracker.ProcessCallPacket(packet)
+				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+					s.CallTracker.EndCall(packet)
 				}
 			}
 

@@ -145,6 +145,7 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 	// But this can roll over at 255 and start at 0 again, so we need to check for that.
 	seqThreshold := uint(128)
 	prevLost := call.LostSequences
+
 	if packet.Seq < call.LastSeq && packet.Seq+seqThreshold < call.LastSeq {
 		// We've rolled over and lost some packets.
 		call.LostSequences += (255 - call.LastSeq) + packet.Seq
@@ -152,9 +153,12 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		call.LostSequences += packet.Seq - call.LastSeq
 	}
 
-	// Account for the lost packets and the current packet.
-	call.TotalPackets += call.LostSequences - prevLost + 1
-	call.LastSeq = packet.Seq
+	if call.LastSeq != packet.Seq {
+		// Account for the lost packets and the current packet.
+		call.TotalPackets += call.LostSequences - prevLost + 1
+		call.LastSeq = packet.Seq
+	}
+
 	call.Duration = time.Since(call.StartTime)
 	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 	call.Active = true

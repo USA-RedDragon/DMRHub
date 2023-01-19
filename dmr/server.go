@@ -236,13 +236,26 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			packet := models.UnpackPacket(data[:])
 
 			// If packet.BER is not 0, print it
-			if packet.BER != 0 {
+			if packet.BER != -1 {
 				klog.Infof("BER: %d", packet.BER)
 			}
 
 			// If packet.RSSI is not 0, print it
-			if packet.RSSI != 0 {
+			if packet.RSSI != -1 {
 				klog.Infof("RSSI: %ddBm", packet.RSSI)
+			}
+
+			switch packet.FrameType {
+			case HBPF_DATA_SYNC:
+				if packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+					klog.Infof("Voice terminator from %d", packet.Src)
+				} else if packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
+					klog.Infof("Voice header from %d", packet.Src)
+				}
+			case HBPF_VOICE:
+				klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
+			case HBPF_VOICE_SYNC:
+				klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 			}
 
 			if packet.Dst == 0 {

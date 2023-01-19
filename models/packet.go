@@ -13,6 +13,8 @@ type Packet struct {
 	DTypeOrVSeq uint     `msg:"dtypeOrVSeq"`
 	StreamId    uint     `msg:"streamId"`
 	DMRData     [33]byte `msg:"dmrData"`
+	BER         uint     `msg:"ber"`
+	RSSI        uint     `msg:"rssi"`
 }
 
 func UnpackPacket(data []byte) Packet {
@@ -35,6 +37,14 @@ func UnpackPacket(data []byte) Packet {
 	packet.DTypeOrVSeq = uint(bits & 0xF)
 	packet.StreamId = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
 	copy(packet.DMRData[:], data[20:53])
+	// Bytes 53-54 are BER and RSSI, respectively
+	// But they are optional, so don't error if they don't exist
+	if len(data) > 53 {
+		packet.BER = uint(data[53])
+	}
+	if len(data) > 54 {
+		packet.RSSI = uint(data[54])
+	}
 	return packet
 }
 
@@ -68,5 +78,12 @@ func (p Packet) Encode() []byte {
 	data[18] = byte(p.StreamId >> 8)
 	data[19] = byte(p.StreamId)
 	copy(data[20:53], p.DMRData[:])
+	// If BER and RSSI are set, add them
+	if p.BER != 0 {
+		data = append(data, byte(p.BER))
+	}
+	if p.RSSI != 0 {
+		data = append(data, byte(p.RSSI))
+	}
 	return data
 }

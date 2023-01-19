@@ -116,7 +116,6 @@ func Update() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
@@ -124,11 +123,12 @@ func Update() error {
 
 	uncompressedJson, err = io.ReadAll(resp.Body)
 	if err != nil {
-		klog.Fatalf("ReadAll error %s", err)
+		klog.Errorf("ReadAll error %s", err)
 		return err
 	}
+	defer resp.Body.Close()
 	if err := json.Unmarshal(uncompressedJson, &dmrRepeaters); err != nil {
-		klog.Fatalf("Error decoding DMR repeaters database: %v", err)
+		klog.Errorf("Error decoding DMR repeaters database: %v", err)
 		return err
 	}
 

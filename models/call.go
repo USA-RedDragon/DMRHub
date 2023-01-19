@@ -32,10 +32,13 @@ type Call struct {
 	DestinationID  uint           `json:"destination_id"`
 	TotalPackets   uint           `json:"total_packets"`
 	LostSequences  uint           `json:"lost_sequences"`
-	LastSeq        uint           `json:"-"`
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
+	FrameNum       uint           `json:"-"`
+	LastFrameNum   uint           `json:"-"`
 	LastPacketTime time.Time      `json:"-"`
+	HasHeader      bool           `json:"-"`
+	HasTerm        bool           `json:"-"`
 	CreatedAt      time.Time      `json:"-"`
 	UpdatedAt      time.Time      `json:"-"`
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index`

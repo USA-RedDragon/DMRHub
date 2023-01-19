@@ -42,7 +42,6 @@ func RequireLogin() gin.HandlerFunc {
 		valid := false
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		} else {

@@ -24,14 +24,22 @@ func makeRedisRepeaterStorage(redisAddr string) redisRepeaterStorage {
 }
 
 func (s redisRepeaterStorage) ping(repeaterID uint) {
-	repeater := s.get(repeaterID)
+	repeater, err := s.get(repeaterID)
+	if err != nil {
+		klog.Errorf("Error getting repeater from redis", err)
+		return
+	}
 	repeater.LastPing = time.Now()
 	s.store(repeaterID, repeater)
 	s.Redis.Expire(fmt.Sprintf("repeater:%d", repeaterID), 5*time.Minute)
 }
 
 func (s redisRepeaterStorage) updateConnection(repeaterID uint, connection string) {
-	repeater := s.get(repeaterID)
+	repeater, err := s.get(repeaterID)
+	if err != nil {
+		klog.Errorf("Error getting repeater from redis", err)
+		return
+	}
 	repeater.Connection = connection
 	s.store(repeaterID, repeater)
 }
@@ -50,18 +58,19 @@ func (s redisRepeaterStorage) store(repeaterId uint, repeater models.Repeater) {
 	s.Redis.Set(fmt.Sprintf("repeater:%d", repeaterId), repeaterBytes, 5*time.Minute)
 }
 
-func (s redisRepeaterStorage) get(repeaterId uint) models.Repeater {
+func (s redisRepeaterStorage) get(repeaterId uint) (models.Repeater, error) {
 	repeaterBits, err := s.Redis.Get(fmt.Sprintf("repeater:%d", repeaterId)).Result()
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
+		return models.Repeater{}, err
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
 	if err != nil {
 		klog.Errorf("Error unmarshalling repeater", err)
-		return models.Repeater{}
+		return models.Repeater{}, err
 	}
-	return repeater
+	return repeater, nil
 }
 
 func (s redisRepeaterStorage) exists(repeaterId uint) bool {

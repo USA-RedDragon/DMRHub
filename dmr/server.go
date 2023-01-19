@@ -67,7 +67,11 @@ func (s DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr 
 		klog.Warningf("Repeater %d does not exist", repeaterID)
 		valid = false
 	}
-	repeater := s.Redis.get(repeaterID)
+	repeater, err := s.Redis.get(repeaterID)
+	if err != nil {
+		klog.Warningf("Error getting repeater %d from redis", repeaterID)
+		valid = false
+	}
 	if repeater.IP != remoteAddr.IP.String() {
 		klog.Warningf("Repeater %d IP %s does not match remote %s", repeaterID, repeater.IP, remoteAddr.IP.String())
 		valid = false
@@ -148,8 +152,12 @@ func (s DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte
 		klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIdBytes)
 	}
 	command_prefixed_data := append([]byte(command), data...)
-	repeater := s.Redis.get(repeaterIdBytes)
-	_, err := s.Server.WriteToUDP(command_prefixed_data, &net.UDPAddr{
+	repeater, err := s.Redis.get(repeaterIdBytes)
+	if err != nil {
+		klog.Errorf("Error getting repeater from Redis", err)
+		return
+	}
+	_, err = s.Server.WriteToUDP(command_prefixed_data, &net.UDPAddr{
 		IP:   net.ParseIP(repeater.IP),
 		Port: repeater.Port,
 	})
@@ -163,8 +171,12 @@ func (s DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 		klog.Infof("Sending Packet: %v\n", packet)
 		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
 	}
-	repeater := s.Redis.get(repeaterIdBytes)
-	_, err := s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+	repeater, err := s.Redis.get(repeaterIdBytes)
+	if err != nil {
+		klog.Errorf("Error getting repeater from Redis", err)
+		return
+	}
+	_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
 		IP:   net.ParseIP(repeater.IP),
 		Port: repeater.Port,
 	})
@@ -174,7 +186,6 @@ func (s DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 }
 
 func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
-	klog.Infof("Handling Packet from %v", remoteAddr)
 	if s.Verbose {
 		klog.Infof("Data: %s", string(data[:]))
 	}
@@ -223,21 +234,6 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 			packet := models.UnpackPacket(data[:])
-			klog.Infof("DMR Data: %d, %d -> %d -> %d", packet.Seq, packet.Src, packet.Repeater, packet.Dst)
-			if s.Verbose {
-				switch int(packet.FrameType) {
-				case HBPF_DATA_SYNC:
-					klog.Info("data sync")
-					break
-				case HBPF_VOICE_SYNC:
-					klog.Info("voice sync")
-					break
-				case HBPF_VOICE:
-					klog.Info("voice")
-					break
-				}
-				klog.Infof("dtype_vseq %d", packet.DTypeOrVSeq)
-			}
 
 			if packet.Dst == 0 {
 				return
@@ -255,17 +251,12 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				}
 			}
 
-			if dbRepeater.Hotspot && packet.Src != dbRepeater.OwnerID {
-				klog.Infof("Packet Src %d does not match Repeater Owner ID %d, dropping packet", packet.Src, dbRepeater.OwnerID)
-				return
-			}
-
 			if packet.Dst == 9990 {
 				klog.Infof("Parrot call from %d", packet.Src)
 				if !s.Parrot.IsStarted(packet.StreamId) {
 					s.Parrot.StartStream(packet.StreamId, repeaterId)
 				}
-				s.Parrot.RecordPacket(packet.StreamId, packet)
+				go s.Parrot.RecordPacket(packet.StreamId, packet)
 				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
 					s.Parrot.StopStream(packet.StreamId)
 					f := func() {
@@ -434,7 +425,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			} else {
 				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 				if s.Verbose {
-					klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
+					klog.Infof("Repeater ID %d does not exist in db, sending NAK", repeaterId)
 				}
 				return
 			}
@@ -442,7 +433,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if password == "" {
 				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
 				if s.Verbose {
-					klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
+					klog.Infof("Repeater ID %d did not provide password, sending NAK", repeaterId)
 				}
 				return
 			}
@@ -451,7 +442,14 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			dbRepeater.LastPing = time.Now()
 			s.DB.Save(&dbRepeater)
 
-			repeater := s.Redis.get(repeaterId)
+			repeater, err := s.Redis.get(repeaterId)
+			if err != nil {
+				klog.Errorf("Error getting repeater from redis: %v", err)
+				s.sendCommand(repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				if s.Verbose {
+					klog.Infof("Repeater ID %d does not exist in redis, sending NAK", repeaterId)
+				}
+			}
 			rxSalt := binary.BigEndian.Uint32(data[8:])
 			// sha256 hash repeater.Salt + the passphrase
 			saltBytes := make([]byte, 4)
@@ -488,7 +486,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 			if s.validRepeater(repeaterId, "WAITING_CONFIG", *remoteAddr) {
 				s.Redis.ping(repeaterId)
-				repeater := s.Redis.get(repeaterId)
+				repeater, err := s.Redis.get(repeaterId)
+				if err != nil {
+					klog.Errorf("Error getting repeater from redis: %v", err)
+					return
+				}
 				repeater.Connected = time.Now()
 				repeater.LastPing = time.Now()
 
@@ -587,7 +589,11 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			dbRepeater.LastPing = time.Now()
 			s.DB.Save(&dbRepeater)
-			repeater := s.Redis.get(repeaterId)
+			repeater, err := s.Redis.get(repeaterId)
+			if err != nil {
+				klog.Errorf("Error getting repeater from Redis", err)
+				return
+			}
 			repeater.PingsReceived++
 			s.Redis.store(repeaterId, repeater)
 			s.sendCommand(repeaterId, COMMAND_MSTPONG, repeaterIdBytes)

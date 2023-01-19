@@ -151,7 +151,8 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		// Voice header kicks off the call, so we need to set the FrameNum to 0
 		call.HasHeader = true
 		call.TotalPackets++
-		c.DB.Save(&call)
+		// Save the db early so that we can query for it in a different goroutine
+		go c.DB.Save(&call)
 	} else if packet.FrameType == HBPF_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
 		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
 		if !call.HasHeader {

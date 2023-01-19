@@ -245,16 +245,25 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Infof("RSSI: %ddBm", packet.RSSI)
 			}
 
+			isVoice := false
+			isData := false
 			switch packet.FrameType {
 			case HBPF_DATA_SYNC:
 				if packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+					isVoice = true
 					klog.Infof("Voice terminator from %d", packet.Src)
 				} else if packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
+					isVoice = true
 					klog.Infof("Voice header from %d", packet.Src)
+				} else {
+					isData = true
+					klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 				}
 			case HBPF_VOICE:
+				isVoice = true
 				klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
 			case HBPF_VOICE_SYNC:
+				isVoice = true
 				klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 			}
 
@@ -263,7 +272,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			// Don't call track unlink
-			if packet.Dst != 4000 {
+			if packet.Dst != 4000 && isVoice {
 				if !s.CallTracker.IsCallActive(packet) {
 					s.CallTracker.StartCall(packet)
 				} else {
@@ -274,7 +283,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				}
 			}
 
-			if packet.Dst == 9990 {
+			if packet.Dst == 9990 && isVoice {
 				klog.Infof("Parrot call from %d", packet.Src)
 				if !s.Parrot.IsStarted(packet.StreamId) {
 					s.Parrot.StartStream(packet.StreamId, repeaterId)
@@ -320,7 +329,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if packet.Dst == 4000 {
+			if packet.Dst == 4000 && isVoice {
 				if packet.Slot {
 					klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
 					s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
@@ -334,7 +343,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if packet.GroupCall {
+			if packet.GroupCall && isVoice {
 				go s.switchDynamicTalkgroup(packet)
 
 				// For each repeater in Redis
@@ -371,13 +380,17 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						}
 					}
 				}
-			} else {
+			} else if !packet.GroupCall && isVoice {
 				if s.Redis.exists(packet.Dst) {
 					packet.Repeater = packet.Dst
 					s.sendPacket(repeaterId, packet)
 				} else {
 					klog.Warning("Private call to non-existent repeater %d", packet.Dst)
 				}
+			} else if isData {
+				klog.Warning("Unhandled data packet type")
+			} else {
+				klog.Warning("Unhandled packet type")
 			}
 		}
 	} else if command == COMMAND_RPTO {

@@ -29,7 +29,7 @@ func (p *Parrot) StartStream(streamId uint, repeaterId uint) bool {
 }
 
 func (p *Parrot) RecordPacket(streamId uint, packet models.Packet) {
-	p.Redis.refresh(streamId)
+	go p.Redis.refresh(streamId)
 
 	// Grab the repeater ID to go ahead and mark the packet as being routed back
 	repeaterId, err := p.Redis.get(streamId)

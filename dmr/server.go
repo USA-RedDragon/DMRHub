@@ -235,6 +235,16 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			packet := models.UnpackPacket(data[:])
 
+			// If packet.BER is not 0, print it
+			if packet.BER != 0 {
+				klog.Infof("BER: %d", packet.BER)
+			}
+
+			// If packet.RSSI is not 0, print it
+			if packet.RSSI != 0 {
+				klog.Infof("RSSI: %ddBm", packet.RSSI)
+			}
+
 			if packet.Dst == 0 {
 				return
 			}

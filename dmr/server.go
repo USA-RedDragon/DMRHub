@@ -287,7 +287,7 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				if !s.Parrot.IsStarted(packet.StreamId) {
 					s.Parrot.StartStream(packet.StreamId, repeaterId)
 				}
-				go s.Parrot.RecordPacket(packet.StreamId, packet)
+				s.Parrot.RecordPacket(packet.StreamId, packet)
 				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
 					s.Parrot.StopStream(packet.StreamId)
 					f := func() {

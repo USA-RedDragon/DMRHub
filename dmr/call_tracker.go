@@ -89,7 +89,6 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 		LastPacketTime: time.Now(),
 		Loss:           0.0,
 		Jitter:         0.0,
-		FrameNum:       0,
 		LastFrameNum:   5,
 		HasHeader:      false,
 		HasTerm:        false,
@@ -144,71 +143,97 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-60)) / 2
 	call.LastPacketTime = time.Now()
 
+	if call.LastFrameNum != 0 && call.LastFrameNum == packet.DTypeOrVSeq {
+		// We've already seen this packet, so it's either a duplicate or we've lost 6 packets
+		if time.Since(call.LastPacketTime) > 60*time.Millisecond {
+			// We've lost 6 packets
+			call.LostSequences++
+			call.TotalPackets += 6
+		} else {
+			// We've received a duplicate packet
+			call.TotalPackets++
+		}
+		call.Duration = time.Since(call.StartTime)
+		call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
+		call.Active = true
+
+		go c.DB.Save(&call)
+	}
+
+	var lost uint
 	// Update call.TotalPackets with 1 + the number of packets that have been lost since the last packet
 	// The first packet of a call will have a FrameType of HBPF_DATA_SYNC and a DTypeOrVSeq of HBPF_SLT_VHEAD. This does not count towards the FrameNum, but we need to check the order
-	var lost uint
 	if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
 		// Voice header kicks off the call, so we need to set the FrameNum to 0
 		call.HasHeader = true
 		call.TotalPackets++
 		// Save the db early so that we can query for it in a different goroutine
-		go c.DB.Save(&call)
 	} else if packet.FrameType == HBPF_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
 		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
 		if !call.HasHeader {
-			klog.Errorf("Voice sync packet without header")
+			klog.Errorf("%d Voice sync packet without header", packet.DTypeOrVSeq)
 			lost++
 		}
 		// If the last frame number is not equal to 5, then we've lost a packet
 		if call.LastFrameNum != 5 {
 			lost += 5 - call.LastFrameNum
 		}
-		call.LastFrameNum = call.FrameNum
-		call.FrameNum = packet.DTypeOrVSeq
+		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
-		klog.Infof("Voice sync - lost %d packets", lost)
+		klog.Infof("%d Voice sync - lost %d packets. Set LastFrameNum to %d. Total lost: %d", packet.DTypeOrVSeq, lost, call.LastFrameNum, call.LostSequences)
 	} else if packet.FrameType == HBPF_VOICE && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
 		// These are voice packets, so check for a header and LastFrameNum == packet.DTypeOrVSeq+1
 		if !call.HasHeader {
-			klog.Errorf("Voice packet without header")
+			klog.Errorf("%d Voice packet without header", packet.DTypeOrVSeq)
 		}
-		// If the last frame number is not equal to the current frame number - 1, then we've lost a packet
-		if call.LastFrameNum != 0 && call.LastFrameNum != packet.DTypeOrVSeq-1 {
-			lost += packet.DTypeOrVSeq - call.LastFrameNum - 1
-			klog.Infof("Voice - lost %d packets. LastFrame=%d. Frame=%d", lost, call.LastFrameNum, packet.DTypeOrVSeq)
+
+		// If the last frame number is equal to 5, then either we've lost a number of packets, or we've lost a sync packet
+		if call.LastFrameNum == 5 {
+			// Detect a lost sync packet
+			if packet.DTypeOrVSeq == 1 {
+				klog.Infof("%d Voice - lost sync packet", packet.DTypeOrVSeq)
+				lost++
+			} else {
+				lost += packet.DTypeOrVSeq - 1
+				klog.Infof("%d Voice - lost %d packets. Total lost: %d", packet.DTypeOrVSeq, lost, call.LostSequences)
+			}
+		} else {
+			// If the last frame number is not equal to the current frame number - 1, then we've lost a packet
+			if call.LastFrameNum != 0 && call.LastFrameNum != packet.DTypeOrVSeq-1 {
+				lost += packet.DTypeOrVSeq - call.LastFrameNum - 1
+				klog.Infof("%d Voice - lost %d packets. LastFrame=%d. Frame=%d. Total lost: %d", packet.DTypeOrVSeq, lost, call.LastFrameNum, packet.DTypeOrVSeq, call.LostSequences)
+			}
 		}
-		call.LastFrameNum = call.FrameNum
-		call.FrameNum = packet.DTypeOrVSeq
+
+		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
-		klog.Infof("Voice - lost %d packets", lost)
+		klog.Infof("%d Voice - lost %d packets Set LastFrameNum to %d. Total lost: %d", packet.DTypeOrVSeq, lost, call.LastFrameNum, call.LostSequences)
 	} else if packet.FrameType == HBPF_VOICE && packet.DTypeOrVSeq == 5 {
 		// This is the last voice packet, so check for a header and LastFrameNum == 4
 		if !call.HasHeader {
-			klog.Errorf("Voice packet without header")
+			klog.Errorf("%d Voice packet without header", packet.DTypeOrVSeq)
 		}
 		// If the last frame number is not equal to 4, then we've lost a packet
 		if call.LastFrameNum != 4 {
 			lost += 4 - call.LastFrameNum
 		}
-		call.LastFrameNum = call.FrameNum
-		call.FrameNum = packet.DTypeOrVSeq
+		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
-		klog.Infof("Last voice - lost %d packets", lost)
+		klog.Infof("%d Last voice - lost %d packets. Total lost: %d", packet.DTypeOrVSeq, lost, call.LostSequences)
 	} else if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
 		// This is the end of a call, so we need to set the FrameNum to 0
 		// Check if LastFrameNum is 5, if not, we've lost some packets
 		if call.LastFrameNum != 5 {
 			lost += 5 - call.LastFrameNum
 		}
-		call.FrameNum = 0
 		call.HasTerm = true
 		call.LastFrameNum = 5
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
-		klog.Infof("Voice termination - lost %d packets", lost)
+		klog.Infof("%d Voice termination - lost %d packets. Total lost: %d", packet.DTypeOrVSeq, lost, call.LostSequences)
 	}
 
 	call.Duration = time.Since(call.StartTime)
@@ -260,7 +285,7 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 
 	call.Active = false
 	call.Duration = time.Since(call.StartTime)
-	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
+	call.Loss = float32(call.LostSequences / call.TotalPackets)
 	c.DB.Save(&call)
 
 	klog.Errorf("Call %d ended with duration %v, %f percent loss, and %f Jitter", packet.StreamId, call.Duration, call.Loss*100, call.Jitter)

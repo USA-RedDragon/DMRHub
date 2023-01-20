@@ -34,7 +34,6 @@ type Call struct {
 	LostSequences  uint           `json:"lost_sequences"`
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
-	FrameNum       uint           `json:"-"`
 	LastFrameNum   uint           `json:"-"`
 	LastPacketTime time.Time      `json:"-"`
 	HasHeader      bool           `json:"-"`

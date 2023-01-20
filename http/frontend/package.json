@@ -30,6 +30,7 @@
     "eslint-plugin-cypress": "^2.12.1",
     "eslint-plugin-vue": "^9.3.0",
     "prettier": "^2.7.1",
+    "rrule": "^2.7.1",
     "start-server-and-test": "^1.15.2",
     "vite": "^4.0.0"
   }

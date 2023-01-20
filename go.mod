@@ -8,6 +8,7 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-co-op/gocron v1.18.0
 	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/teambition/rrule-go v1.8.2
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
 	github.com/wk8/go-ordered-map v1.0.0

@@ -15,7 +15,7 @@ import (
 func GETTalkgroups(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var talkgroups []models.Talkgroup
-	db.Preload("Admins").Find(&talkgroups)
+	db.Preload("Admins").Preload("NCOs").Find(&talkgroups)
 	c.JSON(http.StatusOK, talkgroups)
 }
 
@@ -47,7 +47,7 @@ func GETTalkgroup(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
-	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
+	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", id)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
@@ -116,6 +116,93 @@ func POSTTalkgroupAdminAppoint(c *gin.Context) {
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"message": "User appointed as admin"})
+		}
+	}
+}
+
+func POSTTalkgroupNCOs(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	var talkgroup models.Talkgroup
+	db.Preload("NCOs").Find(&talkgroup, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if talkgroup.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup does not exist"})
+		return
+	}
+
+	var json apimodels.TalkgroupAdminAction
+	err := c.ShouldBindJSON(&json)
+	if err != nil {
+		klog.Errorf("POSTTalkgroupNCOs: JSON data is invalid: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+	} else {
+		alreadyIsNCO := false
+		for _, nco := range talkgroup.NCOs {
+			if nco.ID == json.UserID {
+				alreadyIsNCO = true
+			}
+		}
+		if alreadyIsNCO {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already a net control operator"})
+			return
+		} else {
+			var user models.User
+			db.Find(&user, "id = ?", json.UserID)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			if user.ID == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+				return
+			}
+			db.Model(&talkgroup).Association("NCOs").Append(&user)
+			db.Save(&talkgroup)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "User appointed as net control operator"})
+		}
+	}
+}
+
+func DELETETalkgroupNCOs(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+	var talkgroup models.Talkgroup
+	db.Preload("NCOs").Find(&talkgroup, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if talkgroup.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup does not exist"})
+		return
+	}
+
+	var json apimodels.TalkgroupAdminAction
+	err := c.ShouldBindJSON(&json)
+	if err != nil {
+		klog.Errorf("DELETETalkgroupNCOs: JSON data is invalid: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+	} else {
+		removedNCO := false
+		for _, nco := range talkgroup.NCOs {
+			if nco.ID == json.UserID {
+				db.Model(&talkgroup).Association("NCOs").Delete(&nco)
+				db.Save(&talkgroup)
+				removedNCO = true
+			}
+		}
+		if removedNCO {
+			c.JSON(http.StatusOK, gin.H{"message": "Net control operator demoted"})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not an net control operator"})
 		}
 	}
 }

@@ -11,6 +11,7 @@ type Talkgroup struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Admins      []User         `json:"admins" gorm:"many2many:talkgroup_admins;"`
+	NCOs        []User         `json:"ncos" gorm:"many2many:talkgroup_ncos;"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"-"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
@@ -24,6 +25,6 @@ func TalkgroupIDExists(db *gorm.DB, id uint) bool {
 
 func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
 	var talkgroup Talkgroup
-	db.Preload("Admins").First(&talkgroup, ID)
+	db.Preload("Admins").Preload("NCOs").First(&talkgroup, ID)
 	return talkgroup
 }

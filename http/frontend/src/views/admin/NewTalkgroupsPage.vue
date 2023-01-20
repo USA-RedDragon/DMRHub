@@ -27,6 +27,7 @@
             :filter="true"
             optionLabel="display"
             display="chip"
+            style="width: 100%"
           >
             <template #chip="slotProps">
               {{ slotProps.value.display }}
@@ -36,6 +37,26 @@
             </template>
           </MultiSelect>
           <label for="admins">Admins</label>
+        </span>
+        <br />
+        <span class="p-float-label">
+          <MultiSelect
+            id="ncos"
+            v-model="ncos"
+            :options="allUsers"
+            :filter="true"
+            optionLabel="display"
+            display="chip"
+            style="width: 100%"
+          >
+            <template #chip="slotProps">
+              {{ slotProps.value.display }}
+            </template>
+            <template #option="slotProps">
+              {{ slotProps.option.display }}
+            </template>
+          </MultiSelect>
+          <label for="ncos">Net Control Operators</label>
         </span>
       </template>
       <template #footer>
@@ -78,6 +99,7 @@ export default {
       name: "",
       description: "",
       admins: [],
+      ncos: [],
       allUsers: [],
     };
   },
@@ -86,10 +108,18 @@ export default {
       API.get("/users")
         .then((res) => {
           this.allUsers = res.data;
+          var parrotIndex = -1;
           for (let i = 0; i < this.allUsers.length; i++) {
             this.allUsers[
               i
             ].display = `${this.allUsers[i].id} - ${this.allUsers[i].callsign}`;
+            // Remove user with id 9990 (parrot)
+            if (this.allUsers[i].id === 9990) {
+              parrotIndex = i;
+            }
+          }
+          if (parrotIndex !== -1) {
+            this.allUsers.splice(parrotIndex, 1);
           }
         })
         .catch((err) => {
@@ -110,6 +140,28 @@ export default {
           for (var i = 0; i < this.admins.length; i++) {
             API.post(`/talkgroups/${numericID}/appoint`, {
               user_id: this.admins[i].id,
+            }).catch((err) => {
+              console.error(err);
+              if (!err.response && !err.response.error) {
+                this.$toast.add({
+                  summary: "Error",
+                  severity: "error",
+                  detail: `Error creating talkgroup`,
+                  life: 3000,
+                });
+              } else {
+                this.$toast.add({
+                  summary: "Error",
+                  severity: "error",
+                  detail: err.response.data.error,
+                  life: 3000,
+                });
+              }
+            });
+          }
+          for (i = 0; i < this.ncos.length; i++) {
+            API.post(`/talkgroups/${numericID}/nco`, {
+              user_id: this.ncos[i].id,
             }).catch((err) => {
               console.error(err);
               if (!err.response && !err.response.error) {

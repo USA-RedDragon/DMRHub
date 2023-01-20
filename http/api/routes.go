@@ -38,6 +38,8 @@ func v1(group *gin.RouterGroup) {
 	v1Talkgroups.POST("", middleware.RequireAdmin(), v1TalkgroupsControllers.POSTTalkgroup)
 	v1Talkgroups.POST("/:id/appoint", middleware.RequireAdmin(), v1TalkgroupsControllers.POSTTalkgroupAdminAppoint)
 	v1Talkgroups.POST("/:id/demote", middleware.RequireAdmin(), v1TalkgroupsControllers.POSTTalkgroupAdminDemote)
+	v1Talkgroups.POST("/:id/ncos", middleware.RequireTalkgroupOwnerOrAdmin(), v1TalkgroupsControllers.POSTTalkgroupNCOs)
+	v1Talkgroups.DELETE("/:id/ncos", middleware.RequireTalkgroupOwnerOrAdmin(), v1TalkgroupsControllers.DELETETalkgroupNCOs)
 	v1Talkgroups.GET("/:id", middleware.RequireLogin(), v1TalkgroupsControllers.GETTalkgroup)
 	v1Talkgroups.PATCH("/:id", middleware.RequireTalkgroupOwnerOrAdmin(), v1TalkgroupsControllers.PATCHTalkgroup)
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), v1TalkgroupsControllers.DELETETalkgroup)

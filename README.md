@@ -4,7 +4,7 @@ Run a DMR network server with a single binary. Includes private and group calls 
 
 ## Current Status
 
-This project is deployed in the Oklahoma AREDN mesh. Future revisions will help clean it up and separate concerns a bit better. Everything is functional so far (excluding potential bugs) but some of the web interface needs finishing. 9990 Parrot and 4000 Unlink are implemented.
+This project is deployed in the Oklahoma AREDN mesh. Future revisions will help clean it up and separate concerns a bit better. Everything is functional so far (excluding potential bugs) but some of the web interface needs polishing. 9990 Parrot and 4000 Unlink are implemented.
 
 ## External requirements
 
@@ -37,7 +37,7 @@ Right now, Redis is the only requirement, though the database will be externaliz
 #### Things the user sees
 
 - Make user admins appointable and implement user suspend in the UI
-- Add ability to add and remove talkgroup admins in the UI
+- Add ability to add and remove talkgroup admins and NCOs in the UI
 - Superadmin class that can add and remove admin
 - Admin class that can make and delete talkgroups, suspend and enable users, appoint and demote talkgroup owners, and see the master repeater and user list
 - Finalize color scheme
@@ -87,3 +87,6 @@ Right now, Redis is the only requirement, though the database will be externaliz
 - ability to lock down traffic on one timeslot to a list of designated users. Intended for ensuring a timeslot remains open for emergency use)
 - channel allowlist (maybe useful?)
 - channel blocklist (this seems rife for abuse in some communities. maybe make this configurable by server admin?)
+- add the ability for a talkgroup owner to create nets
+- add the ability for talkgroup owner or net control operator to start/stop a net check-in
+- add the ability for talkgroup owner or net control operator to see and export a check-in list (just query calls DB for TG=tg_id during net check-in period)

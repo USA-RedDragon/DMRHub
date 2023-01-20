@@ -21,6 +21,18 @@
               </span>
             </template></Column
           >
+          <Column field="ncos" header="Net Control Operators">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.ncos.length == 0">None</span>
+              <span
+                v-else
+                v-bind:key="nco.callsign"
+                v-for="nco in slotProps.data.ncos"
+              >
+                {{ nco.callsign }}&nbsp;
+              </span>
+            </template>
+          </Column>
           <Column field="created_at" header="Created">
             <template #body="slotProps">{{
               slotProps.data.created_at.fromNow()

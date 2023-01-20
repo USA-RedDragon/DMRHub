@@ -443,7 +443,14 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			repeater.LastPing = time.Now()
 			repeater.Connected = time.Now()
 			s.Redis.store(repeaterId, repeater)
-			s.sendCommand(repeaterId, COMMAND_RPTACK, bigSalt.Bytes()[0:4])
+			// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
+			var saltBytes [4]byte
+			if len(bigSalt.Bytes()) < 4 {
+				copy(saltBytes[4-len(bigSalt.Bytes()):], bigSalt.Bytes())
+			} else {
+				copy(saltBytes[:], bigSalt.Bytes())
+			}
+			s.sendCommand(repeaterId, COMMAND_RPTACK, saltBytes[:])
 			s.Redis.updateConnection(repeaterId, "CHALLENGE_SENT")
 		}
 	} else if command == COMMAND_RPTK {

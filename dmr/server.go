@@ -104,7 +104,7 @@ func (s DMRServer) Listen() {
 			klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
 			continue
 		}
-		go s.handlePacket(remoteaddr, s.Buffer[:len])
+		s.handlePacket(remoteaddr, s.Buffer[:len])
 	}
 }
 
@@ -303,6 +303,8 @@ func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 								s.CallTracker.StartCall(pkt)
 								started = true
 							}
+							pkt.RSSI = -1
+							pkt.BER = -1
 							s.CallTracker.ProcessCallPacket(pkt)
 							if j == len(packets)-1 {
 								s.CallTracker.EndCall(pkt)

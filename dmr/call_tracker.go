@@ -90,6 +90,9 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 		Loss:           0.0,
 		Jitter:         0.0,
 		LastFrameNum:   5,
+		RSSI:           0,
+		BER:            0.0,
+		TotalBits:      0,
 		HasHeader:      false,
 		HasTerm:        false,
 	}
@@ -178,6 +181,11 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		if call.LastFrameNum != 5 {
 			lost += 5 - call.LastFrameNum
 		}
+
+		if packet.BER > 0 {
+			call.TotalBits += 141
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
+		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
@@ -206,6 +214,10 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 			}
 		}
 
+		if packet.BER > 0 {
+			call.TotalBits += 141
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
+		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
@@ -218,6 +230,10 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		// If the last frame number is not equal to 4, then we've lost a packet
 		if call.LastFrameNum != 4 {
 			lost += 4 - call.LastFrameNum
+		}
+		if packet.BER > 0 {
+			call.TotalBits += 141
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
 		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
@@ -239,6 +255,9 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 	call.Duration = time.Since(call.StartTime)
 	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 	call.Active = true
+	if packet.RSSI > 0 {
+		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
+	}
 
 	c.DB.Save(&call)
 }
@@ -288,5 +307,5 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 	call.Loss = float32(call.LostSequences / call.TotalPackets)
 	c.DB.Save(&call)
 
-	klog.Errorf("Call %d ended with duration %v, %f percent loss, and %f Jitter", packet.StreamId, call.Duration, call.Loss*100, call.Jitter)
+	klog.Errorf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
 }

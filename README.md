@@ -10,13 +10,28 @@ This project is deployed in the Oklahoma AREDN mesh. Future revisions will help 
 
 Right now, Redis is the only requirement, though the database will be externalized in the future.
 
+## Screenshots
+
+![Lastheard](/doc/Screenshots/lastheard.png)
+
+![Repeaters](doc/Screenshots/repeaters.png)
+
+![Easy Repeater Enrollment](doc/Screenshots/repeaters-easy.png)
+
+![Repeater Management](doc/Screenshots/repeaters-edit.png)
+
+![Talkgroup List](doc/Screenshots/talkgroups.png)
+
+![Talkgroup Ownership](doc/Screenshots/talkgroup-ownership.png)
+
+![User Approva](doc/Screenshots/user-approval.png)
+
 ## Todos
 
 ### Before first release
 
 #### Things the user sees
 
-- Out of order packets causing loss
 - Make user admins appointable and implement user suspend in the UI
 - Add ability to add and remove talkgroup admins in the UI
 - Superadmin class that can add and remove admin

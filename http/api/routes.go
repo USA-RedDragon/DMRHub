@@ -44,6 +44,26 @@ func v1(group *gin.RouterGroup) {
 	v1Talkgroups.PATCH("/:id", middleware.RequireTalkgroupOwnerOrAdmin(), v1TalkgroupsControllers.PATCHTalkgroup)
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), v1TalkgroupsControllers.DELETETalkgroup)
 
+	v1Nets := group.Group("/nets")
+	// All scheduled nets
+	v1Nets.GET("", middleware.RequireLogin(), v1NetsControllers.GETNets)
+	// Nets that the user participated in (or in the future subscribed to)
+	v1Nets.GET("/my", middleware.RequireLogin(), v1NetsControllers.GETMyNets)
+	// Create a new net
+	v1Nets.POST("/:tgid", middleware.RequireTGOwnerOrAdminAdmin(), v1NetsControllers.POSTNet)
+
+	v1NetsEvents := v1Nets.Group("/events")
+	// Get net events
+	v1NetsEvents.GET("/:id/events", middleware.RequireLogin(), v1NetsControllers.GETNetEvents)
+	// Get net event
+	v1NetsEvents.GET("/:id", middleware.RequireLogin(), v1NetsControllers.GETNetEvent)
+	// Start a net checkin
+	v1NetsEvents.POST("/:id/start", middleware.RequireNCOOrAdmin(), v1NetsControllers.POSTNetEventStart)
+	// Stop a net checkin
+	v1NetsEvents.POST("/:id/stop", middleware.RequireNCOOrAdmin(), v1NetsControllers.POSTNetEventStop)
+	// Check in to a net
+	v1NetsEvents.POST("/:id/checkin", middleware.RequireLogin(), v1NetsControllers.POSTNetEventCheckin)
+
 	v1Users := group.Group("/users")
 	v1Users.GET("", middleware.RequireAdmin(), v1UsersControllers.GETUsers)
 	v1Users.POST("", v1UsersControllers.POSTUser)

@@ -30,6 +30,21 @@ export default [
     component: () => import("../views/TalkgroupsPage.vue"),
   },
   {
+    path: "/nets",
+    name: "Nets",
+    component: () => import("../views/NetsPage.vue"),
+  },
+  {
+    path: "/nets/my",
+    name: "MyNets",
+    component: () => import("../views/MyNetsPage.vue"),
+  },
+  {
+    path: "/nets/manage",
+    name: "ManageNets",
+    component: () => import("../views/NetsManagePage.vue"),
+  },
+  {
     path: "/talkgroups/owned",
     name: "OwnedTalkgroups",
     component: () => import("../views/OwnedTalkgroupsPage.vue"),

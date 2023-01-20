@@ -57,6 +57,57 @@
           </template>
         </Menu>
 
+        <router-link v-if="this.userStore.loggedIn" to="#" custom>
+          <a
+            href="#"
+            @click="toggleNetsMenu"
+            :class="{
+              adminNavLink: true,
+              'router-link-active': this.$route.path.startsWith('/nets'),
+            }"
+            >Nets</a
+          >
+        </router-link>
+        <Menu
+          v-if="this.userStore.loggedIn"
+          ref="netsMenu"
+          :popup="true"
+          :model="[
+            {
+              label: '&nbsp;&nbsp;List',
+              to: '/nets',
+            },
+            {
+              label: '&nbsp;&nbsp;My Nets',
+              to: '/nets/my',
+            },
+            {
+              label: '&nbsp;&nbsp;Manage',
+              to: '/nets/manage',
+            },
+          ]"
+        >
+          <template #item="{ item }">
+            <router-link
+              :to="item.to"
+              custom
+              v-slot="{ href, navigate, isActive, isExactActive }"
+            >
+              <a
+                :href="href"
+                @click="navigate"
+                :class="{
+                  adminNavLink: true,
+                  'router-link-active': isActive,
+                  'router-link-active-exact': isExactActive,
+                }"
+              >
+                <div>{{ item.label }}</div>
+              </a>
+            </router-link>
+          </template>
+        </Menu>
+
         <router-link
           v-if="this.userStore.loggedIn && this.userStore.admin"
           to="#"
@@ -159,6 +210,9 @@ export default {
     },
     toggleTalkgroupsMenu(event) {
       this.$refs.talkgroupsMenu.toggle(event);
+    },
+    toggleNetsMenu(event) {
+      this.$refs.netsMenu.toggle(event);
     },
   },
   computed: {

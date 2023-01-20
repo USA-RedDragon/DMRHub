@@ -30,13 +30,13 @@ type Call struct {
 	ToRepeaterID   uint           `json:"-"`
 	ToRepeater     Repeater       `json:"to_repeater" gorm:"foreignKey:ToRepeaterID"`
 	DestinationID  uint           `json:"destination_id"`
-	TotalPackets   uint           `json:"total_packets"`
-	LostSequences  uint           `json:"lost_sequences"`
+	TotalPackets   uint           `json:"-"`
+	LostSequences  uint           `json:"-"`
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
 	LastFrameNum   uint           `json:"-"`
-	BER            float32        `json:"-"`
-	RSSI           float32        `json:"-"`
+	BER            float32        `json:"ber"`
+	RSSI           float32        `json:"rssi"`
 	TotalBits      uint           `json:"-"`
 	LastPacketTime time.Time      `json:"-"`
 	HasHeader      bool           `json:"-"`

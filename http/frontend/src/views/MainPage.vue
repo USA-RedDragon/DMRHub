@@ -44,11 +44,22 @@
               >{{ slotProps.data.duration }}s</template
             >
           </Column>
+          <Column field="ber" header="BER">
+            <template #body="slotProps">{{ slotProps.data.ber }}%</template>
+          </Column>
           <Column field="loss" header="Loss">
             <template #body="slotProps">{{ slotProps.data.loss }}%</template>
           </Column>
           <Column field="jitter" header="Jitter">
             <template #body="slotProps">{{ slotProps.data.jitter }}ms</template>
+          </Column>
+          <Column field="rssi" header="RSSI">
+            <template #body="slotProps">
+              <span v-if="slotProps.data.rssi != 0"
+                >-{{ slotProps.data.rssi }}dBm</span
+              >
+              <span v-else>-</span>
+            </template>
           </Column>
         </DataTable>
       </template>
@@ -97,14 +108,19 @@ export default {
           for (let i = 0; i < this.lastheard.length; i++) {
             this.lastheard[i].start_time = moment(this.lastheard[i].start_time);
             // lastheard.duration is in nanoseconds, convert to seconds
-            this.lastheard[i].duration =
-              this.lastheard[i].duration / 1000000000;
+            this.lastheard[i].duration = (
+              this.lastheard[i].duration / 1000000000
+            ).toFixed(1);
 
             // loss is in a ratio, multiply by 100 to get a percentage
-            this.lastheard[i].loss = this.lastheard[i].loss * 100;
+            this.lastheard[i].loss = (this.lastheard[i].loss * 100).toFixed(1);
+            this.lastheard[i].ber = (this.lastheard[i].ber * 100).toFixed(1);
+            this.lastheard[i].rssi = this.lastheard[i].rssi.toFixed(0);
 
             // Take the absolute value of jitter to get rid of negative values
-            this.lastheard[i].jitter = Math.abs(this.lastheard[i].jitter);
+            this.lastheard[i].jitter = Math.abs(
+              this.lastheard[i].jitter
+            ).toFixed(1);
           }
         })
         .catch((err) => {

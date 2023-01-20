@@ -14,6 +14,9 @@ Right now, Redis is the only requirement, though the database will be externaliz
 
 ![Lastheard](/doc/Screenshots/lastheard.png)
 
+<details>
+  <summary>More? Click to expand</summary>
+
 ![Repeaters](doc/Screenshots/repeaters.png)
 
 ![Easy Repeater Enrollment](doc/Screenshots/repeaters-easy.png)
@@ -25,6 +28,7 @@ Right now, Redis is the only requirement, though the database will be externaliz
 ![Talkgroup Ownership](doc/Screenshots/talkgroup-ownership.png)
 
 ![User Approva](doc/Screenshots/user-approval.png)
+</details>
 
 ## Todos
 

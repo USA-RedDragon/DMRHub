@@ -117,10 +117,7 @@ export default {
             this.lastheard[i].ber = (this.lastheard[i].ber * 100).toFixed(1);
             this.lastheard[i].rssi = this.lastheard[i].rssi.toFixed(0);
 
-            // Take the absolute value of jitter to get rid of negative values
-            this.lastheard[i].jitter = Math.abs(
-              this.lastheard[i].jitter
-            ).toFixed(1);
+            this.lastheard[i].jitter = this.lastheard[i].jitter.toFixed(1);
           }
         })
         .catch((err) => {

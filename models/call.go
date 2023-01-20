@@ -35,6 +35,9 @@ type Call struct {
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
 	LastFrameNum   uint           `json:"-"`
+	BER            float32        `json:"-"`
+	RSSI           float32        `json:"-"`
+	TotalBits      uint           `json:"-"`
 	LastPacketTime time.Time      `json:"-"`
 	HasHeader      bool           `json:"-"`
 	HasTerm        bool           `json:"-"`

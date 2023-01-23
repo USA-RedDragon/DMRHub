@@ -54,7 +54,7 @@ func UnpackPacket(data []byte) Packet {
 	return packet
 }
 
-func (p Packet) Encode() []byte {
+func (p *Packet) Encode() []byte {
 	// Encode the packet as we decoded
 	data := make([]byte, 53)
 	copy(data[:4], []byte(p.Signature))

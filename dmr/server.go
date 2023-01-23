@@ -43,7 +43,7 @@ func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.
 	}
 }
 
-func (s DMRServer) Stop() {
+func (s *DMRServer) Stop() {
 	// Send a MSTCL command to each repeater
 	repeaters, err := s.Redis.list()
 	if err != nil {
@@ -61,7 +61,7 @@ func (s DMRServer) Stop() {
 	s.Started = false
 }
 
-func (s DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
+func (s *DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
 	if !s.Redis.exists(repeaterID) {
 		klog.Warningf("Repeater %d does not exist", repeaterID)
@@ -83,8 +83,7 @@ func (s DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr 
 	return valid
 }
 
-func (s DMRServer) Listen() {
-	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+func (s *DMRServer) Listen() {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	// 1MB buffers, say what?
 	server.SetReadBuffer(1000000)
@@ -94,21 +93,24 @@ func (s DMRServer) Listen() {
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
 	}
+	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
-	for {
-		len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-		if s.Verbose {
-			klog.Infof("Read a message from %v\n", remoteaddr)
+	go func() {
+		for {
+			len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
+			if s.Verbose {
+				klog.Infof("Read a message from %v\n", remoteaddr)
+			}
+			if err != nil {
+				klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
+				continue
+			}
+			s.handlePacket(remoteaddr, s.Buffer[:len])
 		}
-		if err != nil {
-			klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
-			continue
-		}
-		s.handlePacket(remoteaddr, s.Buffer[:len])
-	}
+	}()
 }
 
-func (s DMRServer) switchDynamicTalkgroup(packet models.Packet) {
+func (s *DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 	// If the source repeater's (`packet.Repeater`) database entry's
 	// `TS1DynamicTalkgroupID` or `TS2DynamicTalkgroupID` (respective
 	// of the current `packet.Slot`) doesn't match the packet's `Dst`
@@ -143,7 +145,7 @@ func (s DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 	}
 }
 
-func (s DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte) {
+func (s *DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte) {
 	if !s.Started {
 		klog.Warningf("Server not started, not sending command")
 		return
@@ -166,7 +168,7 @@ func (s DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte
 	}
 }
 
-func (s DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
+func (s *DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 	if s.Verbose {
 		klog.Infof("Sending Packet: %v\n", packet)
 		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
@@ -185,7 +187,7 @@ func (s DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 	}
 }
 
-func (s DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
+func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	if s.Verbose {
 		klog.Infof("Data: %s", string(data[:]))
 	}

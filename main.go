@@ -89,7 +89,7 @@ func main() {
 	scheduler.StartAsync()
 
 	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose, db)
-	go dmrServer.Listen()
+	dmrServer.Listen()
 	defer dmrServer.Stop()
 
 	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005", "http://ki5vmf-server.local.mesh:3005", "https://dmr.mcswain.dev"}

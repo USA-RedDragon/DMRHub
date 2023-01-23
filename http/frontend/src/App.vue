@@ -24,6 +24,7 @@ export default {
       // localStorage in Firefox is string-only
       dark: localStorage.dark === "true" ? true : false,
       refresh: null,
+      socket: null,
     };
   },
   watch: {
@@ -32,17 +33,61 @@ export default {
       localStorage.dark = this.dark ? "true" : "false";
     },
   },
+  created() {},
   mounted() {
     this.fetchData();
     this.refresh = setInterval(
       this.fetchData,
       this.settingsStore.refreshInterval
     );
+    this.socket = new WebSocket(this.getWebsocketURI());
+    this.socket.addEventListener("open", (event) => {
+      this.socket.send("Hello World");
+    });
+    this.mapSocketEvents();
   },
   unmounted() {
     clearInterval(this.refresh);
   },
   methods: {
+    getWebsocketURI() {
+      var loc = window.location;
+      var new_uri;
+      if (loc.protocol === "https:") {
+        new_uri = "wss:";
+      } else {
+        new_uri = "ws:";
+      }
+      // nodejs development
+      if (window.location.port == 5173) {
+        // Change port to 3005
+        new_uri += "//" + loc.hostname + ":3005";
+      } else {
+        new_uri += "//" + loc.host;
+      }
+      new_uri += "/ws";
+      console.log('Websocket URI: "' + new_uri + '"');
+      return new_uri;
+    },
+    mapSocketEvents() {
+      this.socket.addEventListener("open", (event) => {
+        console.log("Connected to websocket");
+      });
+
+      this.socket.addEventListener("close", (event) => {
+        console.error("Disconnected from websocket");
+      });
+
+      this.socket.addEventListener("error", (event) => {
+        console.error("Error from websocket", event);
+        this.socket = new WebSocket(this.getWebsocketURI());
+        this.mapSocketEvents();
+      });
+
+      this.socket.addEventListener("message", (event) => {
+        console.log("Message from websocket", event);
+      });
+    },
     fetchData() {
       // GET /users/me
       API.get("/users/me")

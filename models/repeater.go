@@ -47,7 +47,7 @@ type Repeater struct {
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
 }
 
-func (p Repeater) String() string {
+func (p *Repeater) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
 		klog.Errorf("Failed to marshal repeater to json: %s", err)
@@ -80,7 +80,7 @@ func RepeaterIDExists(db *gorm.DB, id uint) bool {
 	return count > 0
 }
 
-func (p Repeater) WantRX(packet Packet) (bool, bool) {
+func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 	want := false
 	slot := false
 
@@ -107,7 +107,7 @@ func (p Repeater) WantRX(packet Packet) (bool, bool) {
 	return want, slot
 }
 
-func (p Repeater) InTS2StaticTalkgroups(dest uint) bool {
+func (p *Repeater) InTS2StaticTalkgroups(dest uint) bool {
 	for _, tg := range p.TS2StaticTalkgroups {
 		if dest == tg.ID {
 			return true
@@ -116,7 +116,7 @@ func (p Repeater) InTS2StaticTalkgroups(dest uint) bool {
 	return false
 }
 
-func (p Repeater) InTS1StaticTalkgroups(dest uint) bool {
+func (p *Repeater) InTS1StaticTalkgroups(dest uint) bool {
 	for _, tg := range p.TS1StaticTalkgroups {
 		if dest == tg.ID {
 			return true

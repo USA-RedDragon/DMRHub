@@ -23,7 +23,7 @@ func makeRedisRepeaterStorage(redisAddr string) redisRepeaterStorage {
 	}
 }
 
-func (s redisRepeaterStorage) ping(repeaterID uint) {
+func (s *redisRepeaterStorage) ping(repeaterID uint) {
 	repeater, err := s.get(repeaterID)
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
@@ -34,7 +34,7 @@ func (s redisRepeaterStorage) ping(repeaterID uint) {
 	s.Redis.Expire(fmt.Sprintf("repeater:%d", repeaterID), 5*time.Minute)
 }
 
-func (s redisRepeaterStorage) updateConnection(repeaterID uint, connection string) {
+func (s *redisRepeaterStorage) updateConnection(repeaterID uint, connection string) {
 	repeater, err := s.get(repeaterID)
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
@@ -44,11 +44,11 @@ func (s redisRepeaterStorage) updateConnection(repeaterID uint, connection strin
 	s.store(repeaterID, repeater)
 }
 
-func (s redisRepeaterStorage) delete(repeaterId uint) bool {
+func (s *redisRepeaterStorage) delete(repeaterId uint) bool {
 	return s.Redis.Del(fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
 }
 
-func (s redisRepeaterStorage) store(repeaterId uint, repeater models.Repeater) {
+func (s *redisRepeaterStorage) store(repeaterId uint, repeater models.Repeater) {
 	repeaterBytes, err := repeater.MarshalMsg(nil)
 	if err != nil {
 		klog.Errorf("Error marshalling repeater", err)
@@ -58,7 +58,7 @@ func (s redisRepeaterStorage) store(repeaterId uint, repeater models.Repeater) {
 	s.Redis.Set(fmt.Sprintf("repeater:%d", repeaterId), repeaterBytes, 5*time.Minute)
 }
 
-func (s redisRepeaterStorage) get(repeaterId uint) (models.Repeater, error) {
+func (s *redisRepeaterStorage) get(repeaterId uint) (models.Repeater, error) {
 	repeaterBits, err := s.Redis.Get(fmt.Sprintf("repeater:%d", repeaterId)).Result()
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
@@ -73,11 +73,11 @@ func (s redisRepeaterStorage) get(repeaterId uint) (models.Repeater, error) {
 	return repeater, nil
 }
 
-func (s redisRepeaterStorage) exists(repeaterId uint) bool {
+func (s *redisRepeaterStorage) exists(repeaterId uint) bool {
 	return s.Redis.Exists(fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
 }
 
-func (s redisRepeaterStorage) list() ([]uint, error) {
+func (s *redisRepeaterStorage) list() ([]uint, error) {
 	var cursor uint64
 	var repeaters []uint
 	for {

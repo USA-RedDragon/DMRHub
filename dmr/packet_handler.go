@@ -51,6 +51,10 @@ func (s *DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 }
 
 func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
+	if len(data) < 4 {
+		// Not enough data here to be a valid packet
+		klog.Warningf("Invalid packet length: %d", len(data))
+	}
 	if s.Verbose {
 		klog.Infof("Data: %s", string(data[:]))
 	}

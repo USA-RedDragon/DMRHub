@@ -13,22 +13,22 @@ type Repeater struct {
 	RadioID               uint           `json:"id" gorm:"primaryKey" msg:"radio_id"`
 	Connection            string         `json:"-" gorm:"-" msg:"connection"`
 	Connected             time.Time      `json:"connected_time" msg:"connected"`
-	PingsReceived         int            `json:"-" gorm:"-" msg:"pings_received"`
+	PingsReceived         uint           `json:"-" gorm:"-" msg:"pings_received"`
 	LastPing              time.Time      `json:"last_ping_time" msg:"last_ping"`
 	IP                    string         `json:"-" gorm:"-" msg:"ip"`
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
 	Callsign              string         `json:"callsign" msg:"callsign"`
-	RXFrequency           int            `json:"rx_frequency" msg:"rx_frequency"`
-	TXFrequency           int            `json:"tx_frequency" msg:"tx_frequency"`
-	TXPower               int            `json:"tx_power" msg:"tx_power"`
+	RXFrequency           uint           `json:"rx_frequency" msg:"rx_frequency"`
+	TXFrequency           uint           `json:"tx_frequency" msg:"tx_frequency"`
+	TXPower               uint           `json:"tx_power" msg:"tx_power"`
 	ColorCode             uint           `json:"color_code" msg:"color_code"`
 	Latitude              float32        `json:"latitude" msg:"latitude"`
 	Longitude             float32        `json:"longitude" msg:"longitude"`
 	Height                int            `json:"height" msg:"height"`
 	Location              string         `json:"location" msg:"location"`
 	Description           string         `json:"description" msg:"description"`
-	Slots                 int            `json:"slots" msg:"slots"`
+	Slots                 uint           `json:"slots" msg:"slots"`
 	URL                   string         `json:"url" msg:"url"`
 	SoftwareID            string         `json:"software_id" msg:"software_id"`
 	PackageID             string         `json:"package_id" msg:"package_id"`

@@ -169,7 +169,7 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
 				return
 			}
-			repeater.TXFrequency = int(mhZFloat * 1000000)
+			repeater.TXFrequency = uint(mhZFloat * 1000000)
 			// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
 			positiveOffset := false
 			if strings.HasPrefix(r.Offset, "-") {
@@ -188,7 +188,7 @@ func POSTRepeater(c *gin.Context) {
 				return
 			}
 			// convert the offset to an int in Hz
-			offsetInt := int(offsetFloat * 1000000)
+			offsetInt := uint(offsetFloat * 1000000)
 			if positiveOffset {
 				repeater.RXFrequency = repeater.TXFrequency + offsetInt
 			} else {

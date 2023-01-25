@@ -1,5 +1,7 @@
 package dmr
 
+import "regexp"
+
 const (
 	// Command Types
 	COMMAND_DMRA    = "DMRA"
@@ -29,3 +31,5 @@ const (
 	HBPF_SLT_VHEAD = 0x1
 	HBPF_SLT_VTERM = 0x2
 )
+
+var callsignRegex = regexp.MustCompile(`^([A-Z0-9]{0,8})$`)

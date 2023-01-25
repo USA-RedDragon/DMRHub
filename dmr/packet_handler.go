@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
+	"github.com/USA-RedDragon/dmrserver-in-a-box/sdk"
 	"k8s.io/klog/v2"
 )
 
@@ -427,60 +428,118 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				repeater.Connected = time.Now()
 				repeater.LastPing = time.Now()
 
-				repeater.Callsign = strings.TrimRight(string(data[8:16]), " ")
+				repeater.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
+				if len(repeater.Callsign) < 4 || len(repeater.Callsign) > 8 {
+					klog.Errorf("Invalid callsign: %s", repeater.Callsign)
+					return
+				}
+				if !callsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
+					klog.Errorf("Invalid callsign: %s", repeater.Callsign)
+					return
+				}
+
 				rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing RXFreq", err)
 					return
 				}
-				repeater.RXFrequency = int(rxFreq)
+				repeater.RXFrequency = uint(rxFreq)
+
 				txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing TXFreq", err)
 					return
 				}
-				repeater.TXFrequency = int(txFreq)
+				repeater.TXFrequency = uint(txFreq)
+
 				txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing TXPower", err)
 					return
 				}
-				repeater.TXPower = int(txPower)
+				repeater.TXPower = uint(txPower)
+				if repeater.TXPower > 99 {
+					repeater.TXPower = 99
+				}
+
 				colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing ColorCode", err)
 					return
 				}
+				if colorCode > 15 {
+					klog.Errorf("Invalid ColorCode: %d", colorCode)
+					return
+				}
 				repeater.ColorCode = uint(colorCode)
+
 				lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 				if err != nil {
 					klog.Errorf("Error parsing Latitude", err)
 					return
 				}
+				if lat < -90 || lat > 90 {
+					klog.Errorf("Invalid Latitude: %f", lat)
+					return
+				}
 				repeater.Latitude = float32(lat)
+
 				long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 				if err != nil {
 					klog.Errorf("Error parsing Longitude", err)
 					return
 				}
+				if long < -180 || long > 180 {
+					klog.Errorf("Invalid Longitude: %f", long)
+					return
+				}
 				repeater.Longitude = float32(long)
+
 				height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing Height", err)
 					return
 				}
+				if height > 999 {
+					height = 999
+				}
 				repeater.Height = int(height)
+
 				repeater.Location = strings.TrimRight(string(data[58:78]), " ")
+				if len(repeater.Location) > 20 {
+					repeater.Location = repeater.Location[:20]
+				}
+
 				repeater.Description = strings.TrimRight(string(data[78:97]), " ")
+				if len(repeater.Description) > 20 {
+					repeater.Description = repeater.Description[:20]
+				}
+
 				slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
 				if err != nil {
 					klog.Errorf("Error parsing Slots", err)
 					return
 				}
-				repeater.Slots = int(slots)
+				repeater.Slots = uint(slots)
+
 				repeater.URL = strings.TrimRight(string(data[98:222]), " ")
+				if len(repeater.URL) > 124 {
+					repeater.URL = repeater.URL[:124]
+				}
+
 				repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
+				if len(repeater.SoftwareID) > 40 {
+					repeater.SoftwareID = repeater.SoftwareID[:40]
+				} else if repeater.SoftwareID == "" {
+					repeater.SoftwareID = "github.com/USA-RedDragon/dmrserver-in-a-box v" + sdk.Version + "-" + sdk.GitCommit
+				}
 				repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
+				if len(repeater.PackageID) > 40 {
+					repeater.PackageID = repeater.PackageID[:40]
+				} else if repeater.PackageID == "" {
+					repeater.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
+				}
+
 				repeater.Connection = "YES"
 				s.Redis.store(repeaterId, repeater)
 				klog.Infof("Repeater ID %d (%s) connected\n", repeaterId, repeater.Callsign)

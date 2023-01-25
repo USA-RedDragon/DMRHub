@@ -76,7 +76,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	} else if command == COMMAND_DMRD {
 		// DMRD packets are either 53 or 55 bytes long
 		if len(data) != 53 && len(data) != 55 {
-			klog.Warningf("Invalid packet length: %d", len(data))
+			klog.Warningf("Invalid DMRD packet length: %d", len(data))
 			return
 		}
 		repeaterIdBytes := data[11:15]
@@ -283,6 +283,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			s.sendCommand(repeaterId, COMMAND_RPTACK, repeaterIdBytes)
 		}
 	} else if command == COMMAND_RPTL {
+		// RPTL packets are 8 bytes long
+		if len(data) != 8 {
+			klog.Warningf("Invalid RPTL packet length: %d", len(data))
+			return
+		}
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		klog.Infof("Login from Repeater ID: %d", repeaterId)
@@ -323,6 +328,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			s.Redis.updateConnection(repeaterId, "CHALLENGE_SENT")
 		}
 	} else if command == COMMAND_RPTK {
+		// RPTL packets are 8 bytes long + a 32 byte sha256 hash
+		if len(data) != 40 {
+			klog.Warningf("Invalid RPTK packet length: %d", len(data))
+			return
+		}
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
@@ -381,6 +391,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 	} else if command == COMMAND_RPTC {
 		if string(data[:5]) == COMMAND_RPTCL {
+			// RPTCL packets are 8 bytes long
+			if len(data) != 8 {
+				klog.Warningf("Invalid RPTCL packet length: %d", len(data))
+				return
+			}
 			repeaterIdBytes := data[5:9]
 			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 			klog.Infof("Disconnect from Repeater ID: %d", repeaterId)
@@ -391,6 +406,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Warningf("Repeater ID %d not deleted", repeaterId)
 			}
 		} else {
+			// RPTC packets are 302 bytes long
+			if len(data) != 302 {
+				klog.Warningf("Invalid RPTC packet length: %d", len(data))
+				return
+			}
 			repeaterIdBytes := data[4:8]
 			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 			if s.Verbose {
@@ -488,6 +508,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 		}
 	} else if command == COMMAND_RPTP {
+		// RPTP packets are 11 bytes long
+		if len(data) != 11 {
+			klog.Warningf("Invalid RPTP packet length: %d", len(data))
+			return
+		}
 		repeaterIdBytes := data[7:11]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		klog.Infof("Ping from %d", repeaterId)

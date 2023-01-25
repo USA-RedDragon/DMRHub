@@ -144,11 +144,13 @@ func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
 		return
 	}
 	// Save for hoseline:
-	// _, err = c.Redis.Publish("calls", callJSON).Result()
-	// if err != nil {
-	// 	klog.Errorf("Error publishing call JSON: %v", err)
-	// 	return
-	// }
+	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
+		_, err = c.Redis.Publish("calls", callJSON).Result()
+		if err != nil {
+			klog.Errorf("Error publishing call JSON: %v", err)
+			return
+		}
+	}
 
 	// Iterate all repeaters to see if they want the call
 	var repeaters []models.Repeater

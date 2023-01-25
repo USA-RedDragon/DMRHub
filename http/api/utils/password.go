@@ -30,7 +30,7 @@ func HashPassword(password string) string {
 	var params = argon2_params{
 		memory:      64 * 1024,
 		iterations:  3,
-		parallelism: 2,
+		parallelism: 8,
 		saltLength:  16,
 		keyLength:   32,
 		salt:        make([]byte, 16),

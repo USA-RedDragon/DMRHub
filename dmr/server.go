@@ -80,7 +80,7 @@ func (s *DMRServer) listen() {
 	pubsub := s.Redis.Redis.Subscribe("incoming")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
-		var packet RawDMRPacket
+		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
 			klog.Errorf("Error unmarshalling packet", err)
@@ -97,7 +97,7 @@ func (s *DMRServer) send() {
 	pubsub := s.Redis.Redis.Subscribe("outgoing")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
-		var packet RawDMRPacket
+		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
 			klog.Errorf("Error unmarshalling packet", err)
@@ -136,7 +136,7 @@ func (s *DMRServer) Listen() {
 				continue
 			}
 			go func() {
-				p := RawDMRPacket{
+				p := models.RawDMRPacket{
 					Data:       s.Buffer[:len],
 					RemoteIP:   remoteaddr.IP.String(),
 					RemotePort: remoteaddr.Port,
@@ -167,7 +167,7 @@ func (s *DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byt
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
 		}
-		p := RawDMRPacket{
+		p := models.RawDMRPacket{
 			Data:       command_prefixed_data,
 			RemoteIP:   repeater.IP,
 			RemotePort: repeater.Port,
@@ -192,7 +192,7 @@ func (s *DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
 		}
-		p := RawDMRPacket{
+		p := models.RawDMRPacket{
 			Data:       packet.Encode(),
 			RemoteIP:   repeater.IP,
 			RemotePort: repeater.Port,

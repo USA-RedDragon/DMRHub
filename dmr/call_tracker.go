@@ -135,10 +135,70 @@ func (c *CallTracker) IsCallActive(packet models.Packet) bool {
 	return true
 }
 
+type jsonCallResponseUser struct {
+	ID       uint   `json:"id"`
+	Callsign string `json:"callsign"`
+}
+
+type jsonCallResponseRepeater struct {
+	RadioID  uint   `json:"radio_id"`
+	Callsign string `json:"callsign"`
+}
+
+type jsonCallResponseTalkgroup struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type jsonCallResponse struct {
+	ID            uint                      `json:"id"`
+	User          jsonCallResponseUser      `json:"user"`
+	StartTime     time.Time                 `json:"start_time"`
+	Duration      time.Duration             `json:"duration"`
+	Active        bool                      `json:"active"`
+	TimeSlot      bool                      `json:"time_slot"`
+	GroupCall     bool                      `json:"group_call"`
+	IsToTalkgroup bool                      `json:"is_to_talkgroup"`
+	ToTalkgroup   jsonCallResponseTalkgroup `json:"to_talkgroup"`
+	IsToUser      bool                      `json:"is_to_user"`
+	ToUser        jsonCallResponseUser      `json:"to_user"`
+	IsToRepeater  bool                      `json:"is_to_repeater"`
+	ToRepeater    jsonCallResponseRepeater  `json:"to_repeater"`
+	Loss          float32                   `json:"loss"`
+	Jitter        float32                   `json:"jitter"`
+	BER           float32                   `json:"ber"`
+	RSSI          float32                   `json:"rssi"`
+}
+
 func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
+	// copy call into a jsonCallResponse
+	var jsonCall jsonCallResponse
+	jsonCall.ID = call.ID
+	jsonCall.User.ID = call.User.ID
+	jsonCall.User.Callsign = call.User.Callsign
+	jsonCall.StartTime = call.StartTime
+	jsonCall.Duration = call.Duration
+	jsonCall.Active = call.Active
+	jsonCall.TimeSlot = call.TimeSlot
+	jsonCall.GroupCall = call.GroupCall
+	jsonCall.IsToTalkgroup = call.IsToTalkgroup
+	jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
+	jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
+	jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
+	jsonCall.IsToUser = call.IsToUser
+	jsonCall.ToUser.ID = call.ToUser.ID
+	jsonCall.ToUser.Callsign = call.ToUser.Callsign
+	jsonCall.IsToRepeater = call.IsToRepeater
+	jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+	jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
+	jsonCall.Loss = call.Loss
+	jsonCall.Jitter = call.Jitter
+	jsonCall.BER = call.BER
+	jsonCall.RSSI = call.RSSI
 	// Publish the call JSON to Redis
 	var callJSON []byte
-	callJSON, err := json.Marshal(call)
+	callJSON, err := json.Marshal(jsonCall)
 	if err != nil {
 		klog.Errorf("Error marshalling call JSON: %v", err)
 		return
@@ -183,10 +243,10 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 	c.CallEndTimers[call.ID].Reset(2 * time.Second)
 
 	elapsed := time.Since(call.LastPacketTime)
+	call.LastPacketTime = time.Now()
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
 	// time the last packet was. We'll use this to calculate the average jitter.
 	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-60)) / 2
-	call.LastPacketTime = time.Now()
 
 	if call.LastFrameNum != 0 && call.LastFrameNum == packet.DTypeOrVSeq {
 		// We've already seen this packet, so it's either a duplicate or we've lost 6 packets

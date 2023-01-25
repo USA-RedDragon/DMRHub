@@ -89,7 +89,6 @@ export default {
     return {
       lastheard: [],
       socket: null,
-      cleaning: false,
     };
   },
   methods: {

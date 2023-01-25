@@ -1,4 +1,4 @@
-package dmr
+package models
 
 //go:generate msgp
 type RawDMRPacket struct {

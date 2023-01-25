@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"net"
 	"strconv"
@@ -101,23 +102,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Warningf("Repeater %d not found in DB", repeaterId)
 				return
 			}
-			// If the packet length is 11 exactly, it's a packet header without any data
-			// we may drop it
-			if len(data) == 11 {
-				klog.Warningf("Packet header without data, dropping")
-				return
-			}
 			packet := models.UnpackPacket(data[:])
-
-			// If packet.BER is not 0, print it
-			if packet.BER != -1 {
-				klog.Infof("BER: %d", packet.BER)
-			}
-
-			// If packet.RSSI is not 0, print it
-			if packet.RSSI != -1 {
-				klog.Infof("RSSI: %ddBm", packet.RSSI)
-			}
 
 			isVoice := false
 			isData := false
@@ -147,13 +132,15 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 			// Don't call track unlink
 			if packet.Dst != 4000 && isVoice {
-				if !s.CallTracker.IsCallActive(packet) {
-					s.CallTracker.StartCall(packet)
-				}
-				s.CallTracker.ProcessCallPacket(packet)
-				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
-					s.CallTracker.EndCall(packet)
-				}
+				go func() {
+					if !s.CallTracker.IsCallActive(packet) {
+						s.CallTracker.StartCall(packet)
+					}
+					s.CallTracker.ProcessCallPacket(packet)
+					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+						s.CallTracker.EndCall(packet)
+					}
+				}()
 			}
 
 			if packet.Dst == 9990 && isVoice {
@@ -164,7 +151,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				s.Parrot.RecordPacket(packet.StreamId, packet)
 				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
 					s.Parrot.StopStream(packet.StreamId)
-					f := func() {
+					go func() {
 						packets := s.Parrot.GetStream(packet.StreamId)
 						time.Sleep(3 * time.Second)
 						started := false
@@ -173,16 +160,17 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						startedTime := time.Now()
 						for j, pkt := range packets {
 							s.sendPacket(repeaterId, pkt)
-							if !started {
-								s.CallTracker.StartCall(pkt)
-								started = true
-							}
-							pkt.RSSI = -1
-							pkt.BER = -1
-							s.CallTracker.ProcessCallPacket(pkt)
-							if j == len(packets)-1 {
-								s.CallTracker.EndCall(pkt)
-							}
+
+							go func() {
+								if !started {
+									s.CallTracker.StartCall(pkt)
+									started = true
+								}
+								s.CallTracker.ProcessCallPacket(pkt)
+								if j == len(packets)-1 {
+									s.CallTracker.EndCall(pkt)
+								}
+							}()
 							// Calculate the time since the call started
 							elapsed := time.Since(startedTime)
 							// If elapsed is greater than 60ms, we're behind and need to catch up
@@ -197,8 +185,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 							}
 							startedTime = time.Now()
 						}
-					}
-					go f()
+					}()
 				}
 				// Don't route parrot calls
 				return
@@ -221,46 +208,38 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if packet.GroupCall && isVoice {
 				go s.switchDynamicTalkgroup(packet)
 
-				// For each repeater in Redis
-				repeaters, err := s.Redis.list()
+				// We can just use redis to publish to "packets:talkgroup:<id>"
+				var rawPacket models.RawDMRPacket
+				rawPacket.Data = data[:]
+				rawPacket.RemoteIP = remoteAddr.IP.String()
+				rawPacket.RemotePort = remoteAddr.Port
+				packedBytes, err := rawPacket.MarshalMsg(nil)
 				if err != nil {
-					klog.Errorf("Error scanning redis for repeaters", err)
+					klog.Errorf("Error marshalling raw packet", err)
+					return
 				}
-				for _, repeater := range repeaters {
-					if repeater == repeaterId {
-						continue
-					} else {
-						var destDbRepeater models.Repeater
-						if !models.RepeaterIDExists(s.DB, repeater) {
-							klog.Warningf("Repeater %d not found in DB", repeater)
-							return
-						}
-						destDbRepeater = models.FindRepeaterByID(s.DB, repeater)
-						klog.Infof("Checking if repeater %d wants packets", repeater)
-						want, slot := destDbRepeater.WantRX(packet)
-						if want {
-							klog.Infof("Repeater %d wants packet", destDbRepeater.RadioID)
-							packet.Slot = slot
-							if s.Verbose {
-								slotNum := 1
-								if packet.Slot {
-									slotNum = 2
-								}
-								klog.Infof("Sending packet to repeater %d on slot %d", destDbRepeater.RadioID, slotNum)
+				s.Redis.Redis.Publish(fmt.Sprintf("packets:talkgroup:%d", packet.Dst), packedBytes)
+			} else if !packet.GroupCall && isVoice {
+				// packet.Dst is either a repeater or a user
+				// If it's a repeater, we need to send it to the repeater
+				// If it's a user, we need to send it to the repeater that the user is connected to
+				// by looking up the user in the database and iterating through their repeaters
+
+				// users have 7 digit IDs, repeaters have 6 digit IDs or 9 digit IDs
+				if packet.Dst < 1000000 || packet.Dst > 99999999 {
+					// This is to a repeater
+					s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", packet.Dst), data)
+				} else if packet.Dst < 10000000 {
+					// This is to a user
+					// Search the database for the user
+					if models.UserIDExists(s.DB, packet.Dst) {
+						user := models.FindUserByID(s.DB, packet.Dst)
+						for _, repeater := range user.Repeaters {
+							if s.Redis.exists(repeater.RadioID) {
+								s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", repeater.RadioID), data)
 							}
-							packet.Repeater = destDbRepeater.RadioID
-							go s.sendPacket(destDbRepeater.RadioID, packet)
-						} else {
-							klog.Infof("Repeater %d does not want packet", dbRepeater.RadioID)
 						}
 					}
-				}
-			} else if !packet.GroupCall && isVoice {
-				if s.Redis.exists(packet.Dst) {
-					packet.Repeater = packet.Dst
-					s.sendPacket(repeaterId, packet)
-				} else {
-					klog.Warning("Private call to non-existent repeater %d", packet.Dst)
 				}
 			} else if isData {
 				klog.Warning("Unhandled data packet type")

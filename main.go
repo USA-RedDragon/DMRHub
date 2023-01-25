@@ -92,6 +92,11 @@ func main() {
 	dmrServer.Listen()
 	defer dmrServer.Stop()
 
+	// For each repeater in the DB, start a gofunc to listen for calls
+	for _, repeater := range models.ListRepeaters(db) {
+		go repeater.ListenForCalls(*redisHost)
+	}
+
 	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005", "http://ki5vmf-server.local.mesh:3005", "https://dmr.mcswain.dev"}
 	http.Start(*listen, *frontendPort, *verbose, *redisHost, db, *secret, corsHosts)
 }

@@ -2,8 +2,10 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -45,6 +47,88 @@ type Repeater struct {
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
+}
+
+func (p *Repeater) ListenForCalls(redisHost string) {
+	redis := redis.NewClient(&redis.Options{
+		Addr: redisHost,
+	})
+	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
+	// This channel is used to get private calls headed to this repeater
+	// When a packet is received, we need to publish it to "outgoing" channel
+	// with the destination repeater ID as this one
+	go p.subscribeRepeater(redis)
+
+	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
+	for _, tg := range p.TS1StaticTalkgroups {
+		go p.subscribeTG(redis, tg.ID)
+	}
+	for _, tg := range p.TS2StaticTalkgroups {
+		go p.subscribeTG(redis, tg.ID)
+	}
+	go p.subscribeTG(redis, p.TS1DynamicTalkgroup.ID)
+	go p.subscribeTG(redis, p.TS2DynamicTalkgroup.ID)
+}
+
+func (p *Repeater) subscribeRepeater(redis *redis.Client) {
+	pubsub := redis.Subscribe(fmt.Sprintf("packets:repeater:%d", p.RadioID))
+	defer pubsub.Close()
+	for {
+		msg, err := pubsub.ReceiveMessage()
+		if err != nil {
+			klog.Errorf("Failed to receive message from Redis: %s", err)
+			return
+		}
+		rawPacket := RawDMRPacket{}
+		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
+		if err != nil {
+			klog.Errorf("Failed to unmarshal raw packet: %s", err)
+			return
+		}
+		// This packet is already for us and we don't want to modify the slot
+		packet := UnpackPacket(rawPacket.Data)
+		packet.Repeater = p.RadioID
+		rawPacket.Data = packet.Encode()
+		packedBytes, err := rawPacket.MarshalMsg(nil)
+		if err != nil {
+			klog.Errorf("Error marshalling raw packet", err)
+			return
+		}
+		redis.Publish("outgoing", packedBytes)
+	}
+}
+
+func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
+	pubsub := redis.Subscribe(fmt.Sprintf("packets:talkgroup:%d", tg))
+	defer pubsub.Close()
+	for {
+		msg, err := pubsub.ReceiveMessage()
+		if err != nil {
+			klog.Errorf("Failed to receive message from Redis: %s", err)
+			return
+		}
+		rawPacket := RawDMRPacket{}
+		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
+		if err != nil {
+			klog.Errorf("Failed to unmarshal raw packet: %s", err)
+			return
+		}
+		packet := UnpackPacket(rawPacket.Data)
+		want, slot := p.WantRX(packet)
+		if want {
+			// This packet is for the repeater's dynamic talkgroup
+			// We need to send it to the repeater
+			packet.Repeater = p.RadioID
+			packet.Slot = slot
+			rawPacket.Data = packet.Encode()
+			packedBytes, err := rawPacket.MarshalMsg(nil)
+			if err != nil {
+				klog.Errorf("Error marshalling raw packet", err)
+				return
+			}
+			redis.Publish("outgoing", packedBytes)
+		}
+	}
 }
 
 func (p *Repeater) String() string {

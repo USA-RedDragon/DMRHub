@@ -225,10 +225,21 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				// If it's a user, we need to send it to the repeater that the user is connected to
 				// by looking up the user in the database and iterating through their repeaters
 
+				var rawPacket models.RawDMRPacket
+				rawPacket.Data = data[:]
+				rawPacket.RemoteIP = remoteAddr.IP.String()
+				rawPacket.RemotePort = remoteAddr.Port
+
+				packedBytes, err := rawPacket.MarshalMsg(nil)
+				if err != nil {
+					klog.Errorf("Error marshalling raw packet", err)
+					return
+				}
+
 				// users have 7 digit IDs, repeaters have 6 digit IDs or 9 digit IDs
 				if packet.Dst < 1000000 || packet.Dst > 99999999 {
 					// This is to a repeater
-					s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", packet.Dst), data)
+					s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", packet.Dst), packedBytes)
 				} else if packet.Dst < 10000000 {
 					// This is to a user
 					// Search the database for the user
@@ -236,7 +247,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						user := models.FindUserByID(s.DB, packet.Dst)
 						for _, repeater := range user.Repeaters {
 							if s.Redis.exists(repeater.RadioID) {
-								s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", repeater.RadioID), data)
+								s.Redis.Redis.Publish(fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
 							}
 						}
 					}

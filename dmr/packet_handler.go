@@ -74,6 +74,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			klog.Warning("TODO: DMRA")
 		}
 	} else if command == COMMAND_DMRD {
+		// DMRD packets are either 53 or 55 bytes long
+		if len(data) != 53 && len(data) != 55 {
+			klog.Warningf("Invalid packet length: %d", len(data))
+			return
+		}
 		repeaterIdBytes := data[11:15]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {

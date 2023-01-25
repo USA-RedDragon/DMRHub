@@ -8,11 +8,11 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-co-op/gocron v1.18.0
 	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/gorilla/websocket v1.5.0
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
 	github.com/wk8/go-ordered-map v1.0.0
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	golang.org/x/net v0.5.0
 	gorm.io/driver/sqlite v1.4.4
 	gorm.io/gorm v1.24.3
 	k8s.io/klog/v2 v2.80.1
@@ -45,6 +45,7 @@ require (
 	github.com/philhofer/fwd v1.1.2 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/ugorji/go/codec v1.2.7 // indirect
+	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect

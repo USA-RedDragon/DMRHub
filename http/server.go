@@ -10,11 +10,11 @@ import (
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
+	websocketHandler "github.com/USA-RedDragon/dmrserver-in-a-box/http/websocket"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/net/websocket"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -22,12 +22,12 @@ import (
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func EchoServer(ws *websocket.Conn) {
-	io.Copy(ws, ws)
-}
+var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
 func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB, sessionSecret string, corsHosts []string) {
+	ws = websocketHandler.CreateHandler(db, redisHost, corsHosts)
+
 	// Setup API
 	r := gin.Default()
 	r.Use(middleware.DatabaseProvider(db))
@@ -40,9 +40,8 @@ func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB, s
 	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte(sessionSecret))
 	r.Use(sessions.Sessions("sessions", store))
 
-	r.GET("/ws", gin.WrapH(websocket.Handler(EchoServer)))
-
-	api.ApplyRoutes(r, redisHost)
+	ws.ApplyRoutes(r)
+	api.ApplyRoutes(r)
 
 	staticGroup := r.Group("/")
 

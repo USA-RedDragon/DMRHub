@@ -39,7 +39,7 @@ func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.
 		Verbose:     verbose,
 		DB:          db,
 		Redis:       makeRedisRepeaterStorage(redisHost),
-		CallTracker: NewCallTracker(db),
+		CallTracker: NewCallTracker(redisHost, db),
 	}
 }
 

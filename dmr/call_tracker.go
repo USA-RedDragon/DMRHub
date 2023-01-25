@@ -1,9 +1,12 @@
 package dmr
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
+	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -14,12 +17,16 @@ const timerDelay = 2 * time.Second
 
 type CallTracker struct {
 	DB            *gorm.DB
+	Redis         *redis.Client
 	CallEndTimers map[uint]*time.Timer
 }
 
-func NewCallTracker(db *gorm.DB) *CallTracker {
+func NewCallTracker(redisHost string, db *gorm.DB) *CallTracker {
 	return &CallTracker{
-		DB:            db,
+		DB: db,
+		Redis: redis.NewClient(&redis.Options{
+			Addr: redisHost,
+		}),
 		CallEndTimers: make(map[uint]*time.Timer),
 	}
 }
@@ -126,6 +133,39 @@ func (c *CallTracker) IsCallActive(packet models.Packet) bool {
 		return false
 	}
 	return true
+}
+
+func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
+	// Publish the call JSON to Redis
+	var callJSON []byte
+	callJSON, err := json.Marshal(call)
+	if err != nil {
+		klog.Errorf("Error marshalling call JSON: %v", err)
+		return
+	}
+	// Save for hoseline:
+	// _, err = c.Redis.Publish("calls", callJSON).Result()
+	// if err != nil {
+	// 	klog.Errorf("Error publishing call JSON: %v", err)
+	// 	return
+	// }
+
+	// Iterate all repeaters to see if they want the call
+	var repeaters []models.Repeater
+	alreadyPublished := make(map[uint]bool)
+	c.DB.Preload("Owner").Find(&repeaters)
+	for _, repeater := range repeaters {
+		want, _ := repeater.WantRX(packet)
+		if want && !alreadyPublished[repeater.OwnerID] {
+			// Publish the call to the repeater owner's call history
+			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+			alreadyPublished[repeater.OwnerID] = true
+		}
+		if repeater.OwnerID == call.UserID {
+			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+			alreadyPublished[repeater.OwnerID] = true
+		}
+	}
 }
 
 func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
@@ -260,6 +300,9 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 	}
 
 	c.DB.Save(&call)
+	if call.TotalPackets%2 == 0 {
+		go c.publishCall(&call, packet)
+	}
 }
 
 func endCallHandler(c *CallTracker, packet models.Packet) func() {
@@ -306,6 +349,7 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 	call.Duration = time.Since(call.StartTime)
 	call.Loss = float32(call.LostSequences / call.TotalPackets)
 	c.DB.Save(&call)
+	go c.publishCall(&call, packet)
 
 	klog.Errorf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
 }

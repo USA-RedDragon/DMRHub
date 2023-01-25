@@ -74,9 +74,6 @@ import moment from "moment";
 import DataTable from "primevue/datatable/sfc";
 import Column from "primevue/column/sfc";
 
-import { mapStores } from "pinia";
-import { useSettingsStore } from "@/store";
-
 export default {
   components: {
     Card,
@@ -86,48 +83,121 @@ export default {
   created() {},
   mounted() {
     this.fetchData();
-    this.refresh = setInterval(
-      this.fetchData,
-      this.settingsStore.refreshInterval
-    );
   },
-  unmounted() {
-    clearInterval(this.refresh);
-  },
+  unmounted() {},
   data: function () {
     return {
       lastheard: [],
-      refresh: null,
+      socket: null,
+      cleaning: false,
     };
   },
   methods: {
+    getWebsocketURI() {
+      var loc = window.location;
+      var new_uri;
+      if (loc.protocol === "https:") {
+        new_uri = "wss:";
+      } else {
+        new_uri = "ws:";
+      }
+      // nodejs development
+      if (window.location.port == 5173) {
+        // Change port to 3005
+        new_uri += "//" + loc.hostname + ":3005";
+      } else {
+        new_uri += "//" + loc.host;
+      }
+      new_uri += "/ws";
+      console.log('Websocket URI: "' + new_uri + '"');
+      return new_uri;
+    },
+    mapSocketEvents() {
+      this.socket.addEventListener("open", (event) => {
+        console.log("Connected to calls websocket");
+      });
+
+      this.socket.addEventListener("close", (event) => {
+        console.error("Disconnected from calls websocket");
+        console.error("Sleeping for 1 second before reconnecting");
+        setTimeout(() => {
+          this.socket = new WebSocket(this.getWebsocketURI() + "/calls");
+          this.mapSocketEvents();
+        }, 1000);
+      });
+
+      this.socket.addEventListener("error", (event) => {
+        console.error("Error from calls websocket", event);
+        this.socket = new WebSocket(this.getWebsocketURI() + "/calls");
+        this.mapSocketEvents();
+      });
+
+      this.socket.addEventListener("message", (event) => {
+        const call = JSON.parse(event.data);
+        // We need to check that the call is not already in the table
+        // If it is, we need to update it
+        // If it isn't, we need to add it
+        let found = false;
+        let copyLastheard = JSON.parse(JSON.stringify(this.lastheard));
+
+        for (let i = 0; i < copyLastheard.length; i++) {
+          if (copyLastheard[i].id == call.id) {
+            found = true;
+            copyLastheard[i] = call;
+            break;
+          }
+        }
+
+        if (!found) {
+          copyLastheard.unshift(call);
+          copyLastheard.pop();
+        }
+
+        this.lastheard = this.cleanData(copyLastheard);
+      });
+    },
+    cleanData(data) {
+      let copyData = JSON.parse(JSON.stringify(data));
+      for (let i = 0; i < copyData.length; i++) {
+        copyData[i].start_time = moment(copyData[i].start_time);
+
+        if (typeof copyData[i].duration == "number") {
+          copyData[i].duration = (copyData[i].duration / 1000000000).toFixed(1);
+        }
+
+        // loss is in a ratio, multiply by 100 to get a percentage
+        if (typeof copyData[i].loss == "number") {
+          copyData[i].loss = (copyData[i].loss * 100).toFixed(1);
+        }
+
+        if (typeof copyData[i].ber == "number") {
+          copyData[i].ber = (copyData[i].ber * 100).toFixed(1);
+        }
+
+        if (typeof copyData[i].jitter == "number") {
+          copyData[i].jitter = copyData[i].jitter.toFixed(1);
+        }
+
+        if (typeof copyData[i].rssi == "number") {
+          copyData[i].rssi = copyData[i].rssi.toFixed(0);
+        }
+      }
+
+      return copyData;
+    },
     fetchData() {
       API.get("/lastheard")
         .then((res) => {
-          this.lastheard = res.data;
-          for (let i = 0; i < this.lastheard.length; i++) {
-            this.lastheard[i].start_time = moment(this.lastheard[i].start_time);
-            // lastheard.duration is in nanoseconds, convert to seconds
-            this.lastheard[i].duration = (
-              this.lastheard[i].duration / 1000000000
-            ).toFixed(1);
-
-            // loss is in a ratio, multiply by 100 to get a percentage
-            this.lastheard[i].loss = (this.lastheard[i].loss * 100).toFixed(1);
-            this.lastheard[i].ber = (this.lastheard[i].ber * 100).toFixed(1);
-            this.lastheard[i].rssi = this.lastheard[i].rssi.toFixed(0);
-
-            this.lastheard[i].jitter = this.lastheard[i].jitter.toFixed(1);
-          }
+          this.lastheard = this.cleanData(res.data);
+          this.socket = new WebSocket(this.getWebsocketURI() + "/calls");
+          this.mapSocketEvents();
         })
         .catch((err) => {
           console.error(err);
         });
     },
   },
-  computed: {
-    ...mapStores(useSettingsStore),
-  },
+  computed: {},
 };
 </script>
 

@@ -97,6 +97,7 @@ func (s *DMRServer) send() {
 	pubsub := s.Redis.Redis.Subscribe("outgoing")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
+		klog.Errorf("PUBSUB: Received outgoing message")
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {

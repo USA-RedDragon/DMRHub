@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis"
@@ -96,17 +97,28 @@ func (h *WSHandler) callHandler(db *gorm.DB, session sessions.Session, w http.Re
 		return
 	}
 
-	userID := session.Get("user_id").(uint)
+	userIDIface := session.Get("user_id")
+	if userIDIface == nil {
+		// User ID not found, subscribe to TG calls
+		pubsub := h.redis.Subscribe("calls")
+		defer pubsub.Close()
+		for msg := range pubsub.Channel() {
+			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+		}
+	} else {
+		userID := userIDIface.(uint)
 
-	pubsub := h.redis.Subscribe(fmt.Sprintf("calls:%d", userID))
-	defer pubsub.Close()
-	for msg := range pubsub.Channel() {
-		conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+		pubsub := h.redis.Subscribe(fmt.Sprintf("calls:%d", userID))
+		defer pubsub.Close()
+		for msg := range pubsub.Channel() {
+			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+		}
 	}
+
 }
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine) {
-	r.GET("/ws/repeaters", func(c *gin.Context) {
+	r.GET("/ws/repeaters", middleware.RequireLogin(), func(c *gin.Context) {
 		db := c.MustGet("DB").(*gorm.DB)
 		session := sessions.Default(c)
 		h.repeaterHandler(db, session, c.Writer, c.Request)

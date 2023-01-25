@@ -33,18 +33,16 @@ export default {
       localStorage.dark = this.dark ? "true" : "false";
     },
   },
-  created() {},
+  created() {
+    this.socket = new WebSocket(this.getWebsocketURI() + "/health");
+    this.mapSocketEvents();
+  },
   mounted() {
     this.fetchData();
     this.refresh = setInterval(
       this.fetchData,
       this.settingsStore.refreshInterval
     );
-    this.socket = new WebSocket(this.getWebsocketURI());
-    this.socket.addEventListener("open", (event) => {
-      this.socket.send("Hello World");
-    });
-    this.mapSocketEvents();
   },
   unmounted() {
     clearInterval(this.refresh);
@@ -72,20 +70,31 @@ export default {
     mapSocketEvents() {
       this.socket.addEventListener("open", (event) => {
         console.log("Connected to websocket");
+        setInterval(() => {
+          this.socket.send("PING");
+        }, 500);
       });
 
       this.socket.addEventListener("close", (event) => {
         console.error("Disconnected from websocket");
+        console.error("Sleeping for 1 second before reconnecting");
+        setTimeout(() => {
+          this.socket = new WebSocket(this.getWebsocketURI() + "/health");
+          this.mapSocketEvents();
+        }, 1000);
       });
 
       this.socket.addEventListener("error", (event) => {
         console.error("Error from websocket", event);
-        this.socket = new WebSocket(this.getWebsocketURI());
+        this.socket = new WebSocket(this.getWebsocketURI() + "/health");
         this.mapSocketEvents();
       });
 
       this.socket.addEventListener("message", (event) => {
-        console.log("Message from websocket", event);
+        if (event.data === "PONG") {
+          return;
+        }
+        console.log("Message from websocket", event.data);
       });
     },
     fetchData() {

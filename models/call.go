@@ -9,7 +9,7 @@ import (
 )
 
 type Call struct {
-	ID             uint           `json:"-" gorm:"primarykey"`
+	ID             uint           `json:"id" gorm:"primarykey"`
 	StreamID       uint           `json:"-"`
 	StartTime      time.Time      `json:"start_time"`
 	Duration       time.Duration  `json:"duration"`

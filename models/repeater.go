@@ -111,7 +111,7 @@ func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
 		}
 		packet := UnpackPacket(rawPacket.Data)
 		want, slot := p.WantRX(packet)
-		if want {
+		if want && packet.Src != p.RadioID {
 			// This packet is for the repeater's dynamic talkgroup
 			// We need to send it to the repeater
 			packet.Repeater = p.RadioID

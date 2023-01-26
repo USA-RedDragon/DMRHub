@@ -74,8 +74,8 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 
 #### Things the user sees
 
-- Make user admins appointable and implement user suspend in the UI
-- Add ability to add and remove talkgroup admins and NCOs in the UI
+- [API done] Make user admins appointable and implement user suspend in the UI
+- [API done] Add ability to add and remove talkgroup admins and NCOs in the UI
 - Superadmin class that can add and remove admin
 - Admin class that can make and delete talkgroups, suspend and enable users, appoint and demote talkgroup owners, and see the master repeater and user list
 - Finalize color scheme
@@ -99,6 +99,7 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 - users should be able to edit their name and callsign
 - error handling needs to be double checked
 - Fix MSTCL on master shutdown (signal trap)
+- Hoseline equivalent
 - distributed database? Maybe OLSR can help with the "where do I point my pi-star" problem that isn't a SPOF?
 
 ### Long Term
@@ -109,7 +110,7 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 
 ## To test
 
-- DMR sms
+- DMR sms and data packets
 
 ## Feature ideas
 

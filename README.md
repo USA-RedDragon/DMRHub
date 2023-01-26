@@ -8,7 +8,7 @@ This project is deployed in the Oklahoma AREDN mesh. Future revisions will help 
 
 ## External requirements
 
-Right now, Redis is the only requirement, though the database will be externalized in the future.
+Redis and PostgreSQL are required.
 
 ## Screenshots
 
@@ -29,6 +29,26 @@ Right now, Redis is the only requirement, though the database will be externaliz
 
 ![User Approva](doc/Screenshots/user-approval.png)
 </details>
+
+## Deploying
+
+### Setting up a database
+
+TODO: Add instructions and provide a production-ready Docker-Compose file.
+
+Once a database is made available, run the following commands in `psql` to create a database and user for this service.
+
+```sql
+CREATE USER dmr WITH ENCRYPTED PASSWORD 'changeme';
+ALTER USER dmr WITH PASSWORD 'new_password';
+CREATE DATABASE "dmr";
+ALTER DATABASE dmr OWNER TO dmr;
+GRANT ALL PRIVILEGES ON DATABASE dmr TO dmr;
+\c dmr
+GRANT ALL ON schema public TO dmr;
+# after the app runs so Parrot call tracking works
+INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot','','f','t');
+```
 
 ## Todos
 

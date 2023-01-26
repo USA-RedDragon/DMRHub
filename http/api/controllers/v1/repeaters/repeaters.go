@@ -97,9 +97,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
 			repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
-			repeater.TS1DynamicTalkgroupID = json.TS1DynamicTalkgroup.ID
+			repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
 			repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
-			repeater.TS2DynamicTalkgroupID = json.TS2DynamicTalkgroup.ID
+			repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
 			db.Save(&repeater)
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
@@ -257,11 +257,11 @@ func POSTRepeaterLink(c *gin.Context) {
 		case "1":
 			// Set TS1DynamicTalkgroup association on repeater to target
 			repeater.TS1DynamicTalkgroup = talkgroup
-			repeater.TS1DynamicTalkgroupID = talkgroup.ID
+			repeater.TS1DynamicTalkgroupID = &talkgroup.ID
 		case "2":
 			// Set TS2DynamicTalkgroup association on repeater to target
 			repeater.TS2DynamicTalkgroup = talkgroup
-			repeater.TS2DynamicTalkgroupID = talkgroup.ID
+			repeater.TS2DynamicTalkgroupID = &talkgroup.ID
 		}
 	case "static":
 		switch slot {
@@ -326,21 +326,21 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	case "dynamic":
 		switch slot {
 		case "1":
-			if repeater.TS1DynamicTalkgroupID != talkgroup.ID {
+			if *repeater.TS1DynamicTalkgroupID != talkgroup.ID {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}
 			// Set TS1DynamicTalkgroup association on repeater to target
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
-			repeater.TS1DynamicTalkgroupID = 0
+			repeater.TS1DynamicTalkgroupID = nil
 		case "2":
-			if repeater.TS2DynamicTalkgroupID != talkgroup.ID {
+			if *repeater.TS2DynamicTalkgroupID != talkgroup.ID {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}
 			// Set TS2DynamicTalkgroup association on repeater to target
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
-			repeater.TS2DynamicTalkgroupID = 0
+			repeater.TS2DynamicTalkgroupID = nil
 
 			db.Save(&repeater)
 		}

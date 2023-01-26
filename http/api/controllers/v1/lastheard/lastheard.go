@@ -22,7 +22,11 @@ func GETLastheard(c *gin.Context) {
 		// Get the last calls for the user
 		calls = models.FindUserCalls(db, userId.(uint), 10)
 	}
-	c.JSON(http.StatusOK, calls)
+	if len(calls) == 0 {
+		c.JSON(http.StatusOK, make([]string, 0))
+	} else {
+		c.JSON(http.StatusOK, calls)
+	}
 }
 
 func GETLastheardUser(c *gin.Context) {

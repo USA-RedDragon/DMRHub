@@ -28,7 +28,7 @@ var FS embed.FS
 var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
-func Start(host string, port int, verbose bool, db *gorm.DB, sessionSecret string, corsHosts []string) {
+func Start(host string, port int, verbose bool, db *gorm.DB, corsHosts []string) {
 	ws = websocketHandler.CreateHandler(db, corsHosts)
 
 	// Setup API
@@ -41,7 +41,7 @@ func Start(host string, port int, verbose bool, db *gorm.DB, sessionSecret strin
 	corsConfig.AllowOrigins = corsHosts
 	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(10, "tcp", config.GetConfig().RedisHost, "", []byte(sessionSecret))
+	store, _ := redis.NewStore(10, "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)

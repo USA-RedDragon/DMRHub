@@ -38,8 +38,8 @@ type Repeater struct {
 	Password              string         `json:"-" msg:"-"`
 	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
 	TS2StaticTalkgroups   []Talkgroup    `json:"ts2_static_talkgroups" gorm:"many2many:repeater_ts2_static_talkgroups;" msg:"-"`
-	TS1DynamicTalkgroupID uint           `json:"-" msg:"-"`
-	TS2DynamicTalkgroupID uint           `json:"-" msg:"-"`
+	TS1DynamicTalkgroupID *uint          `json:"-" msg:"-"`
+	TS2DynamicTalkgroupID *uint          `json:"-" msg:"-"`
 	TS1DynamicTalkgroup   Talkgroup      `json:"ts1_dynamic_talkgroup" gorm:"foreignKey:TS1DynamicTalkgroupID" msg:"-"`
 	TS2DynamicTalkgroup   Talkgroup      `json:"ts2_dynamic_talkgroup" gorm:"foreignKey:TS2DynamicTalkgroupID" msg:"-"`
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
@@ -60,7 +60,7 @@ func (p Repeater) ListenForCallsOn(talkgroupID uint) {
 			return
 		}
 		go p.subscribeTG(redis, talkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, p.TS2DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
 	}
 }
 
@@ -95,18 +95,18 @@ func (p Repeater) ListenForCalls() {
 		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, id := range p.SubscribedTGs {
-		if id == p.TS1DynamicTalkgroupID {
+		if id == *p.TS1DynamicTalkgroupID {
 			continue
 		}
-		go p.subscribeTG(redis, p.TS1DynamicTalkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, p.TS1DynamicTalkgroupID)
+		go p.subscribeTG(redis, *p.TS1DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS1DynamicTalkgroupID)
 	}
 	for _, id := range p.SubscribedTGs {
-		if id == p.TS2DynamicTalkgroupID {
+		if id == *p.TS2DynamicTalkgroupID {
 			continue
 		}
-		go p.subscribeTG(redis, p.TS2DynamicTalkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, p.TS2DynamicTalkgroupID)
+		go p.subscribeTG(redis, *p.TS2DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
 	}
 }
 
@@ -207,10 +207,10 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 	slot := false
 
 	switch packet.Dst {
-	case p.TS2DynamicTalkgroupID:
+	case *p.TS2DynamicTalkgroupID:
 		want = true
 		slot = true
-	case p.TS1DynamicTalkgroupID:
+	case *p.TS1DynamicTalkgroupID:
 		want = true
 		slot = false
 	case p.OwnerID:

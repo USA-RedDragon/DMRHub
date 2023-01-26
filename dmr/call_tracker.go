@@ -262,6 +262,14 @@ func (c *CallTracker) updateCall(call *models.Call, packet models.Packet) {
 		call.Duration = time.Since(call.StartTime)
 		call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 		call.Active = true
+		if packet.RSSI > 0 {
+			call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
+		}
+
+		if call.TotalPackets%2 == 0 {
+			go c.publishCall(call, packet)
+		}
+		return
 	}
 
 	var lost uint

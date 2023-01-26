@@ -55,12 +55,15 @@ func (p Repeater) ListenForCallsOn(talkgroupID uint) {
 	redis := redis.NewClient(&redis.Options{
 		Addr: config.GetConfig().RedisHost,
 	})
+	found := false
 	for _, id := range p.SubscribedTGs {
 		if id == talkgroupID {
-			return
+			found = true
 		}
+	}
+	if !found {
 		go p.subscribeTG(redis, talkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, talkgroupID)
 	}
 }
 
@@ -203,30 +206,29 @@ func RepeaterIDExists(db *gorm.DB, id uint) bool {
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {
-	want := false
-	slot := false
+	if packet.Dst == p.RadioID {
+		return true, packet.Slot
+	}
 
-	switch packet.Dst {
-	case *p.TS2DynamicTalkgroupID:
-		want = true
-		slot = true
-	case *p.TS1DynamicTalkgroupID:
-		want = true
-		slot = false
-	case p.OwnerID:
-		want = true
-		slot = packet.Slot
-	default:
-		if p.InTS2StaticTalkgroups(packet.Dst) {
-			want = true
-			slot = true
-		} else if p.InTS1StaticTalkgroups(packet.Dst) {
-			want = true
-			slot = false
+	if p.TS2DynamicTalkgroupID != nil {
+		if packet.Dst == *p.TS2DynamicTalkgroupID {
+			return true, true
 		}
 	}
 
-	return want, slot
+	if p.TS1DynamicTalkgroupID != nil {
+		if packet.Dst == *p.TS1DynamicTalkgroupID {
+			return true, false
+		}
+	}
+
+	if p.InTS2StaticTalkgroups(packet.Dst) {
+		return true, true
+	} else if p.InTS1StaticTalkgroups(packet.Dst) {
+		return true, false
+	}
+
+	return false, false
 }
 
 func (p *Repeater) InTS2StaticTalkgroups(dest uint) bool {

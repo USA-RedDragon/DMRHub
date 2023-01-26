@@ -122,7 +122,7 @@ func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
 				klog.Errorf("Error marshalling raw packet", err)
 				return
 			}
-			redis.Publish("outgoing:noaddr", packedBytes)
+			redis.Publish("outgoing:noaddr", packedBytes[:])
 		}
 	}
 }

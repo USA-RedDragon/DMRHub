@@ -93,7 +93,8 @@ func main() {
 	defer dmrServer.Stop()
 
 	// For each repeater in the DB, start a gofunc to listen for calls
-	for _, repeater := range models.ListRepeaters(db) {
+	repeaters := models.ListRepeaters(db)
+	for _, repeater := range repeaters {
 		klog.Infof("Starting repeater %s", repeater.RadioID)
 		go repeater.ListenForCalls(*redisHost)
 	}

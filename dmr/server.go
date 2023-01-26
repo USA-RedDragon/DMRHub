@@ -55,27 +55,6 @@ func (s *DMRServer) Stop() {
 	s.Started = false
 }
 
-func (s *DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
-	valid := true
-	if !s.Redis.exists(repeaterID) {
-		klog.Warningf("Repeater %d does not exist", repeaterID)
-		valid = false
-	}
-	repeater, err := s.Redis.get(repeaterID)
-	if err != nil {
-		klog.Warningf("Error getting repeater %d from redis", repeaterID)
-		valid = false
-	}
-	if repeater.IP != remoteAddr.IP.String() {
-		klog.Warningf("Repeater %d IP %s does not match remote %s", repeaterID, repeater.IP, remoteAddr.IP.String())
-		valid = false
-	}
-	if repeater.Connection != connection {
-		klog.Warningf("Repeater %d state %s does not match expected %s", repeaterID, repeater.Connection, connection)
-		valid = false
-	}
-	return valid
-}
 func (s *DMRServer) listen() {
 	pubsub := s.Redis.Redis.Subscribe("incoming")
 	defer pubsub.Close()

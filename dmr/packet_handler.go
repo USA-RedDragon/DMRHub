@@ -16,6 +16,28 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func (s *DMRServer) validRepeater(repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
+	valid := true
+	if !s.Redis.exists(repeaterID) {
+		klog.Warningf("Repeater %d does not exist", repeaterID)
+		valid = false
+	}
+	repeater, err := s.Redis.get(repeaterID)
+	if err != nil {
+		klog.Warningf("Error getting repeater %d from redis", repeaterID)
+		valid = false
+	}
+	if repeater.IP != remoteAddr.IP.String() {
+		klog.Warningf("Repeater %d IP %s does not match remote %s", repeaterID, repeater.IP, remoteAddr.IP.String())
+		valid = false
+	}
+	if repeater.Connection != connection {
+		klog.Warningf("Repeater %d state %s does not match expected %s", repeaterID, repeater.Connection, connection)
+		valid = false
+	}
+	return valid
+}
+
 func (s *DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 	// If the source repeater's (`packet.Repeater`) database entry's
 	// `TS1DynamicTalkgroupID` or `TS2DynamicTalkgroupID` (respective

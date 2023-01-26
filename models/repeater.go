@@ -49,7 +49,7 @@ type Repeater struct {
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
 }
 
-func (p *Repeater) ListenForCalls(redisHost string) {
+func (p Repeater) ListenForCalls(redisHost string) {
 	klog.Infof("Listening for calls on repeater %d", p.RadioID)
 	redis := redis.NewClient(&redis.Options{
 		Addr: redisHost,

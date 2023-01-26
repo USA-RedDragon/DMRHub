@@ -94,6 +94,7 @@ func main() {
 
 	// For each repeater in the DB, start a gofunc to listen for calls
 	for _, repeater := range models.ListRepeaters(db) {
+		klog.Infof("Starting repeater %s", repeater.RadioID)
 		go repeater.ListenForCalls(*redisHost)
 	}
 

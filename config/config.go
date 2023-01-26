@@ -59,7 +59,7 @@ func GetConfig() *Config {
 			postgresPassword: os.Getenv("PG_PASSWORD"),
 			postgresHost:     os.Getenv("PG_HOST"),
 			postgresPort:     int(pgPort),
-			postgresDatabase: os.Getenv("PG_PASSWORD"),
+			postgresDatabase: os.Getenv("PG_DATABASE"),
 			Secret:           os.Getenv("SECRET"),
 			PasswordSalt:     os.Getenv("PASSWORD_SALT"),
 			ListenAddr:       os.Getenv("LISTEN_ADDR"),

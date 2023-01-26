@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"math/rand"
 	"time"
@@ -21,18 +20,12 @@ import (
 	"gorm.io/gorm"
 )
 
-var verbose = flag.Bool("verbose", false, "Whether to display verbose logs")
 var scheduler = gocron.NewScheduler(time.UTC)
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
-	var listen = flag.String("listen", "0.0.0.0", "The IP to listen on")
-	var dmrPort = flag.Int("dmr-port", 62031, "The Port to listen on")
-	var frontendPort = flag.Int("frontend-port", 3005, "The Port to listen on")
-
-	flag.Parse()
 
 	db, err := gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
 	if err != nil {
@@ -83,7 +76,7 @@ func main() {
 
 	scheduler.StartAsync()
 
-	dmrServer := dmr.MakeServer(*listen, *dmrPort, *verbose, db)
+	dmrServer := dmr.MakeServer(db)
 	dmrServer.Listen()
 	defer dmrServer.Stop()
 
@@ -94,6 +87,5 @@ func main() {
 		go repeater.ListenForCalls()
 	}
 
-	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005", "http://ki5vmf-server.local.mesh:3005", "https://dmr.mcswain.dev"}
-	http.Start(*listen, *frontendPort, *verbose, db, corsHosts)
+	http.Start(db)
 }

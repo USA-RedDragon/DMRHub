@@ -20,7 +20,7 @@ type WSHandler struct {
 	redis      *redis.Client
 }
 
-func CreateHandler(db *gorm.DB, allowedOrigins []string) *WSHandler {
+func CreateHandler(db *gorm.DB) *WSHandler {
 	return &WSHandler{
 		redis: redis.NewClient(&redis.Options{
 			Addr: config.GetConfig().RedisHost,
@@ -38,7 +38,7 @@ func CreateHandler(db *gorm.DB, allowedOrigins []string) *WSHandler {
 				if origin == "" {
 					return false
 				}
-				for _, host := range allowedOrigins {
+				for _, host := range config.GetConfig().CORSHosts {
 					if strings.HasSuffix(host, ":443") && strings.HasPrefix(origin, "https://") {
 						host = strings.TrimSuffix(host, ":443")
 					}

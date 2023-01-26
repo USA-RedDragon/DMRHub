@@ -22,16 +22,15 @@ type DMRServer struct {
 	CallTracker   *CallTracker
 }
 
-func MakeServer(addr string, port int, verbose bool, db *gorm.DB) DMRServer {
+func MakeServer(db *gorm.DB) DMRServer {
 	return DMRServer{
 		Buffer: make([]byte, 302),
 		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(addr),
-			Port: port,
+			IP:   net.ParseIP(config.GetConfig().ListenAddr),
+			Port: config.GetConfig().DMRPort,
 		},
 		Started:     false,
 		Parrot:      NewParrot(),
-		Verbose:     verbose,
 		DB:          db,
 		Redis:       makeRedisRepeaterStorage(config.GetConfig().RedisHost),
 		CallTracker: NewCallTracker(db),

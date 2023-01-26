@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"k8s.io/klog/v2"
 )
@@ -18,6 +20,11 @@ type Config struct {
 	postgresDatabase string
 	Secret           string
 	PasswordSalt     string
+	ListenAddr       string
+	DMRPort          int
+	HTTPPort         int
+	Verbose          bool
+	CORSHosts        []string
 }
 
 var currentConfig Config
@@ -28,9 +35,21 @@ func GetConfig() *Config {
 	} else {
 		// Convert string to int
 		portStr := os.Getenv("PG_PORT")
-		port, err := strconv.ParseInt(portStr, 10, 0)
+		pgPort, err := strconv.ParseInt(portStr, 10, 0)
 		if err != nil {
-			port = 0
+			pgPort = 0
+		}
+
+		portStr = os.Getenv("DMR_PORT")
+		dmrPort, err := strconv.ParseInt(portStr, 10, 0)
+		if err != nil {
+			dmrPort = 0
+		}
+
+		portStr = os.Getenv("HTTP_PORT")
+		httpPort, err := strconv.ParseInt(portStr, 10, 0)
+		if err != nil {
+			httpPort = 0
 		}
 
 		currentConfig = Config{
@@ -39,10 +58,14 @@ func GetConfig() *Config {
 			postgresUser:     os.Getenv("PG_USER"),
 			postgresPassword: os.Getenv("PG_PASSWORD"),
 			postgresHost:     os.Getenv("PG_HOST"),
-			postgresPort:     int(port),
+			postgresPort:     int(pgPort),
 			postgresDatabase: os.Getenv("PG_PASSWORD"),
 			Secret:           os.Getenv("SECRET"),
 			PasswordSalt:     os.Getenv("PASSWORD_SALT"),
+			ListenAddr:       os.Getenv("LISTEN_ADDR"),
+			DMRPort:          int(dmrPort),
+			HTTPPort:         int(httpPort),
+			Verbose:          os.Getenv("VERBOSE") != "",
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"
@@ -70,6 +93,25 @@ func GetConfig() *Config {
 		if currentConfig.PasswordSalt == "" {
 			currentConfig.PasswordSalt = "salt"
 			klog.Errorf("Password salt not set, using INSECURE default")
+		}
+		if currentConfig.ListenAddr == "" {
+			currentConfig.ListenAddr = "0.0.0.0"
+		}
+		if currentConfig.DMRPort == 0 {
+			currentConfig.DMRPort = 62031
+		}
+		if currentConfig.HTTPPort == 0 {
+			currentConfig.HTTPPort = 3005
+		}
+		// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
+		corsHosts := os.Getenv("CORS_HOSTS")
+		if corsHosts == "" {
+			currentConfig.CORSHosts = []string{
+				fmt.Sprintf("http://localhost:%d", currentConfig.HTTPPort),
+				fmt.Sprintf("http://127.0.0.1:%d", currentConfig.HTTPPort),
+			}
+		} else {
+			currentConfig.CORSHosts = append([]string{}, strings.Split(corsHosts, ",")...)
 		}
 		currentConfig.loaded = true
 		return &currentConfig

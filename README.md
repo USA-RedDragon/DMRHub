@@ -65,10 +65,7 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 #### Things the dev sees
 
 - CI build and release
-- database configurable either postgres or sqlite
 - Dockerize
-- flags to env vars
-- make cors hosts configurable
 - redis auth
 - Document deployment
 - Paginate APIs

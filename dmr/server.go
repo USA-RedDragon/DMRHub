@@ -6,6 +6,7 @@ import (
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
+	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -22,7 +23,7 @@ type DMRServer struct {
 	CallTracker   *CallTracker
 }
 
-func MakeServer(db *gorm.DB) DMRServer {
+func MakeServer(db *gorm.DB, redis *redis.Client) DMRServer {
 	return DMRServer{
 		Buffer: make([]byte, 302),
 		SocketAddress: net.UDPAddr{
@@ -30,10 +31,10 @@ func MakeServer(db *gorm.DB) DMRServer {
 			Port: config.GetConfig().DMRPort,
 		},
 		Started:     false,
-		Parrot:      NewParrot(),
+		Parrot:      NewParrot(redis),
 		DB:          db,
-		Redis:       makeRedisRepeaterStorage(config.GetConfig().RedisHost),
-		CallTracker: NewCallTracker(db),
+		Redis:       makeRedisRepeaterStorage(redis),
+		CallTracker: NewCallTracker(db, redis),
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-contrib/pprof"
+	"github.com/gin-contrib/sessions/redis"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
@@ -16,8 +17,8 @@ import (
 	websocketHandler "github.com/USA-RedDragon/dmrserver-in-a-box/http/websocket"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
+	realredis "github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -28,20 +29,21 @@ var FS embed.FS
 var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
-func Start(db *gorm.DB) {
-	ws = websocketHandler.CreateHandler(db)
+func Start(db *gorm.DB, redisClient *realredis.Client) {
+	ws = websocketHandler.CreateHandler(db, redisClient)
 
 	// Setup API
 	r := gin.Default()
 	pprof.Register(r)
 	r.Use(middleware.DatabaseProvider(db))
+	r.Use(middleware.RedisProvider(redisClient))
 
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(10, "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
+	store, _ := redis.NewStore(100, "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)

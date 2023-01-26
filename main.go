@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
+	"github.com/go-redis/redis"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
@@ -76,7 +77,17 @@ func main() {
 
 	scheduler.StartAsync()
 
-	dmrServer := dmr.MakeServer(db)
+	redis := redis.NewClient(&redis.Options{
+		Addr: config.GetConfig().RedisHost,
+	})
+	_, err = redis.Ping().Result()
+	if err != nil {
+		klog.Errorf("Failed to connect to redis: %s", err)
+		return
+	}
+	defer redis.Close()
+
+	dmrServer := dmr.MakeServer(db, redis)
 	dmrServer.Listen()
 	defer dmrServer.Stop()
 
@@ -84,8 +95,8 @@ func main() {
 	repeaters := models.ListRepeaters(db)
 	for _, repeater := range repeaters {
 		klog.Infof("Starting repeater %s", repeater.RadioID)
-		go repeater.ListenForCalls()
+		go repeater.ListenForCalls(redis)
 	}
 
-	http.Start(db)
+	http.Start(db, redis)
 }

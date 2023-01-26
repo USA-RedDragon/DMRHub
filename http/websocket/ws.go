@@ -20,11 +20,9 @@ type WSHandler struct {
 	redis      *redis.Client
 }
 
-func CreateHandler(db *gorm.DB) *WSHandler {
+func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 	return &WSHandler{
-		redis: redis.NewClient(&redis.Options{
-			Addr: config.GetConfig().RedisHost,
-		}),
+		redis: redis,
 		wsUpgrader: websocket.Upgrader{
 			HandshakeTimeout: 0,
 			ReadBufferSize:   1024,

@@ -13,6 +13,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -117,6 +118,7 @@ func POSTRepeater(c *gin.Context) {
 	}
 	userId := usId.(uint)
 	db := c.MustGet("DB").(*gorm.DB)
+	redis := c.MustGet("Redis").(*redis.Client)
 
 	var user models.User
 	db.First(&user, userId)
@@ -213,13 +215,14 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return
 		}
-		go repeater.ListenForCalls()
+		go repeater.ListenForCalls(redis)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
 
 func POSTRepeaterLink(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
+	redis := c.MustGet("Redis").(*redis.Client)
 	id := c.Param("id")
 	linkType := c.Param("type")
 	slot := c.Param("slot")
@@ -273,7 +276,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
 		}
 	}
-	go repeater.ListenForCallsOn(talkgroup.ID)
+	go repeater.ListenForCallsOn(redis, talkgroup.ID)
 	db.Save(&repeater)
 }
 

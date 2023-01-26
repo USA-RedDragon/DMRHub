@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
@@ -51,10 +50,7 @@ type Repeater struct {
 	SubscribedTGs         []uint         `json:"-" gorm:"-" msg:"-"`
 }
 
-func (p Repeater) ListenForCallsOn(talkgroupID uint) {
-	redis := redis.NewClient(&redis.Options{
-		Addr: config.GetConfig().RedisHost,
-	})
+func (p Repeater) ListenForCallsOn(redis *redis.Client, talkgroupID uint) {
 	found := false
 	for _, id := range p.SubscribedTGs {
 		if id == talkgroupID {
@@ -67,11 +63,8 @@ func (p Repeater) ListenForCallsOn(talkgroupID uint) {
 	}
 }
 
-func (p Repeater) ListenForCalls() {
+func (p Repeater) ListenForCalls(redis *redis.Client) {
 	klog.Infof("Listening for calls on repeater %d", p.RadioID)
-	redis := redis.NewClient(&redis.Options{
-		Addr: config.GetConfig().RedisHost,
-	})
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel

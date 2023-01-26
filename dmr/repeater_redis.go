@@ -15,11 +15,9 @@ type redisRepeaterStorage struct {
 	Redis *redis.Client
 }
 
-func makeRedisRepeaterStorage(redisAddr string) redisRepeaterStorage {
+func makeRedisRepeaterStorage(redis *redis.Client) redisRepeaterStorage {
 	return redisRepeaterStorage{
-		Redis: redis.NewClient(&redis.Options{
-			Addr: redisAddr,
-		}),
+		Redis: redis,
 	}
 }
 

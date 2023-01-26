@@ -13,11 +13,9 @@ type redisParrotStorage struct {
 	Redis *redis.Client
 }
 
-func makeRedisParrotStorage(redisAddr string) redisParrotStorage {
+func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
 	return redisParrotStorage{
-		Redis: redis.NewClient(&redis.Options{
-			Addr: redisAddr,
-		}),
+		Redis: redis,
 	}
 }
 

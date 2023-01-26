@@ -89,13 +89,7 @@ func (p *Repeater) subscribeRepeater(redis *redis.Client) {
 		// This packet is already for us and we don't want to modify the slot
 		packet := UnpackPacket(rawPacket.Data)
 		packet.Repeater = p.RadioID
-		rawPacket.Data = packet.Encode()
-		packedBytes, err := rawPacket.MarshalMsg(nil)
-		if err != nil {
-			klog.Errorf("Error marshalling raw packet", err)
-			return
-		}
-		redis.Publish("outgoing", packedBytes)
+		redis.Publish("outgoing:noaddr", packet.Encode())
 	}
 }
 

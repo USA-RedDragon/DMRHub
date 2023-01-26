@@ -111,6 +111,24 @@ func (s *DMRServer) send() {
 	}
 }
 
+func (s *DMRServer) sendNoAddr() {
+	pubsub := s.Redis.Redis.Subscribe("outgoing:noaddr")
+	defer pubsub.Close()
+	for msg := range pubsub.Channel() {
+		klog.Errorf("PUBSUB: Received outgoing message")
+		packet := models.UnpackPacket([]byte(msg.Payload))
+		repeater, err := s.Redis.get(packet.Repeater)
+		if err != nil {
+			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
+			continue
+		}
+		s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+			IP:   net.ParseIP(repeater.IP),
+			Port: repeater.Port,
+		})
+	}
+}
+
 func (s *DMRServer) Listen() {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	// 1MB buffers, say what?
@@ -125,6 +143,7 @@ func (s *DMRServer) Listen() {
 
 	go s.listen()
 	go s.send()
+	go s.sendNoAddr()
 
 	go func() {
 		for {

@@ -8,6 +8,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/gin-contrib/pprof"
+
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
@@ -31,6 +33,7 @@ func Start(host string, port int, verbose bool, db *gorm.DB, sessionSecret strin
 
 	// Setup API
 	r := gin.Default()
+	pprof.Register(r)
 	r.Use(middleware.DatabaseProvider(db))
 
 	corsConfig := cors.DefaultConfig()

@@ -20,6 +20,7 @@ type CallTracker struct {
 	DB            *gorm.DB
 	Redis         *redis.Client
 	CallEndTimers map[uint]*time.Timer
+	InFlightCalls map[uint]*models.Call
 }
 
 func NewCallTracker(db *gorm.DB) *CallTracker {
@@ -116,11 +117,15 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 		call.ToTalkgroup = destTalkgroup
 	}
 
+	// Create the call in the database
 	c.DB.Create(&call)
 	if c.DB.Error != nil {
 		klog.Errorf("Error creating call: %v", c.DB.Error)
 		return
 	}
+
+	// Add the call to the active calls map
+	c.InFlightCalls[call.ID] = &call
 
 	klog.Infof("Started call %d", call.StreamID)
 
@@ -129,11 +134,12 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 }
 
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
-	if !models.ActiveCallExists(c.DB, packet.StreamId, packet.Src, packet.Dst, packet.Slot, packet.GroupCall) {
-		klog.Errorf("Error finding active call: %v", packet.StreamId)
-		return false
+	for _, call := range c.InFlightCalls {
+		if call.Active && call.StreamID == packet.StreamId && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
 type jsonCallResponseUser struct {
@@ -223,6 +229,7 @@ func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
 			// Publish the call to the repeater owner's call history
 			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
 			alreadyPublished[repeater.OwnerID] = true
+			continue
 		}
 		if repeater.OwnerID == call.UserID {
 			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
@@ -231,15 +238,7 @@ func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
 	}
 }
 
-func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
-	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
-	// active that somehow have the same StreamId, we'll also query on the other fields.
-	call, err := models.FindActiveCall(c.DB, packet.StreamId, packet.Src, packet.Dst, packet.Slot, packet.GroupCall)
-	if err != nil {
-		klog.Errorf("Error finding active call: %v", err)
-		return
-	}
-
+func (c *CallTracker) updateCall(call *models.Call, packet models.Packet) {
 	// Reset call end timer
 	c.CallEndTimers[call.ID].Reset(2 * time.Second)
 
@@ -262,8 +261,6 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		call.Duration = time.Since(call.StartTime)
 		call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 		call.Active = true
-
-		go c.DB.Save(&call)
 	}
 
 	var lost uint
@@ -362,9 +359,19 @@ func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
 		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
 	}
 
-	c.DB.Save(&call)
 	if call.TotalPackets%2 == 0 {
-		go c.publishCall(&call, packet)
+		go c.publishCall(call, packet)
+	}
+}
+
+func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
+	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
+	// active that somehow have the same StreamId, we'll also query on the other fields.
+	for _, lcall := range c.InFlightCalls {
+		if lcall.StreamID == packet.StreamId && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
+			c.updateCall(lcall, packet)
+			return
+		}
 	}
 }
 
@@ -378,41 +385,41 @@ func endCallHandler(c *CallTracker, packet models.Packet) func() {
 func (c *CallTracker) EndCall(packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
-	call, err := models.FindActiveCall(c.DB, packet.StreamId, packet.Src, packet.Dst, packet.Slot, packet.GroupCall)
-	if err != nil {
-		klog.Errorf("Error finding active call: %v", err)
-		return
+	for _, call := range c.InFlightCalls {
+		if call.StreamID == packet.StreamId && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
+			// Delete the call end timer
+			timer := c.CallEndTimers[call.ID]
+			timer.Stop()
+			delete(c.CallEndTimers, call.ID)
+
+			if time.Since(call.StartTime) < 100*time.Millisecond {
+				// This is probably a key-up, so delete the call from the db
+				c.DB.Delete(&call)
+				return
+			}
+
+			// If the call doesn't have a term, we lost that packet
+			if !call.HasTerm {
+				call.LostSequences++
+				call.TotalPackets++
+				klog.Errorf("Call %d ended without a term", packet.StreamId)
+			}
+
+			// If lastFrameNum != 5, Calculate the number of lost packets by subtracting the last frame number from 5 and adding it to the lost sequences
+			if call.LastFrameNum != 5 {
+				call.LostSequences += 5 - call.LastFrameNum
+				call.TotalPackets += 5 - call.LastFrameNum
+				klog.Errorf("Call %d ended with %d lost packets", packet.StreamId, 5-call.LastFrameNum)
+			}
+
+			call.Active = false
+			call.Duration = time.Since(call.StartTime)
+			call.Loss = float32(call.LostSequences / call.TotalPackets)
+			c.DB.Save(call)
+			c.publishCall(call, packet)
+			delete(c.InFlightCalls, call.ID)
+
+			klog.Errorf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
+		}
 	}
-	// Delete the call end timer
-	timer := c.CallEndTimers[call.ID]
-	timer.Stop()
-	delete(c.CallEndTimers, call.ID)
-
-	if time.Since(call.StartTime) < 100*time.Millisecond {
-		// This is probably a key-up, so delete the call from the db
-		c.DB.Delete(&call)
-		return
-	}
-
-	// If the call doesn't have a term, we lost that packet
-	if !call.HasTerm {
-		call.LostSequences++
-		call.TotalPackets++
-		klog.Errorf("Call %d ended without a term", packet.StreamId)
-	}
-
-	// If lastFrameNum != 5, Calculate the number of lost packets by subtracting the last frame number from 5 and adding it to the lost sequences
-	if call.LastFrameNum != 5 {
-		call.LostSequences += 5 - call.LastFrameNum
-		call.TotalPackets += 5 - call.LastFrameNum
-		klog.Errorf("Call %d ended with %d lost packets", packet.StreamId, 5-call.LastFrameNum)
-	}
-
-	call.Active = false
-	call.Duration = time.Since(call.StartTime)
-	call.Loss = float32(call.LostSequences / call.TotalPackets)
-	c.DB.Save(&call)
-	go c.publishCall(&call, packet)
-
-	klog.Errorf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
 }

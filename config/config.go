@@ -17,8 +17,7 @@ type Config struct {
 	postgresPort     int
 	postgresDatabase string
 	Secret           string
-	loaded    bool
-	RedisHost string
+	PasswordSalt     string
 }
 
 var currentConfig Config
@@ -43,6 +42,7 @@ func GetConfig() *Config {
 			postgresPort:     int(port),
 			postgresDatabase: os.Getenv("PG_PASSWORD"),
 			Secret:           os.Getenv("SECRET"),
+			PasswordSalt:     os.Getenv("PASSWORD_SALT"),
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"
@@ -66,6 +66,10 @@ func GetConfig() *Config {
 		if currentConfig.Secret == "" {
 			currentConfig.Secret = "secret"
 			klog.Errorf("Session secret not set, using INSECURE default")
+		}
+		if currentConfig.PasswordSalt == "" {
+			currentConfig.PasswordSalt = "salt"
+			klog.Errorf("Password salt not set, using INSECURE default")
 		}
 		currentConfig.loaded = true
 		return &currentConfig

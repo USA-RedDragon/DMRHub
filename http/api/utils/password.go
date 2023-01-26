@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strings"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"golang.org/x/crypto/argon2"
 	"k8s.io/klog/v2"
 )
@@ -41,7 +42,7 @@ func HashPassword(password string) string {
 		klog.Errorf("HashPassword: %v", err)
 	}
 
-	bytes := argon2.IDKey([]byte(password), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
+	bytes := argon2.IDKey([]byte(password+config.GetConfig().PasswordSalt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
 	b64Salt := base64.RawStdEncoding.EncodeToString(params.salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(bytes)
 
@@ -87,7 +88,7 @@ func VerifyPassword(password, compareHash string) (bool, error) {
 	}
 
 	// Derive the key from the other password using the same parameters.
-	otherHash := argon2.IDKey([]byte(password), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
+	otherHash := argon2.IDKey([]byte(password+config.GetConfig().PasswordSalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
 
 	// Check that the contents of the hashed passwords are identical. Note
 	// that we are using the subtle.ConstantTimeCompare() function for this

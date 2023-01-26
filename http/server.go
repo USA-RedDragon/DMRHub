@@ -28,8 +28,8 @@ var FS embed.FS
 var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
-func Start(host string, port int, verbose bool, db *gorm.DB, corsHosts []string) {
-	ws = websocketHandler.CreateHandler(db, corsHosts)
+func Start(db *gorm.DB) {
+	ws = websocketHandler.CreateHandler(db)
 
 	// Setup API
 	r := gin.Default()
@@ -38,7 +38,7 @@ func Start(host string, port int, verbose bool, db *gorm.DB, corsHosts []string)
 
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowCredentials = true
-	corsConfig.AllowOrigins = corsHosts
+	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
 	store, _ := redis.NewStore(10, "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
@@ -132,7 +132,7 @@ func Start(host string, port int, verbose bool, db *gorm.DB, corsHosts []string)
 	})
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
-		if verbose {
+		if config.GetConfig().Verbose {
 			klog.Infof("Entry: %s\n", staticName)
 		}
 		staticGroup.GET(staticName, func(c *gin.Context) {
@@ -190,8 +190,8 @@ func Start(host string, port int, verbose bool, db *gorm.DB, corsHosts []string)
 		})
 	}
 
-	klog.Infof("HTTP Server listening at %s on port %d\n", host, port)
-	http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), r)
+	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
+	http.ListenAndServe(fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort), r)
 }
 
 func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {

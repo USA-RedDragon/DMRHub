@@ -50,6 +50,24 @@ GRANT ALL ON schema public TO dmr;
 INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot','','f','t');
 ```
 
+## Environment Variables
+
+|      Name       |                          Default                          |                                                                                                              Description                                                                                                               |
+| --------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LISTEN_ADDR`   | `0.0.0.0`                                                 | The address to listen on. `0.0.0.0` means all IPv4 addresses                                                                                                                                                                           |
+| `DMR_PORT`      | `62031`                                                   | The port to run the DMR server on                                                                                                                                                                                                      |
+| `HTTP_PORT`     | `3005`                                                    | The port to run the HTTP API, Websocket, and frontend from                                                                                                                                                                             |
+| `REDIS_HOST`    | `localhost:6379`                                          | The Redis connection URL. Include the port                                                                                                                                                                                             |
+| `PG_HOST`       | `localhost`                                               | The PostgreSQL server hostname                                                                                                                                                                                                         |
+| `PG_PORT`       | `5432`                                                    | The PostgreSQL server port                                                                                                                                                                                                             |
+| `PG_USER`       | `postgres`                                                | The PostgreSQL user to authenticate as                                                                                                                                                                                                 |
+| `PG_PASSWORD`   | `password`                                                | The password of the PostgreSQL user                                                                                                                                                                                                    |
+| `PG_DATABASE`   | `postgres`                                                | The PostgreSQL database to use                                                                                                                                                                                                         |
+| `SECRET`        | `secret`                                                  | The session encryption secret. Recommended to generate a 15+ character random password different from the `PASSWORD_SALT`.                                                                                                             |
+| `PASSWORD_SALT` | `salt`                                                    | The password [salt](https://en.wikipedia.org/wiki/Salt_(cryptography)). Recommended to generate a 15+ character random password different from the `SECRET`.                                                                           |
+| `VERBOSE`       | not set                                                   | Set to anything to enable verbose logging. Be careful as this is a LOT of logs                                                                                                                                                         |
+| `CORS_HOSTS`    | `http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT` | Set to a comma-separated list of URLs you expect the app to be accessed at, including the protocol and the port if not 80/443. Used for [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) and websocket Origin validation |
+
 ## Todos
 
 ### Before first release

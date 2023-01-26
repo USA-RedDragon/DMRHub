@@ -116,13 +116,7 @@ func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
 			// We need to send it to the repeater
 			packet.Repeater = p.RadioID
 			packet.Slot = slot
-			rawPacket.Data = packet.Encode()
-			packedBytes, err := rawPacket.MarshalMsg(nil)
-			if err != nil {
-				klog.Errorf("Error marshalling raw packet", err)
-				return
-			}
-			redis.Publish("outgoing:noaddr", packedBytes[:])
+			redis.Publish("outgoing:noaddr", packet.Encode())
 		}
 	}
 }

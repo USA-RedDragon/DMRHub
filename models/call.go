@@ -21,13 +21,13 @@ type Call struct {
 	TimeSlot       bool           `json:"time_slot"`
 	GroupCall      bool           `json:"group_call"`
 	IsToTalkgroup  bool           `json:"is_to_talkgroup"`
-	ToTalkgroupID  uint           `json:"-"`
+	ToTalkgroupID  *uint          `json:"-"`
 	ToTalkgroup    Talkgroup      `json:"to_talkgroup" gorm:"foreignKey:ToTalkgroupID"`
 	IsToUser       bool           `json:"is_to_user"`
-	ToUserID       uint           `json:"-"`
+	ToUserID       *uint          `json:"-"`
 	ToUser         User           `json:"to_user" gorm:"foreignKey:ToUserID"`
 	IsToRepeater   bool           `json:"is_to_repeater"`
-	ToRepeaterID   uint           `json:"-"`
+	ToRepeaterID   *uint          `json:"-"`
 	ToRepeater     Repeater       `json:"to_repeater" gorm:"foreignKey:ToRepeaterID"`
 	DestinationID  uint           `json:"destination_id"`
 	TotalPackets   uint           `json:"-"`
@@ -78,11 +78,11 @@ func FindRepeaterCalls(db *gorm.DB, repeaterID uint, limit int) []Call {
 				}
 			}
 		}
-		if call.Repeater.TS1DynamicTalkgroupID == &call.ToTalkgroup.ID {
+		if call.Repeater.TS1DynamicTalkgroupID != nil && call.ToTalkgroupID != nil && *call.Repeater.TS1DynamicTalkgroupID == *call.ToTalkgroupID {
 			fromRepeaterCalls = append(fromRepeaterCalls, call)
 			continue
 		}
-		if call.Repeater.TS2DynamicTalkgroupID == &call.ToTalkgroup.ID {
+		if call.Repeater.TS2DynamicTalkgroupID != nil && call.ToTalkgroupID != nil && *call.Repeater.TS2DynamicTalkgroupID == *call.ToTalkgroupID {
 			fromRepeaterCalls = append(fromRepeaterCalls, call)
 			continue
 		}

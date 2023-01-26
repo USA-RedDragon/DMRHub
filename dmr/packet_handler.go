@@ -54,7 +54,7 @@ func (s *DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 		repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
 		talkgroup := models.FindTalkgroupByID(s.DB, packet.Dst)
 		if packet.Slot {
-			if *repeater.TS2DynamicTalkgroupID != packet.Dst {
+			if repeater.TS2DynamicTalkgroupID != nil && *repeater.TS2DynamicTalkgroupID != packet.Dst {
 				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
 				repeater.TS2DynamicTalkgroup = talkgroup
 				repeater.TS2DynamicTalkgroupID = &packet.Dst
@@ -62,7 +62,7 @@ func (s *DMRServer) switchDynamicTalkgroup(packet models.Packet) {
 				s.DB.Save(&repeater)
 			}
 		} else {
-			if *repeater.TS1DynamicTalkgroupID != packet.Dst {
+			if repeater.TS1DynamicTalkgroupID != nil && *repeater.TS1DynamicTalkgroupID != packet.Dst {
 				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 				repeater.TS1DynamicTalkgroup = talkgroup
 				repeater.TS1DynamicTalkgroupID = &packet.Dst

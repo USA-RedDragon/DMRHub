@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-co-op/gocron"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/dmr"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
@@ -16,7 +17,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/userdb"
 	"k8s.io/klog/v2"
 
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -28,17 +29,12 @@ func main() {
 	defer klog.Flush()
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
 	var listen = flag.String("listen", "0.0.0.0", "The IP to listen on")
-	var secret = flag.String("secret", "", "The session encryption secret")
 	var dmrPort = flag.Int("dmr-port", 62031, "The Port to listen on")
 	var frontendPort = flag.Int("frontend-port", 3005, "The Port to listen on")
 
 	flag.Parse()
 
-	if *secret == "" {
-		klog.Exit("You must specify a secret")
-	}
-
-	db, err := gorm.Open(sqlite.Open("test.db?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
 	if err != nil {
 		klog.Errorf("Failed to open database: %s", err)
 	}
@@ -53,7 +49,7 @@ func main() {
 		return
 	}
 	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetMaxOpenConns(-1)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Dummy call to get the data decoded into memory early
@@ -99,5 +95,5 @@ func main() {
 	}
 
 	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005", "http://ki5vmf-server.local.mesh:3005", "https://dmr.mcswain.dev"}
-	http.Start(*listen, *frontendPort, *verbose, db, *secret, corsHosts)
+	http.Start(*listen, *frontendPort, *verbose, db, corsHosts)
 }

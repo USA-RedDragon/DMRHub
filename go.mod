@@ -13,8 +13,8 @@ require (
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
 	github.com/wk8/go-ordered-map v1.0.0
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	gorm.io/driver/sqlite v1.4.4
+	golang.org/x/crypto v0.4.0
+	gorm.io/driver/postgres v1.4.6
 	gorm.io/gorm v1.24.3
 	k8s.io/klog/v2 v2.80.1
 )
@@ -32,12 +32,14 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v1.2.1 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/pgx/v5 v5.2.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
-	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect

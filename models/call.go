@@ -78,11 +78,11 @@ func FindRepeaterCalls(db *gorm.DB, repeaterID uint, limit int) []Call {
 				}
 			}
 		}
-		if call.Repeater.TS1DynamicTalkgroupID == call.ToTalkgroup.ID {
+		if call.Repeater.TS1DynamicTalkgroupID == &call.ToTalkgroup.ID {
 			fromRepeaterCalls = append(fromRepeaterCalls, call)
 			continue
 		}
-		if call.Repeater.TS2DynamicTalkgroupID == call.ToTalkgroup.ID {
+		if call.Repeater.TS2DynamicTalkgroupID == &call.ToTalkgroup.ID {
 			fromRepeaterCalls = append(fromRepeaterCalls, call)
 			continue
 		}

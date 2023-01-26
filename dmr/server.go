@@ -115,9 +115,9 @@ func (s *DMRServer) sendNoAddr() {
 	pubsub := s.Redis.Redis.Subscribe("outgoing:noaddr")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
-		klog.Errorf("PUBSUB: Received outgoing message")
 		packet := models.UnpackPacket([]byte(msg.Payload))
 		repeater, err := s.Redis.get(packet.Repeater)
+		klog.Errorf("PUBSUB: Received outgoing message to repeater %d", packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
 			continue

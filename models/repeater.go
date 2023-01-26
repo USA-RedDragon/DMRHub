@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/go-redis/redis"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
@@ -47,12 +48,26 @@ type Repeater struct {
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
+	SubscribedTGs         []uint         `json:"-" gorm:"-" msg:"-"`
 }
 
-func (p Repeater) ListenForCalls(redisHost string) {
+func (p Repeater) ListenForCallsOn(talkgroupID uint) {
+	redis := redis.NewClient(&redis.Options{
+		Addr: config.GetConfig().RedisHost,
+	})
+	for _, id := range p.SubscribedTGs {
+		if id == talkgroupID {
+			return
+		}
+		go p.subscribeTG(redis, talkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, p.TS2DynamicTalkgroupID)
+	}
+}
+
+func (p Repeater) ListenForCalls() {
 	klog.Infof("Listening for calls on repeater %d", p.RadioID)
 	redis := redis.NewClient(&redis.Options{
-		Addr: redisHost,
+		Addr: config.GetConfig().RedisHost,
 	})
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
@@ -62,13 +77,37 @@ func (p Repeater) ListenForCalls(redisHost string) {
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
+		for _, id := range p.SubscribedTGs {
+			if id == tg.ID {
+				continue
+			}
+		}
 		go p.subscribeTG(redis, tg.ID)
+		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
+		for _, id := range p.SubscribedTGs {
+			if id == tg.ID {
+				continue
+			}
+		}
 		go p.subscribeTG(redis, tg.ID)
+		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
-	go p.subscribeTG(redis, p.TS1DynamicTalkgroup.ID)
-	go p.subscribeTG(redis, p.TS2DynamicTalkgroup.ID)
+	for _, id := range p.SubscribedTGs {
+		if id == p.TS1DynamicTalkgroupID {
+			continue
+		}
+		go p.subscribeTG(redis, p.TS1DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, p.TS1DynamicTalkgroupID)
+	}
+	for _, id := range p.SubscribedTGs {
+		if id == p.TS2DynamicTalkgroupID {
+			continue
+		}
+		go p.subscribeTG(redis, p.TS2DynamicTalkgroupID)
+		p.SubscribedTGs = append(p.SubscribedTGs, p.TS2DynamicTalkgroupID)
+	}
 }
 
 func (p *Repeater) subscribeRepeater(redis *redis.Client) {
@@ -111,13 +150,21 @@ func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
 			return
 		}
 		packet := UnpackPacket(rawPacket.Data)
+		if packet.Src == p.RadioID {
+			continue
+		}
+
 		want, slot := p.WantRX(packet)
-		if want && packet.Src != p.RadioID {
+		if want {
 			// This packet is for the repeater's dynamic talkgroup
 			// We need to send it to the repeater
 			packet.Repeater = p.RadioID
 			packet.Slot = slot
 			redis.Publish("outgoing:noaddr", packet.Encode())
+		} else {
+			// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
+			pubsub.Close()
+			return
 		}
 	}
 }

@@ -38,7 +38,7 @@ func main() {
 		klog.Exit("You must specify a secret")
 	}
 
-	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("test.db?cache=shared"), &gorm.Config{})
 	if err != nil {
 		klog.Errorf("Failed to open database: %s", err)
 	}

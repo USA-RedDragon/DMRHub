@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"net"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
@@ -21,7 +22,7 @@ type DMRServer struct {
 	CallTracker   *CallTracker
 }
 
-func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.DB) DMRServer {
+func MakeServer(addr string, port int, verbose bool, db *gorm.DB) DMRServer {
 	return DMRServer{
 		Buffer: make([]byte, 302),
 		SocketAddress: net.UDPAddr{
@@ -29,11 +30,11 @@ func MakeServer(addr string, port int, redisHost string, verbose bool, db *gorm.
 			Port: port,
 		},
 		Started:     false,
-		Parrot:      NewParrot(redisHost),
+		Parrot:      NewParrot(),
 		Verbose:     verbose,
 		DB:          db,
-		Redis:       makeRedisRepeaterStorage(redisHost),
-		CallTracker: NewCallTracker(redisHost, db),
+		Redis:       makeRedisRepeaterStorage(config.GetConfig().RedisHost),
+		CallTracker: NewCallTracker(db),
 	}
 }
 

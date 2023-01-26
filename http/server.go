@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
 	websocketHandler "github.com/USA-RedDragon/dmrserver-in-a-box/http/websocket"
@@ -25,19 +26,19 @@ var FS embed.FS
 var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
-func Start(host string, port int, verbose bool, redisHost string, db *gorm.DB, sessionSecret string, corsHosts []string) {
-	ws = websocketHandler.CreateHandler(db, redisHost, corsHosts)
+func Start(host string, port int, verbose bool, db *gorm.DB, sessionSecret string, corsHosts []string) {
+	ws = websocketHandler.CreateHandler(db, corsHosts)
 
 	// Setup API
 	r := gin.Default()
 	r.Use(middleware.DatabaseProvider(db))
 
-	config := cors.DefaultConfig()
-	config.AllowCredentials = true
-	config.AllowOrigins = corsHosts
-	r.Use(cors.New(config))
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowCredentials = true
+	corsConfig.AllowOrigins = corsHosts
+	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(10, "tcp", redisHost, "", []byte(sessionSecret))
+	store, _ := redis.NewStore(10, "tcp", config.GetConfig().RedisHost, "", []byte(sessionSecret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)

@@ -1,6 +1,7 @@
 package dmr
 
 import (
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"k8s.io/klog/v2"
 )
@@ -9,9 +10,9 @@ type Parrot struct {
 	Redis redisParrotStorage
 }
 
-func NewParrot(redisHost string) *Parrot {
+func NewParrot() *Parrot {
 	return &Parrot{
-		Redis: makeRedisParrotStorage(redisHost),
+		Redis: makeRedisParrotStorage(config.GetConfig().RedisHost),
 	}
 }
 

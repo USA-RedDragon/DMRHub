@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -19,10 +20,10 @@ type WSHandler struct {
 	redis      *redis.Client
 }
 
-func CreateHandler(db *gorm.DB, redisHost string, allowedOrigins []string) *WSHandler {
+func CreateHandler(db *gorm.DB, allowedOrigins []string) *WSHandler {
 	return &WSHandler{
 		redis: redis.NewClient(&redis.Options{
-			Addr: redisHost,
+			Addr: config.GetConfig().RedisHost,
 		}),
 		wsUpgrader: websocket.Upgrader{
 			HandshakeTimeout: 0,

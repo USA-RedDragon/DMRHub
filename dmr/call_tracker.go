@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/go-redis/redis"
 	"gorm.io/gorm"
@@ -21,11 +22,11 @@ type CallTracker struct {
 	CallEndTimers map[uint]*time.Timer
 }
 
-func NewCallTracker(redisHost string, db *gorm.DB) *CallTracker {
+func NewCallTracker(db *gorm.DB) *CallTracker {
 	return &CallTracker{
 		DB: db,
 		Redis: redis.NewClient(&redis.Options{
-			Addr: redisHost,
+			Addr: config.GetConfig().RedisHost,
 		}),
 		CallEndTimers: make(map[uint]*time.Timer),
 	}

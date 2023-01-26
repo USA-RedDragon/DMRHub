@@ -30,6 +30,7 @@ func NewCallTracker(db *gorm.DB) *CallTracker {
 			Addr: config.GetConfig().RedisHost,
 		}),
 		CallEndTimers: make(map[uint]*time.Timer),
+		InFlightCalls: make(map[uint]*models.Call),
 	}
 }
 

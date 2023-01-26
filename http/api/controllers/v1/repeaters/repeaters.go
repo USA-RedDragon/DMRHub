@@ -213,6 +213,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return
 		}
+		go repeater.ListenForCalls()
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -272,10 +273,11 @@ func POSTRepeaterLink(c *gin.Context) {
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
 		}
 	}
+	go repeater.ListenForCallsOn(talkgroup.ID)
 	db.Save(&repeater)
 }
 
-func POSTRepeaterUnink(c *gin.Context) {
+func POSTRepeaterUnlink(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	linkType := c.Param("type")

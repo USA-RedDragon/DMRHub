@@ -27,7 +27,6 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
-	var redisHost = flag.String("redis", "localhost:6379", "The hostname of redis")
 	var listen = flag.String("listen", "0.0.0.0", "The IP to listen on")
 	var secret = flag.String("secret", "", "The session encryption secret")
 	var dmrPort = flag.Int("dmr-port", 62031, "The Port to listen on")
@@ -88,7 +87,7 @@ func main() {
 
 	scheduler.StartAsync()
 
-	dmrServer := dmr.MakeServer(*listen, *dmrPort, *redisHost, *verbose, db)
+	dmrServer := dmr.MakeServer(*listen, *dmrPort, *verbose, db)
 	dmrServer.Listen()
 	defer dmrServer.Stop()
 
@@ -96,9 +95,9 @@ func main() {
 	repeaters := models.ListRepeaters(db)
 	for _, repeater := range repeaters {
 		klog.Infof("Starting repeater %s", repeater.RadioID)
-		go repeater.ListenForCalls(*redisHost)
+		go repeater.ListenForCalls()
 	}
 
 	corsHosts := []string{"http://localhost:3005", "http://localhost:5173", "http://127.0.0.1:3005", "http://127.0.0.1:5173", "http://192.168.1.90:5173", "http://192.168.1.90:3005", "http://ki5vmf-server.local.mesh:3005", "https://dmr.mcswain.dev"}
-	http.Start(*listen, *frontendPort, *verbose, *redisHost, db, *secret, corsHosts)
+	http.Start(*listen, *frontendPort, *verbose, db, *secret, corsHosts)
 }

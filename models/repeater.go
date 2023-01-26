@@ -50,6 +50,7 @@ type Repeater struct {
 }
 
 func (p *Repeater) ListenForCalls(redisHost string) {
+	klog.Infof("Listening for calls on repeater %d", p.RadioID)
 	redis := redis.NewClient(&redis.Options{
 		Addr: redisHost,
 	})

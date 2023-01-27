@@ -6,12 +6,16 @@ import (
 	"strconv"
 	"strings"
 
+	"crypto/sha1"
+
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	gopwned "github.com/mavjs/goPwned"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -49,6 +53,43 @@ func POSTUser(c *gin.Context) {
 		if json.Password == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password cannot be blank"})
 			return
+		}
+
+		if config.GetConfig().HIBPAPIKey != "" {
+			goPwned := gopwned.NewClient(nil, config.GetConfig().HIBPAPIKey)
+			h := sha1.New()
+			h.Write([]byte(json.Password))
+			sha1HashedPW := fmt.Sprintf("%X", h.Sum(nil))
+			frange := sha1HashedPW[0:5]
+			lrange := sha1HashedPW[5:40]
+			karray, err := goPwned.GetPwnedPasswords(frange, false)
+			if err != nil {
+				klog.Errorf("POSTUser: Error getting pwned passwords: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting pwned passwords"})
+				return
+			}
+			str_karray := string(karray)
+			respArray := strings.Split(str_karray, "\r\n")
+
+			var result int64
+			for _, resp := range respArray {
+				str_array := strings.Split(resp, ":")
+				test := str_array[0]
+
+				count, err := strconv.ParseInt(str_array[1], 0, 32)
+				if err != nil {
+					klog.Errorf("POSTUser: Error parsing pwned password count: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error parsing pwned password count"})
+					return
+				}
+				if test == lrange {
+					result = count
+				}
+			}
+			if result > 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Password has been reported in a data breach. Please use another one"})
+				return
+			}
 		}
 
 		// Check if the username is already taken

@@ -213,7 +213,7 @@ export default {
         })
         .catch((err) => {
           console.error(err);
-          if (err.response.data.error) {
+          if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
               severity: "error",
               summary: "Error",
@@ -221,13 +221,14 @@ export default {
               life: 3000,
             });
             return;
+          } else {
+            this.$toast.add({
+              severity: "error",
+              summary: "Error",
+              detail: "Failed to update talkgroup",
+              life: 3000,
+            });
           }
-          this.$toast.add({
-            severity: "error",
-            summary: "Error",
-            detail: "Failed to update talkgroup",
-            life: 3000,
-          });
         });
     },
   },

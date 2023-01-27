@@ -142,18 +142,22 @@ export default {
               user_id: this.admins[i].id,
             }).catch((err) => {
               console.error(err);
-              if (!err.response && !err.response.error) {
+              if (
+                err.response &&
+                err.response.data &&
+                err.response.data.error
+              ) {
                 this.$toast.add({
                   summary: "Error",
                   severity: "error",
-                  detail: `Error creating talkgroup`,
+                  detail: err.response.data.error,
                   life: 3000,
                 });
               } else {
                 this.$toast.add({
                   summary: "Error",
                   severity: "error",
-                  detail: err.response.data.error,
+                  detail: `Error creating talkgroup`,
                   life: 3000,
                 });
               }
@@ -164,18 +168,22 @@ export default {
               user_id: this.ncos[i].id,
             }).catch((err) => {
               console.error(err);
-              if (!err.response && !err.response.error) {
+              if (
+                err.response &&
+                err.response.data &&
+                err.response.data.error
+              ) {
                 this.$toast.add({
                   summary: "Error",
                   severity: "error",
-                  detail: `Error creating talkgroup`,
+                  detail: err.response.data.error,
                   life: 3000,
                 });
               } else {
                 this.$toast.add({
                   summary: "Error",
                   severity: "error",
-                  detail: err.response.data.error,
+                  detail: `Error creating talkgroup`,
                   life: 3000,
                 });
               }
@@ -194,18 +202,18 @@ export default {
         })
         .catch((err) => {
           console.error(err);
-          if (!err.response && !err.response.error) {
+          if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: `Error creating talkgroup`,
+              detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: err.response.data.error,
+              detail: `Error creating talkgroup`,
               life: 3000,
             });
           }

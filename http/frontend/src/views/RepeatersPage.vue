@@ -405,21 +405,21 @@ export default {
         })
         .catch((err) => {
           console.error(err);
-          if (err.response.data.error) {
+          if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
               severity: "error",
               summary: "Error",
               detail: "Failed to update repeater: " + err.response.data.error,
               life: 3000,
             });
-            return;
+          } else {
+            this.$toast.add({
+              severity: "error",
+              summary: "Error",
+              detail: `Error updating talkgroups for repeater ${repeater.id}`,
+              life: 3000,
+            });
           }
-          this.$toast.add({
-            severity: "error",
-            summary: "Error",
-            detail: `Error updating talkgroups for repeater ${repeater.id}`,
-            life: 3000,
-          });
         });
     },
     unlink(ts, repeater) {

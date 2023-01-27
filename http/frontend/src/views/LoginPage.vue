@@ -77,18 +77,18 @@ export default {
         })
         .catch((err) => {
           console.error(err);
-          if (!err.response && !err.response.error) {
+          if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: `Error logging in`,
+              detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: err.response.data.error,
+              detail: `Error logging in`,
               life: 3000,
             });
           }

@@ -64,6 +64,11 @@ func POSTUser(c *gin.Context) {
 			lrange := sha1HashedPW[5:40]
 			karray, err := goPwned.GetPwnedPasswords(frange, false)
 			if err != nil {
+				// If the error message starts with "Too many requests", then tell the user to retry in one minute
+				if strings.HasPrefix(err.Error(), "Too many requests") {
+					c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests. Please try again in one minute"})
+					return
+				}
 				klog.Errorf("POSTUser: Error getting pwned passwords: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting pwned passwords"})
 				return

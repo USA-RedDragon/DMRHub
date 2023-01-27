@@ -10,6 +10,7 @@ require (
 	github.com/go-co-op/gocron v1.18.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gorilla/websocket v1.5.0
+	github.com/mavjs/goPwned v0.0.2
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
 	github.com/wk8/go-ordered-map v1.0.0

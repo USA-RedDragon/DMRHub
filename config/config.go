@@ -25,6 +25,7 @@ type Config struct {
 	HTTPPort         int
 	Verbose          bool
 	CORSHosts        []string
+	HIBPAPIKey       string
 }
 
 var currentConfig Config
@@ -66,6 +67,7 @@ func GetConfig() *Config {
 			DMRPort:          int(dmrPort),
 			HTTPPort:         int(httpPort),
 			Verbose:          os.Getenv("VERBOSE") != "",
+			HIBPAPIKey:       os.Getenv("HIBP_API_KEY"),
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"

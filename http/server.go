@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"runtime"
 	"strings"
 	"time"
 
@@ -45,7 +46,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(100, "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
+	store, _ := redis.NewStore(runtime.GOMAXPROCS(0), "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)

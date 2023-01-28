@@ -75,7 +75,6 @@ GRANT ALL ON schema public TO dmr;
 
 #### Things the user sees
 
-- [API done] Make user admins appointable and implement user suspend in the UI
 - [API done] Add ability to add and remove talkgroup admins and NCOs in the UI
 - Finalize color scheme
 

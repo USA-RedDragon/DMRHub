@@ -117,13 +117,38 @@ export default {
         });
     },
     handleApprove(event, user) {
-      this.fetchData();
-      this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
+      var action = user.approved ? "approve" : "suspend";
+      var actionVerb = user.approved ? "approved" : "suspended";
+      // Don't allow the user to uncheck the admin box
+      API.post(`/users/${action}/${user.id}`, {})
+        .then(() => {
+          this.$toast.add({
+            summary: "Confirmed",
+            severity: "success",
+            detail: `User ${user.id} ${actionVerb}`,
+            life: 3000,
+          });
+          this.fetchData();
+        })
+        .catch((err) => {
+          console.error(err);
+          if (err.response && err.response.data && err.response.data.error) {
+            this.$toast.add({
+              severity: "error",
+              summary: "Error",
+              detail: err.response.data.error,
+              life: 3000,
+            });
+          } else {
+            this.$toast.add({
+              severity: "error",
+              summary: "Error",
+              detail: "An unknown error occurred",
+              life: 3000,
+            });
+          }
+          this.fetchData();
+        });
     },
     handleAdmin(event, user) {
       var action = user.admin ? "promote" : "demote";

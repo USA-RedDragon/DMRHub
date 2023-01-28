@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-contrib/sessions/redis"
@@ -198,7 +199,14 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	}
 
 	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
-	http.ListenAndServe(fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort), r)
+	s := &http.Server{
+		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	s.ListenAndServe()
 }
 
 func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {

@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"strings"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"golang.org/x/crypto/argon2"
 	"k8s.io/klog/v2"
 )
@@ -27,7 +26,7 @@ var (
 	ErrIncompatibleVersion = errors.New("incompatible version of argon2")
 )
 
-func HashPassword(password string) string {
+func HashPassword(password string, salt string) string {
 	var params = argon2_params{
 		memory:      64 * 1024,
 		iterations:  3,
@@ -42,7 +41,7 @@ func HashPassword(password string) string {
 		klog.Errorf("HashPassword: %v", err)
 	}
 
-	bytes := argon2.IDKey([]byte(password+config.GetConfig().PasswordSalt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
+	bytes := argon2.IDKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
 	b64Salt := base64.RawStdEncoding.EncodeToString(params.salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(bytes)
 
@@ -50,7 +49,7 @@ func HashPassword(password string) string {
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, params.memory, params.iterations, params.parallelism, b64Salt, b64Hash)
 }
 
-func VerifyPassword(password, compareHash string) (bool, error) {
+func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	vals := strings.Split(compareHash, "$")
 	if len(vals) != 6 {
 		return false, ErrInvalidHash
@@ -88,7 +87,7 @@ func VerifyPassword(password, compareHash string) (bool, error) {
 	}
 
 	// Derive the key from the other password using the same parameters.
-	otherHash := argon2.IDKey([]byte(password+config.GetConfig().PasswordSalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
+	otherHash := argon2.IDKey([]byte(password+pwsalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
 
 	// Check that the contents of the hashed passwords are identical. Note
 	// that we are using the subtle.ConstantTimeCompare() function for this

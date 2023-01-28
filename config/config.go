@@ -6,27 +6,29 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"k8s.io/klog/v2"
 )
 
 type Config struct {
-	loaded           bool
-	RedisHost        string
-	PostgresDSN      string
-	postgresUser     string
-	postgresPassword string
-	postgresHost     string
-	postgresPort     int
-	postgresDatabase string
-	Secret           string
-	PasswordSalt     string
-	ListenAddr       string
-	DMRPort          int
-	HTTPPort         int
-	Verbose          bool
-	CORSHosts        []string
-	HIBPAPIKey       string
-	OTLPEndpoint     string
+	loaded                   bool
+	RedisHost                string
+	PostgresDSN              string
+	postgresUser             string
+	postgresPassword         string
+	postgresHost             string
+	postgresPort             int
+	postgresDatabase         string
+	Secret                   string
+	PasswordSalt             string
+	ListenAddr               string
+	DMRPort                  int
+	HTTPPort                 int
+	Verbose                  bool
+	CORSHosts                []string
+	HIBPAPIKey               string
+	OTLPEndpoint             string
+	InitialAdminUserPassword string
 }
 
 var currentConfig Config
@@ -55,21 +57,22 @@ func GetConfig() *Config {
 		}
 
 		currentConfig = Config{
-			loaded:           false,
-			RedisHost:        os.Getenv("REDIS_HOST"),
-			postgresUser:     os.Getenv("PG_USER"),
-			postgresPassword: os.Getenv("PG_PASSWORD"),
-			postgresHost:     os.Getenv("PG_HOST"),
-			postgresPort:     int(pgPort),
-			postgresDatabase: os.Getenv("PG_DATABASE"),
-			Secret:           os.Getenv("SECRET"),
-			PasswordSalt:     os.Getenv("PASSWORD_SALT"),
-			ListenAddr:       os.Getenv("LISTEN_ADDR"),
-			DMRPort:          int(dmrPort),
-			HTTPPort:         int(httpPort),
-			Verbose:          os.Getenv("VERBOSE") != "",
-			HIBPAPIKey:       os.Getenv("HIBP_API_KEY"),
-			OTLPEndpoint:     os.Getenv("OTLP_ENDPOINT"),
+			loaded:                   false,
+			RedisHost:                os.Getenv("REDIS_HOST"),
+			postgresUser:             os.Getenv("PG_USER"),
+			postgresPassword:         os.Getenv("PG_PASSWORD"),
+			postgresHost:             os.Getenv("PG_HOST"),
+			postgresPort:             int(pgPort),
+			postgresDatabase:         os.Getenv("PG_DATABASE"),
+			Secret:                   os.Getenv("SECRET"),
+			PasswordSalt:             os.Getenv("PASSWORD_SALT"),
+			ListenAddr:               os.Getenv("LISTEN_ADDR"),
+			DMRPort:                  int(dmrPort),
+			HTTPPort:                 int(httpPort),
+			Verbose:                  os.Getenv("VERBOSE") != "",
+			HIBPAPIKey:               os.Getenv("HIBP_API_KEY"),
+			OTLPEndpoint:             os.Getenv("OTLP_ENDPOINT"),
+			InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"
@@ -106,6 +109,10 @@ func GetConfig() *Config {
 		}
 		if currentConfig.HTTPPort == 0 {
 			currentConfig.HTTPPort = 3005
+		}
+		if currentConfig.InitialAdminUserPassword == "" {
+			klog.Errorf("Initial admin user password not set, using auto-generated password")
+			currentConfig.InitialAdminUserPassword = utils.RandomPassword(15, 4, 2)
 		}
 		// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 		corsHosts := os.Getenv("CORS_HOSTS")

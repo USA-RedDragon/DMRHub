@@ -9,6 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-co-op/gocron v1.18.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/kachit/gorm-seeder v0.0.3
 	github.com/mavjs/goPwned v0.0.2
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.0-rc.4
 	github.com/redis/go-redis/v9 v9.0.0-rc.4

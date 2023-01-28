@@ -71,7 +71,7 @@ import API from "@/services/API";
 import moment from "moment";
 
 import { mapStores } from "pinia";
-import { useSettingsStore } from "@/store";
+import { useUserStore, useSettingsStore } from "@/store";
 
 export default {
   components: {
@@ -126,14 +126,45 @@ export default {
       });
     },
     handleAdmin(event, user) {
+      console.log(event);
       // Don't allow the user to uncheck the admin box
+      if (this.userStore.id == 999999) {
+        API.post(`/users/promote/${user.id}`, {})
+          .then(() => {
+            this.$toast.add({
+              summary: "Confirmed",
+              severity: "success",
+              detail: `User ${user.id} promoted`,
+              life: 3000,
+            });
+          })
+          .catch((err) => {
+            console.error(err);
+            if (err.response && err.response.data && err.response.data.error) {
+              this.$toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: err.response.data.error,
+                life: 3000,
+              });
+            } else {
+              this.$toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: "An unknown error occurred",
+                life: 3000,
+              });
+            }
+          });
+      } else {
+        this.$toast.add({
+          summary: "Only the System Admin can do this.",
+          severity: "error",
+          detail: `Standard Admins cannot promote other users.`,
+          life: 3000,
+        });
+      }
       this.fetchData();
-      this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
     },
     editUser(user) {
       this.$toast.add({
@@ -175,7 +206,7 @@ export default {
     },
   },
   computed: {
-    ...mapStores(useSettingsStore),
+    ...mapStores(useUserStore, useSettingsStore),
   },
 };
 </script>

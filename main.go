@@ -15,6 +15,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/repeaterdb"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/sdk"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/userdb"
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"k8s.io/klog/v2"
 
 	"gorm.io/driver/postgres"
@@ -30,12 +31,18 @@ func main() {
 
 	db, err := gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
 	if err != nil {
-		klog.Errorf("Failed to open database: %s", err)
+		klog.Exitf("Failed to open database: %s", err)
+		return
+	}
+	if err := db.Use(otelgorm.NewPlugin()); err != nil {
+		klog.Exitf("Failed to trace database: %s", err)
+		return
 	}
 	db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if db.Error != nil {
 		//We have an error
 		klog.Exitf(fmt.Sprintf("Failed with error %s", db.Error))
+		return
 	}
 	sqlDB, err := db.DB()
 	if err != nil {

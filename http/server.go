@@ -19,6 +19,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	realredis "github.com/go-redis/redis"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -35,6 +36,8 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	// Setup API
 	r := gin.Default()
 	pprof.Register(r)
+	r.Use(otelgin.Middleware("dmrserver-in-a-box"))
+	r.Use(middleware.TracingProvider())
 	r.Use(middleware.DatabaseProvider(db))
 	r.Use(middleware.RedisProvider(redisClient))
 

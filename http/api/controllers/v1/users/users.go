@@ -168,6 +168,7 @@ func POSTUserDemote(c *gin.Context) {
 func POSTUserPromote(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
+
 	// Grab the user from the database
 	var user models.User
 	db.Find(&user, "id = ?", id)
@@ -191,6 +192,20 @@ func POSTUserPromote(c *gin.Context) {
 func POSTUserApprove(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
+
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+	session := sessions.Default(c)
+	fromUserId := session.Get("user_id").(uint)
+	if uint(userID) == fromUserId {
+		// don't allow a user to demote themselves
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot approve yourself"})
+		return
+	}
+
 	// Grab the user from the database
 	var user models.User
 	db.Find(&user, "id = ?", id)
@@ -317,6 +332,20 @@ func DELETEUser(c *gin.Context) {
 func POSTUserSuspend(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
+
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+	session := sessions.Default(c)
+	fromUserId := session.Get("user_id").(uint)
+	if uint(userID) == fromUserId {
+		// don't allow a user to demote themselves
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend yourself"})
+		return
+	}
+
 	// Grab the user from the database
 	var user models.User
 	db.Find(&user, "id = ?", id)
@@ -328,6 +357,12 @@ func POSTUserSuspend(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 		return
 	}
+
+	if user.Admin || user.ID == 999999 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend an admin"})
+		return
+	}
+
 	user.Approved = false
 	db.Save(&user)
 	if db.Error != nil {

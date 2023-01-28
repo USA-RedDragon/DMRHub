@@ -126,17 +126,19 @@ export default {
       });
     },
     handleAdmin(event, user) {
-      console.log(event);
+      var action = user.admin ? "promote" : "demote";
+      var actionVerb = user.admin ? "promoted" : "demoted";
       // Don't allow the user to uncheck the admin box
       if (this.userStore.id == 999999) {
-        API.post(`/users/promote/${user.id}`, {})
+        API.post(`/users/${action}/${user.id}`, {})
           .then(() => {
             this.$toast.add({
               summary: "Confirmed",
               severity: "success",
-              detail: `User ${user.id} promoted`,
+              detail: `User ${user.id} ${actionVerb}`,
               life: 3000,
             });
+            this.fetchData();
           })
           .catch((err) => {
             console.error(err);
@@ -155,6 +157,7 @@ export default {
                 life: 3000,
               });
             }
+            this.fetchData();
           });
       } else {
         this.$toast.add({
@@ -163,8 +166,8 @@ export default {
           detail: `Standard Admins cannot promote other users.`,
           life: 3000,
         });
+        this.fetchData();
       }
-      this.fetchData();
     },
     editUser(user) {
       this.$toast.add({

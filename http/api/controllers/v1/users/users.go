@@ -363,6 +363,11 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 
+	if user.ID == 9990 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend the Parrot user"})
+		return
+	}
+
 	user.Approved = false
 	db.Save(&user)
 	if db.Error != nil {

@@ -66,6 +66,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		if err != nil {
 			klog.Errorf("Failed to open file: %s", err)
 		}
+		defer file.Close()
 		fileContent, err := io.ReadAll(file)
 		if err != nil {
 			klog.Errorf("Failed to read file: %s", err)
@@ -76,17 +77,21 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		wild, have := c.Params.Get("wild")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		file, err := FS.Open(path.Join("frontend/dist", wild))
 		if err != nil {
 			file, err = FS.Open("frontend/dist/index.html")
 			if err != nil {
 				klog.Errorf("Failed to open file: %s", err)
+				return
 			}
 		}
+		defer file.Close()
 		fileContent, err := io.ReadAll(file)
 		if err != nil {
 			klog.Errorf("Failed to read file: %s", err)
+			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -94,21 +99,26 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		wild, have := c.Params.Get("wild")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		wild2, have := c.Params.Get("wild2")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		file, err := FS.Open(path.Join("frontend/dist", wild, wild2))
 		if err != nil {
 			file, err = FS.Open("frontend/dist/index.html")
 			if err != nil {
 				klog.Errorf("Failed to open file: %s", err)
+				return
 			}
 		}
+		defer file.Close()
 		fileContent, err := io.ReadAll(file)
 		if err != nil {
 			klog.Errorf("Failed to read file: %s", err)
+			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -116,25 +126,31 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		wild, have := c.Params.Get("wild")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		wild2, have := c.Params.Get("wild2")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		wild3, have := c.Params.Get("wild3")
 		if !have {
 			klog.Errorf("Failed to get wildcard: %s", err)
+			return
 		}
 		file, err := FS.Open(path.Join("frontend/dist", wild, wild2, wild3))
 		if err != nil {
 			file, err = FS.Open("frontend/dist/index.html")
 			if err != nil {
 				klog.Errorf("Failed to open file: %s", err)
+				return
 			}
 		}
+		defer file.Close()
 		fileContent, err := io.ReadAll(file)
 		if err != nil {
 			klog.Errorf("Failed to read file: %s", err)
+			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -147,10 +163,13 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 			file, err := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if err != nil {
 				klog.Errorf("Failed to open file: %s", err)
+				return
 			}
+			defer file.Close()
 			fileContent, err := io.ReadAll(file)
 			if err != nil {
 				klog.Errorf("Failed to read file: %s", err)
+				return
 			}
 			if strings.HasSuffix(c.Request.URL.Path, ".js") {
 				c.Data(http.StatusOK, "text/javascript", fileContent)

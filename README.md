@@ -27,7 +27,7 @@ Redis and PostgreSQL are required.
 
 ![Talkgroup Ownership](doc/Screenshots/talkgroup-ownership.png)
 
-![User Approva](doc/Screenshots/user-approval.png)
+![User Approval](doc/Screenshots/user-approval.png)
 </details>
 
 ## Deploying

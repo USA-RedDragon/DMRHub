@@ -78,7 +78,6 @@ func (s *DMRServer) send(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
-		klog.Errorf("PUBSUB: Received outgoing message")
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
@@ -98,7 +97,6 @@ func (s *DMRServer) sendNoAddr(ctx context.Context) {
 	for msg := range pubsub.Channel() {
 		packet := models.UnpackPacket([]byte(msg.Payload))
 		repeater, err := s.Redis.get(ctx, packet.Repeater)
-		klog.Errorf("PUBSUB: Received outgoing message to repeater %d", packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
 			continue

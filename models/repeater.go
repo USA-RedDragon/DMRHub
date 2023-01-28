@@ -120,7 +120,6 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 			klog.Errorf("Failed to receive message from Redis: %s", err)
 			return
 		}
-		klog.Error("PUBSUB: Received packet for repeater", p.RadioID)
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
@@ -143,7 +142,6 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 			klog.Errorf("Failed to receive message from Redis: %s", err)
 			return
 		}
-		klog.Errorf("PUBSUB: Received packet for talkgroup %d on repeater %d", tg, p.RadioID)
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {

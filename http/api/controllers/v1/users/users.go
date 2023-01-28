@@ -132,6 +132,19 @@ func POSTUser(c *gin.Context) {
 func POSTUserDemote(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
+
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+	session := sessions.Default(c)
+	fromUserId := session.Get("user_id").(uint)
+	if uint(userID) == fromUserId {
+		// don't allow a user to demote themselves
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot demote yourself"})
+		return
+	}
 	// Grab the user from the database
 	var user models.User
 	db.Find(&user, "id = ?", id)

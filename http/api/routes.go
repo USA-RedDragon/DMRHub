@@ -48,14 +48,14 @@ func v1(group *gin.RouterGroup) {
 	v1Users.GET("", middleware.RequireAdmin(), v1UsersControllers.GETUsers)
 	v1Users.POST("", v1UsersControllers.POSTUser)
 	v1Users.GET("/me", middleware.RequireLogin(), v1UsersControllers.GETUserSelf)
-	v1Users.GET("/admins", middleware.RequireAdmin(), v1UsersControllers.GETUserAdmins)
-	v1Users.POST("/promote/:id", middleware.RequireAdmin(), v1UsersControllers.POSTUserPromote)
-	v1Users.POST("/demote/:id", middleware.RequireAdmin(), v1UsersControllers.POSTUserDemote)
+	v1Users.GET("/admins", middleware.RequireSuperAdmin(), v1UsersControllers.GETUserAdmins)
+	v1Users.POST("/promote/:id", middleware.RequireSuperAdmin(), v1UsersControllers.POSTUserPromote)
+	v1Users.POST("/demote/:id", middleware.RequireSuperAdmin(), v1UsersControllers.POSTUserDemote)
 	v1Users.POST("/approve/:id", middleware.RequireAdmin(), v1UsersControllers.POSTUserApprove)
 	v1Users.POST("/suspend/:id", middleware.RequireAdmin(), v1UsersControllers.POSTUserSuspend)
 	v1Users.GET("/:id", middleware.RequireSelfOrAdmin(), v1UsersControllers.GETUser)
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), v1UsersControllers.PATCHUser)
-	v1Users.DELETE("/:id", middleware.RequireAdmin(), v1UsersControllers.DELETEUser)
+	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), v1UsersControllers.DELETEUser)
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in

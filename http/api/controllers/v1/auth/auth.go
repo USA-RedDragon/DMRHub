@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
@@ -42,7 +43,7 @@ func POSTLogin(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "Authentication failed"})
 			return
 		}
-		verified, err := utils.VerifyPassword(json.Password, user.Password)
+		verified, err := utils.VerifyPassword(json.Password, user.Password, config.GetConfig().PasswordSalt)
 		klog.Infof("POSTLogin: Password verified %v", verified)
 		if verified && err == nil {
 			if user.Approved {

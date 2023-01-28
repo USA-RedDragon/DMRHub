@@ -109,7 +109,7 @@ func POSTUser(c *gin.Context) {
 		}
 
 		// argon2 the password
-		hashedPassword := utils.HashPassword(json.Password)
+		hashedPassword := utils.HashPassword(json.Password, config.GetConfig().PasswordSalt)
 
 		// store the user in the database with Active = false
 		user = models.User{
@@ -278,7 +278,7 @@ func PATCHUser(c *gin.Context) {
 		}
 
 		if json.Password != "" {
-			user.Password = utils.HashPassword(json.Password)
+			user.Password = utils.HashPassword(json.Password, config.GetConfig().PasswordSalt)
 		}
 
 		db.Save(&user)

@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"time"
 
 	"github.com/go-co-op/gocron"
+	gorm_seeder "github.com/kachit/gorm-seeder"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -42,7 +43,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		log.Fatal(err)
+		klog.Fatal(err)
 	}
 	resources, err := resource.New(
 		context.Background(),
@@ -52,7 +53,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		log.Printf("Could not set resources: ", err)
+		klog.Infof("Could not set resources: ", err)
 	}
 
 	otel.SetTracerProvider(
@@ -85,12 +86,48 @@ func main() {
 		klog.Exitf("Failed to trace database: %s", err)
 		return
 	}
-	db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if db.Error != nil {
 		//We have an error
 		klog.Exitf(fmt.Sprintf("Failed with error %s", db.Error))
 		return
 	}
+
+	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
+	var appSettings models.AppSettings
+	result := db.First(&appSettings)
+	if result.Error != nil {
+		// We have an error
+		klog.Errorf(fmt.Sprintf("App settings save failed with error %s", result.Error))
+		if errors.Is(db.Error, gorm.ErrRecordNotFound) {
+			// The record doesn't exist, so create it
+			appSettings = models.AppSettings{
+				HasSeeded: false,
+			}
+			db.Create(&appSettings)
+		} else {
+			// We have an error
+			klog.Exitf(fmt.Sprintf("App settings save failed with error %s", result.Error))
+			return
+		}
+	}
+
+	// If the record exists and HasSeeded is true, then we don't need to seed the database.
+	if !appSettings.HasSeeded {
+		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: 2})
+		seedersStack := gorm_seeder.NewSeedersStack(db)
+		seedersStack.AddSeeder(&usersSeeder)
+
+		//Apply seed
+		err = seedersStack.Seed()
+		if err != nil {
+			klog.Exitf("Failed to seed database: %s", err)
+			return
+		}
+		appSettings.HasSeeded = true
+		db.Save(&appSettings)
+	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		klog.Exitf("Failed to open database: %s", err)

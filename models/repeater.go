@@ -92,18 +92,22 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, id := range p.SubscribedTGs {
-		if id == *p.TS1DynamicTalkgroupID {
-			continue
+		if p.TS1DynamicTalkgroupID != nil {
+			if id == *p.TS1DynamicTalkgroupID {
+				continue
+			}
+			go p.subscribeTG(ctx, redis, *p.TS1DynamicTalkgroupID)
+			p.SubscribedTGs = append(p.SubscribedTGs, *p.TS1DynamicTalkgroupID)
 		}
-		go p.subscribeTG(ctx, redis, *p.TS1DynamicTalkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS1DynamicTalkgroupID)
 	}
 	for _, id := range p.SubscribedTGs {
-		if id == *p.TS2DynamicTalkgroupID {
-			continue
+		if p.TS2DynamicTalkgroupID != nil {
+			if id == *p.TS2DynamicTalkgroupID {
+				continue
+			}
+			go p.subscribeTG(ctx, redis, *p.TS2DynamicTalkgroupID)
+			p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
 		}
-		go p.subscribeTG(ctx, redis, *p.TS2DynamicTalkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
 	}
 }
 

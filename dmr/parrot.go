@@ -1,8 +1,10 @@
 package dmr
 
 import (
+	"context"
+
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"k8s.io/klog/v2"
 )
 
@@ -16,24 +18,24 @@ func NewParrot(redis *redis.Client) *Parrot {
 	}
 }
 
-func (p *Parrot) IsStarted(streamId uint) bool {
-	return p.Redis.exists(streamId)
+func (p *Parrot) IsStarted(ctx context.Context, streamId uint) bool {
+	return p.Redis.exists(ctx, streamId)
 }
 
-func (p *Parrot) StartStream(streamId uint, repeaterId uint) bool {
-	if !p.Redis.exists(streamId) {
-		p.Redis.store(streamId, repeaterId)
+func (p *Parrot) StartStream(ctx context.Context, streamId uint, repeaterId uint) bool {
+	if !p.Redis.exists(ctx, streamId) {
+		p.Redis.store(ctx, streamId, repeaterId)
 		return true
 	}
 	klog.Warningf("Parrot: Stream %d already started", streamId)
 	return false
 }
 
-func (p *Parrot) RecordPacket(streamId uint, packet models.Packet) {
-	go p.Redis.refresh(streamId)
+func (p *Parrot) RecordPacket(ctx context.Context, streamId uint, packet models.Packet) {
+	go p.Redis.refresh(ctx, streamId)
 
 	// Grab the repeater ID to go ahead and mark the packet as being routed back
-	repeaterId, err := p.Redis.get(streamId)
+	repeaterId, err := p.Redis.get(ctx, streamId)
 	if err != nil {
 		klog.Errorf("Error getting parrot stream from redis", err)
 		return
@@ -47,16 +49,16 @@ func (p *Parrot) RecordPacket(streamId uint, packet models.Packet) {
 	packet.BER = -1
 	packet.RSSI = -1
 
-	p.Redis.stream(streamId, packet)
+	p.Redis.stream(ctx, streamId, packet)
 }
 
-func (p *Parrot) StopStream(streamId uint) {
-	p.Redis.delete(streamId)
+func (p *Parrot) StopStream(ctx context.Context, streamId uint) {
+	p.Redis.delete(ctx, streamId)
 }
 
-func (p *Parrot) GetStream(streamId uint) []models.Packet {
+func (p *Parrot) GetStream(ctx context.Context, streamId uint) []models.Packet {
 	// Empty array of packet byte arrays
-	packets, err := p.Redis.getStream(streamId)
+	packets, err := p.Redis.getStream(ctx, streamId)
 	if err != nil {
 		klog.Errorf("Error getting parrot stream from redis: %s", err)
 		return nil

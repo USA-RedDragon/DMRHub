@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-contrib/sessions/redis"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
@@ -18,8 +19,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	realredis "github.com/go-redis/redis"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	realredis "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -36,8 +36,6 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	// Setup API
 	r := gin.Default()
 	pprof.Register(r)
-	r.Use(otelgin.Middleware("dmrserver-in-a-box"))
-	r.Use(middleware.TracingProvider())
 	r.Use(middleware.DatabaseProvider(db))
 	r.Use(middleware.RedisProvider(redisClient))
 
@@ -50,6 +48,10 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)
+
+	r.Use(otelgin.Middleware("api"))
+	r.Use(middleware.TracingProvider())
+
 	api.ApplyRoutes(r)
 
 	staticGroup := r.Group("/")

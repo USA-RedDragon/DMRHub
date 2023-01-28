@@ -68,6 +68,7 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 | `VERBOSE`       | not set                                                   | Set to anything to enable verbose logging. Be careful as this is a LOT of logs                                                                                                                                                         |
 | `CORS_HOSTS`    | `http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT` | Set to a comma-separated list of URLs you expect the app to be accessed at, including the protocol and the port if not 80/443. Used for [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) and websocket Origin validation |
 | `HIBP_API_KEY`  | not set                                                   | Set to a [HIBP](https://haveibeenpwned.com) API key to keep bad passwords away                                                                                                                                                         |
+| `OTLP_ENDPOINT` | not set                                                   | Set to an OTLP (OpenTracing) endpoint for instrumentation and tracing                                                                                                                                                                  |
 
 ## Todos
 

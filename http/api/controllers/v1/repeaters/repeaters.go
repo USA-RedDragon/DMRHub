@@ -13,7 +13,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -215,7 +215,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return
 		}
-		go repeater.ListenForCalls(redis)
+		go repeater.ListenForCalls(c.Request.Context(), redis)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -276,7 +276,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
 		}
 	}
-	go repeater.ListenForCallsOn(redis, talkgroup.ID)
+	go repeater.ListenForCallsOn(c.Request.Context(), redis, talkgroup.ID)
 	db.Save(&repeater)
 }
 

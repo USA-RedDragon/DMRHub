@@ -205,6 +205,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
+	s.SetKeepAlivesEnabled(false)
 
 	s.ListenAndServe()
 }

@@ -51,6 +51,30 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
+func RequireSuperAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		session := sessions.Default(c)
+		userId := session.Get("user_id")
+		if userId == nil {
+			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		span := trace.SpanFromContext(ctx)
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("http.auth", "RequireAdmin"),
+				attribute.Int("user.id", int(userId.(uint))),
+			)
+		}
+		if userId.(uint) != 999999 {
+			klog.Error("User is not a super admin")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		}
+	}
+}
+
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)

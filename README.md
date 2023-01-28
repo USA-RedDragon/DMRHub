@@ -46,8 +46,6 @@ ALTER DATABASE dmr OWNER TO dmr;
 GRANT ALL PRIVILEGES ON DATABASE dmr TO dmr;
 \c dmr
 GRANT ALL ON schema public TO dmr;
-# after the app runs so Parrot call tracking works
-INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot','','f','t');
 ```
 
 ## Environment Variables
@@ -79,8 +77,6 @@ INSERT INTO users (id, callsign, password, admin, approved) VALUES (9990,'Parrot
 
 - [API done] Make user admins appointable and implement user suspend in the UI
 - [API done] Add ability to add and remove talkgroup admins and NCOs in the UI
-- Superadmin class that can add and remove admin
-- Admin class that can make and delete talkgroups, suspend and enable users, appoint and demote talkgroup owners, and see the master repeater and user list
 - Finalize color scheme
 
 #### Things the dev sees

@@ -6,17 +6,16 @@ import (
 	"io"
 	"net/http"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/gin-contrib/pprof"
-	"github.com/gin-contrib/sessions/redis"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
+	redis "github.com/USA-RedDragon/dmrserver-in-a-box/http/sessions"
 	websocketHandler "github.com/USA-RedDragon/dmrserver-in-a-box/http/websocket"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
@@ -46,7 +45,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(runtime.GOMAXPROCS(0), "tcp", config.GetConfig().RedisHost, "", []byte(config.GetConfig().Secret))
+	store, _ := redis.NewStore(redisClient, []byte(""), []byte(config.GetConfig().Secret))
 	r.Use(sessions.Sessions("sessions", store))
 
 	ws.ApplyRoutes(r)

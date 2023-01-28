@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"time"
 
 	"github.com/go-co-op/gocron"
@@ -133,9 +134,9 @@ func main() {
 		klog.Exitf("Failed to open database: %s", err)
 		return
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(-1)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
+	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * 10)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
 	// Dummy call to get the data decoded into memory early
 	go func() {
@@ -169,7 +170,11 @@ func main() {
 	scheduler.StartAsync()
 
 	redis := redis.NewClient(&redis.Options{
-		Addr: config.GetConfig().RedisHost,
+		Addr:            config.GetConfig().RedisHost,
+		PoolFIFO:        true,
+		PoolSize:        runtime.GOMAXPROCS(0) * 10,
+		MaxIdleConns:    runtime.GOMAXPROCS(0),
+		ConnMaxIdleTime: 10 * time.Minute,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

@@ -1,12 +1,13 @@
 package dmr
 
 import (
+	"context"
 	"encoding/binary"
 	"net"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/config"
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -38,9 +39,9 @@ func MakeServer(db *gorm.DB, redis *redis.Client) DMRServer {
 	}
 }
 
-func (s *DMRServer) Stop() {
+func (s *DMRServer) Stop(ctx context.Context) {
 	// Send a MSTCL command to each repeater
-	repeaters, err := s.Redis.list()
+	repeaters, err := s.Redis.list(ctx)
 	if err != nil {
 		klog.Errorf("Error scanning redis for repeaters", err)
 	}
@@ -48,16 +49,16 @@ func (s *DMRServer) Stop() {
 		if s.Verbose {
 			klog.Infof("Repeater found: %d", repeater)
 		}
-		s.Redis.updateConnection(repeater, "DISCONNECTED")
+		s.Redis.updateConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, 4)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-		s.sendCommand(repeater, COMMAND_MSTCL, repeaterBinary)
+		s.sendCommand(ctx, repeater, COMMAND_MSTCL, repeaterBinary)
 	}
 	s.Started = false
 }
 
-func (s *DMRServer) listen() {
-	pubsub := s.Redis.Redis.Subscribe("incoming")
+func (s *DMRServer) listen(ctx context.Context) {
+	pubsub := s.Redis.Redis.Subscribe(ctx, "incoming")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
@@ -73,8 +74,8 @@ func (s *DMRServer) listen() {
 	}
 }
 
-func (s *DMRServer) send() {
-	pubsub := s.Redis.Redis.Subscribe("outgoing")
+func (s *DMRServer) send(ctx context.Context) {
+	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
 		klog.Errorf("PUBSUB: Received outgoing message")
@@ -91,12 +92,12 @@ func (s *DMRServer) send() {
 	}
 }
 
-func (s *DMRServer) sendNoAddr() {
-	pubsub := s.Redis.Redis.Subscribe("outgoing:noaddr")
+func (s *DMRServer) sendNoAddr(ctx context.Context) {
+	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing:noaddr")
 	defer pubsub.Close()
 	for msg := range pubsub.Channel() {
 		packet := models.UnpackPacket([]byte(msg.Payload))
-		repeater, err := s.Redis.get(packet.Repeater)
+		repeater, err := s.Redis.get(ctx, packet.Repeater)
 		klog.Errorf("PUBSUB: Received outgoing message to repeater %d", packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
@@ -109,7 +110,7 @@ func (s *DMRServer) sendNoAddr() {
 	}
 }
 
-func (s *DMRServer) Listen() {
+func (s *DMRServer) Listen(ctx context.Context) {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	// 1MB buffers, say what?
 	server.SetReadBuffer(1000000)
@@ -121,9 +122,9 @@ func (s *DMRServer) Listen() {
 	}
 	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
-	go s.listen()
-	go s.send()
-	go s.sendNoAddr()
+	go s.listen(ctx)
+	go s.send(ctx)
+	go s.sendNoAddr(ctx)
 
 	go func() {
 		for {
@@ -146,13 +147,13 @@ func (s *DMRServer) Listen() {
 					klog.Errorf("Error marshalling packet", err)
 					return
 				}
-				s.Redis.Redis.Publish("incoming", packedBytes)
+				s.Redis.Redis.Publish(ctx, "incoming", packedBytes)
 			}()
 		}
 	}()
 }
 
-func (s *DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byte) {
+func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, command string, data []byte) {
 	go func() {
 		if !s.Started {
 			klog.Warningf("Server not started, not sending command")
@@ -162,7 +163,7 @@ func (s *DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byt
 			klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIdBytes)
 		}
 		command_prefixed_data := append([]byte(command), data...)
-		repeater, err := s.Redis.get(repeaterIdBytes)
+		repeater, err := s.Redis.get(ctx, repeaterIdBytes)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
@@ -177,17 +178,17 @@ func (s *DMRServer) sendCommand(repeaterIdBytes uint, command string, data []byt
 			klog.Errorf("Error marshalling packet", err)
 			return
 		}
-		s.Redis.Redis.Publish("outgoing", packedBytes)
+		s.Redis.Redis.Publish(ctx, "outgoing", packedBytes)
 	}()
 }
 
-func (s *DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
+func (s *DMRServer) sendPacket(ctx context.Context, repeaterIdBytes uint, packet models.Packet) {
 	go func() {
 		if s.Verbose {
 			klog.Infof("Sending Packet: %v\n", packet)
 			klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
 		}
-		repeater, err := s.Redis.get(repeaterIdBytes)
+		repeater, err := s.Redis.get(ctx, repeaterIdBytes)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
@@ -202,6 +203,6 @@ func (s *DMRServer) sendPacket(repeaterIdBytes uint, packet models.Packet) {
 			klog.Errorf("Error marshalling packet", err)
 			return
 		}
-		s.Redis.Redis.Publish("outgoing", packedBytes)
+		s.Redis.Redis.Publish(ctx, "outgoing", packedBytes)
 	}()
 }

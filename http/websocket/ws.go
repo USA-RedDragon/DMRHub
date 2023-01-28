@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,8 +10,8 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/middleware"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -89,7 +90,7 @@ func (h *WSHandler) repeaterHandler(db *gorm.DB, session sessions.Session, w htt
 	}
 }
 
-func (h *WSHandler) callHandler(db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -99,7 +100,7 @@ func (h *WSHandler) callHandler(db *gorm.DB, session sessions.Session, w http.Re
 	userIDIface := session.Get("user_id")
 	if userIDIface == nil {
 		// User ID not found, subscribe to TG calls
-		pubsub := h.redis.Subscribe("calls")
+		pubsub := h.redis.Subscribe(ctx, "calls")
 		defer pubsub.Close()
 		for msg := range pubsub.Channel() {
 			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
@@ -107,7 +108,7 @@ func (h *WSHandler) callHandler(db *gorm.DB, session sessions.Session, w http.Re
 	} else {
 		userID := userIDIface.(uint)
 
-		pubsub := h.redis.Subscribe(fmt.Sprintf("calls:%d", userID))
+		pubsub := h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
 		defer pubsub.Close()
 		for msg := range pubsub.Channel() {
 			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
@@ -130,6 +131,6 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine) {
 	r.GET("/ws/calls", func(c *gin.Context) {
 		db := c.MustGet("DB").(*gorm.DB)
 		session := sessions.Default(c)
-		h.callHandler(db, session, c.Writer, c.Request)
+		h.callHandler(c.Request.Context(), db, session, c.Writer, c.Request)
 	})
 }

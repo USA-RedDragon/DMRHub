@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 )
 
 func RedisProvider(redis *redis.Client) gin.HandlerFunc {

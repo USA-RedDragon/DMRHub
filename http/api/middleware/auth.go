@@ -27,7 +27,7 @@ func RequireAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", userId.(int)),
+				attribute.Int("user.id", int(userId.(uint))),
 			)
 		}
 
@@ -65,7 +65,7 @@ func RequireLogin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireLogin"),
-				attribute.Int("user.id", userId.(int)),
+				attribute.Int("user.id", int(userId.(uint))),
 			)
 		}
 
@@ -104,7 +104,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
-				attribute.Int("user.id", userId.(int)),
+				attribute.Int("user.id", int(userId.(uint))),
 			)
 		}
 
@@ -149,7 +149,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
-				attribute.Int("user.id", userId.(int)),
+				attribute.Int("user.id", int(userId.(uint))),
 			)
 		}
 
@@ -197,7 +197,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireSelfOrAdmin"),
-				attribute.Int("user.id", userId.(int)),
+				attribute.Int("user.id", int(userId.(uint))),
 			)
 		}
 

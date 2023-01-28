@@ -1,11 +1,12 @@
 package models
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -50,7 +51,7 @@ type Repeater struct {
 	SubscribedTGs         []uint         `json:"-" gorm:"-" msg:"-"`
 }
 
-func (p Repeater) ListenForCallsOn(redis *redis.Client, talkgroupID uint) {
+func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, talkgroupID uint) {
 	found := false
 	for _, id := range p.SubscribedTGs {
 		if id == talkgroupID {
@@ -58,18 +59,18 @@ func (p Repeater) ListenForCallsOn(redis *redis.Client, talkgroupID uint) {
 		}
 	}
 	if !found {
-		go p.subscribeTG(redis, talkgroupID)
+		go p.subscribeTG(ctx, redis, talkgroupID)
 		p.SubscribedTGs = append(p.SubscribedTGs, talkgroupID)
 	}
 }
 
-func (p Repeater) ListenForCalls(redis *redis.Client) {
+func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 	klog.Infof("Listening for calls on repeater %d", p.RadioID)
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
-	go p.subscribeRepeater(redis)
+	go p.subscribeRepeater(ctx, redis)
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
@@ -78,7 +79,7 @@ func (p Repeater) ListenForCalls(redis *redis.Client) {
 				continue
 			}
 		}
-		go p.subscribeTG(redis, tg.ID)
+		go p.subscribeTG(ctx, redis, tg.ID)
 		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
@@ -87,30 +88,30 @@ func (p Repeater) ListenForCalls(redis *redis.Client) {
 				continue
 			}
 		}
-		go p.subscribeTG(redis, tg.ID)
+		go p.subscribeTG(ctx, redis, tg.ID)
 		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, id := range p.SubscribedTGs {
 		if id == *p.TS1DynamicTalkgroupID {
 			continue
 		}
-		go p.subscribeTG(redis, *p.TS1DynamicTalkgroupID)
+		go p.subscribeTG(ctx, redis, *p.TS1DynamicTalkgroupID)
 		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS1DynamicTalkgroupID)
 	}
 	for _, id := range p.SubscribedTGs {
 		if id == *p.TS2DynamicTalkgroupID {
 			continue
 		}
-		go p.subscribeTG(redis, *p.TS2DynamicTalkgroupID)
+		go p.subscribeTG(ctx, redis, *p.TS2DynamicTalkgroupID)
 		p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
 	}
 }
 
-func (p *Repeater) subscribeRepeater(redis *redis.Client) {
-	pubsub := redis.Subscribe(fmt.Sprintf("packets:repeater:%d", p.RadioID))
+func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
+	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Close()
 	for {
-		msg, err := pubsub.ReceiveMessage()
+		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
 			klog.Errorf("Failed to receive message from Redis: %s", err)
 			return
@@ -125,15 +126,15 @@ func (p *Repeater) subscribeRepeater(redis *redis.Client) {
 		// This packet is already for us and we don't want to modify the slot
 		packet := UnpackPacket(rawPacket.Data)
 		packet.Repeater = p.RadioID
-		redis.Publish("outgoing:noaddr", packet.Encode())
+		redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 	}
 }
 
-func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
-	pubsub := redis.Subscribe(fmt.Sprintf("packets:talkgroup:%d", tg))
+func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint) {
+	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Close()
 	for {
-		msg, err := pubsub.ReceiveMessage()
+		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
 			klog.Errorf("Failed to receive message from Redis: %s", err)
 			return
@@ -156,7 +157,7 @@ func (p *Repeater) subscribeTG(redis *redis.Client, tg uint) {
 			// We need to send it to the repeater
 			packet.Repeater = p.RadioID
 			packet.Slot = slot
-			redis.Publish("outgoing:noaddr", packet.Encode())
+			redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 		} else {
 			// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
 			pubsub.Close()

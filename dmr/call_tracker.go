@@ -1,12 +1,13 @@
 package dmr
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/models"
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -31,7 +32,7 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	}
 }
 
-func (c *CallTracker) StartCall(packet models.Packet) {
+func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
 
@@ -128,7 +129,7 @@ func (c *CallTracker) StartCall(packet models.Packet) {
 	klog.Infof("Started call %d", call.StreamID)
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.CallEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(c, packet))
+	c.CallEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet))
 }
 
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
@@ -176,7 +177,7 @@ type jsonCallResponse struct {
 	RSSI          float32                   `json:"rssi"`
 }
 
-func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
+func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet models.Packet) {
 	// copy call into a jsonCallResponse
 	var jsonCall jsonCallResponse
 	jsonCall.ID = call.ID
@@ -210,7 +211,7 @@ func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
 	}
 	// Save for hoseline:
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		_, err = c.Redis.Publish("calls", callJSON).Result()
+		_, err = c.Redis.Publish(ctx, "calls", callJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)
 			return
@@ -225,18 +226,18 @@ func (c *CallTracker) publishCall(call *models.Call, packet models.Packet) {
 		want, _ := repeater.WantRX(packet)
 		if want && !alreadyPublished[repeater.OwnerID] {
 			// Publish the call to the repeater owner's call history
-			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+			c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
 			alreadyPublished[repeater.OwnerID] = true
 			continue
 		}
 		if repeater.OwnerID == call.UserID {
-			c.Redis.Publish(fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+			c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
 			alreadyPublished[repeater.OwnerID] = true
 		}
 	}
 }
 
-func (c *CallTracker) updateCall(call *models.Call, packet models.Packet) {
+func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
 	// Reset call end timer
 	c.CallEndTimers[call.ID].Reset(2 * time.Second)
 
@@ -264,7 +265,7 @@ func (c *CallTracker) updateCall(call *models.Call, packet models.Packet) {
 		}
 
 		if call.TotalPackets%2 == 0 {
-			go c.publishCall(call, packet)
+			go c.publishCall(ctx, call, packet)
 		}
 		return
 	}
@@ -366,29 +367,29 @@ func (c *CallTracker) updateCall(call *models.Call, packet models.Packet) {
 	}
 
 	if call.TotalPackets%2 == 0 {
-		go c.publishCall(call, packet)
+		go c.publishCall(ctx, call, packet)
 	}
 }
 
-func (c *CallTracker) ProcessCallPacket(packet models.Packet) {
+func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	for _, lcall := range c.InFlightCalls {
 		if lcall.StreamID == packet.StreamId && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
-			c.updateCall(lcall, packet)
+			c.updateCall(ctx, lcall, packet)
 			return
 		}
 	}
 }
 
-func endCallHandler(c *CallTracker, packet models.Packet) func() {
+func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
 	return func() {
 		klog.Errorf("Call %d timed out", packet.StreamId)
-		c.EndCall(packet)
+		c.EndCall(ctx, packet)
 	}
 }
 
-func (c *CallTracker) EndCall(packet models.Packet) {
+func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	for _, call := range c.InFlightCalls {
@@ -422,7 +423,7 @@ func (c *CallTracker) EndCall(packet models.Packet) {
 			call.Duration = time.Since(call.StartTime)
 			call.Loss = float32(call.LostSequences / call.TotalPackets)
 			c.DB.Save(call)
-			c.publishCall(call, packet)
+			c.publishCall(ctx, call, packet)
 			delete(c.InFlightCalls, call.ID)
 
 			klog.Errorf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)

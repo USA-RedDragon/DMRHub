@@ -180,6 +180,11 @@ func POSTUserPromote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 		return
 	}
+	if user.ID == 9990 {
+		// Prevent promoting the Parrot user
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot promote the Parrot user"})
+		return
+	}
 	user.Admin = true
 	db.Save(&user)
 	if db.Error != nil {

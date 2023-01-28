@@ -147,9 +147,12 @@ export default {
           }
         }
 
-        if (!found) {
-          copyLastheard.unshift(call);
+        if (!found && copyLastheard.length == 10) {
           copyLastheard.pop();
+        }
+
+        if (!found && copyLastheard.length < 10) {
+          copyLastheard.unshift(call);
         }
 
         this.lastheard = this.cleanData(copyLastheard);

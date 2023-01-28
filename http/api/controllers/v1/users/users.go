@@ -185,6 +185,11 @@ func POSTUserPromote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot promote the Parrot user"})
 		return
 	}
+	if !user.Approved {
+		// Prevent promoting an unapproved user
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot promote an unapproved user"})
+		return
+	}
 	user.Admin = true
 	db.Save(&user)
 	if db.Error != nil {

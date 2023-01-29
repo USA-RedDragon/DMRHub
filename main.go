@@ -173,8 +173,8 @@ func main() {
 		Addr:            config.GetConfig().RedisHost,
 		PoolFIFO:        true,
 		PoolSize:        runtime.GOMAXPROCS(0) * 10,
-		MaxIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxIdleTime: 10 * time.Minute,
+		MinIdleConns:    runtime.GOMAXPROCS(0),
+		ConnMaxLifetime: 10 * time.Minute,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

@@ -75,7 +75,7 @@ func (h *WSHandler) pingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *WSHandler) repeaterHandler(db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -145,7 +145,7 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine) {
 	r.GET("/ws/repeaters", middleware.RequireLogin(), func(c *gin.Context) {
 		db := c.MustGet("DB").(*gorm.DB)
 		session := sessions.Default(c)
-		h.repeaterHandler(db, session, c.Writer, c.Request)
+		h.repeaterHandler(c.Request.Context(), db, session, c.Writer, c.Request)
 	})
 
 	r.GET("/ws/health", func(c *gin.Context) {

@@ -7,6 +7,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/utils"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"k8s.io/klog/v2"
 )
 
@@ -82,4 +83,8 @@ func (s *UsersSeeder) Seed(db *gorm.DB) error {
 
 func (s *UsersSeeder) Clear(db *gorm.DB) error {
 	return nil
+}
+
+func DeleteUser(db *gorm.DB, id uint) {
+	db.Unscoped().Select(clause.Associations, "Repeaters").Delete(&User{ID: id})
 }

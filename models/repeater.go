@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"k8s.io/klog/v2"
 )
 
@@ -202,6 +203,10 @@ func RepeaterIDExists(db *gorm.DB, id uint) bool {
 	var count int64
 	db.Model(&Repeater{}).Where("radio_id = ?", id).Limit(1).Count(&count)
 	return count > 0
+}
+
+func DeleteRepeater(db *gorm.DB, id uint) {
+	db.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {

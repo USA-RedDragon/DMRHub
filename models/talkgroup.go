@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Talkgroup struct {
@@ -27,4 +28,8 @@ func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
 	var talkgroup Talkgroup
 	db.Preload("Admins").Preload("NCOs").First(&talkgroup, ID)
 	return talkgroup
+}
+
+func DeleteTalkgroup(db *gorm.DB, id uint) {
+	db.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
 }

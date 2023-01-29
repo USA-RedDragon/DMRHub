@@ -330,8 +330,12 @@ func PATCHUser(c *gin.Context) {
 
 func DELETEUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	id := c.Param("id")
-	db.Unscoped().Delete(&models.User{}, "id = ?", id)
+	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	models.DeleteUser(db, uint(idUint64))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

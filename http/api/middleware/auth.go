@@ -13,6 +13,55 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func RequireAdminOrTGOwner() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		userId := session.Get("user_id")
+		if userId == nil {
+			klog.Error("userId not found")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		ctx := c.Request.Context()
+		span := trace.SpanFromContext(ctx)
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("http.auth", "RequireAdminOrTGOwner"),
+				attribute.Int("user.id", int(userId.(uint))),
+			)
+		}
+
+		valid := false
+		// Open up the DB and check if the user is an admin
+		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		var user models.User
+		db.Find(&user, "id = ?", userId.(uint))
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.Bool("user.admin", user.Admin),
+			)
+		}
+		if user.Admin {
+			valid = true
+		}
+
+		// Check if the user is the owner of any talkgroups
+		talkgroups, err := models.FindTalkgroupsByOwnerID(db, userId.(uint))
+		if err != nil {
+			klog.Error(err)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		if len(talkgroups) > 0 {
+			valid = true
+		}
+
+		if !valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		}
+	}
+}
+
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)

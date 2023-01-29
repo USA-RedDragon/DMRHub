@@ -5,121 +5,29 @@
     <Card>
       <template #title>User Approvals</template>
       <template #content>
-        <DataTable :value="users">
-          <Column field="id" header="DMR ID"></Column>
-          <Column field="callsign" header="Callsign"></Column>
-          <Column field="username" header="Username"></Column>
-          <Column field="approved" header="Approve?">
-            <template #body="slotProps">
-              <Button
-                label="Approve"
-                class="p-button-raised p-button-rounded"
-                @click="handleApprove(slotProps.data)"
-              />
-            </template>
-          </Column>
-          <Column field="created_at" header="Created">
-            <template #body="slotProps">{{
-              slotProps.data.created_at.fromNow()
-            }}</template>
-          </Column>
-        </DataTable>
+        <UserTable approval />
       </template>
     </Card>
   </div>
 </template>
 
 <script>
-import Button from "primevue/button/sfc";
 import Card from "primevue/card/sfc";
-import Checkbox from "primevue/checkbox/sfc";
-import DataTable from "primevue/datatable/sfc";
-import Column from "primevue/column/sfc";
-import ColumnGroup from "primevue/columngroup/sfc"; //optional for column grouping
-import Row from "primevue/row/sfc";
-import API from "@/services/API";
-import moment from "moment";
-
-import { mapStores } from "pinia";
-import { useSettingsStore } from "@/store";
+import UserTable from "@/components/UserTable.vue";
 
 export default {
   components: {
-    Button,
     Card,
-    Checkbox,
-    DataTable,
-    Column,
-    ColumnGroup,
-    Row,
+    UserTable,
   },
   created() {},
-  mounted() {
-    this.fetchData();
-    this.refresh = setInterval(
-      this.fetchData,
-      this.settingsStore.refreshInterval
-    );
-  },
-  unmounted() {
-    clearInterval(this.refresh);
-  },
+  mounted() {},
+  unmounted() {},
   data: function () {
-    return {
-      users: [],
-      refresh: null,
-    };
+    return {};
   },
-  methods: {
-    fetchData() {
-      API.get("/users")
-        .then((res) => {
-          this.users = res.data.filter(function (itm) {
-            return itm.approved == false;
-          });
-          for (let i = 0; i < this.users.length; i++) {
-            this.users[i].created_at = moment(this.users[i].created_at);
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    },
-    handleApprove(user) {
-      this.$confirm.require({
-        message: "Are you sure you want to approve this user?",
-        header: "Approve User",
-        icon: "pi pi-exclamation-triangle",
-        acceptClass: "p-button-danger",
-        accept: () => {
-          API.post("/users/approve/" + user.id, {})
-            .then((res) => {
-              // Refresh user data
-              this.fetchData();
-              this.$toast.add({
-                summary: "Confirmed",
-                severity: "success",
-                detail: `User ${user.id} approved`,
-                life: 3000,
-              });
-            })
-            .catch((err) => {
-              console.error(err);
-              this.$toast.add({
-                summary: "Error",
-                severity: "error",
-                detail: `Error approving user ${user.id}`,
-                life: 3000,
-              });
-            });
-        },
-        reject: () => {},
-      });
-    },
-  },
-  computed: {
-    ...mapStores(useSettingsStore),
-  },
+  methods: {},
+  computed: {},
 };
 </script>
 

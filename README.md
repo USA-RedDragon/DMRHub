@@ -86,7 +86,6 @@ GRANT ALL ON schema public TO dmr;
 - Document deployment
 - Paginate APIs
 - Rework frontend to not carry around so many objects
-- componentize the frontend
 
 ### Soon
 

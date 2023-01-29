@@ -188,6 +188,37 @@ export default {
         this.fetchData();
       }
     },
+    deleteTalkgroup(talkgroup) {
+      // First, show a confirmation dialog
+      this.$confirm.require({
+        message: "Are you sure you want to delete this talkgroup?",
+        header: "Delete Talkgroup",
+        icon: "pi pi-exclamation-triangle",
+        acceptClass: "p-button-danger",
+        accept: () => {
+          API.delete("/talkgroups/" + talkgroup.id)
+            .then((res) => {
+              this.$toast.add({
+                summary: "Confirmed",
+                severity: "success",
+                detail: `Talkgroup ${talkgroup.id} deleted`,
+                life: 3000,
+              });
+              this.fetchData();
+            })
+            .catch((err) => {
+              console.error(err);
+              this.$toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: `Error deleting talkgroup ${talkgroup.id}`,
+                life: 3000,
+              });
+            });
+        },
+        reject: () => {},
+      });
+    },
     saveTalkgroup(talkgroup) {
       API.patch("/talkgroups/" + talkgroup.id, {
         name: talkgroup.name,

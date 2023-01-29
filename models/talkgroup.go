@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"k8s.io/klog/v2"
 )
 
 type Talkgroup struct {
@@ -32,4 +33,15 @@ func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
 
 func DeleteTalkgroup(db *gorm.DB, id uint) {
 	db.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
+}
+
+func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
+	var talkgroups []Talkgroup
+	if err := db.Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
+		Joins("JOIN users on talkgroup_admins.user_id=users.id").Where("users.id=?", ownerID).
+		Group("talkgroups.id").Find(&talkgroups).Error; err != nil {
+		klog.Errorf("Error getting talkgroups owned by user %d: %v", ownerID, err)
+		return nil, err
+	}
+	return talkgroups, nil
 }

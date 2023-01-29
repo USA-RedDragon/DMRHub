@@ -31,13 +31,9 @@ func GETMyTalkgroups(c *gin.Context) {
 		return
 	}
 
-	var talkgroups []models.Talkgroup
-	db.Table("talkgroup_admins")
-	if err := db.Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
-		Joins("JOIN users on talkgroup_admins.user_id=users.id").Where("users.id=?", userId.(uint)).
-		Group("talkgroups.id").Find(&talkgroups).Error; err != nil {
-		klog.Errorf("Error getting talkgroups owned by user %d: %v", userId.(uint), err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting talkgroups owned by user"})
+	talkgroups, err := models.FindTalkgroupsByOwnerID(db, userId.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

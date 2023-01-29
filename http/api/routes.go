@@ -45,7 +45,7 @@ func v1(group *gin.RouterGroup) {
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), v1TalkgroupsControllers.DELETETalkgroup)
 
 	v1Users := group.Group("/users")
-	v1Users.GET("", middleware.RequireAdmin(), v1UsersControllers.GETUsers)
+	v1Users.GET("", middleware.RequireAdminOrTGOwner(), v1UsersControllers.GETUsers)
 	v1Users.POST("", v1UsersControllers.POSTUser)
 	v1Users.GET("/me", middleware.RequireLogin(), v1UsersControllers.GETUserSelf)
 	v1Users.GET("/admins", middleware.RequireSuperAdmin(), v1UsersControllers.GETUserAdmins)

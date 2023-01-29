@@ -170,11 +170,7 @@ func main() {
 	scheduler.StartAsync()
 
 	redis := redis.NewClient(&redis.Options{
-		Addr:            config.GetConfig().RedisHost,
-		PoolFIFO:        true,
-		PoolSize:        runtime.GOMAXPROCS(0) * 10,
-		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxLifetime: 10 * time.Minute,
+		Addr: config.GetConfig().RedisHost,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

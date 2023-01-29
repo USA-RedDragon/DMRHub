@@ -113,18 +113,19 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 
 func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
+	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Close()
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
 			klog.Errorf("Failed to receive message from Redis: %s", err)
-			return
+			continue
 		}
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
 			klog.Errorf("Failed to unmarshal raw packet: %s", err)
-			return
+			continue
 		}
 		// This packet is already for us and we don't want to modify the slot
 		packet := UnpackPacket(rawPacket.Data)
@@ -135,18 +136,19 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 
 func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint) {
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
+	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Close()
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
 			klog.Errorf("Failed to receive message from Redis: %s", err)
-			return
+			continue
 		}
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
 			klog.Errorf("Failed to unmarshal raw packet: %s", err)
-			return
+			continue
 		}
 		packet := UnpackPacket(rawPacket.Data)
 		if packet.Src == p.RadioID {
@@ -162,6 +164,7 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 			redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 		} else {
 			// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
+			pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 			pubsub.Close()
 			return
 		}

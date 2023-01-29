@@ -66,8 +66,12 @@ func GETRepeater(c *gin.Context) {
 
 func DELETERepeater(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	id := c.Param("id")
-	db.Unscoped().Delete(&models.Repeater{}, "radio_id = ?", id)
+	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		return
+	}
+	models.DeleteRepeater(db, uint(idUint64))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

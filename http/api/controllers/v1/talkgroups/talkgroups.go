@@ -2,6 +2,7 @@ package talkgroups
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/http/api/apimodels"
@@ -61,7 +62,12 @@ func GETTalkgroup(c *gin.Context) {
 
 func DELETETalkgroup(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
-	db.Unscoped().Delete(&models.Talkgroup{}, "id = ?", c.Param("id"))
+	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		return
+	}
+	models.DeleteTalkgroup(db, uint(idUint64))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

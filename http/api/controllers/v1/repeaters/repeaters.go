@@ -329,15 +329,17 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	case "dynamic":
 		switch slot {
 		case "1":
-			if *repeater.TS1DynamicTalkgroupID != talkgroup.ID {
+			if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != talkgroup.ID {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}
 			// Set TS1DynamicTalkgroup association on repeater to target
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS1DynamicTalkgroupID = nil
+
+			db.Save(&repeater)
 		case "2":
-			if *repeater.TS2DynamicTalkgroupID != talkgroup.ID {
+			if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != talkgroup.ID {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}

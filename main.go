@@ -174,7 +174,7 @@ func main() {
 		PoolFIFO:        true,
 		PoolSize:        runtime.GOMAXPROCS(0) * 10,
 		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxLifetime: 10 * time.Minute,
+		ConnMaxIdleTime: 10 * time.Minute,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

@@ -61,6 +61,7 @@ func (h *WSHandler) pingHandler(w http.ResponseWriter, r *http.Request) {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
+	defer conn.Close()
 
 	for {
 		t, msg, err := conn.ReadMessage()
@@ -80,6 +81,7 @@ func (h *WSHandler) repeaterHandler(db *gorm.DB, session sessions.Session, w htt
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
+	defer conn.Close()
 
 	for {
 		t, msg, err := conn.ReadMessage()
@@ -96,25 +98,47 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
+	defer conn.Close()
 
 	userIDIface := session.Get("user_id")
+	var pubsub *redis.PubSub
+	userID := userIDIface.(uint)
 	if userIDIface == nil {
 		// User ID not found, subscribe to TG calls
-		pubsub := h.redis.Subscribe(ctx, "calls")
-		defer pubsub.Close()
-		for msg := range pubsub.Channel() {
-			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
-		}
+		pubsub = h.redis.Subscribe(ctx, "calls")
+		defer pubsub.Unsubscribe(ctx, "calls")
 	} else {
-		userID := userIDIface.(uint)
+		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
+		defer pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
+	}
+	defer pubsub.Close()
 
-		pubsub := h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
-		defer pubsub.Close()
+	readFailed := false
+	go func() {
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				readFailed = true
+				break
+			}
+		}
+	}()
+
+	go func() {
 		for msg := range pubsub.Channel() {
-			conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
+				klog.Errorf("Failed to write message to websocket: %v", err)
+				return
+			}
+		}
+	}()
+
+	for {
+		if readFailed {
+			pubsub.Close()
+			break
 		}
 	}
-
 }
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine) {

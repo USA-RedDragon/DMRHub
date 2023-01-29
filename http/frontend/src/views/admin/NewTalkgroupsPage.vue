@@ -164,7 +164,7 @@ export default {
             });
           }
           for (i = 0; i < this.ncos.length; i++) {
-            API.post(`/talkgroups/${numericID}/nco`, {
+            API.post(`/talkgroups/${numericID}/ncos`, {
               user_id: this.ncos[i].id,
             }).catch((err) => {
               console.error(err);

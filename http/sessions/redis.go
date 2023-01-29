@@ -1,5 +1,9 @@
 package sessions
 
+// This is a modified version of <https://github.com/gin-contrib/sessions>
+// to use a redis client instead of creating its own
+// See their license: <https://github.com/gin-contrib/sessions/blob/828f9855fb30f12d40251e5211df3be5c7973e8c/LICENSE>
+
 import (
 	"errors"
 

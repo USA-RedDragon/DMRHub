@@ -15,3 +15,5 @@ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIG
 HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The `http/api/sessions/redis.go` and `http/api/sessions/redistore.go` are modified versions of <https://github.com/gin-contrib/sessions> (at commit 828f9855fb30f12d40251e5211df3be5c7973e8c) and <https://github.com/boj/redistore> (at commit cd5dcc76aeff9ba06b0a924829fe24fd69cdd517), respectively. Both are licensed under MIT.

@@ -9,6 +9,7 @@ import { RouterView } from "vue-router";
 import Footer from "./components/Footer.vue";
 import Header from "./components/Header.vue";
 import API from "@/services/API";
+import { getWebsocketURI } from "@/services/util";
 
 import { mapStores } from "pinia";
 import { useUserStore, useSettingsStore } from "@/store";
@@ -34,7 +35,7 @@ export default {
     },
   },
   created() {
-    this.socket = new WebSocket(this.getWebsocketURI() + "/health");
+    this.socket = new WebSocket(getWebsocketURI() + "/health");
     this.mapSocketEvents();
   },
   mounted() {
@@ -48,25 +49,6 @@ export default {
     clearInterval(this.refresh);
   },
   methods: {
-    getWebsocketURI() {
-      var loc = window.location;
-      var new_uri;
-      if (loc.protocol === "https:") {
-        new_uri = "wss:";
-      } else {
-        new_uri = "ws:";
-      }
-      // nodejs development
-      if (window.location.port == 5173) {
-        // Change port to 3005
-        new_uri += "//" + loc.hostname + ":3005";
-      } else {
-        new_uri += "//" + loc.host;
-      }
-      new_uri += "/ws";
-      console.log('Websocket URI: "' + new_uri + '"');
-      return new_uri;
-    },
     mapSocketEvents() {
       this.socket.addEventListener("open", (event) => {
         console.log("Connected to websocket");
@@ -79,14 +61,14 @@ export default {
         console.error("Disconnected from websocket");
         console.error("Sleeping for 1 second before reconnecting");
         setTimeout(() => {
-          this.socket = new WebSocket(this.getWebsocketURI() + "/health");
+          this.socket = new WebSocket(getWebsocketURI() + "/health");
           this.mapSocketEvents();
         }, 1000);
       });
 
       this.socket.addEventListener("error", (event) => {
         console.error("Error from websocket", event);
-        this.socket = new WebSocket(this.getWebsocketURI() + "/health");
+        this.socket = new WebSocket(getWebsocketURI() + "/health");
         this.mapSocketEvents();
       });
 

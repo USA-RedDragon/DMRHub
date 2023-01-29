@@ -102,12 +102,12 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 
 	userIDIface := session.Get("user_id")
 	var pubsub *redis.PubSub
-	userID := userIDIface.(uint)
 	if userIDIface == nil {
 		// User ID not found, subscribe to TG calls
 		pubsub = h.redis.Subscribe(ctx, "calls")
 		defer pubsub.Unsubscribe(ctx, "calls")
 	} else {
+		userID := userIDIface.(uint)
 		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
 		defer pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
 	}

@@ -2,6 +2,10 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
+// This is a modified version of <https://github.com/boj/redistore>
+// to use a redis client instead of creating its own
+// See their license: <https://github.com/boj/redistore/blob/cd5dcc76aeff9ba06b0a924829fe24fd69cdd517/LICENSE>
+
 package sessions
 
 import (

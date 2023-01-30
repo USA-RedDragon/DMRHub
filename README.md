@@ -129,10 +129,6 @@ GRANT ALL ON schema public TO dmr;
 - Finalize color scheme
 - Handle single timeslot repeater case
 
-#### Things the dev sees
-
-- CI build and release
-
 ### Soon
 
 - details page for talkgroup with lastheard

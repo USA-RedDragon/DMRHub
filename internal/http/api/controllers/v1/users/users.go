@@ -22,8 +22,10 @@ import (
 
 func GETUsers(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	users := models.ListUsers(db)
-	c.JSON(http.StatusOK, users)
+	total := models.CountUsers(cDb)
+	c.JSON(http.StatusOK, gin.H{"total": total, "users": users})
 }
 
 // Registration is JSON data from the frontend
@@ -292,35 +294,39 @@ func GETUser(c *gin.Context) {
 
 func GETUserAdmins(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	var users []models.User
-	db.Preload("Repeaters").Find(&users, "admin = ?", true)
+	cDb := c.MustGet("DB").(*gorm.DB)
+
+	users := models.FindUserAdmins(db)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, users)
+	total := models.CountUserAdmins(cDb)
+	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 }
 
 func GETUserSuspended(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	// Get all users where approved = false
-	var users []models.User
-	db.Preload("Repeaters").Find(&users, "suspended = ?", true)
+	users := models.FindUserSuspended(db)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
 	}
+	total := models.CountUserSuspended(db)
+	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 }
 
 func GETUserUnapproved(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	// Get all users where approved = false
-	var users []models.User
-	db.Find(&users, "approved = ?", false)
+	users := models.FindUserUnapproved(db)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
 	}
+	total := models.CountUserUnapproved(db)
+	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 }
 
 func PATCHUser(c *gin.Context) {

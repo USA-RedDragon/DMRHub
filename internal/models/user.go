@@ -53,6 +53,48 @@ func ListUsers(db *gorm.DB) []User {
 	return users
 }
 
+func CountUsers(db *gorm.DB) int {
+	var count int64
+	db.Model(&User{}).Count(&count)
+	return int(count)
+}
+
+func FindUserAdmins(db *gorm.DB) []User {
+	var users []User
+	db.Preload("Repeaters").Where("admin = ?", true).Find(&users)
+	return users
+}
+
+func CountUserAdmins(db *gorm.DB) int {
+	var count int64
+	db.Model(&User{}).Where("admin = ?", true).Count(&count)
+	return int(count)
+}
+
+func FindUserSuspended(db *gorm.DB) []User {
+	var users []User
+	db.Preload("Repeaters").Where("suspended = ?", true).Find(&users)
+	return users
+}
+
+func CountUserSuspended(db *gorm.DB) int {
+	var count int64
+	db.Model(&User{}).Where("suspended = ?", true).Count(&count)
+	return int(count)
+}
+
+func FindUserUnapproved(db *gorm.DB) []User {
+	var users []User
+	db.Preload("Repeaters").Where("approved = ?", false).Find(&users)
+	return users
+}
+
+func CountUserUnapproved(db *gorm.DB) int {
+	var count int64
+	db.Model(&User{}).Where("approved = ?", false).Count(&count)
+	return int(count)
+}
+
 type UsersSeeder struct {
 	gorm_seeder.SeederAbstract
 }

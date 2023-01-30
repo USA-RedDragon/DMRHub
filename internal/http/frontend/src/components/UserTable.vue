@@ -1,5 +1,15 @@
 <template>
-  <DataTable :value="users" v-model:expandedRows="expandedRows" dataKey="id">
+  <DataTable
+    :value="users"
+    v-model:expandedRows="expandedRows"
+    dataKey="id"
+    :lazy="true"
+    :paginator="true"
+    :rows="10"
+    :totalRecords="totalRecords"
+    :loading="loading"
+    @page="onPage($event)"
+  >
     <Column :expander="true" v-if="!this.$props.approval" />
     <Column field="id" header="DMR ID"></Column>
     <Column field="callsign" header="Callsign"></Column>
@@ -95,6 +105,8 @@ export default {
       users: [],
       expandedRows: [],
       refresh: null,
+      loading: false,
+      totalRecords: 0,
     };
   },
   mounted() {
@@ -108,24 +120,46 @@ export default {
     clearInterval(this.refresh);
   },
   methods: {
-    fetchData() {
-      API.get("/users")
-        .then((res) => {
-          if (this.$props.approval) {
-            res.data = res.data.filter(function (itm) {
-              return itm.approved == false;
-            });
-          }
-          for (let i = 0; i < res.data.length; i++) {
-            res.data[i].repeaters = res.data[i].repeaters.length;
+    onPage(event) {
+      this.loading = true;
+      this.fetchData(event.page + 1, event.rows);
+    },
+    fetchData(page = 1, limit = 10) {
+      if (this.$props.approval) {
+        API.get(`/users/unapproved?page=${page}&limit=${limit}`)
+          .then((res) => {
+            for (let i = 0; i < res.data.users.length; i++) {
+              res.data.users[i].repeaters = res.data.users[i].repeaters.length;
 
-            res.data[i].created_at = moment(res.data[i].created_at);
-          }
-          this.users = res.data;
-        })
-        .catch((err) => {
-          console.error(err);
-        });
+              res.data.users[i].created_at = moment(
+                res.data.users[i].created_at
+              );
+            }
+            this.users = res.data.users;
+            this.totalRecords = res.data.total;
+            this.loading = false;
+          })
+          .catch((err) => {
+            console.error(err);
+          });
+      } else {
+        API.get(`/users?page=${page}&limit=${limit}`)
+          .then((res) => {
+            for (let i = 0; i < res.data.users.length; i++) {
+              res.data.users[i].repeaters = res.data.users[i].repeaters.length;
+
+              res.data.users[i].created_at = moment(
+                res.data.users[i].created_at
+              );
+            }
+            this.users = res.data.users;
+            this.totalRecords = res.data.total;
+            this.loading = false;
+          })
+          .catch((err) => {
+            console.error(err);
+          });
+      }
     },
     handleApprovePage(user) {
       this.$confirm.require({

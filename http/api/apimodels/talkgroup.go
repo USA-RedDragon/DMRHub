@@ -12,5 +12,5 @@ type TalkgroupPatch struct {
 }
 
 type TalkgroupAdminAction struct {
-	UserID uint `json:"user_id"`
+	UserIDs []uint `json:"user_ids"`
 }

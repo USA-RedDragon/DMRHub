@@ -137,10 +137,49 @@ export default {
         description: this.description,
       })
         .then((_res) => {
-          for (var i = 0; i < this.admins.length; i++) {
-            API.post(`/talkgroups/${numericID}/appoint`, {
-              user_id: this.admins[i].id,
-            }).catch((err) => {
+          API.post(`/talkgroups/${numericID}/admins`, {
+            user_ids: this.admins.map((admin) => admin.id),
+          })
+            .then(() => {
+              API.post(`/talkgroups/${numericID}/ncos`, {
+                user_ids: this.ncos.map((nco) => nco.id),
+              })
+                .then(() => {
+                  // Now show a toast for a few seconds before redirecting to /admin/talkgroups
+                  this.$toast.add({
+                    summary: "Success",
+                    severity: "success",
+                    detail: `Talkgroup created, redirecting...`,
+                    life: 3000,
+                  });
+                  setTimeout(() => {
+                    this.$router.push("/admin/talkgroups");
+                  }, 3000);
+                })
+                .catch((err) => {
+                  console.error(err);
+                  if (
+                    err.response &&
+                    err.response.data &&
+                    err.response.data.error
+                  ) {
+                    this.$toast.add({
+                      summary: "Error",
+                      severity: "error",
+                      detail: err.response.data.error,
+                      life: 3000,
+                    });
+                  } else {
+                    this.$toast.add({
+                      summary: "Error",
+                      severity: "error",
+                      detail: `Error creating talkgroup`,
+                      life: 3000,
+                    });
+                  }
+                });
+            })
+            .catch((err) => {
               console.error(err);
               if (
                 err.response &&
@@ -162,43 +201,6 @@ export default {
                 });
               }
             });
-          }
-          for (i = 0; i < this.ncos.length; i++) {
-            API.post(`/talkgroups/${numericID}/ncos`, {
-              user_id: this.ncos[i].id,
-            }).catch((err) => {
-              console.error(err);
-              if (
-                err.response &&
-                err.response.data &&
-                err.response.data.error
-              ) {
-                this.$toast.add({
-                  summary: "Error",
-                  severity: "error",
-                  detail: err.response.data.error,
-                  life: 3000,
-                });
-              } else {
-                this.$toast.add({
-                  summary: "Error",
-                  severity: "error",
-                  detail: `Error creating talkgroup`,
-                  life: 3000,
-                });
-              }
-            });
-          }
-          // Now show a toast for a few seconds before redirecting to /admin/talkgroups
-          this.$toast.add({
-            summary: "Success",
-            severity: "success",
-            detail: `Talkgroup created, redirecting...`,
-            life: 3000,
-          });
-          setTimeout(() => {
-            this.$router.push("/admin/talkgroups");
-          }, 3000);
         })
         .catch((err) => {
           console.error(err);

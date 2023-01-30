@@ -41,7 +41,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Admin {
+		if user.Admin && user.Approved && !user.Suspended {
 			valid = true
 		}
 
@@ -52,7 +52,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
-		if len(talkgroups) > 0 {
+		if len(talkgroups) > 0 && user.Approved && !user.Suspended {
 			valid = true
 		}
 
@@ -90,7 +90,7 @@ func RequireAdmin() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Admin {
+		if user.Admin && user.Approved && !user.Suspended {
 			valid = true
 		}
 
@@ -152,7 +152,7 @@ func RequireLogin() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Approved {
+		if user.Approved && !user.Suspended {
 			valid = true
 		}
 
@@ -191,12 +191,12 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Admin {
+		if user.Approved && !user.Suspended && user.Admin {
 			valid = true
 		} else {
 			var repeater models.Repeater
 			db.Find(&repeater, "radio_id = ?", id)
-			if repeater.OwnerID == user.ID {
+			if repeater.OwnerID == user.ID && !user.Suspended && user.Approved {
 				valid = true
 			}
 		}
@@ -236,13 +236,13 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Admin {
+		if user.Admin && !user.Suspended && user.Approved {
 			valid = true
 		} else {
 			var talkgroup models.Talkgroup
 			db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 			for _, admin := range talkgroup.Admins {
-				if admin.ID == user.ID {
+				if admin.ID == user.ID && !user.Suspended && user.Approved {
 					valid = true
 					break
 				}
@@ -285,13 +285,12 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 				attribute.Bool("user.admin", user.Admin),
 			)
 		}
-		if user.Admin {
+		if user.Admin && !user.Suspended && user.Approved {
 			valid = true
 		} else {
-			if id == fmt.Sprintf("%d", user.ID) {
+			if id == fmt.Sprintf("%d", user.ID) && !user.Suspended && user.Approved {
 				valid = true
 			}
-
 		}
 
 		if !valid {

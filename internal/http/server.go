@@ -36,6 +36,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 
 	// Setup API
 	r := gin.Default()
+	r.SetTrustedProxies(config.GetConfig().TrustedProxies)
 	pprof.Register(r)
 	r.Use(middleware.DatabaseProvider(db))
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))

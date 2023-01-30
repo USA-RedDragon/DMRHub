@@ -118,6 +118,7 @@ GRANT ALL ON schema public TO dmr;
 | `HIBP_API_KEY`             | not set                                                   | Set to a [HIBP](https://haveibeenpwned.com) API key to keep bad passwords away                                                                                                                                                         |
 | `OTLP_ENDPOINT`            | not set                                                   | Set to an OTLP (OpenTracing) endpoint for instrumentation and tracing                                                                                                                                                                  |
 | `INIT_ADMIN_USER_PASSWORD` | not set                                                   | If set on the first startup, this seeds the database with the password for the initial Admin user                                                                                                                                      |
+| `TRUSTED_PROXIES`          | not set                                                   | Set to a comma-separated list of proxy IPs that are allowed to carry our traffic                                                                                                                                                       |
 
 ## TODOs
 

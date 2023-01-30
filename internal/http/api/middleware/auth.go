@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"

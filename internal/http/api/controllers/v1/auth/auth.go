@@ -3,10 +3,10 @@ package auth
 import (
 	"net/http"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/config"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/apimodels"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/utils"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

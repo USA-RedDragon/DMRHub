@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/sdk"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"go.opentelemetry.io/otel"
 	"k8s.io/klog/v2"
 )
@@ -557,7 +557,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				if len(repeater.SoftwareID) > 40 {
 					repeater.SoftwareID = repeater.SoftwareID[:40]
 				} else if repeater.SoftwareID == "" {
-					repeater.SoftwareID = "github.com/USA-RedDragon/dmrserver-in-a-box v" + sdk.Version + "-" + sdk.GitCommit
+					repeater.SoftwareID = "github.com/USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
 				}
 				repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
 				if len(repeater.PackageID) > 40 {

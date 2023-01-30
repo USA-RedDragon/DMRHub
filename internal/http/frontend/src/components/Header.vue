@@ -1,7 +1,7 @@
 <template>
   <header>
     <h1>
-      <RouterLink to="/">DMR Server in a Box</RouterLink>
+      <RouterLink to="/">DMRHub</RouterLink>
     </h1>
     <div class="wrapper">
       <nav>

@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/sdk"
+	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/gin-gonic/gin"
 )
 

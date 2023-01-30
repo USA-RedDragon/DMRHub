@@ -19,13 +19,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/config"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/dmr"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/repeaterdb"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/sdk"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/userdb"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr"
+	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
+	"github.com/USA-RedDragon/DMRHub/internal/sdk"
+	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"k8s.io/klog/v2"
 
@@ -49,7 +49,7 @@ func initTracer() func(context.Context) error {
 	resources, err := resource.New(
 		context.Background(),
 		resource.WithAttributes(
-			attribute.String("service.name", "dmrserver-in-a-box"),
+			attribute.String("service.name", "DMRHub"),
 			attribute.String("library.language", "go"),
 		),
 	)

@@ -3,8 +3,8 @@ package models
 import (
 	"time"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/config"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

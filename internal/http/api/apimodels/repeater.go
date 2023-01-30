@@ -1,6 +1,6 @@
 package apimodels
 
-import "github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
+import "github.com/USA-RedDragon/DMRHub/internal/models"
 
 type RepeaterPost struct {
 	RadioID uint `json:"id" binding:"required"`

@@ -3,7 +3,7 @@ package dmr
 import (
 	"context"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 	"k8s.io/klog/v2"
 )

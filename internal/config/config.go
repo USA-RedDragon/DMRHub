@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"k8s.io/klog/v2"
 )
 

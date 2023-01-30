@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 )
 

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/config"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/middleware"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"

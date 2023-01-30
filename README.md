@@ -1,4 +1,4 @@
-# DMR Server in a box
+# DMRHub
 
 Run a DMR network server with a single binary. Includes private and group calls and a Parrot. Perfect for quick deployments in emergency situations. Intended for use with AREDN. 9990 Parrot and 4000 Unlink are implemented
 
@@ -34,52 +34,52 @@ Redis and PostgreSQL are required.
 
 ### With Docker
 
-`ghcr.io/usa-reddragon/dmrserver-in-a-box`
+`ghcr.io/usa-reddragon/DMRHub`
 
 ### Installations without Docker
 
 Installations without Docker are not officially supported, but should still work regardless.
 
-As an example, `hack/dmrserver-in-a-box.service` is a SystemD unit file to run this project as a SystemD service.
+As an example, `hack/DMRHub.service` is a SystemD unit file to run this project as a SystemD service.
 
 For appropriate security, you'll want to create a user, group, and directory dedicated to this:
 
 ```bash
-sudo mkdir /etc/dmrserver-in-a-box
-sudo groupadd --system dmrserver
-sudo useradd --home-dir /etc/dmrserver-in-a-box --no-create-home --no-user-group --system --shell /sbin/nologin dmrserver
-sudo chown dmrserver:dmrserver /etc/dmrserver-in-a-box
-sudo chmod 770 /etc/dmrserver-in-a-box
+sudo mkdir /etc/dmrhub
+sudo groupadd --system dmrhub
+sudo useradd --home-dir /etc/dmrhub --no-create-home --no-user-group --system --shell /sbin/nologin dmrhub
+sudo chown dmrhub:dmrhub /etc/dmrhub
+sudo chmod 770 /etc/dmrhub
 ```
 
-Then, place your configuration environment variables into `/etc/dmrserver-in-a-box/env`
+Then, place your configuration environment variables into `/etc/dmrhub/env`
 
 ```bash
-cat <<EOF | sudo tee /etc/dmrserver-in-a-box/env
+cat <<EOF | sudo tee /etc/dmrhub/env
 LISTEN_ADDR=0.0.0.0
 ...
 EOF
 
-sudo chown dmrserver:dmrserver /etc/dmrserver-in-a-box/env
-sudo chmod 660 /etc/dmrserver-in-a-box/env
+sudo chown dmrhub:dmrhub /etc/dmrhub/env
+sudo chmod 660 /etc/dmrhub/env
 ```
 
-Place the `dmrserver-in-a-box` binary into `/usr/local/bin`
+Place the `DMRHub` binary into `/usr/local/bin`
 
 ```bash
-sudo mv bin/dmrserver-in-a-box /usr/local/bin/
-sudo chmod a+x /usr/local/bin/dmrserver-in-a-box
+sudo mv bin/DMRHub /usr/local/bin/
+sudo chmod a+x /usr/local/bin/DMRHub
 ```
 
 Finally, copy the SystemD unit file into `/etc/systemd/system/` and activate it
 
 ```bash
-sudo cp hack/dmrserver-in-a-box.service /etc/systemd/system/
+sudo cp hack/DMRHub.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now dmrserver-in-a-box.service
+sudo systemctl enable --now DMRHub.service
 ```
 
-Logs can be viewed with `journalctl -f -u dmrserver-in-a-box.service`
+Logs can be viewed with `journalctl -f -u DMRHub.service`
 
 ### Setting up a database
 

@@ -1,13 +1,13 @@
 package api
 
 import (
-	v1Controllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1"
-	v1AuthControllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1/auth"
-	v1LastheardControllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1/lastheard"
-	v1RepeatersControllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1/repeaters"
-	v1TalkgroupsControllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1/talkgroups"
-	v1UsersControllers "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/controllers/v1/users"
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/middleware"
+	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
+	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
+	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
+	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
+	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
+	v1UsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/gin-gonic/gin"
 )
 

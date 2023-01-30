@@ -1,4 +1,4 @@
-bin/dmrserver-in-a-box
+bin/DMRHub
 doc/
 README.md
 .dockerignore

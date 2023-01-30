@@ -1,7 +1,7 @@
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
-APP_NAME := dmrserver-in-a-box
-APP_PATH := github.com/USA-RedDragon/dmrserver-in-a-box
+APP_NAME := DMRHub
+APP_PATH := github.com/USA-RedDragon/DMRHub
 
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
 

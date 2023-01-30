@@ -1,4 +1,4 @@
-module github.com/USA-RedDragon/dmrserver-in-a-box
+module github.com/USA-RedDragon/DMRHub
 
 go 1.19
 

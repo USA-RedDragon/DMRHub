@@ -3,7 +3,7 @@
     <p>
       This project proudly open
       <a
-        href="https://github.com/USA-RedDragon/dmrserver-in-a-box"
+        href="https://github.com/USA-RedDragon/DMRHub"
         target="_blank"
         >source</a
       >

@@ -1,6 +1,6 @@
 FROM golang:alpine AS builder
 
-WORKDIR /dmrserver-in-a-box
+WORKDIR /DMRHub
 
 RUN apk update && apk add --no-cache git make nodejs npm bash
 
@@ -12,6 +12,6 @@ FROM golang:alpine
 
 RUN apk update && apk add --no-cache ca-certificates
 
-COPY --from=builder /dmrserver-in-a-box/bin/dmrserver-in-a-box /dmrserver-in-a-box
+COPY --from=builder /DMRHub/bin/DMRHub /DMRHub
 
-ENTRYPOINT ["/dmrserver-in-a-box"]
+ENTRYPOINT ["/DMRHub"]

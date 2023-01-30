@@ -1,5 +1,5 @@
 *_gen*.go
-dmrserver-in-a-box
+DMRHub
 bindata_assetfs.go
 pkg/
 bin/

@@ -4,7 +4,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/pagination"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/pagination"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

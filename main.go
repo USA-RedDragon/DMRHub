@@ -171,6 +171,7 @@ func main() {
 
 	redis := redis.NewClient(&redis.Options{
 		Addr:            config.GetConfig().RedisHost,
+		Password:        config.GetConfig().RedisPassword,
 		PoolFIFO:        true,
 		PoolSize:        runtime.GOMAXPROCS(0) * 10,
 		MinIdleConns:    runtime.GOMAXPROCS(0),

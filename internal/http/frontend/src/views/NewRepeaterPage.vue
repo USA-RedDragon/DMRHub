@@ -38,25 +38,28 @@ SrcRewrite4=2,1,2,8000001,999999</pre
         </div>
       </template>
     </ConfirmDialog>
-    <Card>
-      <template #title>New Repeater</template>
-      <template #content>
-        <span class="p-float-label">
-          <InputText id="radio_id" type="text" v-model="radio_id" />
-          <label for="radio_id">DMR Radio ID</label>
-        </span>
-      </template>
-      <template #footer>
-        <div class="card-footer">
-          <Button
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-save"
-            label="Save"
-            @click="handleRepeater()"
-          />
-        </div>
-      </template>
-    </Card>
+    <form @submit.prevent="handleRepeater()">
+      <Card>
+        <template #title>New Repeater</template>
+        <template #content>
+          <span class="p-float-label">
+            <InputText id="radio_id" type="text" v-model="radio_id" />
+            <label for="radio_id">DMR Radio ID</label>
+          </span>
+        </template>
+        <template #footer>
+          <div class="card-footer">
+            <Button
+              class="p-button-raised p-button-rounded"
+              icon="pi pi-save"
+              label="Save"
+              type="submit"
+              @click="handleRepeater()"
+            />
+          </div>
+        </template>
+      </Card>
+    </form>
   </div>
 </template>
 

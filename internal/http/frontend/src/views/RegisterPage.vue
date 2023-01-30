@@ -1,49 +1,52 @@
 <template>
   <div>
     <Toast />
-    <Card>
-      <template #title>Register</template>
-      <template #content>
-        <span class="p-float-label">
-          <InputText id="dmr_id" type="text" v-model="dmr_id" />
-          <label for="dmr_id">DMR ID</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="username" type="text" v-model="username" />
-          <label for="username">Username</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="callsign" type="text" v-model="callsign" />
-          <label for="callsign">Callsign</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="password" type="password" v-model="password" />
-          <label for="password">Password</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText
-            id="confirmPassword"
-            type="password"
-            v-model="confirmPassword"
-          />
-          <label for="confirmPassword">Confirm Password</label>
-        </span>
-      </template>
-      <template #footer>
-        <div class="card-footer">
-          <Button
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-user"
-            label="Register"
-            @click="handleRegister()"
-          />
-        </div>
-      </template>
-    </Card>
+    <form @submit.prevent="handleRegister()">
+      <Card>
+        <template #title>Register</template>
+        <template #content>
+          <span class="p-float-label">
+            <InputText id="dmr_id" type="text" v-model="dmr_id" />
+            <label for="dmr_id">DMR ID</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="username" type="text" v-model="username" />
+            <label for="username">Username</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="callsign" type="text" v-model="callsign" />
+            <label for="callsign">Callsign</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="password" type="password" v-model="password" />
+            <label for="password">Password</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText
+              id="confirmPassword"
+              type="password"
+              v-model="confirmPassword"
+            />
+            <label for="confirmPassword">Confirm Password</label>
+          </span>
+        </template>
+        <template #footer>
+          <div class="card-footer">
+            <Button
+              class="p-button-raised p-button-rounded"
+              icon="pi pi-user"
+              type="submit"
+              label="Register"
+              @click="handleRegister()"
+            />
+          </div>
+        </template>
+      </Card>
+    </form>
   </div>
 </template>
 

@@ -1,35 +1,38 @@
 <template>
   <div>
     <Toast />
-    <Card>
-      <template #title>Login</template>
-      <template #content>
-        <span class="p-float-label">
-          <InputText id="username" type="text" v-model="username" />
-          <label for="username">Username</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="password" type="password" v-model="password" />
-          <label for="password">Password</label>
-        </span>
-        <br />
-        <p>
-          If you don't have an account,
-          <router-link to="/register">Register here</router-link>
-        </p>
-      </template>
-      <template #footer>
-        <div class="card-footer">
-          <Button
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-lock"
-            label="Login"
-            @click="handleLogin()"
-          />
-        </div>
-      </template>
-    </Card>
+    <form @submit.prevent="handleLogin()">
+      <Card>
+        <template #title>Login</template>
+        <template #content>
+          <span class="p-float-label">
+            <InputText id="username" type="text" v-model="username" />
+            <label for="username">Username</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="password" type="password" v-model="password" />
+            <label for="password">Password</label>
+          </span>
+          <br />
+          <p>
+            If you don't have an account,
+            <router-link to="/register">Register here</router-link>
+          </p>
+        </template>
+        <template #footer>
+          <div class="card-footer">
+            <Button
+              class="p-button-raised p-button-rounded"
+              icon="pi pi-lock"
+              label="Login"
+              type="submit"
+              @click="handleLogin()"
+            />
+          </div>
+        </template>
+      </Card>
+    </form>
   </div>
 </template>
 

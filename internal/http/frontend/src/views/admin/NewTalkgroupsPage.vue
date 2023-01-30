@@ -1,75 +1,78 @@
 <template>
   <div>
     <Toast />
-    <Card>
-      <template #title>New Talkgroup</template>
-      <template #content>
-        <span class="p-float-label">
-          <InputText id="id" type="text" v-model="id" />
-          <label for="id">Talkgroup ID</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="name" type="text" v-model="name" />
-          <label for="name">Name</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <InputText id="description" type="text" v-model="description" />
-          <label for="description">Description</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <MultiSelect
-            id="admins"
-            v-model="admins"
-            :options="allUsers"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-            style="width: 100%"
-          >
-            <template #chip="slotProps">
-              {{ slotProps.value.display }}
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </MultiSelect>
-          <label for="admins">Admins</label>
-        </span>
-        <br />
-        <span class="p-float-label">
-          <MultiSelect
-            id="ncos"
-            v-model="ncos"
-            :options="allUsers"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-            style="width: 100%"
-          >
-            <template #chip="slotProps">
-              {{ slotProps.value.display }}
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </MultiSelect>
-          <label for="ncos">Net Control Operators</label>
-        </span>
-      </template>
-      <template #footer>
-        <div class="card-footer">
-          <Button
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-save"
-            label="Save"
-            @click="handleTalkgroup()"
-          />
-        </div>
-      </template>
-    </Card>
+    <form @submit.prevent="handleTalkgroup()">
+      <Card>
+        <template #title>New Talkgroup</template>
+        <template #content>
+          <span class="p-float-label">
+            <InputText id="id" type="text" v-model="id" />
+            <label for="id">Talkgroup ID</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="name" type="text" v-model="name" />
+            <label for="name">Name</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <InputText id="description" type="text" v-model="description" />
+            <label for="description">Description</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <MultiSelect
+              id="admins"
+              v-model="admins"
+              :options="allUsers"
+              :filter="true"
+              optionLabel="display"
+              display="chip"
+              style="width: 100%"
+            >
+              <template #chip="slotProps">
+                {{ slotProps.value.display }}
+              </template>
+              <template #option="slotProps">
+                {{ slotProps.option.display }}
+              </template>
+            </MultiSelect>
+            <label for="admins">Admins</label>
+          </span>
+          <br />
+          <span class="p-float-label">
+            <MultiSelect
+              id="ncos"
+              v-model="ncos"
+              :options="allUsers"
+              :filter="true"
+              optionLabel="display"
+              display="chip"
+              style="width: 100%"
+            >
+              <template #chip="slotProps">
+                {{ slotProps.value.display }}
+              </template>
+              <template #option="slotProps">
+                {{ slotProps.option.display }}
+              </template>
+            </MultiSelect>
+            <label for="ncos">Net Control Operators</label>
+          </span>
+        </template>
+        <template #footer>
+          <div class="card-footer">
+            <Button
+              class="p-button-raised p-button-rounded"
+              icon="pi pi-save"
+              label="Save"
+              type="submit"
+              @click="handleTalkgroup()"
+            />
+          </div>
+        </template>
+      </Card>
+    </form>
   </div>
 </template>
 

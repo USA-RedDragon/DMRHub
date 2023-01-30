@@ -127,10 +127,12 @@ GRANT ALL ON schema public TO dmr;
 
 - Form validation (<https://www.primefaces.org/primevue/validation>)
 - Finalize color scheme
+- Handle single timeslot repeater case
 
 #### Things the dev sees
 
 - CI build and release
+- API rate limiting
 
 ### Soon
 

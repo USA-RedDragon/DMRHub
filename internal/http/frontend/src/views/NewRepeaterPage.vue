@@ -23,17 +23,7 @@ Password="{{ slotProps.message.message }}"
 Id={{ this.radioID }}
 Location=1
 Debug=0
-# Rewrites TG 8000001-8999999 -> 1-999999
-PCRewrite1=1,8009990,1,9990,1
-PCRewrite2=2,8009990,2,9990,1
-TypeRewrite1=1,8009990,1,9990
-TypeRewrite2=2,8009990,2,9990
-TGRewrite1=1,8000001,1,1,999999
-TGRewrite2=2,8000001,2,1,999999
-SrcRewrite1=1,9990,1,8009990,1
-SrcRewrite2=2,9990,2,8009990,1
-SrcRewrite3=1,1,1,8000001,999999
-SrcRewrite4=2,1,2,8000001,999999</pre
+</pre
           >
         </div>
       </template>

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/pagination"
@@ -26,15 +27,19 @@ func PaginatedDatabaseProvider(db *gorm.DB, config PaginationConfig) gin.Handler
 		if !exists {
 			limit = config.DefaultLimit
 		} else {
-			var err error
-			limit, err = strconv.Atoi(limitStr)
-			if err != nil {
-				// Bad limit, use default
-				limit = config.DefaultLimit
+			if limitStr == "none" {
+				limit = math.MaxInt32
+			} else {
+				var err error
+				limit, err = strconv.Atoi(limitStr)
+				if err != nil {
+					// Bad limit, use default
+					limit = config.DefaultLimit
+				}
 			}
 		}
 
-		if limit > config.MaxLimit {
+		if limitStr != "none" && limit > config.MaxLimit {
 			limit = config.MaxLimit
 		}
 		if limit < 1 {

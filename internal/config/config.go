@@ -27,6 +27,7 @@ type Config struct {
 	HTTPPort                 int
 	Verbose                  bool
 	CORSHosts                []string
+	TrustedProxies           []string
 	HIBPAPIKey               string
 	OTLPEndpoint             string
 	InitialAdminUserPassword string
@@ -129,6 +130,12 @@ func GetConfig() *Config {
 			}
 		} else {
 			currentConfig.CORSHosts = append([]string{}, strings.Split(corsHosts, ",")...)
+		}
+		trustedProxies := os.Getenv("TRUSTED_PROXIES")
+		if trustedProxies == "" {
+			currentConfig.TrustedProxies = []string{}
+		} else {
+			currentConfig.TrustedProxies = append([]string{}, strings.Split(trustedProxies, ",")...)
 		}
 		currentConfig.loaded = true
 		return &currentConfig

@@ -17,7 +17,7 @@
 [DMR Network 2]
 Name=AREDN
 Enabled=1
-Address={{ location.hostname }}
+Address={{ this.hostname }}
 Port=62031
 Password="{{ slotProps.message.message }}"
 Id={{ this.radioID }}
@@ -106,6 +106,7 @@ export default {
     return {
       radioID: "",
       submitted: false,
+      hostname: window.location.hostname,
     };
   },
   validations() {

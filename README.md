@@ -119,7 +119,7 @@ GRANT ALL ON schema public TO dmr;
 | `OTLP_ENDPOINT`            | not set                                                   | Set to an OTLP (OpenTracing) endpoint for instrumentation and tracing                                                                                                                                                                  |
 | `INIT_ADMIN_USER_PASSWORD` | not set                                                   | If set on the first startup, this seeds the database with the password for the initial Admin user                                                                                                                                      |
 
-## Todos
+## TODOs
 
 ### Before first release
 
@@ -132,7 +132,6 @@ GRANT ALL ON schema public TO dmr;
 
 - CI build and release
 - Paginate APIs
-- Rework frontend to not carry around so many objects
 
 ### Soon
 

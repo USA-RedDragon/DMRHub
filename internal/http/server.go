@@ -52,7 +52,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	r.Use(middleware.RedisProvider(redisClient))
 
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
-		RedisClient: *redisClient,
+		RedisClient: redisClient,
 		Rate:        time.Second,
 		Limit:       5,
 	})

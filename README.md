@@ -125,7 +125,7 @@ GRANT ALL ON schema public TO dmr;
 
 #### Things the user sees
 
-- Make enter key submit forms
+- Form validation (<https://www.primefaces.org/primevue/validation>)
 - Finalize color scheme
 
 #### Things the dev sees

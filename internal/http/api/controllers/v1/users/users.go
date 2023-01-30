@@ -21,7 +21,7 @@ import (
 )
 
 func GETUsers(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	users := models.ListUsers(db)
 	c.JSON(http.StatusOK, users)
 }
@@ -291,7 +291,7 @@ func GETUser(c *gin.Context) {
 }
 
 func GETUserAdmins(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	var users []models.User
 	db.Preload("Repeaters").Find(&users, "admin = ?", true)
 	if db.Error != nil {
@@ -302,7 +302,7 @@ func GETUserAdmins(c *gin.Context) {
 }
 
 func GETUserSuspended(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	// Get all users where approved = false
 	var users []models.User
 	db.Preload("Repeaters").Find(&users, "suspended = ?", true)
@@ -313,7 +313,7 @@ func GETUserSuspended(c *gin.Context) {
 }
 
 func GETUserUnapproved(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	// Get all users where approved = false
 	var users []models.User
 	db.Find(&users, "approved = ?", false)

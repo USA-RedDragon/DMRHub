@@ -23,7 +23,9 @@ func v1(group *gin.RouterGroup) {
 	v1Auth.GET("/logout", v1AuthControllers.GETLogout)
 
 	v1Repeaters := group.Group("/repeaters")
+	// Paginated
 	v1Repeaters.GET("", middleware.RequireAdmin(), v1RepeatersControllers.GETRepeaters)
+	// Paginated
 	v1Repeaters.GET("/my", middleware.RequireLogin(), v1RepeatersControllers.GETMyRepeaters)
 	v1Repeaters.POST("", middleware.RequireLogin(), v1RepeatersControllers.POSTRepeater)
 	v1Repeaters.POST("/:id/link/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.POSTRepeaterLink)
@@ -33,7 +35,9 @@ func v1(group *gin.RouterGroup) {
 	v1Repeaters.DELETE("/:id", middleware.RequireRepeaterOwnerOrAdmin(), v1RepeatersControllers.DELETERepeater)
 
 	v1Talkgroups := group.Group("/talkgroups")
+	// Paginated
 	v1Talkgroups.GET("", middleware.RequireLogin(), v1TalkgroupsControllers.GETTalkgroups)
+	// Paginated
 	v1Talkgroups.GET("/my", middleware.RequireLogin(), v1TalkgroupsControllers.GETMyTalkgroups)
 	v1Talkgroups.POST("", middleware.RequireAdmin(), v1TalkgroupsControllers.POSTTalkgroup)
 	v1Talkgroups.POST("/:id/admins", middleware.RequireAdmin(), v1TalkgroupsControllers.POSTTalkgroupAdmins)
@@ -43,10 +47,13 @@ func v1(group *gin.RouterGroup) {
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), v1TalkgroupsControllers.DELETETalkgroup)
 
 	v1Users := group.Group("/users")
+	// Paginated
 	v1Users.GET("", middleware.RequireAdminOrTGOwner(), v1UsersControllers.GETUsers)
 	v1Users.POST("", v1UsersControllers.POSTUser)
 	v1Users.GET("/me", middleware.RequireLogin(), v1UsersControllers.GETUserSelf)
+	// Paginated
 	v1Users.GET("/admins", middleware.RequireSuperAdmin(), v1UsersControllers.GETUserAdmins)
+	// Paginated
 	v1Users.GET("/suspended", middleware.RequireAdmin(), v1UsersControllers.GETUserSuspended)
 	v1Users.GET("/unapproved", middleware.RequireAdmin(), v1UsersControllers.GETUserUnapproved)
 	v1Users.POST("/promote/:id", middleware.RequireSuperAdmin(), v1UsersControllers.POSTUserPromote)
@@ -60,12 +67,16 @@ func v1(group *gin.RouterGroup) {
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in
+	// Paginated
 	v1Lastheard.GET("", v1LastheardControllers.GETLastheard)
 	// Returns the lastheard data for a given user
+	// Paginated
 	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), v1LastheardControllers.GETLastheardUser)
 	// Returns the lastheard data for a given repeater
+	// Paginated
 	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), v1LastheardControllers.GETLastheardRepeater)
 	// Returns the lastheard data for a given talkgroup
+	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), v1LastheardControllers.GETLastheardTalkgroup)
 
 	group.GET("/version", v1Controllers.GETVersion)

@@ -14,14 +14,14 @@ import (
 )
 
 func GETTalkgroups(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	var talkgroups []models.Talkgroup
 	db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups)
 	c.JSON(http.StatusOK, talkgroups)
 }
 
 func GETMyTalkgroups(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	session := sessions.Default(c)
 
 	userId := session.Get("user_id")

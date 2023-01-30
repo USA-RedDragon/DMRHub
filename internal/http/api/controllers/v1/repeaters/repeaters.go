@@ -19,13 +19,13 @@ import (
 )
 
 func GETRepeaters(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	repeaters := models.ListRepeaters(db)
 	c.JSON(http.StatusOK, repeaters)
 }
 
 func GETMyRepeaters(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	session := sessions.Default(c)
 
 	userId := session.Get("user_id")

@@ -38,6 +38,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	r := gin.Default()
 	pprof.Register(r)
 	r.Use(middleware.DatabaseProvider(db))
+	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 	r.Use(middleware.RedisProvider(redisClient))
 
 	corsConfig := cors.DefaultConfig()

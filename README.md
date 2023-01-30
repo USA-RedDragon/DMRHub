@@ -34,7 +34,7 @@ Redis and PostgreSQL are required.
 
 ### With Docker
 
-Docker images coming soon
+`ghcr.io/usa-reddragon/dmrserver-in-a-box`
 
 ### Installations without Docker
 

@@ -199,6 +199,43 @@ func POSTUserPromote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
 }
 
+func POSTUserUnsuspend(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	id := c.Param("id")
+
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+	session := sessions.Default(c)
+	fromUserId := session.Get("user_id").(uint)
+	if uint(userID) == fromUserId {
+		// don't allow a user to demote themselves
+		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot unsuspend yourself"})
+		return
+	}
+
+	// Grab the user from the database
+	var user models.User
+	db.Find(&user, "id = ?", id)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	if user.ID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	user.Suspended = false
+	db.Save(&user)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User unsuspended"})
+}
+
 func POSTUserApprove(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
@@ -262,6 +299,28 @@ func GETUserAdmins(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, users)
+}
+
+func GETUserSuspended(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	// Get all users where approved = false
+	var users []models.User
+	db.Preload("Repeaters").Find(&users, "suspended = ?", true)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
+}
+
+func GETUserUnapproved(c *gin.Context) {
+	db := c.MustGet("DB").(*gorm.DB)
+	// Get all users where approved = false
+	var users []models.User
+	db.Find(&users, "approved = ?", false)
+	if db.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+		return
+	}
 }
 
 func PATCHUser(c *gin.Context) {
@@ -382,7 +441,7 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 
-	user.Approved = false
+	user.Suspended = true
 	db.Save(&user)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})

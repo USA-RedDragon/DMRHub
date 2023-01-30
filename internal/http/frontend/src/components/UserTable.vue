@@ -4,7 +4,10 @@
     <Column field="id" header="DMR ID"></Column>
     <Column field="callsign" header="Callsign"></Column>
     <Column field="username" header="Username"></Column>
-    <Column field="approved" header="Approve?">
+    <Column
+      field="approved"
+      :header="this.$props.approval ? 'Approve?' : 'Approved'"
+    >
       <template #body="slotProps" v-if="this.$props.approval">
         <Button
           label="Approve"
@@ -13,10 +16,16 @@
         />
       </template>
       <template #body="slotProps" v-else>
+        <span v-if="slotProps.data.approved">Yes</span>
+        <span v-else>No</span>
+      </template>
+    </Column>
+    <Column field="suspended" header="Suspend?" v-if="!this.$props.approval">
+      <template #body="slotProps">
         <Checkbox
-          v-model="slotProps.data.approved"
+          v-model="slotProps.data.suspended"
           :binary="true"
-          @change="handleApprove($event, slotProps.data)"
+          @change="handleSuspend($event, slotProps.data)"
         />
       </template>
     </Column>
@@ -149,9 +158,9 @@ export default {
         reject: () => {},
       });
     },
-    handleApprove(event, user) {
-      var action = user.approved ? "approve" : "suspend";
-      var actionVerb = user.approved ? "approved" : "suspended";
+    handleSuspend(event, user) {
+      var action = user.suspended ? "suspend" : "unsuspend";
+      var actionVerb = user.suspended ? "suspended" : "unsuspended";
       // Don't allow the user to uncheck the admin box
       API.post(`/users/${action}/${user.id}`, {})
         .then(() => {

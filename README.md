@@ -1,10 +1,10 @@
 # DMR Server in a box
 
-Run a DMR network server with a single binary. Includes private and group calls and a Parrot. Perfect for quick deployments in emergency situations. Intended for use with AREDN.
+Run a DMR network server with a single binary. Includes private and group calls and a Parrot. Perfect for quick deployments in emergency situations. Intended for use with AREDN. 9990 Parrot and 4000 Unlink are implemented
 
 ## Current Status
 
-This project is deployed in the Oklahoma AREDN mesh. Future revisions will help clean it up and separate concerns a bit better. Everything is functional so far (excluding potential bugs) but some of the web interface needs polishing. 9990 Parrot and 4000 Unlink are implemented.
+This project is deployed in the Oklahoma AREDN mesh and nearing version 1.0.0. Future revisions will focus on features and testing.
 
 ## External requirements
 

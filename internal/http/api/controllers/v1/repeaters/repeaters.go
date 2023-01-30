@@ -28,6 +28,7 @@ func GETRepeaters(c *gin.Context) {
 
 func GETMyRepeaters(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
 	userId := session.Get("user_id")
@@ -45,7 +46,7 @@ func GETMyRepeaters(c *gin.Context) {
 		return
 	}
 
-	count := models.CountUserRepeaters(db, userId.(uint))
+	count := models.CountUserRepeaters(cDb, userId.(uint))
 
 	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }

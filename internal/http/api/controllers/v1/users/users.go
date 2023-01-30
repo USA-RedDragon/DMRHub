@@ -307,25 +307,27 @@ func GETUserAdmins(c *gin.Context) {
 
 func GETUserSuspended(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	// Get all users where approved = false
 	users := models.FindUserSuspended(db)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
 	}
-	total := models.CountUserSuspended(db)
+	total := models.CountUserSuspended(cDb)
 	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 }
 
 func GETUserUnapproved(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	// Get all users where approved = false
 	users := models.FindUserUnapproved(db)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return
 	}
-	total := models.CountUserUnapproved(db)
+	total := models.CountUserUnapproved(cDb)
 	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
 }
 

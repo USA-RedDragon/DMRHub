@@ -298,7 +298,7 @@ func PATCHUser(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
 				return
 			}
-			user.Callsign = json.Callsign
+			user.Callsign = strings.ToUpper(json.Callsign)
 		}
 
 		if json.Username != "" {

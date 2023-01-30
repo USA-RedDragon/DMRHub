@@ -35,27 +35,63 @@
     </Column>
     <Column v-if="!this.$props.owner" field="admins" header="Admins">
       <template #body="slotProps">
-        <span v-if="slotProps.data.admins.length == 0">None</span>
-        <span
-          v-else
-          v-bind:key="admin.callsign"
-          v-for="admin in slotProps.data.admins"
-        >
-          {{ admin.callsign }}&nbsp;
+        <span v-if="!slotProps.data.editable">
+          <span v-if="slotProps.data.admins.length == 0">None</span>
+          <span
+            v-else
+            v-bind:key="admin.id"
+            v-for="admin in slotProps.data.admins"
+          >
+            {{ admin.display }}&nbsp;
+          </span>
+        </span>
+        <span class="p-float-label" v-else>
+          <MultiSelect
+            id="admins"
+            v-model="slotProps.data.admins"
+            :options="allUsers"
+            :filter="true"
+            optionLabel="display"
+            display="chip"
+          >
+            <template #chip="slotProps">
+              {{ slotProps.value.display }}
+            </template>
+            <template #option="slotProps">
+              {{ slotProps.option.display }}
+            </template>
+          </MultiSelect>
+          <label for="admins">Admins</label>
         </span>
       </template>
     </Column>
     <Column field="ncos" header="Net Control Operators">
       <template #body="slotProps">
-        <span v-if="!slotProps.data.ncos || slotProps.data.ncos.length == 0"
-          >None</span
-        >
-        <span
-          v-else
-          v-bind:key="nco.callsign"
-          v-for="nco in slotProps.data.ncos"
-        >
-          {{ nco.callsign }}&nbsp;
+        <span v-if="!slotProps.data.editable">
+          <span v-if="!slotProps.data.ncos || slotProps.data.ncos.length == 0"
+            >None</span
+          >
+          <span v-else v-bind:key="nco.id" v-for="nco in slotProps.data.ncos">
+            {{ nco.display }}&nbsp;
+          </span>
+        </span>
+        <span class="p-float-label" v-else>
+          <MultiSelect
+            id="ncos"
+            v-model="slotProps.data.ncos"
+            :options="allUsers"
+            :filter="true"
+            optionLabel="display"
+            display="chip"
+          >
+            <template #chip="slotProps">
+              {{ slotProps.value.display }}
+            </template>
+            <template #option="slotProps">
+              {{ slotProps.option.display }}
+            </template>
+          </MultiSelect>
+          <label for="ncos">Net Control Operators</label>
         </span>
       </template>
     </Column>
@@ -107,6 +143,8 @@ import Button from "primevue/button/sfc";
 import DataTable from "primevue/datatable/sfc";
 import Column from "primevue/column/sfc";
 import InputText from "primevue/inputtext/sfc";
+import Chip from "primevue/chip/sfc";
+import MultiSelect from "primevue/multiselect/sfc";
 
 import moment from "moment";
 
@@ -126,6 +164,8 @@ export default {
     DataTable,
     Column,
     InputText,
+    MultiSelect,
+    Chip,
   },
   data: function () {
     return {
@@ -133,6 +173,7 @@ export default {
       refresh: null,
       expandedRows: [],
       editableTalkgroups: 0,
+      allUsers: [],
     };
   },
   mounted() {
@@ -149,6 +190,28 @@ export default {
     fetchData() {
       if (this.editableTalkgroups > 0) {
         return;
+      }
+      if (this.$props.owner || this.$props.admin) {
+        API.get("/users")
+          .then((res) => {
+            var parrotIndex = -1;
+            for (let i = 0; i < res.data.length; i++) {
+              res.data[
+                i
+              ].display = `${res.data[i].id} - ${res.data[i].callsign}`;
+              // Remove user with id 9990 (parrot)
+              if (res.data[i].id === 9990) {
+                parrotIndex = i;
+              }
+            }
+            if (parrotIndex !== -1) {
+              res.data.splice(parrotIndex, 1);
+            }
+            this.allUsers = res.data;
+          })
+          .catch((err) => {
+            console.error(err);
+          });
       }
       if (this.$props.owner) {
         API.get("/talkgroups/my")
@@ -174,6 +237,22 @@ export default {
       for (let i = 0; i < copyData.length; i++) {
         copyData[i].created_at = moment(copyData[i].created_at);
         copyData[i].editable = false;
+
+        if (copyData[i].admins) {
+          for (let j = 0; j < copyData[i].admins.length; j++) {
+            copyData[i].admins[
+              j
+            ].display = `${copyData[i].admins[j].id} - ${copyData[i].admins[j].callsign}`;
+          }
+        }
+
+        if (copyData[i].ncos) {
+          for (let j = 0; j < copyData[i].ncos.length; j++) {
+            copyData[i].ncos[
+              j
+            ].display = `${copyData[i].ncos[j].id} - ${copyData[i].ncos[j].callsign}`;
+          }
+        }
       }
       return copyData;
     },
@@ -231,11 +310,71 @@ export default {
             detail: "Talkgroup updated",
             life: 3000,
           });
-          talkgroup.editable = false;
-          this.editableTalkgroups--;
-          if (this.editableTalkgroups == 0) {
-            this.fetchData();
-          }
+          API.post(`/talkgroups/${talkgroup.id}/admins`, {
+            user_ids: talkgroup.admins.map((admin) => admin.id),
+          })
+            .then((res) => {
+              API.post(`/talkgroups/${talkgroup.id}/ncos`, {
+                user_ids: talkgroup.ncos.map((nco) => nco.id),
+              })
+                .then((res) => {
+                  talkgroup.editable = false;
+                  this.editableTalkgroups--;
+                  if (this.editableTalkgroups == 0) {
+                    this.fetchData();
+                  }
+                })
+                .catch((err) => {
+                  console.error(err);
+                  if (
+                    err.response &&
+                    err.response.data &&
+                    err.response.data.error
+                  ) {
+                    this.$toast.add({
+                      severity: "error",
+                      summary: "Error",
+                      detail:
+                        "Failed to update talkgroup admins: " +
+                        err.response.data.error,
+                      life: 3000,
+                    });
+                    return;
+                  } else {
+                    this.$toast.add({
+                      severity: "error",
+                      summary: "Error",
+                      detail: "Failed to update talkgroup admins",
+                      life: 3000,
+                    });
+                  }
+                });
+            })
+            .catch((err) => {
+              console.error(err);
+              if (
+                err.response &&
+                err.response.data &&
+                err.response.data.error
+              ) {
+                this.$toast.add({
+                  severity: "error",
+                  summary: "Error",
+                  detail:
+                    "Failed to update talkgroup admins: " +
+                    err.response.data.error,
+                  life: 3000,
+                });
+                return;
+              } else {
+                this.$toast.add({
+                  severity: "error",
+                  summary: "Error",
+                  detail: "Failed to update talkgroup admins",
+                  life: 3000,
+                });
+              }
+            });
         })
         .catch((err) => {
           console.error(err);

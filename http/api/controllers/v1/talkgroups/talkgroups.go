@@ -71,57 +71,6 @@ func DELETETalkgroup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Talkgroup deleted"})
 }
 
-func POSTTalkgroupAdminAppoint(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
-	id := c.Param("id")
-	var talkgroup models.Talkgroup
-	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-		return
-	}
-	if talkgroup.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup does not exist"})
-		return
-	}
-
-	var json apimodels.TalkgroupAdminAction
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("POSTTalkgroupAdminAppoint: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		alreadyHasAdmin := false
-		for _, admin := range talkgroup.Admins {
-			if admin.ID == json.UserID {
-				alreadyHasAdmin = true
-			}
-		}
-		if alreadyHasAdmin {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already an admin"})
-			return
-		} else {
-			var user models.User
-			db.Find(&user, "id = ?", json.UserID)
-			if db.Error != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-				return
-			}
-			if user.ID == 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
-				return
-			}
-			db.Model(&talkgroup).Association("Admins").Append(&user)
-			db.Save(&talkgroup)
-			if db.Error != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "User appointed as admin"})
-		}
-	}
-}
-
 func POSTTalkgroupNCOs(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
@@ -142,18 +91,25 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 		klog.Errorf("POSTTalkgroupNCOs: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
-		alreadyIsNCO := false
-		for _, nco := range talkgroup.NCOs {
-			if nco.ID == json.UserID {
-				alreadyIsNCO = true
+		if len(json.UserIDs) == 0 {
+			// remove all NCOs
+			db.Model(&talkgroup).Association("NCOs").Clear()
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
 			}
-		}
-		if alreadyIsNCO {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User is already a net control operator"})
+			db.Save(&talkgroup)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Talkgroup admins cleared"})
 			return
-		} else {
-			var user models.User
-			db.Find(&user, "id = ?", json.UserID)
+		}
+		// add NCOs
+		db.Model(&talkgroup).Association("NCOs").Clear()
+		for _, userID := range json.UserIDs {
+			user := models.FindUserByID(db, userID)
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
@@ -163,53 +119,21 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 				return
 			}
 			db.Model(&talkgroup).Association("NCOs").Append(&user)
-			db.Save(&talkgroup)
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"message": "User appointed as net control operator"})
 		}
+		db.Save(&talkgroup)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "User appointed as net control operator"})
 	}
 }
 
-func DELETETalkgroupNCOs(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
-	id := c.Param("id")
-	var talkgroup models.Talkgroup
-	db.Preload("NCOs").Find(&talkgroup, "id = ?", id)
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
-		return
-	}
-	if talkgroup.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup does not exist"})
-		return
-	}
-
-	var json apimodels.TalkgroupAdminAction
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
-		klog.Errorf("DELETETalkgroupNCOs: JSON data is invalid: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		removedNCO := false
-		for _, nco := range talkgroup.NCOs {
-			if nco.ID == json.UserID {
-				db.Model(&talkgroup).Association("NCOs").Delete(&nco)
-				db.Save(&talkgroup)
-				removedNCO = true
-			}
-		}
-		if removedNCO {
-			c.JSON(http.StatusOK, gin.H{"message": "Net control operator demoted"})
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not an net control operator"})
-		}
-	}
-}
-
-func POSTTalkgroupAdminDemote(c *gin.Context) {
+func POSTTalkgroupAdmins(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
@@ -226,22 +150,48 @@ func POSTTalkgroupAdminDemote(c *gin.Context) {
 	var json apimodels.TalkgroupAdminAction
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTTalkgroupAdminDemote: JSON data is invalid: %v", err)
+		klog.Errorf("POSTTalkgroupAdmins: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
-		removedAdmin := false
-		for _, admin := range talkgroup.Admins {
-			if admin.ID == json.UserID {
-				db.Model(&talkgroup).Association("Admins").Delete(&admin)
-				db.Save(&talkgroup)
-				removedAdmin = true
+		if len(json.UserIDs) == 0 {
+			// remove all Admins
+			db.Model(&talkgroup).Association("Admins").Clear()
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			db.Save(&talkgroup)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Talkgroup admins cleared"})
+			return
+		}
+		// add Admins
+		db.Model(&talkgroup).Association("Admins").Clear()
+		for _, userID := range json.UserIDs {
+			user := models.FindUserByID(db, userID)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
+			}
+			if user.ID == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+				return
+			}
+			db.Model(&talkgroup).Association("Admins").Append(&user)
+			if db.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+				return
 			}
 		}
-		if removedAdmin {
-			c.JSON(http.StatusOK, gin.H{"message": "Admin demoted"})
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not an admin"})
+		db.Save(&talkgroup)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
 		}
+		c.JSON(http.StatusOK, gin.H{"message": "User appointed as admin"})
 	}
 }
 

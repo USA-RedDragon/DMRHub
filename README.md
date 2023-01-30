@@ -75,7 +75,6 @@ GRANT ALL ON schema public TO dmr;
 
 #### Things the user sees
 
-- [API done] Add ability to add and remove talkgroup admins and NCOs in the UI
 - Finalize color scheme
 
 #### Things the dev sees
@@ -93,7 +92,6 @@ GRANT ALL ON schema public TO dmr;
 - details page for repeater with lastheard
 - details page for user with lastheard and repeaters
 - users should be able to edit their name and callsign
-- error handling needs to be double checked
 - Fix MSTCL on master shutdown (signal trap)
 - Hoseline equivalent
 - distributed database? Maybe OLSR can help with the "where do I point my pi-star" problem that isn't a SPOF?

@@ -37,7 +37,7 @@ func GETMyRepeaters(c *gin.Context) {
 
 	// Get all repeaters owned by user
 	var repeaters []models.Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Where("owner_id = ?", userId.(uint)).Find(&repeaters)
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Order("radio_id asc").Where("owner_id = ?", userId.(uint)).Find(&repeaters)
 	if db.Error != nil {
 		klog.Errorf("Error getting repeaters owned by user %d: %v", userId, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})

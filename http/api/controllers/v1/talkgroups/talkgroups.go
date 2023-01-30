@@ -16,7 +16,7 @@ import (
 func GETTalkgroups(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var talkgroups []models.Talkgroup
-	db.Preload("Admins").Preload("NCOs").Find(&talkgroups)
+	db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups)
 	c.JSON(http.StatusOK, talkgroups)
 }
 

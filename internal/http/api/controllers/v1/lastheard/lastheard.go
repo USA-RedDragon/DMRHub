@@ -11,26 +11,31 @@ import (
 )
 
 func GETLastheard(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 	userId := session.Get("user_id")
 	var calls []models.Call
+	var count int
 	if userId == nil {
-		// This is okay, we just query the latest X calls
-		calls = models.FindCalls(db, 10)
+		// This is okay, we just query the latest public calls
+		calls = models.FindCalls(db)
+		count = models.CountCalls(cDb)
 	} else {
 		// Get the last calls for the user
-		calls = models.FindUserCalls(db, userId.(uint), 10)
+		calls = models.FindUserCalls(db, userId.(uint))
+		count = models.CountUserCalls(cDb, userId.(uint))
 	}
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
 	} else {
-		c.JSON(http.StatusOK, calls)
+		c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 	}
 }
 
 func GETLastheardUser(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	userID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -38,11 +43,14 @@ func GETLastheardUser(c *gin.Context) {
 		return
 	}
 	userID := uint(userID64)
-	c.JSON(http.StatusOK, models.FindUserCalls(db, userID, 10))
+	calls := models.FindUserCalls(db, userID)
+	count := models.CountUserCalls(cDb, userID)
+	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }
 
 func GETLastheardRepeater(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	id := c.Param("id")
 	repeaterID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -50,11 +58,13 @@ func GETLastheardRepeater(c *gin.Context) {
 		return
 	}
 	repeaterID := uint(repeaterID64)
-	c.JSON(http.StatusOK, models.FindRepeaterCalls(db, repeaterID, 10))
+	calls := models.FindRepeaterCalls(db, repeaterID)
+	count := models.CountRepeaterCalls(cDb, repeaterID)
+	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	id := c.Param("id")
 	talkgroupID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -62,5 +72,7 @@ func GETLastheardTalkgroup(c *gin.Context) {
 		return
 	}
 	talkgroupID := uint(talkgroupID64)
-	c.JSON(http.StatusOK, models.FindTalkgroupCalls(db, talkgroupID, 10))
+	calls := models.FindTalkgroupCalls(db, talkgroupID)
+	count := models.CountTalkgroupCalls(db, talkgroupID)
+	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }

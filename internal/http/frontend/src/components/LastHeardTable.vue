@@ -1,5 +1,13 @@
 <template>
-  <DataTable :value="lastheard">
+  <DataTable
+    :value="lastheard"
+    :lazy="true"
+    :paginator="true"
+    :rows="10"
+    :totalRecords="totalRecords"
+    :loading="loading"
+    @page="onPage($event)"
+  >
     <Column field="start_time" header="Time">
       <template #body="slotProps">
         <span v-if="!slotProps.data.active">{{
@@ -77,20 +85,28 @@ export default {
   data: function () {
     return {
       lastheard: [],
+      totalRecords: 0,
       socket: null,
+      loading: false,
     };
   },
   mounted() {
     this.fetchData();
+    this.socket = new WebSocket(getWebsocketURI() + "/calls");
+    this.mapSocketEvents();
   },
   computed: {},
   methods: {
-    fetchData() {
-      API.get("/lastheard")
+    onPage(event) {
+      this.loading = true;
+      this.fetchData(event.page + 1, event.rows);
+    },
+    fetchData(page = 1, limit = 10) {
+      API.get(`/lastheard?page=${page}&limit=${limit}`)
         .then((res) => {
-          this.lastheard = this.cleanData(res.data);
-          this.socket = new WebSocket(getWebsocketURI() + "/calls");
-          this.mapSocketEvents();
+          this.totalRecords = res.data.total;
+          this.lastheard = this.cleanData(res.data.calls);
+          this.loading = false;
         })
         .catch((err) => {
           console.error(err);

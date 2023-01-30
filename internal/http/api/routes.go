@@ -69,13 +69,10 @@ func v1(group *gin.RouterGroup) {
 	// Returns the lastheard data for the server, adds personal data if logged in
 	// Paginated
 	v1Lastheard.GET("", v1LastheardControllers.GETLastheard)
-	// Returns the lastheard data for a given user
 	// Paginated
 	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), v1LastheardControllers.GETLastheardUser)
-	// Returns the lastheard data for a given repeater
 	// Paginated
 	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), v1LastheardControllers.GETLastheardRepeater)
-	// Returns the lastheard data for a given talkgroup
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), v1LastheardControllers.GETLastheardTalkgroup)
 

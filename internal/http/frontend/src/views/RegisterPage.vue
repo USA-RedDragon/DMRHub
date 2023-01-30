@@ -1,7 +1,7 @@
 <template>
   <div>
     <Toast />
-    <form @submit.prevent="handleRegister()">
+    <form @submit.prevent="handleRegister(!v$.$invalid)">
       <Card>
         <template #title>Register</template>
         <template #content>
@@ -41,7 +41,7 @@
               icon="pi pi-user"
               type="submit"
               label="Register"
-              @click="handleRegister()"
+              @click="handleRegister(!v$.$invalid)"
             />
           </div>
         </template>

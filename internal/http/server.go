@@ -31,14 +31,6 @@ var FS embed.FS
 
 var ws *websocketHandler.WSHandler
 
-func keyFunc(c *gin.Context) string {
-	return c.ClientIP()
-}
-
-func errorHandler(c *gin.Context, info ratelimit.Info) {
-	c.String(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
-}
-
 // Start the HTTP server
 func Start(db *gorm.DB, redisClient *realredis.Client) {
 	ws = websocketHandler.CreateHandler(db, redisClient)
@@ -54,7 +46,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
 		RedisClient: redisClient,
 		Rate:        time.Second,
-		Limit:       5,
+		Limit:       10,
 	})
 	ratelimitMW := ratelimit.RateLimiter(ratelimitStore, &ratelimit.Options{
 		ErrorHandler: func(c *gin.Context, info ratelimit.Info) {

@@ -20,8 +20,10 @@ import (
 
 func GETRepeaters(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	repeaters := models.ListRepeaters(db)
-	c.JSON(http.StatusOK, repeaters)
+	count := models.CountRepeaters(cDb)
+	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }
 
 func GETMyRepeaters(c *gin.Context) {
@@ -36,15 +38,16 @@ func GETMyRepeaters(c *gin.Context) {
 	}
 
 	// Get all repeaters owned by user
-	var repeaters []models.Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Model(&models.Repeater{}).Order("radio_id asc").Where("owner_id = ?", userId.(uint)).Find(&repeaters)
+	repeaters := models.GetUserRepeaters(db, userId.(uint))
 	if db.Error != nil {
 		klog.Errorf("Error getting repeaters owned by user %d: %v", userId, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
 
-	c.JSON(http.StatusOK, repeaters)
+	count := models.CountUserRepeaters(db, userId.(uint))
+
+	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }
 
 func GETRepeater(c *gin.Context) {

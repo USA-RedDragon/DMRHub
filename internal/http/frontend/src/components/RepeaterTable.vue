@@ -42,7 +42,11 @@
     <Column field="ts1_static_talkgroups" header="TS1 Static TGs">
       <template #body="slotProps">
         <span v-if="!slotProps.data.editable">
-          <span v-if="slotProps.data.ts1_static_talkgroups.length == 0"
+          <span
+            v-if="
+              slotProps.data.ts1_static_talkgroups.length == 0 ||
+              slotProps.data.slots == 1
+            "
             >None</span
           >
           <span
@@ -55,22 +59,24 @@
           </span>
         </span>
         <span class="p-float-label" v-else>
-          <MultiSelect
-            id="ts1_static_talkgroups"
-            v-model="slotProps.data.ts1_static_talkgroups"
-            :options="this.talkgroups"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-          >
-            <template #chip="slotProps">
-              {{ slotProps.value.display }}
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </MultiSelect>
-          <label for="ts1_static_talkgroups">TGs</label>
+          <span v-if="slotProps.data.slots != 1">
+            <MultiSelect
+              id="ts1_static_talkgroups"
+              v-model="slotProps.data.ts1_static_talkgroups"
+              :options="this.talkgroups"
+              :filter="true"
+              optionLabel="display"
+              display="chip"
+            >
+              <template #chip="slotProps">
+                {{ slotProps.value.display }}
+              </template>
+              <template #option="slotProps">
+                {{ slotProps.option.display }}
+              </template>
+            </MultiSelect>
+            <label for="ts1_static_talkgroups">TGs</label>
+          </span>
         </span>
       </template>
     </Column>
@@ -112,7 +118,13 @@
     <Column field="ts1_dynamic_talkgroup" header="TS1 Dynamic TG">
       <template #body="slotProps">
         <span v-if="!slotProps.data.editable">
-          <span v-if="slotProps.data.ts1_dynamic_talkgroup.id == 0">None</span>
+          <span
+            v-if="
+              slotProps.data.ts1_dynamic_talkgroup.id == 0 ||
+              slotProps.data.slots == 1
+            "
+            >None</span
+          >
           <Chip
             v-else
             :label="
@@ -123,25 +135,27 @@
           ></Chip>
         </span>
         <span class="p-float-label" v-else>
-          <Dropdown
-            id="ts1_dynamic_talkgroup"
-            v-model="slotProps.data.ts1_dynamic_talkgroup"
-            :options="this.talkgroups"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-          >
-            <template #value="slotProps">
-              <Chip
-                :label="slotProps.value.display"
-                v-if="slotProps.value.id != 0"
-              ></Chip>
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </Dropdown>
-          <label for="ts1_dynamic_talkgroup">TG</label>
+          <span v-if="slotProps.data.slots != 1">
+            <Dropdown
+              id="ts1_dynamic_talkgroup"
+              v-model="slotProps.data.ts1_dynamic_talkgroup"
+              :options="this.talkgroups"
+              :filter="true"
+              optionLabel="display"
+              display="chip"
+            >
+              <template #value="slotProps">
+                <Chip
+                  :label="slotProps.value.display"
+                  v-if="slotProps.value.id != 0"
+                ></Chip>
+              </template>
+              <template #option="slotProps">
+                {{ slotProps.option.display }}
+              </template>
+            </Dropdown>
+            <label for="ts1_dynamic_talkgroup">TG</label>
+          </span>
         </span>
       </template>
     </Column>
@@ -208,6 +222,7 @@
         class="p-button-raised p-button-rounded p-button-secondary"
         icon="pi pi-link"
         label="Unlink Dynamic TS1"
+        v-if="slotProps.data.slots != 1"
         style="margin-left: 0.5em"
         @click="unlink(1, slotProps.data)"
       ></Button>

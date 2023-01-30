@@ -17,7 +17,7 @@
 [DMR Network 2]
 Name=AREDN
 Enabled=1
-Address=ki5vmf-server.local.mesh
+Address={{ location.hostname }}
 Port=62031
 Password="{{ slotProps.message.message }}"
 Id={{ this.radioID }}

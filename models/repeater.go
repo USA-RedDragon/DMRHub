@@ -183,7 +183,7 @@ func (p *Repeater) String() string {
 
 func ListRepeaters(db *gorm.DB) []Repeater {
 	var repeaters []Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Find(&repeaters)
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Order("radio_id asc").Find(&repeaters)
 	return repeaters
 }
 

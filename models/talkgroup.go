@@ -38,7 +38,7 @@ func DeleteTalkgroup(db *gorm.DB, id uint) {
 func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
 	var talkgroups []Talkgroup
 	if err := db.Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
-		Joins("JOIN users on talkgroup_admins.user_id=users.id").Where("users.id=?", ownerID).
+		Joins("JOIN users on talkgroup_admins.user_id=users.id").Order("id asc").Where("users.id=?", ownerID).
 		Group("talkgroups.id").Find(&talkgroups).Error; err != nil {
 		klog.Errorf("Error getting talkgroups owned by user %d: %v", ownerID, err)
 		return nil, err

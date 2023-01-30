@@ -127,7 +127,6 @@ GRANT ALL ON schema public TO dmr;
 #### Things the user sees
 
 - Finalize color scheme
-- Handle single timeslot repeater case
 
 ### Soon
 
@@ -152,7 +151,6 @@ GRANT ALL ON schema public TO dmr;
 - Setting to use any free slot if possible. (i.e. timeslot routing where both slots are maximally active)
 - Admin panels
   - see users where callsign and DMR ID don't match (due to dmr id db drift)
-  - server configuration. Basically everything you'd see in env vars
 - server allowlist
 - server blocklist
 - ability to lock down traffic on one timeslot to a list of designated users. Intended for ensuring a timeslot remains open for emergency use)

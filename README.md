@@ -131,7 +131,6 @@ GRANT ALL ON schema public TO dmr;
 #### Things the dev sees
 
 - CI build and release
-- Dockerize
 - Paginate APIs
 - Rework frontend to not carry around so many objects
 

@@ -1,0 +1,9 @@
+bin/dmrserver-in-a-box
+doc/
+README.md
+.dockerignore
+.gitignore
+docker-compose.yml
+LICENSE.md
+*.db
+Dockerfile

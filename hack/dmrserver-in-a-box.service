@@ -1,0 +1,19 @@
+[Unit]
+Description=DMR Server in a Box
+ConditionFileIsExecutable=/usr/local/bin/dmrserver-in-a-box
+After=network.target
+
+[Service]
+User=
+Group=dmrserver
+Type=simple
+ExecStart=/usr/local/bin/dmrserver-in-a-box
+EnvironmentFile=/etc/dmrserver-in-a-box/env
+WorkingDirectory=/etc/dmrserver-in-a-box
+Restart=on-failure
+RestartSec=10
+ProtectHome=on
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

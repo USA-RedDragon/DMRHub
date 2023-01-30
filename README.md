@@ -32,6 +32,55 @@ Redis and PostgreSQL are required.
 
 ## Deploying
 
+### With Docker
+
+Docker images coming soon
+
+### Installations without Docker
+
+Installations without Docker are not officially supported, but should still work regardless.
+
+As an example, `hack/dmrserver-in-a-box.service` is a SystemD unit file to run this project as a SystemD service.
+
+For appropriate security, you'll want to create a user, group, and directory dedicated to this:
+
+```bash
+sudo mkdir /etc/dmrserver-in-a-box
+sudo groupadd --system dmrserver
+sudo useradd --home-dir /etc/dmrserver-in-a-box --no-create-home --no-user-group --system --shell /sbin/nologin dmrserver
+sudo chown dmrserver:dmrserver /etc/dmrserver-in-a-box
+sudo chmod 770 /etc/dmrserver-in-a-box
+```
+
+Then, place your configuration environment variables into `/etc/dmrserver-in-a-box/env`
+
+```bash
+cat <<EOF | sudo tee /etc/dmrserver-in-a-box/env
+LISTEN_ADDR=0.0.0.0
+...
+EOF
+
+sudo chown dmrserver:dmrserver /etc/dmrserver-in-a-box/env
+sudo chmod 660 /etc/dmrserver-in-a-box/env
+```
+
+Place the `dmrserver-in-a-box` binary into `/usr/local/bin`
+
+```bash
+sudo mv bin/dmrserver-in-a-box /usr/local/bin/
+sudo chmod a+x /usr/local/bin/dmrserver-in-a-box
+```
+
+Finally, copy the SystemD unit file into `/etc/systemd/system/` and activate it
+
+```bash
+sudo cp hack/dmrserver-in-a-box.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now dmrserver-in-a-box.service
+```
+
+Logs can be viewed with `journalctl -f -u dmrserver-in-a-box.service`
+
 ### Setting up a database
 
 TODO: Add instructions and provide a production-ready Docker-Compose file.
@@ -83,7 +132,6 @@ GRANT ALL ON schema public TO dmr;
 
 - CI build and release
 - Dockerize
-- Document deployment
 - Paginate APIs
 - Rework frontend to not carry around so many objects
 
@@ -95,7 +143,6 @@ GRANT ALL ON schema public TO dmr;
 - users should be able to edit their name and callsign
 - Fix MSTCL on master shutdown (signal trap)
 - Hoseline equivalent
-- distributed database? Maybe OLSR can help with the "where do I point my pi-star" problem that isn't a SPOF?
 
 ### Long Term
 
@@ -120,3 +167,4 @@ GRANT ALL ON schema public TO dmr;
 - add the ability for a talkgroup owner to create nets
 - add the ability for talkgroup owner or net control operator to start/stop a net check-in
 - add the ability for talkgroup owner or net control operator to see and export a check-in list (just query calls DB for TG=tg_id during net check-in period)
+- distributed database? Maybe OLSR can help with the "where do I point my pi-star" problem that isn't a SPOF?

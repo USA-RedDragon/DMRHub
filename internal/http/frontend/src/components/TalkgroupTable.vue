@@ -210,19 +210,19 @@ export default {
         API.get("/users?limit=none")
           .then((res) => {
             var parrotIndex = -1;
-            for (let i = 0; i < res.data.length; i++) {
-              res.data[
+            for (let i = 0; i < res.data.users.length; i++) {
+              res.data.users[
                 i
-              ].display = `${res.data[i].id} - ${res.data[i].callsign}`;
+              ].display = `${res.data.users[i].id} - ${res.data.users[i].callsign}`;
               // Remove user with id 9990 (parrot)
-              if (res.data[i].id === 9990) {
+              if (res.data.users[i].id === 9990) {
                 parrotIndex = i;
               }
             }
             if (parrotIndex !== -1) {
-              res.data.splice(parrotIndex, 1);
+              res.data.users.splice(parrotIndex, 1);
             }
-            this.allUsers = res.data;
+            this.allUsers = res.data.users;
           })
           .catch((err) => {
             console.error(err);

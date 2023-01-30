@@ -141,18 +141,18 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 	}
 }
 
-func (h *WSHandler) ApplyRoutes(r *gin.Engine) {
-	r.GET("/ws/repeaters", middleware.RequireLogin(), func(c *gin.Context) {
+func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
+	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, func(c *gin.Context) {
 		db := c.MustGet("DB").(*gorm.DB)
 		session := sessions.Default(c)
 		h.repeaterHandler(c.Request.Context(), db, session, c.Writer, c.Request)
 	})
 
-	r.GET("/ws/health", func(c *gin.Context) {
+	r.GET("/ws/health", ratelimit, func(c *gin.Context) {
 		h.pingHandler(c.Writer, c.Request)
 	})
 
-	r.GET("/ws/calls", func(c *gin.Context) {
+	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {
 		db := c.MustGet("DB").(*gorm.DB)
 		session := sessions.Default(c)
 		h.callHandler(c.Request.Context(), db, session, c.Writer, c.Request)

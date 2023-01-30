@@ -17,6 +17,7 @@ import (
 	"github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/api/middleware"
 	redis "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/sessions"
 	websocketHandler "github.com/USA-RedDragon/dmrserver-in-a-box/internal/http/websocket"
+	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,14 @@ var FS embed.FS
 
 var ws *websocketHandler.WSHandler
 
+func keyFunc(c *gin.Context) string {
+	return c.ClientIP()
+}
+
+func errorHandler(c *gin.Context, info ratelimit.Info) {
+	c.String(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
+}
+
 // Start the HTTP server
 func Start(db *gorm.DB, redisClient *realredis.Client) {
 	ws = websocketHandler.CreateHandler(db, redisClient)
@@ -42,20 +51,34 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 	r.Use(middleware.RedisProvider(redisClient))
 
+	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
+		RedisClient: *redisClient,
+		Rate:        time.Second,
+		Limit:       5,
+	})
+	ratelimitMW := ratelimit.RateLimiter(ratelimitStore, &ratelimit.Options{
+		ErrorHandler: func(c *gin.Context, info ratelimit.Info) {
+			c.String(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
+		},
+		KeyFunc: func(c *gin.Context) string {
+			return c.ClientIP()
+		},
+	})
+
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	store, _ := redis.NewStore(redisClient, []byte(""), []byte(config.GetConfig().Secret))
-	r.Use(sessions.Sessions("sessions", store))
+	sessionStore, _ := redis.NewStore(redisClient, []byte(""), []byte(config.GetConfig().Secret))
+	r.Use(sessions.Sessions("sessions", sessionStore))
 
-	ws.ApplyRoutes(r)
+	ws.ApplyRoutes(r, ratelimitMW)
 
 	r.Use(otelgin.Middleware("api"))
 	r.Use(middleware.TracingProvider())
 
-	api.ApplyRoutes(r)
+	api.ApplyRoutes(r, ratelimitMW)
 
 	staticGroup := r.Group("/")
 

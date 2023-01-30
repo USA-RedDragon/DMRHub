@@ -1,5 +1,14 @@
 <template>
-  <DataTable v-model:expandedRows="expandedRows" :value="talkgroups">
+  <DataTable
+    v-model:expandedRows="expandedRows"
+    :value="talkgroups"
+    :lazy="true"
+    :paginator="true"
+    :rows="10"
+    :totalRecords="totalRecords"
+    :loading="loading"
+    @page="onPage($event)"
+  >
     <template v-if="this.$props.admin" #header>
       <div class="table-header-container">
         <RouterLink to="/admin/talkgroups/new">
@@ -173,6 +182,8 @@ export default {
       refresh: null,
       expandedRows: [],
       editableTalkgroups: 0,
+      totalRecords: 0,
+      loading: false,
       allUsers: [],
     };
   },
@@ -187,12 +198,16 @@ export default {
     clearInterval(this.refresh);
   },
   methods: {
-    fetchData() {
+    onPage(event) {
+      this.loading = true;
+      this.fetchData(event.page + 1, event.rows);
+    },
+    fetchData(page = 1, limit = 10) {
       if (this.editableTalkgroups > 0) {
         return;
       }
       if (this.$props.owner || this.$props.admin) {
-        API.get("/users")
+        API.get("/users?limit=none")
           .then((res) => {
             var parrotIndex = -1;
             for (let i = 0; i < res.data.length; i++) {
@@ -214,17 +229,21 @@ export default {
           });
       }
       if (this.$props.owner) {
-        API.get("/talkgroups/my")
+        API.get(`/talkgroups/my?limit=${limit}&page=${page}`)
           .then((res) => {
-            this.talkgroups = this.cleanData(res.data);
+            this.talkgroups = this.cleanData(res.data.talkgroups);
+            this.totalRecords = res.data.total;
+            this.loading = false;
           })
           .catch((err) => {
             console.error(err);
           });
       } else {
-        API.get("/talkgroups")
+        API.get(`/talkgroups?limit=${limit}&page=${page}`)
           .then((res) => {
-            this.talkgroups = this.cleanData(res.data);
+            this.talkgroups = this.cleanData(res.data.talkgroups);
+            this.totalRecords = res.data.total;
+            this.loading = false;
           })
           .catch((err) => {
             console.error(err);

@@ -15,13 +15,15 @@ import (
 
 func GETTalkgroups(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	var talkgroups []models.Talkgroup
-	db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups)
-	c.JSON(http.StatusOK, talkgroups)
+	cDb := c.MustGet("DB").(*gorm.DB)
+	talkgroups := models.ListTalkgroups(db)
+	total := models.CountTalkgroups(cDb)
+	c.JSON(http.StatusOK, gin.H{"total": total, "talkgroups": talkgroups})
 }
 
 func GETMyTalkgroups(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
 	userId := session.Get("user_id")
@@ -36,8 +38,9 @@ func GETMyTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	total := models.CountTalkgroupsByOwnerID(cDb, userId.(uint))
 
-	c.JSON(http.StatusOK, talkgroups)
+	c.JSON(http.StatusOK, gin.H{"total": total, "talkgroups": talkgroups})
 }
 
 func GETTalkgroup(c *gin.Context) {

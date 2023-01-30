@@ -2,12 +2,14 @@
   <Header />
   <RouterView />
   <Footer />
+  <ThemeConfig />
 </template>
 
 <script>
 import { RouterView } from "vue-router";
 import Footer from "./components/Footer.vue";
 import Header from "./components/Header.vue";
+import ThemeConfig from "./components/ThemeConfig.vue";
 import API from "@/services/API";
 import { getWebsocketURI } from "@/services/util";
 
@@ -19,6 +21,7 @@ export default {
   components: {
     Header,
     Footer,
+    ThemeConfig,
   },
   data() {
     return {

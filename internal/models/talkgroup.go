@@ -19,6 +19,18 @@ type Talkgroup struct {
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+func ListTalkgroups(db *gorm.DB) []Talkgroup {
+	var talkgroups []Talkgroup
+	db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups)
+	return talkgroups
+}
+
+func CountTalkgroups(db *gorm.DB) int {
+	var count int64
+	db.Model(&Talkgroup{}).Count(&count)
+	return int(count)
+}
+
 func TalkgroupIDExists(db *gorm.DB, id uint) bool {
 	var count int64
 	db.Model(&Talkgroup{}).Where("ID = ?", id).Limit(1).Count(&count)
@@ -44,4 +56,12 @@ func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
 		return nil, err
 	}
 	return talkgroups, nil
+}
+
+func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) int {
+	var count int64
+	db.Model(&Talkgroup{}).Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
+		Joins("JOIN users on talkgroup_admins.user_id=users.id").
+		Where("users.id=?", ownerID).Count(&count)
+	return int(count)
 }

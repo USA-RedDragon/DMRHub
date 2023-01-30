@@ -122,12 +122,6 @@ GRANT ALL ON schema public TO dmr;
 
 ## TODOs
 
-### Before first release
-
-#### Things the user sees
-
-- Finalize color scheme
-
 ### Soon
 
 - details page for talkgroup with lastheard

@@ -1,23 +1,72 @@
 <template>
   <div>
     <Toast />
-    <form @submit.prevent="handleTalkgroup()">
+    <form @submit.prevent="handleTalkgroup(!v$.$invalid)">
       <Card>
         <template #title>New Talkgroup</template>
         <template #content>
           <span class="p-float-label">
-            <InputText id="id" type="text" v-model="id" />
-            <label for="id">Talkgroup ID</label>
+            <InputText
+              id="id"
+              type="text"
+              v-model="v$.id.$model"
+              :class="{
+                'p-invalid': v$.id.$invalid && submitted,
+              }"
+            />
+            <label for="id" :class="{ 'p-error': v$.id.$invalid && submitted }"
+              >Talkgroup ID</label
+            >
+          </span>
+          <span v-if="v$.id.$error && submitted">
+            <span v-for="(error, index) of v$.id.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="name" type="text" v-model="name" />
-            <label for="name">Name</label>
+            <InputText
+              id="name"
+              type="text"
+              v-model="v$.name.$model"
+              :class="{
+                'p-invalid': v$.name.$invalid && submitted,
+              }"
+            />
+            <label
+              for="name"
+              :class="{ 'p-error': v$.name.$invalid && submitted }"
+              >Name</label
+            >
+          </span>
+          <span v-if="v$.name.$error && submitted">
+            <span v-for="(error, index) of v$.name.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="description" type="text" v-model="description" />
-            <label for="description">Description</label>
+            <InputText
+              id="description"
+              type="text"
+              v-model="v$.description.$model"
+              :class="{
+                'p-invalid': v$.description.$invalid && submitted,
+              }"
+            />
+            <label
+              for="description"
+              :class="{ 'p-error': v$.description.$invalid && submitted }"
+              >Description</label
+            >
+          </span>
+          <span v-if="v$.description.$error && submitted">
+            <span v-for="(error, index) of v$.description.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
           </span>
           <br />
           <span class="p-float-label">
@@ -67,7 +116,7 @@
               icon="pi pi-save"
               label="Save"
               type="submit"
-              @click="handleTalkgroup()"
+              @click="handleTalkgroup(!v$.$invalid)"
             />
           </div>
         </template>
@@ -83,6 +132,8 @@ import Button from "primevue/button/sfc";
 import InputText from "primevue/inputtext/sfc";
 import MultiSelect from "primevue/multiselect/sfc";
 import API from "@/services/API";
+import { useVuelidate } from "@vuelidate/core";
+import { required, numeric, maxLength } from "@vuelidate/validators";
 
 export default {
   components: {
@@ -92,6 +143,7 @@ export default {
     InputText,
     MultiSelect,
   },
+  setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {
     this.getData();
@@ -104,13 +156,32 @@ export default {
       admins: [],
       ncos: [],
       allUsers: [],
+      submitted: false,
+    };
+  },
+  validations() {
+    return {
+      id: {
+        required,
+        numeric,
+      },
+      name: {
+        required,
+        maxLength: maxLength(20),
+      },
+      description: {
+        required,
+        maxLength: maxLength(240),
+      },
+      ncos: {},
+      admins: {},
     };
   },
   methods: {
     getData() {
-      API.get("/users")
+      API.get("/users?limit=none")
         .then((res) => {
-          this.allUsers = res.data;
+          this.allUsers = res.data.users;
           var parrotIndex = -1;
           for (let i = 0; i < this.allUsers.length; i++) {
             this.allUsers[
@@ -129,7 +200,13 @@ export default {
           console.error(err);
         });
     },
-    handleTalkgroup() {
+    handleTalkgroup(isFormValid) {
+      this.submitted = true;
+
+      if (!isFormValid) {
+        return;
+      }
+
       var numericID = parseInt(this.id);
       if (!numericID) {
         return;

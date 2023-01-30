@@ -18,6 +18,7 @@ type User struct {
 	Password  string         `json:"-"`
 	Admin     bool           `json:"admin"`
 	Approved  bool           `json:"approved" binding:"required"`
+	Suspended bool           `json:"suspended"`
 	Repeaters []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"-"`

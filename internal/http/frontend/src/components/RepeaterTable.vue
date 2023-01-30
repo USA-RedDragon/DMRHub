@@ -10,7 +10,7 @@
     :loading="loading"
     @page="onPage($event)"
   >
-    <template #header>
+    <template #header v-if="!this.$props.admin">
       <div class="table-header-container">
         <RouterLink to="/repeaters/new">
           <Button

@@ -56,6 +56,7 @@ GRANT ALL ON schema public TO dmr;
 | `DMR_PORT`                 | `62031`                                                   | The port to run the DMR server on                                                                                                                                                                                                      |
 | `HTTP_PORT`                | `3005`                                                    | The port to run the HTTP API, Websocket, and frontend from                                                                                                                                                                             |
 | `REDIS_HOST`               | `localhost:6379`                                          | The Redis connection URL. Include the port                                                                                                                                                                                             |
+| `REDIS_PASSWORD`           | `password`                                                | The password to authenticate to Redis with                                                                                                                                                                                             |
 | `PG_HOST`                  | `localhost`                                               | The PostgreSQL server hostname                                                                                                                                                                                                         |
 | `PG_PORT`                  | `5432`                                                    | The PostgreSQL server port                                                                                                                                                                                                             |
 | `PG_USER`                  | `postgres`                                                | The PostgreSQL user to authenticate as                                                                                                                                                                                                 |
@@ -81,7 +82,6 @@ GRANT ALL ON schema public TO dmr;
 
 - CI build and release
 - Dockerize
-- redis auth
 - Document deployment
 - Paginate APIs
 - Rework frontend to not carry around so many objects

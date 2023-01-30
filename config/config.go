@@ -13,6 +13,7 @@ import (
 type Config struct {
 	loaded                   bool
 	RedisHost                string
+	RedisPassword            string
 	PostgresDSN              string
 	postgresUser             string
 	postgresPassword         string
@@ -73,6 +74,7 @@ func GetConfig() *Config {
 			HIBPAPIKey:               os.Getenv("HIBP_API_KEY"),
 			OTLPEndpoint:             os.Getenv("OTLP_ENDPOINT"),
 			InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),
+			RedisPassword:            os.Getenv("REDIS_PASSWORD"),
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"
@@ -113,6 +115,10 @@ func GetConfig() *Config {
 		if currentConfig.InitialAdminUserPassword == "" {
 			klog.Errorf("Initial admin user password not set, using auto-generated password")
 			currentConfig.InitialAdminUserPassword = utils.RandomPassword(15, 4, 2)
+		}
+		if currentConfig.RedisPassword == "" {
+			currentConfig.RedisPassword = "password"
+			klog.Errorf("Redis password not set, using INSECURE default")
 		}
 		// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 		corsHosts := os.Getenv("CORS_HOSTS")

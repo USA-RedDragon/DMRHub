@@ -9,5 +9,5 @@ var (
 	GitCommit string
 
 	// Version of the program
-	Version = "0.9.99"
+	Version = "1.0.0"
 )

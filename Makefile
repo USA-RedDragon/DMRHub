@@ -16,9 +16,9 @@ install-deps:
 
 build-frontend:
 	@echo "--> Installing JavaScript assets"
-	@cd http/frontend && npm ci
+	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
-	@cd http/frontend && npm run build
+	@cd internal/http/frontend && npm run build
 	@$(MAKE) -f $(THIS_FILE) fmt
 	@echo "--> Done"
 

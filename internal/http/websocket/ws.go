@@ -113,12 +113,12 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 	}
 	defer pubsub.Close()
 
-	readFailed := false
+	readFailed := make(chan string)
 	go func() {
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
-				readFailed = true
+				readFailed <- "read failed"
 				break
 			}
 		}
@@ -128,17 +128,13 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 		for msg := range pubsub.Channel() {
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
 				klog.Errorf("Failed to write message to websocket: %v", err)
+				readFailed <- "write failed"
 				return
 			}
 		}
 	}()
 
-	for {
-		if readFailed {
-			pubsub.Close()
-			break
-		}
-	}
+	<-readFailed
 }
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {

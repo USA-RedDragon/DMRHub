@@ -22,7 +22,14 @@
             <span v-for="(error, index) of v$.id.$errors" :key="index">
               <small class="p-error">{{ error.$message }}</small>
             </span>
-            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="(v$.id.$invalid && submitted) || v$.id.$pending.$response"
+              class="p-error"
+              >{{ v$.id.required.$message.replace("Value", "ID") }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
@@ -43,8 +50,18 @@
           <span v-if="v$.name.$error && submitted">
             <span v-for="(error, index) of v$.name.$errors" :key="index">
               <small class="p-error">{{ error.$message }}</small>
+              <br />
             </span>
-            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.name.$invalid && submitted) || v$.name.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.name.required.$message.replace("Value", "Name") }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
@@ -67,6 +84,19 @@
               <small class="p-error">{{ error.$message }}</small>
             </span>
             <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.description.$invalid && submitted) ||
+                v$.description.$pending.$response
+              "
+              class="p-error"
+              >{{
+                v$.description.required.$message.replace("Value", "Description")
+              }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">

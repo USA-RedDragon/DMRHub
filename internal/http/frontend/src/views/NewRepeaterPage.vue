@@ -20,7 +20,7 @@ Enabled=1
 Address=ki5vmf-server.local.mesh
 Port=62031
 Password="{{ slotProps.message.message }}"
-Id={{ this.radio_id }}
+Id={{ this.radioID }}
 Location=1
 Debug=0
 # Rewrites TG 8000001-8999999 -> 1-999999
@@ -38,13 +38,42 @@ SrcRewrite4=2,1,2,8000001,999999</pre
         </div>
       </template>
     </ConfirmDialog>
-    <form @submit.prevent="handleRepeater()">
+    <form @submit.prevent="handleRepeater(!v$.$invalid)">
       <Card>
         <template #title>New Repeater</template>
         <template #content>
           <span class="p-float-label">
-            <InputText id="radio_id" type="text" v-model="radio_id" />
-            <label for="radio_id">DMR Radio ID</label>
+            <InputText
+              id="radioID"
+              type="text"
+              v-model="v$.radioID.$model"
+              :class="{
+                'p-invalid': v$.radioID.$invalid && submitted,
+              }"
+            />
+            <label
+              for="radioID"
+              :class="{ 'p-error': v$.radioID.$invalid && submitted }"
+              >DMR Radio ID</label
+            >
+          </span>
+          <span v-if="v$.radioID.$error && submitted">
+            <span v-for="(error, index) of v$.radioID.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.radioID.$invalid && submitted) ||
+                v$.radioID.$pending.$response
+              "
+              class="p-error"
+              >{{
+                v$.radioID.required.$message.replace("Value", "Radio ID")
+              }}</small
+            >
           </span>
         </template>
         <template #footer>
@@ -54,7 +83,7 @@ SrcRewrite4=2,1,2,8000001,999999</pre
               icon="pi pi-save"
               label="Save"
               type="submit"
-              @click="handleRepeater()"
+              @click="handleRepeater(!v$.$invalid)"
             />
           </div>
         </template>
@@ -70,6 +99,9 @@ import Button from "primevue/button/sfc";
 import InputText from "primevue/inputtext/sfc";
 import API from "@/services/API";
 
+import { useVuelidate } from "@vuelidate/core";
+import { required, numeric } from "@vuelidate/validators";
+
 export default {
   components: {
     Card,
@@ -77,16 +109,31 @@ export default {
     Button,
     InputText,
   },
+  setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
   data: function () {
     return {
-      radio_id: "",
+      radioID: "",
+      submitted: false,
+    };
+  },
+  validations() {
+    return {
+      radioID: {
+        required,
+        numeric,
+      },
     };
   },
   methods: {
-    handleRepeater() {
-      var numericID = parseInt(this.radio_id);
+    handleRepeater(isFormValid) {
+      this.submitted = true;
+      if (!isFormValid) {
+        return;
+      }
+
+      var numericID = parseInt(this.radioID);
       if (!numericID) {
         return;
       }

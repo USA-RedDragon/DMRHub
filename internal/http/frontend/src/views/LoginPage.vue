@@ -1,18 +1,52 @@
 <template>
   <div>
     <Toast />
-    <form @submit.prevent="handleLogin()">
+    <form @submit.prevent="handleLogin(!v$.$invalid)">
       <Card>
         <template #title>Login</template>
         <template #content>
           <span class="p-float-label">
-            <InputText id="username" type="text" v-model="username" />
-            <label for="username">Username</label>
+            <InputText
+              id="username"
+              type="text"
+              v-model="v$.username.$model"
+              :class="{
+                'p-invalid': v$.username.$invalid && submitted,
+              }"
+            />
+            <label
+              for="username"
+              :class="{ 'p-error': v$.username.$invalid && submitted }"
+              >Username</label
+            >
+          </span>
+          <span v-if="v$.username.$error && submitted">
+            <span v-for="(error, index) of v$.username.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="password" type="password" v-model="password" />
-            <label for="password">Password</label>
+            <InputText
+              id="password"
+              type="password"
+              v-model="v$.password.$model"
+              :class="{
+                'p-invalid': v$.password.$invalid && submitted,
+              }"
+            />
+            <label
+              for="password"
+              :class="{ 'p-error': v$.password.$invalid && submitted }"
+              >Password</label
+            >
+          </span>
+          <span v-if="v$.password.$error && submitted">
+            <span v-for="(error, index) of v$.password.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+            </span>
+            <br />
           </span>
           <br />
           <p>
@@ -27,7 +61,7 @@
               icon="pi pi-lock"
               label="Login"
               type="submit"
-              @click="handleLogin()"
+              @click="handleLogin(!v$.$invalid)"
             />
           </div>
         </template>
@@ -43,6 +77,9 @@ import Button from "primevue/button/sfc";
 import Card from "primevue/card/sfc";
 import API from "@/services/API";
 
+import { useVuelidate } from "@vuelidate/core";
+import { required } from "@vuelidate/validators";
+
 import { mapStores } from "pinia";
 import { useUserStore } from "@/store";
 
@@ -53,16 +90,33 @@ export default {
     Button,
     Card,
   },
+  setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
   data: function () {
     return {
       username: "",
       password: "",
+      submitted: false,
+    };
+  },
+  validations() {
+    return {
+      username: {
+        required,
+      },
+      password: {
+        required,
+      },
     };
   },
   methods: {
-    handleLogin() {
+    handleLogin(isFormValid) {
+      this.submitted = true;
+      if (!isFormValid) {
+        return;
+      }
+
       API.post("/auth/login", {
         username: this.username,
         password: this.password,

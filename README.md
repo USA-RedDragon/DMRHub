@@ -126,7 +126,6 @@ GRANT ALL ON schema public TO dmr;
 
 #### Things the user sees
 
-- Form validation (<https://www.primefaces.org/primevue/validation>)
 - Finalize color scheme
 - Handle single timeslot repeater case
 

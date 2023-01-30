@@ -76,6 +76,7 @@ GRANT ALL ON schema public TO dmr;
 
 #### Things the user sees
 
+- Make enter key submit forms
 - Finalize color scheme
 
 #### Things the dev sees

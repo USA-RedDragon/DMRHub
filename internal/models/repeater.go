@@ -187,6 +187,24 @@ func ListRepeaters(db *gorm.DB) []Repeater {
 	return repeaters
 }
 
+func CountRepeaters(db *gorm.DB) int {
+	var count int64
+	db.Model(&Repeater{}).Count(&count)
+	return int(count)
+}
+
+func GetUserRepeaters(db *gorm.DB, ID uint) []Repeater {
+	var repeaters []Repeater
+	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", ID).Order("radio_id asc").Find(&repeaters)
+	return repeaters
+}
+
+func CountUserRepeaters(db *gorm.DB, ID uint) int {
+	var count int64
+	db.Model(&Repeater{}).Where("owner_id = ?", ID).Count(&count)
+	return int(count)
+}
+
 func FindRepeaterByID(db *gorm.DB, ID uint) Repeater {
 	var repeater Repeater
 	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").First(&repeater, ID)

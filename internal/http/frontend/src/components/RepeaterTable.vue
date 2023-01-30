@@ -3,6 +3,12 @@
     :value="repeaters"
     v-model:expandedRows="expandedRows"
     dataKey="id"
+    :lazy="true"
+    :paginator="true"
+    :rows="10"
+    :totalRecords="totalRecords"
+    :loading="loading"
+    @page="onPage($event)"
   >
     <template #header>
       <div class="table-header-container">
@@ -265,19 +271,29 @@ export default {
       socket: null,
       editableRepeaters: 0,
       refresh: null,
+      totalRecords: 0,
+      loading: false,
     };
   },
   mounted() {
     this.fetchData();
+    if (!this.$props.admin) {
+      this.socket = new WebSocket(getWebsocketURI() + "/repeaters");
+      this.mapSocketEvents();
+    }
   },
   unmounted() {
     clearInterval(this.refresh);
   },
   methods: {
-    fetchData() {
-      API.get("/talkgroups")
+    onPage(event) {
+      this.loading = true;
+      this.fetchData(event.page + 1, event.rows);
+    },
+    fetchData(page = 1, limit = 10) {
+      API.get("/talkgroups?limit=none")
         .then((res) => {
-          this.talkgroups = res.data;
+          this.talkgroups = res.data.talkgroups;
           var parrotIndex = -1;
           for (let i = 0; i < this.talkgroups.length; i++) {
             this.talkgroups[i].display =
@@ -298,21 +314,21 @@ export default {
 
       if (!this.editableRepeaters > 0) {
         if (this.$props.admin) {
-          API.get("/repeaters")
+          API.get(`/repeaters?limit=${limit}&page=${page}`)
             .then((res) => {
-              this.repeaters = this.cleanData(res.data);
-              this.socket = new WebSocket(getWebsocketURI() + "/repeaters");
-              this.mapSocketEvents();
+              this.repeaters = this.cleanData(res.data.repeaters);
+              this.totalRecords = res.data.total;
+              this.loading = false;
             })
             .catch((err) => {
               console.error(err);
             });
         } else {
-          API.get("/repeaters/my")
+          API.get(`/repeaters/my?limit=${limit}&page=${page}`)
             .then((res) => {
-              this.repeaters = this.cleanData(res.data);
-              this.socket = new WebSocket(getWebsocketURI() + "/repeaters");
-              this.mapSocketEvents();
+              this.repeaters = this.cleanData(res.data.repeaters);
+              this.totalRecords = res.data.total;
+              this.loading = false;
             })
             .catch((err) => {
               console.error(err);

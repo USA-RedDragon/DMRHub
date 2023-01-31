@@ -19,7 +19,6 @@ type DMRServer struct {
 	Server        *net.UDPConn
 	Started       bool
 	Parrot        *Parrot
-	Verbose       bool
 	DB            *gorm.DB
 	Redis         redisRepeaterStorage
 	CallTracker   *CallTracker
@@ -47,7 +46,7 @@ func (s *DMRServer) Stop(ctx context.Context) {
 		klog.Errorf("Error scanning redis for repeaters", err)
 	}
 	for _, repeater := range repeaters {
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("Repeater found: %d", repeater)
 		}
 		s.Redis.updateConnection(ctx, repeater, "DISCONNECTED")
@@ -128,7 +127,7 @@ func (s *DMRServer) Listen(ctx context.Context) {
 	go func() {
 		for {
 			len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-			if s.Verbose {
+			if config.GetConfig().Debug {
 				klog.Infof("Read a message from %v\n", remoteaddr)
 			}
 			if err != nil {
@@ -158,7 +157,7 @@ func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, comma
 			klog.Warningf("Server not started, not sending command")
 			return
 		}
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIdBytes)
 		}
 		command_prefixed_data := append([]byte(command), data...)
@@ -183,8 +182,8 @@ func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, comma
 
 func (s *DMRServer) sendPacket(ctx context.Context, repeaterIdBytes uint, packet models.Packet) {
 	go func() {
-		if s.Verbose {
-			klog.Infof("Sending Packet: %v\n", packet)
+		if config.GetConfig().Debug {
+			klog.Infof("Sending Packet: %s\n", packet.String())
 			klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
 		}
 		repeater, err := s.Redis.get(ctx, repeaterIdBytes)

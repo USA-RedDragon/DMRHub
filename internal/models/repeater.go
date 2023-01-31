@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -66,7 +67,9 @@ func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, tal
 }
 
 func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
-	klog.Infof("Listening for calls on repeater %d", p.RadioID)
+	if config.GetConfig().Debug {
+		klog.Infof("Listening for calls on repeater %d", p.RadioID)
+	}
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel

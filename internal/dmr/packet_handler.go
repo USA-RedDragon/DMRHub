@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
@@ -51,7 +52,7 @@ func (s *DMRServer) switchDynamicTalkgroup(ctx context.Context, packet models.Pa
 	// the new dynamic talkgroup on the appropriate slot.
 	if models.RepeaterIDExists(s.DB, packet.Repeater) {
 		if !models.TalkgroupIDExists(s.DB, packet.Dst) {
-			if s.Verbose {
+			if config.GetConfig().Debug {
 				klog.Infof("Repeater %d not found in DB", packet.Repeater)
 			}
 			return
@@ -75,7 +76,7 @@ func (s *DMRServer) switchDynamicTalkgroup(ctx context.Context, packet models.Pa
 				s.DB.Save(&repeater)
 			}
 		}
-	} else if s.Verbose {
+	} else if config.GetConfig().Debug {
 		klog.Infof("Repeater %d not found in DB", packet.Repeater)
 	}
 }
@@ -89,15 +90,12 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		klog.Warningf("Invalid packet length: %d", len(data))
 		return
 	}
-	if s.Verbose {
-		klog.Infof("Data: %s", string(data[:]))
-	}
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
 	command := dmrconst.Command(data[:4])
 	if command == dmrconst.COMMAND_DMRA {
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("DMR talk alias from Repeater ID: %d", repeaterIdBytes)
 		}
 		if s.validRepeater(ctx, repeaterId, "YES", *remoteAddr) {
@@ -120,7 +118,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 		repeaterIdBytes := data[11:15]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("DMR Data from Repeater ID: %d", repeaterId)
 		}
 		if s.validRepeater(ctx, repeaterId, "YES", *remoteAddr) {
@@ -137,7 +135,9 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			packet := models.UnpackPacket(data[:])
 
-			klog.Infof("DMRD packet: %s", packet.String())
+			if config.GetConfig().Debug {
+				klog.Infof("DMRD packet: %s", packet.String())
+			}
 
 			isVoice := false
 			isData := false
@@ -145,20 +145,30 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			case dmrconst.FRAME_DATA_SYNC:
 				if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
 					isVoice = true
-					klog.Infof("Voice terminator from %d", packet.Src)
+					if config.GetConfig().Debug {
+						klog.Infof("Voice terminator from %d", packet.Src)
+					}
 				} else if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_HEAD {
 					isVoice = true
-					klog.Infof("Voice header from %d", packet.Src)
+					if config.GetConfig().Debug {
+						klog.Infof("Voice header from %d", packet.Src)
+					}
 				} else {
 					isData = true
-					klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+					if config.GetConfig().Debug {
+						klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+					}
 				}
 			case dmrconst.FRAME_VOICE:
 				isVoice = true
-				klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
+				if config.GetConfig().Debug {
+					klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
+				}
 			case dmrconst.FRAME_VOICE_SYNC:
 				isVoice = true
-				klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+				if config.GetConfig().Debug {
+					klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+				}
 			}
 
 			if packet.Dst == 0 {
@@ -179,9 +189,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if packet.Dst == 9990 && isVoice {
-				klog.Infof("Parrot call from %d", packet.Src)
 				if !s.Parrot.IsStarted(ctx, packet.StreamId) {
 					s.Parrot.StartStream(ctx, packet.StreamId, repeaterId)
+					if config.GetConfig().Debug {
+						klog.Infof("Parrot call from %d", packet.Src)
+					}
 				}
 				s.Parrot.RecordPacket(ctx, packet.StreamId, packet)
 				if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
@@ -296,7 +308,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	} else if command == dmrconst.COMMAND_RPTO {
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("Set options from %d", repeaterId)
 		}
 
@@ -331,7 +343,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			repeater.Connected = time.Now()
 			s.Redis.store(ctx, repeaterId, repeater)
 			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
-			if s.Verbose {
+			if config.GetConfig().Debug {
 				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
 			}
 		} else {
@@ -365,7 +377,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
-		if s.Verbose {
+		if config.GetConfig().Debug {
 			klog.Infof("Challenge Response from Repeater ID: %d", repeaterId)
 		}
 		if s.validRepeater(ctx, repeaterId, "CHALLENGE_SENT", *remoteAddr) {
@@ -377,7 +389,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				password = dbRepeater.Password
 			} else {
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
-				if s.Verbose {
+				if config.GetConfig().Debug {
 					klog.Infof("Repeater ID %d does not exist in db, sending NAK", repeaterId)
 				}
 				return
@@ -385,7 +397,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 
 			if password == "" {
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
-				if s.Verbose {
+				if config.GetConfig().Debug {
 					klog.Infof("Repeater ID %d did not provide password, sending NAK", repeaterId)
 				}
 				return
@@ -399,7 +411,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if err != nil {
 				klog.Errorf("Error getting repeater from redis: %v", err)
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
-				if s.Verbose {
+				if config.GetConfig().Debug {
 					klog.Infof("Repeater ID %d does not exist in redis, sending NAK", repeaterId)
 				}
 			}
@@ -443,7 +455,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			repeaterIdBytes := data[4:8]
 			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
-			if s.Verbose {
+			if config.GetConfig().Debug {
 				klog.Infof("Repeater config from %d", repeaterId)
 			}
 

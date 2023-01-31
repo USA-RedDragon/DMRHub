@@ -8,6 +8,7 @@
     :rows="10"
     :totalRecords="totalRecords"
     :loading="loading"
+    :scrollable="true"
     @page="onPage($event)"
   >
     <template #header v-if="!this.$props.admin">

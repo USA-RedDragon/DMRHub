@@ -9,19 +9,19 @@ type Command string
 const (
 	// Command Types
 	COMMAND_DMRA    Command = "DMRA"
-	COMMAND_DMRD    Command = "DMRD"
-	COMMAND_MSTCL   Command = "MSTCL"
-	COMMAND_MSTNAK  Command = "MSTNAK"
-	COMMAND_MSTPONG Command = "MSTPONG"
+	COMMAND_DMRD    Command = "DMRD"    // DMR data
+	COMMAND_MSTCL   Command = "MSTCL"   // master server is closing connection
+	COMMAND_MSTNAK  Command = "MSTNAK"  // master -> repeater nak
+	COMMAND_MSTPONG Command = "MSTPONG" // RPTPING response
 	COMMAND_MSTN    Command = "MSTN"
 	COMMAND_MSTP    Command = "MSTP"
 	COMMAND_MSTC    Command = "MSTC"
-	COMMAND_RPTL    Command = "RPTL" // RPTLogin -- a repeater wants to login
-	COMMAND_RPTPING Command = "RPTPING"
-	COMMAND_RPTCL   Command = "RPTCL" // repeater wants to disconnect
-	COMMAND_RPTACK  Command = "RPTACK"
-	COMMAND_RPTK    Command = "RPTK" // Login challenge response
-	COMMAND_RPTC    Command = "RPTC" // repeater wants to send config or disconnect
+	COMMAND_RPTL    Command = "RPTL"    // RPTLogin -- a repeater wants to login
+	COMMAND_RPTPING Command = "RPTPING" // repeater -> master ping
+	COMMAND_RPTCL   Command = "RPTCL"   // repeater wants to disconnect
+	COMMAND_RPTACK  Command = "RPTACK"  // mater -> repeater ack
+	COMMAND_RPTK    Command = "RPTK"    // Login challenge response
+	COMMAND_RPTC    Command = "RPTC"    // repeater wants to send config or disconnect
 	COMMAND_RPTP    Command = "RPTP"
 	COMMAND_RPTA    Command = "RPTA"
 	COMMAND_RPTO    Command = "RPTO"

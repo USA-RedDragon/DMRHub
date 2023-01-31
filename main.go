@@ -73,8 +73,10 @@ func main() {
 
 	ctx := context.Background()
 
-	cleanup := initTracer()
-	defer cleanup(ctx)
+	if config.GetConfig().OTLPEndpoint != "" {
+		cleanup := initTracer()
+		defer cleanup(ctx)
+	}
 
 	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
 
@@ -83,9 +85,11 @@ func main() {
 		klog.Exitf("Failed to open database: %s", err)
 		return
 	}
-	if err := db.Use(otelgorm.NewPlugin()); err != nil {
-		klog.Exitf("Failed to trace database: %s", err)
-		return
+	if config.GetConfig().OTLPEndpoint != "" {
+		if err := db.Use(otelgorm.NewPlugin()); err != nil {
+			klog.Exitf("Failed to trace database: %s", err)
+			return
+		}
 	}
 	db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if db.Error != nil {
@@ -183,15 +187,17 @@ func main() {
 		return
 	}
 	defer redis.Close()
-	if err := redisotel.InstrumentTracing(redis); err != nil {
-		klog.Errorf("Failed to trace redis: %s", err)
-		return
-	}
+	if config.GetConfig().OTLPEndpoint != "" {
+		if err := redisotel.InstrumentTracing(redis); err != nil {
+			klog.Errorf("Failed to trace redis: %s", err)
+			return
+		}
 
-	// Enable metrics instrumentation.
-	if err := redisotel.InstrumentMetrics(redis); err != nil {
-		klog.Errorf("Failed to instrument redis: %s", err)
-		return
+		// Enable metrics instrumentation.
+		if err := redisotel.InstrumentMetrics(redis); err != nil {
+			klog.Errorf("Failed to instrument redis: %s", err)
+			return
+		}
 	}
 
 	dmrServer := dmr.MakeServer(db, redis)

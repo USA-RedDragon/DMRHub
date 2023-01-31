@@ -62,8 +62,8 @@ func UnpackPacket(data []byte) Packet {
 
 func (p *Packet) String() string {
 	return fmt.Sprintf(
-		"Packet: Seq %d, Src %d, Dst %d, Repeater %d, Slot %t, GroupCall %t, FrameType %d, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d, DMRData %v",
-		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType, p.DTypeOrVSeq, p.StreamId, p.BER, p.RSSI, p.DMRData,
+		"Packet: Seq %d, Src %d, Dst %d, Repeater %d, Slot %t, GroupCall %t, FrameType=%s, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d, DMRData %v",
+		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType.String(), p.DTypeOrVSeq, p.StreamId, p.BER, p.RSSI, p.DMRData,
 	)
 }
 

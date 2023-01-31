@@ -71,14 +71,14 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
 
+	klog.Infof("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+
 	ctx := context.Background()
 
 	if config.GetConfig().OTLPEndpoint != "" {
 		cleanup := initTracer()
 		defer cleanup(ctx)
 	}
-
-	klog.Infof("DMR Network in a box v%s-%s", sdk.Version, sdk.GitCommit)
 
 	db, err := gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
 	if err != nil {
@@ -207,7 +207,6 @@ func main() {
 	// For each repeater in the DB, start a gofunc to listen for calls
 	repeaters := models.ListRepeaters(db)
 	for _, repeater := range repeaters {
-		klog.Infof("Starting repeater %s", repeater.RadioID)
 		go repeater.ListenForCalls(ctx, redis)
 	}
 

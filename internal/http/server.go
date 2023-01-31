@@ -33,12 +33,24 @@ var ws *websocketHandler.WSHandler
 
 // Start the HTTP server
 func Start(db *gorm.DB, redisClient *realredis.Client) {
+	if config.GetConfig().Debug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	ws = websocketHandler.CreateHandler(db, redisClient)
 
 	// Setup API
 	r := gin.Default()
 	r.SetTrustedProxies(config.GetConfig().TrustedProxies)
-	pprof.Register(r)
+
+	if config.GetConfig().Debug {
+		pprof.Register(r)
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	r.Use(middleware.DatabaseProvider(db))
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 	r.Use(middleware.RedisProvider(redisClient))
@@ -173,9 +185,6 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	})
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
-		if config.GetConfig().Verbose {
-			klog.Infof("Entry: %s\n", staticName)
-		}
 		staticGroup.GET(staticName, func(c *gin.Context) {
 			file, err := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if err != nil {
@@ -234,12 +243,17 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		})
 	}
 
+	writeTimeout := 10 * time.Second
+	if config.GetConfig().Debug {
+		writeTimeout = 60 * time.Second
+	}
+
 	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
 	s := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
 		Handler:      r,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: writeTimeout,
 	}
 	s.SetKeepAlivesEnabled(false)
 

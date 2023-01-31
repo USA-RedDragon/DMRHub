@@ -25,12 +25,12 @@ type Config struct {
 	ListenAddr               string
 	DMRPort                  int
 	HTTPPort                 int
-	Verbose                  bool
 	CORSHosts                []string
 	TrustedProxies           []string
 	HIBPAPIKey               string
 	OTLPEndpoint             string
 	InitialAdminUserPassword string
+	Debug                    bool
 }
 
 var currentConfig Config
@@ -71,11 +71,11 @@ func GetConfig() *Config {
 			ListenAddr:               os.Getenv("LISTEN_ADDR"),
 			DMRPort:                  int(dmrPort),
 			HTTPPort:                 int(httpPort),
-			Verbose:                  os.Getenv("VERBOSE") != "",
 			HIBPAPIKey:               os.Getenv("HIBP_API_KEY"),
 			OTLPEndpoint:             os.Getenv("OTLP_ENDPOINT"),
 			InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),
 			RedisPassword:            os.Getenv("REDIS_PASSWORD"),
+			Debug:                    os.Getenv("DEBUG") != "",
 		}
 		if currentConfig.RedisHost == "" {
 			currentConfig.RedisHost = "localhost:6379"
@@ -136,6 +136,10 @@ func GetConfig() *Config {
 			currentConfig.TrustedProxies = []string{}
 		} else {
 			currentConfig.TrustedProxies = append([]string{}, strings.Split(trustedProxies, ",")...)
+		}
+		if currentConfig.Debug {
+			klog.Warningf("Debug mode enabled, this should not be used in production")
+			klog.Infof("Config: %+v", currentConfig)
 		}
 		currentConfig.loaded = true
 		return &currentConfig

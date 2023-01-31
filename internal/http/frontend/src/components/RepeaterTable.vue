@@ -513,6 +513,7 @@ export default {
 
       this.socket.addEventListener("error", (event) => {
         console.error("Error from repeaters websocket", event);
+        this.socket.close();
         this.socket = new WebSocket(getWebsocketURI() + "/repeaters");
         this.mapSocketEvents();
       });

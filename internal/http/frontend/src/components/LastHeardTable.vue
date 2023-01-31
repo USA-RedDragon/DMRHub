@@ -157,6 +157,7 @@ export default {
 
       this.socket.addEventListener("error", (event) => {
         console.error("Error from calls websocket", event);
+        this.socket.close();
         this.socket = new WebSocket(getWebsocketURI() + "/calls");
         this.mapSocketEvents();
       });

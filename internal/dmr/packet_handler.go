@@ -93,6 +93,11 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
 	command := dmrconst.Command(data[:4])
 	if command == dmrconst.COMMAND_DMRA {
+		if len(data) < 15 {
+			klog.Warningf("Invalid packet length: %d", len(data))
+			return
+		}
+
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if config.GetConfig().Debug {
@@ -108,7 +113,17 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			dbRepeater.LastPing = time.Now()
 			s.DB.Save(&dbRepeater)
-			klog.Warning("TODO: DMRA")
+
+			typeBytes := data[8:9]
+			// Type can be 0 for a full talk alias, or 1,2,3 for talk alias blocks
+			klog.Infof("Talk alias type: %d", typeBytes[0])
+
+			// data is the next 7 bytes
+			data := string(data[9:16])
+			// This is the talker alias
+			klog.Infof("Talk alias data: %s", data)
+
+			// What to do with this?
 		}
 	} else if command == dmrconst.COMMAND_DMRD {
 		// DMRD packets are either 53 or 55 bytes long
@@ -306,6 +321,15 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 		}
 	} else if command == dmrconst.COMMAND_RPTO {
+		if len(data) < 8 {
+			klog.Warning("RPTO packet too short")
+			return
+		}
+		if len(data) > 300 {
+			klog.Warning("RPTO packet too long")
+			return
+		}
+
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if config.GetConfig().Debug {
@@ -321,8 +345,14 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			} else {
 				return
 			}
-			klog.Warning("TODO: RPTO")
-			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, repeaterIdBytes)
+			// Options is a string from data[8:]
+			options := string(data[8:])
+			if config.GetConfig().Debug {
+				klog.Infof("Received Options from repeater %d: %s", repeaterId, options)
+			}
+
+			// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
+			// Options are not yet supported
 		}
 	} else if command == dmrconst.COMMAND_RPTL {
 		// RPTL packets are 8 bytes long
@@ -607,7 +637,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			}
 		}
-	} else if command == dmrconst.COMMAND_RPTP {
+	} else if command == dmrconst.COMMAND_RPTPING[:4] {
 		// RPTP packets are 11 bytes long
 		if len(data) != 11 {
 			klog.Warningf("Invalid RPTP packet length: %d", len(data))
@@ -640,24 +670,19 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 	} else if command == dmrconst.COMMAND_RPTACK[:4] {
 		klog.Warning("TODO: RPTACK")
+		// I don't think we ever receive this
 	} else if command == dmrconst.COMMAND_MSTCL[:4] {
 		klog.Warning("TODO: MSTCL")
+		// I don't think we ever receive this
 	} else if command == dmrconst.COMMAND_MSTNAK[:4] {
 		klog.Warning("TODO: MSTNAK")
+		// I don't think we ever receive this
 	} else if command == dmrconst.COMMAND_MSTPONG[:4] {
 		klog.Warning("TODO: MSTPONG")
-	} else if command == dmrconst.COMMAND_MSTN {
-		klog.Warning("TODO: MSTN")
-	} else if command == dmrconst.COMMAND_MSTP {
-		klog.Warning("TODO: MSTP")
-	} else if command == dmrconst.COMMAND_MSTC {
-		klog.Warning("TODO: MSTC")
-	} else if command == dmrconst.COMMAND_RPTA {
-		klog.Warning("TODO: RPTA")
-	} else if command == dmrconst.COMMAND_RPTS {
-		klog.Warning("TODO: RPTS")
+		// I don't think we ever receive this
 	} else if command == dmrconst.COMMAND_RPTSBKN[:4] {
 		klog.Warning("TODO: RPTSBKN")
+		// I don't think we ever receive this
 	} else {
 		klog.Warning("Unknown Command: %s", command)
 	}

@@ -1,20 +1,24 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+)
 
 //go:generate msgp
 type Packet struct {
-	Signature   string   `msg:"signature"`
-	Seq         uint     `msg:"seq"`
-	Src         uint     `msg:"src"`
-	Dst         uint     `msg:"dst"`
-	Repeater    uint     `msg:"repeater"`
-	Slot        bool     `msg:"slot"`
-	GroupCall   bool     `msg:"groupCall"`
-	FrameType   uint     `msg:"frameType"`
-	DTypeOrVSeq uint     `msg:"dtypeOrVSeq"`
-	StreamId    uint     `msg:"streamId"`
-	DMRData     [33]byte `msg:"dmrData"`
+	Signature   string             `msg:"signature"`
+	Seq         uint               `msg:"seq"`
+	Src         uint               `msg:"src"`
+	Dst         uint               `msg:"dst"`
+	Repeater    uint               `msg:"repeater"`
+	Slot        bool               `msg:"slot"`
+	GroupCall   bool               `msg:"groupCall"`
+	FrameType   dmrconst.FrameType `msg:"frameType,extension"`
+	DTypeOrVSeq uint               `msg:"dtypeOrVSeq"`
+	StreamId    uint               `msg:"streamId"`
+	DMRData     [33]byte           `msg:"dmrData"`
 	// The next two are technically unsigned, but the data type is 1 byte
 	// We also want to be able to represent -1 as a null, so we use int
 	BER  int `msg:"ber"`
@@ -37,7 +41,7 @@ func UnpackPacket(data []byte) Packet {
 	if (bits & 0x40) != 0 {
 		packet.GroupCall = false
 	}
-	packet.FrameType = uint((bits & 0x30) >> 4)
+	packet.FrameType = dmrconst.FrameType((bits & 0x30) >> 4)
 	packet.DTypeOrVSeq = uint(bits & 0xF)
 	packet.StreamId = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
 	copy(packet.DMRData[:], data[20:53])

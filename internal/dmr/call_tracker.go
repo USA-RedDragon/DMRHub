@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -273,12 +274,12 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	var lost uint
 	// Update call.TotalPackets with 1 + the number of packets that have been lost since the last packet
 	// The first packet of a call will have a FrameType of HBPF_DATA_SYNC and a DTypeOrVSeq of HBPF_SLT_VHEAD. This does not count towards the FrameNum, but we need to check the order
-	if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
+	if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_HEAD {
 		// Voice header kicks off the call, so we need to set the FrameNum to 0
 		call.HasHeader = true
 		call.TotalPackets++
 		// Save the db early so that we can query for it in a different goroutine
-	} else if packet.FrameType == HBPF_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
+	} else if packet.FrameType == dmrconst.FRAME_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
 		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
 		if !call.HasHeader {
 			klog.Errorf("%d Voice sync packet without header", packet.DTypeOrVSeq)
@@ -297,7 +298,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
 		klog.Infof("%d Voice sync - lost %d packets. Set LastFrameNum to %d. Total lost: %d", packet.DTypeOrVSeq, lost, call.LastFrameNum, call.LostSequences)
-	} else if packet.FrameType == HBPF_VOICE && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
+	} else if packet.FrameType == dmrconst.FRAME_VOICE && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
 		// These are voice packets, so check for a header and LastFrameNum == packet.DTypeOrVSeq+1
 		if !call.HasHeader {
 			klog.Errorf("%d Voice packet without header", packet.DTypeOrVSeq)
@@ -329,7 +330,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
 		klog.Infof("%d Voice - lost %d packets Set LastFrameNum to %d. Total lost: %d", packet.DTypeOrVSeq, lost, call.LastFrameNum, call.LostSequences)
-	} else if packet.FrameType == HBPF_VOICE && packet.DTypeOrVSeq == 5 {
+	} else if packet.FrameType == dmrconst.FRAME_VOICE && packet.DTypeOrVSeq == 5 {
 		// This is the last voice packet, so check for a header and LastFrameNum == 4
 		if !call.HasHeader {
 			klog.Errorf("%d Voice packet without header", packet.DTypeOrVSeq)
@@ -346,7 +347,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
 		klog.Infof("%d Last voice - lost %d packets. Total lost: %d", packet.DTypeOrVSeq, lost, call.LostSequences)
-	} else if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+	} else if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
 		// This is the end of a call, so we need to set the FrameNum to 0
 		// Check if LastFrameNum is 5, if not, we've lost some packets
 		if call.LastFrameNum != 5 {

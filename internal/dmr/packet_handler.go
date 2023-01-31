@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"go.opentelemetry.io/otel"
@@ -92,8 +93,8 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		klog.Infof("Data: %s", string(data[:]))
 	}
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
-	command := string(data[:4])
-	if command == COMMAND_DMRA {
+	command := dmrconst.Command(data[:4])
+	if command == dmrconst.COMMAND_DMRA {
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
@@ -111,7 +112,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			s.DB.Save(&dbRepeater)
 			klog.Warning("TODO: DMRA")
 		}
-	} else if command == COMMAND_DMRD {
+	} else if command == dmrconst.COMMAND_DMRD {
 		// DMRD packets are either 53 or 55 bytes long
 		if len(data) != 53 && len(data) != 55 {
 			klog.Warningf("Invalid DMRD packet length: %d", len(data))
@@ -136,24 +137,26 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			packet := models.UnpackPacket(data[:])
 
+			klog.Infof("DMRD packet: %s", packet.String())
+
 			isVoice := false
 			isData := false
 			switch packet.FrameType {
-			case HBPF_DATA_SYNC:
-				if packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+			case dmrconst.FRAME_DATA_SYNC:
+				if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
 					isVoice = true
 					klog.Infof("Voice terminator from %d", packet.Src)
-				} else if packet.DTypeOrVSeq == HBPF_SLT_VHEAD {
+				} else if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_HEAD {
 					isVoice = true
 					klog.Infof("Voice header from %d", packet.Src)
 				} else {
 					isData = true
 					klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 				}
-			case HBPF_VOICE:
+			case dmrconst.FRAME_VOICE:
 				isVoice = true
 				klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
-			case HBPF_VOICE_SYNC:
+			case dmrconst.FRAME_VOICE_SYNC:
 				isVoice = true
 				klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 			}
@@ -169,7 +172,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						s.CallTracker.StartCall(ctx, packet)
 					}
 					s.CallTracker.ProcessCallPacket(ctx, packet)
-					if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+					if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
 						s.CallTracker.EndCall(ctx, packet)
 					}
 				}()
@@ -181,7 +184,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					s.Parrot.StartStream(ctx, packet.StreamId, repeaterId)
 				}
 				s.Parrot.RecordPacket(ctx, packet.StreamId, packet)
-				if packet.FrameType == HBPF_DATA_SYNC && packet.DTypeOrVSeq == HBPF_SLT_VTERM {
+				if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
 					s.Parrot.StopStream(ctx, packet.StreamId)
 					go func() {
 						packets := s.Parrot.GetStream(ctx, packet.StreamId)
@@ -290,7 +293,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Warning("Unhandled packet type")
 			}
 		}
-	} else if command == COMMAND_RPTO {
+	} else if command == dmrconst.COMMAND_RPTO {
 		repeaterIdBytes := data[4:8]
 		repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 		if s.Verbose {
@@ -307,9 +310,9 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 			klog.Warning("TODO: RPTO")
-			s.sendCommand(ctx, repeaterId, COMMAND_RPTACK, repeaterIdBytes)
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, repeaterIdBytes)
 		}
-	} else if command == COMMAND_RPTL {
+	} else if command == dmrconst.COMMAND_RPTL {
 		// RPTL packets are 8 bytes long
 		if len(data) != 8 {
 			klog.Warningf("Invalid RPTL packet length: %d", len(data))
@@ -327,7 +330,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			repeater.LastPing = time.Now()
 			repeater.Connected = time.Now()
 			s.Redis.store(ctx, repeaterId, repeater)
-			s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			if s.Verbose {
 				klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterId)
 			}
@@ -351,10 +354,10 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			} else {
 				copy(saltBytes[:], bigSalt.Bytes())
 			}
-			s.sendCommand(ctx, repeaterId, COMMAND_RPTACK, saltBytes[:])
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, saltBytes[:])
 			s.Redis.updateConnection(ctx, repeaterId, "CHALLENGE_SENT")
 		}
-	} else if command == COMMAND_RPTK {
+	} else if command == dmrconst.COMMAND_RPTK {
 		// RPTL packets are 8 bytes long + a 32 byte sha256 hash
 		if len(data) != 40 {
 			klog.Warningf("Invalid RPTK packet length: %d", len(data))
@@ -373,7 +376,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				dbRepeater = models.FindRepeaterByID(s.DB, repeaterId)
 				password = dbRepeater.Password
 			} else {
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 				if s.Verbose {
 					klog.Infof("Repeater ID %d does not exist in db, sending NAK", repeaterId)
 				}
@@ -381,7 +384,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 
 			if password == "" {
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 				if s.Verbose {
 					klog.Infof("Repeater ID %d did not provide password, sending NAK", repeaterId)
 				}
@@ -395,7 +398,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			repeater, err := s.Redis.get(ctx, repeaterId)
 			if err != nil {
 				klog.Errorf("Error getting repeater from redis: %v", err)
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 				if s.Verbose {
 					klog.Infof("Repeater ID %d does not exist in redis, sending NAK", repeaterId)
 				}
@@ -409,15 +412,15 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			if calcedSalt == rxSalt {
 				klog.Infof("Repeater ID %d authed, sending ACK", repeaterId)
 				s.Redis.updateConnection(ctx, repeaterId, "WAITING_CONFIG")
-				s.sendCommand(ctx, repeaterId, COMMAND_RPTACK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, repeaterIdBytes)
 			} else {
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			}
 		} else {
-			s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 		}
-	} else if command == COMMAND_RPTC {
-		if string(data[:5]) == COMMAND_RPTCL {
+	} else if command == dmrconst.COMMAND_RPTC {
+		if dmrconst.Command(data[:5]) == dmrconst.COMMAND_RPTCL {
 			// RPTCL packets are 8 bytes long
 			if len(data) != 8 {
 				klog.Warningf("Invalid RPTCL packet length: %d", len(data))
@@ -427,7 +430,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			repeaterId := uint(binary.BigEndian.Uint32(repeaterIdBytes))
 			klog.Infof("Disconnect from Repeater ID: %d", repeaterId)
 			if s.validRepeater(ctx, repeaterId, "YES", *remoteAddr) {
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			}
 			if !s.Redis.delete(ctx, repeaterId) {
 				klog.Warningf("Repeater ID %d not deleted", repeaterId)
@@ -459,7 +462,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					klog.Errorf("Invalid callsign: %s", repeater.Callsign)
 					return
 				}
-				if !callsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
+				if !dmrconst.CallsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
 					klog.Errorf("Invalid callsign: %s", repeater.Callsign)
 					return
 				}
@@ -569,7 +572,7 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				repeater.Connection = "YES"
 				s.Redis.store(ctx, repeaterId, repeater)
 				klog.Infof("Repeater ID %d (%s) connected\n", repeaterId, repeater.Callsign)
-				s.sendCommand(ctx, repeaterId, COMMAND_RPTACK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, repeaterIdBytes)
 				dbRepeater := models.FindRepeaterByID(s.DB, repeaterId)
 				dbRepeater.Connected = repeater.Connected
 				dbRepeater.LastPing = repeater.LastPing
@@ -589,10 +592,10 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				dbRepeater.PackageID = repeater.PackageID
 				s.DB.Save(&dbRepeater)
 			} else {
-				s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			}
 		}
-	} else if command == COMMAND_RPTP {
+	} else if command == dmrconst.COMMAND_RPTP {
 		// RPTP packets are 11 bytes long
 		if len(data) != 11 {
 			klog.Warningf("Invalid RPTP packet length: %d", len(data))
@@ -619,29 +622,29 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			repeater.PingsReceived++
 			s.Redis.store(ctx, repeaterId, repeater)
-			s.sendCommand(ctx, repeaterId, COMMAND_MSTPONG, repeaterIdBytes)
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTPONG, repeaterIdBytes)
 		} else {
-			s.sendCommand(ctx, repeaterId, COMMAND_MSTNAK, repeaterIdBytes)
+			s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 		}
-	} else if command == COMMAND_RPTACK[:4] {
+	} else if command == dmrconst.COMMAND_RPTACK[:4] {
 		klog.Warning("TODO: RPTACK")
-	} else if command == COMMAND_MSTCL[:4] {
+	} else if command == dmrconst.COMMAND_MSTCL[:4] {
 		klog.Warning("TODO: MSTCL")
-	} else if command == COMMAND_MSTNAK[:4] {
+	} else if command == dmrconst.COMMAND_MSTNAK[:4] {
 		klog.Warning("TODO: MSTNAK")
-	} else if command == COMMAND_MSTPONG[:4] {
+	} else if command == dmrconst.COMMAND_MSTPONG[:4] {
 		klog.Warning("TODO: MSTPONG")
-	} else if command == COMMAND_MSTN {
+	} else if command == dmrconst.COMMAND_MSTN {
 		klog.Warning("TODO: MSTN")
-	} else if command == COMMAND_MSTP {
+	} else if command == dmrconst.COMMAND_MSTP {
 		klog.Warning("TODO: MSTP")
-	} else if command == COMMAND_MSTC {
+	} else if command == dmrconst.COMMAND_MSTC {
 		klog.Warning("TODO: MSTC")
-	} else if command == COMMAND_RPTA {
+	} else if command == dmrconst.COMMAND_RPTA {
 		klog.Warning("TODO: RPTA")
-	} else if command == COMMAND_RPTS {
+	} else if command == dmrconst.COMMAND_RPTS {
 		klog.Warning("TODO: RPTS")
-	} else if command == COMMAND_RPTSBKN[:4] {
+	} else if command == dmrconst.COMMAND_RPTSBKN[:4] {
 		klog.Warning("TODO: RPTSBKN")
 	} else {
 		klog.Warning("Unknown Command: %s", command)

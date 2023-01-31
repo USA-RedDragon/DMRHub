@@ -455,6 +455,10 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Infof("Repeater ID %d authed, sending ACK", repeaterId)
 				s.Redis.updateConnection(ctx, repeaterId, "WAITING_CONFIG")
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTACK, repeaterIdBytes)
+				go func() {
+					time.Sleep(1 * time.Second)
+					s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_RPTSBKN, repeaterIdBytes)
+				}()
 			} else {
 				s.sendCommand(ctx, repeaterId, dmrconst.COMMAND_MSTNAK, repeaterIdBytes)
 			}

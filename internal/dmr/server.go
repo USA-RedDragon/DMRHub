@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -52,7 +53,7 @@ func (s *DMRServer) Stop(ctx context.Context) {
 		s.Redis.updateConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, 4)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-		s.sendCommand(ctx, repeater, COMMAND_MSTCL, repeaterBinary)
+		s.sendCommand(ctx, repeater, dmrconst.COMMAND_MSTCL, repeaterBinary)
 	}
 	s.Started = false
 }
@@ -151,7 +152,7 @@ func (s *DMRServer) Listen(ctx context.Context) {
 	}()
 }
 
-func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, command string, data []byte) {
+func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, command dmrconst.Command, data []byte) {
 	go func() {
 		if !s.Started {
 			klog.Warningf("Server not started, not sending command")

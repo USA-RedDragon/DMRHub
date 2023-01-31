@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 //go:generate msgp
 type Packet struct {
 	Signature   string   `msg:"signature"`
@@ -52,6 +54,13 @@ func UnpackPacket(data []byte) Packet {
 		packet.RSSI = -1
 	}
 	return packet
+}
+
+func (p *Packet) String() string {
+	return fmt.Sprintf(
+		"Packet: Seq %d, Src %d, Dst %d, Repeater %d, Slot %t, GroupCall %t, FrameType %d, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d, DMRData %v",
+		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType, p.DTypeOrVSeq, p.StreamId, p.BER, p.RSSI, p.DMRData,
+	)
 }
 
 func (p *Packet) Encode() []byte {

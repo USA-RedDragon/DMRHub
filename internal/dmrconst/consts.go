@@ -8,25 +8,19 @@ type Command string
 
 const (
 	// Command Types
-	COMMAND_DMRA    Command = "DMRA"
+	COMMAND_DMRA    Command = "DMRA"    // DMR talker alias
 	COMMAND_DMRD    Command = "DMRD"    // DMR data
 	COMMAND_MSTCL   Command = "MSTCL"   // master server is closing connection
 	COMMAND_MSTNAK  Command = "MSTNAK"  // master -> repeater nak
 	COMMAND_MSTPONG Command = "MSTPONG" // RPTPING response
-	COMMAND_MSTN    Command = "MSTN"
-	COMMAND_MSTP    Command = "MSTP"
-	COMMAND_MSTC    Command = "MSTC"
 	COMMAND_RPTL    Command = "RPTL"    // RPTLogin -- a repeater wants to login
 	COMMAND_RPTPING Command = "RPTPING" // repeater -> master ping
 	COMMAND_RPTCL   Command = "RPTCL"   // repeater wants to disconnect
 	COMMAND_RPTACK  Command = "RPTACK"  // mater -> repeater ack
 	COMMAND_RPTK    Command = "RPTK"    // Login challenge response
 	COMMAND_RPTC    Command = "RPTC"    // repeater wants to send config or disconnect
-	COMMAND_RPTP    Command = "RPTP"
-	COMMAND_RPTA    Command = "RPTA"
-	COMMAND_RPTO    Command = "RPTO"
-	COMMAND_RPTS    Command = "RPTS"
-	COMMAND_RPTSBKN Command = "RPTSBKN"
+	COMMAND_RPTO    Command = "RPTO"    // Repeater options. https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
+	COMMAND_RPTSBKN Command = "RPTSBKN" // Synchronous Site Beacon?
 )
 
 type FrameType uint

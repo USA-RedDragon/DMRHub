@@ -67,9 +67,6 @@ func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, tal
 }
 
 func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
-	if config.GetConfig().Debug {
-		klog.Infof("Listening for calls on repeater %d", p.RadioID)
-	}
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
@@ -116,6 +113,9 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 }
 
 func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
+	if config.GetConfig().Debug {
+		klog.Infof("Listening for calls on repeater %d", p.RadioID)
+	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Close()
@@ -139,6 +139,9 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 }
 
 func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint) {
+	if config.GetConfig().Debug {
+		klog.Infof("Listening for calls on repeater %d, talkgroup %d", p.RadioID, tg)
+	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Close()

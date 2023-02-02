@@ -2,7 +2,6 @@ name: Docker
 
 on:
   push:
-    branches: ["main"]
 
 env:
   REGISTRY: ghcr.io
@@ -42,9 +41,20 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
+        if: github.ref == 'refs/heads/main'
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        if: github.ref != 'refs/heads/main'
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -129,13 +129,13 @@ func GetConfig() *Config {
 				fmt.Sprintf("http://127.0.0.1:%d", currentConfig.HTTPPort),
 			}
 		} else {
-			currentConfig.CORSHosts = append([]string{}, strings.Split(corsHosts, ",")...)
+			currentConfig.CORSHosts = strings.Split(corsHosts, ",")
 		}
 		trustedProxies := os.Getenv("TRUSTED_PROXIES")
 		if trustedProxies == "" {
 			currentConfig.TrustedProxies = []string{}
 		} else {
-			currentConfig.TrustedProxies = append([]string{}, strings.Split(trustedProxies, ",")...)
+			currentConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 		}
 		if currentConfig.Debug {
 			klog.Warningf("Debug mode enabled, this should not be used in production")

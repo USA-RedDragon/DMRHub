@@ -196,6 +196,9 @@ export default {
   },
   unmounted() {
     clearInterval(this.refresh);
+    if (this.socket) {
+      this.socket.close();
+    }
   },
   methods: {
     onPage(event) {

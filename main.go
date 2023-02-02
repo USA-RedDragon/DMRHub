@@ -25,7 +25,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
-	"github.com/tinylib/msgp/printer"
+	_ "github.com/tinylib/msgp/printer"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"k8s.io/klog/v2"
 
@@ -68,7 +68,6 @@ func initTracer() func(context.Context) error {
 }
 
 func main() {
-	printer.Logf("", nil)
 	defer klog.Flush()
 
 	klog.Infof("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)

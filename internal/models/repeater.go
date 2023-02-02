@@ -54,6 +54,20 @@ type Repeater struct {
 
 var talkgroupSubscriptions = make(map[uint]map[uint]context.CancelFunc)
 
+func (p Repeater) CancelSubscription(talkgroupID uint) {
+	cancel, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
+	if ok {
+		cancel()
+		delete(talkgroupSubscriptions[p.RadioID], talkgroupID)
+	}
+}
+
+func (p Repeater) CancelAllSubscriptions() {
+	for tgID := range talkgroupSubscriptions[p.RadioID] {
+		p.CancelSubscription(tgID)
+	}
+}
+
 func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, talkgroupID uint) {
 	_, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
 	if !ok {

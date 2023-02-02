@@ -41,7 +41,7 @@ type Call struct {
 	HasTerm        bool           `json:"-"`
 	CreatedAt      time.Time      `json:"-"`
 	UpdatedAt      time.Time      `json:"-"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func FindCalls(db *gorm.DB) []Call {

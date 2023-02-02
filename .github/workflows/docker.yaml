@@ -95,3 +95,4 @@ jobs:
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: IS_CI=true

@@ -3,6 +3,7 @@ FROM golang:1.20-alpine AS builder
 WORKDIR /DMRHub
 
 ARG IS_CI=false
+ENV IS_CI=$IS_CI
 
 RUN apk update && apk add --no-cache git make bash
 RUN if [ "$IS_CI" = "false" ]; then apk add --no-cache nodejs npm; fi

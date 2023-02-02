@@ -7,9 +7,11 @@ Run a DMR network (like TGIF or BrandMeister) server with a single binary compat
 ## Quick links
 
 - [FAQs](https://github.com/USA-RedDragon/DMRHub/wiki/FAQ)
+- [Environment Variables](https://github.com/USA-RedDragon/DMRHub/wiki/Environment-Variables)
 - [Deployment Guide](https://github.com/USA-RedDragon/DMRHub/wiki/Deployment-Guide)
 - [Admin's Guide](https://github.com/USA-RedDragon/DMRHub/wiki/Admin's-Guide)
 - [User's Guide](https://github.com/USA-RedDragon/DMRHub/wiki/User's-Guide)
+- [Building Manually](https://github.com/USA-RedDragon/DMRHub/wiki/Building-Manually)
 
 ## Screenshots
 

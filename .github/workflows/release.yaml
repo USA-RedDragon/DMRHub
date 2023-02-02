@@ -1,10 +1,36 @@
+name: Native
+
 on:
   release:
     types: [created]
 
 jobs:
-  release-linux-amd64:
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: make build-frontend
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
     name: Release
+    needs: frontend
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,11 +57,11 @@ jobs:
             goos: netbsd
     steps:
       - uses: actions/checkout@v3
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v3
+      - name: Copy built frontend
+        uses: actions/download-artifact@v3
         with:
-          node-version: 18
-      - run: make build-frontend
+          name: frontend
+          path: internal/http/frontend/dist
       - uses: wangyoucao577/go-release-action@v1.35
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -95,6 +95,11 @@ export default {
     this.socket = new WebSocket(getWebsocketURI() + "/calls");
     this.mapSocketEvents();
   },
+  unmounted() {
+    if (this.socket) {
+      this.socket.close();
+    }
+  },
   computed: {},
   methods: {
     onPage(event) {

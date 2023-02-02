@@ -2,14 +2,39 @@ name: Docker
 
 on:
   push:
+  pull_request:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: make build-frontend
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
   docker:
     runs-on: ubuntu-latest
+    needs: frontend
     permissions:
       contents: read
       packages: write
@@ -24,11 +49,17 @@ jobs:
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy built frontend
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -46,17 +77,18 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           context: .
           platforms: linux/${{ matrix.arches }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: IS_CI=true
 
       - name: Build Docker image
         uses: docker/build-push-action@v3
-        if: github.ref != 'refs/heads/main'
+        if: github.ref != 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           context: .
           platforms: linux/${{ matrix.arches }}

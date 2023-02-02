@@ -31,6 +31,15 @@ build: install-deps build-frontend
 	@go build -o bin/$(APP_NAME)
 	@echo "--> Done"
 
+# CI handles the frontend on its own so that
+# we don't have to rebuild the frontend on each
+# architecture
+build-ci: install-deps
+	@echo "--> Building"
+	@go generate ./...
+	@go build -o bin/$(APP_NAME)
+	@echo "--> Done"
+
 run:
 	@echo "--> Running"
 	@go run .

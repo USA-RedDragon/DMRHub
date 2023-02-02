@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"runtime"
 	"time"
 
@@ -68,7 +67,6 @@ func initTracer() func(context.Context) error {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
 
 	klog.Infof("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)

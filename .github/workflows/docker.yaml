@@ -51,7 +51,7 @@ jobs:
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name == 'release'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

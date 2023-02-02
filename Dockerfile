@@ -6,7 +6,10 @@ RUN apk update && apk add --no-cache git make nodejs npm bash
 
 COPY . .
 
-RUN make build
+ARG IS_CI=false
+
+# If this is a CI build, we need to use build-ci instead of build
+RUN if [ "$IS_CI" = "true" ]; then make build-ci; else make build; fi
 
 FROM golang:alpine
 

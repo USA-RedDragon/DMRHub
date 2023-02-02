@@ -79,7 +79,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Extract metadata (tags, labels) for Docker
-        id: meta
+        id: metarelease
         if: github.event_name == 'release'
         uses: docker/metadata-action@v4
         with:
@@ -96,18 +96,18 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name == 'release'
         with:
           context: .
           platforms: linux/${{ matrix.arches }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.metarelease.outputs.tags }}
+          labels: ${{ steps.metarelease.outputs.labels }}
           build-args: IS_CI=true
 
-      - name: Build Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v3
-        if: github.ref != 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
           context: .
           platforms: linux/${{ matrix.arches }}

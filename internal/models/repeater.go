@@ -50,19 +50,16 @@ type Repeater struct {
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
-	SubscribedTGs         []uint         `json:"-" gorm:"-" msg:"-"`
 }
 
+var talkgroupSubscriptions = make(map[uint]map[uint]context.CancelFunc)
+
 func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, talkgroupID uint) {
-	found := false
-	for _, id := range p.SubscribedTGs {
-		if id == talkgroupID {
-			found = true
-		}
-	}
-	if !found {
-		go p.subscribeTG(ctx, redis, talkgroupID)
-		p.SubscribedTGs = append(p.SubscribedTGs, talkgroupID)
+	_, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
+	if !ok {
+		newCtx, cancel := context.WithCancel(context.Background())
+		talkgroupSubscriptions[p.RadioID][talkgroupID] = cancel
+		go p.subscribeTG(newCtx, redis, talkgroupID)
 	}
 }
 
@@ -71,43 +68,44 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
-	go p.subscribeRepeater(ctx, redis)
+	_, ok := talkgroupSubscriptions[p.RadioID][p.RadioID]
+	if !ok {
+		newCtx, cancel := context.WithCancel(context.Background())
+		talkgroupSubscriptions[p.RadioID][p.RadioID] = cancel
+		go p.subscribeRepeater(newCtx, redis)
+	}
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
-		for _, id := range p.SubscribedTGs {
-			if id == tg.ID {
-				continue
-			}
+		_, ok := talkgroupSubscriptions[p.RadioID][tg.ID]
+		if !ok {
+			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
+			go p.subscribeTG(newCtx, redis, tg.ID)
 		}
-		go p.subscribeTG(ctx, redis, tg.ID)
-		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
-		for _, id := range p.SubscribedTGs {
-			if id == tg.ID {
-				continue
-			}
+		_, ok := talkgroupSubscriptions[p.RadioID][tg.ID]
+		if !ok {
+			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
+			go p.subscribeTG(newCtx, redis, tg.ID)
 		}
-		go p.subscribeTG(ctx, redis, tg.ID)
-		p.SubscribedTGs = append(p.SubscribedTGs, tg.ID)
 	}
 	if p.TS1DynamicTalkgroupID != nil {
-		for _, id := range p.SubscribedTGs {
-			if id == *p.TS1DynamicTalkgroupID {
-				continue
-			}
-			go p.subscribeTG(ctx, redis, *p.TS1DynamicTalkgroupID)
-			p.SubscribedTGs = append(p.SubscribedTGs, *p.TS1DynamicTalkgroupID)
+		_, ok := talkgroupSubscriptions[p.RadioID][*p.TS1DynamicTalkgroupID]
+		if !ok {
+			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptions[p.RadioID][*p.TS1DynamicTalkgroupID] = cancel
+			go p.subscribeTG(newCtx, redis, *p.TS1DynamicTalkgroupID)
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
-		for _, id := range p.SubscribedTGs {
-			if id == *p.TS2DynamicTalkgroupID {
-				continue
-			}
-			go p.subscribeTG(ctx, redis, *p.TS2DynamicTalkgroupID)
-			p.SubscribedTGs = append(p.SubscribedTGs, *p.TS2DynamicTalkgroupID)
+		_, ok := talkgroupSubscriptions[p.RadioID][*p.TS2DynamicTalkgroupID]
+		if !ok {
+			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptions[p.RadioID][*p.TS2DynamicTalkgroupID] = cancel
+			go p.subscribeTG(newCtx, redis, *p.TS2DynamicTalkgroupID)
 		}
 	}
 }
@@ -121,9 +119,16 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 	defer pubsub.Close()
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			klog.Errorf("Failed to receive message from Redis: %s", err)
-			continue
+		select {
+		case <-ctx.Done():
+			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
+			redis.Del(ctx, fmt.Sprintf("repeater:talkgroup_subscriptions:%d:%d", p.RadioID, p.RadioID))
+			return
+		default:
+			if err != nil {
+				klog.Errorf("Failed to receive message from Redis: %s", err)
+				continue
+			}
 		}
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
@@ -147,9 +152,16 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 	defer pubsub.Close()
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			klog.Errorf("Failed to receive message from Redis: %s", err)
-			continue
+		select {
+		case <-ctx.Done():
+			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
+			redis.Del(ctx, fmt.Sprintf("repeater:talkgroup_subscriptions:%d:%d", p.RadioID, tg))
+			return
+		default:
+			if err != nil {
+				klog.Errorf("Failed to receive message from Redis: %s", err)
+				continue
+			}
 		}
 		rawPacket := RawDMRPacket{}
 		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))

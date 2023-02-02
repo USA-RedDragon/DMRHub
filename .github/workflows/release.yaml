@@ -69,5 +69,5 @@ jobs:
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
           goversion: "https://dl.google.com/go/go1.20.linux-amd64.tar.gz"
-          extra_files: LICENSE.md
+          extra_files: LICENSE
       - uses: creekorful/goreportcard-action@v1.0

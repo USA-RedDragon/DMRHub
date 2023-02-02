@@ -4,6 +4,6 @@ README.md
 .dockerignore
 .gitignore
 docker-compose.yml
-LICENSE.md
+LICENSE
 *.db
 Dockerfile

@@ -124,6 +124,7 @@ GRANT ALL ON schema public TO dmr;
 
 ### Soon
 
+- Make talker alias do something
 - details page for talkgroup with lastheard
 - details page for repeater with lastheard
 - details page for user with lastheard and repeaters

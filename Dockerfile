@@ -2,11 +2,12 @@ FROM golang:1.20-alpine AS builder
 
 WORKDIR /DMRHub
 
-RUN apk update && apk add --no-cache git make nodejs npm bash
+ARG IS_CI=false
+
+RUN apk update && apk add --no-cache git make bash
+RUN if [ "$IS_CI" = "false" ]; then apk add --no-cache nodejs npm; fi
 
 COPY . .
-
-ARG IS_CI=false
 
 # If this is a CI build, we need to use build-ci instead of build
 RUN if [ "$IS_CI" = "true" ]; then make build-ci; else make build; fi

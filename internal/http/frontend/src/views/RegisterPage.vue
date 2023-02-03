@@ -6,32 +6,121 @@
         <template #title>Register</template>
         <template #content>
           <span class="p-float-label">
-            <InputText id="dmr_id" type="text" v-model="dmr_id" />
-            <label for="dmr_id">DMR ID</label>
+            <InputText id="dmr_id" type="text" v-model="v$.dmr_id.$model" :class="{
+                'p-invalid': v$.dmr_id.$invalid && submitted,
+              }" />
+            <label for="dmr_id" :class="{ 'p-error': v$.dmr_id.$invalid && submitted }">DMR ID</label>
+          </span>
+          <span v-if="v$.dmr_id.$error && submitted">
+            <span v-for="(error, index) of v$.dmr_id.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+              <br />
+            </span>
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.dmr_id.$invalid && submitted) || v$.dmr_id.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.dmr_id.required.$message }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="username" type="text" v-model="username" />
-            <label for="username">Username</label>
+            <InputText id="username" type="text" v-model="v$.username.$model" :class="{
+                'p-invalid': v$.username.$invalid && submitted,
+              }" />
+            <label for="username" :class="{ 'p-error': v$.username.$invalid && submitted }">Username</label>
+          </span>
+          <span v-if="v$.username.$error && submitted">
+            <span v-for="(error, index) of v$.username.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+              <br />
+            </span>
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.username.$invalid && submitted) || v$.username.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.username.required.$message }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="callsign" type="text" v-model="callsign" />
-            <label for="callsign">Callsign</label>
+            <InputText id="callsign" type="text" v-model="v$.callsign.$model" :class="{ 'p-invalid': v$.callsign.$invalid && submitted }"/>
+            <label for="callsign" :class="{ 'p-error': v$.callsign.$invalid && submitted }">Callsign</label>
+          </span>
+          <span v-if="v$.callsign.$error && submitted">
+            <span v-for="(error, index) of v$.callsign.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+              <br />
+            </span>
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.callsign.$invalid && submitted) || v$.callsign.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.callsign.required.$message) }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="password" type="password" v-model="password" />
-            <label for="password">Password</label>
+            <InputText id="password" type="password" v-model="v$.password.$model" :class="{
+                'p-invalid': v$.password.$invalid && submitted,
+              }" />
+            <label for="password" :class="{ 'p-error': v$.password.$invalid && submitted }">Password</label>
+          </span>
+          <span v-if="v$.password.$error && submitted">
+            <span v-for="(error, index) of v$.password.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+              <br />
+            </span>
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.password.$invalid && submitted) || v$.password.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.password.required.$message }}
+              <br />
+            </small>
           </span>
           <br />
           <span class="p-float-label">
             <InputText
               id="confirmPassword"
               type="password"
-              v-model="confirmPassword"
+              v-model="v$.confirmPassword.$model"
+              :class="{
+                'p-invalid': v$.confirmPassword.$invalid && submitted,
+              }"
             />
-            <label for="confirmPassword">Confirm Password</label>
+            <label for="confirmPassword" :class="{ 'p-error': v$.confirmPassword.$invalid && submitted }">Confirm Password</label>
+          </span>
+          <span v-if="v$.confirmPassword.$error && submitted">
+            <span v-for="(error, index) of v$.confirmPassword.$errors" :key="index">
+              <small class="p-error">{{ error.$message }}</small>
+              <br />
+            </span>
+          </span>
+          <span v-else>
+            <small
+              v-if="
+                (v$.confirmPassword.$invalid && submitted) || v$.confirmPassword.$pending.$response
+              "
+              class="p-error"
+              >{{ v$.confirmPassword.required.$message }}
+              <br />
+            </small>
           </span>
         </template>
         <template #footer>
@@ -56,12 +145,16 @@ import Button from "primevue/button/sfc";
 import Card from "primevue/card/sfc";
 import API from "@/services/API";
 
+import { useVuelidate } from "@vuelidate/core";
+import { required, sameAs, numeric } from "@vuelidate/validators";
+
 export default {
   components: {
     InputText,
     Button,
     Card,
   },
+  setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
   data: function () {
@@ -71,10 +164,37 @@ export default {
       callsign: "",
       password: "",
       confirmPassword: "",
+      submitted: false,
+    };
+  },
+  validations() {
+    return {
+      dmr_id: {
+        required,
+        numeric,
+      },
+      username: {
+        required,
+      },
+      callsign: {
+        required,
+      },
+      password: {
+        required,
+      },
+      confirmPassword: {
+        required,
+        sameAs: sameAs(this.password)
+      },
     };
   },
   methods: {
-    handleRegister() {
+    handleRegister(isFormValid) {
+      this.submitted = true;
+      if (!isFormValid) {
+        return;
+      }
+
       var numericID = parseInt(this.dmr_id);
       if (!numericID) {
         this.$toast.add({

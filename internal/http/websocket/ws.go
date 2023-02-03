@@ -55,7 +55,7 @@ func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 	}
 }
 
-func (h *WSHandler) pingHandler(w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -63,15 +63,24 @@ func (h *WSHandler) pingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	for {
-		t, msg, err := conn.ReadMessage()
-		if err != nil {
-			break
+	readFailed := make(chan string)
+	go func() {
+		for {
+			t, msg, err := conn.ReadMessage()
+			if err != nil {
+				readFailed <- "read failed"
+				break
+			}
+			if string(msg) == "PING" {
+				msg = []byte("PONG")
+			}
+			conn.WriteMessage(t, msg)
 		}
-		if string(msg) == "PING" {
-			msg = []byte("PONG")
-		}
-		conn.WriteMessage(t, msg)
+	}()
+
+	select {
+	case <-ctx.Done():
+	case <-readFailed:
 	}
 }
 
@@ -83,12 +92,21 @@ func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session se
 	}
 	defer conn.Close()
 
-	for {
-		t, msg, err := conn.ReadMessage()
-		if err != nil {
-			break
+	readFailed := make(chan string)
+	go func() {
+		for {
+			t, msg, err := conn.ReadMessage()
+			if err != nil {
+				readFailed <- "read failed"
+				break
+			}
+			conn.WriteMessage(t, msg)
 		}
-		conn.WriteMessage(t, msg)
+	}()
+
+	select {
+	case <-ctx.Done():
+	case <-readFailed:
 	}
 }
 
@@ -134,7 +152,10 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 		}
 	}()
 
-	<-readFailed
+	select {
+	case <-ctx.Done():
+	case <-readFailed:
+	}
 }
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
@@ -145,7 +166,7 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	})
 
 	r.GET("/ws/health", ratelimit, func(c *gin.Context) {
-		h.pingHandler(c.Writer, c.Request)
+		h.pingHandler(c.Request.Context(), c.Writer, c.Request)
 	})
 
 	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {

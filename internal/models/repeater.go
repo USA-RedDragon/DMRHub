@@ -82,7 +82,11 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
-	_, ok := talkgroupSubscriptions[p.RadioID][p.RadioID]
+	_, ok := talkgroupSubscriptions[p.RadioID]
+	if !ok {
+		talkgroupSubscriptions[p.RadioID] = make(map[uint]context.CancelFunc)
+	}
+	_, ok = talkgroupSubscriptions[p.RadioID][p.RadioID]
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
 		talkgroupSubscriptions[p.RadioID][p.RadioID] = cancel
@@ -132,7 +136,9 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Close()
 	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
+		newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		defer cancel()
+		msg, err := pubsub.ReceiveMessage(newCtx)
 		select {
 		case <-ctx.Done():
 			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
@@ -165,7 +171,9 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Close()
 	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
+		newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		defer cancel()
+		msg, err := pubsub.ReceiveMessage(newCtx)
 		select {
 		case <-ctx.Done():
 			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)

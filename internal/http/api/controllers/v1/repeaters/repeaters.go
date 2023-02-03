@@ -105,7 +105,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		if models.RepeaterIDExists(db, repeaterID) {
 			repeater := models.FindRepeaterByID(db, repeaterID)
 			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
+			repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
+			repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
 
 			if json.TS1DynamicTalkgroup.ID == 0 {
 				repeater.TS1DynamicTalkgroupID = nil
@@ -249,12 +251,17 @@ func POSTRepeater(c *gin.Context) {
 func POSTRepeaterLink(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	redis := c.MustGet("Redis").(*redis.Client)
-	id := c.Param("id")
 	linkType := c.Param("type")
 	slot := c.Param("slot")
 	target := c.Param("target")
-	var repeater models.Repeater
-	db.Find(&repeater, "radio_id = ?", id)
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater ID"})
+		return
+	}
+
+	repeater := models.FindRepeaterByID(db, uint(id))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

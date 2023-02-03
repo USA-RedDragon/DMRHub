@@ -106,10 +106,23 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			repeater := models.FindRepeaterByID(db, repeaterID)
 			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
-			repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
-			repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
-			repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
-			repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
+
+			if json.TS1DynamicTalkgroup.ID == 0 {
+				repeater.TS1DynamicTalkgroupID = nil
+				db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
+			} else {
+				repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
+				db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
+			}
+
+			if json.TS2DynamicTalkgroup.ID == 0 {
+				repeater.TS2DynamicTalkgroupID = nil
+				db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
+			} else {
+				repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
+				db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
+			}
+
 			db.Save(&repeater)
 			repeater.CancelAllSubscriptions()
 			go repeater.ListenForCalls(c.Request.Context(), redis)

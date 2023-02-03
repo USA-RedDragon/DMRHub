@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -53,9 +54,15 @@ type Repeater struct {
 }
 
 var talkgroupSubscriptions = make(map[uint]map[uint]context.CancelFunc)
+var talkgroupSubscriptionsMutex = &sync.RWMutex{}
+var subscriptionCancelMutex = make(map[uint]map[uint]*sync.RWMutex)
 
 func (p Repeater) CancelSubscription(talkgroupID uint) {
+	talkgroupSubscriptionsMutex.RLock()
+	subscriptionCancelMutex[p.RadioID][talkgroupID].RLock()
 	cancel, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
+	subscriptionCancelMutex[p.RadioID][talkgroupID].RUnlock()
+	talkgroupSubscriptionsMutex.RUnlock()
 	if ok {
 		// Check if the talkgroup is already subscribed to on a different slot
 		// If it is, don't cancel the subscription
@@ -75,22 +82,44 @@ func (p Repeater) CancelSubscription(talkgroupID uint) {
 				return
 			}
 		}
-		cancel()
+		talkgroupSubscriptionsMutex.Lock()
+		subscriptionCancelMutex[p.RadioID][talkgroupID].Lock()
 		delete(talkgroupSubscriptions[p.RadioID], talkgroupID)
+		subscriptionCancelMutex[p.RadioID][talkgroupID].Unlock()
+		delete(subscriptionCancelMutex[p.RadioID], talkgroupID)
+		talkgroupSubscriptionsMutex.Unlock()
+		cancel()
 	}
 }
 
 func (p Repeater) CancelAllSubscriptions() {
-	for tgID := range talkgroupSubscriptions[p.RadioID] {
-		p.CancelSubscription(tgID)
+	if config.GetConfig().Debug {
+		klog.Errorf("Cancelling all newly inactive subscriptions for repeater %d", p.RadioID)
 	}
+	talkgroupSubscriptionsMutex.RLock()
+	for tgID := range talkgroupSubscriptions[p.RadioID] {
+		talkgroupSubscriptionsMutex.RUnlock()
+		p.CancelSubscription(tgID)
+		talkgroupSubscriptionsMutex.RLock()
+	}
+	talkgroupSubscriptionsMutex.RUnlock()
 }
 
 func (p Repeater) ListenForCallsOn(ctx context.Context, redis *redis.Client, talkgroupID uint) {
+	talkgroupSubscriptionsMutex.RLock()
 	_, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
+	talkgroupSubscriptionsMutex.RUnlock()
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
+		talkgroupSubscriptionsMutex.Lock()
+		_, ok = subscriptionCancelMutex[p.RadioID][talkgroupID]
+		if !ok {
+			subscriptionCancelMutex[p.RadioID][talkgroupID] = &sync.RWMutex{}
+		}
+		subscriptionCancelMutex[p.RadioID][talkgroupID].Lock()
 		talkgroupSubscriptions[p.RadioID][talkgroupID] = cancel
+		subscriptionCancelMutex[p.RadioID][talkgroupID].Unlock()
+		talkgroupSubscriptionsMutex.Unlock()
 		go p.subscribeTG(newCtx, redis, talkgroupID)
 	}
 }
@@ -100,47 +129,102 @@ func (p Repeater) ListenForCalls(ctx context.Context, redis *redis.Client) {
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
+	talkgroupSubscriptionsMutex.RLock()
 	_, ok := talkgroupSubscriptions[p.RadioID]
+	talkgroupSubscriptionsMutex.RUnlock()
 	if !ok {
+		talkgroupSubscriptionsMutex.Lock()
 		talkgroupSubscriptions[p.RadioID] = make(map[uint]context.CancelFunc)
+		subscriptionCancelMutex[p.RadioID] = make(map[uint]*sync.RWMutex)
+		talkgroupSubscriptionsMutex.Unlock()
 	}
+	talkgroupSubscriptionsMutex.RLock()
 	_, ok = talkgroupSubscriptions[p.RadioID][p.RadioID]
+	talkgroupSubscriptionsMutex.RUnlock()
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
+		talkgroupSubscriptionsMutex.Lock()
+		_, ok = subscriptionCancelMutex[p.RadioID][p.RadioID]
+		if !ok {
+			subscriptionCancelMutex[p.RadioID][p.RadioID] = &sync.RWMutex{}
+		}
+		subscriptionCancelMutex[p.RadioID][p.RadioID].Lock()
 		talkgroupSubscriptions[p.RadioID][p.RadioID] = cancel
+		subscriptionCancelMutex[p.RadioID][p.RadioID].Unlock()
+		talkgroupSubscriptionsMutex.Unlock()
 		go p.subscribeRepeater(newCtx, redis)
 	}
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
+		talkgroupSubscriptionsMutex.RLock()
 		_, ok := talkgroupSubscriptions[p.RadioID][tg.ID]
+		talkgroupSubscriptionsMutex.RUnlock()
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok = subscriptionCancelMutex[p.RadioID][tg.ID]
+			if !ok {
+				subscriptionCancelMutex[p.RadioID][tg.ID] = &sync.RWMutex{}
+			}
+			subscriptionCancelMutex[p.RadioID][tg.ID].Lock()
 			talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
+			subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
+			talkgroupSubscriptionsMutex.Unlock()
 			go p.subscribeTG(newCtx, redis, tg.ID)
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
+		talkgroupSubscriptionsMutex.RLock()
 		_, ok := talkgroupSubscriptions[p.RadioID][tg.ID]
+		talkgroupSubscriptionsMutex.RUnlock()
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok = subscriptionCancelMutex[p.RadioID][tg.ID]
+			if !ok {
+				subscriptionCancelMutex[p.RadioID][tg.ID] = &sync.RWMutex{}
+			}
+			subscriptionCancelMutex[p.RadioID][tg.ID].Lock()
 			talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
+			subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
+			talkgroupSubscriptionsMutex.Unlock()
 			go p.subscribeTG(newCtx, redis, tg.ID)
 		}
 	}
 	if p.TS1DynamicTalkgroupID != nil {
+		talkgroupSubscriptionsMutex.RLock()
 		_, ok := talkgroupSubscriptions[p.RadioID][*p.TS1DynamicTalkgroupID]
+		talkgroupSubscriptionsMutex.RUnlock()
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok = subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID]
+			if !ok {
+				subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID] = &sync.RWMutex{}
+			}
+			subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID].Lock()
 			talkgroupSubscriptions[p.RadioID][*p.TS1DynamicTalkgroupID] = cancel
+			subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID].Unlock()
+			talkgroupSubscriptionsMutex.Unlock()
 			go p.subscribeTG(newCtx, redis, *p.TS1DynamicTalkgroupID)
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
+		talkgroupSubscriptionsMutex.RLock()
 		_, ok := talkgroupSubscriptions[p.RadioID][*p.TS2DynamicTalkgroupID]
+		talkgroupSubscriptionsMutex.RUnlock()
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok = subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID]
+			if !ok {
+				subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID] = &sync.RWMutex{}
+			}
+			subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Lock()
 			talkgroupSubscriptions[p.RadioID][*p.TS2DynamicTalkgroupID] = cancel
+			subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Unlock()
+			talkgroupSubscriptionsMutex.Unlock()
 			go p.subscribeTG(newCtx, redis, *p.TS2DynamicTalkgroupID)
 		}
 	}
@@ -153,31 +237,37 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
 	defer pubsub.Close()
+	pubsubChannel := pubsub.Channel()
 	for {
-		newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-		defer cancel()
-		msg, err := pubsub.ReceiveMessage(newCtx)
 		select {
 		case <-ctx.Done():
-			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
-			redis.Del(ctx, fmt.Sprintf("repeater:talkgroup_subscriptions:%d:%d", p.RadioID, p.RadioID))
+			if config.GetConfig().Debug {
+				klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
+			}
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok := subscriptionCancelMutex[p.RadioID][p.RadioID]
+			if ok {
+				subscriptionCancelMutex[p.RadioID][p.RadioID].Lock()
+			}
+			delete(talkgroupSubscriptions[p.RadioID], p.RadioID)
+			if ok {
+				subscriptionCancelMutex[p.RadioID][p.RadioID].Unlock()
+				delete(subscriptionCancelMutex[p.RadioID], p.RadioID)
+			}
+			talkgroupSubscriptionsMutex.Unlock()
 			return
-		default:
+		case msg := <-pubsubChannel:
+			rawPacket := RawDMRPacket{}
+			_, err := rawPacket.UnmarshalMsg([]byte(msg.Payload))
 			if err != nil {
-				klog.Errorf("Failed to receive message from Redis: %s", err)
+				klog.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
 			}
+			// This packet is already for us and we don't want to modify the slot
+			packet := UnpackPacket(rawPacket.Data)
+			packet.Repeater = p.RadioID
+			redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 		}
-		rawPacket := RawDMRPacket{}
-		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
-		if err != nil {
-			klog.Errorf("Failed to unmarshal raw packet: %s", err)
-			continue
-		}
-		// This packet is already for us and we don't want to modify the slot
-		packet := UnpackPacket(rawPacket.Data)
-		packet.Repeater = p.RadioID
-		redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 	}
 }
 
@@ -191,44 +281,51 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
 	defer pubsub.Close()
+	pubsubChannel := pubsub.Channel()
+
 	for {
-		newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-		defer cancel()
-		msg, err := pubsub.ReceiveMessage(newCtx)
 		select {
 		case <-ctx.Done():
-			klog.Infof("Context canceled, stopping subscription to packets:repeater:%d", p.RadioID)
-			redis.Del(ctx, fmt.Sprintf("repeater:talkgroup_subscriptions:%d:%d", p.RadioID, tg))
+			if config.GetConfig().Debug {
+				klog.Infof("Context canceled, stopping subscription to packets:repeater:%d, talkgroup %d", p.RadioID, tg)
+			}
+			talkgroupSubscriptionsMutex.Lock()
+			_, ok := subscriptionCancelMutex[p.RadioID][tg]
+			if ok {
+				subscriptionCancelMutex[p.RadioID][tg].Lock()
+			}
+			delete(talkgroupSubscriptions[p.RadioID], tg)
+			if ok {
+				subscriptionCancelMutex[p.RadioID][tg].Unlock()
+				delete(subscriptionCancelMutex[p.RadioID], tg)
+			}
+			talkgroupSubscriptionsMutex.Unlock()
 			return
-		default:
+		case msg := <-pubsubChannel:
+			rawPacket := RawDMRPacket{}
+			_, err := rawPacket.UnmarshalMsg([]byte(msg.Payload))
 			if err != nil {
-				klog.Errorf("Failed to receive message from Redis: %s", err)
+				klog.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
 			}
-		}
-		rawPacket := RawDMRPacket{}
-		_, err = rawPacket.UnmarshalMsg([]byte(msg.Payload))
-		if err != nil {
-			klog.Errorf("Failed to unmarshal raw packet: %s", err)
-			continue
-		}
-		packet := UnpackPacket(rawPacket.Data)
-		if packet.Src == p.RadioID {
-			continue
-		}
+			packet := UnpackPacket(rawPacket.Data)
+			if packet.Src == p.RadioID {
+				continue
+			}
 
-		want, slot := p.WantRX(packet)
-		if want {
-			// This packet is for the repeater's dynamic talkgroup
-			// We need to send it to the repeater
-			packet.Repeater = p.RadioID
-			packet.Slot = slot
-			redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
-		} else {
-			// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
-			pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
-			pubsub.Close()
-			return
+			want, slot := p.WantRX(packet)
+			if want {
+				// This packet is for the repeater's dynamic talkgroup
+				// We need to send it to the repeater
+				packet.Repeater = p.RadioID
+				packet.Slot = slot
+				redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
+			} else {
+				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
+				pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
+				pubsub.Close()
+				return
+			}
 		}
 	}
 }

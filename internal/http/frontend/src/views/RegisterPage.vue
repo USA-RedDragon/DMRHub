@@ -6,10 +6,19 @@
         <template #title>Register</template>
         <template #content>
           <span class="p-float-label">
-            <InputText id="dmr_id" type="text" v-model="v$.dmr_id.$model" :class="{
+            <InputText
+              id="dmr_id"
+              type="text"
+              v-model="v$.dmr_id.$model"
+              :class="{
                 'p-invalid': v$.dmr_id.$invalid && submitted,
-              }" />
-            <label for="dmr_id" :class="{ 'p-error': v$.dmr_id.$invalid && submitted }">DMR ID</label>
+              }"
+            />
+            <label
+              for="dmr_id"
+              :class="{ 'p-error': v$.dmr_id.$invalid && submitted }"
+              >DMR ID</label
+            >
           </span>
           <span v-if="v$.dmr_id.$error && submitted">
             <span v-for="(error, index) of v$.dmr_id.$errors" :key="index">
@@ -20,7 +29,8 @@
           <span v-else>
             <small
               v-if="
-                (v$.dmr_id.$invalid && submitted) || v$.dmr_id.$pending.$response
+                (v$.dmr_id.$invalid && submitted) ||
+                v$.dmr_id.$pending.$response
               "
               class="p-error"
               >{{ v$.dmr_id.required.$message }}
@@ -29,10 +39,19 @@
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="username" type="text" v-model="v$.username.$model" :class="{
+            <InputText
+              id="username"
+              type="text"
+              v-model="v$.username.$model"
+              :class="{
                 'p-invalid': v$.username.$invalid && submitted,
-              }" />
-            <label for="username" :class="{ 'p-error': v$.username.$invalid && submitted }">Username</label>
+              }"
+            />
+            <label
+              for="username"
+              :class="{ 'p-error': v$.username.$invalid && submitted }"
+              >Username</label
+            >
           </span>
           <span v-if="v$.username.$error && submitted">
             <span v-for="(error, index) of v$.username.$errors" :key="index">
@@ -43,7 +62,8 @@
           <span v-else>
             <small
               v-if="
-                (v$.username.$invalid && submitted) || v$.username.$pending.$response
+                (v$.username.$invalid && submitted) ||
+                v$.username.$pending.$response
               "
               class="p-error"
               >{{ v$.username.required.$message }}
@@ -52,8 +72,17 @@
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="callsign" type="text" v-model="v$.callsign.$model" :class="{ 'p-invalid': v$.callsign.$invalid && submitted }"/>
-            <label for="callsign" :class="{ 'p-error': v$.callsign.$invalid && submitted }">Callsign</label>
+            <InputText
+              id="callsign"
+              type="text"
+              v-model="v$.callsign.$model"
+              :class="{ 'p-invalid': v$.callsign.$invalid && submitted }"
+            />
+            <label
+              for="callsign"
+              :class="{ 'p-error': v$.callsign.$invalid && submitted }"
+              >Callsign</label
+            >
           </span>
           <span v-if="v$.callsign.$error && submitted">
             <span v-for="(error, index) of v$.callsign.$errors" :key="index">
@@ -64,19 +93,29 @@
           <span v-else>
             <small
               v-if="
-                (v$.callsign.$invalid && submitted) || v$.callsign.$pending.$response
+                (v$.callsign.$invalid && submitted) ||
+                v$.callsign.$pending.$response
               "
               class="p-error"
-              >{{ v$.callsign.required.$message) }}
+              >{{ v$.callsign.required.$message }}
               <br />
             </small>
           </span>
           <br />
           <span class="p-float-label">
-            <InputText id="password" type="password" v-model="v$.password.$model" :class="{
+            <InputText
+              id="password"
+              type="password"
+              v-model="v$.password.$model"
+              :class="{
                 'p-invalid': v$.password.$invalid && submitted,
-              }" />
-            <label for="password" :class="{ 'p-error': v$.password.$invalid && submitted }">Password</label>
+              }"
+            />
+            <label
+              for="password"
+              :class="{ 'p-error': v$.password.$invalid && submitted }"
+              >Password</label
+            >
           </span>
           <span v-if="v$.password.$error && submitted">
             <span v-for="(error, index) of v$.password.$errors" :key="index">
@@ -87,7 +126,8 @@
           <span v-else>
             <small
               v-if="
-                (v$.password.$invalid && submitted) || v$.password.$pending.$response
+                (v$.password.$invalid && submitted) ||
+                v$.password.$pending.$response
               "
               class="p-error"
               >{{ v$.password.required.$message }}
@@ -104,10 +144,17 @@
                 'p-invalid': v$.confirmPassword.$invalid && submitted,
               }"
             />
-            <label for="confirmPassword" :class="{ 'p-error': v$.confirmPassword.$invalid && submitted }">Confirm Password</label>
+            <label
+              for="confirmPassword"
+              :class="{ 'p-error': v$.confirmPassword.$invalid && submitted }"
+              >Confirm Password</label
+            >
           </span>
           <span v-if="v$.confirmPassword.$error && submitted">
-            <span v-for="(error, index) of v$.confirmPassword.$errors" :key="index">
+            <span
+              v-for="(error, index) of v$.confirmPassword.$errors"
+              :key="index"
+            >
               <small class="p-error">{{ error.$message }}</small>
               <br />
             </span>
@@ -115,7 +162,8 @@
           <span v-else>
             <small
               v-if="
-                (v$.confirmPassword.$invalid && submitted) || v$.confirmPassword.$pending.$response
+                (v$.confirmPassword.$invalid && submitted) ||
+                v$.confirmPassword.$pending.$response
               "
               class="p-error"
               >{{ v$.confirmPassword.required.$message }}
@@ -184,7 +232,7 @@ export default {
       },
       confirmPassword: {
         required,
-        sameAs: sameAs(this.password)
+        sameAs: sameAs(this.password),
       },
     };
   },

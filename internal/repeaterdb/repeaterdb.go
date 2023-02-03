@@ -136,5 +136,7 @@ func Update() error {
 		klog.Exit("No DMR repeaters found in database")
 	}
 
+	klog.Infof("Update complete. Loaded %d DMR repeaters", len(dmrRepeaters.Repeaters))
+
 	return nil
 }

@@ -146,7 +146,6 @@
               icon="pi pi-save"
               label="Save"
               type="submit"
-              @click="handleTalkgroup(!v$.$invalid)"
             />
           </div>
         </template>

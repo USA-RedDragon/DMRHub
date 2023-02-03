@@ -73,7 +73,6 @@ Debug=0
               icon="pi pi-save"
               label="Save"
               type="submit"
-              @click="handleRepeater(!v$.$invalid)"
             />
           </div>
         </template>

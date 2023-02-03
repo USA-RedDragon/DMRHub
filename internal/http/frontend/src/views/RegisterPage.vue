@@ -178,7 +178,6 @@
               icon="pi pi-user"
               type="submit"
               label="Register"
-              @click="handleRegister(!v$.$invalid)"
             />
           </div>
         </template>

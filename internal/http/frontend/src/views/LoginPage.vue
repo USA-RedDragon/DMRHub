@@ -61,7 +61,6 @@
               icon="pi pi-lock"
               label="Login"
               type="submit"
-              @click="handleLogin(!v$.$invalid)"
             />
           </div>
         </template>

@@ -182,6 +182,9 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 }
 
 func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint) {
+	if tg == 0 {
+		return
+	}
 	if config.GetConfig().Debug {
 		klog.Infof("Listening for calls on repeater %d, talkgroup %d", p.RadioID, tg)
 	}

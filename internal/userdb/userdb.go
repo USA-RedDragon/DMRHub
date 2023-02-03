@@ -120,5 +120,7 @@ func Update() error {
 		klog.Exit("No DMR users found in database")
 	}
 
+	klog.Infof("Update complete. Loaded %d DMR users", len(dmrUsers.Users))
+
 	return nil
 }

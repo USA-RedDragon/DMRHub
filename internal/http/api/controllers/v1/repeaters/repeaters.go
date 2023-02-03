@@ -112,6 +112,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 				db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
 			} else {
 				repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
+				repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
 				db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
 			}
 
@@ -120,6 +121,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 				db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
 			} else {
 				repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
+				repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
 				db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
 			}
 

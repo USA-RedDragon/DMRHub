@@ -104,7 +104,6 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	} else {
 		if models.RepeaterIDExists(db, repeaterID) {
 			repeater := models.FindRepeaterByID(db, repeaterID)
-			repeater.CancelAllSubscriptions()
 			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
 			repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
@@ -112,6 +111,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
 			repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
 			db.Save(&repeater)
+			repeater.CancelAllSubscriptions()
 			go repeater.ListenForCalls(c.Request.Context(), redis)
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
@@ -344,10 +344,12 @@ func POSTRepeaterUnlink(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}
-			repeater.CancelSubscription(*repeater.TS1DynamicTalkgroupID)
+			oldTGID := *repeater.TS1DynamicTalkgroupID
 			// Set TS1DynamicTalkgroup association on repeater to target
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS1DynamicTalkgroupID = nil
+
+			repeater.CancelSubscription(oldTGID)
 
 			db.Save(&repeater)
 		case "2":
@@ -355,10 +357,12 @@ func POSTRepeaterUnlink(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup is not linked to repeater"})
 				return
 			}
-			repeater.CancelSubscription(*repeater.TS2DynamicTalkgroupID)
+			oldTGID := *repeater.TS2DynamicTalkgroupID
 			// Set TS2DynamicTalkgroup association on repeater to target
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS2DynamicTalkgroupID = nil
+
+			repeater.CancelSubscription(oldTGID)
 
 			db.Save(&repeater)
 		}
@@ -370,8 +374,9 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			var found bool
 			for _, tg := range repeater.TS1StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
-					repeater.CancelSubscription(talkgroup.ID)
+					oldID := talkgroup.ID
 					db.Model(&repeater).Association("TS1StaticTalkgroups").Delete(&talkgroup)
+					repeater.CancelSubscription(oldID)
 					db.Save(&repeater)
 					found = true
 					break
@@ -388,8 +393,9 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			var found bool
 			for _, tg := range repeater.TS2StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
-					repeater.CancelSubscription(talkgroup.ID)
+					oldID := talkgroup.ID
 					db.Model(&repeater).Association("TS2StaticTalkgroups").Delete(&talkgroup)
+					repeater.CancelSubscription(oldID)
 					db.Save(&repeater)
 					found = true
 					break

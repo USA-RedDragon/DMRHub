@@ -257,16 +257,18 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				if packet.Slot {
 					klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
 					if dbRepeater.TS2DynamicTalkgroupID != nil {
-						dbRepeater.CancelSubscription(*dbRepeater.TS2DynamicTalkgroupID)
+						oldTGID := *dbRepeater.TS2DynamicTalkgroupID
 						s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
 						s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
+						dbRepeater.CancelSubscription(oldTGID)
 					}
 				} else {
 					klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
 					if dbRepeater.TS1DynamicTalkgroupID != nil {
-						dbRepeater.CancelSubscription(*dbRepeater.TS1DynamicTalkgroupID)
+						oldTGID := *dbRepeater.TS1DynamicTalkgroupID
 						s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
 						s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
+						dbRepeater.CancelSubscription(oldTGID)
 					}
 				}
 				s.DB.Save(&dbRepeater)

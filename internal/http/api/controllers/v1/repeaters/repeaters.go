@@ -130,6 +130,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			db.Save(&repeater)
 			repeater.CancelAllSubscriptions()
 			go repeater.ListenForCalls(c.Request.Context(), redis)
+			c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
 			return

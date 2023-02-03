@@ -57,6 +57,24 @@ var talkgroupSubscriptions = make(map[uint]map[uint]context.CancelFunc)
 func (p Repeater) CancelSubscription(talkgroupID uint) {
 	cancel, ok := talkgroupSubscriptions[p.RadioID][talkgroupID]
 	if ok {
+		// Check if the talkgroup is already subscribed to on a different slot
+		// If it is, don't cancel the subscription
+		if p.TS1DynamicTalkgroupID != nil && *p.TS1DynamicTalkgroupID == talkgroupID {
+			return
+		}
+		if p.TS2DynamicTalkgroupID != nil && *p.TS2DynamicTalkgroupID == talkgroupID {
+			return
+		}
+		for _, tg := range p.TS1StaticTalkgroups {
+			if tg.ID == talkgroupID {
+				return
+			}
+		}
+		for _, tg := range p.TS2StaticTalkgroups {
+			if tg.ID == talkgroupID {
+				return
+			}
+		}
 		cancel()
 		delete(talkgroupSubscriptions[p.RadioID], talkgroupID)
 	}

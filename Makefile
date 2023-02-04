@@ -45,7 +45,11 @@ run:
 coverage:
 	@echo "--> Running tests"
 	@go test -coverprofile=coverage.txt -covermode=atomic ./...
-	go tool cover -html=coverage.txt
+	@echo "--> Done"
+
+view-coverage:
+	@echo "--> Viewing coverage"
+	@go tool cover -html=coverage.txt
 	@echo "--> Done"
 
 test:

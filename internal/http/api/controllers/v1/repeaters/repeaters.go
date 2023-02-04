@@ -182,9 +182,9 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
 				return
 			}
-			r, err := repeaterdb.GetRepeater(json.RadioID)
-			if err != nil {
-				klog.Errorf("Error getting repeater from database: %v", err)
+			r, getErr := repeaterdb.GetRepeater(json.RadioID)
+			if getErr != nil {
+				klog.Errorf("Error getting repeater from database: %v", getErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
 				return
 			}
@@ -194,9 +194,9 @@ func POSTRepeater(c *gin.Context) {
 			repeater.Location = r.City + ", " + r.State + ", " + r.Country
 			repeater.Description = r.MapInfo
 			// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
-			mhZFloat, err := strconv.ParseFloat(r.Frequency, 32)
-			if err != nil {
-				klog.Errorf("Error converting frequency to float: %v", err)
+			mhZFloat, parseErr := strconv.ParseFloat(r.Frequency, 32)
+			if parseErr != nil {
+				klog.Errorf("Error converting frequency to float: %v", parseErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
 				return
 			}
@@ -212,9 +212,9 @@ func POSTRepeater(c *gin.Context) {
 			r.Offset = strings.TrimPrefix(r.Offset, "-")
 			r.Offset = strings.TrimPrefix(r.Offset, "+")
 			// convert the offset to a float
-			offsetFloat, err := strconv.ParseFloat(r.Offset, 32)
-			if err != nil {
-				klog.Errorf("Error converting offset to float: %v\nError:", r.Offset, err)
+			offsetFloat, parseErr := strconv.ParseFloat(r.Offset, 32)
+			if parseErr != nil {
+				klog.Errorf("Error converting offset to float: %v\nError:", r.Offset, parseErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
 				return
 			}

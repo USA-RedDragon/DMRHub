@@ -91,14 +91,14 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		klog.Errorf("Failed to read directory: %s", err)
 	}
 	staticGroup.GET("/", func(c *gin.Context) {
-		file, err := FS.Open("frontend/dist/index.html")
-		if err != nil {
-			klog.Errorf("Failed to open file: %s", err)
+		file, getErr := FS.Open("frontend/dist/index.html")
+		if getErr != nil {
+			klog.Errorf("Failed to open file: %s", getErr)
 		}
 		defer file.Close()
-		fileContent, err := io.ReadAll(file)
-		if err != nil {
-			klog.Errorf("Failed to read file: %s", err)
+		fileContent, getErr := io.ReadAll(file)
+		if getErr != nil {
+			klog.Errorf("Failed to read file: %s", getErr)
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -108,18 +108,18 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 			klog.Errorf("Failed to get wildcard: %s", err)
 			return
 		}
-		file, err := FS.Open(path.Join("frontend/dist", wild))
-		if err != nil {
-			file, err = FS.Open("frontend/dist/index.html")
-			if err != nil {
-				klog.Errorf("Failed to open file: %s", err)
+		file, fileErr := FS.Open(path.Join("frontend/dist", wild))
+		if fileErr != nil {
+			file, fileErr = FS.Open("frontend/dist/index.html")
+			if fileErr != nil {
+				klog.Errorf("Failed to open file: %s", fileErr)
 				return
 			}
 		}
 		defer file.Close()
-		fileContent, err := io.ReadAll(file)
-		if err != nil {
-			klog.Errorf("Failed to read file: %s", err)
+		fileContent, readErr := io.ReadAll(file)
+		if readErr != nil {
+			klog.Errorf("Failed to read file: %s", readErr)
 			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
@@ -135,18 +135,18 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 			klog.Errorf("Failed to get wildcard: %s", err)
 			return
 		}
-		file, err := FS.Open(path.Join("frontend/dist", wild, wild2))
-		if err != nil {
-			file, err = FS.Open("frontend/dist/index.html")
-			if err != nil {
+		file, insideErr := FS.Open(path.Join("frontend/dist", wild, wild2))
+		if insideErr != nil {
+			file, insideErr = FS.Open("frontend/dist/index.html")
+			if insideErr != nil {
 				klog.Errorf("Failed to open file: %s", err)
 				return
 			}
 		}
 		defer file.Close()
-		fileContent, err := io.ReadAll(file)
-		if err != nil {
-			klog.Errorf("Failed to read file: %s", err)
+		fileContent, nextErr := io.ReadAll(file)
+		if nextErr != nil {
+			klog.Errorf("Failed to read file: %s", nextErr)
 			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)

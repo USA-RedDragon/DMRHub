@@ -80,7 +80,7 @@ func (s *redisRepeaterStorage) list(ctx context.Context) ([]uint, error) {
 	var cursor uint64
 	var repeaters []uint
 	for {
-		keys, cursor, err := s.Redis.Scan(ctx, cursor, "repeater:*", 0).Result()
+		keys, _, err := s.Redis.Scan(ctx, cursor, "repeater:*", 0).Result()
 		if err != nil {
 			return nil, err
 		}

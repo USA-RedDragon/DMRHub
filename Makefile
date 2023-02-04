@@ -41,3 +41,19 @@ run:
 	@echo "--> Running"
 	@go run .
 	@echo "--> Done"
+
+coverage:
+	@echo "--> Running tests"
+	@go test -coverprofile=coverage.txt -covermode=atomic ./...
+	go tool cover -html=coverage.txt
+	@echo "--> Done"
+
+test:
+	@echo "--> Running tests"
+	@go test ./...
+	@echo "--> Done"
+
+benchmark:
+	@echo "--> Running benchmarks"
+	@go test -run ^$ -benchmem -bench=. ./...
+	@echo "--> Done"

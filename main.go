@@ -85,7 +85,7 @@ func main() {
 		return
 	}
 	if config.GetConfig().OTLPEndpoint != "" {
-		if err := db.Use(otelgorm.NewPlugin()); err != nil {
+		if err = db.Use(otelgorm.NewPlugin()); err != nil {
 			klog.Exitf("Failed to trace database: %s", err)
 			return
 		}

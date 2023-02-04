@@ -81,7 +81,8 @@ var builtInDate time.Time
 
 func GetDMRRepeaters() *map[uint]DMRRepeater {
 	if len(dmrRepeaters.Repeaters) == 0 {
-		builtInDate, err := time.Parse(time.RFC3339, builtInDateStr)
+		var err error
+		builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
 			klog.Fatalf("Error parsing built-in date: %v", err)
 		}

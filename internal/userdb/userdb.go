@@ -77,7 +77,8 @@ var builtInDate time.Time
 
 func GetDMRUsers() *map[uint]DMRUser {
 	if len(dmrUsers.Users) == 0 {
-		builtInDate, err := time.Parse(time.RFC3339, builtInDateStr)
+		var err error
+		builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
 			klog.Fatalf("Error parsing built-in date: %v", err)
 		}

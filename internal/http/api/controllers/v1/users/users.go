@@ -370,12 +370,12 @@ func PATCHUser(c *gin.Context) {
 
 		if json.Username != "" {
 			// Check if the username is already taken
-			var user models.User
-			db.Find(&user, "username = ?", json.Username)
+			var existingUser models.User
+			db.Find(&existingUser, "username = ?", json.Username)
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
-			} else if user.ID != 0 {
+			} else if existingUser.ID != 0 {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
 				return
 			}

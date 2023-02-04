@@ -234,7 +234,12 @@ func POSTRepeater(c *gin.Context) {
 		repeater.RadioID = json.RadioID
 
 		// Generate a random password of 8 characters
-		repeater.Password = utils.RandomPassword(8, 1, 2)
+		repeater.Password, err = utils.RandomPassword(8, 1, 2)
+		if err != nil {
+			klog.Errorf("Failed to generate a repeater password %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
+			return
+		}
 
 		// Find user by userId
 		repeater.Owner = user

@@ -1,11 +1,12 @@
 package utils
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -102,17 +103,42 @@ const allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 const allowedNumbers = "0123456789"
 const allowedSpecial = "!@#$%^&*-_"
 
-func RandomPassword(length int, minNumbers, minSpecial int) string {
+func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	b := make([]byte, length)
-	for i := range b {
-		b[i] = allowedChars[rand.Intn(len(allowedChars))]
+
+	for i := 0; i < length; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedChars))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = allowedChars[num.Int64()]
 	}
+
 	for i := 0; i < minNumbers; i++ {
-		b[rand.Intn(length)] = allowedNumbers[rand.Intn(len(allowedNumbers))]
+		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
+		if err != nil {
+			return "", err
+		}
+
+		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedNumbers))))
+		if err != nil {
+			return "", err
+		}
+
+		b[randInt.Int64()] = allowedNumbers[rollInt.Int64()]
 	}
 	for i := 0; i < minSpecial; i++ {
-		b[rand.Intn(length)] = allowedSpecial[rand.Intn(len(allowedSpecial))]
+		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
+		if err != nil {
+			return "", err
+		}
+
+		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedSpecial))))
+		if err != nil {
+			return "", err
+		}
+
+		b[randInt.Int64()] = allowedSpecial[rollInt.Int64()]
 	}
-	rand.Shuffle(length, func(i, j int) { b[i], b[j] = b[j], b[i] })
-	return string(b)
+	return string(b), nil
 }

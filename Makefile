@@ -57,3 +57,22 @@ benchmark:
 	@echo "--> Running benchmarks"
 	@go test -run ^$ -benchmem -bench=. ./...
 	@echo "--> Done"
+
+update-dbs: update-repeaterdb update-userdb
+
+update-userdb:
+	@echo "--> Updating user database"
+	wget -O internal/userdb/users.json https://www.radioid.net/static/users.json
+	@rm -f internal/userdb/users.json.xz
+	@cd internal/userdb && xz -e users.json
+	@date --rfc-3339=seconds | sed 's/ /T/' > internal/userdb/userdb-date.txt
+	@date --rfc-3339=seconds | sed 's/ /T/' > internal/repeaterdb/repeaterdb-date.txt
+	@echo "--> Done"
+
+update-repeaterdb:
+	@echo "--> Updating repeater database"
+	wget -O internal/repeaterdb/repeaters.json https://www.radioid.net/static/rptrs.json
+	@rm -f internal/repeaterdb/repeaters.json.xz
+	@cd internal/repeaterdb && xz -e repeaters.json
+	@date --rfc-3339=seconds > internal/repeaterdb/repeaterdb-date.txt
+	@echo "--> Done"

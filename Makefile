@@ -65,8 +65,9 @@ update-userdb:
 	wget -O internal/userdb/users.json https://www.radioid.net/static/users.json
 	@rm -f internal/userdb/users.json.xz
 	@cd internal/userdb && xz -e users.json
-	@date --rfc-3339=seconds | sed 's/ /T/' > internal/userdb/userdb-date.txt
-	@date --rfc-3339=seconds | sed 's/ /T/' > internal/repeaterdb/repeaterdb-date.txt
+	@date --rfc-3339=seconds | sed 's/ /T/' > internal/userdb/userdb-date.txt.tmp
+	@tr -d '\n' < internal/userdb/userdb-date.txt.tmp > internal/userdb/userdb-date.txt
+	@rm -f internal/userdb/userdb-date.txt.tmp
 	@echo "--> Done"
 
 update-repeaterdb:
@@ -74,5 +75,7 @@ update-repeaterdb:
 	wget -O internal/repeaterdb/repeaters.json https://www.radioid.net/static/rptrs.json
 	@rm -f internal/repeaterdb/repeaters.json.xz
 	@cd internal/repeaterdb && xz -e repeaters.json
-	@date --rfc-3339=seconds > internal/repeaterdb/repeaterdb-date.txt
+	@date --rfc-3339=seconds | sed 's/ /T/' > internal/repeaterdb/repeaterdb-date.txt.tmp
+	@tr -d '\n' < internal/repeaterdb/repeaterdb-date.txt.tmp > internal/repeaterdb/repeaterdb-date.txt
+	@rm -f internal/repeaterdb/repeaterdb-date.txt.tmp
 	@echo "--> Done"

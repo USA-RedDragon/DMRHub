@@ -25,6 +25,49 @@ type Packet struct {
 	RSSI int `msg:"rssi"`
 }
 
+func (p Packet) Equal(other Packet) bool {
+	if p.Signature != other.Signature {
+		return false
+	}
+	if p.Seq != other.Seq {
+		return false
+	}
+	if p.Src != other.Src {
+		return false
+	}
+	if p.Dst != other.Dst {
+		return false
+	}
+	if p.Repeater != other.Repeater {
+		return false
+	}
+	if p.Slot != other.Slot {
+		return false
+	}
+	if p.GroupCall != other.GroupCall {
+		return false
+	}
+	if p.FrameType != other.FrameType {
+		return false
+	}
+	if p.DTypeOrVSeq != other.DTypeOrVSeq {
+		return false
+	}
+	if p.StreamId != other.StreamId {
+		return false
+	}
+	if p.DMRData != other.DMRData {
+		return false
+	}
+	if p.BER != other.BER {
+		return false
+	}
+	if p.RSSI != other.RSSI {
+		return false
+	}
+	return true
+}
+
 func UnpackPacket(data []byte) Packet {
 	var packet Packet
 	packet.Signature = string(data[:4])

@@ -38,7 +38,7 @@ type store struct {
 
 // GetRedisStore get the actual woking store.
 // Ref: https://godoc.org/github.com/boj/redistore#RediStore
-func GetRedisStore(s Store) (err error, rediStore *RediStore) {
+func GetRedisStore(s Store) (rediStore *RediStore, err error) {
 	realStore, ok := s.(*store)
 	if !ok {
 		err = errors.New("unable to get the redis store: Store isn't *store")
@@ -51,7 +51,7 @@ func GetRedisStore(s Store) (err error, rediStore *RediStore) {
 
 // SetKeyPrefix sets the key prefix in the redis database.
 func SetKeyPrefix(s Store, prefix string) error {
-	err, rediStore := GetRedisStore(s)
+	rediStore, err := GetRedisStore(s)
 	if err != nil {
 		return err
 	}

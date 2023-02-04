@@ -59,8 +59,8 @@
             <Chip :label="tg.id + ' - ' + tg.name"></Chip>
           </span>
         </span>
-        <span class="p-float-label" v-else>
-          <span v-if="slotProps.data.slots != 1">
+        <span v-else>
+          <span v-if="slotProps.data.slots != 1" class="p-float-label">
             <MultiSelect
               id="ts1_static_talkgroups"
               v-model="slotProps.data.ts1_static_talkgroups"
@@ -135,8 +135,8 @@
             "
           ></Chip>
         </span>
-        <span class="p-float-label" v-else>
-          <span v-if="slotProps.data.slots != 1">
+        <span v-else>
+          <span v-if="slotProps.data.slots != 1" class="p-float-label">
             <Dropdown
               id="ts1_dynamic_talkgroup"
               v-model="slotProps.data.ts1_dynamic_talkgroup"

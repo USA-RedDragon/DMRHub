@@ -43,7 +43,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: imports
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -66,7 +66,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: errcheck
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -89,7 +89,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: lint
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -112,7 +112,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: shadow
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -135,7 +135,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: staticcheck
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -158,7 +158,7 @@ jobs:
       - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.2
+        uses: USA-RedDragon/golang-github-actions@v1.2.3
         with:
           run: sec
           token: ${{ secrets.GITHUB_TOKEN }}

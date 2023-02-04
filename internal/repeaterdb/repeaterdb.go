@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
@@ -23,6 +25,7 @@ var uncompressedJson []byte
 
 type dmrRepeaterDB struct {
 	Repeaters []DMRRepeater `json:"rptrs"`
+	Date      time.Time     `json:"-"`
 }
 
 type DMRRepeater struct {
@@ -52,27 +55,16 @@ func IsValidRepeaterID(DMRId uint) bool {
 }
 
 func IsInDB(DMRId uint, callsign string) bool {
-	matchesTrustee := false
-	registeredDMRID := false
-
-	for _, repeater := range *GetDMRRepeaters() {
-		if repeater.ID == fmt.Sprintf("%d", DMRId) {
-			registeredDMRID = true
-		}
-
-		if strings.EqualFold(repeater.Trustee, callsign) {
-			matchesTrustee = true
-			if registeredDMRID {
-				break
-			}
-		}
-		registeredDMRID = false
-		matchesTrustee = false
+	repeater, ok := dmrRepeaterMap[DMRId]
+	if !ok {
+		return false
 	}
-	if registeredDMRID && matchesTrustee {
-		return true
+
+	if !strings.EqualFold(repeater.Trustee, callsign) {
+		return false
 	}
-	return false
+
+	return true
 }
 
 func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
@@ -81,8 +73,19 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 
 var dmrRepeaters dmrRepeaterDB
 
-func GetDMRRepeaters() *[]DMRRepeater {
+var dmrRepeaterMap map[uint]DMRRepeater
+
+//go:embed repeaterdb-date.txt
+var builtInDateStr string
+var builtInDate time.Time
+
+func GetDMRRepeaters() *map[uint]DMRRepeater {
 	if len(dmrRepeaters.Repeaters) == 0 {
+		builtInDate, err := time.Parse(time.RFC3339, builtInDateStr)
+		if err != nil {
+			klog.Fatalf("Error parsing built-in date: %v", err)
+		}
+		dmrRepeaters.Date = builtInDate
 		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
@@ -94,12 +97,22 @@ func GetDMRRepeaters() *[]DMRRepeater {
 		if err := json.Unmarshal(uncompressedJson, &dmrRepeaters); err != nil {
 			klog.Exitf("Error decoding DMR repeaters database: %v", err)
 		}
+
+		dmrRepeaterMap = make(map[uint]DMRRepeater)
+		for i := range dmrRepeaters.Repeaters {
+			id, err := strconv.Atoi(dmrRepeaters.Repeaters[i].ID)
+			if err != nil {
+				klog.Errorf("Error converting repeater ID to int: %v", err)
+				continue
+			}
+			dmrRepeaterMap[uint(id)] = dmrRepeaters.Repeaters[i]
+		}
 	}
 
 	if len(dmrRepeaters.Repeaters) == 0 {
 		klog.Exit("No DMR repeaters found in database")
 	}
-	return &dmrRepeaters.Repeaters
+	return &dmrRepeaterMap
 }
 
 func GetRepeater(id uint) (DMRRepeater, error) {
@@ -139,4 +152,8 @@ func Update() error {
 	klog.Infof("Update complete. Loaded %d DMR repeaters", len(dmrRepeaters.Repeaters))
 
 	return nil
+}
+
+func GetDate() time.Time {
+	return dmrRepeaters.Date
 }

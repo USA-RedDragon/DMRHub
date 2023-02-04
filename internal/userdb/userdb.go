@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
@@ -22,6 +23,7 @@ var uncompressedJson []byte
 
 type dmrUserDB struct {
 	Users []DMRUser `json:"users"`
+	Date  time.Time `json:"-"`
 }
 
 type DMRUser struct {
@@ -45,27 +47,20 @@ func IsValidUserID(DMRId uint) bool {
 }
 
 func IsInDB(DMRId uint, callsign string) bool {
-	matchesCallsign := false
-	registeredDMRID := false
-
-	for _, user := range *GetDMRUsers() {
-		if user.ID == DMRId {
-			registeredDMRID = true
-		}
-
-		if strings.EqualFold(user.Callsign, callsign) {
-			matchesCallsign = true
-			if registeredDMRID {
-				break
-			}
-		}
-		registeredDMRID = false
-		matchesCallsign = false
+	user, ok := dmrUserMap[DMRId]
+	if !ok {
+		return false
 	}
-	if registeredDMRID && matchesCallsign {
-		return true
+
+	if user.ID != DMRId {
+		return false
 	}
-	return false
+
+	if !strings.EqualFold(user.Callsign, callsign) {
+		return false
+	}
+
+	return true
 }
 
 func (e *dmrUserDB) Unmarshal(b []byte) error {
@@ -74,8 +69,19 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 
 var dmrUsers dmrUserDB
 
-func GetDMRUsers() *[]DMRUser {
+var dmrUserMap map[uint]DMRUser
+
+//go:embed userdb-date.txt
+var builtInDateStr string
+var builtInDate time.Time
+
+func GetDMRUsers() *map[uint]DMRUser {
 	if len(dmrUsers.Users) == 0 {
+		builtInDate, err := time.Parse(time.RFC3339, builtInDateStr)
+		if err != nil {
+			klog.Fatalf("Error parsing built-in date: %v", err)
+		}
+		dmrUsers.Date = builtInDate
 		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
@@ -87,12 +93,16 @@ func GetDMRUsers() *[]DMRUser {
 		if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
 			klog.Exitf("Error decoding DMR users database: %v", err)
 		}
+		dmrUserMap = make(map[uint]DMRUser)
+		for i := range dmrUsers.Users {
+			dmrUserMap[dmrUsers.Users[i].ID] = dmrUsers.Users[i]
+		}
 	}
 
 	if len(dmrUsers.Users) == 0 {
 		klog.Exit("No DMR users found in database")
 	}
-	return &dmrUsers.Users
+	return &dmrUserMap
 }
 
 func Update() error {
@@ -123,4 +133,8 @@ func Update() error {
 	klog.Infof("Update complete. Loaded %d DMR users", len(dmrUsers.Users))
 
 	return nil
+}
+
+func GetDate() time.Time {
+	return dmrUsers.Date
 }

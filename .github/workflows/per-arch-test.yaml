@@ -1,8 +1,8 @@
 name: Native
 
 on:
-  release:
-    types: [created]
+  pull_request:
+  push:
 
 jobs:
   frontend:
@@ -28,8 +28,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  release:
-    name: Release
+  test:
+    name: Test
     needs: frontend
     runs-on: ubuntu-latest
     strategy:
@@ -62,16 +62,12 @@ jobs:
         with:
           name: frontend
           path: internal/http/frontend/dist
-      - uses: wangyoucao577/go-release-action@v1.35
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          pre_command: make install-deps && go generate ./...
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          goversion: "https://dl.google.com/go/go1.20.linux-amd64.tar.gz"
-          extra_files: LICENSE
-          md5sum: false
-          sha256sum: true
-          overwrite: true
-          retry: 30
-      - uses: creekorful/goreportcard-action@v1.0
+          go-version: "1.20"
+      - run: make build && make test
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}

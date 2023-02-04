@@ -13,6 +13,8 @@ COPY . .
 # If this is a CI build, we need to use build-ci instead of build
 RUN if [ "$IS_CI" = "true" ]; then make build-ci; else make build; fi
 
+RUN if [ "$IS_CI" = "true" ]; then make test; fi
+
 FROM golang:alpine
 
 RUN apk update && apk add --no-cache ca-certificates

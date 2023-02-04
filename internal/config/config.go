@@ -115,7 +115,10 @@ func GetConfig() *Config {
 		}
 		if currentConfig.InitialAdminUserPassword == "" {
 			klog.Errorf("Initial admin user password not set, using auto-generated password")
-			currentConfig.InitialAdminUserPassword = utils.RandomPassword(15, 4, 2)
+			currentConfig.InitialAdminUserPassword, err = utils.RandomPassword(15, 4, 2)
+			if err != nil {
+				klog.Errorf("Password generation failed")
+			}
 		}
 		if currentConfig.RedisPassword == "" {
 			currentConfig.RedisPassword = "password"

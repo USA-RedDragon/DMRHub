@@ -53,3 +53,22 @@ jobs:
           GIT_AUTHOR_EMAIL: ${{ steps.import-gpg.outputs.email }}
           GIT_COMMITTER_NAME: ${{ steps.import-gpg.outputs.name }}
           GIT_COMMITTER_EMAIL: ${{ steps.import-gpg.outputs.email }}
+      - name: Create Pull Request
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { repo, owner } = context.repo;
+            const result = await github.rest.pulls.create({
+              title: 'Update RadioID.net Databases',
+              owner,
+              repo,
+              head: 'automated/radioid-update',
+              base: '${{ github.ref_name }}',
+              body: 'Automated update to the RadioID.net DMR users and repeaters databases'
+            });
+            github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: result.data.number,
+              labels: ['update', 'chore', 'automated pr']
+            });

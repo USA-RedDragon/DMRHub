@@ -1,4 +1,4 @@
-name: Native
+name: Per-architecture test
 
 on:
   pull_request:

@@ -32,6 +32,7 @@ jobs:
     needs: frontend
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         goos: [linux]
         goarch: ["386", arm, amd64, arm64, riscv64]
@@ -62,6 +63,7 @@ jobs:
     needs: frontend
     runs-on: macos-latest
     strategy:
+      fail-fast: false
       matrix:
         goos: [darwin]
         goarch: [amd64]
@@ -90,6 +92,7 @@ jobs:
     needs: frontend
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         goos: [windows]
         goarch: ["386", amd64]
@@ -118,6 +121,7 @@ jobs:
     needs: frontend
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         os:
           - name: freebsd

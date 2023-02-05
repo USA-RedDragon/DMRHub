@@ -19,7 +19,6 @@ build-frontend:
 	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
 	@cd internal/http/frontend && npm run build
-	@$(MAKE) -f $(THIS_FILE) fmt
 	@echo "--> Done"
 
 build: install-deps build-frontend

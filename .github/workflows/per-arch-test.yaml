@@ -112,3 +112,51 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+
+  test-bsd:
+    name: Test BSD
+    needs: frontend
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - name: freebsd
+            architecture: x86-64
+            version: "13.1"
+
+          - name: netbsd
+            architecture: x86-64
+            version: "9.2"
+
+          - name: openbsd
+            architecture: x86-64
+            version: "7.2"
+
+          - name: openbsd
+            architecture: arm64
+            version: "7.2"
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Copy built frontend
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+
+      - name: Test on ${{ matrix.os.name }}
+        uses: cross-platform-actions/action@v0.9.0
+        env:
+          GO_SRC: https://go.dev/dl/go1.20.src.tar.gz
+          GO_VERSION: "1.20"
+        with:
+          environment_variables: MY_ENV1 MY_ENV2
+          operating_system: ${{ matrix.os.name }}
+          architecture: ${{ matrix.os.architecture }}
+          version: ${{ matrix.os.version }}
+          shell: bash
+          run: |
+            pkg add curl
+            curl -o go.tgz ${GO_SRC}
+            tar xvf go.tgz

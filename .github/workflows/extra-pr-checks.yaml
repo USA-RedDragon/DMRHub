@@ -71,6 +71,8 @@ jobs:
           run: errcheck
           token: ${{ secrets.GITHUB_TOKEN }}
           flags: -ignoregenerated
+        env:
+          GOFLAGS: -buildvcs=false
 
   shadow:
     name: Shadow

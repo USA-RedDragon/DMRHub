@@ -160,6 +160,8 @@ jobs:
           version: ${{ matrix.os.version }}
           shell: bash
           run: |
-            pkg add curl
+            if [ "${{ matrix.os.name }}" == freebsd ]; then
+              sudo pkg add curl
+            fi
             curl -o go.tgz ${GO_SRC}
             tar xvf go.tgz

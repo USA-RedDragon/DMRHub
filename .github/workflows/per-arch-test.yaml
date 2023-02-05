@@ -164,4 +164,4 @@ jobs:
               sudo pkg install curl
             fi
             curl -L -o go.tgz ${GO_SRC}
-            tar xvf go.tgz
+            tar xzvf go.tgz

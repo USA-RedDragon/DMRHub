@@ -49,7 +49,10 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamId uint, packet models.
 	packet.BER = -1
 	packet.RSSI = -1
 
-	p.Redis.stream(ctx, streamId, packet)
+	err = p.Redis.stream(ctx, streamId, packet)
+	if err != nil {
+		klog.Errorf("Error storing parrot stream in redis", err)
+	}
 }
 
 func (p *Parrot) StopStream(ctx context.Context, streamId uint) {

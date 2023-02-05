@@ -121,7 +121,12 @@ func Update() error {
 		klog.Errorf("ReadAll error %s", err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			klog.Errorf("Error closing response body: %v", err)
+		}
+	}()
 	if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
 		klog.Errorf("Error decoding DMR users database: %v", err)
 		return err

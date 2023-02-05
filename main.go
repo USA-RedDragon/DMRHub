@@ -76,7 +76,12 @@ func main() {
 
 	if config.GetConfig().OTLPEndpoint != "" {
 		cleanup := initTracer()
-		defer cleanup(ctx)
+		defer func() {
+			err := cleanup(ctx)
+			if err != nil {
+				klog.Errorf("Failed to shutdown tracer: %s", err)
+			}
+		}()
 	}
 
 	db, err := gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
@@ -90,7 +95,11 @@ func main() {
 			return
 		}
 	}
-	db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	if err != nil {
+		klog.Exitf("Failed to migrate database: %s", err)
+		return
+	}
 	if db.Error != nil {
 		//We have an error
 		klog.Exitf(fmt.Sprintf("Failed with error %s", db.Error))
@@ -148,12 +157,15 @@ func main() {
 			klog.Errorf("Failed to update repeater database: %s using built in one", err)
 		}
 	}()
-	scheduler.Every(1).Day().At("00:00").Do(func() {
+	_, err = scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = repeaterdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
+	if err != nil {
+		klog.Errorf("Failed to schedule repeater update: %s", err)
+	}
 
 	go func() {
 		userdb.GetDMRUsers()
@@ -162,12 +174,15 @@ func main() {
 			klog.Errorf("Failed to update user database: %s using built in one", err)
 		}
 	}()
-	scheduler.Every(1).Day().At("00:00").Do(func() {
+	_, err = scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = userdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
+	if err != nil {
+		klog.Errorf("Failed to schedule user update: %s", err)
+	}
 
 	scheduler.StartAsync()
 
@@ -184,7 +199,12 @@ func main() {
 		klog.Errorf("Failed to connect to redis: %s", err)
 		return
 	}
-	defer redis.Close()
+	defer func() {
+		err := redis.Close()
+		if err != nil {
+			klog.Errorf("Failed to close redis: %s", err)
+		}
+	}()
 	if config.GetConfig().OTLPEndpoint != "" {
 		if err := redisotel.InstrumentTracing(redis); err != nil {
 			klog.Errorf("Failed to trace redis: %s", err)

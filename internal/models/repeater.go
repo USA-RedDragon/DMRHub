@@ -235,8 +235,16 @@ func (p *Repeater) subscribeRepeater(ctx context.Context, redis *redis.Client) {
 		klog.Infof("Listening for calls on repeater %d", p.RadioID)
 	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
-	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:repeater:%d", p.RadioID))
+		if err != nil {
+			klog.Errorf("Error unsubscribing from packets:repeater:%d: %s", p.RadioID, err)
+		}
+		err = pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub connection: %s", err)
+		}
+	}()
 	pubsubChannel := pubsub.Channel()
 	for {
 		select {
@@ -279,8 +287,16 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 		klog.Infof("Listening for calls on repeater %d, talkgroup %d", p.RadioID, tg)
 	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
-	defer pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
+		if err != nil {
+			klog.Errorf("Error unsubscribing from packets:talkgroup:%d: %s", tg, err)
+		}
+		err = pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub connection: %s", err)
+		}
+	}()
 	pubsubChannel := pubsub.Channel()
 
 	for {
@@ -322,8 +338,14 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 				redis.Publish(ctx, "outgoing:noaddr", packet.Encode())
 			} else {
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
-				pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
-				pubsub.Close()
+				err := pubsub.Unsubscribe(ctx, fmt.Sprintf("packets:talkgroup:%d", tg))
+				if err != nil {
+					klog.Errorf("Error unsubscribing from packets:talkgroup:%d: %s", tg, err)
+				}
+				err = pubsub.Close()
+				if err != nil {
+					klog.Errorf("Error closing pubsub connection: %s", err)
+				}
 				return
 			}
 		}

@@ -104,27 +104,57 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	} else {
 		if models.RepeaterIDExists(db, repeaterID) {
 			repeater := models.FindRepeaterByID(db, repeaterID)
-			db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
+			err := db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1StaticTalkgroups: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1StaticTalkgroups"})
+				return
+			}
 			repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
-			db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
+			err = db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2StaticTalkgroups: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2StaticTalkgroups"})
+				return
+			}
 			repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
 
 			if json.TS1DynamicTalkgroup.ID == 0 {
 				repeater.TS1DynamicTalkgroupID = nil
-				db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
+				err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
+				if err != nil {
+					klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS1DynamicTalkgroup: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1DynamicTalkgroup"})
+					return
+				}
 			} else {
 				repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
 				repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
-				db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
+				err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
+				if err != nil {
+					klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1DynamicTalkgroup: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1DynamicTalkgroup"})
+					return
+				}
 			}
 
 			if json.TS2DynamicTalkgroup.ID == 0 {
 				repeater.TS2DynamicTalkgroupID = nil
-				db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
+				err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
+				if err != nil {
+					klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS2DynamicTalkgroup: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2DynamicTalkgroup"})
+					return
+				}
 			} else {
 				repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
 				repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
-				db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
+				err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
+				if err != nil {
+					klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2DynamicTalkgroup: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2DynamicTalkgroup"})
+					return
+				}
 			}
 
 			db.Save(&repeater)
@@ -309,10 +339,20 @@ func POSTRepeaterLink(c *gin.Context) {
 		switch slot {
 		case "1":
 			// Append TS1StaticTalkgroups association on repeater to target
-			db.Model(&repeater).Association("TS1StaticTalkgroups").Append(&talkgroup)
+			err := db.Model(&repeater).Association("TS1StaticTalkgroups").Append(&talkgroup)
+			if err != nil {
+				klog.Errorf("Error appending TS1StaticTalkgroups: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS1StaticTalkgroups"})
+				return
+			}
 		case "2":
 			// Append TS2StaticTalkgroups association on repeater to target
-			db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
+			err := db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
+			if err != nil {
+				klog.Errorf("Error appending TS2StaticTalkgroups: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS2StaticTalkgroups"})
+				return
+			}
 		}
 	}
 	go repeater.ListenForCallsOn(c.Request.Context(), redis, talkgroup.ID)
@@ -403,7 +443,12 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			for _, tg := range repeater.TS1StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
 					oldID := talkgroup.ID
-					db.Model(&repeater).Association("TS1StaticTalkgroups").Delete(&talkgroup)
+					err := db.Model(&repeater).Association("TS1StaticTalkgroups").Delete(&talkgroup)
+					if err != nil {
+						klog.Errorf("Error deleting TS1StaticTalkgroups: %v", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1StaticTalkgroups"})
+						return
+					}
 					repeater.CancelSubscription(oldID)
 					db.Save(&repeater)
 					found = true
@@ -422,7 +467,12 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			for _, tg := range repeater.TS2StaticTalkgroups {
 				if tg.ID == talkgroup.ID {
 					oldID := talkgroup.ID
-					db.Model(&repeater).Association("TS2StaticTalkgroups").Delete(&talkgroup)
+					err := db.Model(&repeater).Association("TS2StaticTalkgroups").Delete(&talkgroup)
+					if err != nil {
+						klog.Errorf("Error deleting TS2StaticTalkgroups: %v", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2StaticTalkgroups"})
+						return
+					}
 					repeater.CancelSubscription(oldID)
 					db.Save(&repeater)
 					found = true

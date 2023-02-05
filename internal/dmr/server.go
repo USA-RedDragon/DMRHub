@@ -59,7 +59,12 @@ func (s *DMRServer) Stop(ctx context.Context) {
 
 func (s *DMRServer) listen(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "incoming")
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub", err)
+		}
+	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
@@ -76,7 +81,12 @@ func (s *DMRServer) listen(ctx context.Context) {
 
 func (s *DMRServer) send(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing")
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub", err)
+		}
+	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
@@ -84,16 +94,24 @@ func (s *DMRServer) send(ctx context.Context) {
 			klog.Errorf("Error unmarshalling packet", err)
 			continue
 		}
-		s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
+		_, err = s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
 			IP:   net.ParseIP(packet.RemoteIP),
 			Port: packet.RemotePort,
 		})
+		if err != nil {
+			klog.Errorf("Error sending packet", err)
+		}
 	}
 }
 
 func (s *DMRServer) sendNoAddr(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing:noaddr")
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub", err)
+		}
+	}()
 	for msg := range pubsub.Channel() {
 		packet := models.UnpackPacket([]byte(msg.Payload))
 		repeater, err := s.Redis.get(ctx, packet.Repeater)
@@ -101,23 +119,35 @@ func (s *DMRServer) sendNoAddr(ctx context.Context) {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
 			continue
 		}
-		s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
 			IP:   net.ParseIP(repeater.IP),
 			Port: repeater.Port,
 		})
+		if err != nil {
+			klog.Errorf("Error sending packet", err)
+		}
 	}
 }
 
 func (s *DMRServer) Listen(ctx context.Context) {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
-	// 1MB buffers, say what?
-	server.SetReadBuffer(1000000)
-	server.SetWriteBuffer(1000000)
-	s.Server = server
-	s.Started = true
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
 	}
+
+	// 1MB buffers, say what?
+	err = server.SetReadBuffer(1000000)
+	if err != nil {
+		klog.Exitf("Error opening UDP Socket", err)
+	}
+	err = server.SetWriteBuffer(1000000)
+	if err != nil {
+		klog.Exitf("Error opening UDP Socket", err)
+	}
+
+	s.Server = server
+	s.Started = true
+
 	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"crypto/sha1"
+	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -59,7 +59,7 @@ func POSTUser(c *gin.Context) {
 
 		if config.GetConfig().HIBPAPIKey != "" {
 			goPwned := gopwned.NewClient(nil, config.GetConfig().HIBPAPIKey)
-			h := sha1.New()
+			h := sha1.New() //#nosec G401 -- False positive, we are not using this for crypto, just HIBP
 			h.Write([]byte(json.Password))
 			sha1HashedPW := fmt.Sprintf("%X", h.Sum(nil))
 			frange := sha1HashedPW[0:5]

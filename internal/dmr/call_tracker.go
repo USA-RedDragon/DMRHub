@@ -425,6 +425,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 			if time.Since(call.StartTime) < 100*time.Millisecond {
 				// This is probably a key-up, so delete the call from the db
+				call := call
 				c.DB.Delete(&call)
 				return
 			}

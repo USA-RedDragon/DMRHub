@@ -96,7 +96,11 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 	} else {
 		if len(json.UserIDs) == 0 {
 			// remove all NCOs
-			db.Model(&talkgroup).Association("NCOs").Clear()
+			err := db.Model(&talkgroup).Association("NCOs").Clear()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
@@ -110,7 +114,11 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 			return
 		}
 		// add NCOs
-		db.Model(&talkgroup).Association("NCOs").Clear()
+		err := db.Model(&talkgroup).Association("NCOs").Clear()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		for _, userID := range json.UserIDs {
 			user := models.FindUserByID(db, userID)
 			if db.Error != nil {
@@ -121,7 +129,11 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 				return
 			}
-			db.Model(&talkgroup).Association("NCOs").Append(&user)
+			err := db.Model(&talkgroup).Association("NCOs").Append(&user)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
@@ -158,7 +170,11 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 	} else {
 		if len(json.UserIDs) == 0 {
 			// remove all Admins
-			db.Model(&talkgroup).Association("Admins").Clear()
+			err := db.Model(&talkgroup).Association("Admins").Clear()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return
@@ -172,7 +188,11 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 			return
 		}
 		// add Admins
-		db.Model(&talkgroup).Association("Admins").Clear()
+		err := db.Model(&talkgroup).Association("Admins").Clear()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		for _, userID := range json.UserIDs {
 			user := models.FindUserByID(db, userID)
 			if db.Error != nil {
@@ -183,7 +203,11 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 				return
 			}
-			db.Model(&talkgroup).Association("Admins").Append(&user)
+			err := db.Model(&talkgroup).Association("Admins").Append(&user)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 			if db.Error != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 				return

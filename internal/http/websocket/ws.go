@@ -61,7 +61,12 @@ func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *h
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			klog.Errorf("Failed to close websocket: %v", err)
+		}
+	}()
 
 	readFailed := make(chan string)
 	go func() {
@@ -74,7 +79,11 @@ func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *h
 			if string(msg) == "PING" {
 				msg = []byte("PONG")
 			}
-			conn.WriteMessage(t, msg)
+			err = conn.WriteMessage(t, msg)
+			if err != nil {
+				readFailed <- "write failed"
+				break
+			}
 		}
 	}()
 
@@ -90,7 +99,12 @@ func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session se
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			klog.Errorf("Failed to close websocket: %v", err)
+		}
+	}()
 
 	readFailed := make(chan string)
 	go func() {
@@ -100,7 +114,11 @@ func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session se
 				readFailed <- "read failed"
 				break
 			}
-			conn.WriteMessage(t, msg)
+			err = conn.WriteMessage(t, msg)
+			if err != nil {
+				readFailed <- "write failed"
+				break
+			}
 		}
 	}()
 
@@ -116,20 +134,40 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			klog.Errorf("Failed to close websocket: %v", err)
+		}
+	}()
 
 	userIDIface := session.Get("user_id")
 	var pubsub *redis.PubSub
 	if userIDIface == nil {
 		// User ID not found, subscribe to TG calls
 		pubsub = h.redis.Subscribe(ctx, "calls")
-		defer pubsub.Unsubscribe(ctx, "calls")
+		defer func() {
+			err := pubsub.Unsubscribe(ctx, "calls")
+			if err != nil {
+				klog.Errorf("Failed to unsubscribe from calls: %v", err)
+			}
+		}()
 	} else {
 		userID := userIDIface.(uint)
 		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
-		defer pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
+		defer func() {
+			err := pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
+			if err != nil {
+				klog.Errorf("Failed to unsubscribe from calls: %v", err)
+			}
+		}()
 	}
-	defer pubsub.Close()
+	defer func() {
+		err := pubsub.Close()
+		if err != nil {
+			klog.Errorf("Failed to close pubsub: %v", err)
+		}
+	}()
 
 	readFailed := make(chan string)
 	go func() {

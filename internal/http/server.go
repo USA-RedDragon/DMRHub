@@ -43,7 +43,10 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 
 	// Setup API
 	r := gin.Default()
-	r.SetTrustedProxies(config.GetConfig().TrustedProxies)
+	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
+	if err != nil {
+		klog.Error(err)
+	}
 
 	if config.GetConfig().Debug {
 		pprof.Register(r)
@@ -95,7 +98,12 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 		if getErr != nil {
 			klog.Errorf("Failed to open file: %s", getErr)
 		}
-		defer file.Close()
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				klog.Errorf("Failed to close file: %s", err)
+			}
+		}()
 		fileContent, getErr := io.ReadAll(file)
 		if getErr != nil {
 			klog.Errorf("Failed to read file: %s", getErr)
@@ -116,7 +124,12 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 				return
 			}
 		}
-		defer file.Close()
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				klog.Errorf("Failed to close file: %s", err)
+			}
+		}()
 		fileContent, readErr := io.ReadAll(file)
 		if readErr != nil {
 			klog.Errorf("Failed to read file: %s", readErr)
@@ -143,7 +156,12 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 				return
 			}
 		}
-		defer file.Close()
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				klog.Errorf("Failed to close file: %s", err)
+			}
+		}()
 		fileContent, nextErr := io.ReadAll(file)
 		if nextErr != nil {
 			klog.Errorf("Failed to read file: %s", nextErr)
@@ -167,18 +185,23 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 			klog.Errorf("Failed to get wildcard: %s", err)
 			return
 		}
-		file, err := FS.Open(path.Join("frontend/dist", wild, wild2, wild3))
-		if err != nil {
-			file, err = FS.Open("frontend/dist/index.html")
-			if err != nil {
-				klog.Errorf("Failed to open file: %s", err)
+		file, fileErr := FS.Open(path.Join("frontend/dist", wild, wild2, wild3))
+		if fileErr != nil {
+			file, fileErr = FS.Open("frontend/dist/index.html")
+			if fileErr != nil {
+				klog.Errorf("Failed to open file: %s", fileErr)
 				return
 			}
 		}
-		defer file.Close()
-		fileContent, err := io.ReadAll(file)
-		if err != nil {
-			klog.Errorf("Failed to read file: %s", err)
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				klog.Errorf("Failed to close file: %s", err)
+			}
+		}()
+		fileContent, fileErr := io.ReadAll(file)
+		if fileErr != nil {
+			klog.Errorf("Failed to read file: %s", fileErr)
 			return
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
@@ -186,15 +209,20 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
 		staticGroup.GET(staticName, func(c *gin.Context) {
-			file, err := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
-			if err != nil {
-				klog.Errorf("Failed to open file: %s", err)
+			file, fileErr := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
+			if fileErr != nil {
+				klog.Errorf("Failed to open file: %s", fileErr)
 				return
 			}
-			defer file.Close()
-			fileContent, err := io.ReadAll(file)
-			if err != nil {
-				klog.Errorf("Failed to read file: %s", err)
+			defer func() {
+				err = file.Close()
+				if err != nil {
+					klog.Errorf("Failed to close file: %s", err)
+				}
+			}()
+			fileContent, fileErr := io.ReadAll(file)
+			if fileErr != nil {
+				klog.Errorf("Failed to read file: %s", fileErr)
 				return
 			}
 			if strings.HasSuffix(c.Request.URL.Path, ".js") {
@@ -257,7 +285,10 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	}
 	s.SetKeepAlivesEnabled(false)
 
-	s.ListenAndServe()
+	err = s.ListenAndServe()
+	if err != nil {
+		klog.Fatalf("Failed to start HTTP server: %s", err)
+	}
 }
 
 func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {

@@ -259,7 +259,10 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					if dbRepeater.TS2DynamicTalkgroupID != nil {
 						oldTGID := *dbRepeater.TS2DynamicTalkgroupID
 						s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
-						s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
+						err := s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
+						if err != nil {
+							klog.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
+						}
 						dbRepeater.CancelSubscription(oldTGID)
 					}
 				} else {
@@ -267,7 +270,10 @@ func (s *DMRServer) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					if dbRepeater.TS1DynamicTalkgroupID != nil {
 						oldTGID := *dbRepeater.TS1DynamicTalkgroupID
 						s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
-						s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
+						err := s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
+						if err != nil {
+							klog.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
+						}
 						dbRepeater.CancelSubscription(oldTGID)
 					}
 				}

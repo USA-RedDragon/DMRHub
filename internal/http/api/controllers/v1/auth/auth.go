@@ -48,7 +48,12 @@ func POSTLogin(c *gin.Context) {
 		if verified && err == nil {
 			if user.Approved {
 				session.Set("user_id", user.ID)
-				session.Save()
+				err = session.Save()
+				if err != nil {
+					klog.Errorf("POSTLogin: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"status": 500, "error": "Error saving session"})
+					return
+				}
 				c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged in"})
 				return
 			} else {
@@ -66,6 +71,11 @@ func POSTLogin(c *gin.Context) {
 func GETLogout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
-	session.Save()
+	err := session.Save()
+	if err != nil {
+		klog.Errorf("GETLogout: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"status": 500, "error": "Error saving session"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged out"})
 }

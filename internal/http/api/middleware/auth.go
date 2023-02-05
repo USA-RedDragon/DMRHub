@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,9 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		session := sessions.Default(c)
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireAdminOrTGOwner: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -67,7 +70,9 @@ func RequireAdmin() gin.HandlerFunc {
 		session := sessions.Default(c)
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireAdmin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -106,7 +111,9 @@ func RequireSuperAdmin() gin.HandlerFunc {
 		session := sessions.Default(c)
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireSuperAdmin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -129,7 +136,9 @@ func RequireLogin() gin.HandlerFunc {
 		session := sessions.Default(c)
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireLogin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -168,7 +177,9 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		id := c.Param("id")
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireRepeaterOwnerOrAdmin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -213,7 +224,9 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		id := c.Param("id")
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireTalkgroupOwnerOrAdmin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -261,7 +274,9 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		id := c.Param("id")
 		userId := session.Get("user_id")
 		if userId == nil {
-			klog.Error("userId not found")
+			if config.GetConfig().Debug {
+				klog.Error("RequireSelfOrAdmin: Failed to get user_id from session")
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

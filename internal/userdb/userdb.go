@@ -137,6 +137,12 @@ func Update() error {
 		klog.Exit("No DMR users found in database")
 	}
 
+	dmrUserMap = make(map[uint]DMRUser)
+	for i := range dmrUsers.Users {
+		dmrUserMap[dmrUsers.Users[i].ID] = dmrUsers.Users[i]
+	}
+	dmrUsers.Date = time.Now()
+
 	klog.Infof("Update complete. Loaded %d DMR users", len(dmrUsers.Users))
 
 	return nil

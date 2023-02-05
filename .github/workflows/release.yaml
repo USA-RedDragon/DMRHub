@@ -33,6 +33,7 @@ jobs:
     needs: frontend
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         goos: [openbsd, netbsd, freebsd, linux, windows, darwin]
         goarch: ["386", arm, amd64, arm64, riscv64]

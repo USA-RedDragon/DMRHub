@@ -64,7 +64,7 @@ jobs:
     strategy:
       matrix:
         goos: [darwin]
-        goarch: [amd64, arm64]
+        goarch: [amd64]
     steps:
       - uses: actions/checkout@v3
       - name: Copy built frontend

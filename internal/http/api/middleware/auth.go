@@ -17,8 +17,8 @@ import (
 func RequireAdminOrTGOwner() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireAdminOrTGOwner: Failed to get user_id from session")
 			}
@@ -30,7 +30,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdminOrTGOwner"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -38,7 +38,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		// Open up the DB and check if the user is an admin
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -49,7 +49,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		}
 
 		// Check if the user is the owner of any talkgroups
-		talkgroups, err := models.FindTalkgroupsByOwnerID(db, userId.(uint))
+		talkgroups, err := models.FindTalkgroupsByOwnerID(db, userID.(uint))
 		if err != nil {
 			klog.Error(err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -68,8 +68,8 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireAdmin: Failed to get user_id from session")
 			}
@@ -81,7 +81,7 @@ func RequireAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -89,7 +89,7 @@ func RequireAdmin() gin.HandlerFunc {
 		// Open up the DB and check if the user is an admin
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -109,8 +109,8 @@ func RequireSuperAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		session := sessions.Default(c)
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireSuperAdmin: Failed to get user_id from session")
 			}
@@ -121,10 +121,10 @@ func RequireSuperAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
-		if userId.(uint) != 999999 {
+		if userID.(uint) != 999999 {
 			klog.Error("User is not a super admin")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
@@ -134,8 +134,8 @@ func RequireSuperAdmin() gin.HandlerFunc {
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireLogin: Failed to get user_id from session")
 			}
@@ -147,7 +147,7 @@ func RequireLogin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireLogin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -155,7 +155,7 @@ func RequireLogin() gin.HandlerFunc {
 		// Open up the DB and check if the user exists
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -175,8 +175,8 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireRepeaterOwnerOrAdmin: Failed to get user_id from session")
 			}
@@ -188,7 +188,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -196,7 +196,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if they own repeater with id = id
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -222,8 +222,8 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireTalkgroupOwnerOrAdmin: Failed to get user_id from session")
 			}
@@ -235,7 +235,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -243,7 +243,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if they own talkgroup with id = id
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -272,8 +272,8 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
-		userId := session.Get("user_id")
-		if userId == nil {
+		userID := session.Get("user_id")
+		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireSelfOrAdmin: Failed to get user_id from session")
 			}
@@ -285,7 +285,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireSelfOrAdmin"),
-				attribute.Int("user.id", int(userId.(uint))),
+				attribute.Int("user.id", int(userID.(uint))),
 			)
 		}
 
@@ -294,7 +294,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if their ID matches id
 		var user models.User
-		db.Find(&user, "id = ?", userId.(uint))
+		db.Find(&user, "id = ?", userID.(uint))
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),

@@ -1,5 +1,7 @@
 package models
 
+// RawDMRPacket is a raw DMR packet
+//
 //go:generate msgp
 type RawDMRPacket struct {
 	Data       []byte `msg:"data"`

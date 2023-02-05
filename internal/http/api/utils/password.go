@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type argon2_params struct {
+type argon2Params struct {
 	memory      uint32
 	iterations  uint32
 	parallelism uint8
@@ -28,7 +28,7 @@ var (
 )
 
 func HashPassword(password string, salt string) string {
-	var params = argon2_params{
+	var params = argon2Params{
 		memory:      64 * 1024,
 		iterations:  3,
 		parallelism: 8,
@@ -65,7 +65,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 		return false, ErrIncompatibleVersion
 	}
 
-	p := &argon2_params{}
+	p := &argon2Params{}
 	_, err = fmt.Sscanf(vals[3], "m=%d,t=%d,p=%d", &p.memory, &p.iterations, &p.parallelism)
 	if err != nil {
 		return false, err

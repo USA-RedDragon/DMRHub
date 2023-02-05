@@ -6,6 +6,8 @@ import (
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 )
 
+// Packet is a DMR packet
+//
 //go:generate msgp
 type Packet struct {
 	Signature   string             `msg:"signature"`
@@ -17,7 +19,7 @@ type Packet struct {
 	GroupCall   bool               `msg:"groupCall"`
 	FrameType   dmrconst.FrameType `msg:"frameType,extension"`
 	DTypeOrVSeq uint               `msg:"dtypeOrVSeq"`
-	StreamId    uint               `msg:"streamId"`
+	StreamID    uint               `msg:"streamID"`
 	DMRData     [33]byte           `msg:"dmrData"`
 	// The next two are technically unsigned, but the data type is 1 byte
 	// We also want to be able to represent -1 as a null, so we use int
@@ -53,7 +55,7 @@ func (p Packet) Equal(other Packet) bool {
 	if p.DTypeOrVSeq != other.DTypeOrVSeq {
 		return false
 	}
-	if p.StreamId != other.StreamId {
+	if p.StreamID != other.StreamID {
 		return false
 	}
 	if p.DMRData != other.DMRData {
@@ -86,7 +88,7 @@ func UnpackPacket(data []byte) Packet {
 	}
 	packet.FrameType = dmrconst.FrameType((bits & 0x30) >> 4)
 	packet.DTypeOrVSeq = uint(bits & 0xF)
-	packet.StreamId = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
+	packet.StreamID = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
 	copy(packet.DMRData[:], data[20:53])
 	// Bytes 53-54 are BER and RSSI, respectively
 	// But they are optional, so don't error if they don't exist
@@ -106,7 +108,7 @@ func UnpackPacket(data []byte) Packet {
 func (p *Packet) String() string {
 	return fmt.Sprintf(
 		"Packet: Seq %d, Src %d, Dst %d, Repeater %d, Slot %t, GroupCall %t, FrameType=%s, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d, DMRData %v",
-		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType.String(), p.DTypeOrVSeq, p.StreamId, p.BER, p.RSSI, p.DMRData,
+		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType.String(), p.DTypeOrVSeq, p.StreamID, p.BER, p.RSSI, p.DMRData,
 	)
 }
 
@@ -135,10 +137,10 @@ func (p *Packet) Encode() []byte {
 	bits |= byte(p.FrameType << 4)
 	bits |= byte(p.DTypeOrVSeq)
 	data[15] = bits
-	data[16] = byte(p.StreamId >> 24)
-	data[17] = byte(p.StreamId >> 16)
-	data[18] = byte(p.StreamId >> 8)
-	data[19] = byte(p.StreamId)
+	data[16] = byte(p.StreamID >> 24)
+	data[17] = byte(p.StreamID >> 16)
+	data[18] = byte(p.StreamID >> 8)
+	data[19] = byte(p.StreamID)
 	copy(data[20:53], p.DMRData[:])
 	// If BER and RSSI are set, add them
 	if p.BER != -1 {

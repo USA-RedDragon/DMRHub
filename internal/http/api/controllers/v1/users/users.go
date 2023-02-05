@@ -28,7 +28,7 @@ func GETUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"total": total, "users": users})
 }
 
-// Registration is JSON data from the frontend
+// POSTUser is used to register a new user
 func POSTUser(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	var json apimodels.UserRegistration
@@ -75,15 +75,15 @@ func POSTUser(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting pwned passwords"})
 				return
 			}
-			str_karray := string(karray)
-			respArray := strings.Split(str_karray, "\r\n")
+			strKArray := string(karray)
+			respArray := strings.Split(strKArray, "\r\n")
 
 			var result int64
 			for _, resp := range respArray {
-				str_array := strings.Split(resp, ":")
-				test := str_array[0]
+				strArray := strings.Split(resp, ":")
+				test := strArray[0]
 
-				count, err := strconv.ParseInt(str_array[1], 0, 32)
+				count, err := strconv.ParseInt(strArray[1], 0, 32)
 				if err != nil {
 					klog.Errorf("POSTUser: Error parsing pwned password count: %v", err)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error parsing pwned password count"})
@@ -141,8 +141,8 @@ func POSTUserDemote(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserId := session.Get("user_id").(uint)
-	if uint(userID) == fromUserId {
+	fromUserID := session.Get("user_id").(uint)
+	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot demote yourself"})
 		return
@@ -211,8 +211,8 @@ func POSTUserUnsuspend(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserId := session.Get("user_id").(uint)
-	if uint(userID) == fromUserId {
+	fromUserID := session.Get("user_id").(uint)
+	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot unsuspend yourself"})
 		return
@@ -248,8 +248,8 @@ func POSTUserApprove(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserId := session.Get("user_id").(uint)
-	if uint(userID) == fromUserId {
+	fromUserID := session.Get("user_id").(uint)
+	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot approve yourself"})
 		return
@@ -420,8 +420,8 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserId := session.Get("user_id").(uint)
-	if uint(userID) == fromUserId {
+	fromUserID := session.Get("user_id").(uint)
+	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend yourself"})
 		return
@@ -462,14 +462,14 @@ func GETUserSelf(c *gin.Context) {
 	db := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
-	userId := session.Get("user_id")
-	if userId == nil {
-		klog.Error("userId not found")
+	userID := session.Get("user_id")
+	if userID == nil {
+		klog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
-	user := models.FindUserByID(db, userId.(uint))
+	user := models.FindUserByID(db, userID.(uint))
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

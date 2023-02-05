@@ -31,22 +31,22 @@ func GETMyRepeaters(c *gin.Context) {
 	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
-	userId := session.Get("user_id")
-	if userId == nil {
-		klog.Error("userId not found")
+	userID := session.Get("user_id")
+	if userID == nil {
+		klog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	// Get all repeaters owned by user
-	repeaters := models.GetUserRepeaters(db, userId.(uint))
+	repeaters := models.GetUserRepeaters(db, userID.(uint))
 	if db.Error != nil {
-		klog.Errorf("Error getting repeaters owned by user %d: %v", userId, db.Error)
+		klog.Errorf("Error getting repeaters owned by user %d: %v", userID, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
 
-	count := models.CountUserRepeaters(cDb, userId.(uint))
+	count := models.CountUserRepeaters(cDb, userID.(uint))
 
 	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }
@@ -101,88 +101,87 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		klog.Errorf("POSTRepeaterTalkgroups: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 		return
-	} else {
-		if models.RepeaterIDExists(db, repeaterID) {
-			repeater := models.FindRepeaterByID(db, repeaterID)
-			err := db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
-			if err != nil {
-				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1StaticTalkgroups: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1StaticTalkgroups"})
-				return
-			}
-			repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
-			err = db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
-			if err != nil {
-				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2StaticTalkgroups: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2StaticTalkgroups"})
-				return
-			}
-			repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
-
-			if json.TS1DynamicTalkgroup.ID == 0 {
-				repeater.TS1DynamicTalkgroupID = nil
-				err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
-				if err != nil {
-					klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS1DynamicTalkgroup: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1DynamicTalkgroup"})
-					return
-				}
-			} else {
-				repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
-				repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
-				err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
-				if err != nil {
-					klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1DynamicTalkgroup: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1DynamicTalkgroup"})
-					return
-				}
-			}
-
-			if json.TS2DynamicTalkgroup.ID == 0 {
-				repeater.TS2DynamicTalkgroupID = nil
-				err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
-				if err != nil {
-					klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS2DynamicTalkgroup: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2DynamicTalkgroup"})
-					return
-				}
-			} else {
-				repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
-				repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
-				err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
-				if err != nil {
-					klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2DynamicTalkgroup: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2DynamicTalkgroup"})
-					return
-				}
-			}
-
-			db.Save(&repeater)
-			repeater.CancelAllSubscriptions()
-			go repeater.ListenForCalls(c.Request.Context(), redis)
-			c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
+	}
+	if models.RepeaterIDExists(db, repeaterID) {
+		repeater := models.FindRepeaterByID(db, repeaterID)
+		err := db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
+		if err != nil {
+			klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1StaticTalkgroups: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1StaticTalkgroups"})
 			return
 		}
+		repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
+		err = db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
+		if err != nil {
+			klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2StaticTalkgroups: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2StaticTalkgroups"})
+			return
+		}
+		repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
+
+		if json.TS1DynamicTalkgroup.ID == 0 {
+			repeater.TS1DynamicTalkgroupID = nil
+			err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS1DynamicTalkgroup: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1DynamicTalkgroup"})
+				return
+			}
+		} else {
+			repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
+			repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
+			err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1DynamicTalkgroup: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1DynamicTalkgroup"})
+				return
+			}
+		}
+
+		if json.TS2DynamicTalkgroup.ID == 0 {
+			repeater.TS2DynamicTalkgroupID = nil
+			err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS2DynamicTalkgroup: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2DynamicTalkgroup"})
+				return
+			}
+		} else {
+			repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
+			repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
+			err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2DynamicTalkgroup: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2DynamicTalkgroup"})
+				return
+			}
+		}
+
+		db.Save(&repeater)
+		repeater.CancelAllSubscriptions()
+		go repeater.ListenForCalls(c.Request.Context(), redis)
+		c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
+		return
 	}
 }
 
 func POSTRepeater(c *gin.Context) {
 	session := sessions.Default(c)
-	usId := session.Get("user_id")
-	if usId == nil {
-		klog.Error("userId not found")
+	usID := session.Get("user_id")
+	if usID == nil {
+		klog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
-	userId := usId.(uint)
+	userID := usID.(uint)
 	db := c.MustGet("DB").(*gorm.DB)
 	redis := c.MustGet("Redis").(*redis.Client)
 
 	var user models.User
-	db.First(&user, userId)
+	db.First(&user, userID)
 	if db.Error != nil {
-		klog.Errorf("Error getting user %d: %v", userId, db.Error)
+		klog.Errorf("Error getting user %d: %v", userID, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -195,8 +194,8 @@ func POSTRepeater(c *gin.Context) {
 	} else {
 		var repeater models.Repeater
 
-		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userId
-		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userId) + `([0][1-9]|[1-9][0-9])?$`)
+		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userID
+		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
 		// if json.RadioID is a repeater, then it must be 6 digits long
 		repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
 
@@ -271,7 +270,7 @@ func POSTRepeater(c *gin.Context) {
 			return
 		}
 
-		// Find user by userId
+		// Find user by userID
 		repeater.Owner = user
 		repeater.OwnerID = user.ID
 		db.Preload("Owner").Create(&repeater)

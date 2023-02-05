@@ -14,6 +14,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// Repeater is the model for a DMR repeater
+//
 //go:generate msgp
 type Repeater struct {
 	RadioID               uint           `json:"id" gorm:"primaryKey" msg:"radio_id"`

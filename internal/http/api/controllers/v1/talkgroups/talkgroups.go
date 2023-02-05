@@ -26,19 +26,19 @@ func GETMyTalkgroups(c *gin.Context) {
 	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
 
-	userId := session.Get("user_id")
-	if userId == nil {
-		klog.Error("userId not found")
+	userID := session.Get("user_id")
+	if userID == nil {
+		klog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
-	talkgroups, err := models.FindTalkgroupsByOwnerID(db, userId.(uint))
+	talkgroups, err := models.FindTalkgroupsByOwnerID(db, userID.(uint))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	total := models.CountTalkgroupsByOwnerID(cDb, userId.(uint))
+	total := models.CountTalkgroupsByOwnerID(cDb, userID.(uint))
 
 	c.JSON(http.StatusOK, gin.H{"total": total, "talkgroups": talkgroups})
 }

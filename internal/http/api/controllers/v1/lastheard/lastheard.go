@@ -14,17 +14,17 @@ func GETLastheard(c *gin.Context) {
 	db := c.MustGet("PaginatedDB").(*gorm.DB)
 	cDb := c.MustGet("DB").(*gorm.DB)
 	session := sessions.Default(c)
-	userId := session.Get("user_id")
+	userID := session.Get("user_id")
 	var calls []models.Call
 	var count int
-	if userId == nil {
+	if userID == nil {
 		// This is okay, we just query the latest public calls
 		calls = models.FindCalls(db)
 		count = models.CountCalls(cDb)
 	} else {
 		// Get the last calls for the user
-		calls = models.FindUserCalls(db, userId.(uint))
-		count = models.CountUserCalls(cDb, userId.(uint))
+		calls = models.FindUserCalls(db, userID.(uint))
+		count = models.CountUserCalls(cDb, userID.(uint))
 	}
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))

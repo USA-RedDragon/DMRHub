@@ -26,6 +26,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// FS is the embedded frontend files
+//
 //go:embed frontend/dist/*
 var FS embed.FS
 

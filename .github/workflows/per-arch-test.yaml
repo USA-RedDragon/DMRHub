@@ -2,7 +2,6 @@ name: Per-architecture test
 
 on:
   pull_request:
-  push:
 
 jobs:
   frontend:

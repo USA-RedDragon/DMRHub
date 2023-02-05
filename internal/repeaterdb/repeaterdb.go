@@ -156,6 +156,17 @@ func Update() error {
 		klog.Exit("No DMR repeaters found in database")
 	}
 
+	for i := range dmrRepeaters.Repeaters {
+		id, err := strconv.Atoi(dmrRepeaters.Repeaters[i].ID)
+		if err != nil {
+			klog.Errorf("Error converting repeater ID to int: %v", err)
+			continue
+		}
+		dmrRepeaterMap[uint(id)] = dmrRepeaters.Repeaters[i]
+	}
+
+	dmrRepeaters.Date = time.Now()
+
 	klog.Infof("Update complete. Loaded %d DMR repeaters", len(dmrRepeaters.Repeaters))
 
 	return nil

@@ -15,6 +15,8 @@ type Store interface {
 	sessions.Store
 }
 
+// NewStore creates a new redis store.
+//
 // Keys are defined in pairs to allow key rotation, but the common case is to set a single
 // authentication key and optionally an encryption key.
 //

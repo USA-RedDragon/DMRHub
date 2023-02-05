@@ -56,13 +56,11 @@ func POSTLogin(c *gin.Context) {
 				}
 				c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged in"})
 				return
-			} else {
-				c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "User is not approved"})
-				return
 			}
-		} else {
-			klog.Errorf("POSTLogin: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "User is not approved"})
+			return
 		}
+		klog.Errorf("POSTLogin: %v", err)
 	}
 
 	c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "Authentication failed"})

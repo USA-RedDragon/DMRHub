@@ -43,22 +43,22 @@ func (s *redisRepeaterStorage) updateConnection(ctx context.Context, repeaterID 
 	s.store(ctx, repeaterID, repeater)
 }
 
-func (s *redisRepeaterStorage) delete(ctx context.Context, repeaterId uint) bool {
-	return s.Redis.Del(ctx, fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
+func (s *redisRepeaterStorage) delete(ctx context.Context, repeaterID uint) bool {
+	return s.Redis.Del(ctx, fmt.Sprintf("repeater:%d", repeaterID)).Val() == 1
 }
 
-func (s *redisRepeaterStorage) store(ctx context.Context, repeaterId uint, repeater models.Repeater) {
+func (s *redisRepeaterStorage) store(ctx context.Context, repeaterID uint, repeater models.Repeater) {
 	repeaterBytes, err := repeater.MarshalMsg(nil)
 	if err != nil {
 		klog.Errorf("Error marshalling repeater", err)
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	s.Redis.Set(ctx, fmt.Sprintf("repeater:%d", repeaterId), repeaterBytes, 5*time.Minute)
+	s.Redis.Set(ctx, fmt.Sprintf("repeater:%d", repeaterID), repeaterBytes, 5*time.Minute)
 }
 
-func (s *redisRepeaterStorage) get(ctx context.Context, repeaterId uint) (models.Repeater, error) {
-	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("repeater:%d", repeaterId)).Result()
+func (s *redisRepeaterStorage) get(ctx context.Context, repeaterID uint) (models.Repeater, error) {
+	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("repeater:%d", repeaterID)).Result()
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
 		return models.Repeater{}, err
@@ -72,8 +72,8 @@ func (s *redisRepeaterStorage) get(ctx context.Context, repeaterId uint) (models
 	return repeater, nil
 }
 
-func (s *redisRepeaterStorage) exists(ctx context.Context, repeaterId uint) bool {
-	return s.Redis.Exists(ctx, fmt.Sprintf("repeater:%d", repeaterId)).Val() == 1
+func (s *redisRepeaterStorage) exists(ctx context.Context, repeaterID uint) bool {
+	return s.Redis.Exists(ctx, fmt.Sprintf("repeater:%d", repeaterID)).Val() == 1
 }
 
 func (s *redisRepeaterStorage) list(ctx context.Context) ([]uint, error) {

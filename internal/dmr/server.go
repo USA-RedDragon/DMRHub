@@ -13,7 +13,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type DMRServer struct {
+// Server is the DMR server
+type Server struct {
 	Buffer        []byte
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
@@ -24,8 +25,9 @@ type DMRServer struct {
 	CallTracker   *CallTracker
 }
 
-func MakeServer(db *gorm.DB, redis *redis.Client) DMRServer {
-	return DMRServer{
+// MakeServer creates a new DMR server
+func MakeServer(db *gorm.DB, redis *redis.Client) Server {
+	return Server{
 		Buffer: make([]byte, 302),
 		SocketAddress: net.UDPAddr{
 			IP:   net.ParseIP(config.GetConfig().ListenAddr),
@@ -39,7 +41,8 @@ func MakeServer(db *gorm.DB, redis *redis.Client) DMRServer {
 	}
 }
 
-func (s *DMRServer) Stop(ctx context.Context) {
+// Stop stops the DMR server
+func (s *Server) Stop(ctx context.Context) {
 	// Send a MSTCL command to each repeater
 	repeaters, err := s.Redis.list(ctx)
 	if err != nil {
@@ -52,12 +55,12 @@ func (s *DMRServer) Stop(ctx context.Context) {
 		s.Redis.updateConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, 4)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-		s.sendCommand(ctx, repeater, dmrconst.COMMAND_MSTCL, repeaterBinary)
+		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
 	}
 	s.Started = false
 }
 
-func (s *DMRServer) listen(ctx context.Context) {
+func (s *Server) listen(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "incoming")
 	defer func() {
 		err := pubsub.Close()
@@ -79,7 +82,7 @@ func (s *DMRServer) listen(ctx context.Context) {
 	}
 }
 
-func (s *DMRServer) send(ctx context.Context) {
+func (s *Server) send(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing")
 	defer func() {
 		err := pubsub.Close()
@@ -104,7 +107,7 @@ func (s *DMRServer) send(ctx context.Context) {
 	}
 }
 
-func (s *DMRServer) sendNoAddr(ctx context.Context) {
+func (s *Server) sendNoAddr(ctx context.Context) {
 	pubsub := s.Redis.Redis.Subscribe(ctx, "outgoing:noaddr")
 	defer func() {
 		err := pubsub.Close()
@@ -129,7 +132,8 @@ func (s *DMRServer) sendNoAddr(ctx context.Context) {
 	}
 }
 
-func (s *DMRServer) Listen(ctx context.Context) {
+// Listen starts the DMR server
+func (s *Server) Listen(ctx context.Context) {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
@@ -181,23 +185,23 @@ func (s *DMRServer) Listen(ctx context.Context) {
 	}()
 }
 
-func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, command dmrconst.Command, data []byte) {
+func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
 	go func() {
 		if !s.Started {
 			klog.Warningf("Server not started, not sending command")
 			return
 		}
 		if config.GetConfig().Debug {
-			klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIdBytes)
+			klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
 		}
-		command_prefixed_data := append([]byte(command), data...)
-		repeater, err := s.Redis.get(ctx, repeaterIdBytes)
+		commandPrefixedData := append([]byte(command), data...)
+		repeater, err := s.Redis.get(ctx, repeaterIDBytes)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
 		}
 		p := models.RawDMRPacket{
-			Data:       command_prefixed_data,
+			Data:       commandPrefixedData,
 			RemoteIP:   repeater.IP,
 			RemotePort: repeater.Port,
 		}
@@ -210,13 +214,13 @@ func (s *DMRServer) sendCommand(ctx context.Context, repeaterIdBytes uint, comma
 	}()
 }
 
-func (s *DMRServer) sendPacket(ctx context.Context, repeaterIdBytes uint, packet models.Packet) {
+func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	go func() {
 		if config.GetConfig().Debug {
 			klog.Infof("Sending Packet: %s\n", packet.String())
-			klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIdBytes)
+			klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
 		}
-		repeater, err := s.Redis.get(ctx, repeaterIdBytes)
+		repeater, err := s.Redis.get(ctx, repeaterIDBytes)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return

@@ -2,6 +2,7 @@ package repeaterdb
 
 import (
 	"bytes"
+	// Embed the repeaters.json.xz file into the binary
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,7 @@ import (
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
-var uncompressedJson []byte
+var uncompressedJSON []byte
 
 type dmrRepeaterDB struct {
 	Repeaters []DMRRepeater `json:"rptrs"`
@@ -91,11 +92,11 @@ func GetDMRRepeaters() *map[uint]DMRRepeater {
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
 		}
-		uncompressedJson, err = io.ReadAll(dbReader)
+		uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
-		if err := json.Unmarshal(uncompressedJson, &dmrRepeaters); err != nil {
+		if err := json.Unmarshal(uncompressedJSON, &dmrRepeaters); err != nil {
 			klog.Exitf("Error decoding DMR repeaters database: %v", err)
 		}
 
@@ -135,7 +136,7 @@ func Update() error {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	uncompressedJson, err = io.ReadAll(resp.Body)
+	uncompressedJSON, err = io.ReadAll(resp.Body)
 	if err != nil {
 		klog.Errorf("ReadAll error %s", err)
 		return err
@@ -146,7 +147,7 @@ func Update() error {
 			klog.Errorf("Error closing response body: %v", err)
 		}
 	}()
-	if err := json.Unmarshal(uncompressedJson, &dmrRepeaters); err != nil {
+	if err := json.Unmarshal(uncompressedJSON, &dmrRepeaters); err != nil {
 		klog.Errorf("Error decoding DMR repeaters database: %v", err)
 		return err
 	}

@@ -18,6 +18,7 @@ import (
 // This equates out to about 30 lost voice packets
 const timerDelay = 2 * time.Second
 
+// CallTracker is a struct that holds the state of the calls that are currently in progress
 type CallTracker struct {
 	DB            *gorm.DB
 	Redis         *redis.Client
@@ -25,6 +26,7 @@ type CallTracker struct {
 	InFlightCalls map[uint]*models.Call
 }
 
+// NewCallTracker creates a new CallTracker
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	return &CallTracker{
 		DB:            db,
@@ -34,6 +36,7 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	}
 }
 
+// StartCall starts tracking a new call
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
@@ -64,10 +67,9 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 			if !models.RepeaterIDExists(c.DB, packet.Dst) {
 				klog.Errorf("Cannot find packet destination %d", packet.Dst)
 				return
-			} else {
-				isToRepeater = true
-				destRepeater = models.FindRepeaterByID(c.DB, packet.Dst)
 			}
+			isToRepeater = true
+			destRepeater = models.FindRepeaterByID(c.DB, packet.Dst)
 		} else {
 			isToTalkgroup = true
 			destTalkgroup = models.FindTalkgroupByID(c.DB, packet.Dst)
@@ -77,14 +79,13 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		if !models.UserIDExists(c.DB, packet.Dst) {
 			klog.Errorf("Cannot find packet destination %d", packet.Dst)
 			return
-		} else {
-			isToUser = true
-			destUser = models.FindUserByID(c.DB, packet.Dst)
 		}
+		isToUser = true
+		destUser = models.FindUserByID(c.DB, packet.Dst)
 	}
 
 	call := models.Call{
-		StreamID:       packet.StreamId,
+		StreamID:       packet.StreamID,
 		StartTime:      time.Now(),
 		Active:         true,
 		User:           sourceUser,
@@ -136,9 +137,10 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	c.CallEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet))
 }
 
+// IsCallActive checks if a call is active
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
 	for _, call := range c.InFlightCalls {
-		if call.Active && call.StreamID == packet.StreamId && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
+		if call.Active && call.StreamID == packet.StreamID && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
 			return true
 		}
 	}
@@ -222,23 +224,25 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 		}
 	}
 
-	// Iterate all repeaters to see if they want the call
-	var repeaters []models.Repeater
-	alreadyPublished := make(map[uint]bool)
-	c.DB.Preload("Owner").Find(&repeaters)
-	for _, repeater := range repeaters {
-		want, _ := repeater.WantRX(packet)
-		if want && !alreadyPublished[repeater.OwnerID] {
-			// Publish the call to the repeater owner's call history
-			c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
-			alreadyPublished[repeater.OwnerID] = true
-			continue
+	go func() {
+		// Iterate all repeaters to see if they want the call
+		var repeaters []models.Repeater
+		alreadyPublished := make(map[uint]bool)
+		c.DB.Preload("Owner").Find(&repeaters)
+		for _, repeater := range repeaters {
+			want, _ := repeater.WantRX(packet)
+			if want && !alreadyPublished[repeater.OwnerID] {
+				// Publish the call to the repeater owner's call history
+				c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+				alreadyPublished[repeater.OwnerID] = true
+				continue
+			}
+			if repeater.OwnerID == call.UserID {
+				c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+				alreadyPublished[repeater.OwnerID] = true
+			}
 		}
-		if repeater.OwnerID == call.UserID {
-			c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
-			alreadyPublished[repeater.OwnerID] = true
-		}
-	}
+	}()
 }
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
@@ -277,12 +281,12 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	var lost uint
 	// Update call.TotalPackets with 1 + the number of packets that have been lost since the last packet
 	// The first packet of a call will have a FrameType of HBPF_DATA_SYNC and a DTypeOrVSeq of HBPF_SLT_VHEAD. This does not count towards the FrameNum, but we need to check the order
-	if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_HEAD {
+	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceHead {
 		// Voice header kicks off the call, so we need to set the FrameNum to 0
 		call.HasHeader = true
 		call.TotalPackets++
 		// Save the db early so that we can query for it in a different goroutine
-	} else if packet.FrameType == dmrconst.FRAME_VOICE_SYNC && packet.DTypeOrVSeq == 0 {
+	} else if packet.FrameType == dmrconst.FrameVoiceSync && packet.DTypeOrVSeq == 0 {
 		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
 		if !call.HasHeader {
 			klog.Error("Voice sync packet without header")
@@ -303,7 +307,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		if config.GetConfig().Debug {
 			klog.Infof("Voice sync - lost %d packets. Set LastFrameNum to %d. Total lost: %d", lost, call.LastFrameNum, call.LostSequences)
 		}
-	} else if packet.FrameType == dmrconst.FRAME_VOICE && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
+	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
 		// These are voice packets, so check for a header and LastFrameNum == packet.DTypeOrVSeq+1
 		if !call.HasHeader {
 			klog.Error("Voice packet without header")
@@ -343,7 +347,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		if config.GetConfig().Debug {
 			klog.Infof("Voice - lost %d packets Set LastFrameNum to %d. Total lost: %d", lost, call.LastFrameNum, call.LostSequences)
 		}
-	} else if packet.FrameType == dmrconst.FRAME_VOICE && packet.DTypeOrVSeq == 5 {
+	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq == 5 {
 		// This is the last voice packet, so check for a header and LastFrameNum == 4
 		if !call.HasHeader {
 			klog.Errorf("Voice packet without header", packet.DTypeOrVSeq)
@@ -362,7 +366,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		if config.GetConfig().Debug {
 			klog.Infof("Last voice - lost %d packets. Total lost: %d", lost, call.LostSequences)
 		}
-	} else if packet.FrameType == dmrconst.FRAME_DATA_SYNC && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTYPE_VOICE_TERM {
+	} else if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		// This is the end of a call, so we need to set the FrameNum to 0
 		// Check if LastFrameNum is 5, if not, we've lost some packets
 		if call.LastFrameNum != 5 {
@@ -389,11 +393,12 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	}
 }
 
+// ProcessCallPacket processes a packet and updates the call
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	for _, lcall := range c.InFlightCalls {
-		if lcall.StreamID == packet.StreamId && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
+		if lcall.StreamID == packet.StreamID && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
 			c.updateCall(ctx, lcall, packet)
 			return
 		}
@@ -402,16 +407,17 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
 	return func() {
-		klog.Errorf("Call %d timed out", packet.StreamId)
+		klog.Errorf("Call %d timed out", packet.StreamID)
 		c.EndCall(ctx, packet)
 	}
 }
 
+// EndCall ends a call
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	for _, call := range c.InFlightCalls {
-		if call.StreamID == packet.StreamId && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
+		if call.StreamID == packet.StreamID && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
 			// Delete the call end timer
 			timer := c.CallEndTimers[call.ID]
 			timer.Stop()
@@ -428,7 +434,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 				call.LostSequences++
 				call.TotalPackets++
 				if config.GetConfig().Debug {
-					klog.Errorf("Call %d ended without a term", packet.StreamId)
+					klog.Errorf("Call %d ended without a term", packet.StreamID)
 				}
 			}
 
@@ -437,7 +443,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 				call.LostSequences += 5 - call.LastFrameNum
 				call.TotalPackets += 5 - call.LastFrameNum
 				if config.GetConfig().Debug {
-					klog.Errorf("Call %d ended with %d lost packets", packet.StreamId, 5-call.LastFrameNum)
+					klog.Errorf("Call %d ended with %d lost packets", packet.StreamID, 5-call.LastFrameNum)
 				}
 			}
 
@@ -448,7 +454,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			c.publishCall(ctx, call, packet)
 			delete(c.InFlightCalls, call.ID)
 
-			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamId, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
+			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
 		}
 	}
 }

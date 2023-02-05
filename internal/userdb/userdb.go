@@ -2,6 +2,7 @@ package userdb
 
 import (
 	"bytes"
+	// Embed the users.json.xz file into the binary
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -19,7 +20,7 @@ import (
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var uncompressedJson []byte
+var uncompressedJSON []byte
 
 type dmrUserDB struct {
 	Users []DMRUser `json:"users"`
@@ -87,11 +88,11 @@ func GetDMRUsers() *map[uint]DMRUser {
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
 		}
-		uncompressedJson, err = io.ReadAll(dbReader)
+		uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
-		if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
+		if err := json.Unmarshal(uncompressedJSON, &dmrUsers); err != nil {
 			klog.Exitf("Error decoding DMR users database: %v", err)
 		}
 		dmrUserMap = make(map[uint]DMRUser)
@@ -116,7 +117,7 @@ func Update() error {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	uncompressedJson, err = io.ReadAll(resp.Body)
+	uncompressedJSON, err = io.ReadAll(resp.Body)
 	if err != nil {
 		klog.Errorf("ReadAll error %s", err)
 		return err
@@ -127,7 +128,7 @@ func Update() error {
 			klog.Errorf("Error closing response body: %v", err)
 		}
 	}()
-	if err := json.Unmarshal(uncompressedJson, &dmrUsers); err != nil {
+	if err := json.Unmarshal(uncompressedJSON, &dmrUsers); err != nil {
 		klog.Errorf("Error decoding DMR users database: %v", err)
 		return err
 	}

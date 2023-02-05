@@ -143,7 +143,7 @@ func (s *RediStore) SetMaxAge(v int) {
 	}
 }
 
-// NewRediStoreWithPool instantiates a RediStore with a *redis.Pool passed in.
+// NewRediStore instantiates a RediStore
 func NewRediStore(db *redis.Client, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
 		DB:     db,

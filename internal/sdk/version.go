@@ -1,10 +1,12 @@
 package sdk
 
-import _ "embed"
+import (
+	// embed the commit.txt file into the binary
+	_ "embed"
+)
 
 //go:generate bash -c "../../hack/git_commit.sh > commit.txt"
 var (
-	// GitCommit that was compiled. This will be filled in by the compiler.
 	//go:embed commit.txt
 	GitCommit string
 

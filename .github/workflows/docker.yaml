@@ -1,7 +1,6 @@
 name: Docker
 
 on:
-  push:
   pull_request:
   release:
     types: [created]
@@ -103,7 +102,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         with:
           context: .
           platforms: linux/amd64

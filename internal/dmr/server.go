@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"

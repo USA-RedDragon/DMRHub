@@ -102,7 +102,6 @@ func main() {
 	result := db.First(&appSettings)
 	if result.Error != nil {
 		// We have an error
-		klog.Errorf(fmt.Sprintf("App settings save failed with error %s", result.Error))
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			// The record doesn't exist, so create it
 			appSettings = models.AppSettings{

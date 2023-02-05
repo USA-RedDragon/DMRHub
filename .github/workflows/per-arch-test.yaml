@@ -150,12 +150,11 @@ jobs:
           path: internal/http/frontend/dist
 
       - name: Test on ${{ matrix.os.name }}
-        uses: cross-platform-actions/action@v0.9.0
+        uses: cross-platform-actions/action@master
         env:
           GO_SRC: https://go.dev/dl/go1.20.src.tar.gz
-          GO_VERSION: "1.20"
         with:
-          environment_variables: MY_ENV1 MY_ENV2
+          environment_variables: GO_SRC
           operating_system: ${{ matrix.os.name }}
           architecture: ${{ matrix.os.architecture }}
           version: ${{ matrix.os.version }}

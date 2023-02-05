@@ -1,4 +1,4 @@
-package dmr
+package dmrconst
 
 import (
 	"regexp"

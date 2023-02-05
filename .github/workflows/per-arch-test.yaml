@@ -141,9 +141,9 @@ jobs:
           version: 13.1
           shell: bash
           run: |
-            sudo pkg install curl make
+            sudo pkg install curl
             curl -L -o go.tgz ${GO_SRC}
-            sudo tar -C /usr/local xzvf go.tgz
+            sudo tar -C /usr/local -xzvf go.tgz
             rm go.tgz
             export GOROOT=/usr/local/go
             export PATH=$PATH:$GOROOT/bin

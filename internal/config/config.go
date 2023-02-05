@@ -1,12 +1,14 @@
 package config
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"golang.org/x/crypto/pbkdf2"
 	"k8s.io/klog/v2"
 )
 
@@ -20,7 +22,8 @@ type Config struct {
 	postgresHost             string
 	postgresPort             int
 	postgresDatabase         string
-	Secret                   string
+	Secret                   []byte
+	strSecret                string
 	PasswordSalt             string
 	ListenAddr               string
 	DMRPort                  int
@@ -66,7 +69,7 @@ func GetConfig() *Config {
 			postgresHost:             os.Getenv("PG_HOST"),
 			postgresPort:             int(pgPort),
 			postgresDatabase:         os.Getenv("PG_DATABASE"),
-			Secret:                   os.Getenv("SECRET"),
+			strSecret:                os.Getenv("SECRET"),
 			PasswordSalt:             os.Getenv("PASSWORD_SALT"),
 			ListenAddr:               os.Getenv("LISTEN_ADDR"),
 			DMRPort:                  int(dmrPort),
@@ -96,8 +99,8 @@ func GetConfig() *Config {
 			currentConfig.postgresDatabase = "postgres"
 		}
 		currentConfig.PostgresDSN = "host=" + currentConfig.postgresHost + " port=" + strconv.FormatInt(int64(currentConfig.postgresPort), 10) + " user=" + currentConfig.postgresUser + " dbname=" + currentConfig.postgresDatabase + " password=" + currentConfig.postgresPassword
-		if currentConfig.Secret == "" {
-			currentConfig.Secret = "secret"
+		if currentConfig.strSecret == "" {
+			currentConfig.strSecret = "secret"
 			klog.Errorf("Session secret not set, using INSECURE default")
 		}
 		if currentConfig.PasswordSalt == "" {
@@ -144,6 +147,7 @@ func GetConfig() *Config {
 			klog.Warningf("Debug mode enabled, this should not be used in production")
 			klog.Infof("Config: %+v", currentConfig)
 		}
+		currentConfig.Secret = pbkdf2.Key([]byte(currentConfig.strSecret), []byte(currentConfig.PasswordSalt), 4096, 32, sha256.New)
 		currentConfig.loaded = true
 		return &currentConfig
 	}

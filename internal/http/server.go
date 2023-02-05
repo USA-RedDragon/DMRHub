@@ -74,7 +74,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	sessionStore, _ := redis.NewStore(redisClient, []byte(""), []byte(config.GetConfig().Secret))
+	sessionStore, _ := redis.NewStore(redisClient, []byte(""), config.GetConfig().Secret)
 	r.Use(sessions.Sessions("sessions", sessionStore))
 
 	ws.ApplyRoutes(r, ratelimitMW)

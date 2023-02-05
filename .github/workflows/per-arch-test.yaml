@@ -143,9 +143,10 @@ jobs:
           run: |
             sudo env ASSUME_ALWAYS_YES=YES pkg install curl git
             curl -L -o go.tgz ${GO_SRC}
-            sudo tar -C /usr/local -xzf go.tgz
-            rm go.tgz
-            export GOPATH=/usr/local/go
+            sudo tar -C $HOME -xzf go.tgz
+            rm -f go.tgz
+            export GOROOT=$HOME/go
+            export GOPATH=$HOME/go
             export PATH=$PATH:$GOPATH/bin
             go install github.com/tinylib/msgp
             make build-ci && make test

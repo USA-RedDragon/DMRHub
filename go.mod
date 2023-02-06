@@ -21,11 +21,11 @@ require (
 	github.com/ulikunitz/xz v0.5.11
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.1.18
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.37.0
-	go.opentelemetry.io/otel v1.11.2
+	go.opentelemetry.io/otel v1.12.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.2
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.2
 	go.opentelemetry.io/otel/sdk v1.11.2
-	go.opentelemetry.io/otel/trace v1.11.2
+	go.opentelemetry.io/otel/trace v1.12.0
 	golang.org/x/crypto v0.5.0
 	gorm.io/driver/postgres v1.4.6
 	gorm.io/gorm v1.24.3

@@ -91,7 +91,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         if: github.event_name == 'pull_request'
         with:
           context: .
@@ -113,7 +113,7 @@ jobs:
           COSIGN_KEY: ${{secrets.COSIGN_KEY}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         if: github.event_name == 'push'
         with:
           context: .

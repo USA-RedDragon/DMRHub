@@ -45,7 +45,32 @@ func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
 }
 
 func DeleteTalkgroup(db *gorm.DB, id uint) {
-	db.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
+	db.Transaction(func(tx *gorm.DB) error {
+		// Delete calls where IsToTalkgroup is true and IsToTalkgroupID is id
+		tx.Unscoped().Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, id).Delete(&Call{})
+		// Find repeaters with TS1DynamicTalkgroup or TS2DynamicTalkgroup set to id
+		var repeaters []Repeater
+		tx.Where("ts1_dynamic_talkgroup_id = ? OR ts2_dynamic_talkgroup_id = ?", id, id).Find(&repeaters)
+		// Set TS1DynamicTalkgroup or TS2DynamicTalkgroup to nil
+		for _, repeater := range repeaters {
+			if repeater.TS1DynamicTalkgroupID != nil && *repeater.TS1DynamicTalkgroupID == id {
+				repeater.TS1DynamicTalkgroup = Talkgroup{}
+				repeater.TS1DynamicTalkgroupID = nil
+			}
+			if repeater.TS2DynamicTalkgroupID != nil && *repeater.TS2DynamicTalkgroupID == id {
+				repeater.TS2DynamicTalkgroup = Talkgroup{}
+				repeater.TS2DynamicTalkgroupID = nil
+			}
+			tx.Save(&repeater)
+		}
+
+		tx.Unscoped().Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
+		tx.Unscoped().Table("repeater_ts2_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
+
+		tx.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
+
+		return nil
+	})
 }
 
 func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {

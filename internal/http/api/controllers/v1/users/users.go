@@ -117,7 +117,7 @@ func POSTUser(c *gin.Context) {
 		user = models.User{
 			Username: json.Username,
 			Password: hashedPassword,
-			Callsign: json.Callsign,
+			Callsign: strings.ToUpper(json.Callsign),
 			ID:       json.DMRId,
 			Approved: false,
 			Admin:    false,

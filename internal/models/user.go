@@ -129,7 +129,7 @@ func (s *UsersSeeder) Clear(db *gorm.DB) error {
 }
 
 func DeleteUser(db *gorm.DB, id uint) {
-	db.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
 		tx.Where("owner_id = ?", id).Find(&repeaters)
 		for _, repeater := range repeaters {
@@ -141,4 +141,7 @@ func DeleteUser(db *gorm.DB, id uint) {
 		tx.Unscoped().Select(clause.Associations, "Repeaters").Delete(&User{ID: id})
 		return nil
 	})
+	if err != nil {
+		klog.Errorf("Error deleting user: %s", err)
+	}
 }

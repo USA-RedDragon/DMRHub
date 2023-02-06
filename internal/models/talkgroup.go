@@ -45,7 +45,7 @@ func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
 }
 
 func DeleteTalkgroup(db *gorm.DB, id uint) {
-	db.Transaction(func(tx *gorm.DB) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
 		// Delete calls where IsToTalkgroup is true and IsToTalkgroupID is id
 		tx.Unscoped().Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, id).Delete(&Call{})
 		// Find repeaters with TS1DynamicTalkgroup or TS2DynamicTalkgroup set to id
@@ -53,6 +53,7 @@ func DeleteTalkgroup(db *gorm.DB, id uint) {
 		tx.Where("ts1_dynamic_talkgroup_id = ? OR ts2_dynamic_talkgroup_id = ?", id, id).Find(&repeaters)
 		// Set TS1DynamicTalkgroup or TS2DynamicTalkgroup to nil
 		for _, repeater := range repeaters {
+			repeater := repeater
 			if repeater.TS1DynamicTalkgroupID != nil && *repeater.TS1DynamicTalkgroupID == id {
 				repeater.TS1DynamicTalkgroup = Talkgroup{}
 				repeater.TS1DynamicTalkgroupID = nil
@@ -71,6 +72,9 @@ func DeleteTalkgroup(db *gorm.DB, id uint) {
 
 		return nil
 	})
+	if err != nil {
+		klog.Errorf("Error deleting talkgroup: %s", err)
+	}
 }
 
 func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {

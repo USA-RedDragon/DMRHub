@@ -406,7 +406,11 @@ func RepeaterIDExists(db *gorm.DB, id uint) bool {
 }
 
 func DeleteRepeater(db *gorm.DB, id uint) {
-	db.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
+	db.Transaction(func(tx *gorm.DB) error {
+		tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{})
+		tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
+		return nil
+	})
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {

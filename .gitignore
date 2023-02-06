@@ -6,3 +6,4 @@ bin/
 *.db
 commit.txt
 coverage.txt
+cosign.key

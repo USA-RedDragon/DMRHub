@@ -127,8 +127,10 @@ func main() {
 	// If the record exists and HasSeeded is true, then we don't need to seed the database.
 	if !appSettings.HasSeeded {
 		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: 2})
+		talkgroupsSeeder := models.NewTalkgroupsSeeder(gorm_seeder.SeederConfiguration{Rows: 1})
 		seedersStack := gorm_seeder.NewSeedersStack(db)
 		seedersStack.AddSeeder(&usersSeeder)
+		seedersStack.AddSeeder(&talkgroupsSeeder)
 
 		//Apply seed
 		err = seedersStack.Seed()

@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"k8s.io/klog/v2"
@@ -64,4 +65,27 @@ func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) int {
 		Joins("JOIN users on talkgroup_admins.user_id=users.id").
 		Where("users.id=?", ownerID).Count(&count)
 	return int(count)
+}
+
+type TalkgroupsSeeder struct {
+	gorm_seeder.SeederAbstract
+}
+
+func NewTalkgroupsSeeder(cfg gorm_seeder.SeederConfiguration) TalkgroupsSeeder {
+	return TalkgroupsSeeder{gorm_seeder.NewSeederAbstract(cfg)}
+}
+
+func (s *TalkgroupsSeeder) Seed(db *gorm.DB) error {
+	var talkgroups = []Talkgroup{
+		{
+			ID:          uint(9990),
+			Name:        "DMRHub Parrot",
+			Description: "This talkgroup will not be routed to any repeaters and Parrot will respond with a private call.",
+		},
+	}
+	return db.CreateInBatches(talkgroups, s.Configuration.Rows).Error
+}
+
+func (s *TalkgroupsSeeder) Clear(db *gorm.DB) error {
+	return nil
 }

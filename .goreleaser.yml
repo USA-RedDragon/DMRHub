@@ -1,0 +1,36 @@
+---
+project_name: DMRHub
+
+release:
+  github:
+    owner: USA-RedDragon
+    name: DMRHub
+
+builds:
+  - main: .
+    binary: DMRHub
+    goos:
+      - darwin
+      - linux
+      - windows
+      - openbsd
+      - netbsd
+      - freebsd
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+      - riscv64
+
+signs:
+  - cmd: cosign
+    stdin: "{{ .Env.COSIGN_PASSWORD}}"
+    args:
+      [
+        "sign-blob",
+        "--key=/tmp/cosign.key",
+        "--output=${signature}",
+        "${artifact}",
+      ]
+    artifacts: all

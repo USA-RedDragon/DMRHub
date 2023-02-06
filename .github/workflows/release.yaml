@@ -1,8 +1,9 @@
 name: Native
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "v*"
 
 jobs:
   frontend:
@@ -32,47 +33,34 @@ jobs:
     name: Release
     needs: frontend
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        goos: [openbsd, netbsd, freebsd, linux, windows, darwin]
-        goarch: ["386", arm, amd64, arm64, riscv64]
-        exclude:
-          - goarch: "386"
-            goos: darwin
-          - goarch: arm64
-            goos: windows
-          - goarch: arm
-            goos: windows
-          - goarch: riscv
-            goos: windows
-          - goarch: riscv64
-            goos: windows
-          - goarch: arm
-            goos: darwin
-          - goarch: riscv64
-            goos: darwin
-          - goarch: riscv64
-            goos: openbsd
-          - goarch: riscv64
-            goos: netbsd
     steps:
       - uses: actions/checkout@v3
+      - name: Unshallow
+        run: git fetch --prune --unshallow
       - name: Copy built frontend
         uses: actions/download-artifact@v3
         with:
           name: frontend
           path: internal/http/frontend/dist
-      - uses: wangyoucao577/go-release-action@v1.35
+      - name: Set up Go
+        uses: actions/setup-go@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          pre_command: make install-deps && go generate ./...
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          goversion: "https://dl.google.com/go/go1.20.linux-amd64.tar.gz"
-          extra_files: LICENSE
-          md5sum: false
-          sha256sum: true
-          overwrite: true
-          retry: 30
+          go-version: "1.20"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@main
+      - run: make install-deps
+      - run: go generate ./...
+      - name: Store Cosign private key in a file
+        run: 'echo "$COSIGN_KEY" > /tmp/cosign.key'
+        shell: bash
+        env:
+          COSIGN_KEY: ${{secrets.COSIGN_KEY}}
+      - name: Release Binaries
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
       - uses: creekorful/goreportcard-action@v1.0

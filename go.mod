@@ -19,7 +19,7 @@ require (
 	github.com/redis/go-redis/v9 v9.0.0
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11
-	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.1.18
+	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.1.20
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.37.0
 	go.opentelemetry.io/otel v1.12.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.12.0
@@ -61,9 +61,9 @@ require (
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.0.0-rc.4 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/ugorji/go/codec v1.2.8 // indirect
-	github.com/uptrace/opentelemetry-go-extra/otelsql v0.1.18 // indirect
+	github.com/uptrace/opentelemetry-go-extra/otelsql v0.1.20 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.12.0 // indirect
-	go.opentelemetry.io/otel/metric v0.34.0 // indirect
+	go.opentelemetry.io/otel/metric v0.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.5.0 // indirect

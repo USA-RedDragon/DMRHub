@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update 
-          sudo apt-get install -y make wget xz git
+          sudo apt-get install -y make wget xz-utils git
       - name: Update databases
         run: |
           make update-dbs

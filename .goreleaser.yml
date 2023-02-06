@@ -24,6 +24,12 @@ builds:
       - arm
       - arm64
       - riscv64
+    goarm:
+      - "6"
+      - "7"
+    goamd64:
+      - v2
+      - v3
 
 signs:
   - cmd: cosign

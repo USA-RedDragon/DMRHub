@@ -2,6 +2,8 @@ FROM golang:1.20-alpine AS builder
 
 WORKDIR /DMRHub
 
+ENV CGO_ENABLED=0
+
 ARG IS_CI=false
 ENV IS_CI=$IS_CI
 

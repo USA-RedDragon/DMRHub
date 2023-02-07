@@ -32,7 +32,7 @@ jobs:
       - run: go vet
       - name: Unit tests
         run: |
-          go test ./... -coverprofile coverage.out -covermode count
+          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode count
           go tool cover -func coverage.out
       - name: Quality Gate - Test coverage shall be above threshold
         env:

@@ -57,6 +57,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
 
   test-macos:
     name: Test MacOS
@@ -86,6 +87,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
 
   test-windows:
     name: Test Windows
@@ -115,6 +117,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
 
   test-bsd:
     name: Test BSD
@@ -142,6 +145,7 @@ jobs:
           shell: bash
           run: |
             sudo env ASSUME_ALWAYS_YES=YES pkg install curl git
+            export CGO_ENABLED=0
             curl -L -o go.tgz ${GO_SRC}
             sudo tar -C $HOME -xzf go.tgz
             rm -f go.tgz

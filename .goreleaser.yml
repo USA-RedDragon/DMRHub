@@ -27,6 +27,25 @@ builds:
     goarm:
       - "6"
       - "7"
+    ignore:
+      - goarch: "386"
+        goos: darwin
+      - goarch: arm64
+        goos: windows
+      - goarch: arm
+        goos: windows
+      - goarch: riscv
+        goos: windows
+      - goarch: riscv64
+        goos: windows
+      - goarch: arm
+        goos: darwin
+      - goarch: riscv64
+        goos: darwin
+      - goarch: riscv64
+        goos: openbsd
+      - goarch: riscv64
+        goos: netbsd
     env:
       - CGO_ENABLED=0
 

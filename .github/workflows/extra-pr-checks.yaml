@@ -47,6 +47,8 @@ jobs:
         with:
           run: imports
           token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CGO_ENABLED: "0"
 
   errcheck:
     name: Errcheck
@@ -73,6 +75,7 @@ jobs:
           flags: "-ignoregenerated"
         env:
           GOFLAGS: "-buildvcs=false"
+          CGO_ENABLED: "0"
 
   shadow:
     name: Shadow
@@ -96,6 +99,8 @@ jobs:
         with:
           run: shadow
           token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CGO_ENABLED: "0"
 
   staticcheck:
     name: StaticCheck
@@ -119,6 +124,8 @@ jobs:
         with:
           run: staticcheck
           token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CGO_ENABLED: "0"
 
   sec:
     name: Sec
@@ -143,3 +150,5 @@ jobs:
           run: sec
           token: ${{ secrets.GITHUB_TOKEN }}
           flags: "-exclude=G104 -exclude-generated"
+        env:
+          CGO_ENABLED: "0"

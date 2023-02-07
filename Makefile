@@ -24,7 +24,7 @@ build-frontend:
 build: install-deps build-frontend
 	@echo "--> Building"
 	@go generate ./...
-	@go build -o bin/$(APP_NAME)
+	@env CGO_ENABLED=0 go build -o bin/$(APP_NAME)
 	@echo "--> Done"
 
 # CI handles the frontend on its own so that
@@ -33,7 +33,7 @@ build: install-deps build-frontend
 build-ci: install-deps
 	@echo "--> Building"
 	@go generate ./...
-	@go build -o bin/$(APP_NAME)
+	@env CGO_ENABLED=0 go build -o bin/$(APP_NAME)
 	@echo "--> Done"
 
 run:
@@ -43,7 +43,7 @@ run:
 
 coverage:
 	@echo "--> Running tests"
-	@go test -coverprofile=coverage.txt -covermode=atomic ./...
+	@env CGO_ENABLED=0 go test -coverprofile=coverage.txt -covermode=atomic ./...
 	@echo "--> Done"
 
 view-coverage:
@@ -53,12 +53,12 @@ view-coverage:
 
 test:
 	@echo "--> Running tests"
-	@go test ./...
+	@env CGO_ENABLED=0 go test ./...
 	@echo "--> Done"
 
 benchmark:
 	@echo "--> Running benchmarks"
-	@go test -run ^$ -benchmem -bench=. ./...
+	@env CGO_ENABLED=0 go test -run ^$ -benchmem -bench=. ./...
 	@echo "--> Done"
 
 update-dbs: update-repeaterdb update-userdb

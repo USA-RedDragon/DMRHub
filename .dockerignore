@@ -1,9 +1,0 @@
-bin/DMRHub
-doc/
-README.md
-.dockerignore
-.gitignore
-docker-compose.yml
-LICENSE
-*.db
-Dockerfile

@@ -11,5 +11,5 @@ var (
 	GitCommit string
 
 	// Version of the program
-	Version = "1.0.9"
+	Version = "1.0.10"
 )

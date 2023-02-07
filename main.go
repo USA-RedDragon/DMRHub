@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-co-op/gocron"
@@ -95,7 +96,8 @@ func main() {
 			return
 		}
 	}
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+
+	err = db.AutoMigrate(&models.AppSettings{})
 	if err != nil {
 		klog.Exitf("Failed to migrate database: %s", err)
 		return
@@ -106,17 +108,49 @@ func main() {
 		return
 	}
 
+InitDB:
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
 	if result.Error != nil {
 		// We have an error
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			if config.GetConfig().Debug {
+				klog.Infof("App settings entry doesn't exist, migrating db and creating it")
+			}
 			// The record doesn't exist, so create it
 			appSettings = models.AppSettings{
 				HasSeeded: false,
 			}
+			err = db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+			if err != nil {
+				klog.Exitf("Failed to migrate database: %s", err)
+				return
+			}
+			if db.Error != nil {
+				//We have an error
+				klog.Exitf(fmt.Sprintf("Failed with error %s", db.Error))
+				return
+			}
 			db.Create(&appSettings)
+			if config.GetConfig().Debug {
+				klog.Infof("App settings saved")
+			}
+		} else if strings.HasPrefix(result.Error.Error(), "ERROR: relation \"app_settings\" does not exist") {
+			if config.GetConfig().Debug {
+				klog.Infof("App settings table doesn't exist, creating it")
+			}
+			err = db.AutoMigrate(&models.AppSettings{})
+			if err != nil {
+				klog.Exitf("Failed to migrate database with AppSettings: %s", err)
+				return
+			}
+			if db.Error != nil {
+				//We have an error
+				klog.Exitf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
+				return
+			}
+			goto InitDB
 		} else {
 			// We have an error
 			klog.Exitf(fmt.Sprintf("App settings save failed with error %s", result.Error))

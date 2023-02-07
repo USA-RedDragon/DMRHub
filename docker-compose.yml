@@ -18,6 +18,19 @@ services:
       - 5432:5432
     volumes:
       - postgres:/var/lib/postgresql/data
-
+  dmrhub:
+    build: .
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis:6379
+      - PG_HOST=postgres
+      - SECRET=changeme
+      - PASSWORD_SALT=alsochangeme
+      - CORS_HOSTS=http://localhost:3005,http://127.0.0.1:3005
+      - INIT_ADMIN_USER_PASSWORD=changeme
+      - DEBUG=1
+    ports:
+      - 3005:3005
+      - 62031:62031/udp
 volumes:
   postgres:

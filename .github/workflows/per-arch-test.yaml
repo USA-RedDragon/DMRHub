@@ -27,7 +27,7 @@ jobs:
       - name: Wait for frontend artifact
         uses: lewagon/wait-on-check-action@v1.2.0
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           check-name: "frontend"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
@@ -67,7 +67,7 @@ jobs:
       - name: Wait for frontend artifact
         uses: lewagon/wait-on-check-action@v1.2.0
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           check-name: "frontend"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
@@ -107,7 +107,7 @@ jobs:
       - name: Wait for frontend artifact
         uses: lewagon/wait-on-check-action@v1.2.0
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           check-name: "frontend"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
@@ -136,7 +136,7 @@ jobs:
       - name: Wait for frontend artifact
         uses: lewagon/wait-on-check-action@v1.2.0
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           check-name: "frontend"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10

@@ -6,42 +6,13 @@ on:
       - "v*"
 
 jobs:
-  frontend:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - run: make build-frontend
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: frontend
-          path: internal/http/frontend/dist
-          if-no-files-found: error
-          retention-days: 1
-
   release:
     name: Release
-    needs: frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Unshallow
         run: git fetch --prune --unshallow
-      - name: Copy built frontend
-        uses: actions/download-artifact@v3
-        with:
-          name: frontend
-          path: internal/http/frontend/dist
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
@@ -49,6 +20,21 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
       - run: make install-deps
+      - name: Wait for frontend artifact
+        uses: lewagon/wait-on-check-action@v1.2.0
+        with:
+          ref: ${{ github.ref }}
+          check-name: "Frontend"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Copy built frontend
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: frontend.yaml
+          workflow_conclusion: success
+          name: frontend
+          path: internal/http/frontend/dist
       - run: go generate ./...
       - name: Store Cosign private key in a file
         run: 'echo "$COSIGN_KEY" > /tmp/cosign.key'

@@ -33,7 +33,7 @@
     "eslint-plugin-cypress": "^2.12.1",
     "eslint-plugin-vue": "^9.9.0",
     "prettier": "^2.8.3",
-    "sass": "^1.57.1",
+    "sass": "^1.58.0",
     "start-server-and-test": "^1.15.2",
     "vite": "^4.1.1"
   }

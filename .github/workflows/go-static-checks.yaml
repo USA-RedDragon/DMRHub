@@ -1,4 +1,4 @@
-name: PR Static Checks
+name: Go Static Checks
 on: pull_request
 
 jobs:

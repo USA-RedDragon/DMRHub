@@ -60,10 +60,20 @@ jobs:
           go test ./... -race
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic
           go tool cover -func coverage.out
-      - uses: codecov/codecov-action@v3
+      - run: echo "COVERAGE=`go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`" >> $GITHUB_ENV"
+        if: github.event_name == 'push' && github.ref == "refs/heads/main"
+      - name: Create coverage badge
+        if: github.event_name == 'push' && github.ref == "refs/heads/main"
+        uses: schneegans/dynamic-badges-action@v1.0.0
         with:
-          flags: backend
-          fail_ci_if_error: true
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: 89c9d2857a93c0cdc9ab5c21cc52acc2
+          filename: DMRHub.json
+          label: Go Test Coverage
+          message: ${{ env.COVERAGE }}
+          color: green
+          namedLogo: go
+
       - name: Quality Gate - Test coverage shall be above threshold
         env:
           TESTCOVERAGE_THRESHOLD: 80

@@ -196,9 +196,11 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					if !s.CallTracker.IsCallActive(packet) {
 						s.CallTracker.StartCall(ctx, packet)
 					}
-					s.CallTracker.ProcessCallPacket(ctx, packet)
-					if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-						s.CallTracker.EndCall(ctx, packet)
+					if s.CallTracker.IsCallActive(packet) {
+						s.CallTracker.ProcessCallPacket(ctx, packet)
+						if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+							s.CallTracker.EndCall(ctx, packet)
+						}
 					}
 				}()
 			}

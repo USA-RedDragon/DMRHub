@@ -42,7 +42,9 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceRepeater models.Repeater
 
 	if !models.UserIDExists(c.DB, packet.Src) {
-		klog.Errorf("User %d does not exist", packet.Src)
+		if config.GetConfig().Debug {
+			klog.Errorf("User %d does not exist", packet.Src)
+		}
 		return
 	}
 	sourceUser = models.FindUserByID(c.DB, packet.Src)

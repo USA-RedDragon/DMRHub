@@ -327,7 +327,8 @@ func (p *Repeater) subscribeTG(ctx context.Context, redis *redis.Client, tg uint
 				continue
 			}
 			packet := UnpackPacket(rawPacket.Data)
-			if packet.Src == p.RadioID {
+
+			if packet.Repeater == p.RadioID {
 				continue
 			}
 

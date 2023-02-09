@@ -323,8 +323,24 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					// Search the database for the user
 					if models.UserIDExists(s.DB, packet.Dst) {
 						user := models.FindUserByID(s.DB, packet.Dst)
+						// Query lastheard where UserID == user.ID LIMIT 1
+						var lastCall models.Call
+						s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
+						if s.DB.Error != nil {
+							klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
+						} else {
+							// If the last call exists that that repeater is online
+							if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
+								// Send the packet to the last user call's repeater
+								s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
+							}
+						}
+
+						// For each user repeaters
 						for _, repeater := range user.Repeaters {
-							if s.Redis.exists(ctx, repeater.RadioID) {
+							// If the repeater is online and the last user call was not to this repeater
+							if repeater.RadioID != lastCall.RepeaterID && s.Redis.exists(ctx, repeater.RadioID) {
+								// Send the packet to the repeater
 								s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
 							}
 						}

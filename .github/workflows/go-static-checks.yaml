@@ -72,6 +72,7 @@ jobs:
         with:
           name: frontend
           path: internal/http/frontend/dist
+      - run: go install github.com/tinylib/msgp
       - run: go generate ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3

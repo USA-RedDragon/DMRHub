@@ -60,6 +60,10 @@ jobs:
           go test ./... -race
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic
           go tool cover -func coverage.out
+      - uses: codecov/codecov-action@v3
+        with:
+          flags: backend
+          fail_ci_if_error: true
       - run: echo "COVERAGE=`go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`" >> $GITHUB_ENV
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Create coverage badge

@@ -82,3 +82,9 @@ update-repeaterdb:
 	@tr -d '\n' < internal/repeaterdb/repeaterdb-date.txt.tmp > internal/repeaterdb/repeaterdb-date.txt
 	@rm -f internal/repeaterdb/repeaterdb-date.txt.tmp
 	@echo "--> Done"
+
+frontend-unit-test:
+	@cd internal/http/frontend && npm run test:unit
+
+frontend-e2e-test:
+	@cd internal/http/frontend && npm run test:e2e

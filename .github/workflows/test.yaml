@@ -28,7 +28,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  tests:
+  frontend-tests:
     runs-on: ubuntu-latest
     needs: frontend
     permissions:
@@ -47,6 +47,30 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18
+
+      - run: make frontend-unit-test
+      - run: make frontend-e2e-test
+
+      - uses: codecov/codecov-action@v3
+        with:
+          flags: frontend
+          fail_ci_if_error: true
+          working-directory: internal/http/frontend
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    needs: frontend
+    permissions:
+      contents: read
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Copy built frontend
         uses: actions/download-artifact@v3

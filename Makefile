@@ -87,4 +87,8 @@ frontend-unit-test:
 	@cd internal/http/frontend && npm run test:unit
 
 frontend-e2e-test:
-	@cd internal/http/frontend && npm run test:e2e
+	@cd internal/http/frontend && npm ci
+	@echo "--> Building Vue application"
+	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@echo "--> Running end-to-end tests"
+	@cd internal/http/frontend && env NODE_ENV=test npm run test:e2e

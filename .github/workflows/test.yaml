@@ -30,7 +30,6 @@ jobs:
 
   frontend-tests:
     runs-on: ubuntu-latest
-    needs: frontend
     permissions:
       contents: read
 
@@ -48,17 +47,32 @@ jobs:
         with:
           node-version: 18
 
-      - run: make build-frontend
+      - run: cd internal/http/frontend && npm ci
 
       - run: make frontend-unit-test
+
+      - uses: codecov/codecov-action@v3
+        with:
+          flags: frontend-unit
+          files: ./coverage/unit/lcov.info
+          fail_ci_if_error: true
+          working-directory: ./internal/http/frontend
+
       - run: make frontend-e2e-test
 
       - uses: codecov/codecov-action@v3
         with:
-          flags: frontend
-          files: ./coverage/unit/lcov.info,./coverage/e2e/lcov.info
+          flags: frontend-e2e
+          files: ./coverage/e2e/lcov.info
           fail_ci_if_error: true
-          working-directory: internal/http/frontend
+          working-directory: ./internal/http/frontend
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: frontend-coverage
+          path: internal/http/frontend/coverage
+          if-no-files-found: error
+          retention-days: 30
 
   backend-tests:
     runs-on: ubuntu-latest
@@ -95,6 +109,13 @@ jobs:
         with:
           flags: backend
           fail_ci_if_error: true
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Quality Gate - Test coverage shall be above threshold
         env:

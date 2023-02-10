@@ -5,7 +5,7 @@ var baseURL;
 // nodejs development
 if (window.location.port == 5173) {
   // Change port to 3005
-  baseURL = "http://127.0.0.1:3005/api/v1";
+  baseURL = "http://localhost:3005/api/v1";
 } else {
   baseURL = "/api/v1";
 }

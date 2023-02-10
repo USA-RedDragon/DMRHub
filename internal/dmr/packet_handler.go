@@ -68,7 +68,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 				s.DB.Save(&repeater)
 			}
 		} else {
-			if repeater.TS1DynamicTalkgroupID != nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
+			if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
 				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 				repeater.TS1DynamicTalkgroup = talkgroup
 				repeater.TS1DynamicTalkgroupID = &packet.Dst

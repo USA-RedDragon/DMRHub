@@ -14,10 +14,10 @@ dockers:
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}-amd64"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}.{{ .Minor }}-amd64"
       - "ghcr.io/usa-reddragon/dmrhub:latest-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-amd64"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-amd64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-amd64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "docker.io/jamcswain/dmrhub:latest-amd64"
     use: buildx
     goarch: arm64
     build_flag_templates:
@@ -26,16 +26,19 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+      - --label=org.opencontainers.image.licenses=MIT
+      - --label=org.opencontainers.image.url=https://github.com/USA-RedDragon/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/USA-RedDragon/{{ .ProjectName }}
       - "--platform=linux/amd64"
   - image_templates:
       - "ghcr.io/usa-reddragon/dmrhub:{{ .Tag }}-armv7"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}-armv7"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}.{{ .Minor }}-armv7"
       - "ghcr.io/usa-reddragon/dmrhub:latest-armv7"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-armv7"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-armv7"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv7"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-armv7"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-armv7"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-armv7"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv7"
+      - "docker.io/jamcswain/dmrhub:latest-armv7"
     use: buildx
     goarch: arm
     goarm: "7"
@@ -45,16 +48,19 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+      - --label=org.opencontainers.image.licenses=MIT
+      - --label=org.opencontainers.image.url=https://github.com/USA-RedDragon/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/USA-RedDragon/{{ .ProjectName }}
       - "--platform=linux/arm/v7"
   - image_templates:
       - "ghcr.io/usa-reddragon/dmrhub:{{ .Tag }}-armv6"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}-armv6"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}.{{ .Minor }}-armv6"
       - "ghcr.io/usa-reddragon/dmrhub:latest-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-armv6"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-armv6"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-armv6"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv6"
+      - "docker.io/jamcswain/dmrhub:latest-armv6"
     use: buildx
     goarch: arm
     goarm: "6"
@@ -64,16 +70,19 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+      - --label=org.opencontainers.image.licenses=MIT
+      - --label=org.opencontainers.image.url=https://github.com/USA-RedDragon/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/USA-RedDragon/{{ .ProjectName }}
       - "--platform=linux/arm/v6"
   - image_templates:
       - "ghcr.io/usa-reddragon/dmrhub:{{ .Tag }}-arm64"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}-arm64"
       - "ghcr.io/usa-reddragon/dmrhub:v{{ .Major }}.{{ .Minor }}-arm64"
       - "ghcr.io/usa-reddragon/dmrhub:latest-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-arm64"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-arm64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-arm64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "docker.io/jamcswain/dmrhub:latest-arm64"
     use: buildx
     goarch: arm64
     build_flag_templates:
@@ -82,6 +91,9 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
+      - --label=org.opencontainers.image.licenses=MIT
+      - --label=org.opencontainers.image.url=https://github.com/USA-RedDragon/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/USA-RedDragon/{{ .ProjectName }}
       - "--platform=linux/arm64"
 
 docker_manifests:
@@ -111,28 +123,28 @@ docker_manifests:
       - "ghcr.io/usa-reddragon/dmrhub:latest-armv7"
   - name_template: "ghcr.io/usa-reddragon/dmrhub:{{ .Tag }}"
     image_templates:
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:{{ .Tag }}-armv7"
-  - name_template: "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-amd64"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-arm64"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-armv6"
+      - "docker.io/jamcswain/dmrhub:{{ .Tag }}-armv7"
+  - name_template: "docker.io/jamcswain/dmrhub:v{{ .Major }}"
     image_templates:
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}-armv7"
-  - name_template: "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-amd64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-arm64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-armv6"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}-armv7"
+  - name_template: "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}"
     image_templates:
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv7"
-  - name_template: "registry.hub.docker.com/jamcswain/dmrhub:latest"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv6"
+      - "docker.io/jamcswain/dmrhub:v{{ .Major }}.{{ .Minor }}-armv7"
+  - name_template: "docker.io/jamcswain/dmrhub:latest"
     image_templates:
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-amd64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-arm64"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-armv6"
-      - "registry.hub.docker.com/jamcswain/dmrhub:latest-armv7"
+      - "docker.io/jamcswain/dmrhub:latest-amd64"
+      - "docker.io/jamcswain/dmrhub:latest-arm64"
+      - "docker.io/jamcswain/dmrhub:latest-armv6"
+      - "docker.io/jamcswain/dmrhub:latest-armv7"
 
 builds:
   - main: .

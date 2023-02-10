@@ -121,7 +121,7 @@ docker_manifests:
       - "ghcr.io/usa-reddragon/dmrhub:latest-arm64"
       - "ghcr.io/usa-reddragon/dmrhub:latest-armv6"
       - "ghcr.io/usa-reddragon/dmrhub:latest-armv7"
-  - name_template: "ghcr.io/usa-reddragon/dmrhub:{{ .Tag }}"
+  - name_template: "docker.io/jamcswain/dmrhub:{{ .Tag }}"
     image_templates:
       - "docker.io/jamcswain/dmrhub:{{ .Tag }}-amd64"
       - "docker.io/jamcswain/dmrhub:{{ .Tag }}-arm64"

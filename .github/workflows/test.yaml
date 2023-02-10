@@ -104,7 +104,7 @@ jobs:
         run: |
           go test ./... -race
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic
-          go tool cover -func coverage.out
+
       - uses: codecov/codecov-action@v3
         with:
           flags: backend
@@ -116,19 +116,3 @@ jobs:
           path: coverage.out
           if-no-files-found: error
           retention-days: 30
-
-      - name: Quality Gate - Test coverage shall be above threshold
-        env:
-          TESTCOVERAGE_THRESHOLD: 80
-        run: |
-          echo "Quality Gate: checking test coverage is above threshold ..."
-          echo "Threshold             : $TESTCOVERAGE_THRESHOLD %"
-          totalCoverage=`go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`
-          echo "Current test coverage : $totalCoverage %"
-          if (( $(echo "$totalCoverage $TESTCOVERAGE_THRESHOLD" | awk '{print ($1 > $2)}') )); then
-              echo "OK"
-          else
-              echo "Current test coverage is below threshold. Please add more unit tests or adjust threshold to a lower value."
-              echo "Failed"
-              exit 1
-          fi

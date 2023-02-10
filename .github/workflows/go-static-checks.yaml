@@ -6,8 +6,32 @@ permissions:
   pull-requests: read
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: make build-frontend
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
   staticcheck:
     name: StaticCheck
+    needs: frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -16,19 +40,9 @@ jobs:
         with:
           go-version: "1.20"
       - run: go install github.com/tinylib/msgp
-      - name: Wait for frontend artifact
-        uses: lewagon/wait-on-check-action@v1.2.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: "frontend"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
       - name: Copy built frontend
-        uses: dawidd6/action-download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
-          workflow: frontend.yaml
-          workflow_conclusion: success
           name: frontend
           path: internal/http/frontend/dist
       - run: go generate ./...
@@ -46,12 +60,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     name: lint
+    needs: frontend
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/setup-go@v3
         with:
           go-version: "1.20"
       - uses: actions/checkout@v3
+      - name: Copy built frontend
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+      - run: go generate ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:

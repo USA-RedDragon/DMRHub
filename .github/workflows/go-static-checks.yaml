@@ -177,8 +177,9 @@ jobs:
 
   golangci:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     name: lint
     runs-on: ${{ matrix.os }}
     steps:

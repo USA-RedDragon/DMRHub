@@ -28,7 +28,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  frontend-tests:
+  frontend-unit-tests:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,15 +52,46 @@ jobs:
       - run: make frontend-unit-test
 
       - uses: codecov/codecov-action@v3
+        if: always()
         with:
           flags: frontend-unit
           files: ./coverage/unit/lcov.info
           fail_ci_if_error: true
           working-directory: ./internal/http/frontend
 
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: frontend-unit-coverage
+          path: internal/http/frontend/coverage/unit
+          if-no-files-found: error
+          retention-days: 30
+
+  frontend-e2e-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: cd internal/http/frontend && npm ci
+
       - run: make frontend-e2e-test
 
       - uses: codecov/codecov-action@v3
+        if: always()
         with:
           flags: frontend-e2e
           files: ./coverage/e2e/lcov.info
@@ -68,9 +99,26 @@ jobs:
           working-directory: ./internal/http/frontend
 
       - uses: actions/upload-artifact@v3
+        if: always()
         with:
-          name: frontend-coverage
-          path: internal/http/frontend/coverage
+          name: frontend-e2e-coverage
+          path: internal/http/frontend/coverage/e2e
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: frontend-e2e-screenshots
+          path: internal/http/frontend/cypress/screenshots
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: frontend-e2e-videos
+          path: internal/http/frontend/cypress/videos
           if-no-files-found: error
           retention-days: 30
 
@@ -106,11 +154,13 @@ jobs:
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic
 
       - uses: codecov/codecov-action@v3
+        if: always()
         with:
           flags: backend
           fail_ci_if_error: true
 
       - uses: actions/upload-artifact@v3
+        if: always()
         with:
           name: backend-coverage
           path: coverage.out

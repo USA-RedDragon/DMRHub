@@ -8,3 +8,4 @@ commit.txt
 coverage.txt
 cosign.key
 coverage.out
+artifacts/

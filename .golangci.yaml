@@ -1,0 +1,54 @@
+run:
+  timeout: 30m
+
+  skip-files:
+    - ".*\\_gen\\.go$"
+    - ".*\\_gen\\_test\\.go$"
+
+linters:
+  enable:
+    - asciicheck
+    - bidichk
+    - containedctx
+    - decorder
+    - dupl
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - gci
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goerr113
+    - gofmt
+    - gomnd
+    - gomoddirectives
+    - gosec
+    - maligned
+    - misspell
+    - musttag
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nonamedreturns
+    - nosnakecase
+    - nosprintfhostport
+    - paralleltest
+    - prealloc
+    - predeclared
+    - reassign
+    - revive
+    - testpackage
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - wrapcheck

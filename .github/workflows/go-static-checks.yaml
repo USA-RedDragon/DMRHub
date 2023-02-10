@@ -2,110 +2,6 @@ name: Go Static Checks
 on: pull_request
 
 jobs:
-  imports:
-    name: Imports
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: "1.20"
-      - run: go install github.com/tinylib/msgp
-      - name: Wait for frontend artifact
-        uses: lewagon/wait-on-check-action@v1.2.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: "frontend"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Copy built frontend
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: frontend.yaml
-          workflow_conclusion: success
-          name: frontend
-          path: internal/http/frontend/dist
-      - run: go generate ./...
-      - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.5
-        with:
-          run: imports
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          CGO_ENABLED: "0"
-
-  errcheck:
-    name: Errcheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: "1.20"
-      - run: go install github.com/tinylib/msgp
-      - name: Wait for frontend artifact
-        uses: lewagon/wait-on-check-action@v1.2.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: "frontend"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Copy built frontend
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: frontend.yaml
-          workflow_conclusion: success
-          name: frontend
-          path: internal/http/frontend/dist
-      - run: go generate ./...
-      - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.5
-        with:
-          run: errcheck
-          token: ${{ secrets.GITHUB_TOKEN }}
-          flags: "-ignoregenerated"
-        env:
-          GOFLAGS: "-buildvcs=false"
-          CGO_ENABLED: "0"
-
-  shadow:
-    name: Shadow
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: "1.20"
-      - run: go install github.com/tinylib/msgp
-      - name: Wait for frontend artifact
-        uses: lewagon/wait-on-check-action@v1.2.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: "frontend"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Copy built frontend
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: frontend.yaml
-          workflow_conclusion: success
-          name: frontend
-          path: internal/http/frontend/dist
-      - run: go generate ./...
-      - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.5
-        with:
-          run: shadow
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          CGO_ENABLED: "0"
-
   staticcheck:
     name: StaticCheck
     runs-on: ubuntu-latest
@@ -133,45 +29,10 @@ jobs:
           path: internal/http/frontend/dist
       - run: go generate ./...
       - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.5
+        uses: USA-RedDragon/golang-github-actions@v1.2.6
         with:
           run: staticcheck
           token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          CGO_ENABLED: "0"
-
-  sec:
-    name: Sec
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: "1.20"
-      - run: go install github.com/tinylib/msgp
-      - name: Wait for frontend artifact
-        uses: lewagon/wait-on-check-action@v1.2.0
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          check-name: "frontend"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Copy built frontend
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: frontend.yaml
-          workflow_conclusion: success
-          name: frontend
-          path: internal/http/frontend/dist
-      - run: go generate ./...
-      - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.5
-        with:
-          run: sec
-          token: ${{ secrets.GITHUB_TOKEN }}
-          flags: "-exclude=G104 -exclude-generated"
         env:
           CGO_ENABLED: "0"
 

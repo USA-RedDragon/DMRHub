@@ -61,9 +61,9 @@ jobs:
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic
           go tool cover -func coverage.out
       - run: echo "COVERAGE=`go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`" >> $GITHUB_ENV"
-        if: github.event_name == 'push' && github.ref == "refs/heads/main"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Create coverage badge
-        if: github.event_name == 'push' && github.ref == "refs/heads/main"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: schneegans/dynamic-badges-action@v1.0.0
         with:
           auth: ${{ secrets.GIST_SECRET }}

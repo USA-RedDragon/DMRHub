@@ -48,12 +48,15 @@ jobs:
         with:
           node-version: 18
 
+      - run: make build-frontend
+
       - run: make frontend-unit-test
       - run: make frontend-e2e-test
 
       - uses: codecov/codecov-action@v3
         with:
           flags: frontend
+          files: ./internal/http/frontend/coverage/unit/lcov.info,./internal/http/frontend/coverage/e2e/lcov.info
           fail_ci_if_error: true
           working-directory: internal/http/frontend
 

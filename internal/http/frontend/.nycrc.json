@@ -1,0 +1,7 @@
+{
+    "reporter": [
+        "html",
+        "lcov"
+    ],
+    "report-dir": "coverage/e2e"
+}

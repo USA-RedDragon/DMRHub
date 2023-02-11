@@ -5,7 +5,7 @@ import (
 	_ "embed"
 )
 
-//go:generate bash -c "../../hack/git_commit.sh > commit.txt"
+//go:generate bash -c "bash ../../hack/git_commit.sh > commit.txt"
 var (
 	//go:embed commit.txt
 	GitCommit string

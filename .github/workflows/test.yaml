@@ -59,6 +59,15 @@ jobs:
           retention-days: 30
           path: internal/http/frontend/reports/unit
 
+      - name: Publish Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v3
+        with:
+          report_paths: "internal/http/frontend/reports/unit/*.xml"
+          test_files_prefix: "internal/http/frontend"
+          require_tests: true
+          check_retries: true
+
       - uses: codecov/codecov-action@v3
         if: always()
         with:
@@ -83,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: ["firefox","chrome","electron"]
+        browser: ["firefox", "chrome", "electron"]
 
     steps:
       - name: Set up Go
@@ -126,6 +135,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: internal/http/frontend/reports/e2e
+
+      - name: Publish Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v3
+        with:
+          report_paths: "internal/http/frontend/reports/e2e/*.xml"
+          test_files_prefix: "internal/http/frontend"
+          require_tests: true
+          check_retries: true
 
       - uses: actions/upload-artifact@v3
         if: always()
@@ -175,7 +193,15 @@ jobs:
           go install github.com/jstemmer/go-junit-report/v2@latest
           go install github.com/vakenbolt/go-test-report@latest
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic 2>&1 | go-junit-report -out report.xml -iocopy -set-exit-code
-          env CGO_ENABLED=0 go test ./... -json | go-test-report -o report.html
+          env CGO_ENABLED=0 go test ./... -json | go-test-report -o report.html >/dev/null
+
+      - name: Publish Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@v3
+        with:
+          report_paths: "report.xml"
+          require_tests: true
+          check_retries: true
 
       - uses: codecov/codecov-action@v3
         if: always()

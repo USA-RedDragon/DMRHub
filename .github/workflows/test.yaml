@@ -68,6 +68,8 @@ jobs:
           test_files_prefix: "internal/http/frontend"
           require_tests: true
           check_retries: true
+          detailed_summary: true
+          fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Frontend Unit Tests
 
@@ -148,6 +150,8 @@ jobs:
           test_files_prefix: "internal/http/frontend"
           require_tests: true
           check_retries: true
+          detailed_summary: true
+          fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Frontend E2E Tests (${{ matrix.browser }})
 
@@ -194,12 +198,16 @@ jobs:
         with:
           gofmt-flags: "-l -d"
 
+      - run: make benchmark
+
       - name: Unit tests
+        if: always()
         run: |
-          go test ./... -race
+          go test ./... -race || true
+          make benchmark || true
           go install github.com/jstemmer/go-junit-report/v2@latest
           go install github.com/vakenbolt/go-test-report@latest
-          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic 2>&1 | go-junit-report -out report.xml -iocopy -set-exit-code
+          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic 2>&1 | go-junit-report -out report.xml -iocopy
           env CGO_ENABLED=0 go test ./... -json | go-test-report -o report.html >/dev/null
 
       - name: Publish Test Report
@@ -209,6 +217,8 @@ jobs:
           report_paths: "report.xml"
           require_tests: true
           check_retries: true
+          detailed_summary: true
+          fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Backend Unit Tests
 

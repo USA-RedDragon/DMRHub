@@ -149,7 +149,7 @@ jobs:
           require_tests: true
           check_retries: true
           token: ${{ secrets.GITHUB_TOKEN }}
-          check_name: Frontend E2E Tests
+          check_name: Frontend E2E Tests (${{ matrix.browser }})
 
       - uses: actions/upload-artifact@v3
         if: always()

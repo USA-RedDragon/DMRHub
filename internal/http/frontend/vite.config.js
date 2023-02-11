@@ -23,11 +23,16 @@ export default defineConfig({
     },
   },
   test: {
+    reporter: ["junit", "html", "default"],
+    outputFile: {
+      junit: "reports/unit/junit.xml",
+      html: "reports/unit/index.html",
+    },
     coverage: {
       all: true,
       enabled: true,
       provider: "c8",
-      reporter: ["html", "lcov"],
+      reporter: ["html", "lcov", "text"],
       reportsDirectory: "coverage/unit",
       src: ["src"],
     },

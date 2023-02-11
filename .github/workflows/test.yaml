@@ -67,6 +67,7 @@ jobs:
           test_files_prefix: "internal/http/frontend"
           require_tests: true
           check_retries: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: codecov/codecov-action@v3
         if: always()
@@ -144,6 +145,7 @@ jobs:
           test_files_prefix: "internal/http/frontend"
           require_tests: true
           check_retries: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v3
         if: always()
@@ -202,6 +204,7 @@ jobs:
           report_paths: "report.xml"
           require_tests: true
           check_retries: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: codecov/codecov-action@v3
         if: always()

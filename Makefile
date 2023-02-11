@@ -86,9 +86,23 @@ update-repeaterdb:
 frontend-unit-test:
 	@cd internal/http/frontend && npm run test:unit
 
-frontend-e2e-test:
+frontend-e2e-test-electron:
 	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
 	@cd internal/http/frontend && env NODE_ENV=test npm run build
 	@echo "--> Running end-to-end tests"
 	@cd internal/http/frontend && env NODE_ENV=test npm run test:e2e
+
+frontend-e2e-test-chrome:
+	@cd internal/http/frontend && npm ci
+	@echo "--> Building Vue application"
+	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@echo "--> Running end-to-end tests"
+	@cd internal/http/frontend && env NODE_ENV=test npm run test:e2e:chrome
+
+frontend-e2e-test-firefox:
+	@cd internal/http/frontend && npm ci
+	@echo "--> Building Vue application"
+	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@echo "--> Running end-to-end tests"
+	@cd internal/http/frontend && env NODE_ENV=test BROWSER=firefox npm run test:e2e:firefox

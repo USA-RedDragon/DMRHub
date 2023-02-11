@@ -9,3 +9,5 @@ coverage.txt
 cosign.key
 coverage.out
 artifacts/
+report.xml
+report.html

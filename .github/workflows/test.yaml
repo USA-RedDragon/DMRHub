@@ -132,7 +132,7 @@ jobs:
         with:
           name: frontend-e2e-screenshots-${{ matrix.browser }}
           path: internal/http/frontend/cypress/screenshots
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 30
 
       - uses: actions/upload-artifact@v3
@@ -140,7 +140,7 @@ jobs:
         with:
           name: frontend-e2e-videos-${{ matrix.browser }}
           path: internal/http/frontend/cypress/videos
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 30
 
   backend-tests:

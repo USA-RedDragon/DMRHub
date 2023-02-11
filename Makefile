@@ -43,7 +43,7 @@ run:
 
 coverage:
 	@echo "--> Running tests"
-	@env CGO_ENABLED=0 go test -coverprofile=coverage.txt -covermode=atomic ./...
+	@env CGO_ENABLED=0 go test -coverprofile=coverage.txt -coverpkg=./... -covermode=atomic ./...
 	@echo "--> Done"
 
 view-coverage:

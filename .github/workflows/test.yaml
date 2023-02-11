@@ -199,7 +199,7 @@ jobs:
           go test ./... -race
           go install github.com/jstemmer/go-junit-report/v2@latest
           go install github.com/vakenbolt/go-test-report@latest
-          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -covermode atomic 2>&1 | go-junit-report -out report.xml -iocopy -set-exit-code
+          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic 2>&1 | go-junit-report -out report.xml -iocopy -set-exit-code
           env CGO_ENABLED=0 go test ./... -json | go-test-report -o report.html >/dev/null
 
       - name: Publish Test Report

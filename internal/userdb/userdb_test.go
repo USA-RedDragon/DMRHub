@@ -87,7 +87,9 @@ func TestUpdate(t *testing.T) {
 func BenchmarkUserDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		UnpackDB()
-		dmrUsers = dmrUserDB{}
+		isInited.Store(false)
+		isDone.Store(false)
+		dmrUsers.Store(dmrUserDB{})
 	}
 }
 

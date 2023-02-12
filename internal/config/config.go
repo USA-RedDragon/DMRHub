@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"golang.org/x/crypto/pbkdf2"
@@ -14,7 +16,6 @@ import (
 
 // Config stores the application configuration
 type Config struct {
-	loaded                   bool
 	RedisHost                string
 	RedisPassword            string
 	PostgresDSN              string
@@ -37,14 +38,11 @@ type Config struct {
 	Debug                    bool
 }
 
-var currentConfig Config
+var currentConfig atomic.Value
+var isInit atomic.Bool
+var loaded atomic.Bool
 
-// GetConfig obtains the current configuration
-// On the first call, it will load the configuration from the environment variables
-func GetConfig() *Config {
-	if currentConfig.loaded {
-		return &currentConfig
-	}
+func loadConfig() Config {
 	portStr := os.Getenv("PG_PORT")
 	pgPort, err := strconv.ParseInt(portStr, 10, 0)
 	if err != nil {
@@ -63,8 +61,7 @@ func GetConfig() *Config {
 		httpPort = 0
 	}
 
-	currentConfig = Config{
-		loaded:                   false,
+	tmpConfig := Config{
 		RedisHost:                os.Getenv("REDIS_HOST"),
 		postgresUser:             os.Getenv("PG_USER"),
 		postgresPassword:         os.Getenv("PG_PASSWORD"),
@@ -82,74 +79,89 @@ func GetConfig() *Config {
 		RedisPassword:            os.Getenv("REDIS_PASSWORD"),
 		Debug:                    os.Getenv("DEBUG") != "",
 	}
-	if currentConfig.RedisHost == "" {
-		currentConfig.RedisHost = "localhost:6379"
+	if tmpConfig.RedisHost == "" {
+		tmpConfig.RedisHost = "localhost:6379"
 	}
-	if currentConfig.postgresUser == "" {
-		currentConfig.postgresUser = "postgres"
+	if tmpConfig.postgresUser == "" {
+		tmpConfig.postgresUser = "postgres"
 	}
-	if currentConfig.postgresPassword == "" {
-		currentConfig.postgresPassword = "password"
+	if tmpConfig.postgresPassword == "" {
+		tmpConfig.postgresPassword = "password"
 	}
-	if currentConfig.postgresHost == "" {
-		currentConfig.postgresHost = "localhost"
+	if tmpConfig.postgresHost == "" {
+		tmpConfig.postgresHost = "localhost"
 	}
-	if currentConfig.postgresPort == 0 {
-		currentConfig.postgresPort = 5432
+	if tmpConfig.postgresPort == 0 {
+		tmpConfig.postgresPort = 5432
 	}
-	if currentConfig.postgresDatabase == "" {
-		currentConfig.postgresDatabase = "postgres"
+	if tmpConfig.postgresDatabase == "" {
+		tmpConfig.postgresDatabase = "postgres"
 	}
-	currentConfig.PostgresDSN = "host=" + currentConfig.postgresHost + " port=" + strconv.FormatInt(int64(currentConfig.postgresPort), 10) + " user=" + currentConfig.postgresUser + " dbname=" + currentConfig.postgresDatabase + " password=" + currentConfig.postgresPassword
-	if currentConfig.strSecret == "" {
-		currentConfig.strSecret = "secret"
+	tmpConfig.PostgresDSN = "host=" + tmpConfig.postgresHost + " port=" + strconv.FormatInt(int64(tmpConfig.postgresPort), 10) + " user=" + tmpConfig.postgresUser + " dbname=" + tmpConfig.postgresDatabase + " password=" + tmpConfig.postgresPassword
+	if tmpConfig.strSecret == "" {
+		tmpConfig.strSecret = "secret"
 		klog.Errorf("Session secret not set, using INSECURE default")
 	}
-	if currentConfig.PasswordSalt == "" {
-		currentConfig.PasswordSalt = "salt"
+	if tmpConfig.PasswordSalt == "" {
+		tmpConfig.PasswordSalt = "salt"
 		klog.Errorf("Password salt not set, using INSECURE default")
 	}
-	if currentConfig.ListenAddr == "" {
-		currentConfig.ListenAddr = "0.0.0.0"
+	if tmpConfig.ListenAddr == "" {
+		tmpConfig.ListenAddr = "0.0.0.0"
 	}
-	if currentConfig.DMRPort == 0 {
-		currentConfig.DMRPort = 62031
+	if tmpConfig.DMRPort == 0 {
+		tmpConfig.DMRPort = 62031
 	}
-	if currentConfig.HTTPPort == 0 {
-		currentConfig.HTTPPort = 3005
+	if tmpConfig.HTTPPort == 0 {
+		tmpConfig.HTTPPort = 3005
 	}
-	if currentConfig.InitialAdminUserPassword == "" {
+	if tmpConfig.InitialAdminUserPassword == "" {
 		klog.Errorf("Initial admin user password not set, using auto-generated password")
-		currentConfig.InitialAdminUserPassword, err = utils.RandomPassword(15, 4, 2)
+		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(15, 4, 2)
 		if err != nil {
 			klog.Errorf("Password generation failed")
 		}
 	}
-	if currentConfig.RedisPassword == "" {
-		currentConfig.RedisPassword = "password"
+	if tmpConfig.RedisPassword == "" {
+		tmpConfig.RedisPassword = "password"
 		klog.Errorf("Redis password not set, using INSECURE default")
 	}
 	// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 	corsHosts := os.Getenv("CORS_HOSTS")
 	if corsHosts == "" {
-		currentConfig.CORSHosts = []string{
-			fmt.Sprintf("http://localhost:%d", currentConfig.HTTPPort),
-			fmt.Sprintf("http://127.0.0.1:%d", currentConfig.HTTPPort),
+		tmpConfig.CORSHosts = []string{
+			fmt.Sprintf("http://localhost:%d", tmpConfig.HTTPPort),
+			fmt.Sprintf("http://127.0.0.1:%d", tmpConfig.HTTPPort),
 		}
 	} else {
-		currentConfig.CORSHosts = strings.Split(corsHosts, ",")
+		tmpConfig.CORSHosts = strings.Split(corsHosts, ",")
 	}
 	trustedProxies := os.Getenv("TRUSTED_PROXIES")
 	if trustedProxies == "" {
-		currentConfig.TrustedProxies = []string{}
+		tmpConfig.TrustedProxies = []string{}
 	} else {
-		currentConfig.TrustedProxies = strings.Split(trustedProxies, ",")
+		tmpConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 	}
-	if currentConfig.Debug {
+	if tmpConfig.Debug {
 		klog.Warningf("Debug mode enabled, this should not be used in production")
-		klog.Infof("Config: %+v", currentConfig)
+		klog.Infof("Config: %+v", tmpConfig)
 	}
-	currentConfig.Secret = pbkdf2.Key([]byte(currentConfig.strSecret), []byte(currentConfig.PasswordSalt), 4096, 32, sha256.New)
-	currentConfig.loaded = true
-	return &currentConfig
+	tmpConfig.Secret = pbkdf2.Key([]byte(tmpConfig.strSecret), []byte(tmpConfig.PasswordSalt), 4096, 32, sha256.New)
+	return tmpConfig
+}
+
+// GetConfig obtains the current configuration
+// On the first call, it will load the configuration from the environment variables
+func GetConfig() *Config {
+	lastInit := isInit.Swap(true)
+	if !lastInit {
+		currentConfig.Store(loadConfig())
+		loaded.Store(true)
+	}
+	for !loaded.Load() {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	curConfig := currentConfig.Load().(Config)
+	return &curConfig
 }

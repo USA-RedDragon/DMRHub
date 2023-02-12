@@ -9,9 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/pprof"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
@@ -19,9 +16,11 @@ import (
 	websocketHandler "github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )

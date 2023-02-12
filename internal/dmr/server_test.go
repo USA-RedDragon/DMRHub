@@ -1,1 +1,1 @@
-package dmr
+package dmr_test

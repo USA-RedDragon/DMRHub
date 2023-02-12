@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPingRoute(t *testing.T) {

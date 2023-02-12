@@ -47,16 +47,16 @@ type DMRRepeater struct {
 	IPSCNetwork string `json:"ipsc_network"`
 }
 
-func IsValidRepeaterID(DMRId uint) bool {
+func IsValidRepeaterID(dmrID uint) bool {
 	// Check that the repeater id is 6 digits
-	if DMRId < 100000 || DMRId > 999999 {
+	if dmrID < 100000 || dmrID > 999999 {
 		return false
 	}
 	return true
 }
 
-func IsInDB(DMRId uint, callsign string) bool {
-	repeater, ok := dmrRepeaterMap[DMRId]
+func IsInDB(dmrID uint, callsign string) bool {
+	repeater, ok := dmrRepeaterMap[dmrID]
 	if !ok {
 		return false
 	}

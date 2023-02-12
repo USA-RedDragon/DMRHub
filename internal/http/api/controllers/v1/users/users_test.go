@@ -14,9 +14,9 @@ import (
 )
 
 func TestRegisterBadUser(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	// Test invalid user
 	user := apimodels.UserRegistration{
@@ -42,13 +42,13 @@ func TestRegisterBadUser(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Message)
 	assert.NotEmpty(t, resp.Error)
-	assert.Equal(t, resp.Error, "JSON data is invalid")
+	assert.Equal(t, "JSON data is invalid", resp.Error)
 }
 
 func TestRegisterBadData(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/v1/users", bytes.NewBuffer([]byte("invalid json data")))
@@ -63,13 +63,13 @@ func TestRegisterBadData(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Message)
 	assert.NotEmpty(t, resp.Error)
-	assert.Equal(t, resp.Error, "JSON data is invalid")
+	assert.Equal(t, "JSON data is invalid", resp.Error)
 }
 
 func TestRegisterBadDMRId(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
 		DMRId:    1,
@@ -94,13 +94,13 @@ func TestRegisterBadDMRId(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Message)
 	assert.NotEmpty(t, resp.Error)
-	assert.Equal(t, resp.Error, "DMR ID is invalid")
+	assert.Equal(t, "DMR ID is not valid", resp.Error)
 }
 
 func TestRegisterBadCallsign(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
@@ -125,13 +125,13 @@ func TestRegisterBadCallsign(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Message)
 	assert.NotEmpty(t, resp.Error)
-	assert.Equal(t, resp.Error, "Callsign does not match DMR ID")
+	assert.Equal(t, "Callsign does not match DMR ID", resp.Error)
 }
 
 func TestRegisterLowercaseCallsign(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	// Call this to load in the dbs
 	userdb.GetDMRUsers()
@@ -139,7 +139,7 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
 		Callsign: "ki5vmf",
-		Username: "n0call",
+		Username: "username",
 		Password: "password",
 	}
 
@@ -159,13 +159,13 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Error)
 	assert.NotEmpty(t, resp.Message)
-	assert.Equal(t, resp.Message, "User created, please wait for admin approval")
+	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
 }
 
 func TestRegisterUppercaseCallsign(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	// Call this to load in the dbs
 	userdb.GetDMRUsers()
@@ -173,7 +173,7 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
 		Callsign: "KI5VMF",
-		Username: "n0call",
+		Username: "username",
 		Password: "password",
 	}
 
@@ -193,5 +193,125 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Error)
 	assert.NotEmpty(t, resp.Message)
-	assert.Equal(t, resp.Message, "User created, please wait for admin approval")
+	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
+}
+
+func TestRegisterDuplicateUsername(t *testing.T) {
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
+
+	// Call this to load in the dbs
+	userdb.GetDMRUsers()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "username",
+		Password: "password",
+	}
+
+	jsonBytes, err := json.Marshal(user)
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users", bytes.NewBuffer(jsonBytes))
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	assert.NotEmpty(t, w.Body.String())
+
+	var resp testutils.APIResponse
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, resp.Error)
+	assert.NotEmpty(t, resp.Message)
+	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
+
+	w = httptest.NewRecorder()
+
+	user = apimodels.UserRegistration{
+		DMRId:    3140598,
+		Callsign: "KP4DJT",
+		Username: "username",
+		Password: "password",
+	}
+
+	jsonBytes, err = json.Marshal(user)
+	assert.NoError(t, err)
+
+	req, _ = http.NewRequest("POST", "/api/v1/users", bytes.NewBuffer(jsonBytes))
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 400, w.Code)
+	assert.NotEmpty(t, w.Body.String())
+
+	resp = testutils.APIResponse{}
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, resp.Message)
+	assert.NotEmpty(t, resp.Error)
+	assert.Equal(t, "Username is already taken", resp.Error)
+}
+
+func TestRegisterDuplicateDMRID(t *testing.T) {
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
+
+	// Call this to load in the dbs
+	userdb.GetDMRUsers()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "username",
+		Password: "password",
+	}
+
+	jsonBytes, err := json.Marshal(user)
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/users", bytes.NewBuffer(jsonBytes))
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+	assert.NotEmpty(t, w.Body.String())
+
+	var resp testutils.APIResponse
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, resp.Error)
+	assert.NotEmpty(t, resp.Message)
+	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
+
+	user = apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "username2",
+		Password: "password",
+	}
+
+	jsonBytes, err = json.Marshal(user)
+	assert.NoError(t, err)
+
+	w = httptest.NewRecorder()
+
+	req, _ = http.NewRequest("POST", "/api/v1/users", bytes.NewBuffer(jsonBytes))
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 400, w.Code)
+	assert.NotEmpty(t, w.Body.String())
+
+	resp = testutils.APIResponse{}
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, resp.Message)
+	assert.NotEmpty(t, resp.Error)
+	assert.Equal(t, "DMR ID is already registered", resp.Error)
 }

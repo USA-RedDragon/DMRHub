@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"

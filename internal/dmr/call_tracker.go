@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"

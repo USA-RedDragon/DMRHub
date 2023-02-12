@@ -3,8 +3,8 @@ package models_test
 import (
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/google/go-cmp/cmp"
 )
 

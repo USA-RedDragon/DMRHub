@@ -34,7 +34,7 @@ func TestRepeaterdbValidRepeater(t *testing.T) {
 	}
 }
 
-func TestUserdbInvalidUser(t *testing.T) {
+func TestRepeaterdbInvalidRepeater(t *testing.T) {
 	// DMR repeater IDs are 6 digits.
 	// 7 digits
 	if IsValidRepeaterID(9999999) {
@@ -64,6 +64,9 @@ func TestUserdbInvalidUser(t *testing.T) {
 	if IsValidRepeaterID(0) {
 		t.Error("0 is not a valid repeater ID")
 	}
+	if !IsValidRepeaterID(313060) {
+		t.Error("Valid repeater ID marked invalid")
+	}
 }
 
 func TestUpdate(t *testing.T) {
@@ -76,14 +79,14 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
-func BenchmarkUserDB(b *testing.B) {
+func BenchmarkRepeaterDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		GetDMRRepeaters()
 		dmrRepeaters = dmrRepeaterDB{}
 	}
 }
 
-func BenchmarkUserSearch(b *testing.B) {
+func BenchmarkRepeaterSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()
 	GetDMRRepeaters()

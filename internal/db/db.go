@@ -96,7 +96,7 @@ InitDB:
 		seedersStack.AddSeeder(&usersSeeder)
 		seedersStack.AddSeeder(&talkgroupsSeeder)
 
-		//Apply seed
+		// Apply seed
 		err = seedersStack.Seed()
 		if err != nil {
 			klog.Fatalf("Failed to seed database: %s", err)

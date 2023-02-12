@@ -81,7 +81,6 @@ func main() {
 
 	// Dummy call to get the data decoded into memory early
 	go func() {
-		repeaterdb.GetDMRRepeaters()
 		err := repeaterdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update repeater database: %s using built in one", err)

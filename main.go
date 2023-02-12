@@ -99,7 +99,6 @@ func main() {
 	}
 
 	go func() {
-		userdb.GetDMRUsers()
 		err = userdb.Update()
 		if err != nil {
 			klog.Errorf("Failed to update user database: %s using built in one", err)

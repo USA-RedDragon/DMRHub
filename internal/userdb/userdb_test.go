@@ -6,23 +6,21 @@ import (
 )
 
 func TestUserdb(t *testing.T) {
-	dmrUsers := GetDMRUsers()
-	if len(*dmrUsers) == 0 {
+	if Len() == 0 {
 		t.Error("dmrUsers is empty")
 	}
 	// Check for an obviously wrong number of IDs.
 	// As of writing this test, there are 232,772 IDs in the database
-	if len(*dmrUsers) < 231290 {
-		t.Errorf("dmrUsers is missing users, found %d users", len(*dmrUsers))
+	if Len() < 231290 {
+		t.Errorf("dmrUsers is missing users, found %d users", Len())
 	}
 }
 
 func TestUserdbValidUser(t *testing.T) {
-	if !IsInDB(3191868, "KI5VMF") {
+	if !ValidUserCallsign(3191868, "KI5VMF") {
 		t.Error("KI5VMF is not in the database")
 	}
-	dmrUsers := GetDMRUsers()
-	me, ok := (*dmrUsers)[3191868]
+	me, ok := Get(3191868)
 	if !ok {
 		t.Error("KI5VMF is not in the database")
 	}
@@ -84,17 +82,14 @@ func TestUpdate(t *testing.T) {
 
 func BenchmarkUserDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		GetDMRUsers()
+		UnpackDB()
 		dmrUsers = dmrUserDB{}
 	}
 }
 
 func BenchmarkUserSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
-	b.StopTimer()
-	GetDMRUsers()
-	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		IsInDB(3191868, "KI5VMF")
+		ValidUserCallsign(3191868, "KI5VMF")
 	}
 }

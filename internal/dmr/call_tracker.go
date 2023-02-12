@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -20,19 +21,21 @@ const timerDelay = 2 * time.Second
 
 // CallTracker is a struct that holds the state of the calls that are currently in progress
 type CallTracker struct {
-	DB            *gorm.DB
-	Redis         *redis.Client
-	CallEndTimers map[uint]*time.Timer
-	InFlightCalls map[uint]*models.Call
+	db                 *gorm.DB
+	redis              *redis.Client
+	callEndTimers      map[uint]*time.Timer
+	callEndTimersMutex sync.RWMutex
+	inFlightCalls      map[uint]*models.Call
+	inFlightCallsMutex sync.RWMutex
 }
 
 // NewCallTracker creates a new CallTracker
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	return &CallTracker{
-		DB:            db,
-		Redis:         redis,
-		CallEndTimers: make(map[uint]*time.Timer),
-		InFlightCalls: make(map[uint]*models.Call),
+		db:            db,
+		redis:         redis,
+		callEndTimers: make(map[uint]*time.Timer),
+		inFlightCalls: make(map[uint]*models.Call),
 	}
 }
 
@@ -41,19 +44,19 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
 
-	if !models.UserIDExists(c.DB, packet.Src) {
+	if !models.UserIDExists(c.db, packet.Src) {
 		if config.GetConfig().Debug {
 			klog.Errorf("User %d does not exist", packet.Src)
 		}
 		return
 	}
-	sourceUser = models.FindUserByID(c.DB, packet.Src)
+	sourceUser = models.FindUserByID(c.db, packet.Src)
 
-	if !models.RepeaterIDExists(c.DB, packet.Repeater) {
+	if !models.RepeaterIDExists(c.db, packet.Repeater) {
 		klog.Errorf("Repeater %d does not exist", packet.Repeater)
 		return
 	}
-	sourceRepeater = models.FindRepeaterByID(c.DB, packet.Repeater)
+	sourceRepeater = models.FindRepeaterByID(c.db, packet.Repeater)
 
 	isToRepeater, isToTalkgroup, isToUser := false, false, false
 	var destUser models.User
@@ -65,25 +68,25 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	// if packet.GroupCall is false, then packet.Dst is a user
 	if packet.GroupCall {
 		// Decide between talkgroup and repeater
-		if !models.TalkgroupIDExists(c.DB, packet.Dst) {
-			if !models.RepeaterIDExists(c.DB, packet.Dst) {
+		if !models.TalkgroupIDExists(c.db, packet.Dst) {
+			if !models.RepeaterIDExists(c.db, packet.Dst) {
 				klog.Errorf("Cannot find packet destination %d", packet.Dst)
 				return
 			}
 			isToRepeater = true
-			destRepeater = models.FindRepeaterByID(c.DB, packet.Dst)
+			destRepeater = models.FindRepeaterByID(c.db, packet.Dst)
 		} else {
 			isToTalkgroup = true
-			destTalkgroup = models.FindTalkgroupByID(c.DB, packet.Dst)
+			destTalkgroup = models.FindTalkgroupByID(c.db, packet.Dst)
 		}
 	} else {
 		// Find the user
-		if !models.UserIDExists(c.DB, packet.Dst) {
+		if !models.UserIDExists(c.db, packet.Dst) {
 			klog.Errorf("Cannot find packet destination %d", packet.Dst)
 			return
 		}
 		isToUser = true
-		destUser = models.FindUserByID(c.DB, packet.Dst)
+		destUser = models.FindUserByID(c.db, packet.Dst)
 	}
 
 	call := models.Call{
@@ -122,30 +125,37 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	}
 
 	// Create the call in the database
-	c.DB.Create(&call)
-	if c.DB.Error != nil {
-		klog.Errorf("Error creating call: %v", c.DB.Error)
+	c.db.Create(&call)
+	if c.db.Error != nil {
+		klog.Errorf("Error creating call: %v", c.db.Error)
 		return
 	}
 
 	// Add the call to the active calls map
-	c.InFlightCalls[call.ID] = &call
+	c.inFlightCallsMutex.Lock()
+	c.inFlightCalls[call.ID] = &call
+	c.inFlightCallsMutex.Unlock()
 
 	if config.GetConfig().Debug {
 		klog.Infof("Started call %d", call.StreamID)
 	}
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.CallEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet))
+	c.callEndTimersMutex.Lock()
+	c.callEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet))
+	c.callEndTimersMutex.Unlock()
 }
 
 // IsCallActive checks if a call is active
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
-	for _, call := range c.InFlightCalls {
+	c.inFlightCallsMutex.RLock()
+	for _, call := range c.inFlightCalls {
 		if call.Active && call.StreamID == packet.StreamID && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
+			c.inFlightCallsMutex.RUnlock()
 			return true
 		}
 	}
+	c.inFlightCallsMutex.RUnlock()
 	return false
 }
 
@@ -219,7 +229,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 	}
 	// Save for hoseline:
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		_, err = c.Redis.Publish(ctx, "calls", callJSON).Result()
+		_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)
 			return
@@ -230,17 +240,17 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 		// Iterate all repeaters to see if they want the call
 		var repeaters []models.Repeater
 		alreadyPublished := make(map[uint]bool)
-		c.DB.Preload("Owner").Find(&repeaters)
+		c.db.Preload("Owner").Find(&repeaters)
 		for _, repeater := range repeaters {
 			want, _ := repeater.WantRX(packet)
 			if want && !alreadyPublished[repeater.OwnerID] {
 				// Publish the call to the repeater owner's call history
-				c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+				c.redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
 				alreadyPublished[repeater.OwnerID] = true
 				continue
 			}
 			if repeater.OwnerID == call.UserID {
-				c.Redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
+				c.redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
 				alreadyPublished[repeater.OwnerID] = true
 			}
 		}
@@ -249,7 +259,9 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
 	// Reset call end timer
-	c.CallEndTimers[call.ID].Reset(2 * time.Second)
+	c.callEndTimersMutex.Lock()
+	c.callEndTimers[call.ID].Reset(2 * time.Second)
+	c.callEndTimersMutex.Unlock()
 
 	elapsed := time.Since(call.LastPacketTime)
 	call.LastPacketTime = time.Now()
@@ -399,7 +411,9 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
-	for _, lcall := range c.InFlightCalls {
+	c.inFlightCallsMutex.RLock()
+	for _, lcall := range c.inFlightCalls {
+		c.inFlightCallsMutex.RUnlock()
 		if lcall.StreamID == packet.StreamID && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
 			c.updateCall(ctx, lcall, packet)
 			return
@@ -418,17 +432,23 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
-	for _, call := range c.InFlightCalls {
+	c.inFlightCallsMutex.RLock()
+	for _, call := range c.inFlightCalls {
+		c.inFlightCallsMutex.RUnlock()
 		if call.StreamID == packet.StreamID && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
 			// Delete the call end timer
-			timer := c.CallEndTimers[call.ID]
+			c.callEndTimersMutex.RLock()
+			timer := c.callEndTimers[call.ID]
+			c.callEndTimersMutex.RUnlock()
 			timer.Stop()
-			delete(c.CallEndTimers, call.ID)
+			c.callEndTimersMutex.Lock()
+			delete(c.callEndTimers, call.ID)
+			c.callEndTimersMutex.Unlock()
 
 			if time.Since(call.StartTime) < 100*time.Millisecond {
 				// This is probably a key-up, so delete the call from the db
 				call := call
-				c.DB.Delete(&call)
+				c.db.Delete(&call)
 				return
 			}
 
@@ -453,9 +473,11 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			call.Active = false
 			call.Duration = time.Since(call.StartTime)
 			call.Loss = float32(call.LostSequences / call.TotalPackets)
-			c.DB.Save(call)
+			c.db.Save(call)
 			c.publishCall(ctx, call, packet)
-			delete(c.InFlightCalls, call.ID)
+			c.inFlightCallsMutex.Lock()
+			delete(c.inFlightCalls, call.ID)
+			c.inFlightCallsMutex.Unlock()
 
 			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
 		}

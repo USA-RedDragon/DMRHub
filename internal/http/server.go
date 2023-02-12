@@ -15,13 +15,13 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
-	redis "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
+	redisSessions "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
 	websocketHandler "github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	realredis "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -33,18 +33,11 @@ var FS embed.FS
 
 var ws *websocketHandler.WSHandler
 
-// Start the HTTP server
-func Start(db *gorm.DB, redisClient *realredis.Client) {
-	if config.GetConfig().Debug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
+func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
+	r := gin.Default()
 
 	ws = websocketHandler.CreateHandler(db, redisClient)
 
-	// Setup API
-	r := gin.Default()
 	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
 	if err != nil {
 		klog.Error(err)
@@ -79,7 +72,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
 	r.Use(cors.New(corsConfig))
 
-	sessionStore, _ := redis.NewStore(redisClient, []byte(""), config.GetConfig().Secret)
+	sessionStore, _ := redisSessions.NewStore(redisClient, []byte(""), config.GetConfig().Secret)
 	r.Use(sessions.Sessions("sessions", sessionStore))
 
 	ws.ApplyRoutes(r, ratelimitMW)
@@ -272,6 +265,18 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 			}
 		})
 	}
+	return r
+}
+
+// Start the HTTP server
+func Start(db *gorm.DB, redisClient *redis.Client) {
+	if config.GetConfig().Debug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := CreateRouter(db, redisClient)
 
 	writeTimeout := 10 * time.Second
 	if config.GetConfig().Debug {
@@ -287,7 +292,7 @@ func Start(db *gorm.DB, redisClient *realredis.Client) {
 	}
 	s.SetKeepAlivesEnabled(false)
 
-	err = s.ListenAndServe()
+	err := s.ListenAndServe()
 	if err != nil {
 		klog.Fatalf("Failed to start HTTP server: %s", err)
 	}

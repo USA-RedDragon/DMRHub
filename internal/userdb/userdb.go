@@ -2,8 +2,6 @@ package userdb
 
 import (
 	"bytes"
-	"sync"
-
 	// Embed the users.json.xz file into the binary
 	_ "embed"
 	"encoding/json"
@@ -11,9 +9,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
-
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
@@ -43,26 +41,26 @@ type DMRUser struct {
 	FName    string `json:"fname"`
 }
 
-func IsValidUserID(DMRId uint) bool {
+func IsValidUserID(dmrID uint) bool {
 	// Check that the user id is 7 digits
-	if DMRId < 1000000 || DMRId > 9999999 {
+	if dmrID < 1000000 || dmrID > 9999999 {
 		return false
 	}
 	return true
 }
 
-func ValidUserCallsign(DMRId uint, callsign string) bool {
+func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !isDone.Load() {
 		UnpackDB()
 	}
 	dmrUserMapLock.RLock()
-	user, ok := dmrUserMap[DMRId]
+	user, ok := dmrUserMap[dmrID]
 	dmrUserMapLock.RUnlock()
 	if !ok {
 		return false
 	}
 
-	if user.ID != DMRId {
+	if user.ID != dmrID {
 		return false
 	}
 
@@ -151,12 +149,12 @@ func Len() int {
 	return len(dmrUsers.Load().(dmrUserDB).Users)
 }
 
-func Get(DMRId uint) (DMRUser, bool) {
+func Get(dmrID uint) (DMRUser, bool) {
 	if !isDone.Load() {
 		UnpackDB()
 	}
 	dmrUserMapLock.RLock()
-	user, ok := dmrUserMap[DMRId]
+	user, ok := dmrUserMap[dmrID]
 	dmrUserMapLock.RUnlock()
 	return user, ok
 }

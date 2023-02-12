@@ -1,12 +1,11 @@
 package users
 
 import (
+	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"

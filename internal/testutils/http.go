@@ -10,10 +10,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/gin-gonic/gin"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/redis/go-redis/v9"

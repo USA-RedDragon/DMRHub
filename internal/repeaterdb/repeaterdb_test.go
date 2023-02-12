@@ -6,6 +6,7 @@ import (
 )
 
 func TestRepeaterdb(t *testing.T) {
+	t.Parallel()
 	dmrRepeaters := GetDMRRepeaters()
 	if len(*dmrRepeaters) == 0 {
 		t.Error("dmrRepeaters is empty")
@@ -18,10 +19,11 @@ func TestRepeaterdb(t *testing.T) {
 }
 
 func TestRepeaterdbValidRepeater(t *testing.T) {
+	t.Parallel()
+	dmrRepeaters := GetDMRRepeaters()
 	if !IsInDB(313060, "KP4DJT") {
 		t.Error("KP4DJT is not in the database")
 	}
-	dmrRepeaters := GetDMRRepeaters()
 	repeater, ok := (*dmrRepeaters)[313060]
 	if !ok {
 		t.Error("KP4DJT is not in the database")
@@ -35,6 +37,7 @@ func TestRepeaterdbValidRepeater(t *testing.T) {
 }
 
 func TestRepeaterdbInvalidRepeater(t *testing.T) {
+	t.Parallel()
 	// DMR repeater IDs are 6 digits.
 	// 7 digits
 	if IsValidRepeaterID(9999999) {
@@ -70,6 +73,7 @@ func TestRepeaterdbInvalidRepeater(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
+	t.Parallel()
 	err := Update()
 	if err != nil {
 		t.Error(err)

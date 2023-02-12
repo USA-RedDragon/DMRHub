@@ -13,6 +13,8 @@ import (
 )
 
 func TestRegisterBadUser(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -45,6 +47,8 @@ func TestRegisterBadUser(t *testing.T) {
 }
 
 func TestRegisterBadData(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -66,6 +70,8 @@ func TestRegisterBadData(t *testing.T) {
 }
 
 func TestRegisterBadDMRId(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -97,6 +103,8 @@ func TestRegisterBadDMRId(t *testing.T) {
 }
 
 func TestRegisterBadCallsign(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -128,6 +136,8 @@ func TestRegisterBadCallsign(t *testing.T) {
 }
 
 func TestRegisterLowercaseCallsign(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -159,6 +169,8 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 }
 
 func TestRegisterUppercaseCallsign(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -190,6 +202,8 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 }
 
 func TestRegisterDuplicateUsername(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -247,6 +261,8 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 }
 
 func TestRegisterDuplicateDMRID(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()

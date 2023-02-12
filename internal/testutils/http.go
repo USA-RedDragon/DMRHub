@@ -2,7 +2,9 @@ package testutils
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"runtime"
@@ -40,8 +42,15 @@ func (t *TestDB) createRedis() *redis.Client {
 		klog.Fatalf("Could not connect to Docker: %s", err)
 	}
 
-	// Start ports at 10000. Check if that port is in use, and if so, increment it.
-	port := 10000
+	// Start ports at a random number above 10000
+	// Check if that port is in use, and if so, increment it.
+	// This is to avoid conflicts with other running tests
+	bigPort, err := rand.Int(rand.Reader, big.NewInt(55534))
+	port := uint16(bigPort.Uint64())
+	if err != nil {
+		klog.Fatalf("Could not generate random port: %s", err)
+	}
+
 	for {
 		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
@@ -70,8 +79,6 @@ func (t *TestDB) createRedis() *redis.Client {
 	if err != nil {
 		klog.Fatalf("Could not start resource: %s", err)
 	}
-
-	time.Sleep(1 * time.Second)
 
 	t.client = redis.NewClient(&redis.Options{
 		Addr:            t.redisContainer.GetHostPort("6379/tcp"),

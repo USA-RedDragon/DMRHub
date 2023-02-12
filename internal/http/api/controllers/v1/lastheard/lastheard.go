@@ -8,11 +8,22 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"k8s.io/klog/v2"
 )
 
 func GETLastheard(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
 	var calls []models.Call
@@ -23,8 +34,14 @@ func GETLastheard(c *gin.Context) {
 		count = models.CountCalls(cDb)
 	} else {
 		// Get the last calls for the user
-		calls = models.FindUserCalls(db, userID.(uint))
-		count = models.CountUserCalls(cDb, userID.(uint))
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Errorf("Unable to convert user_id to uint")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
+		calls = models.FindUserCalls(db, uid)
+		count = models.CountUserCalls(cDb, uid)
 	}
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
@@ -34,8 +51,18 @@ func GETLastheard(c *gin.Context) {
 }
 
 func GETLastheardUser(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	userID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -49,8 +76,18 @@ func GETLastheardUser(c *gin.Context) {
 }
 
 func GETLastheardRepeater(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	repeaterID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -64,7 +101,12 @@ func GETLastheardRepeater(c *gin.Context) {
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	talkgroupID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {

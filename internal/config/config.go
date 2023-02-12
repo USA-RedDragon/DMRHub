@@ -151,7 +151,7 @@ func loadConfig() Config {
 }
 
 // GetConfig obtains the current configuration
-// On the first call, it will load the configuration from the environment variables
+// On the first call, it will load the configuration from the environment variables.
 func GetConfig() *Config {
 	lastInit := isInit.Swap(true)
 	if !lastInit {
@@ -162,6 +162,9 @@ func GetConfig() *Config {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	curConfig := currentConfig.Load().(Config)
+	curConfig, ok := currentConfig.Load().(Config)
+	if !ok {
+		klog.Fatalf("Failed to load config")
+	}
 	return &curConfig
 }

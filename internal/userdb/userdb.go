@@ -80,7 +80,7 @@ var dmrUsers atomic.Value
 var dmrUserMap map[uint]DMRUser
 var dmrUserMapLock sync.RWMutex
 
-// Used to update the user map atomically
+// Used to update the user map atomically.
 var dmrUserMapUpdating map[uint]DMRUser
 var dmrUserMapUpdatingLock sync.RWMutex
 
@@ -137,7 +137,11 @@ func UnpackDB() {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if len(dmrUsers.Load().(dmrUserDB).Users) == 0 {
+	usrdb, ok := dmrUsers.Load().(dmrUserDB)
+	if !ok {
+		klog.Exit("Error loading DMR users database")
+	}
+	if len(usrdb.Users) == 0 {
 		klog.Exit("No DMR users found in database")
 	}
 }
@@ -146,7 +150,11 @@ func Len() int {
 	if !isDone.Load() {
 		UnpackDB()
 	}
-	return len(dmrUsers.Load().(dmrUserDB).Users)
+	db, ok := dmrUsers.Load().(dmrUserDB)
+	if !ok {
+		klog.Error("Error loading DMR users database")
+	}
+	return len(db.Users)
 }
 
 func Get(dmrID uint) (DMRUser, bool) {
@@ -218,5 +226,9 @@ func GetDate() time.Time {
 	if !isDone.Load() {
 		UnpackDB()
 	}
-	return dmrUsers.Load().(dmrUserDB).Date
+	db, ok := dmrUsers.Load().(dmrUserDB)
+	if !ok {
+		klog.Error("Error loading DMR users database")
+	}
+	return db.Date
 }

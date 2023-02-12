@@ -25,20 +25,32 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireAdminOrTGOwner: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdminOrTGOwner"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
 		// Open up the DB and check if the user is an admin
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireAdminOrTGOwner: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -49,7 +61,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		}
 
 		// Check if the user is the owner of any talkgroups
-		talkgroups, err := models.FindTalkgroupsByOwnerID(db, userID.(uint))
+		talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
 		if err != nil {
 			klog.Error(err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -76,20 +88,32 @@ func RequireAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
 		// Open up the DB and check if the user is an admin
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -117,14 +141,20 @@ func RequireSuperAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireSuperAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
-		if userID.(uint) != 999999 {
+		if uid != 999999 {
 			klog.Error("User is not a super admin")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
@@ -142,20 +172,32 @@ func RequireLogin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireLogin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireLogin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
 		// Open up the DB and check if the user exists
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireLogin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -183,20 +225,32 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireRepeaterOwnerOrAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireRepeaterOwnerOrAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if they own repeater with id = id
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -230,20 +284,32 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireTalkgroupOwnerOrAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireTalkgroupOwnerOrAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if they own talkgroup with id = id
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),
@@ -280,21 +346,33 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequireSelfOrAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.String("http.auth", "RequireSelfOrAdmin"),
-				attribute.Int("user.id", int(userID.(uint))),
+				attribute.Int("user.id", int(uid)),
 			)
 		}
 
 		valid := false
 
-		db := c.MustGet("DB").(*gorm.DB).WithContext(ctx)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequireSelfOrAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
 		// Open up the DB and check if the user is an admin or if their ID matches id
 		var user models.User
-		db.Find(&user, "id = ?", userID.(uint))
+		db.Find(&user, "id = ?", uid)
 		if span.IsRecording() {
 			span.SetAttributes(
 				attribute.Bool("user.admin", user.Admin),

@@ -44,7 +44,6 @@ func MakeDB() *gorm.DB {
 		klog.Fatalf("Failed to migrate database: %s", err)
 	}
 	if db.Error != nil {
-		//We have an error
 		klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
 	}
 
@@ -53,7 +52,6 @@ InitDB:
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
 	if result.Error != nil {
-		// We have an error
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			if config.GetConfig().Debug {
 				klog.Infof("App settings entry doesn't exist, migrating db and creating it")
@@ -67,7 +65,6 @@ InitDB:
 				klog.Fatalf("Failed to migrate database: %s", err)
 			}
 			if db.Error != nil {
-				//We have an error
 				klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
 			}
 			db.Create(&appSettings)
@@ -83,12 +80,10 @@ InitDB:
 				klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
 			}
 			if db.Error != nil {
-				//We have an error
 				klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
 			}
 			goto InitDB
 		} else {
-			// We have an error
 			klog.Fatalf(fmt.Sprintf("App settings save failed with error %s", result.Error))
 		}
 	}

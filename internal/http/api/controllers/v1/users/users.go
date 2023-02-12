@@ -20,8 +20,18 @@ import (
 )
 
 func GETUsers(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	users := models.ListUsers(db)
 	total := models.CountUsers(cDb)
 	c.JSON(http.StatusOK, gin.H{"total": total, "users": users})
@@ -29,7 +39,12 @@ func GETUsers(c *gin.Context) {
 
 // POSTUser is used to register a new user
 func POSTUser(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	var json apimodels.UserRegistration
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
@@ -141,7 +156,12 @@ func POSTUser(c *gin.Context) {
 }
 
 func POSTUserDemote(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -150,7 +170,11 @@ func POSTUserDemote(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserID := session.Get("user_id").(uint)
+	fromUserID, ok := session.Get("user_id").(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		return
+	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot demote yourself"})
@@ -177,7 +201,12 @@ func POSTUserDemote(c *gin.Context) {
 }
 
 func POSTUserPromote(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 
 	// Grab the user from the database
@@ -211,7 +240,12 @@ func POSTUserPromote(c *gin.Context) {
 }
 
 func POSTUserUnsuspend(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -220,7 +254,11 @@ func POSTUserUnsuspend(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserID := session.Get("user_id").(uint)
+	fromUserID, ok := session.Get("user_id").(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		return
+	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot unsuspend yourself"})
@@ -248,7 +286,12 @@ func POSTUserUnsuspend(c *gin.Context) {
 }
 
 func POSTUserApprove(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -257,7 +300,11 @@ func POSTUserApprove(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserID := session.Get("user_id").(uint)
+	fromUserID, ok := session.Get("user_id").(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		return
+	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot approve yourself"})
@@ -285,7 +332,12 @@ func POSTUserApprove(c *gin.Context) {
 }
 
 func GETUser(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	// Convert string id into uint
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -302,8 +354,18 @@ func GETUser(c *gin.Context) {
 }
 
 func GETUserAdmins(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 
 	users := models.FindUserAdmins(db)
 	if db.Error != nil {
@@ -315,8 +377,18 @@ func GETUserAdmins(c *gin.Context) {
 }
 
 func GETUserSuspended(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	// Get all users where approved = false
 	users := models.FindUserSuspended(db)
 	if db.Error != nil {
@@ -328,8 +400,18 @@ func GETUserSuspended(c *gin.Context) {
 }
 
 func GETUserUnapproved(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	// Get all users where approved = false
 	users := models.FindUserUnapproved(db)
 	if db.Error != nil {
@@ -341,7 +423,12 @@ func GETUserUnapproved(c *gin.Context) {
 }
 
 func PATCHUser(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	var json apimodels.UserPatch
 	err := c.ShouldBindJSON(&json)
@@ -398,7 +485,12 @@ func PATCHUser(c *gin.Context) {
 }
 
 func DELETEUser(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
@@ -413,7 +505,12 @@ func DELETEUser(c *gin.Context) {
 }
 
 func POSTUserSuspend(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -422,7 +519,11 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	fromUserID := session.Get("user_id").(uint)
+	fromUserID, ok := session.Get("user_id").(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend yourself"})
@@ -461,7 +562,12 @@ func POSTUserSuspend(c *gin.Context) {
 }
 
 func GETUserSelf(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	session := sessions.Default(c)
 
 	userID := session.Get("user_id")
@@ -471,7 +577,14 @@ func GETUserSelf(c *gin.Context) {
 		return
 	}
 
-	user := models.FindUserByID(db, userID.(uint))
+	uid, ok := userID.(uint)
+	if !ok {
+		klog.Error("userID cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	user := models.FindUserByID(db, uid)
 	if db.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 		return

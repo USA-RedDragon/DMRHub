@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/glebarez/sqlite"
 	"github.com/ory/dockertest/v3"
@@ -24,7 +26,7 @@ var client *redis.Client
 var db *gorm.DB
 var redisContainer *dockertest.Resource
 
-func CreateRedis() *redis.Client {
+func createRedis() *redis.Client {
 	if client != nil {
 		return client
 	}
@@ -72,7 +74,7 @@ func CreateRedis() *redis.Client {
 	return client
 }
 
-func CreateDB() *gorm.DB {
+func createDB() *gorm.DB {
 	if db != nil {
 		return db
 	}
@@ -171,6 +173,8 @@ func CloseRedis() {
 	if redisContainer != nil {
 		_ = redisContainer.Close()
 	}
+	redisContainer = nil
+	client = nil
 }
 
 func CloseDB() {
@@ -178,4 +182,9 @@ func CloseDB() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
 	}
+	db = nil
+}
+
+func CreateRouter() *gin.Engine {
+	return http.CreateRouter(createDB(), createRedis())
 }

@@ -42,7 +42,7 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 		if !userdb.IsInDB(json.DMRId, json.Callsign) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not registered or Callsign does not match"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
 			return
 		}
 		isValid, errString := json.IsValidUsername()

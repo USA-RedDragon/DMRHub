@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	myHttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/stretchr/testify/assert"
 
@@ -15,12 +14,9 @@ import (
 )
 
 func TestPingRoute(t *testing.T) {
-	redis := testutils.CreateRedis()
+	router := testutils.CreateRouter()
 	defer testutils.CloseRedis()
-
-	db := testutils.CreateDB()
-
-	router := myHttp.CreateRouter(db, redis)
+	defer testutils.CloseDB()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/ping", nil)
@@ -50,12 +46,9 @@ func TestPingRoute(t *testing.T) {
 }
 
 func TestVersionRoute(t *testing.T) {
-	redis := testutils.CreateRedis()
+	router := testutils.CreateRouter()
 	defer testutils.CloseRedis()
-
-	db := testutils.CreateDB()
-
-	router := myHttp.CreateRouter(db, redis)
+	defer testutils.CloseDB()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/version", nil)

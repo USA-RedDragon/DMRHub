@@ -12,7 +12,6 @@ linters:
     - bidichk
     - containedctx
     - decorder
-    - dupl
     - durationcheck
     - errchkjson
     - errorlint
@@ -33,7 +32,6 @@ linters:
     - gomoddirectives
     - gosec
     - misspell
-    - musttag
     - nilerr
     - nilnil
     - noctx

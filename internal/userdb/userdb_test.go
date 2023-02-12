@@ -79,7 +79,7 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if builtInDate == GetDate() {
+	if userDB.builtInDate == GetDate() {
 		t.Error("Update did not update the database")
 	}
 }
@@ -87,9 +87,9 @@ func TestUpdate(t *testing.T) {
 func BenchmarkUserDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		UnpackDB()
-		isInited.Store(false)
-		isDone.Store(false)
-		dmrUsers.Store(dmrUserDB{})
+		userDB.isInited.Store(false)
+		userDB.isDone.Store(false)
+		userDB.dmrUsers.Store(dmrUserDB{})
 	}
 }
 

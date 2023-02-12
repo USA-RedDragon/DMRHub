@@ -2,7 +2,8 @@ package userdb
 
 import (
 	"bytes"
-	// Embed the users.json.xz file into the binary
+	"context"
+	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -17,12 +18,28 @@ import (
 	"k8s.io/klog/v2"
 )
 
+//go:embed userdb-date.txt
+var builtInDateStr string
+
 // https://www.radioid.net/static/users.json
 //
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var uncompressedJSON []byte
+var userDB UserDB //nolint:gochecknoglobals
+
+type UserDB struct {
+	uncompressedJSON       []byte
+	dmrUsers               atomic.Value
+	dmrUserMap             map[uint]DMRUser
+	dmrUserMapLock         sync.RWMutex
+	dmrUserMapUpdating     map[uint]DMRUser
+	dmrUserMapUpdatingLock sync.RWMutex
+
+	builtInDate time.Time
+	isInited    atomic.Bool
+	isDone      atomic.Bool
+}
 
 type dmrUserDB struct {
 	Users []DMRUser `json:"users"`
@@ -50,12 +67,12 @@ func IsValidUserID(dmrID uint) bool {
 }
 
 func ValidUserCallsign(dmrID uint, callsign string) bool {
-	if !isDone.Load() {
+	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	dmrUserMapLock.RLock()
-	user, ok := dmrUserMap[dmrID]
-	dmrUserMapLock.RUnlock()
+	userDB.dmrUserMapLock.RLock()
+	user, ok := userDB.dmrUserMap[dmrID]
+	userDB.dmrUserMapLock.RUnlock()
 	if !ok {
 		return false
 	}
@@ -75,33 +92,17 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, e)
 }
 
-var dmrUsers atomic.Value
-
-var dmrUserMap map[uint]DMRUser
-var dmrUserMapLock sync.RWMutex
-
-// Used to update the user map atomically.
-var dmrUserMapUpdating map[uint]DMRUser
-var dmrUserMapUpdatingLock sync.RWMutex
-
-//go:embed userdb-date.txt
-var builtInDateStr string
-var builtInDate time.Time
-
-var isInited atomic.Bool
-var isDone atomic.Bool
-
 func UnpackDB() {
-	lastInit := isInited.Swap(true)
+	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		dmrUserMapLock.Lock()
-		dmrUserMap = make(map[uint]DMRUser)
-		dmrUserMapLock.Unlock()
-		dmrUserMapUpdatingLock.Lock()
-		dmrUserMapUpdating = make(map[uint]DMRUser)
-		dmrUserMapUpdatingLock.Unlock()
+		userDB.dmrUserMapLock.Lock()
+		userDB.dmrUserMap = make(map[uint]DMRUser)
+		userDB.dmrUserMapLock.Unlock()
+		userDB.dmrUserMapUpdatingLock.Lock()
+		userDB.dmrUserMapUpdating = make(map[uint]DMRUser)
+		userDB.dmrUserMapUpdatingLock.Unlock()
 		var err error
-		builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
+		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
 			klog.Fatalf("Error parsing built-in date: %v", err)
 		}
@@ -109,35 +110,35 @@ func UnpackDB() {
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
 		}
-		uncompressedJSON, err = io.ReadAll(dbReader)
+		userDB.uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
 		var tmpDB dmrUserDB
-		if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
+		if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
 			klog.Exitf("Error decoding DMR users database: %v", err)
 		}
-		tmpDB.Date = builtInDate
-		dmrUsers.Store(tmpDB)
-		dmrUserMapUpdatingLock.Lock()
+		tmpDB.Date = userDB.builtInDate
+		userDB.dmrUsers.Store(tmpDB)
+		userDB.dmrUserMapUpdatingLock.Lock()
 		for i := range tmpDB.Users {
-			dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
+			userDB.dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
 		}
-		dmrUserMapUpdatingLock.Unlock()
+		userDB.dmrUserMapUpdatingLock.Unlock()
 
-		dmrUserMapLock.Lock()
-		dmrUserMapUpdatingLock.RLock()
-		dmrUserMap = dmrUserMapUpdating
-		dmrUserMapUpdatingLock.RUnlock()
-		dmrUserMapLock.Unlock()
-		isDone.Store(true)
+		userDB.dmrUserMapLock.Lock()
+		userDB.dmrUserMapUpdatingLock.RLock()
+		userDB.dmrUserMap = userDB.dmrUserMapUpdating
+		userDB.dmrUserMapUpdatingLock.RUnlock()
+		userDB.dmrUserMapLock.Unlock()
+		userDB.isDone.Store(true)
 	}
 
-	for !isDone.Load() {
+	for !userDB.isDone.Load() {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	usrdb, ok := dmrUsers.Load().(dmrUserDB)
+	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		klog.Exit("Error loading DMR users database")
 	}
@@ -147,10 +148,10 @@ func UnpackDB() {
 }
 
 func Len() int {
-	if !isDone.Load() {
+	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	db, ok := dmrUsers.Load().(dmrUserDB)
+	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		klog.Error("Error loading DMR users database")
 	}
@@ -158,20 +159,28 @@ func Len() int {
 }
 
 func Get(dmrID uint) (DMRUser, bool) {
-	if !isDone.Load() {
+	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	dmrUserMapLock.RLock()
-	user, ok := dmrUserMap[dmrID]
-	dmrUserMapLock.RUnlock()
+	userDB.dmrUserMapLock.RLock()
+	user, ok := userDB.dmrUserMap[dmrID]
+	userDB.dmrUserMapLock.RUnlock()
 	return user, ok
 }
 
 func Update() error {
-	if !isDone.Load() {
+	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	resp, err := http.Get("https://www.radioid.net/static/users.json")
+	const updateTimeout = 10 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/users.json", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -180,7 +189,7 @@ func Update() error {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	uncompressedJSON, err = io.ReadAll(resp.Body)
+	userDB.uncompressedJSON, err = io.ReadAll(resp.Body)
 	if err != nil {
 		klog.Errorf("ReadAll error %s", err)
 		return err
@@ -192,7 +201,7 @@ func Update() error {
 		}
 	}()
 	var tmpDB dmrUserDB
-	if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
+	if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
 		klog.Errorf("Error decoding DMR users database: %v", err)
 		return err
 	}
@@ -202,20 +211,20 @@ func Update() error {
 	}
 
 	tmpDB.Date = time.Now()
-	dmrUsers.Store(tmpDB)
+	userDB.dmrUsers.Store(tmpDB)
 
-	dmrUserMapUpdatingLock.Lock()
-	dmrUserMapUpdating = make(map[uint]DMRUser)
+	userDB.dmrUserMapUpdatingLock.Lock()
+	userDB.dmrUserMapUpdating = make(map[uint]DMRUser)
 	for i := range tmpDB.Users {
-		dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
+		userDB.dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
 	}
-	dmrUserMapUpdatingLock.Unlock()
+	userDB.dmrUserMapUpdatingLock.Unlock()
 
-	dmrUserMapLock.Lock()
-	dmrUserMapUpdatingLock.RLock()
-	dmrUserMap = dmrUserMapUpdating
-	dmrUserMapUpdatingLock.RUnlock()
-	dmrUserMapLock.Unlock()
+	userDB.dmrUserMapLock.Lock()
+	userDB.dmrUserMapUpdatingLock.RLock()
+	userDB.dmrUserMap = userDB.dmrUserMapUpdating
+	userDB.dmrUserMapUpdatingLock.RUnlock()
+	userDB.dmrUserMapLock.Unlock()
 
 	klog.Infof("Update complete. Loaded %d DMR users", Len())
 
@@ -223,10 +232,10 @@ func Update() error {
 }
 
 func GetDate() time.Time {
-	if !isDone.Load() {
+	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	db, ok := dmrUsers.Load().(dmrUserDB)
+	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		klog.Error("Error loading DMR users database")
 	}

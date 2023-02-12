@@ -38,9 +38,9 @@ func TalkgroupIDExists(db *gorm.DB, id uint) bool {
 	return count > 0
 }
 
-func FindTalkgroupByID(db *gorm.DB, ID uint) Talkgroup {
+func FindTalkgroupByID(db *gorm.DB, id uint) Talkgroup {
 	var talkgroup Talkgroup
-	db.Preload("Admins").Preload("NCOs").First(&talkgroup, ID)
+	db.Preload("Admins").Preload("NCOs").First(&talkgroup, id)
 	return talkgroup
 }
 
@@ -99,6 +99,8 @@ func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) int {
 type TalkgroupsSeeder struct {
 	gorm_seeder.SeederAbstract
 }
+
+const TalkgroupSeederRows = 1
 
 func NewTalkgroupsSeeder(cfg gorm_seeder.SeederConfiguration) TalkgroupsSeeder {
 	return TalkgroupsSeeder{gorm_seeder.NewSeederAbstract(cfg)}

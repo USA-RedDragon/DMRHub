@@ -26,9 +26,9 @@ import (
 )
 
 // Amount of time for cookies/redis keys to expire.
-var sessionExpire = 86400 * 30
+var sessionExpire = 86400 * 30 //nolint:gochecknoglobals
 
-// SessionSerializer provides an interface hook for alternative serializers
+// SessionSerializer provides an interface hook for alternative serializers.
 type SessionSerializer interface {
 	Deserialize(d []byte, ss *sessions.Session) error
 	Serialize(ss *sessions.Session) ([]byte, error)
@@ -37,7 +37,7 @@ type SessionSerializer interface {
 // JSONSerializer encode the session map to JSON.
 type JSONSerializer struct{}
 
-// Serialize to JSON. Will err if there are unmarshalable key values
+// Serialize to JSON. Will err if there are unmarshalable key values.
 func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	m := make(map[string]interface{}, len(ss.Values))
 	for k, v := range ss.Values {
@@ -52,7 +52,7 @@ func (s JSONSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// Deserialize back to map[string]interface{}
+// Deserialize back to map[string]interface{}.
 func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(d, &m)
@@ -66,10 +66,10 @@ func (s JSONSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	return nil
 }
 
-// GobSerializer uses gob package to encode the session map
+// GobSerializer uses gob package to encode the session map.
 type GobSerializer struct{}
 
-// Serialize using gob
+// Serialize using gob.
 func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
@@ -80,7 +80,7 @@ func (s GobSerializer) Serialize(ss *sessions.Session) ([]byte, error) {
 	return nil, err
 }
 
-// Deserialize back to map[interface{}]interface{}
+// Deserialize back to map[interface{}]interface{}.
 func (s GobSerializer) Deserialize(d []byte, ss *sessions.Session) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(d))
 	return dec.Decode(&ss.Values)
@@ -102,19 +102,19 @@ type RediStore struct {
 // If l is 0 there is no limit to the size of a session, use with caution.
 // The default for a new RediStore is 4096. Redis allows for max.
 // value sizes of up to 512MB (http://redis.io/topics/data-types)
-// Default: 4096,
+// Default: 4096.
 func (s *RediStore) SetMaxLength(l int) {
 	if l >= 0 {
 		s.maxLength = l
 	}
 }
 
-// SetKeyPrefix set the prefix
+// SetKeyPrefix set the prefix.
 func (s *RediStore) SetKeyPrefix(p string) {
 	s.keyPrefix = p
 }
 
-// SetSerializer sets the serializer
+// SetSerializer sets the serializer.
 func (s *RediStore) SetSerializer(ss SessionSerializer) {
 	s.serializer = ss
 }
@@ -143,7 +143,10 @@ func (s *RediStore) SetMaxAge(v int) {
 	}
 }
 
-// NewRediStore instantiates a RediStore
+const defaultMaxAge = 20 * 60 // 20 minutes seems like a reasonable default
+const maxLength = 4096
+
+// NewRediStore instantiates a RediStore.
 func NewRediStore(db *redis.Client, keyPairs ...[]byte) (*RediStore, error) {
 	rs := &RediStore{
 		DB:     db,
@@ -152,8 +155,8 @@ func NewRediStore(db *redis.Client, keyPairs ...[]byte) (*RediStore, error) {
 			Path:   "/",
 			MaxAge: sessionExpire,
 		},
-		DefaultMaxAge: 60 * 20, // 20 minutes seems like a reasonable default
-		maxLength:     4096,
+		DefaultMaxAge: defaultMaxAge,
+		maxLength:     maxLength,
 		keyPrefix:     "session_",
 		serializer:    GobSerializer{},
 	}
@@ -161,7 +164,7 @@ func NewRediStore(db *redis.Client, keyPairs ...[]byte) (*RediStore, error) {
 	return rs, err
 }
 
-// Close closes the underlying *redis.Pool
+// Close closes the underlying *redis.Pool.
 func (s *RediStore) Close() error {
 	return s.DB.Close()
 }
@@ -207,7 +210,8 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 	} else {
 		// Build an alphanumeric key for the redis store.
 		if session.ID == "" {
-			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(32)), "=")
+			const keyLength = 32
+			session.ID = strings.TrimRight(base32.StdEncoding.EncodeToString(securecookie.GenerateRandomKey(keyLength)), "=")
 		}
 		if err := s.save(r.Context(), session); err != nil {
 			return err
@@ -224,7 +228,7 @@ func (s *RediStore) Save(r *http.Request, w http.ResponseWriter, session *sessio
 // Delete removes the session from redis, and sets the cookie to expire.
 //
 // WARNING: This method should be considered deprecated since it is not exposed via the gorilla/sessions interface.
-// Set session.Options.MaxAge = -1 and call Save instead. - July 18th, 2013
+// Set session.Options.MaxAge = -1 and call Save instead. - July 18th, 2013.
 func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	if _, err := s.DB.Del(r.Context(), s.keyPrefix+session.ID).Result(); err != nil {
 		return err
@@ -267,7 +271,7 @@ func (s *RediStore) save(ctx context.Context, session *sessions.Session) error {
 }
 
 // load reads the session from redis.
-// returns true if there is a sessoin data in DB
+// returns true if there is a sessoin data in DB.
 func (s *RediStore) load(ctx context.Context, session *sessions.Session) (bool, error) {
 	data, err := s.DB.Get(ctx, s.keyPrefix+session.ID).Result()
 	if err != nil {
@@ -279,7 +283,7 @@ func (s *RediStore) load(ctx context.Context, session *sessions.Session) (bool, 
 	return true, s.serializer.Deserialize([]byte(data), session)
 }
 
-// delete removes keys from redis if MaxAge<0
+// delete removes keys from redis if MaxAge<0.
 func (s *RediStore) delete(ctx context.Context, session *sessions.Session) error {
 	if _, err := s.DB.Del(ctx, s.keyPrefix+session.ID).Result(); err != nil {
 		return err

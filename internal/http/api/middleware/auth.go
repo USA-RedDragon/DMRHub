@@ -380,10 +380,8 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		}
 		if user.Admin && !user.Suspended && user.Approved {
 			valid = true
-		} else {
-			if id == fmt.Sprintf("%d", user.ID) && !user.Suspended && user.Approved {
-				valid = true
-			}
+		} else if id == fmt.Sprintf("%d", user.ID) && !user.Suspended && user.Approved {
+			valid = true
 		}
 
 		if !valid {

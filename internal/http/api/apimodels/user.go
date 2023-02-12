@@ -9,8 +9,6 @@ type UserRegistration struct {
 	Password string `json:"password" binding:"required"`
 }
 
-var isValidUsernameCharset = regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString
-
 func (r *UserRegistration) IsValidUsername() (bool, string) {
 	if len(r.Username) < 3 {
 		return false, "Username must be at least 3 characters"
@@ -18,7 +16,7 @@ func (r *UserRegistration) IsValidUsername() (bool, string) {
 	if len(r.Username) > 20 {
 		return false, "Username must be less than 20 characters"
 	}
-	if !isValidUsernameCharset(r.Username) {
+	if !regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString(r.Username) {
 		return false, "Username must be alphanumeric, _, -, or ."
 	}
 	return true, ""

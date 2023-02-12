@@ -93,7 +93,7 @@ func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *h
 	}
 }
 
-func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -128,7 +128,7 @@ func (h *WSHandler) repeaterHandler(ctx context.Context, db *gorm.DB, session se
 	}
 }
 
-func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessions.Session, w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -202,13 +202,8 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, func(c *gin.Context) {
-		db, ok := c.MustGet("DB").(*gorm.DB)
-		if !ok {
-			klog.Errorf("Failed to convert DB to *gorm.DB")
-			return
-		}
 		session := sessions.Default(c)
-		h.repeaterHandler(c.Request.Context(), db, session, c.Writer, c.Request)
+		h.repeaterHandler(c.Request.Context(), session, c.Writer, c.Request)
 	})
 
 	r.GET("/ws/health", ratelimit, func(c *gin.Context) {
@@ -216,12 +211,7 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	})
 
 	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {
-		db, ok := c.MustGet("DB").(*gorm.DB)
-		if !ok {
-			klog.Errorf("Failed to convert DB to *gorm.DB")
-			return
-		}
 		session := sessions.Default(c)
-		h.callHandler(c.Request.Context(), db, session, c.Writer, c.Request)
+		h.callHandler(c.Request.Context(), session, c.Writer, c.Request)
 	})
 }

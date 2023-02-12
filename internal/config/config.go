@@ -14,7 +14,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// Config stores the application configuration
+// Config stores the application configuration.
 type Config struct {
 	RedisHost                string
 	RedisPassword            string
@@ -38,9 +38,9 @@ type Config struct {
 	Debug                    bool
 }
 
-var currentConfig atomic.Value
-var isInit atomic.Bool
-var loaded atomic.Bool
+var currentConfig atomic.Value //nolint:gochecknoglobals
+var isInit atomic.Bool         //nolint:gochecknoglobals
+var loaded atomic.Bool         //nolint:gochecknoglobals
 
 func loadConfig() Config {
 	portStr := os.Getenv("PG_PORT")
@@ -117,7 +117,10 @@ func loadConfig() Config {
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
 		klog.Errorf("Initial admin user password not set, using auto-generated password")
-		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(15, 4, 2)
+		const randLen = 15
+		const randNums = 4
+		const randSpecial = 2
+		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(randLen, randNums, randSpecial)
 		if err != nil {
 			klog.Errorf("Password generation failed")
 		}
@@ -146,7 +149,9 @@ func loadConfig() Config {
 		klog.Warningf("Debug mode enabled, this should not be used in production")
 		klog.Infof("Config: %+v", tmpConfig)
 	}
-	tmpConfig.Secret = pbkdf2.Key([]byte(tmpConfig.strSecret), []byte(tmpConfig.PasswordSalt), 4096, 32, sha256.New)
+	const iterations = 4096
+	const keyLen = 32
+	tmpConfig.Secret = pbkdf2.Key([]byte(tmpConfig.strSecret), []byte(tmpConfig.PasswordSalt), iterations, keyLen, sha256.New)
 	return tmpConfig
 }
 
@@ -159,7 +164,8 @@ func GetConfig() *Config {
 		loaded.Store(true)
 	}
 	for !loaded.Load() {
-		time.Sleep(100 * time.Millisecond)
+		const loadDelay = 100 * time.Millisecond
+		time.Sleep(loadDelay)
 	}
 
 	curConfig, ok := currentConfig.Load().(Config)

@@ -18,6 +18,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	LinkTypeDynamic = "dynamic"
+	LinkTypeStatic  = "static"
+)
+
 func GETRepeaters(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
@@ -260,9 +265,8 @@ func POSTRepeater(c *gin.Context) {
 		// if json.RadioID is a repeater, then it must be 6 digits long
 		repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
 
-		if hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)) {
-			repeater.Hotspot = true
-		} else if repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)) {
+		switch {
+		case repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			repeater.Hotspot = false
 			if !repeaterdb.IsValidRepeaterID(json.RadioID) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
@@ -290,7 +294,8 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
 				return
 			}
-			repeater.TXFrequency = uint(mhZFloat * 1000000)
+			const mHzToHz = 1000000
+			repeater.TXFrequency = uint(mhZFloat * mHzToHz)
 			// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
 			positiveOffset := false
 			if strings.HasPrefix(r.Offset, "-") {
@@ -309,14 +314,16 @@ func POSTRepeater(c *gin.Context) {
 				return
 			}
 			// convert the offset to an int in Hz
-			offsetInt := uint(offsetFloat * 1000000)
+			offsetInt := uint(offsetFloat * mHzToHz)
 			if positiveOffset {
 				repeater.RXFrequency = repeater.TXFrequency + offsetInt
 			} else {
 				repeater.RXFrequency = repeater.TXFrequency - offsetInt
 			}
 			// TODO: maybe handle TSLinked?
-		} else {
+		case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
+			repeater.Hotspot = true
+		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
 			return
 		}
@@ -324,7 +331,10 @@ func POSTRepeater(c *gin.Context) {
 		repeater.RadioID = json.RadioID
 
 		// Generate a random password of 8 characters
-		repeater.Password, err = utils.RandomPassword(8, 1, 2)
+		const randLen = 8
+		const randNum = 1
+		const randSpecial = 2
+		repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
 			klog.Errorf("Failed to generate a repeater password %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
@@ -377,7 +387,7 @@ func POSTRepeaterLink(c *gin.Context) {
 		return
 	}
 	// LinkType should be either "dynamic" or "static"
-	if linkType != "dynamic" && linkType != "static" {
+	if linkType != LinkTypeDynamic && linkType != LinkTypeStatic {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid link type"})
 		return
 	}
@@ -394,7 +404,7 @@ func POSTRepeaterLink(c *gin.Context) {
 		return
 	}
 	switch linkType {
-	case "dynamic":
+	case LinkTypeDynamic:
 		switch slot {
 		case "1":
 			// Set TS1DynamicTalkgroup association on repeater to target
@@ -405,7 +415,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			repeater.TS2DynamicTalkgroup = talkgroup
 			repeater.TS2DynamicTalkgroupID = &talkgroup.ID
 		}
-	case "static":
+	case LinkTypeStatic:
 		switch slot {
 		case "1":
 			// Append TS1StaticTalkgroups association on repeater to target
@@ -442,7 +452,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	target := c.Param("target")
 
 	// LinkType should be either "dynamic" or "static"
-	if linkType != "dynamic" && linkType != "static" {
+	if linkType != LinkTypeDynamic && linkType != LinkTypeStatic {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid link type"})
 		return
 	}
@@ -480,7 +490,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	repeater := models.FindRepeaterByID(db, idUint)
 
 	switch linkType {
-	case "dynamic":
+	case LinkTypeDynamic:
 		switch slot {
 		case "1":
 			if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != talkgroup.ID {
@@ -509,7 +519,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 			db.Save(&repeater)
 		}
-	case "static":
+	case LinkTypeStatic:
 		switch slot {
 		case "1":
 			// Look in TS1StaticTalkgroups for the target

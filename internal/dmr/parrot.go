@@ -8,24 +8,24 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// Parrot is a struct that stores packets and repeats them back to the repeater
+// Parrot is a struct that stores packets and repeats them back to the repeater.
 type Parrot struct {
 	Redis redisParrotStorage
 }
 
-// NewParrot creates a new parrot instance
+// NewParrot creates a new parrot instance.
 func NewParrot(redis *redis.Client) *Parrot {
 	return &Parrot{
 		Redis: makeRedisParrotStorage(redis),
 	}
 }
 
-// IsStarted returns true if the stream is already started
+// IsStarted returns true if the stream is already started.
 func (p *Parrot) IsStarted(ctx context.Context, streamID uint) bool {
 	return p.Redis.exists(ctx, streamID)
 }
 
-// StartStream starts a new stream
+// StartStream starts a new stream.
 func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint) bool {
 	if !p.Redis.exists(ctx, streamID) {
 		p.Redis.store(ctx, streamID, repeaterID)
@@ -35,11 +35,11 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 	return false
 }
 
-// RecordPacket records a packet from the stream
+// RecordPacket records a packet from the stream.
 func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.Packet) {
 	go p.Redis.refresh(ctx, streamID)
 
-	// Grab the repeater ID to go ahead and mark the packet as being routed back
+	// Grab the repeater ID to go ahead and mark the packet as being routed back.
 	repeaterID, err := p.Redis.get(ctx, streamID)
 	if err != nil {
 		klog.Errorf("Error getting parrot stream from redis", err)
@@ -47,9 +47,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	}
 
 	packet.Repeater = repeaterID
-	tmpSrc := packet.Src
-	packet.Src = packet.Dst
-	packet.Dst = tmpSrc
+	packet.Src, packet.Dst = packet.Dst, packet.Src
 	packet.GroupCall = false
 	packet.BER = -1
 	packet.RSSI = -1
@@ -60,14 +58,14 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	}
 }
 
-// StopStream stops a stream
+// StopStream stops a stream.
 func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
 	p.Redis.delete(ctx, streamID)
 }
 
-// GetStream returns the stream
+// GetStream returns the stream.
 func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
-	// Empty array of packet byte arrays
+	// Empty array of packet byte arrays.
 	packets, err := p.Redis.getStream(ctx, streamID)
 	if err != nil {
 		klog.Errorf("Error getting parrot stream from redis: %s", err)

@@ -26,8 +26,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var scheduler = gocron.NewScheduler(time.UTC)
-
 func initTracer() func(context.Context) error {
 	exporter, err := otlptrace.New(
 		context.Background(),
@@ -66,6 +64,8 @@ func main() {
 	klog.Infof("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
 
 	ctx := context.Background()
+
+	scheduler := gocron.NewScheduler(time.UTC)
 
 	if config.GetConfig().OTLPEndpoint != "" {
 		cleanup := initTracer()

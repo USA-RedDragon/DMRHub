@@ -9,7 +9,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
-	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -133,9 +132,6 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
-	// Call this to load in the dbs
-	userdb.GetDMRUsers()
-
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
 		Callsign: "ki5vmf",
@@ -167,9 +163,6 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
-	// Call this to load in the dbs
-	userdb.GetDMRUsers()
-
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
 		Callsign: "KI5VMF",
@@ -200,9 +193,6 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
-
-	// Call this to load in the dbs
-	userdb.GetDMRUsers()
 
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,
@@ -260,9 +250,6 @@ func TestRegisterDuplicateDMRID(t *testing.T) {
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
-
-	// Call this to load in the dbs
-	userdb.GetDMRUsers()
 
 	user := apimodels.UserRegistration{
 		DMRId:    3191868,

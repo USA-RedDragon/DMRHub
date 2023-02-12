@@ -41,7 +41,7 @@ func POSTUser(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not valid"})
 			return
 		}
-		if !userdb.IsInDB(json.DMRId, json.Callsign) {
+		if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
 			return
 		}
@@ -362,20 +362,13 @@ func PATCHUser(c *gin.Context) {
 			return
 		}
 		if json.Callsign != "" {
-			matchesCallsign := false
 			// Check DMR ID is in the database
-			userDB := *userdb.GetDMRUsers()
-			for _, user := range userDB {
-				if fmt.Sprintf("%d", user.ID) == id && strings.EqualFold(user.Callsign, json.Callsign) {
-					matchesCallsign = true
-					break
-				}
-			}
-			if !matchesCallsign {
+			if userdb.ValidUserCallsign(user.ID, json.Callsign) {
+				user.Callsign = strings.ToUpper(json.Callsign)
+			} else {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
 				return
 			}
-			user.Callsign = strings.ToUpper(json.Callsign)
 		}
 
 		if json.Username != "" {

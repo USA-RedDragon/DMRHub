@@ -2,10 +2,12 @@ package repeaterdb
 
 import (
 	"bytes"
+	"sync"
+	"sync/atomic"
+
 	// Embed the repeaters.json.xz file into the binary
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,8 +57,13 @@ func IsValidRepeaterID(dmrID uint) bool {
 	return true
 }
 
-func IsInDB(dmrID uint, callsign string) bool {
+func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
+	if !isDone.Load() {
+		UnpackDB()
+	}
+	dmrRepeaterMapLock.RLock()
 	repeater, ok := dmrRepeaterMap[dmrID]
+	dmrRepeaterMapLock.RUnlock()
 	if !ok {
 		return false
 	}
@@ -72,22 +79,36 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, e)
 }
 
-var dmrRepeaters dmrRepeaterDB
+var dmrRepeaters atomic.Value
 
 var dmrRepeaterMap map[uint]DMRRepeater
+var dmrRepeaterMapLock sync.RWMutex
+
+// Used to update the user map atomically.
+var dmrRepeaterMapUpdating map[uint]DMRRepeater
+var dmrRepeaterMapUpdatingLock sync.RWMutex
 
 //go:embed repeaterdb-date.txt
 var builtInDateStr string
 var builtInDate time.Time
 
-func GetDMRRepeaters() *map[uint]DMRRepeater {
-	if len(dmrRepeaters.Repeaters) == 0 {
+var isInited atomic.Bool
+var isDone atomic.Bool
+
+func UnpackDB() {
+	lastInit := isInited.Swap(true)
+	if !lastInit {
+		dmrRepeaterMapLock.Lock()
+		dmrRepeaterMap = make(map[uint]DMRRepeater)
+		dmrRepeaterMapLock.Unlock()
+		dmrRepeaterMapUpdatingLock.Lock()
+		dmrRepeaterMapUpdating = make(map[uint]DMRRepeater)
+		dmrRepeaterMapUpdatingLock.Unlock()
 		var err error
 		builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
 			klog.Fatalf("Error parsing built-in date: %v", err)
 		}
-		dmrRepeaters.Date = builtInDate
 		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
 		if err != nil {
 			klog.Fatalf("NewReader error %s", err)
@@ -96,37 +117,70 @@ func GetDMRRepeaters() *map[uint]DMRRepeater {
 		if err != nil {
 			klog.Fatalf("ReadAll error %s", err)
 		}
-		if err := json.Unmarshal(uncompressedJSON, &dmrRepeaters); err != nil {
+		var tmpDB dmrRepeaterDB
+		if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
 			klog.Exitf("Error decoding DMR repeaters database: %v", err)
 		}
 
-		dmrRepeaterMap = make(map[uint]DMRRepeater)
-		for i := range dmrRepeaters.Repeaters {
-			id, err := strconv.Atoi(dmrRepeaters.Repeaters[i].ID)
+		tmpDB.Date = builtInDate
+		dmrRepeaters.Store(tmpDB)
+		dmrRepeaterMapUpdatingLock.Lock()
+		for i := range tmpDB.Repeaters {
+			id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
 			if err != nil {
 				klog.Errorf("Error converting repeater ID to int: %v", err)
 				continue
 			}
-			dmrRepeaterMap[uint(id)] = dmrRepeaters.Repeaters[i]
+			dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
 		}
+		dmrRepeaterMapUpdatingLock.Unlock()
+
+		dmrRepeaterMapLock.Lock()
+		dmrRepeaterMapUpdatingLock.RLock()
+		dmrRepeaterMap = dmrRepeaterMapUpdating
+		dmrRepeaterMapUpdatingLock.RUnlock()
+		dmrRepeaterMapLock.Unlock()
+		isDone.Store(true)
 	}
 
-	if len(dmrRepeaters.Repeaters) == 0 {
-		klog.Exit("No DMR repeaters found in database")
+	for !isDone.Load() {
+		time.Sleep(100 * time.Millisecond)
 	}
-	return &dmrRepeaterMap
+
+	rptdb, ok := dmrRepeaters.Load().(dmrRepeaterDB)
+	if !ok {
+		klog.Exit("Error loading DMR users database")
+	}
+	if len(rptdb.Repeaters) == 0 {
+		klog.Exit("No DMR users found in database")
+	}
 }
 
-func GetRepeater(id uint) (DMRRepeater, error) {
-	for _, repeater := range *GetDMRRepeaters() {
-		if repeater.ID == fmt.Sprintf("%d", id) {
-			return repeater, nil
-		}
+func Len() int {
+	if !isDone.Load() {
+		UnpackDB()
 	}
-	return DMRRepeater{}, errors.New("repeater not found")
+	db, ok := dmrRepeaters.Load().(dmrRepeaterDB)
+	if !ok {
+		klog.Error("Error loading DMR users database")
+	}
+	return len(db.Repeaters)
+}
+
+func Get(id uint) (DMRRepeater, bool) {
+	if !isDone.Load() {
+		UnpackDB()
+	}
+	dmrRepeaterMapLock.RLock()
+	user, ok := dmrRepeaterMap[id]
+	dmrRepeaterMapLock.RUnlock()
+	return user, ok
 }
 
 func Update() error {
+	if !isDone.Load() {
+		UnpackDB()
+	}
 	resp, err := http.Get("https://www.radioid.net/static/rptrs.json")
 	if err != nil {
 		return err
@@ -147,31 +201,49 @@ func Update() error {
 			klog.Errorf("Error closing response body: %v", err)
 		}
 	}()
-	if err := json.Unmarshal(uncompressedJSON, &dmrRepeaters); err != nil {
+	var tmpDB dmrRepeaterDB
+	if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
 		klog.Errorf("Error decoding DMR repeaters database: %v", err)
 		return err
 	}
 
-	if len(dmrRepeaters.Repeaters) == 0 {
+	if len(tmpDB.Repeaters) == 0 {
 		klog.Exit("No DMR repeaters found in database")
 	}
 
-	for i := range dmrRepeaters.Repeaters {
-		id, err := strconv.Atoi(dmrRepeaters.Repeaters[i].ID)
+	tmpDB.Date = time.Now()
+	dmrRepeaters.Store(tmpDB)
+
+	dmrRepeaterMapUpdatingLock.Lock()
+	dmrRepeaterMapUpdating = make(map[uint]DMRRepeater)
+	for i := range tmpDB.Repeaters {
+		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
 		if err != nil {
 			klog.Errorf("Error converting repeater ID to int: %v", err)
 			continue
 		}
-		dmrRepeaterMap[uint(id)] = dmrRepeaters.Repeaters[i]
+		dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
 	}
+	dmrRepeaterMapUpdatingLock.Unlock()
 
-	dmrRepeaters.Date = time.Now()
+	dmrRepeaterMapLock.Lock()
+	dmrRepeaterMapUpdatingLock.RLock()
+	dmrRepeaterMap = dmrRepeaterMapUpdating
+	dmrRepeaterMapUpdatingLock.RUnlock()
+	dmrRepeaterMapLock.Unlock()
 
-	klog.Infof("Update complete. Loaded %d DMR repeaters", len(dmrRepeaters.Repeaters))
+	klog.Infof("Update complete. Loaded %d DMR repeaters", Len())
 
 	return nil
 }
 
 func GetDate() time.Time {
-	return dmrRepeaters.Date
+	if !isDone.Load() {
+		UnpackDB()
+	}
+	db, ok := dmrRepeaters.Load().(dmrRepeaterDB)
+	if !ok {
+		klog.Error("Error loading DMR users database")
+	}
+	return db.Date
 }

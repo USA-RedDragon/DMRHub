@@ -95,6 +95,9 @@ func BenchmarkUserDB(b *testing.B) {
 
 func BenchmarkUserSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
+	b.StopTimer()
+	UnpackDB()
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		ValidUserCallsign(3191868, "KI5VMF")
 	}

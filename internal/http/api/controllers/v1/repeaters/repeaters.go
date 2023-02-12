@@ -268,13 +268,13 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
 				return
 			}
-			if !repeaterdb.IsInDB(json.RadioID, user.Callsign) {
+			if !repeaterdb.ValidRepeaterCallsign(json.RadioID, user.Callsign) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
 				return
 			}
-			r, getErr := repeaterdb.GetRepeater(json.RadioID)
-			if getErr != nil {
-				klog.Errorf("Error getting repeater from database: %v", getErr)
+			r, ok := repeaterdb.Get(json.RadioID)
+			if !ok {
+				klog.Error("Error getting repeater from database")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
 				return
 			}

@@ -7,24 +7,22 @@ import (
 
 func TestRepeaterdb(t *testing.T) {
 	t.Parallel()
-	dmrRepeaters := GetDMRRepeaters()
-	if len(*dmrRepeaters) == 0 {
+	if Len() == 0 {
 		t.Error("dmrRepeaters is empty")
 	}
 	// Check for an obviously wrong number of IDs.
 	// As of writing this test, there are 9200 IDs in the database
-	if len(*dmrRepeaters) < 9200 {
-		t.Errorf("dmrRepeaters is missing repeaters, found %d repeaters", len(*dmrRepeaters))
+	if Len() < 9200 {
+		t.Errorf("dmrRepeaters is missing repeaters, found %d repeaters", Len())
 	}
 }
 
 func TestRepeaterdbValidRepeater(t *testing.T) {
 	t.Parallel()
-	dmrRepeaters := GetDMRRepeaters()
-	if !IsInDB(313060, "KP4DJT") {
+	if !ValidRepeaterCallsign(313060, "KP4DJT") {
 		t.Error("KP4DJT is not in the database")
 	}
-	repeater, ok := (*dmrRepeaters)[313060]
+	repeater, ok := Get(313060)
 	if !ok {
 		t.Error("KP4DJT is not in the database")
 	}
@@ -85,17 +83,19 @@ func TestUpdate(t *testing.T) {
 
 func BenchmarkRepeaterDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		GetDMRRepeaters()
-		dmrRepeaters = dmrRepeaterDB{}
+		UnpackDB()
+		isInited.Store(false)
+		isDone.Store(false)
+		dmrRepeaters.Store(dmrRepeaterDB{})
 	}
 }
 
 func BenchmarkRepeaterSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()
-	GetDMRRepeaters()
+	UnpackDB()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		IsInDB(313060, "KP4DJT")
+		ValidRepeaterCallsign(313060, "KP4DJT")
 	}
 }

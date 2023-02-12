@@ -6,6 +6,7 @@ import (
 )
 
 func TestUserdb(t *testing.T) {
+	t.Parallel()
 	if Len() == 0 {
 		t.Error("dmrUsers is empty")
 	}
@@ -17,6 +18,7 @@ func TestUserdb(t *testing.T) {
 }
 
 func TestUserdbValidUser(t *testing.T) {
+	t.Parallel()
 	if !ValidUserCallsign(3191868, "KI5VMF") {
 		t.Error("KI5VMF is not in the database")
 	}
@@ -33,6 +35,7 @@ func TestUserdbValidUser(t *testing.T) {
 }
 
 func TestUserdbInvalidUser(t *testing.T) {
+	t.Parallel()
 	// DMR User IDs are 7 digits.
 	if IsValidUserID(10000000) {
 		t.Error("10000000 is not a valid user ID")
@@ -71,6 +74,7 @@ func TestUserdbInvalidUser(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
+	t.Parallel()
 	err := Update()
 	if err != nil {
 		t.Error(err)

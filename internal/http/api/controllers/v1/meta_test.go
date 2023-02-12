@@ -14,6 +14,8 @@ import (
 )
 
 func TestPingRoute(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
@@ -46,6 +48,8 @@ func TestPingRoute(t *testing.T) {
 }
 
 func TestVersionRoute(t *testing.T) {
+	t.Parallel()
+
 	router, tdb := testutils.CreateTestDBRouter()
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()

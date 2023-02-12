@@ -4,6 +4,7 @@ run:
   skip-files:
     - ".*\\_gen\\.go$"
     - ".*\\_gen\\_test\\.go$"
+    - ".*\\_test\\.go$"
 
 linters:
   enable:

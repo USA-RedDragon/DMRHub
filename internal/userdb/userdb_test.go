@@ -67,6 +67,9 @@ func TestUserdbInvalidUser(t *testing.T) {
 	if IsValidUserID(0) {
 		t.Error("0 is not a valid user ID")
 	}
+	if !IsValidUserID(3191868) {
+		t.Error("Valid user ID marked invalid")
+	}
 }
 
 func TestUpdate(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/USA-RedDragon/DMRHub/internal/models"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

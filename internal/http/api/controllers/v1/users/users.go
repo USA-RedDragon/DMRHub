@@ -9,9 +9,9 @@ import (
 	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/models"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -107,6 +107,16 @@ func POSTUser(c *gin.Context) {
 			return
 		} else if user.ID != 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+			return
+		}
+
+		// Check if the DMR ID is already taken
+		db.Find(&user, "id = ?", json.DMRId)
+		if db.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			return
+		} else if user.ID != 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is already registered"})
 			return
 		}
 

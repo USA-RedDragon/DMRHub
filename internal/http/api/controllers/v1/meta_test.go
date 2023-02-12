@@ -14,9 +14,9 @@ import (
 )
 
 func TestPingRoute(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/ping", nil)
@@ -46,9 +46,9 @@ func TestPingRoute(t *testing.T) {
 }
 
 func TestVersionRoute(t *testing.T) {
-	router := testutils.CreateRouter()
-	defer testutils.CloseRedis()
-	defer testutils.CloseDB()
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/version", nil)
@@ -57,5 +57,5 @@ func TestVersionRoute(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 	assert.NotEmpty(t, w.Body.String())
 
-	assert.Equal(t, w.Body.String(), fmt.Sprintf("%s-%s", sdk.Version, sdk.GitCommit))
+	assert.Equal(t, fmt.Sprintf("%s-%s", sdk.Version, sdk.GitCommit), w.Body.String())
 }

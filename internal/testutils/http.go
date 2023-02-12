@@ -2,19 +2,16 @@ package testutils
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"net"
+	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	gorm_seeder "github.com/kachit/gorm-seeder"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
-	"github.com/USA-RedDragon/DMRHub/internal/models"
-	"github.com/glebarez/sqlite"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/redis/go-redis/v9"
@@ -22,13 +19,15 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var client *redis.Client
-var db *gorm.DB
-var redisContainer *dockertest.Resource
+type TestDB struct {
+	client         *redis.Client
+	database       *gorm.DB
+	redisContainer *dockertest.Resource
+}
 
-func createRedis() *redis.Client {
-	if client != nil {
-		return client
+func (t *TestDB) createRedis() *redis.Client {
+	if t.client != nil {
+		return t.client
 	}
 	pool, err := dockertest.NewPool("")
 	if err != nil {
@@ -41,8 +40,21 @@ func createRedis() *redis.Client {
 		klog.Fatalf("Could not connect to Docker: %s", err)
 	}
 
+	// Start ports at 10000. Check if that port is in use, and if so, increment it.
+	port := 10000
+	for {
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			port++
+			continue
+		} else {
+			listener.Close()
+			break
+		}
+	}
+
 	// pulls an image, creates a container based on it and runs it
-	redisContainer, err = pool.RunWithOptions(&dockertest.RunOptions{
+	t.redisContainer, err = pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "redis",
 		Tag:        "7-alpine",
 		Cmd:        []string{"--requirepass", "password"},
@@ -50,7 +62,7 @@ func createRedis() *redis.Client {
 			"6379/tcp": {
 				{
 					HostIP:   "127.0.0.1",
-					HostPort: "6379",
+					HostPort: fmt.Sprintf("%d", port),
 				},
 			},
 		},
@@ -59,132 +71,46 @@ func createRedis() *redis.Client {
 		klog.Fatalf("Could not start resource: %s", err)
 	}
 
-	client = redis.NewClient(&redis.Options{
-		Addr:            "127.0.0.1:6379",
+	time.Sleep(1 * time.Second)
+
+	t.client = redis.NewClient(&redis.Options{
+		Addr:            t.redisContainer.GetHostPort("6379/tcp"),
 		Password:        "password",
 		PoolFIFO:        true,
 		PoolSize:        runtime.GOMAXPROCS(0) * 10,
 		MinIdleConns:    runtime.GOMAXPROCS(0),
 		ConnMaxIdleTime: 10 * time.Minute,
 	})
-	_, err = client.Ping(context.Background()).Result()
+	_, err = t.client.Ping(context.Background()).Result()
 	if err != nil {
+		_ = t.redisContainer.Close()
 		klog.Fatalf("Failed to connect to redis: %s", err)
 	}
-	return client
+	return t.client
 }
 
-func createDB() *gorm.DB {
-	if db != nil {
-		return db
+func (t *TestDB) CloseRedis() {
+	if t.client != nil {
+		_ = t.client.Close()
 	}
-	var err error
-	db, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
-	if err != nil {
-		klog.Fatalf("Could not open database: %s", err)
+	if t.redisContainer != nil {
+		_ = t.redisContainer.Close()
 	}
-
-	err = db.AutoMigrate(&models.AppSettings{})
-	if err != nil {
-		klog.Fatalf("Failed to migrate database: %s", err)
-	}
-	if db.Error != nil {
-		//We have an error
-		klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
-	}
-
-InitDB:
-	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
-	var appSettings models.AppSettings
-	result := db.First(&appSettings)
-	if result.Error != nil {
-		// We have an error
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			if config.GetConfig().Debug {
-				klog.Infof("App settings entry doesn't exist, migrating db and creating it")
-			}
-			// The record doesn't exist, so create it
-			appSettings = models.AppSettings{
-				HasSeeded: false,
-			}
-			err = db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
-			if err != nil {
-				klog.Fatalf("Failed to migrate database: %s", err)
-			}
-			if db.Error != nil {
-				//We have an error
-				klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
-			}
-			db.Create(&appSettings)
-			if config.GetConfig().Debug {
-				klog.Infof("App settings saved")
-			}
-		} else if strings.HasPrefix(result.Error.Error(), "ERROR: relation \"app_settings\" does not exist") {
-			if config.GetConfig().Debug {
-				klog.Infof("App settings table doesn't exist, creating it")
-			}
-			err = db.AutoMigrate(&models.AppSettings{})
-			if err != nil {
-				klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
-			}
-			if db.Error != nil {
-				//We have an error
-				klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
-			}
-			goto InitDB
-		} else {
-			// We have an error
-			klog.Fatalf(fmt.Sprintf("App settings save failed with error %s", result.Error))
-		}
-	}
-
-	// If the record exists and HasSeeded is true, then we don't need to seed the database.
-	if !appSettings.HasSeeded {
-		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: 2})
-		talkgroupsSeeder := models.NewTalkgroupsSeeder(gorm_seeder.SeederConfiguration{Rows: 1})
-		seedersStack := gorm_seeder.NewSeedersStack(db)
-		seedersStack.AddSeeder(&usersSeeder)
-		seedersStack.AddSeeder(&talkgroupsSeeder)
-
-		//Apply seed
-		err = seedersStack.Seed()
-		if err != nil {
-			klog.Fatalf("Failed to seed database: %s", err)
-		}
-		appSettings.HasSeeded = true
-		db.Save(&appSettings)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		klog.Fatalf("Failed to open database: %s", err)
-	}
-	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
-	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * 10)
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
-
-	return db
+	t.redisContainer = nil
+	t.client = nil
 }
 
-func CloseRedis() {
-	if client != nil {
-		_ = client.Close()
-	}
-	if redisContainer != nil {
-		_ = redisContainer.Close()
-	}
-	redisContainer = nil
-	client = nil
-}
-
-func CloseDB() {
-	if db != nil {
-		sqlDB, _ := db.DB()
+func (t *TestDB) CloseDB() {
+	if t.database != nil {
+		sqlDB, _ := t.database.DB()
 		_ = sqlDB.Close()
 	}
-	db = nil
+	t.database = nil
 }
 
-func CreateRouter() *gin.Engine {
-	return http.CreateRouter(createDB(), createRedis())
+func CreateTestDBRouter() (*gin.Engine, *TestDB) {
+	os.Setenv("TEST", "test")
+	var t TestDB
+	t.database = db.MakeDB()
+	return http.CreateRouter(db.MakeDB(), t.createRedis()), &t
 }

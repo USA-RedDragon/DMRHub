@@ -52,7 +52,8 @@ InitDB:
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
 	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		switch {
+		case errors.Is(result.Error, gorm.ErrRecordNotFound):
 			if config.GetConfig().Debug {
 				klog.Infof("App settings entry doesn't exist, migrating db and creating it")
 			}
@@ -71,27 +72,29 @@ InitDB:
 			if config.GetConfig().Debug {
 				klog.Infof("App settings saved")
 			}
-		} else if strings.HasPrefix(result.Error.Error(), "ERROR: relation \"app_settings\" does not exist") {
-			if config.GetConfig().Debug {
-				klog.Infof("App settings table doesn't exist, creating it")
+		default:
+			if strings.HasPrefix(result.Error.Error(), "ERROR: relation \"app_settings\" does not exist") {
+				if config.GetConfig().Debug {
+					klog.Infof("App settings table doesn't exist, creating it")
+				}
+				err = db.AutoMigrate(&models.AppSettings{})
+				if err != nil {
+					klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
+				}
+				if db.Error != nil {
+					klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
+				}
+				goto InitDB
+			} else {
+				klog.Fatalf(fmt.Sprintf("App settings save failed with error %s", result.Error))
 			}
-			err = db.AutoMigrate(&models.AppSettings{})
-			if err != nil {
-				klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
-			}
-			if db.Error != nil {
-				klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
-			}
-			goto InitDB
-		} else {
-			klog.Fatalf(fmt.Sprintf("App settings save failed with error %s", result.Error))
 		}
 	}
 
 	// If the record exists and HasSeeded is true, then we don't need to seed the database.
 	if !appSettings.HasSeeded {
-		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: 2})
-		talkgroupsSeeder := models.NewTalkgroupsSeeder(gorm_seeder.SeederConfiguration{Rows: 1})
+		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: models.UserSeederRows})
+		talkgroupsSeeder := models.NewTalkgroupsSeeder(gorm_seeder.SeederConfiguration{Rows: models.TalkgroupSeederRows})
 		seedersStack := gorm_seeder.NewSeedersStack(db)
 		seedersStack.AddSeeder(&usersSeeder)
 		seedersStack.AddSeeder(&talkgroupsSeeder)
@@ -110,8 +113,10 @@ InitDB:
 		klog.Fatalf("Failed to open database: %s", err)
 	}
 	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
-	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * 10)
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+	const connsPerCPU = 10
+	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * connsPerCPU)
+	const maxIdleTime = 10 * time.Minute
+	sqlDB.SetConnMaxIdleTime(maxIdleTime)
 
 	return db
 }

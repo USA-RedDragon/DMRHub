@@ -14,6 +14,8 @@ type redisParrotStorage struct {
 	Redis *redis.Client
 }
 
+const parrotExpireTime = 5 * time.Minute
+
 func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
 	return redisParrotStorage{
 		Redis: redis,
@@ -21,7 +23,7 @@ func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
 }
 
 func (r *redisParrotStorage) store(ctx context.Context, streamID uint, repeaterID uint) {
-	r.Redis.Set(ctx, fmt.Sprintf("parrot:stream:%d", streamID), repeaterID, 5*time.Minute)
+	r.Redis.Set(ctx, fmt.Sprintf("parrot:stream:%d", streamID), repeaterID, parrotExpireTime)
 }
 
 func (r *redisParrotStorage) exists(ctx context.Context, streamID uint) bool {
@@ -29,7 +31,7 @@ func (r *redisParrotStorage) exists(ctx context.Context, streamID uint) bool {
 }
 
 func (r *redisParrotStorage) refresh(ctx context.Context, streamID uint) {
-	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), 5*time.Minute)
+	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime)
 }
 
 func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
@@ -78,7 +80,7 @@ func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]mo
 	r.Redis.Del(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID))
 
 	// Empty array of packets
-	var packetArray []models.Packet
+	packetArray := make([]models.Packet, packetSize)
 	// Loop through the packets and unmarshal them
 	for _, packet := range packets {
 		var packetObj models.Packet

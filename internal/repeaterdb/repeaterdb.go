@@ -2,10 +2,8 @@ package repeaterdb
 
 import (
 	"bytes"
-	"sync"
-	"sync/atomic"
-
-	// Embed the repeaters.json.xz file into the binary
+	"context"
+	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -13,6 +11,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ulikunitz/xz"
@@ -181,7 +181,16 @@ func Update() error {
 	if !isDone.Load() {
 		UnpackDB()
 	}
-	resp, err := http.Get("https://www.radioid.net/static/rptrs.json")
+	const updateTimeout = 10 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/rptrs.json", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}

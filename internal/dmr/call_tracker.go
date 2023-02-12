@@ -16,10 +16,12 @@ import (
 )
 
 // Assuming +/-7ms of jitter, we'll wait 2 seconds before we consider a call to be over
-// This equates out to about 30 lost voice packets
+// This equates out to about 30 lost voice packets.
 const timerDelay = 2 * time.Second
+const packetTimingMs = 60
+const pct = 100
 
-// CallTracker is a struct that holds the state of the calls that are currently in progress
+// CallTracker is a struct that holds the state of the calls that are currently in progress.
 type CallTracker struct {
 	db                 *gorm.DB
 	redis              *redis.Client
@@ -29,7 +31,7 @@ type CallTracker struct {
 	inFlightCallsMutex sync.RWMutex
 }
 
-// NewCallTracker creates a new CallTracker
+// NewCallTracker creates a new CallTracker.
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	return &CallTracker{
 		db:            db,
@@ -39,7 +41,7 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	}
 }
 
-// StartCall starts tracking a new call
+// StartCall starts tracking a new call.
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
@@ -116,11 +118,12 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	call.IsToRepeater = isToRepeater
 	call.IsToUser = isToUser
 	call.IsToTalkgroup = isToTalkgroup
-	if isToRepeater {
+	switch {
+	case isToRepeater:
 		call.ToRepeater = destRepeater
-	} else if isToUser {
+	case isToUser:
 		call.ToUser = destUser
-	} else if isToTalkgroup {
+	case isToTalkgroup:
 		call.ToTalkgroup = destTalkgroup
 	}
 
@@ -146,7 +149,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	c.callEndTimersMutex.Unlock()
 }
 
-// IsCallActive checks if a call is active
+// IsCallActive checks if a call is active.
 func (c *CallTracker) IsCallActive(packet models.Packet) bool {
 	c.inFlightCallsMutex.RLock()
 	for _, call := range c.inFlightCalls {
@@ -260,14 +263,14 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
 	// Reset call end timer
 	c.callEndTimersMutex.Lock()
-	c.callEndTimers[call.ID].Reset(2 * time.Second)
+	c.callEndTimers[call.ID].Reset(timerDelay)
 	c.callEndTimersMutex.Unlock()
 
 	elapsed := time.Since(call.LastPacketTime)
 	call.LastPacketTime = time.Now()
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
 	// time the last packet was. We'll use this to calculate the average jitter.
-	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-60)) / 2
+	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2
 
 	if call.LastFrameNum != 0 && call.LastFrameNum == packet.DTypeOrVSeq {
 		// We've already seen this packet, so it's either a duplicate or we've lost 6 packets
@@ -407,7 +410,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	}
 }
 
-// ProcessCallPacket processes a packet and updates the call
+// ProcessCallPacket processes a packet and updates the call.
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
@@ -428,7 +431,7 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 	}
 }
 
-// EndCall ends a call
+// EndCall ends a call.
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
@@ -479,7 +482,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			delete(c.inFlightCalls, call.ID)
 			c.inFlightCallsMutex.Unlock()
 
-			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*100, call.BER*100, call.RSSI, call.Jitter)
+			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 		}
 	}
 }

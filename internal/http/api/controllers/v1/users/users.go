@@ -37,7 +37,7 @@ func GETUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"total": total, "users": users})
 }
 
-// POSTUser is used to register a new user
+// POSTUser is used to register a new user.
 func POSTUser(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {

@@ -44,7 +44,8 @@ func (t *TestDB) createRedis() *redis.Client {
 	// Start ports at a random number above 10000
 	// Check if that port is in use, and if so, increment it.
 	// This is to avoid conflicts with other running tests
-	bigPort, err := rand.Int(rand.Reader, big.NewInt(55534))
+	const highestPort = 55534
+	bigPort, err := rand.Int(rand.Reader, big.NewInt(highestPort))
 	port := uint16(bigPort.Uint64())
 	if err != nil {
 		klog.Fatalf("Could not generate random port: %s", err)
@@ -79,13 +80,16 @@ func (t *TestDB) createRedis() *redis.Client {
 		klog.Fatalf("Could not start resource: %s", err)
 	}
 
+	const connsPerCPU = 10
+	const maxIdleTime = 10 * time.Minute
+
 	t.client = redis.NewClient(&redis.Options{
 		Addr:            t.redisContainer.GetHostPort("6379/tcp"),
 		Password:        "password",
 		PoolFIFO:        true,
-		PoolSize:        runtime.GOMAXPROCS(0) * 10,
+		PoolSize:        runtime.GOMAXPROCS(0) * connsPerCPU,
 		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxIdleTime: 10 * time.Minute,
+		ConnMaxIdleTime: maxIdleTime,
 	})
 	_, err = t.client.Ping(context.Background()).Result()
 	if err != nil {

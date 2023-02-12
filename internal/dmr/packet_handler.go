@@ -20,7 +20,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var tracer = otel.Tracer("dmr-server")
+var tracer = otel.Tracer("dmr-server") //nolint:gochecknoglobals
+const parrotDelay = 3 * time.Second
+const max32Bit = 0xFFFFFFFF
 
 func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
@@ -85,7 +87,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	ctx := context.Background()
 	ctx, span := tracer.Start(ctx, "handlePacket")
 	defer span.End()
-	if len(data) < 4 {
+	const signatureLength = 4
+	if len(data) < signatureLength {
 		// Not enough data here to be a valid packet
 		klog.Warningf("Invalid packet length: %d", len(data))
 		return
@@ -93,7 +96,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	// Extract the command, which is various length, all but one 4 significant characters -- RPTCL
 	command := dmrconst.Command(data[:4])
 	if command == dmrconst.CommandDMRA {
-		if len(data) < 15 {
+		const dmrALength = 15
+		if len(data) < dmrALength {
 			klog.Warningf("Invalid packet length: %d", len(data))
 			return
 		}
@@ -148,7 +152,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				klog.Warningf("Repeater %d not found in DB", repeaterID)
 				return
 			}
-			packet := models.UnpackPacket(data[:])
+			packet := models.UnpackPacket(data)
 
 			if config.GetConfig().Debug {
 				klog.Infof("DMRD packet: %s", packet.String())
@@ -158,17 +162,18 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			isData := false
 			switch packet.FrameType {
 			case dmrconst.FrameDataSync:
-				if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+				switch dmrconst.DataType(packet.DTypeOrVSeq) {
+				case dmrconst.DTypeVoiceTerm:
 					isVoice = true
 					if config.GetConfig().Debug {
 						klog.Infof("Voice terminator from %d", packet.Src)
 					}
-				} else if dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceHead {
+				case dmrconst.DTypeVoiceHead:
 					isVoice = true
 					if config.GetConfig().Debug {
 						klog.Infof("Voice header from %d", packet.Src)
 					}
-				} else {
+				default:
 					isData = true
 					if config.GetConfig().Debug {
 						klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
@@ -217,7 +222,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					s.Parrot.StopStream(ctx, packet.StreamID)
 					go func() {
 						packets := s.Parrot.GetStream(ctx, packet.StreamID)
-						time.Sleep(3 * time.Second)
+						time.Sleep(parrotDelay)
 						started := false
 						// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
 						// This is to ensure that the DMR repeater doesn't drop the packet
@@ -283,12 +288,13 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				return
 			}
 
-			if packet.GroupCall && isVoice {
+			switch {
+			case packet.GroupCall && isVoice:
 				go s.switchDynamicTalkgroup(ctx, packet)
 
 				// We can just use redis to publish to "packets:talkgroup:<id>"
 				var rawPacket models.RawDMRPacket
-				rawPacket.Data = data[:]
+				rawPacket.Data = data
 				rawPacket.RemoteIP = remoteAddr.IP.String()
 				rawPacket.RemotePort = remoteAddr.Port
 				packedBytes, err := rawPacket.MarshalMsg(nil)
@@ -297,14 +303,14 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					return
 				}
 				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:talkgroup:%d", packet.Dst), packedBytes)
-			} else if !packet.GroupCall && isVoice {
+			case !packet.GroupCall && isVoice:
 				// packet.Dst is either a repeater or a user
 				// If it's a repeater, we need to send it to the repeater
 				// If it's a user, we need to send it to the repeater that the user is connected to
 				// by looking up the user in the database and iterating through their repeaters
 
 				var rawPacket models.RawDMRPacket
-				rawPacket.Data = data[:]
+				rawPacket.Data = data
 				rawPacket.RemoteIP = remoteAddr.IP.String()
 				rawPacket.RemotePort = remoteAddr.Port
 
@@ -315,10 +321,18 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				}
 
 				// users have 7 digit IDs, repeaters have 6 digit IDs or 9 digit IDs
-				if packet.Dst < 1000000 || packet.Dst > 99999999 {
+				const (
+					rptIDMin     = 100000
+					rptIDMax     = 999999
+					hotspotIDMin = 100000000
+					hotspotIDMax = 999999999
+					userIDMin    = 1000000
+					userIDMax    = 9999999
+				)
+				if (packet.Dst >= rptIDMin && packet.Dst <= rptIDMax) || (packet.Dst >= hotspotIDMin && packet.Dst <= hotspotIDMax) {
 					// This is to a repeater
 					s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", packet.Dst), packedBytes)
-				} else if packet.Dst < 10000000 {
+				} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
 					// This is to a user
 					// Search the database for the user
 					if models.UserIDExists(s.DB, packet.Dst) {
@@ -328,12 +342,10 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
 						if s.DB.Error != nil {
 							klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
-						} else {
+						} else if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
 							// If the last call exists that that repeater is online
-							if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
-								// Send the packet to the last user call's repeater
-								s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
-							}
+							// Send the packet to the last user call's repeater
+							s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
 						}
 
 						// For each user repeaters
@@ -346,23 +358,27 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						}
 					}
 				}
-			} else if isData {
+			case isData:
 				klog.Warning("Unhandled data packet type")
-			} else {
+			default:
 				klog.Warning("Unhandled packet type")
 			}
 		}
 	} else if command == dmrconst.CommandRPTO {
-		if len(data) < 8 {
+		const rptoMin = 8
+		const rptoMax = 300
+		const rptoRepeaterIDOffset = 4
+
+		if len(data) < rptoMin {
 			klog.Warning("RPTO packet too short")
 			return
 		}
-		if len(data) > 300 {
+		if len(data) > rptoMax {
 			klog.Warning("RPTO packet too long")
 			return
 		}
 
-		repeaterIDBytes := data[4:8]
+		repeaterIDBytes := data[rptoRepeaterIDOffset : rptoRepeaterIDOffset+repeaterIDLength]
 		repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 		if config.GetConfig().Debug {
 			klog.Infof("Set options from %d", repeaterID)
@@ -388,11 +404,13 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 	} else if command == dmrconst.CommandRPTL {
 		// RPTL packets are 8 bytes long
-		if len(data) != 8 {
+		const rptlLen = 8
+		const rptlRepeaterIDOffset = 4
+		if len(data) != rptlLen {
 			klog.Warningf("Invalid RPTL packet length: %d", len(data))
 			return
 		}
-		repeaterIDBytes := data[4:8]
+		repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
 		repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 		klog.Infof("Login from Repeater ID: %d", repeaterID)
 		if !models.RepeaterIDExists(s.DB, repeaterID) {
@@ -410,7 +428,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 		} else {
 			repeater := models.FindRepeaterByID(s.DB, repeaterID)
-			bigSalt, err := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
+			bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
 			if err != nil {
 				klog.Exitf("Error generating random salt", err)
 			}
@@ -479,7 +497,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 			rxSalt := binary.BigEndian.Uint32(data[8:])
 			// sha256 hash repeater.Salt + the passphrase
-			saltBytes := make([]byte, 4)
+			const bytesIn32Bits = 4
+			saltBytes := make([]byte, bytesIn32Bits)
 			binary.BigEndian.PutUint32(saltBytes, repeater.Salt)
 			hash := sha256.Sum256(append(saltBytes, []byte(password)...))
 			calcedSalt := binary.BigEndian.Uint32(hash[:])

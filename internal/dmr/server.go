@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// Server is the DMR server
+// Server is the DMR server.
 type Server struct {
 	Buffer        []byte
 	SocketAddress net.UDPAddr
@@ -25,10 +25,14 @@ type Server struct {
 	CallTracker   *CallTracker
 }
 
-// MakeServer creates a new DMR server
+const largestMessageSize = 302
+const repeaterIDLength = 4
+const bufferSize = 1000000 // 1MB
+
+// MakeServer creates a new DMR server.
 func MakeServer(db *gorm.DB, redis *redis.Client) Server {
 	return Server{
-		Buffer: make([]byte, 302),
+		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
 			IP:   net.ParseIP(config.GetConfig().ListenAddr),
 			Port: config.GetConfig().DMRPort,
@@ -41,9 +45,9 @@ func MakeServer(db *gorm.DB, redis *redis.Client) Server {
 	}
 }
 
-// Stop stops the DMR server
+// Stop stops the DMR server.
 func (s *Server) Stop(ctx context.Context) {
-	// Send a MSTCL command to each repeater
+	// Send a MSTCL command to each repeater.
 	repeaters, err := s.Redis.list(ctx)
 	if err != nil {
 		klog.Errorf("Error scanning redis for repeaters", err)
@@ -53,7 +57,7 @@ func (s *Server) Stop(ctx context.Context) {
 			klog.Infof("Repeater found: %d", repeater)
 		}
 		s.Redis.updateConnection(ctx, repeater, "DISCONNECTED")
-		repeaterBinary := make([]byte, 4)
+		repeaterBinary := make([]byte, repeaterIDLength)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
 		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
 	}
@@ -132,19 +136,18 @@ func (s *Server) sendNoAddr(ctx context.Context) {
 	}
 }
 
-// Listen starts the DMR server
+// Listen starts the DMR server.
 func (s *Server) Listen(ctx context.Context) {
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
 	}
 
-	// 1MB buffers, say what?
-	err = server.SetReadBuffer(1000000)
+	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
 	}
-	err = server.SetWriteBuffer(1000000)
+	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
 	}
@@ -160,7 +163,7 @@ func (s *Server) Listen(ctx context.Context) {
 
 	go func() {
 		for {
-			len, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
+			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if config.GetConfig().Debug {
 				klog.Infof("Read a message from %v\n", remoteaddr)
 			}
@@ -170,7 +173,7 @@ func (s *Server) Listen(ctx context.Context) {
 			}
 			go func() {
 				p := models.RawDMRPacket{
-					Data:       s.Buffer[:len],
+					Data:       s.Buffer[:length],
 					RemoteIP:   remoteaddr.IP.String(),
 					RemotePort: remoteaddr.Port,
 				}

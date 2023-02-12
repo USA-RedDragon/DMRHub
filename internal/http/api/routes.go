@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ApplyRoutes to the HTTP Mux
+// ApplyRoutes to the HTTP Mux.
 func ApplyRoutes(router *gin.Engine, ratelimit gin.HandlerFunc) {
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit)

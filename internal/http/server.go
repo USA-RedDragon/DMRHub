@@ -30,12 +30,10 @@ import (
 //go:embed frontend/dist/*
 var FS embed.FS
 
-var ws *websocketHandler.WSHandler
-
 func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 	r := gin.Default()
 
-	ws = websocketHandler.CreateHandler(db, redisClient)
+	ws := websocketHandler.CreateHandler(db, redisClient)
 
 	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
 	if err != nil {
@@ -219,46 +217,47 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 				klog.Errorf("Failed to read file: %s", fileErr)
 				return
 			}
-			if strings.HasSuffix(c.Request.URL.Path, ".js") {
+			switch {
+			case strings.HasSuffix(c.Request.URL.Path, ".js"):
 				c.Data(http.StatusOK, "text/javascript", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".css") {
+			case strings.HasSuffix(c.Request.URL.Path, ".css"):
 				c.Data(http.StatusOK, "text/css", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".html") || strings.HasSuffix(entry, ".htm") {
+			case strings.HasSuffix(c.Request.URL.Path, ".html") || strings.HasSuffix(entry, ".htm"):
 				c.Data(http.StatusOK, "text/html", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".ico") {
+			case strings.HasSuffix(c.Request.URL.Path, ".ico"):
 				c.Data(http.StatusOK, "image/x-icon", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".png") {
+			case strings.HasSuffix(c.Request.URL.Path, ".png"):
 				c.Data(http.StatusOK, "image/png", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".jpg") || strings.HasSuffix(entry, ".jpeg") {
+			case strings.HasSuffix(c.Request.URL.Path, ".jpg") || strings.HasSuffix(entry, ".jpeg"):
 				c.Data(http.StatusOK, "image/jpeg", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".webp") {
+			case strings.HasSuffix(c.Request.URL.Path, ".webp"):
 				c.Data(http.StatusOK, "image/webp", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".svg") {
+			case strings.HasSuffix(c.Request.URL.Path, ".svg"):
 				c.Data(http.StatusOK, "image/svg+xml", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".gif") {
+			case strings.HasSuffix(c.Request.URL.Path, ".gif"):
 				c.Data(http.StatusOK, "image/gif", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".json") {
+			case strings.HasSuffix(c.Request.URL.Path, ".json"):
 				c.Data(http.StatusOK, "application/json", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".xml") {
+			case strings.HasSuffix(c.Request.URL.Path, ".xml"):
 				c.Data(http.StatusOK, "text/xml", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".txt") {
+			case strings.HasSuffix(c.Request.URL.Path, ".txt"):
 				c.Data(http.StatusOK, "text/plain", fileContent)
 				return
-			} else if strings.HasSuffix(c.Request.URL.Path, ".webmanifest") {
+			case strings.HasSuffix(c.Request.URL.Path, ".webmanifest"):
 				c.Data(http.StatusOK, "application/manifest+json", fileContent)
 				return
-			} else {
+			default:
 				c.Data(http.StatusOK, "text/plain", fileContent)
 				return
 			}
@@ -297,7 +296,7 @@ func Start(db *gorm.DB, redisClient *redis.Client) {
 	}
 }
 
-func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {
+func getAllFilenames(fs *embed.FS, dir string) ([]string, error) {
 	if len(dir) == 0 {
 		dir = "."
 	}
@@ -306,6 +305,8 @@ func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	out := make([]string, len(entries))
 
 	for _, entry := range entries {
 		fp := path.Join(dir, entry.Name())
@@ -320,5 +321,5 @@ func getAllFilenames(fs *embed.FS, dir string) (out []string, err error) {
 		out = append(out, fp)
 	}
 
-	return
+	return out, nil
 }

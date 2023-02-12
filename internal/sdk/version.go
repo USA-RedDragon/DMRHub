@@ -1,7 +1,7 @@
 package sdk
 
 import (
-	// embed the commit.txt file into the binary
+	// embed the commit.txt file into the binary.
 	_ "embed"
 )
 
@@ -11,5 +11,5 @@ var (
 	GitCommit string
 
 	// Version of the program
-	Version = "1.0.13" //nolint:golint,gochecknoglobals
+	Version = "1.0.13" //nolint:gochecknoglobals
 )

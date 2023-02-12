@@ -41,9 +41,9 @@ func UserIDExists(db *gorm.DB, id uint) bool {
 	return count > 0
 }
 
-func FindUserByID(db *gorm.DB, ID uint) User {
+func FindUserByID(db *gorm.DB, id uint) User {
 	var user User
-	db.Preload("Repeaters").First(&user, ID)
+	db.Preload("Repeaters").First(&user, id)
 	return user
 }
 
@@ -98,6 +98,8 @@ func CountUserUnapproved(db *gorm.DB) int {
 type UsersSeeder struct {
 	gorm_seeder.SeederAbstract
 }
+
+const UserSeederRows = 2
 
 func NewUsersSeeder(cfg gorm_seeder.SeederConfiguration) UsersSeeder {
 	return UsersSeeder{gorm_seeder.NewSeederAbstract(cfg)}

@@ -13,6 +13,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	memory      = 64 * 1024
+	iterations  = 3
+	parallelism = 8
+	saltLength  = 16
+	keyLength   = 32
+)
+
 type argon2Params struct {
 	memory      uint32
 	iterations  uint32
@@ -29,12 +37,12 @@ var (
 
 func HashPassword(password string, salt string) string {
 	var params = argon2Params{
-		memory:      64 * 1024,
-		iterations:  3,
-		parallelism: 8,
-		saltLength:  16,
-		keyLength:   32,
-		salt:        make([]byte, 16),
+		memory:      memory,
+		iterations:  iterations,
+		parallelism: parallelism,
+		saltLength:  saltLength,
+		keyLength:   keyLength,
+		salt:        make([]byte, saltLength),
 	}
 	// Fill the salt with cryptographically secure random bytes.
 	_, err := rand.Read(params.salt)
@@ -52,7 +60,8 @@ func HashPassword(password string, salt string) string {
 
 func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	vals := strings.Split(compareHash, "$")
-	if len(vals) != 6 {
+	const argon2Vals = 6
+	if len(vals) != argon2Vals {
 		return false, ErrInvalidHash
 	}
 
@@ -93,7 +102,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	// Check that the contents of the hashed passwords are identical. Note
 	// that we are using the subtle.ConstantTimeCompare() function for this
 	// to help prevent timing attacks.
-	if subtle.ConstantTimeCompare([]byte(hash), otherHash) == 1 {
+	if subtle.ConstantTimeCompare(hash, otherHash) == 1 {
 		return true, nil
 	}
 	return false, nil

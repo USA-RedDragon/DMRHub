@@ -200,14 +200,22 @@ jobs:
 
       - run: make benchmark
 
+      - name: Race tests
+        if: always()
+        run: |
+          go test ./... -race
+
       - name: Unit tests
         if: always()
         run: |
-          go test ./... -race || true
           go install github.com/jstemmer/go-junit-report/v2@latest
-          go install github.com/vakenbolt/go-test-report@latest
           env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic 2>&1 > out.txt || true
           cat out.txt | go-junit-report -out report.xml -iocopy
+
+      - name: Unit tests reporting
+        if: always()
+        run: |
+          go install github.com/vakenbolt/go-test-report@latest
           env CGO_ENABLED=0 go test ./... -json 2>&1 > out.txt || true
           cat out.txt | go-test-report -o report.html >/dev/null
 

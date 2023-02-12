@@ -6,6 +6,10 @@ on:
     # Once a week at 00:16
     - cron: "16 0 * * */7"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update:
     name: Update

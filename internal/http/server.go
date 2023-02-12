@@ -267,7 +267,7 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 	return r
 }
 
-// Start the HTTP server
+// Start the HTTP server.
 func Start(db *gorm.DB, redisClient *redis.Client) {
 	if config.GetConfig().Debug {
 		gin.SetMode(gin.DebugMode)

@@ -153,7 +153,11 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 			}
 		}()
 	} else {
-		userID := userIDIface.(uint)
+		userID, ok := userIDIface.(uint)
+		if !ok {
+			klog.Errorf("Failed to convert user ID to uint")
+			return
+		}
 		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
 		defer func() {
 			err := pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
@@ -198,7 +202,11 @@ func (h *WSHandler) callHandler(ctx context.Context, db *gorm.DB, session sessio
 
 func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, func(c *gin.Context) {
-		db := c.MustGet("DB").(*gorm.DB)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Errorf("Failed to convert DB to *gorm.DB")
+			return
+		}
 		session := sessions.Default(c)
 		h.repeaterHandler(c.Request.Context(), db, session, c.Writer, c.Request)
 	})
@@ -208,7 +216,11 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	})
 
 	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {
-		db := c.MustGet("DB").(*gorm.DB)
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Errorf("Failed to convert DB to *gorm.DB")
+			return
+		}
 		session := sessions.Default(c)
 		h.callHandler(c.Request.Context(), db, session, c.Writer, c.Request)
 	})

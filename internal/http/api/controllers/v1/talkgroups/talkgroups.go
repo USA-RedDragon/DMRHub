@@ -14,16 +14,36 @@ import (
 )
 
 func GETTalkgroups(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	talkgroups := models.ListTalkgroups(db)
 	total := models.CountTalkgroups(cDb)
 	c.JSON(http.StatusOK, gin.H{"total": total, "talkgroups": talkgroups})
 }
 
 func GETMyTalkgroups(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	session := sessions.Default(c)
 
 	userID := session.Get("user_id")
@@ -33,18 +53,30 @@ func GETMyTalkgroups(c *gin.Context) {
 		return
 	}
 
-	talkgroups, err := models.FindTalkgroupsByOwnerID(db, userID.(uint))
+	uid, ok := userID.(uint)
+	if !ok {
+		klog.Error("userID cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	total := models.CountTalkgroupsByOwnerID(cDb, userID.(uint))
+	total := models.CountTalkgroupsByOwnerID(cDb, uid)
 
 	c.JSON(http.StatusOK, gin.H{"total": total, "talkgroups": talkgroups})
 }
 
 func GETTalkgroup(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
 	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", id)
@@ -60,7 +92,12 @@ func GETTalkgroup(c *gin.Context) {
 }
 
 func DELETETalkgroup(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
@@ -75,7 +112,12 @@ func DELETETalkgroup(c *gin.Context) {
 }
 
 func POSTTalkgroupNCOs(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
 	db.Preload("NCOs").Find(&talkgroup, "id = ?", id)
@@ -149,7 +191,12 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 }
 
 func POSTTalkgroupAdmins(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	var talkgroup models.Talkgroup
 	db.Preload("Admins").Find(&talkgroup, "id = ?", id)
@@ -223,7 +270,12 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 }
 
 func PATCHTalkgroup(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	var json apimodels.TalkgroupPatch
 	err := c.ShouldBindJSON(&json)
@@ -277,7 +329,12 @@ func PATCHTalkgroup(c *gin.Context) {
 }
 
 func POSTTalkgroup(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	var json apimodels.TalkgroupPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {

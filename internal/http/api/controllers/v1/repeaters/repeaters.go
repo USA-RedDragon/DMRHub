@@ -19,16 +19,36 @@ import (
 )
 
 func GETRepeaters(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	repeaters := models.ListRepeaters(db)
 	count := models.CountRepeaters(cDb)
 	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }
 
 func GETMyRepeaters(c *gin.Context) {
-	db := c.MustGet("PaginatedDB").(*gorm.DB)
-	cDb := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	session := sessions.Default(c)
 
 	userID := session.Get("user_id")
@@ -38,21 +58,33 @@ func GETMyRepeaters(c *gin.Context) {
 		return
 	}
 
+	uid, ok := userID.(uint)
+	if !ok {
+		klog.Errorf("Unable to convert userID to uint: %v", userID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
 	// Get all repeaters owned by user
-	repeaters := models.GetUserRepeaters(db, userID.(uint))
+	repeaters := models.GetUserRepeaters(db, uid)
 	if db.Error != nil {
 		klog.Errorf("Error getting repeaters owned by user %d: %v", userID, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
 
-	count := models.CountUserRepeaters(cDb, userID.(uint))
+	count := models.CountUserRepeaters(cDb, uid)
 
 	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
 }
 
 func GETRepeater(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	// Convert string id into uint
 	repeaterID, err := strconv.ParseUint(id, 10, 32)
@@ -69,7 +101,12 @@ func GETRepeater(c *gin.Context) {
 }
 
 func DELETERepeater(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
@@ -84,8 +121,18 @@ func DELETERepeater(c *gin.Context) {
 }
 
 func POSTRepeaterTalkgroups(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
-	redis := c.MustGet("Redis").(*redis.Client)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	redis, ok := c.MustGet("Redis").(*redis.Client)
+	if !ok {
+		klog.Errorf("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	// Convert string id into uint
 	rid, err := strconv.ParseUint(id, 10, 32)
@@ -174,9 +221,23 @@ func POSTRepeater(c *gin.Context) {
 		klog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
-	userID := usID.(uint)
-	db := c.MustGet("DB").(*gorm.DB)
-	redis := c.MustGet("Redis").(*redis.Client)
+	userID, ok := usID.(uint)
+	if !ok {
+		klog.Error("userID cast failed")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+	}
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	redis, ok := c.MustGet("Redis").(*redis.Client)
+	if !ok {
+		klog.Error("Redis cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 
 	var user models.User
 	db.First(&user, userID)
@@ -284,8 +345,18 @@ func POSTRepeater(c *gin.Context) {
 }
 
 func POSTRepeaterLink(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
-	redis := c.MustGet("Redis").(*redis.Client)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	redis, ok := c.MustGet("Redis").(*redis.Client)
+	if !ok {
+		klog.Error("Redis cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	linkType := c.Param("type")
 	slot := c.Param("slot")
 	target := c.Param("target")
@@ -359,7 +430,12 @@ func POSTRepeaterLink(c *gin.Context) {
 }
 
 func POSTRepeaterUnlink(c *gin.Context) {
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	linkType := c.Param("type")
 	slot := c.Param("slot")

@@ -15,7 +15,12 @@ import (
 
 func POSTLogin(c *gin.Context) {
 	session := sessions.Default(c)
-	db := c.MustGet("DB").(*gorm.DB)
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		klog.Errorf("POSTLogin: Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 
 	var json apimodels.AuthLogin
 	err := c.ShouldBindJSON(&json)

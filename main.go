@@ -153,7 +153,7 @@ func main() {
 	// For each repeater in the DB, start a gofunc to listen for calls
 	repeaters := models.ListRepeaters(database)
 	for _, repeater := range repeaters {
-		go repeater.ListenForCalls(ctx, redis)
+		go dmr.GetRepeaterSubscriptionManager().ListenForCalls(ctx, redis, repeater)
 	}
 
 	http.Start(database, redis)

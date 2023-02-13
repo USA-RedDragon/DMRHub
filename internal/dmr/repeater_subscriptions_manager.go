@@ -1,3 +1,22 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
 package dmr
 
 import (
@@ -93,7 +112,7 @@ func (m *RepeaterSubscriptionManager) ListenForCallsOn(ctx context.Context, redi
 		m.talkgroupSubscriptions[p.RadioID][talkgroupID] = cancel
 		m.subscriptionCancelMutex[p.RadioID][talkgroupID].Unlock()
 		m.talkgroupSubscriptionsMutex.Unlock()
-		go m.subscribeTG(newCtx, redis, p, talkgroupID)
+		go m.subscribeTG(newCtx, redis, p, talkgroupID) //nolint:golint,contextcheck
 	}
 }
 
@@ -125,7 +144,7 @@ func (m *RepeaterSubscriptionManager) ListenForCalls(ctx context.Context, redis 
 		m.talkgroupSubscriptions[p.RadioID][p.RadioID] = cancel
 		m.subscriptionCancelMutex[p.RadioID][p.RadioID].Unlock()
 		m.talkgroupSubscriptionsMutex.Unlock()
-		go m.subscribeRepeater(newCtx, redis, p)
+		go m.subscribeRepeater(newCtx, redis, p) //nolint:golint,contextcheck
 	}
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
@@ -144,7 +163,7 @@ func (m *RepeaterSubscriptionManager) ListenForCalls(ctx context.Context, redis 
 			m.talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
 			m.subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
 			m.talkgroupSubscriptionsMutex.Unlock()
-			go m.subscribeTG(newCtx, redis, p, tg.ID)
+			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
@@ -162,7 +181,7 @@ func (m *RepeaterSubscriptionManager) ListenForCalls(ctx context.Context, redis 
 			m.talkgroupSubscriptions[p.RadioID][tg.ID] = cancel
 			m.subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
 			m.talkgroupSubscriptionsMutex.Unlock()
-			go m.subscribeTG(newCtx, redis, p, tg.ID)
+			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS1DynamicTalkgroupID != nil {
@@ -180,7 +199,7 @@ func (m *RepeaterSubscriptionManager) ListenForCalls(ctx context.Context, redis 
 			m.talkgroupSubscriptions[p.RadioID][*p.TS1DynamicTalkgroupID] = cancel
 			m.subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID].Unlock()
 			m.talkgroupSubscriptionsMutex.Unlock()
-			go m.subscribeTG(newCtx, redis, p, *p.TS1DynamicTalkgroupID)
+			go m.subscribeTG(newCtx, redis, p, *p.TS1DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
@@ -198,7 +217,7 @@ func (m *RepeaterSubscriptionManager) ListenForCalls(ctx context.Context, redis 
 			m.talkgroupSubscriptions[p.RadioID][*p.TS2DynamicTalkgroupID] = cancel
 			m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Unlock()
 			m.talkgroupSubscriptionsMutex.Unlock()
-			go m.subscribeTG(newCtx, redis, p, *p.TS2DynamicTalkgroupID)
+			go m.subscribeTG(newCtx, redis, p, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
 }

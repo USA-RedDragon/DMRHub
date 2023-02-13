@@ -136,6 +136,162 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
+func (s *Server) trackCall(ctx context.Context, packet models.Packet, isVoice bool) {
+	// Don't call track unlink
+	if packet.Dst != 4000 && isVoice {
+		go func() {
+			if !s.CallTracker.IsCallActive(packet) {
+				s.CallTracker.StartCall(ctx, packet)
+			}
+			if s.CallTracker.IsCallActive(packet) {
+				s.CallTracker.ProcessCallPacket(ctx, packet)
+				if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+					s.CallTracker.EndCall(ctx, packet)
+				}
+			}
+		}()
+	}
+}
+
+func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID uint) {
+	if !s.Parrot.IsStarted(ctx, packet.StreamID) {
+		s.Parrot.StartStream(ctx, packet.StreamID, repeaterID)
+		if config.GetConfig().Debug {
+			klog.Infof("Parrot call from %d", packet.Src)
+		}
+	}
+	s.Parrot.RecordPacket(ctx, packet.StreamID, packet)
+	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+		s.Parrot.StopStream(ctx, packet.StreamID)
+		go func() {
+			packets := s.Parrot.GetStream(ctx, packet.StreamID)
+			time.Sleep(parrotDelay)
+			started := false
+			// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
+			// This is to ensure that the DMR repeater doesn't drop the packet
+			startedTime := time.Now()
+			for j, pkt := range packets {
+				s.sendPacket(ctx, repeaterID, pkt)
+
+				go func() {
+					if !started {
+						s.CallTracker.StartCall(ctx, pkt)
+						started = true
+					}
+					s.CallTracker.ProcessCallPacket(ctx, pkt)
+					if j == len(packets)-1 {
+						s.CallTracker.EndCall(ctx, pkt)
+					}
+				}()
+				// Calculate the time since the call started
+				elapsed := time.Since(startedTime)
+				const packetTiming = 60 * time.Millisecond
+				// If elapsed is greater than 60ms, we're behind and need to catch up
+				if elapsed > packetTiming {
+					klog.Warningf("Parrot call took too long to send, elapsed: %s", elapsed)
+					// Sleep for 60ms minus the difference between the elapsed time and 60ms
+					time.Sleep(packetTiming - (elapsed - packetTiming))
+				} else {
+					// Now subtract the elapsed time from 60ms to get the true delay
+					delay := packetTiming - elapsed
+					time.Sleep(delay)
+				}
+				startedTime = time.Now()
+			}
+		}()
+	}
+}
+
+func (s *Server) doUnlink(packet models.Packet, dbRepeater models.Repeater) {
+	if packet.Slot {
+		klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
+		if dbRepeater.TS2DynamicTalkgroupID != nil {
+			oldTGID := *dbRepeater.TS2DynamicTalkgroupID
+			s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
+			err := s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
+			}
+			GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
+		}
+	} else {
+		klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
+		if dbRepeater.TS1DynamicTalkgroupID != nil {
+			oldTGID := *dbRepeater.TS1DynamicTalkgroupID
+			s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
+			err := s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
+			if err != nil {
+				klog.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
+			}
+			GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
+		}
+	}
+	s.DB.Save(&dbRepeater)
+}
+
+func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes []byte) {
+	// This is to a user
+	// Search the database for the user
+	if models.UserIDExists(s.DB, packet.Dst) {
+		user := models.FindUserByID(s.DB, packet.Dst)
+		// Query lastheard where UserID == user.ID LIMIT 1
+		var lastCall models.Call
+		s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
+		if s.DB.Error != nil {
+			klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
+		} else if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
+			// If the last call exists and that repeater is online
+			// Send the packet to the last user call's repeater
+			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
+		}
+
+		// For each user repeaters
+		for _, repeater := range user.Repeaters {
+			// If the repeater is online and the last user call was not to this repeater
+			if repeater.RadioID != lastCall.RepeaterID && s.Redis.exists(ctx, repeater.RadioID) {
+				// Send the packet to the repeater
+				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
+			}
+		}
+	}
+}
+
+func (s *Server) checkPacketType(packet models.Packet) (bool, bool) {
+	isVoice := false
+	isData := false
+	switch packet.FrameType {
+	case dmrconst.FrameDataSync:
+		switch dmrconst.DataType(packet.DTypeOrVSeq) {
+		case dmrconst.DTypeVoiceTerm:
+			isVoice = true
+			if config.GetConfig().Debug {
+				klog.Infof("Voice terminator from %d", packet.Src)
+			}
+		case dmrconst.DTypeVoiceHead:
+			isVoice = true
+			if config.GetConfig().Debug {
+				klog.Infof("Voice header from %d", packet.Src)
+			}
+		default:
+			isData = true
+			if config.GetConfig().Debug {
+				klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+			}
+		}
+	case dmrconst.FrameVoice:
+		isVoice = true
+		if config.GetConfig().Debug {
+			klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
+		}
+	case dmrconst.FrameVoiceSync:
+		isVoice = true
+		if config.GetConfig().Debug {
+			klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+		}
+	}
+	return isVoice, isData
+}
+
 func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
 	// DMRD packets are either 53 or 55 bytes long
 	if len(data) != 53 && len(data) != 55 {
@@ -165,134 +321,22 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			klog.Infof("DMRD packet: %s", packet.String())
 		}
 
-		isVoice := false
-		isData := false
-		switch packet.FrameType {
-		case dmrconst.FrameDataSync:
-			switch dmrconst.DataType(packet.DTypeOrVSeq) {
-			case dmrconst.DTypeVoiceTerm:
-				isVoice = true
-				if config.GetConfig().Debug {
-					klog.Infof("Voice terminator from %d", packet.Src)
-				}
-			case dmrconst.DTypeVoiceHead:
-				isVoice = true
-				if config.GetConfig().Debug {
-					klog.Infof("Voice header from %d", packet.Src)
-				}
-			default:
-				isData = true
-				if config.GetConfig().Debug {
-					klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-				}
-			}
-		case dmrconst.FrameVoice:
-			isVoice = true
-			if config.GetConfig().Debug {
-				klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
-			}
-		case dmrconst.FrameVoiceSync:
-			isVoice = true
-			if config.GetConfig().Debug {
-				klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-			}
-		}
+		isVoice, isData := s.checkPacketType(packet)
 
 		if packet.Dst == 0 {
 			return
 		}
 
-		// Don't call track unlink
-		if packet.Dst != 4000 && isVoice {
-			go func() {
-				if !s.CallTracker.IsCallActive(packet) {
-					s.CallTracker.StartCall(ctx, packet)
-				}
-				if s.CallTracker.IsCallActive(packet) {
-					s.CallTracker.ProcessCallPacket(ctx, packet)
-					if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-						s.CallTracker.EndCall(ctx, packet)
-					}
-				}
-			}()
-		}
+		s.trackCall(ctx, packet, isVoice)
 
 		if packet.Dst == dmrconst.ParrotUser && isVoice {
-			if !s.Parrot.IsStarted(ctx, packet.StreamID) {
-				s.Parrot.StartStream(ctx, packet.StreamID, repeaterID)
-				if config.GetConfig().Debug {
-					klog.Infof("Parrot call from %d", packet.Src)
-				}
-			}
-			s.Parrot.RecordPacket(ctx, packet.StreamID, packet)
-			if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-				s.Parrot.StopStream(ctx, packet.StreamID)
-				go func() {
-					packets := s.Parrot.GetStream(ctx, packet.StreamID)
-					time.Sleep(parrotDelay)
-					started := false
-					// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
-					// This is to ensure that the DMR repeater doesn't drop the packet
-					startedTime := time.Now()
-					for j, pkt := range packets {
-						s.sendPacket(ctx, repeaterID, pkt)
-
-						go func() {
-							if !started {
-								s.CallTracker.StartCall(ctx, pkt)
-								started = true
-							}
-							s.CallTracker.ProcessCallPacket(ctx, pkt)
-							if j == len(packets)-1 {
-								s.CallTracker.EndCall(ctx, pkt)
-							}
-						}()
-						// Calculate the time since the call started
-						elapsed := time.Since(startedTime)
-						const packetTiming = 60 * time.Millisecond
-						// If elapsed is greater than 60ms, we're behind and need to catch up
-						if elapsed > packetTiming {
-							klog.Warningf("Parrot call took too long to send, elapsed: %s", elapsed)
-							// Sleep for 60ms minus the difference between the elapsed time and 60ms
-							time.Sleep(packetTiming - (elapsed - packetTiming))
-						} else {
-							// Now subtract the elapsed time from 60ms to get the true delay
-							delay := packetTiming - elapsed
-							time.Sleep(delay)
-						}
-						startedTime = time.Now()
-					}
-				}()
-			}
+			s.doParrot(ctx, packet, repeaterID)
 			// Don't route parrot calls
 			return
 		}
 
 		if packet.Dst == 4000 && isVoice {
-			if packet.Slot {
-				klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
-				if dbRepeater.TS2DynamicTalkgroupID != nil {
-					oldTGID := *dbRepeater.TS2DynamicTalkgroupID
-					s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
-					err := s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
-					if err != nil {
-						klog.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
-					}
-					GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
-				}
-			} else {
-				klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
-				if dbRepeater.TS1DynamicTalkgroupID != nil {
-					oldTGID := *dbRepeater.TS1DynamicTalkgroupID
-					s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
-					err := s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
-					if err != nil {
-						klog.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
-					}
-					GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
-				}
-			}
-			s.DB.Save(&dbRepeater)
+			s.doUnlink(packet, dbRepeater)
 			return
 		}
 
@@ -341,30 +385,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 				// This is to a repeater
 				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", packet.Dst), packedBytes)
 			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
-				// This is to a user
-				// Search the database for the user
-				if models.UserIDExists(s.DB, packet.Dst) {
-					user := models.FindUserByID(s.DB, packet.Dst)
-					// Query lastheard where UserID == user.ID LIMIT 1
-					var lastCall models.Call
-					s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
-					if s.DB.Error != nil {
-						klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
-					} else if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
-						// If the last call exists and that repeater is online
-						// Send the packet to the last user call's repeater
-						s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
-					}
-
-					// For each user repeaters
-					for _, repeater := range user.Repeaters {
-						// If the repeater is online and the last user call was not to this repeater
-						if repeater.RadioID != lastCall.RepeaterID && s.Redis.exists(ctx, repeater.RadioID) {
-							// Send the packet to the repeater
-							s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
-						}
-					}
-				}
+				s.doUser(ctx, packet, packedBytes)
 			}
 		case isData:
 			klog.Warning("Unhandled data packet type")

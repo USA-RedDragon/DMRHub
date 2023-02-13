@@ -9,6 +9,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -23,6 +25,7 @@ type Server struct {
 	DB            *gorm.DB
 	Redis         redisRepeaterStorage
 	CallTracker   *CallTracker
+	Tracer        trace.Tracer
 }
 
 const largestMessageSize = 302
@@ -42,6 +45,7 @@ func MakeServer(db *gorm.DB, redis *redis.Client) Server {
 		DB:          db,
 		Redis:       makeRedisRepeaterStorage(redis),
 		CallTracker: NewCallTracker(db, redis),
+		Tracer:      otel.Tracer("dmr-server"),
 	}
 }
 

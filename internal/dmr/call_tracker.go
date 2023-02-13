@@ -325,7 +325,7 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 		case uint(dmrconst.DTypeVoiceHead):
 			// Voice header, this is the start of a voice superframe
 			call.HasHeader = true
-			call.TotalPackets += 1
+			call.TotalPackets++
 			call.LastFrameNum = 0
 		case uint(dmrconst.DTypeVoiceTerm):
 			// Voice terminator
@@ -334,15 +334,15 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum
 				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum
 			}
-			call.TotalPackets += 1
+			call.TotalPackets++
 			call.LastFrameNum = 0
 		}
 	case dmrconst.FrameVoiceSync:
 		// This is a voice sync
 		if !call.HasHeader && call.LastFrameNum == 0 {
 			// We lost the header
-			call.LostSequences += 1
-			call.TotalPackets += 1
+			call.LostSequences++
+			call.TotalPackets++
 			call.HasHeader = true
 		}
 		// The previous packet should be either the header or the VoiceF frame
@@ -353,7 +353,7 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 			call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
 			call.TotalPackets += packet.DTypeOrVSeq - call.LastFrameNum - 1
 		}
-		call.TotalPackets += 1
+		call.TotalPackets++
 		call.LastFrameNum = packet.DTypeOrVSeq
 	case dmrconst.FrameVoice:
 		// This is a voice packet
@@ -375,7 +375,7 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 			}
 		}
 		// We got the packet we expected
-		call.TotalPackets += 1
+		call.TotalPackets++
 		call.LastFrameNum = packet.DTypeOrVSeq
 	}
 }

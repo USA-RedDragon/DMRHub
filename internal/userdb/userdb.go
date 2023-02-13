@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // DMRHub - Run a DMR network server in a single binary
 // Copyright (C) 2023 Jacob McSwain
 //
@@ -22,6 +22,7 @@ package userdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"

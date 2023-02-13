@@ -200,6 +200,10 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 	})
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
+		if staticName == "" {
+			continue
+		}
+		klog.Errorf("File: \"%s\"", staticName)
 		staticGroup.GET(staticName, func(c *gin.Context) {
 			file, fileErr := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if fileErr != nil {

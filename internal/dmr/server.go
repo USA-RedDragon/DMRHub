@@ -245,3 +245,49 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		s.Redis.Redis.Publish(ctx, "outgoing", packedBytes)
 	}()
 }
+
+func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
+	ctx := context.Background()
+	ctx, span := s.Tracer.Start(ctx, "handlePacket")
+	defer span.End()
+	const signatureLength = 4
+	if len(data) < signatureLength {
+		// Not enough data here to be a valid packet
+		klog.Warningf("Invalid packet length: %d", len(data))
+		return
+	}
+
+	switch dmrconst.Command(data[:4]) { //nolint:golint,exhaustive
+	case dmrconst.CommandDMRA:
+		s.handleDMRAPacket(ctx, remoteAddr, data)
+	case dmrconst.CommandDMRD:
+		s.handleDMRDPacket(ctx, remoteAddr, data)
+	case dmrconst.CommandRPTO:
+		s.handleRPTOPacket(ctx, remoteAddr, data)
+	case dmrconst.CommandRPTL:
+		s.handleRPTLPacket(ctx, remoteAddr, data)
+	case dmrconst.CommandRPTK:
+		s.handleRPTKPacket(ctx, remoteAddr, data)
+	case dmrconst.CommandRPTC:
+		if dmrconst.Command(data[:5]) == dmrconst.CommandRPTCL {
+			s.handleRPTCLPacket(ctx, remoteAddr, data)
+		} else {
+			s.handleRPTCPacket(ctx, remoteAddr, data)
+		}
+	case dmrconst.CommandRPTPING[:4]:
+		s.handleRPTPINGPacket(ctx, remoteAddr, data)
+	// I don't think we ever receive these
+	case dmrconst.CommandRPTACK[:4]:
+		klog.Warning("TODO: RPTACK")
+	case dmrconst.CommandMSTCL[:4]:
+		klog.Warning("TODO: MSTCL")
+	case dmrconst.CommandMSTNAK[:4]:
+		klog.Warning("TODO: MSTNAK")
+	case dmrconst.CommandMSTPONG[:4]:
+		klog.Warning("TODO: MSTPONG")
+	case dmrconst.CommandRPTSBKN[:4]:
+		klog.Warning("TODO: RPTSBKN")
+	default:
+		klog.Warningf("Unknown command: %s", dmrconst.Command(data[:4]))
+	}
+}

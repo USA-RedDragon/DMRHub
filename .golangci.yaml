@@ -8,14 +8,20 @@ run:
 
 linters:
   enable:
+    - asasalint
     - asciicheck
     - bidichk
     - containedctx
+    - contextcheck
     - decorder
+    - dogsled
+    - dupword
     - durationcheck
     - errchkjson
+    - errname
     - errorlint
     - exhaustive
+    - exportloopref
     - forcetypeassert
     - gci
     - gocheckcompilerdirectives
@@ -28,14 +34,16 @@ linters:
     - godox
     - goerr113
     - gofmt
+    - goheader
     - gomnd
     - gomoddirectives
     - gosec
+    - grouper
+    - loggercheck
     - misspell
     - nilerr
     - nilnil
     - noctx
-    - nolintlint
     - nonamedreturns
     - nosprintfhostport
     - paralleltest
@@ -44,8 +52,10 @@ linters:
     - reassign
     - revive
     - testpackage
+    - tparallel
     - unconvert
     - unparam
+    - usestdlibvars
     - wastedassign
     - whitespace
     - wrapcheck

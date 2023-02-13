@@ -1,3 +1,22 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
 package dmr
 
 import (
@@ -83,7 +102,7 @@ func (s *Server) listen(ctx context.Context) {
 			klog.Errorf("Error unmarshalling packet", err)
 			continue
 		}
-		s.handlePacket(&net.UDPAddr{
+		s.handlePacket(ctx, &net.UDPAddr{
 			IP:   net.ParseIP(packet.RemoteIP),
 			Port: packet.RemotePort,
 		}, packet.Data)
@@ -246,8 +265,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	}()
 }
 
-func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
-	ctx := context.Background()
+func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
 	ctx, span := s.Tracer.Start(ctx, "handlePacket")
 	defer span.End()
 	const signatureLength = 4

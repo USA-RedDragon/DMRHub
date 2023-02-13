@@ -21,13 +21,15 @@ type WSHandler struct {
 	redis      *redis.Client
 }
 
+const bufferSize = 1024
+
 func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 	return &WSHandler{
 		redis: redis,
 		wsUpgrader: websocket.Upgrader{
 			HandshakeTimeout: 0,
-			ReadBufferSize:   1024,
-			WriteBufferSize:  1024,
+			ReadBufferSize:   bufferSize,
+			WriteBufferSize:  bufferSize,
 			WriteBufferPool:  nil,
 			Subprotocols:     []string{},
 			Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {

@@ -114,13 +114,16 @@ func main() {
 
 	scheduler.StartAsync()
 
+	const connsPerCPU = 10
+	const maxIdleTime = 10 * time.Minute
+
 	redis := redis.NewClient(&redis.Options{
 		Addr:            config.GetConfig().RedisHost,
 		Password:        config.GetConfig().RedisPassword,
 		PoolFIFO:        true,
-		PoolSize:        runtime.GOMAXPROCS(0) * 10,
+		PoolSize:        runtime.GOMAXPROCS(0) * connsPerCPU,
 		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxIdleTime: 10 * time.Minute,
+		ConnMaxIdleTime: maxIdleTime,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

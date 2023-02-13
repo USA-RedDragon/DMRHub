@@ -2,6 +2,7 @@ package dmr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -15,6 +16,14 @@ import (
 type redisRepeaterStorage struct {
 	Redis *redis.Client
 }
+
+var (
+	ErrNoSuchRepeater    = errors.New("no such repeater")
+	ErrUnmarshalRepeater = errors.New("unmarshal repeater")
+	ErrCastRepeater      = errors.New("unable to cast repeater id")
+)
+
+const repeaterExpireTime = 5 * time.Minute
 
 func makeRedisRepeaterStorage(redis *redis.Client) redisRepeaterStorage {
 	return redisRepeaterStorage{
@@ -30,7 +39,7 @@ func (s *redisRepeaterStorage) ping(ctx context.Context, repeaterID uint) {
 	}
 	repeater.LastPing = time.Now()
 	s.store(ctx, repeaterID, repeater)
-	s.Redis.Expire(ctx, fmt.Sprintf("repeater:%d", repeaterID), 5*time.Minute)
+	s.Redis.Expire(ctx, fmt.Sprintf("repeater:%d", repeaterID), repeaterExpireTime)
 }
 
 func (s *redisRepeaterStorage) updateConnection(ctx context.Context, repeaterID uint, connection string) {
@@ -54,20 +63,20 @@ func (s *redisRepeaterStorage) store(ctx context.Context, repeaterID uint, repea
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	s.Redis.Set(ctx, fmt.Sprintf("repeater:%d", repeaterID), repeaterBytes, 5*time.Minute)
+	s.Redis.Set(ctx, fmt.Sprintf("repeater:%d", repeaterID), repeaterBytes, repeaterExpireTime)
 }
 
 func (s *redisRepeaterStorage) get(ctx context.Context, repeaterID uint) (models.Repeater, error) {
 	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("repeater:%d", repeaterID)).Result()
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
-		return models.Repeater{}, err
+		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
 	if err != nil {
 		klog.Errorf("Error unmarshalling repeater", err)
-		return models.Repeater{}, err
+		return models.Repeater{}, ErrUnmarshalRepeater
 	}
 	return repeater, nil
 }
@@ -82,12 +91,12 @@ func (s *redisRepeaterStorage) list(ctx context.Context) ([]uint, error) {
 	for {
 		keys, _, err := s.Redis.Scan(ctx, cursor, "repeater:*", 0).Result()
 		if err != nil {
-			return nil, err
+			return nil, ErrNoSuchRepeater
 		}
 		for _, key := range keys {
 			repeaterNum, err := strconv.Atoi(strings.Replace(key, "repeater:", "", 1))
 			if err != nil {
-				return nil, err
+				return nil, ErrCastRepeater
 			}
 			repeaters = append(repeaters, uint(repeaterNum))
 		}

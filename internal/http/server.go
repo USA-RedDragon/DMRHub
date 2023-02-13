@@ -2,6 +2,7 @@ package http
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,15 @@ import (
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
+
+var (
+	ErrReadDir = errors.New("error reading directory")
+)
+
+const defTimeout = 10 * time.Second
+const debugWriteTimeout = 60 * time.Second
+const rateLimitRate = time.Second
+const rateLimitLimit = 10
 
 // FS is the embedded frontend files
 //
@@ -52,12 +62,12 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
 		RedisClient: redisClient,
-		Rate:        time.Second,
-		Limit:       10,
+		Rate:        rateLimitRate,
+		Limit:       rateLimitLimit,
 	})
 	ratelimitMW := ratelimit.RateLimiter(ratelimitStore, &ratelimit.Options{
 		ErrorHandler: func(c *gin.Context, info ratelimit.Info) {
-			c.String(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
+			c.String(http.StatusTooManyRequests, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
 		},
 		KeyFunc: func(c *gin.Context) string {
 			return c.ClientIP()
@@ -280,16 +290,16 @@ func Start(db *gorm.DB, redisClient *redis.Client) {
 
 	r := CreateRouter(db, redisClient)
 
-	writeTimeout := 10 * time.Second
+	writeTimeout := defTimeout
 	if config.GetConfig().Debug {
-		writeTimeout = 60 * time.Second
+		writeTimeout = debugWriteTimeout
 	}
 
 	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
 	s := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
 		Handler:      r,
-		ReadTimeout:  10 * time.Second,
+		ReadTimeout:  defTimeout,
 		WriteTimeout: writeTimeout,
 	}
 	s.SetKeepAlivesEnabled(false)
@@ -307,7 +317,7 @@ func getAllFilenames(fs *embed.FS, dir string) ([]string, error) {
 
 	entries, err := fs.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, ErrReadDir
 	}
 
 	out := make([]string, len(entries))

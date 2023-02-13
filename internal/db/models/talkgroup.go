@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -109,7 +110,7 @@ func NewTalkgroupsSeeder(cfg gorm_seeder.SeederConfiguration) TalkgroupsSeeder {
 func (s *TalkgroupsSeeder) Seed(db *gorm.DB) error {
 	var talkgroups = []Talkgroup{
 		{
-			ID:          uint(9990),
+			ID:          dmrconst.ParrotUser,
 			Name:        "DMRHub Parrot",
 			Description: "This talkgroup will not be routed to any repeaters and Parrot will respond with a private call.",
 		},

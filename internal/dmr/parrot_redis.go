@@ -14,6 +14,14 @@ type redisParrotStorage struct {
 	Redis *redis.Client
 }
 
+var (
+	ErrRedis        = fmt.Errorf("redis error")
+	ErrCast         = fmt.Errorf("cast error")
+	ErrMarshal      = fmt.Errorf("marshal error")
+	ErrUnmarshal    = fmt.Errorf("unmarshal error")
+	ErrNoSuchStream = fmt.Errorf("no such stream")
+)
+
 const parrotExpireTime = 5 * time.Minute
 
 func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
@@ -37,11 +45,11 @@ func (r *redisParrotStorage) refresh(ctx context.Context, streamID uint) {
 func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
 	repeaterIDStr, err := r.Redis.Get(ctx, fmt.Sprintf("parrot:stream:%d", streamID)).Result()
 	if err != nil {
-		return 0, err
+		return 0, ErrRedis
 	}
 	repeaterID, err := strconv.Atoi(repeaterIDStr)
 	if err != nil {
-		return 0, err
+		return 0, ErrCast
 	}
 	return uint(repeaterID), nil
 }
@@ -49,7 +57,7 @@ func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, erro
 func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet models.Packet) error {
 	packetBytes, err := packet.MarshalMsg(nil)
 	if err != nil {
-		return err
+		return ErrMarshal
 	}
 
 	r.Redis.RPush(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), packetBytes)
@@ -58,7 +66,7 @@ func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet m
 
 func (r *redisParrotStorage) delete(ctx context.Context, streamID uint) {
 	r.Redis.Del(ctx, fmt.Sprintf("parrot:stream:%d", streamID))
-	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), 5*time.Minute)
+	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), parrotExpireTime)
 }
 
 func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]models.Packet, error) {
@@ -66,13 +74,13 @@ func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]mo
 	var packets [][]byte
 	packetSize, err := r.Redis.LLen(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID)).Result()
 	if err != nil {
-		return nil, err
+		return nil, ErrNoSuchStream
 	}
 	// Loop through the packets and add them to the array
 	for i := int64(0); i < packetSize; i++ {
 		packet, err := r.Redis.LIndex(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), i).Bytes()
 		if err != nil {
-			return nil, err
+			return nil, ErrNoSuchStream
 		}
 		packets = append(packets, packet)
 	}
@@ -86,7 +94,7 @@ func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]mo
 		var packetObj models.Packet
 		_, err := packetObj.UnmarshalMsg(packet)
 		if err != nil {
-			return nil, err
+			return nil, ErrUnmarshal
 		}
 		packetArray = append(packetArray, packetObj)
 	}

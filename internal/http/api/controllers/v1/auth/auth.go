@@ -45,7 +45,7 @@ func POSTLogin(c *gin.Context) {
 			db.Find(&user, "callsign = ?", json.Callsign)
 		}
 		if user.ID == 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "Authentication failed"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		verified, err := utils.VerifyPassword(json.Password, user.Password, config.GetConfig().PasswordSalt)
@@ -56,19 +56,19 @@ func POSTLogin(c *gin.Context) {
 				err = session.Save()
 				if err != nil {
 					klog.Errorf("POSTLogin: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"status": 500, "error": "Error saving session"})
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
 					return
 				}
-				c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged in"})
+				c.JSON(http.StatusOK, gin.H{"message": "Logged in"})
 				return
 			}
-			c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "User is not approved"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User is not approved"})
 			return
 		}
 		klog.Errorf("POSTLogin: %v", err)
 	}
 
-	c.JSON(http.StatusUnauthorized, gin.H{"status": 401, "error": "Authentication failed"})
+	c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 }
 
 func GETLogout(c *gin.Context) {
@@ -77,8 +77,8 @@ func GETLogout(c *gin.Context) {
 	err := session.Save()
 	if err != nil {
 		klog.Errorf("GETLogout: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"status": 500, "error": "Error saving session"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": 200, "message": "Logged out"})
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
 }

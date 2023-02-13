@@ -321,7 +321,6 @@ func POSTRepeater(c *gin.Context) {
 			} else {
 				repeater.RXFrequency = repeater.TXFrequency - offsetInt
 			}
-			// TODO: maybe handle TSLinked?
 		case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			repeater.Hotspot = true
 		default:

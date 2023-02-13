@@ -11,7 +11,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var repeaterSubscriptionManager *RepeaterSubscriptionManager //nolint:gochecknoglobals
+var repeaterSubscriptionManager *RepeaterSubscriptionManager //nolint:golint,gochecknoglobals
 
 type RepeaterSubscriptionManager struct {
 	talkgroupSubscriptions      map[uint]map[uint]context.CancelFunc

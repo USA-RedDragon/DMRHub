@@ -51,6 +51,11 @@ view-coverage:
 	@go tool cover -html=coverage.txt
 	@echo "--> Done"
 
+lint:
+	@echo "--> Linting"
+	@golangci-lint run
+	@echo "--> Done"
+
 test:
 	@echo "--> Running tests"
 	@env CGO_ENABLED=0 go test ./...

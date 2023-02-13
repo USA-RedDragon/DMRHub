@@ -172,11 +172,13 @@ func main() {
 	dmrServer.Listen(ctx)
 	defer dmrServer.Stop(ctx)
 
-	// For each repeater in the DB, start a gofunc to listen for calls
-	repeaters := models.ListRepeaters(database)
-	for _, repeater := range repeaters {
-		go dmr.GetRepeaterSubscriptionManager().ListenForCalls(ctx, redis, repeater)
-	}
+	go func() {
+		// For each repeater in the DB, start a gofunc to listen for calls
+		repeaters := models.ListRepeaters(database)
+		for _, repeater := range repeaters {
+			go dmr.GetRepeaterSubscriptionManager().ListenForCalls(ctx, redis, repeater)
+		}
+	}()
 
 	http.Start(database, redis)
 }

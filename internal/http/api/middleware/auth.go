@@ -6,6 +6,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -154,7 +155,7 @@ func RequireSuperAdmin() gin.HandlerFunc {
 				attribute.Int("user.id", int(uid)),
 			)
 		}
-		if uid != 999999 {
+		if uid != dmrconst.SuperAdminUser {
 			klog.Error("User is not a super admin")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}

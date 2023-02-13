@@ -38,9 +38,9 @@ type Config struct {
 	Debug                    bool
 }
 
-var currentConfig atomic.Value //nolint:gochecknoglobals
-var isInit atomic.Bool         //nolint:gochecknoglobals
-var loaded atomic.Bool         //nolint:gochecknoglobals
+var currentConfig atomic.Value //nolint:golint,gochecknoglobals
+var isInit atomic.Bool         //nolint:golint,gochecknoglobals
+var loaded atomic.Bool         //nolint:golint,gochecknoglobals
 
 func loadConfig() Config {
 	portStr := os.Getenv("PG_PORT")

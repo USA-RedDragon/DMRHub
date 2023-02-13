@@ -208,7 +208,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				}()
 			}
 
-			if packet.Dst == 9990 && isVoice {
+			if packet.Dst == dmrconst.ParrotUser && isVoice {
 				if !s.Parrot.IsStarted(ctx, packet.StreamID) {
 					s.Parrot.StartStream(ctx, packet.StreamID, repeaterID)
 					if config.GetConfig().Debug {
@@ -240,14 +240,15 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 							}()
 							// Calculate the time since the call started
 							elapsed := time.Since(startedTime)
+							const packetTiming = 60 * time.Millisecond
 							// If elapsed is greater than 60ms, we're behind and need to catch up
-							if elapsed > 60*time.Millisecond {
+							if elapsed > packetTiming {
 								klog.Warningf("Parrot call took too long to send, elapsed: %s", elapsed)
 								// Sleep for 60ms minus the difference between the elapsed time and 60ms
-								time.Sleep(60*time.Millisecond - (elapsed - 60*time.Millisecond))
+								time.Sleep(packetTiming - (elapsed - packetTiming))
 							} else {
 								// Now subtract the elapsed time from 60ms to get the true delay
-								delay := 60*time.Millisecond - elapsed
+								delay := packetTiming - elapsed
 								time.Sleep(delay)
 							}
 							startedTime = time.Now()
@@ -439,8 +440,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			s.Redis.store(ctx, repeaterID, repeater)
 			// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
 			var saltBytes [4]byte
-			if len(bigSalt.Bytes()) < 4 {
-				copy(saltBytes[4-len(bigSalt.Bytes()):], bigSalt.Bytes())
+			if len(bigSalt.Bytes()) < len(saltBytes) {
+				copy(saltBytes[len(saltBytes)-len(bigSalt.Bytes()):], bigSalt.Bytes())
 			} else {
 				copy(saltBytes[:], bigSalt.Bytes())
 			}
@@ -449,7 +450,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 	} else if command == dmrconst.CommandRPTK {
 		// RPTL packets are 8 bytes long + a 32 byte sha256 hash
-		if len(data) != 40 {
+		const rptkLen = 40
+		if len(data) != rptkLen {
 			klog.Warningf("Invalid RPTK packet length: %d", len(data))
 			return
 		}
@@ -517,7 +519,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	} else if command == dmrconst.CommandRPTC {
 		if dmrconst.Command(data[:5]) == dmrconst.CommandRPTCL {
 			// RPTCL packets are 8 bytes long
-			if len(data) != 8 {
+			const rptclLen = 8
+			if len(data) != rptclLen {
 				klog.Warningf("Invalid RPTCL packet length: %d", len(data))
 				return
 			}
@@ -532,7 +535,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 			}
 		} else {
 			// RPTC packets are 302 bytes long
-			if len(data) != 302 {
+			const rptcLen = 302
+			if len(data) != rptcLen {
 				klog.Warningf("Invalid RPTC packet length: %d", len(data))
 				return
 			}
@@ -582,8 +586,9 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					return
 				}
 				repeater.TXPower = uint(txPower)
-				if repeater.TXPower > 99 {
-					repeater.TXPower = 99
+				const maxTXPower = 99
+				if repeater.TXPower > maxTXPower {
+					repeater.TXPower = maxTXPower
 				}
 
 				colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
@@ -591,7 +596,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					klog.Errorf("Error parsing ColorCode", err)
 					return
 				}
-				if colorCode > 15 {
+				const maxColorCode = 15
+				if colorCode > maxColorCode {
 					klog.Errorf("Invalid ColorCode: %d", colorCode)
 					return
 				}
@@ -624,19 +630,22 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 					klog.Errorf("Error parsing Height", err)
 					return
 				}
-				if height > 999 {
-					height = 999
+				const maxHeight = 999
+				if height > maxHeight {
+					height = maxHeight
 				}
 				repeater.Height = int(height)
 
 				repeater.Location = strings.TrimRight(string(data[58:78]), " ")
-				if len(repeater.Location) > 20 {
-					repeater.Location = repeater.Location[:20]
+				const maxLocation = 20
+				if len(repeater.Location) > maxLocation {
+					repeater.Location = repeater.Location[:maxLocation]
 				}
 
 				repeater.Description = strings.TrimRight(string(data[78:97]), " ")
-				if len(repeater.Description) > 20 {
-					repeater.Description = repeater.Description[:20]
+				const maxDescription = 20
+				if len(repeater.Description) > maxDescription {
+					repeater.Description = repeater.Description[:maxDescription]
 				}
 
 				slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
@@ -647,19 +656,22 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 				repeater.Slots = uint(slots)
 
 				repeater.URL = strings.TrimRight(string(data[98:222]), " ")
-				if len(repeater.URL) > 124 {
-					repeater.URL = repeater.URL[:124]
+				const maxURL = 124
+				if len(repeater.URL) > maxURL {
+					repeater.URL = repeater.URL[:maxURL]
 				}
 
 				repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
-				if len(repeater.SoftwareID) > 40 {
-					repeater.SoftwareID = repeater.SoftwareID[:40]
+				const maxSoftwareID = 40
+				if len(repeater.SoftwareID) > maxSoftwareID {
+					repeater.SoftwareID = repeater.SoftwareID[:maxSoftwareID]
 				} else if repeater.SoftwareID == "" {
 					repeater.SoftwareID = "github.com/USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
 				}
 				repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
-				if len(repeater.PackageID) > 40 {
-					repeater.PackageID = repeater.PackageID[:40]
+				const maxPackageID = 40
+				if len(repeater.PackageID) > maxPackageID {
+					repeater.PackageID = repeater.PackageID[:maxPackageID]
 				} else if repeater.PackageID == "" {
 					repeater.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
 				}
@@ -692,7 +704,8 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 		}
 	} else if command == dmrconst.CommandRPTPING[:4] {
 		// RPTP packets are 11 bytes long
-		if len(data) != 11 {
+		const rptpLength = 11
+		if len(data) != rptpLength {
 			klog.Warningf("Invalid RPTP packet length: %d", len(data))
 			return
 		}

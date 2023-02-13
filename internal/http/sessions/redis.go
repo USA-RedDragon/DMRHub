@@ -15,6 +15,10 @@ type Store interface {
 	sessions.Store
 }
 
+var (
+	ErrCast = errors.New("unable to cast Store to *store")
+)
+
 // NewStore creates a new redis store.
 //
 // Keys are defined in pairs to allow key rotation, but the common case is to set a single
@@ -43,7 +47,7 @@ type store struct {
 func GetRedisStore(s Store) (*RediStore, error) {
 	realStore, ok := s.(*store)
 	if !ok {
-		return nil, errors.New("unable to get the redis store: Store isn't *store")
+		return nil, ErrCast
 	}
 
 	return realStore.RediStore, nil

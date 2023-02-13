@@ -6,7 +6,7 @@ import (
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -26,7 +26,14 @@ var builtInDateStr string
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var userDB UserDB //nolint:gochecknoglobals
+var userDB UserDB //nolint:golint,gochecknoglobals
+
+var (
+	ErrUpdateFailed = errors.New("update failed")
+	ErrUnmarshal    = errors.New("unmarshal failed")
+)
+
+const waitTime = 100 * time.Millisecond
 
 type UserDB struct {
 	uncompressedJSON       []byte
@@ -89,7 +96,11 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 }
 
 func (e *dmrUserDB) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, e)
+	err := json.Unmarshal(b, e)
+	if err != nil {
+		return ErrUnmarshal
+	}
+	return nil
 }
 
 func UnpackDB() {
@@ -135,7 +146,7 @@ func UnpackDB() {
 	}
 
 	for !userDB.isDone.Load() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(waitTime)
 	}
 
 	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
@@ -177,22 +188,22 @@ func Update() error {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/users.json", nil)
 	if err != nil {
-		return err
+		return ErrUpdateFailed
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return ErrUpdateFailed
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
+		return ErrUpdateFailed
 	}
 
 	userDB.uncompressedJSON, err = io.ReadAll(resp.Body)
 	if err != nil {
 		klog.Errorf("ReadAll error %s", err)
-		return err
+		return ErrUpdateFailed
 	}
 	defer func() {
 		err := resp.Body.Close()
@@ -203,7 +214,7 @@ func Update() error {
 	var tmpDB dmrUserDB
 	if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
 		klog.Errorf("Error decoding DMR users database: %v", err)
-		return err
+		return ErrUpdateFailed
 	}
 
 	if len(tmpDB.Users) == 0 {

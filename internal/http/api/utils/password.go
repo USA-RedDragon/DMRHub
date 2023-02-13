@@ -33,6 +33,7 @@ type argon2Params struct {
 var (
 	ErrInvalidHash         = errors.New("the encoded hash is not in the correct format")
 	ErrIncompatibleVersion = errors.New("incompatible version of argon2")
+	ErrNoRandom            = errors.New("no random source available")
 )
 
 func HashPassword(password string, salt string) string {
@@ -68,7 +69,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	var version int
 	_, err := fmt.Sscanf(vals[2], "v=%d", &version)
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 	if version != argon2.Version {
 		return false, ErrIncompatibleVersion
@@ -77,23 +78,23 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	p := &argon2Params{}
 	_, err = fmt.Sscanf(vals[3], "m=%d,t=%d,p=%d", &p.memory, &p.iterations, &p.parallelism)
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 
 	salt, err := base64.RawStdEncoding.Strict().DecodeString(vals[4])
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 	p.saltLength = uint32(len(salt))
 
 	hash, err := base64.RawStdEncoding.Strict().DecodeString(vals[5])
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 	p.keyLength = uint32(len(hash))
 
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 
 	// Derive the key from the other password using the same parameters.
@@ -118,7 +119,7 @@ func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	for i := 0; i < length; i++ {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedChars))))
 		if err != nil {
-			return "", err
+			return "", ErrNoRandom
 		}
 		b[i] = allowedChars[num.Int64()]
 	}
@@ -126,12 +127,12 @@ func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	for i := 0; i < minNumbers; i++ {
 		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
 		if err != nil {
-			return "", err
+			return "", ErrNoRandom
 		}
 
 		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedNumbers))))
 		if err != nil {
-			return "", err
+			return "", ErrNoRandom
 		}
 
 		b[randInt.Int64()] = allowedNumbers[rollInt.Int64()]
@@ -139,12 +140,12 @@ func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	for i := 0; i < minSpecial; i++ {
 		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
 		if err != nil {
-			return "", err
+			return "", ErrNoRandom
 		}
 
 		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedSpecial))))
 		if err != nil {
-			return "", err
+			return "", ErrNoRandom
 		}
 
 		b[randInt.Int64()] = allowedSpecial[rollInt.Int64()]

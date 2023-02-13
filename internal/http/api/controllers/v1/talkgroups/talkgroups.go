@@ -13,6 +13,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const maxNameLength = 20
+const maxDescriptionLength = 240
+
 func GETTalkgroups(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
@@ -296,7 +299,7 @@ func PATCHTalkgroup(c *gin.Context) {
 
 		if json.Name != "" {
 			// Validate length less than 20 characters
-			if len(json.Name) > 20 {
+			if len(json.Name) > maxNameLength {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be less than 20 characters"})
 				return
 			}
@@ -311,7 +314,7 @@ func PATCHTalkgroup(c *gin.Context) {
 		}
 		if json.Description != "" {
 			// Validate length less than 240 characters
-			if len(json.Description) > 240 {
+			if len(json.Description) > maxDescriptionLength {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be less than 240 characters"})
 				return
 			}
@@ -346,13 +349,13 @@ func POSTTalkgroup(c *gin.Context) {
 			return
 		}
 		// Validate length less than 20 characters
-		if len(json.Name) > 20 {
+		if len(json.Name) > maxNameLength {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be less than 20 characters"})
 			return
 		}
 		if json.Description != "" {
 			// Validate length less than 240 characters
-			if len(json.Description) > 240 {
+			if len(json.Description) > maxDescriptionLength {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be less than 240 characters"})
 				return
 			}

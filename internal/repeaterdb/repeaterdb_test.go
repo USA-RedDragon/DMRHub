@@ -76,7 +76,7 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if builtInDate == GetDate() {
+	if repeaterDB.builtInDate == GetDate() {
 		t.Error("Update did not update the database")
 	}
 }
@@ -84,9 +84,9 @@ func TestUpdate(t *testing.T) {
 func BenchmarkRepeaterDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		UnpackDB()
-		isInited.Store(false)
-		isDone.Store(false)
-		dmrRepeaters.Store(dmrRepeaterDB{})
+		repeaterDB.isInited.Store(false)
+		repeaterDB.isDone.Store(false)
+		repeaterDB.dmrRepeaters.Store(dmrRepeaterDB{})
 	}
 }
 

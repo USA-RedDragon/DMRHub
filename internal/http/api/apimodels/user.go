@@ -2,6 +2,9 @@ package apimodels
 
 import "regexp"
 
+const minUsernameLength = 3
+const maxUsernameLength = 20
+
 type UserRegistration struct {
 	DMRId    uint   `json:"id" binding:"required"`
 	Callsign string `json:"callsign" binding:"required"`
@@ -10,10 +13,10 @@ type UserRegistration struct {
 }
 
 func (r *UserRegistration) IsValidUsername() (bool, string) {
-	if len(r.Username) < 3 {
+	if len(r.Username) < minUsernameLength {
 		return false, "Username must be at least 3 characters"
 	}
-	if len(r.Username) > 20 {
+	if len(r.Username) > maxUsernameLength {
 		return false, "Username must be less than 20 characters"
 	}
 	if !regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString(r.Username) {

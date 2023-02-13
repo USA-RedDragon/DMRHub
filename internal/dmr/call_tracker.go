@@ -107,7 +107,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		LastPacketTime: time.Now(),
 		Loss:           0.0,
 		Jitter:         0.0,
-		LastFrameNum:   5,
+		LastFrameNum:   dmrconst.VoiceF,
 		RSSI:           0,
 		BER:            0.0,
 		TotalBits:      0,
@@ -270,9 +270,9 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	call.LastPacketTime = time.Now()
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
 	// time the last packet was. We'll use this to calculate the average jitter.
-	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2
+	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2 //nolint:golint,gomnd
 
-	if call.LastFrameNum != 0 && call.LastFrameNum == packet.DTypeOrVSeq {
+	if call.LastFrameNum != dmrconst.VoiceA && call.LastFrameNum == packet.DTypeOrVSeq {
 		// We've already seen this packet, so it's either a duplicate or we've lost 6 packets
 		if time.Since(call.LastPacketTime) > 60*time.Millisecond {
 			// We've lost 6 packets
@@ -286,7 +286,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 		call.Active = true
 		if packet.RSSI > 0 {
-			call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
+			call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2 //nolint:golint,gomnd
 		}
 
 		if call.TotalPackets%2 == 0 {
@@ -303,20 +303,20 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.HasHeader = true
 		call.TotalPackets++
 		// Save the db early so that we can query for it in a different goroutine
-	} else if packet.FrameType == dmrconst.FrameVoiceSync && packet.DTypeOrVSeq == 0 {
+	} else if packet.FrameType == dmrconst.FrameVoiceSync && packet.DTypeOrVSeq == dmrconst.VoiceA {
 		// This is a voice sync packet, so we need to ensure that we already have a header and set the FrameNum to 0
 		if !call.HasHeader {
 			klog.Error("Voice sync packet without header")
 			lost++
 		}
 		// If the last frame number is not equal to 5, then we've lost a packet
-		if call.LastFrameNum != 5 {
-			lost += 5 - call.LastFrameNum
+		if call.LastFrameNum != dmrconst.VoiceF {
+			lost += dmrconst.VoiceF - call.LastFrameNum
 		}
 
 		if packet.BER > 0 {
 			call.TotalBits += 141
-			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2 //nolint:golint,gomnd
 		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
@@ -324,14 +324,14 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		if config.GetConfig().Debug {
 			klog.Infof("Voice sync - lost %d packets. Set LastFrameNum to %d. Total lost: %d", lost, call.LastFrameNum, call.LostSequences)
 		}
-	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq > 0 && packet.DTypeOrVSeq < 5 {
+	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq > dmrconst.VoiceA && packet.DTypeOrVSeq < dmrconst.VoiceF {
 		// These are voice packets, so check for a header and LastFrameNum == packet.DTypeOrVSeq+1
 		if !call.HasHeader {
 			klog.Error("Voice packet without header")
 		}
 
 		// If the last frame number is equal to 5, then either we've lost a number of packets, or we've lost a sync packet
-		if call.LastFrameNum == 5 {
+		if call.LastFrameNum == dmrconst.VoiceF {
 			// Detect a lost sync packet
 			if packet.DTypeOrVSeq == 1 {
 				if config.GetConfig().Debug {
@@ -346,7 +346,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 			}
 		} else {
 			// If the last frame number is not equal to the current frame number - 1, then we've lost a packet
-			if call.LastFrameNum != 0 && call.LastFrameNum != packet.DTypeOrVSeq-1 {
+			if call.LastFrameNum != dmrconst.VoiceA && call.LastFrameNum != packet.DTypeOrVSeq-1 {
 				lost += packet.DTypeOrVSeq - call.LastFrameNum - 1
 				if config.GetConfig().Debug {
 					klog.Infof("Voice - lost %d packets. LastFrame=%d. Frame=%d. Total lost: %d", lost, call.LastFrameNum, packet.DTypeOrVSeq, call.LostSequences)
@@ -356,7 +356,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 
 		if packet.BER > 0 {
 			call.TotalBits += 141
-			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2 //nolint:golint,gomnd
 		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
@@ -364,18 +364,18 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		if config.GetConfig().Debug {
 			klog.Infof("Voice - lost %d packets Set LastFrameNum to %d. Total lost: %d", lost, call.LastFrameNum, call.LostSequences)
 		}
-	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq == 5 {
+	} else if packet.FrameType == dmrconst.FrameVoice && packet.DTypeOrVSeq == dmrconst.VoiceF {
 		// This is the last voice packet, so check for a header and LastFrameNum == 4
 		if !call.HasHeader {
 			klog.Errorf("Voice packet without header", packet.DTypeOrVSeq)
 		}
 		// If the last frame number is not equal to 4, then we've lost a packet
-		if call.LastFrameNum != 4 {
-			lost += 4 - call.LastFrameNum
+		if call.LastFrameNum != dmrconst.VoiceE {
+			lost += dmrconst.VoiceE - call.LastFrameNum
 		}
 		if packet.BER > 0 {
 			call.TotalBits += 141
-			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2
+			call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2 //nolint:golint,gomnd
 		}
 		call.LastFrameNum = packet.DTypeOrVSeq
 		call.LostSequences += lost
@@ -386,11 +386,11 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	} else if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		// This is the end of a call, so we need to set the FrameNum to 0
 		// Check if LastFrameNum is 5, if not, we've lost some packets
-		if call.LastFrameNum != 5 {
-			lost += 5 - call.LastFrameNum
+		if call.LastFrameNum != dmrconst.VoiceF {
+			lost += dmrconst.VoiceF - call.LastFrameNum
 		}
 		call.HasTerm = true
-		call.LastFrameNum = 5
+		call.LastFrameNum = dmrconst.VoiceF
 		call.LostSequences += lost
 		call.TotalPackets += 1 + lost
 		if config.GetConfig().Debug {
@@ -402,7 +402,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 	call.Active = true
 	if packet.RSSI > 0 {
-		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
+		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2 //nolint:golint,gomnd
 	}
 
 	if call.TotalPackets%2 == 0 {
@@ -465,11 +465,11 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			}
 
 			// If lastFrameNum != 5, Calculate the number of lost packets by subtracting the last frame number from 5 and adding it to the lost sequences
-			if call.LastFrameNum != 5 {
-				call.LostSequences += 5 - call.LastFrameNum
-				call.TotalPackets += 5 - call.LastFrameNum
+			if call.LastFrameNum != dmrconst.VoiceF {
+				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum
+				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum
 				if config.GetConfig().Debug {
-					klog.Errorf("Call %d ended with %d lost packets", packet.StreamID, 5-call.LastFrameNum)
+					klog.Errorf("Call %d ended with %d lost packets", packet.StreamID, dmrconst.VoiceF-call.LastFrameNum)
 				}
 			}
 

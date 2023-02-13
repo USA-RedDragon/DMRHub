@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
@@ -108,13 +109,13 @@ func NewUsersSeeder(cfg gorm_seeder.SeederConfiguration) UsersSeeder {
 func (s *UsersSeeder) Seed(db *gorm.DB) error {
 	var users = []User{
 		{
-			ID:       uint(9990),
+			ID:       dmrconst.ParrotUser,
 			Callsign: "Parrot",
 			Admin:    false,
 			Approved: true,
 		},
 		{
-			ID:       999999,
+			ID:       dmrconst.SuperAdminUser,
 			Callsign: "SystemAdmin",
 			Username: "Admin",
 			Admin:    true,

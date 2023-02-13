@@ -66,7 +66,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
 				repeater.TS2DynamicTalkgroup = talkgroup
 				repeater.TS2DynamicTalkgroupID = &packet.Dst
-				go repeater.ListenForCallsOn(ctx, s.Redis.Redis, packet.Dst)
+				go GetRepeaterSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
 				s.DB.Save(&repeater)
 			}
 		} else {
@@ -74,7 +74,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 				repeater.TS1DynamicTalkgroup = talkgroup
 				repeater.TS1DynamicTalkgroupID = &packet.Dst
-				go repeater.ListenForCallsOn(ctx, s.Redis.Redis, packet.Dst)
+				go GetRepeaterSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
 				s.DB.Save(&repeater)
 			}
 		}
@@ -270,7 +270,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						if err != nil {
 							klog.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
 						}
-						dbRepeater.CancelSubscription(oldTGID)
+						GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 					}
 				} else {
 					klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
@@ -281,7 +281,7 @@ func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 						if err != nil {
 							klog.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
 						}
-						dbRepeater.CancelSubscription(oldTGID)
+						GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 					}
 				}
 				s.DB.Save(&dbRepeater)

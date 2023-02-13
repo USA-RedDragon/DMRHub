@@ -332,7 +332,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 					if s.DB.Error != nil {
 						klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
 					} else if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
-						// If the last call exists that that repeater is online
+						// If the last call exists and that repeater is online
 						// Send the packet to the last user call's repeater
 						s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
 					}

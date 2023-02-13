@@ -16,11 +16,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
-	"go.opentelemetry.io/otel"
 	"k8s.io/klog/v2"
 )
 
-var tracer = otel.Tracer("dmr-server") //nolint:gochecknoglobals
 const parrotDelay = 3 * time.Second
 const max32Bit = 0xFFFFFFFF
 
@@ -85,7 +83,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 
 func (s *Server) handlePacket(remoteAddr *net.UDPAddr, data []byte) {
 	ctx := context.Background()
-	ctx, span := tracer.Start(ctx, "handlePacket")
+	ctx, span := s.Tracer.Start(ctx, "handlePacket")
 	defer span.End()
 	const signatureLength = 4
 	if len(data) < signatureLength {

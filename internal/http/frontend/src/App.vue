@@ -32,7 +32,6 @@ import Footer from "./components/Footer.vue";
 import Header from "./components/Header.vue";
 import ThemeConfig from "./components/ThemeConfig.vue";
 import API from "@/services/API";
-import { getWebsocketURI } from "@/services/util";
 
 import { mapStores } from "pinia";
 import { useUserStore, useSettingsStore } from "@/store";
@@ -40,6 +39,7 @@ import { useUserStore, useSettingsStore } from "@/store";
 export default {
   name: "App",
   components: {
+    RouterView,
     Header,
     Footer,
     ThemeConfig,
@@ -58,10 +58,7 @@ export default {
       localStorage.dark = this.dark ? "true" : "false";
     },
   },
-  created() {
-    this.socket = new WebSocket(getWebsocketURI() + "/health");
-    this.mapSocketEvents();
-  },
+  created() {},
   mounted() {
     this.fetchData();
     this.refresh = setInterval(
@@ -73,37 +70,6 @@ export default {
     clearInterval(this.refresh);
   },
   methods: {
-    mapSocketEvents() {
-      this.socket.addEventListener("open", (event) => {
-        console.log("Connected to websocket");
-        setInterval(() => {
-          this.socket.send("PING");
-        }, 500);
-      });
-
-      this.socket.addEventListener("close", (event) => {
-        console.error("Disconnected from websocket");
-        console.error("Sleeping for 1 second before reconnecting");
-        setTimeout(() => {
-          this.socket = new WebSocket(getWebsocketURI() + "/health");
-          this.mapSocketEvents();
-        }, 1000);
-      });
-
-      this.socket.addEventListener("error", (event) => {
-        console.error("Error from websocket", event);
-        this.socket.close();
-        this.socket = new WebSocket(getWebsocketURI() + "/health");
-        this.mapSocketEvents();
-      });
-
-      this.socket.addEventListener("message", (event) => {
-        if (event.data === "PONG") {
-          return;
-        }
-        console.log("Message from websocket", event.data);
-      });
-    },
     fetchData() {
       // GET /users/me
       API.get("/users/me")

@@ -8,6 +8,6 @@
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "devDependencies"],
       "automerge": true
-    },
+    }
   ]
 }

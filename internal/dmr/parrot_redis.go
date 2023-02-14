@@ -109,13 +109,13 @@ func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]mo
 	// Empty array of packets
 	packetArray := make([]models.Packet, packetSize)
 	// Loop through the packets and unmarshal them
-	for _, packet := range packets {
+	for i, packet := range packets {
 		var packetObj models.Packet
 		_, err := packetObj.UnmarshalMsg(packet)
 		if err != nil {
 			return nil, ErrUnmarshal
 		}
-		packetArray = append(packetArray, packetObj)
+		packetArray[i] = packetObj
 	}
 	return packetArray, nil
 }

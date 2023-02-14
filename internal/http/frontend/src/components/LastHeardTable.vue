@@ -170,15 +170,7 @@ export default {
     mapSocketEvents() {
       this.socket.addEventListener("open", (event) => {
         console.log("Connected to calls websocket");
-      });
-
-      this.socket.addEventListener("close", (event) => {
-        console.error("Disconnected from calls websocket");
-        console.error("Sleeping for 1 second before reconnecting");
-        setTimeout(() => {
-          this.socket = new WebSocket(getWebsocketURI() + "/calls");
-          this.mapSocketEvents();
-        }, 1000);
+        this.socket.send("PING");
       });
 
       this.socket.addEventListener("error", (event) => {
@@ -189,6 +181,12 @@ export default {
       });
 
       this.socket.addEventListener("message", (event) => {
+        if (event.data == "PONG") {
+          setTimeout(() => {
+            this.socket.send("PING");
+          }, 1000);
+          return;
+        }
         const call = JSON.parse(event.data);
         // We need to check that the call is not already in the table
         // If it is, we need to update it

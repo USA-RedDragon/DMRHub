@@ -524,15 +524,7 @@ export default {
     mapSocketEvents() {
       this.socket.addEventListener("open", (event) => {
         console.log("Connected to repeaters websocket");
-      });
-
-      this.socket.addEventListener("close", (event) => {
-        console.error("Disconnected from repeaters websocket");
-        console.error("Sleeping for 1 second before reconnecting");
-        setTimeout(() => {
-          this.socket = new WebSocket(getWebsocketURI() + "/repeaters");
-          this.mapSocketEvents();
-        }, 1000);
+        this.socket.send("PING");
       });
 
       this.socket.addEventListener("error", (event) => {
@@ -543,7 +535,12 @@ export default {
       });
 
       this.socket.addEventListener("message", (event) => {
-        // TODO
+        if (event.data == "PONG") {
+          setTimeout(() => {
+            this.socket.send("PING");
+          }, 1000);
+          return;
+        }
       });
     },
   },

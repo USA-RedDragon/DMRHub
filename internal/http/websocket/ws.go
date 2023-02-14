@@ -76,7 +76,7 @@ func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 	}
 }
 
-func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		klog.Errorf("Failed to set websocket upgrade: %v", err)
@@ -99,42 +99,14 @@ func (h *WSHandler) pingHandler(ctx context.Context, w http.ResponseWriter, r *h
 			}
 			if string(msg) == "PING" {
 				msg = []byte("PONG")
+				err = conn.WriteMessage(t, msg)
+				if err != nil {
+					readFailed <- "write failed"
+					break
+				}
+				continue
 			}
-			err = conn.WriteMessage(t, msg)
-			if err != nil {
-				readFailed <- "write failed"
-				break
-			}
-		}
-	}()
 
-	select {
-	case <-ctx.Done():
-	case <-readFailed:
-	}
-}
-
-func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w http.ResponseWriter, r *http.Request) {
-	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		klog.Errorf("Failed to set websocket upgrade: %v", err)
-		return
-	}
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			klog.Errorf("Failed to close websocket: %v", err)
-		}
-	}()
-
-	readFailed := make(chan string)
-	go func() {
-		for {
-			t, msg, err := conn.ReadMessage()
-			if err != nil {
-				readFailed <- "read failed"
-				break
-			}
 			err = conn.WriteMessage(t, msg)
 			if err != nil {
 				readFailed <- "write failed"
@@ -197,10 +169,19 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 	readFailed := make(chan string)
 	go func() {
 		for {
-			_, _, err := conn.ReadMessage()
+			t, msg, err := conn.ReadMessage()
 			if err != nil {
 				readFailed <- "read failed"
 				break
+			}
+			if string(msg) == "PING" {
+				msg = []byte("PONG")
+				err = conn.WriteMessage(t, msg)
+				if err != nil {
+					readFailed <- "write failed"
+					break
+				}
+				continue
 			}
 		}
 	}()
@@ -225,10 +206,6 @@ func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
 	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, func(c *gin.Context) {
 		session := sessions.Default(c)
 		h.repeaterHandler(c.Request.Context(), session, c.Writer, c.Request)
-	})
-
-	r.GET("/ws/health", ratelimit, func(c *gin.Context) {
-		h.pingHandler(c.Request.Context(), c.Writer, c.Request)
 	})
 
 	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {

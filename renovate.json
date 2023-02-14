@@ -4,6 +4,7 @@
     "config:base",
     ":gitSignOff"
   ],
+  "enabledManagers": ["docker-compose"],
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "devDependencies"],

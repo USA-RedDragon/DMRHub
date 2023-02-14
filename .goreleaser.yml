@@ -172,6 +172,8 @@ builds:
         goos: windows
       - goarch: "386"
         goos: windows
+      - goarch: "386"
+        goos: openbsd
       - goarch: riscv
         goos: windows
       - goarch: riscv64

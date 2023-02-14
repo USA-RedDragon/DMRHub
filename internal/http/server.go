@@ -219,7 +219,6 @@ func addFrontendRoutes(r *gin.Engine) {
 		if staticName == "" {
 			continue
 		}
-		klog.Errorf("File: \"%s\"", staticName)
 		staticGroup.GET(staticName, func(c *gin.Context) {
 			file, fileErr := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if fileErr != nil {

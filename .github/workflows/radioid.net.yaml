@@ -50,29 +50,28 @@ jobs:
       - name: Commit changes to databases
         run: |
           git commit --signoff -m "Automated update of RadioID.net Databases" internal/repeaterdb internal/userdb
-          git push -f origin HEAD:refs/heads/automated/radioid-update
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: ${{ steps.import-gpg.outputs.name }}
           GIT_AUTHOR_EMAIL: ${{ steps.import-gpg.outputs.email }}
           GIT_COMMITTER_NAME: ${{ steps.import-gpg.outputs.name }}
           GIT_COMMITTER_EMAIL: ${{ steps.import-gpg.outputs.email }}
       - name: Create Pull Request
-        uses: actions/github-script@v6
+        uses: peter-evans/create-pull-request@v4
+        id: cpr
         with:
-          script: |
-            const { repo, owner } = context.repo;
-            const result = await github.rest.pulls.create({
-              title: 'Update RadioID.net Databases',
-              owner,
-              repo,
-              head: 'automated/radioid-update',
-              base: '${{ github.ref_name }}',
-              body: 'Automated update to the RadioID.net DMR users and repeaters databases'
-            });
-            github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: result.data.number,
-              labels: ['update', 'chore', 'automated pr']
-            });
+          token: ${{ secrets.PAT }}
+          branch: automated/radioid-update
+          delete-branch: true
+          title: Update RadioID.net Databases
+          body: Automated update to the RadioID.net DMR users and repeaters databases
+          labels: |
+            update
+            chore
+            automated pr
+      - name: Automerge Pull Request
+        if: steps.cpr.outputs.pull-request-operation == 'created'
+        uses: peter-evans/enable-pull-request-automerge@v2
+        with:
+          token: ${{ secrets.PAT }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: rebase

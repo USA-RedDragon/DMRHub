@@ -30,8 +30,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
@@ -197,6 +197,21 @@ func start() int {
 		}
 		return nil
 	})
+
+	if models.CountPeers(database) > 0 {
+		// Start the OpenBridge server
+		openbridgeServer := openbridge.MakeServer(database, redis, callTracker)
+		openbridgeServer.Start(ctx)
+		defer openbridgeServer.Stop(ctx)
+
+		go func() {
+			// For each peer in the DB, start a gofunc to listen for calls
+			peers := models.ListPeers(database)
+			for _, peer := range peers {
+				go openbridge.GetSubscriptionManager().Subscribe(ctx, redis, peer)
+			}
+		}()
+	}
 
 	http := http.MakeServer(database, redis)
 	http.Start()

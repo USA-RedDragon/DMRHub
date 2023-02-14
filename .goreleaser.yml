@@ -153,11 +153,7 @@ builds:
       - darwin
       - linux
       - windows
-      - openbsd
-      - netbsd
-      - freebsd
     goarch:
-      - "386"
       - amd64
       - arm
       - arm64
@@ -166,15 +162,7 @@ builds:
       - "6"
       - "7"
     ignore:
-      - goarch: "386"
-        goos: darwin
       - goarch: arm
-        goos: windows
-      - goarch: "386"
-        goos: windows
-      - goarch: "386"
-        goos: openbsd
-      - goarch: riscv
         goos: windows
       - goarch: riscv64
         goos: windows
@@ -182,10 +170,6 @@ builds:
         goos: darwin
       - goarch: riscv64
         goos: darwin
-      - goarch: riscv64
-        goos: openbsd
-      - goarch: riscv64
-        goos: netbsd
     env:
       - CGO_ENABLED=0
 

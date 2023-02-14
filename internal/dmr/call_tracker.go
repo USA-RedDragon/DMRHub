@@ -258,7 +258,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 		}
 	}
 
-	// TODO: This definitely needs to be refactored to not loop
+	// This definitely needs to be refactored to not loop
 	// through all repeaters every time a call packet is received
 	go func() {
 		// Iterate all repeaters to see if they want the call

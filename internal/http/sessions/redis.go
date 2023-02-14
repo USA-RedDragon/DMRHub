@@ -1,3 +1,7 @@
+// Copyright Copyright (c) 2016 Gin-Gonic. All rights reserved.
+// Use of this source code is governed by a MIT-style
+// license that can be found in the LICENSE file.
+
 package sessions
 
 // This is a modified version of <https://github.com/gin-contrib/sessions>

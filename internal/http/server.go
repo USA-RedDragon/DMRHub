@@ -157,18 +157,20 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 		thisDepth := i
 		staticGroup.GET(wildcard, func(c *gin.Context) {
 			wildPath := "frontend/dist"
-			if thisDepth > 0 {
-				// We need to get the wildcards and add them to the path
-				// Example for depth 3: /:wild/:wild2/:wild3
+			// We need to get the wildcards and add them to the path
+			// Example for depth 3: /:wild/:wild2/:wild3
 
-				// Get the first wildcard
-				wild, have := c.Params.Get("wild")
-				if !have {
-					klog.Errorf("Failed to get wildcard")
-					return
-				}
-				// Add the first wildcard to the path
-				wildPath = path.Join(wildPath, wild)
+			// Get the first wildcard
+			wild, have := c.Params.Get("wild")
+			if !have {
+				klog.Errorf("Failed to get wildcard")
+				return
+			}
+			// Add the first wildcard to the path
+			wildPath = path.Join(wildPath, wild)
+			klog.Errorf("path.Join(wildPath, wild) = %s", path.Join(wildPath, wild))
+
+			if thisDepth > 0 {
 				// Get the rest of the wildcards
 				for j := 1; j <= thisDepth; j++ {
 					wild, have := c.Params.Get(fmt.Sprintf("wild%d", j))

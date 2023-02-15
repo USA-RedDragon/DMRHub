@@ -261,8 +261,8 @@ jobs:
           go install github.com/vakenbolt/go-test-report@latest
           env CGO_ENABLED=0 go test ./... 2>&1 > out.txt || true
           env CGO_ENABLED=0 go test ./... -json 2>&1 > json-out.txt || true
-          cat out.txt | go-junit-report -out report.xml -iocopy
-          cat json-out.txt | go-test-report -o report.html >/dev/null
+          cat out.txt | go-junit-report -out report.xml
+          cat json-out.txt | go-test-report -o report.html
 
       - name: Publish Test Report
         if: always()
@@ -275,7 +275,6 @@ jobs:
           fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Backend Unit Tests
-          job_name: Tests
 
       - uses: actions/upload-artifact@v3
         if: always()

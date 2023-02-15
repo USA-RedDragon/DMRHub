@@ -7,7 +7,7 @@
   "regexManagers": [
     {
       "datasourceTemplate": "docker",
-      "fileMatch": ["internal/testutils/consts.go"],
+      "fileMatch": ["(^|/)internal\\/testutils\\/consts\\.go$"],
       "matchStrings": [
         "^const RedisImageName = \"(?<depName>.*?)\"\nconst RedisTag = \"(?<currentValue>.*?)\""
       ]

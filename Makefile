@@ -43,7 +43,7 @@ run:
 
 coverage:
 	@echo "--> Running tests"
-	@env CGO_ENABLED=0 go test -coverprofile=coverage.txt -coverpkg=./... -covermode=atomic ./...
+	@env CGO_ENABLED=0 go test -v -coverprofile=coverage.txt -coverpkg=./... -covermode=atomic ./...
 	@echo "--> Done"
 
 view-coverage:
@@ -58,7 +58,7 @@ lint:
 
 test:
 	@echo "--> Running tests"
-	@env CGO_ENABLED=0 go test ./...
+	@env CGO_ENABLED=0 go test -v ./...
 	@echo "--> Done"
 
 benchmark:

@@ -83,8 +83,8 @@ func (t *TestDB) createRedis() *redis.Client {
 
 	// pulls an image, creates a container based on it and runs it
 	t.redisContainer, err = pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "redis",
-		Tag:        "7-alpine",
+		Repository: RedisImageName,
+		Tag:        RedisTag,
 		Cmd:        []string{"--requirepass", "password"},
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			"6379/tcp": {

@@ -17,4 +17,13 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package config
+package config_test
+
+import (
+	"testing"
+)
+
+func TestNoop(t *testing.T) {
+	t.Parallel()
+	t.Log("Noop")
+}

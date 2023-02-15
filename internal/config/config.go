@@ -119,11 +119,11 @@ func loadConfig() Config {
 	tmpConfig.PostgresDSN = "host=" + tmpConfig.postgresHost + " port=" + strconv.FormatInt(int64(tmpConfig.postgresPort), 10) + " user=" + tmpConfig.postgresUser + " dbname=" + tmpConfig.postgresDatabase + " password=" + tmpConfig.postgresPassword
 	if tmpConfig.strSecret == "" {
 		tmpConfig.strSecret = "secret"
-		klog.Errorf("Session secret not set, using INSECURE default")
+		klog.Warning("Session secret not set, using INSECURE default")
 	}
 	if tmpConfig.PasswordSalt == "" {
 		tmpConfig.PasswordSalt = "salt"
-		klog.Errorf("Password salt not set, using INSECURE default")
+		klog.Warning("Password salt not set, using INSECURE default")
 	}
 	if tmpConfig.ListenAddr == "" {
 		tmpConfig.ListenAddr = "0.0.0.0"
@@ -135,18 +135,18 @@ func loadConfig() Config {
 		tmpConfig.HTTPPort = 3005
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
-		klog.Errorf("Initial admin user password not set, using auto-generated password")
+		klog.Warning("Initial admin user password not set, using auto-generated password")
 		const randLen = 15
 		const randNums = 4
 		const randSpecial = 2
 		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(randLen, randNums, randSpecial)
 		if err != nil {
-			klog.Errorf("Password generation failed")
+			klog.Error("Password generation failed")
 		}
 	}
 	if tmpConfig.RedisPassword == "" {
 		tmpConfig.RedisPassword = "password"
-		klog.Errorf("Redis password not set, using INSECURE default")
+		klog.Warning("Redis password not set, using INSECURE default")
 	}
 	// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 	corsHosts := os.Getenv("CORS_HOSTS")
@@ -165,8 +165,8 @@ func loadConfig() Config {
 		tmpConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 	}
 	if tmpConfig.Debug {
-		klog.Warningf("Debug mode enabled, this should not be used in production")
-		klog.Infof("Config: %+v", tmpConfig)
+		klog.Warning("Debug mode enabled, this should not be used in production")
+		klog.Info("Config: %+v", tmpConfig)
 	}
 	const iterations = 4096
 	const keyLen = 32

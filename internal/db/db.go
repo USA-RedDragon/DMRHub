@@ -20,11 +20,9 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -66,47 +64,35 @@ func MakeDB() *gorm.DB {
 		klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
 	}
 
-InitDB:
+	err = db.AutoMigrate(&models.AppSettings{})
+	if err != nil {
+		klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
+	}
+	if db.Error != nil {
+		klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
+	}
+
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
-	result := db.First(&appSettings)
-	if result.Error != nil {
-		switch {
-		case errors.Is(result.Error, gorm.ErrRecordNotFound):
-			if config.GetConfig().Debug {
-				klog.Infof("App settings entry doesn't exist, migrating db and creating it")
-			}
-			// The record doesn't exist, so create it
-			appSettings = models.AppSettings{
-				HasSeeded: false,
-			}
-			err = db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
-			if err != nil {
-				klog.Fatalf("Failed to migrate database: %s", err)
-			}
-			if db.Error != nil {
-				klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
-			}
-			db.Create(&appSettings)
-			if config.GetConfig().Debug {
-				klog.Infof("App settings saved")
-			}
-		default:
-			if strings.HasPrefix(result.Error.Error(), "ERROR: relation \"app_settings\" does not exist") {
-				if config.GetConfig().Debug {
-					klog.Infof("App settings table doesn't exist, creating it")
-				}
-				err = db.AutoMigrate(&models.AppSettings{})
-				if err != nil {
-					klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
-				}
-				if db.Error != nil {
-					klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
-				}
-				goto InitDB
-			} else {
-				klog.Fatalf(fmt.Sprintf("App settings save failed with error %s", result.Error))
-			}
+	result := db.Where("id = ?", 0).Limit(1).Find(&appSettings)
+	if result.RowsAffected == 0 {
+		if config.GetConfig().Debug {
+			klog.Infof("App settings entry doesn't exist, migrating db and creating it")
+		}
+		// The record doesn't exist, so create it
+		appSettings = models.AppSettings{
+			HasSeeded: false,
+		}
+		err = db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+		if err != nil {
+			klog.Fatalf("Failed to migrate database: %s", err)
+		}
+		if db.Error != nil {
+			klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
+		}
+		db.Create(&appSettings)
+		if config.GetConfig().Debug {
+			klog.Infof("App settings saved")
 		}
 	}
 

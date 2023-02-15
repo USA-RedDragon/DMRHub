@@ -1,0 +1,56 @@
+name: Build
+
+on:
+  push:
+    branches-ignore:
+      - rebase-pull-request**
+      - cherry-pick-rebase-pull-request**
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "19.6"
+
+      - run: make build-frontend
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  backend:
+    runs-on: ubuntu-latest
+    needs: frontend
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+
+      - name: Copy built frontend
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+
+      - run: make build

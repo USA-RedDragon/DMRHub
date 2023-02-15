@@ -3,6 +3,9 @@ name: Tests
 on:
   pull_request:
   push:
+    branches-ignore:
+      - rebase-pull-request**
+      - cherry-pick-rebase-pull-request**
 
 jobs:
   frontend:

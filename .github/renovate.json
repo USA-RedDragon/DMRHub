@@ -10,7 +10,7 @@
                 "(^|/)internal\\/testutils\\/consts\\.go$"
             ],
             "matchStrings": [
-                "^const RedisTag = \"(?<currentValue>.*?)\""
+                "const RedisTag = \\"(?<currentValue>.*?)\\""
             ],
             "depNameTemplate": "redis",
             "datasourceTemplate": "docker"

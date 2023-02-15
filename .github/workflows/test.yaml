@@ -71,6 +71,7 @@ jobs:
           fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Frontend Unit Tests
+          job_name: Tests
 
       - uses: codecov/codecov-action@v3
         if: always()
@@ -155,6 +156,7 @@ jobs:
           fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Frontend E2E Tests (${{ matrix.browser }})
+          job_name: Tests
 
       - uses: actions/upload-artifact@v3
         if: always()
@@ -273,6 +275,7 @@ jobs:
           fail_on_failure: true
           token: ${{ secrets.GITHUB_TOKEN }}
           check_name: Backend Unit Tests
+          job_name: Tests
 
       - uses: actions/upload-artifact@v3
         if: always()

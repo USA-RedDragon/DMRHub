@@ -22,8 +22,8 @@
             "matchStrings": [
                 "node-version: \"(?<currentValue>.*?)\"\\n"
             ],
-            "depNameTemplate": "actions/node-versions",
-            "datasourceTemplate": "github-releases"
+            "depNameTemplate": "node",
+            "datasourceTemplate": "docker"
         }
     ]
 }

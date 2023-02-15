@@ -68,6 +68,7 @@ jobs:
             update
             chore
             automated pr
+            autorebase:opt-in
       - name: Automerge Pull Request
         if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
         uses: peter-evans/enable-pull-request-automerge@v2

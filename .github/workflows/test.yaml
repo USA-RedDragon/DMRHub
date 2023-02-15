@@ -194,6 +194,7 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - run: go install github.com/tinylib/msgp
       - run: go generate ./...
 
       - run: make benchmark
@@ -220,6 +221,7 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - run: go install github.com/tinylib/msgp
       - run: go generate ./...
 
       - name: Race tests
@@ -248,6 +250,7 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - run: go install github.com/tinylib/msgp
       - run: go generate ./...
 
       - name: Unit tests
@@ -309,6 +312,7 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - run: go install github.com/tinylib/msgp
       - run: go generate ./...
 
       - name: Unit tests

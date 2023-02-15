@@ -2,7 +2,8 @@
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
         "local>USA-RedDragon/renovate-configs",
-        "local>USA-RedDragon/renovate-configs:golang"
+        "local>USA-RedDragon/renovate-configs:golang",
+        "local>USA-RedDragon/renovate-configs:actions-node-version"
     ],
     "regexManagers": [
         {
@@ -13,16 +14,6 @@
                 "const RedisTag = \"(?<currentValue>.*?)\""
             ],
             "depNameTemplate": "redis",
-            "datasourceTemplate": "docker"
-        },
-        {
-            "fileMatch": [
-                "(^|/)\\.github\\/workflows\\/.*\\.ya?ml$"
-            ],
-            "matchStrings": [
-                "node-version: \"(?<currentValue>.*?)\"\\n"
-            ],
-            "depNameTemplate": "node",
             "datasourceTemplate": "docker"
         }
     ]

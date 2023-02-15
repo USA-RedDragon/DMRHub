@@ -20,7 +20,7 @@
                 "(^|/)\\.github\\/workflows\\/.*\\.ya?ml$"
             ],
             "matchStrings": [
-                "node-version: (?<currentValue>.*)"
+                "node-version: \"(?<currentValue>.*?)\"\\n"
             ],
             "depNameTemplate": "actions/node-versions",
             "datasourceTemplate": "github-releases"

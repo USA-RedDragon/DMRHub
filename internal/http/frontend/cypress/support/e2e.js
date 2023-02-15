@@ -13,7 +13,10 @@
 // https://on.cypress.io/configuration
 // ***********************************************************
 import "@cypress/code-coverage/support";
-import 'cypress-mochawesome-reporter/register';
+import "cypress-mochawesome-reporter/register";
+import { registerCommand } from "cypress-wait-for-stable-dom";
+
+registerCommand();
 
 // Import commands.js using ES2015 syntax:
 import "./commands";

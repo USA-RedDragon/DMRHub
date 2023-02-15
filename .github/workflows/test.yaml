@@ -210,14 +210,9 @@ jobs:
         if: always()
         run: |
           go install github.com/jstemmer/go-junit-report/v2@latest
-          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic 2>&1 > out.txt || true
-          cat out.txt | go-junit-report -out report.xml -iocopy
-
-      - name: Unit tests reporting
-        if: always()
-        run: |
           go install github.com/vakenbolt/go-test-report@latest
-          env CGO_ENABLED=0 go test ./... -json 2>&1 > out.txt || true
+          env CGO_ENABLED=0 go test ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic -json 2>&1 > out.txt || true
+          cat out.txt | go-junit-report -out report.xml -parser gojson -iocopy
           cat out.txt | go-test-report -o report.html >/dev/null
 
       - name: Publish Test Report
@@ -225,6 +220,7 @@ jobs:
         uses: mikepenz/action-junit-report@v3
         with:
           report_paths: "report.xml"
+          require_tests: true
           check_retries: true
           detailed_summary: true
           fail_on_failure: true

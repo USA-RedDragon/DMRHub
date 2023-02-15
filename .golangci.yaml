@@ -30,7 +30,6 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-    - godot
     - godox
     - goerr113
     - gofmt

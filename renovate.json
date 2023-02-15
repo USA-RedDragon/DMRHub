@@ -9,7 +9,7 @@
       "datasourceTemplate": "docker",
       "fileMatch": ["internal/testutils/consts.go"],
       "matchStrings": [
-        "^const RedisImageName = \"(depName)\"\nconst RedisTag = \"(currentValue)\""
+        "^const RedisImageName = \"(?<depName>.*?)\"\nconst RedisTag = \"(?<currentValue>.*?)\""
       ]
     }
   ]

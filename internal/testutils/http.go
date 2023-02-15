@@ -63,9 +63,10 @@ func (t *TestDB) createRedis() *redis.Client {
 	// Start ports at a random number above 10000
 	// Check if that port is in use, and if so, increment it.
 	// This is to avoid conflicts with other running tests
+	const startPort = 10000
 	const highestPort = 55534
 	bigPort, err := rand.Int(rand.Reader, big.NewInt(highestPort))
-	port := uint16(bigPort.Uint64())
+	port := uint16(bigPort.Uint64() + startPort)
 	if err != nil {
 		klog.Fatalf("Could not generate random port: %s", err)
 	}

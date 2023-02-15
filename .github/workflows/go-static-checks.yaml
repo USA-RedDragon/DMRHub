@@ -59,10 +59,10 @@ jobs:
     needs: frontend
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
           go-version-file: go.mod
-      - uses: actions/checkout@v3
       - name: Copy built frontend
         uses: actions/download-artifact@v3
         with:

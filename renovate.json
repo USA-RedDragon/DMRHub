@@ -1,13 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
-    ":gitSignOff"
-  ],
-  "packageRules": [
-    {
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "devDependencies"],
-      "automerge": true
-    }
+    "local>USA-RedDragon/renovate-configs",
+    "local>USA-RedDragon/renovate-configs:golang"
   ]
 }

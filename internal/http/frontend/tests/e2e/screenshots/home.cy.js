@@ -17,7 +17,165 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+import moment from "moment";
+
 // https://docs.cypress.io/api/introduction/api.html
+
+// DMR radio IDs lifted randomly from radioid.net
+const radioIds = [
+  {
+    id: 3110691,
+    callsign: "KF6FM",
+  },
+  {
+    id: 2353426,
+    callsign: "MW6ABC",
+  },
+  {
+    id: 3163099,
+    callsign: "KO4CVD",
+  },
+  {
+    id: 2626282,
+    callsign: "DK4FC",
+  },
+];
+
+function generateUser(lastUser) {
+  const radioId = radioIds[Math.floor(Math.random() * radioIds.length)];
+
+  if (lastUser && lastUser.id === radioId.id) {
+    return generateUser(lastUser);
+  }
+
+  return {
+    id: radioId.id,
+    callsign: radioId.callsign,
+  };
+}
+
+function generateCall(id, callTime, user) {
+  var dst = Math.floor(Math.random() * 2) + 1;
+  var slot = Math.floor(Math.random() * 2) === 0;
+  return {
+    id,
+    active: false,
+    time_slot: slot,
+    group_call: true,
+    start_time: callTime.start,
+    duration: callTime.duration,
+    user,
+    is_to_talkgroup: true,
+    to_talkgroup: {
+      id: dst,
+    },
+    destination_id: dst,
+    loss: Math.random() * 0.032,
+    jitter: Math.random() * 6 - 3,
+    ber: Math.random() * 0.1,
+    rssi: Math.random() * 9 + 32,
+  };
+}
+
+// Generates an array of calls to be used in the lastheard API
+function generateCalls(count) {
+  const calls = [];
+  var lastStart;
+  var lastDuration = moment().subtract(2, "seconds").toISOString();
+  var lastUser = generateUser(null);
+
+  if (count > 10) {
+    lastStart = moment().subtract(3, "hours").toISOString();
+
+    for (let i = 0; i < count - 10; i++) {
+      var callTime = generateCallTime(lastStart, lastDuration, calls);
+      var user = generateUser(lastUser);
+
+      calls.push(generateCall(i, callTime, user));
+      lastStart = callTime.start;
+      lastDuration = callTime.duration;
+      lastUser = user;
+    }
+
+    lastStart = moment().subtract(10, "minutes").toISOString();
+
+    for (let i = count + 0; i < count + 10; i++) {
+      callTime = generateCallTime(lastStart, lastDuration, calls);
+      user = generateUser(lastUser);
+
+      calls.push(generateCall(i, callTime, user));
+      lastStart = callTime.start;
+      lastDuration = callTime.duration;
+      lastUser = user;
+    }
+  } else {
+    lastStart = moment().subtract(3, "hours").toISOString();
+
+    for (let i = 0; i < count; i++) {
+      callTime = generateCallTime(lastStart, lastDuration, calls);
+      user = generateUser(lastUser);
+
+      calls.push(generateCall(i, callTime, user));
+      lastStart = callTime.start;
+      lastDuration = callTime.duration;
+      lastUser = user;
+    }
+  }
+
+  // Reverse the array so the calls are in order
+  return calls.reverse();
+}
+
+// Generate call time generates a random time since lastStart + lastDuration
+// It returns an object with start and duration
+// The start time should not be closer than 3 seconds to lastStart + lastDuration
+// Calls should roughly be 3 seconds to 2 minutes long but weighted towards minimum
+function generateCallTime(lastStart, lastDuration) {
+  var start, duration;
+
+  // Parse lastStart into a Moment object
+  var lastStartObj = moment(lastStart);
+
+  // Convert lastDuration from nanoseconds to seconds
+  var lastDurationSeconds = Math.floor(lastDuration / (1000 * 1000 * 1000));
+
+  // Calculate the minimum start time as lastStart + lastDuration + 3 seconds
+  var minStartTimeMoment = moment(lastStartObj).add(
+    lastDurationSeconds + 3,
+    "seconds"
+  );
+
+  // Generate a random start time between minStartTime and now
+  var maxStartTimeMoment = moment();
+  var startMoment = moment
+    .duration(
+      Math.random() *
+      (maxStartTimeMoment.diff(minStartTimeMoment, "milliseconds") + 1),
+      "milliseconds"
+    )
+    .add(minStartTimeMoment);
+
+  // Ensure the start time is at least 3 seconds after lastStart + lastDuration
+  var earliestStartMoment = moment(lastStartObj).add(
+    lastDurationSeconds + 3,
+    "seconds"
+  );
+  startMoment = moment.max(startMoment, earliestStartMoment);
+
+  start = startMoment.toISOString();
+
+  const minDuration = 1.2; // minimum duration in seconds
+  const maxDuration = 120; // maximum duration in seconds
+  const lambda = 0.042; // rate parameter for the exponential distribution
+  var randomDuration = -Math.log(1 - Math.random()) / lambda;
+  duration =
+    Math.max(minDuration, Math.min(maxDuration, randomDuration)) *
+    1000 *
+    1000 *
+    1000;
+
+  return { start, duration };
+}
 
 beforeEach(() => {
   cy.intercept("/api/v1/users/me", {
@@ -35,42 +193,8 @@ beforeEach(() => {
   cy.intercept(
     "/api/v1/lastheard?page=1&limit=10",
     JSON.stringify({
-      total: 1,
-      calls: [
-        {
-          id: 86,
-          start_time: "2023-02-13T20:38:36.578332-06:00",
-          duration: 540760412,
-          active: false,
-          user: {
-            id: 3191868,
-            callsign: "KI5VMF",
-            username: "USA-RedDragon",
-          },
-          time_slot: true,
-          group_call: true,
-          is_to_talkgroup: true,
-          to_talkgroup: {
-            id: 1,
-            name: "General",
-          },
-          is_to_user: false,
-          to_user: {
-            id: 0,
-            callsign: "",
-          },
-          is_to_repeater: false,
-          to_repeater: {
-            id: 0,
-            callsign: "",
-          },
-          destination_id: 1,
-          loss: 0,
-          jitter: -0.46484375,
-          ber: 0.0011862395,
-          rssi: 46.816406,
-        },
-      ],
+      total: 50,
+      calls: generateCalls(50),
     })
   );
 });

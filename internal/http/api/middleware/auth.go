@@ -78,17 +78,17 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		}
 		if user.Admin && user.Approved && !user.Suspended {
 			valid = true
-		}
-
-		// Check if the user is the owner of any talkgroups
-		talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
-		if err != nil {
-			klog.Error(err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
-			return
-		}
-		if len(talkgroups) > 0 && user.Approved && !user.Suspended {
-			valid = true
+		} else {
+			// Check if the user is the owner of any talkgroups
+			talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
+			if err != nil {
+				klog.Error(err)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+				return
+			}
+			if len(talkgroups) > 0 && user.Approved && !user.Suspended {
+				valid = true
+			}
 		}
 
 		if !valid {

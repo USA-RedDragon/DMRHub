@@ -70,6 +70,10 @@ func POSTLogin(c *gin.Context) {
 		verified, err := utils.VerifyPassword(json.Password, user.Password, config.GetConfig().PasswordSalt)
 		klog.Infof("POSTLogin: Password verified %v", verified)
 		if verified && err == nil {
+			if user.Suspended {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
+				return
+			}
 			if user.Approved {
 				session.Set("user_id", user.ID)
 				err = session.Save()

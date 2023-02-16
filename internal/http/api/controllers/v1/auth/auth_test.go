@@ -21,9 +21,41 @@ package auth_test
 
 import (
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+func TestSysadminLogin(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
+
+	resp, w, _ := testutils.LoginAdmin(t, router)
+
+	assert.Equal(t, 200, w.Code)
+	assert.Empty(t, resp.Error)
+	assert.Equal(t, "Logged in", resp.Message)
+}
+
+func TestLogout(t *testing.T) {
+	t.Parallel()
+
+	router, tdb := testutils.CreateTestDBRouter()
+	defer tdb.CloseRedis()
+	defer tdb.CloseDB()
+
+	resp, w, adminJar := testutils.LoginAdmin(t, router)
+
+	assert.Equal(t, 200, w.Code)
+	assert.Empty(t, resp.Error)
+	assert.Equal(t, "Logged in", resp.Message)
+
+	resp, w = testutils.LogoutUser(t, router, adminJar)
+
+	assert.Equal(t, 200, w.Code)
+	assert.Empty(t, resp.Error)
+	assert.Equal(t, "Logged out", resp.Message)
 }

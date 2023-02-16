@@ -20,6 +20,7 @@
 package v1_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const testTimeout = 1 * time.Minute
+
 func TestPingRoute(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +42,11 @@ func TestPingRoute(t *testing.T) {
 	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/ping", nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -53,7 +60,12 @@ func TestPingRoute(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	req, _ = http.NewRequest("GET", "/api/v1/ping", nil)
+	ctx, cancel2 := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel2()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
+	assert.NoError(t, err)
+
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -73,7 +85,11 @@ func TestVersionRoute(t *testing.T) {
 	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/version", nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/version", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)

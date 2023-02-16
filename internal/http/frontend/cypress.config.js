@@ -23,6 +23,7 @@ module.exports = defineConfig({
       return config;
     },
     specPattern: "tests/e2e/**/*.{cy,spec}.{js,jsx,ts,tsx}",
+    excludeSpecPattern: 'tests/e2e/screenshots/*',
     baseUrl: "http://localhost:4173",
   },
 });

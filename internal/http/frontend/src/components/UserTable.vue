@@ -29,6 +29,7 @@
     :rows="10"
     :totalRecords="totalRecords"
     :loading="loading"
+    :scrollable="true"
     @page="onPage($event)"
   >
     <Column :expander="true" v-if="!this.$props.approval" />

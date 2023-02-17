@@ -47,7 +47,7 @@
     "prettier": "^2.8.4",
     "sass": "^1.58.1",
     "start-server-and-test": "^1.15.4",
-    "vite": "^4.1.1",
+    "vite": "^4.1.2",
     "vite-plugin-istanbul": "^4.0.0"
   }
 }

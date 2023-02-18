@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr
+package parrot
 
 import (
 	"context"
@@ -27,10 +27,13 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type redisParrotStorage struct {
-	Redis *redis.Client
+	Redis  *redis.Client
+	Tracer trace.Tracer
 }
 
 var (
@@ -45,23 +48,36 @@ const parrotExpireTime = 5 * time.Minute
 
 func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
 	return redisParrotStorage{
-		Redis: redis,
+		Redis:  redis,
+		Tracer: otel.Tracer("parrot-redis"),
 	}
 }
 
 func (r *redisParrotStorage) store(ctx context.Context, streamID uint, repeaterID uint) {
+	ctx, span := r.Tracer.Start(ctx, "store")
+	defer span.End()
+
 	r.Redis.Set(ctx, fmt.Sprintf("parrot:stream:%d", streamID), repeaterID, parrotExpireTime)
 }
 
 func (r *redisParrotStorage) exists(ctx context.Context, streamID uint) bool {
+	ctx, span := r.Tracer.Start(ctx, "exists")
+	defer span.End()
+
 	return r.Redis.Exists(ctx, fmt.Sprintf("parrot:stream:%d", streamID)).Val() == 1
 }
 
 func (r *redisParrotStorage) refresh(ctx context.Context, streamID uint) {
+	ctx, span := r.Tracer.Start(ctx, "refresh")
+	defer span.End()
+
 	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime)
 }
 
 func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
+	ctx, span := r.Tracer.Start(ctx, "get")
+	defer span.End()
+
 	repeaterIDStr, err := r.Redis.Get(ctx, fmt.Sprintf("parrot:stream:%d", streamID)).Result()
 	if err != nil {
 		return 0, ErrRedis
@@ -74,6 +90,9 @@ func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, erro
 }
 
 func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet models.Packet) error {
+	ctx, span := r.Tracer.Start(ctx, "stream")
+	defer span.End()
+
 	packetBytes, err := packet.MarshalMsg(nil)
 	if err != nil {
 		return ErrMarshal
@@ -84,11 +103,17 @@ func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet m
 }
 
 func (r *redisParrotStorage) delete(ctx context.Context, streamID uint) {
+	ctx, span := r.Tracer.Start(ctx, "delete")
+	defer span.End()
+
 	r.Redis.Del(ctx, fmt.Sprintf("parrot:stream:%d", streamID))
 	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), parrotExpireTime)
 }
 
 func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]models.Packet, error) {
+	ctx, span := r.Tracer.Start(ctx, "getStream")
+	defer span.End()
+
 	// Empty array of packet byte arrays
 	var packets [][]byte
 	packetSize, err := r.Redis.LLen(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID)).Result()

@@ -111,13 +111,13 @@ func UnpackPacket(data []byte) Packet {
 	copy(packet.DMRData[:], data[20:53])
 	// Bytes 53-54 are BER and RSSI, respectively
 	// But they are optional, so don't error if they don't exist
-	if len(data) > dmrconst.PacketLength {
-		packet.BER = int(data[dmrconst.PacketLength])
+	if len(data) > dmrconst.HBRPPacketLength {
+		packet.BER = int(data[dmrconst.HBRPPacketLength])
 	} else {
 		packet.BER = -1
 	}
-	if len(data) > dmrconst.PacketLength+1 {
-		packet.RSSI = int(data[dmrconst.PacketLength+1])
+	if len(data) > dmrconst.HBRPPacketLength+1 {
+		packet.RSSI = int(data[dmrconst.HBRPPacketLength+1])
 	} else {
 		packet.RSSI = -1
 	}
@@ -133,7 +133,7 @@ func (p *Packet) String() string {
 
 func (p *Packet) Encode() []byte {
 	// Encode the packet as we decoded
-	data := make([]byte, dmrconst.PacketLength)
+	data := make([]byte, dmrconst.HBRPPacketLength)
 	copy(data[:4], []byte(p.Signature))
 	data[4] = byte(p.Seq)
 	data[5] = byte(p.Src >> 16) //nolint:golint,gomnd
@@ -162,10 +162,10 @@ func (p *Packet) Encode() []byte {
 	data[19] = byte(p.StreamID)
 	copy(data[20:53], p.DMRData[:])
 	// If BER and RSSI are set, add them
-	if p.BER != -1 {
+	if p.BER > 0 {
 		data = append(data, byte(p.BER))
 	}
-	if p.RSSI != -1 {
+	if p.RSSI > 0 {
 		data = append(data, byte(p.RSSI))
 	}
 	return data

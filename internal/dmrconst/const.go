@@ -111,4 +111,4 @@ const (
 	VoiceF
 )
 
-const PacketLength = 53
+const HBRPPacketLength = 53

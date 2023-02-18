@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr
+package calltracker
 
 import (
 	"context"
@@ -30,6 +30,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -48,6 +50,7 @@ type CallTracker struct {
 	callEndTimersMutex sync.RWMutex
 	inFlightCalls      map[uint]*models.Call
 	inFlightCallsMutex sync.RWMutex
+	tracer             trace.Tracer
 }
 
 // NewCallTracker creates a new CallTracker.
@@ -57,11 +60,15 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 		redis:         redis,
 		callEndTimers: make(map[uint]*time.Timer),
 		inFlightCalls: make(map[uint]*models.Call),
+		tracer:        otel.Tracer("calltracker"),
 	}
 }
 
 // StartCall starts tracking a new call.
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
+	ctx, span := c.tracer.Start(ctx, "StartCall")
+	defer span.End()
+
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
 
@@ -169,7 +176,10 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 }
 
 // IsCallActive checks if a call is active.
-func (c *CallTracker) IsCallActive(packet models.Packet) bool {
+func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bool {
+	_, span := c.tracer.Start(ctx, "IsCallActive")
+	defer span.End()
+
 	c.inFlightCallsMutex.RLock()
 	for _, call := range c.inFlightCalls {
 		if call.Active && call.StreamID == packet.StreamID && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
@@ -218,6 +228,9 @@ type jsonCallResponse struct {
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet models.Packet) {
+	ctx, span := c.tracer.Start(ctx, "publishCall")
+	defer span.End()
+
 	// copy call into a jsonCallResponse
 	var jsonCall jsonCallResponse
 	jsonCall.ID = call.ID
@@ -282,6 +295,9 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 }
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
+	ctx, span := c.tracer.Start(ctx, "updateCall")
+	defer span.End()
+
 	// Reset call end timer
 	c.callEndTimersMutex.Lock()
 	c.callEndTimers[call.ID].Reset(timerDelay)
@@ -382,6 +398,9 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 
 // ProcessCallPacket processes a packet and updates the call.
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
+	ctx, span := c.tracer.Start(ctx, "ProcessCallPacket")
+	defer span.End()
+
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	c.inFlightCallsMutex.RLock()
@@ -397,6 +416,9 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
+	ctx, span := c.tracer.Start(ctx, "endCallHandler")
+	defer span.End()
+
 	return func() {
 		klog.Errorf("Call %d timed out", packet.StreamID)
 		c.EndCall(ctx, packet)
@@ -405,6 +427,9 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 
 // EndCall ends a call.
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
+	ctx, span := c.tracer.Start(ctx, "EndCall")
+	defer span.End()
+
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
 	c.inFlightCallsMutex.RLock()

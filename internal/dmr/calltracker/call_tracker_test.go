@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr_test
+package calltracker_test
 
 import (
 	"testing"

@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+package hbrp
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"k8s.io/klog/v2"
+)
+
+type redisClient struct {
+	Redis  *redis.Client
+	Tracer trace.Tracer
+}
+
+var (
+	errNoSuchRepeater    = errors.New("no such repeater")
+	errUnmarshalRepeater = errors.New("unmarshal repeater")
+	errCastRepeater      = errors.New("unable to cast repeater id")
+)
+
+const repeaterExpireTime = 5 * time.Minute
+
+func makeRedisClient(redis *redis.Client) redisClient {
+	return redisClient{
+		Redis:  redis,
+		Tracer: otel.Tracer("hbrp-redis"),
+	}
+}
+
+func (s *redisClient) updateRepeaterPing(ctx context.Context, repeaterID uint) {
+	ctx, span := s.Tracer.Start(ctx, "updateRepeaterPing")
+	defer span.End()
+
+	repeater, err := s.getRepeater(ctx, repeaterID)
+	if err != nil {
+		klog.Errorf("Error getting repeater from redis", err)
+		return
+	}
+	repeater.LastPing = time.Now()
+	s.storeRepeater(ctx, repeaterID, repeater)
+	s.Redis.Expire(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
+}
+
+func (s *redisClient) updateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
+	ctx, span := s.Tracer.Start(ctx, "updateRepeaterConnection")
+	defer span.End()
+
+	repeater, err := s.getRepeater(ctx, repeaterID)
+	if err != nil {
+		klog.Errorf("Error getting repeater from redis", err)
+		return
+	}
+	repeater.Connection = connection
+	s.storeRepeater(ctx, repeaterID, repeater)
+}
+
+func (s *redisClient) deleteRepeater(ctx context.Context, repeaterID uint) bool {
+	ctx, span := s.Tracer.Start(ctx, "deleteRepeater")
+	defer span.End()
+
+	return s.Redis.Del(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
+}
+
+func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
+	ctx, span := s.Tracer.Start(ctx, "storeRepeater")
+	defer span.End()
+
+	repeaterBytes, err := repeater.MarshalMsg(nil)
+	if err != nil {
+		klog.Errorf("Error marshalling repeater", err)
+		return
+	}
+	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
+	s.Redis.Set(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes, repeaterExpireTime)
+}
+
+func (s *redisClient) getRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
+	ctx, span := s.Tracer.Start(ctx, "getRepeater")
+	defer span.End()
+
+	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
+	if err != nil {
+		klog.Errorf("Error getting repeater from redis", err)
+		return models.Repeater{}, errNoSuchRepeater
+	}
+	var repeater models.Repeater
+	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
+	if err != nil {
+		klog.Errorf("Error unmarshalling repeater", err)
+		return models.Repeater{}, errUnmarshalRepeater
+	}
+	return repeater, nil
+}
+
+func (s *redisClient) repeaterExists(ctx context.Context, repeaterID uint) bool {
+	ctx, span := s.Tracer.Start(ctx, "repeaterExists")
+	defer span.End()
+
+	return s.Redis.Exists(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
+}
+
+func (s *redisClient) listRepeaters(ctx context.Context) ([]uint, error) {
+	ctx, span := s.Tracer.Start(ctx, "listRepeaters")
+	defer span.End()
+
+	var cursor uint64
+	var repeaters []uint
+	for {
+		keys, _, err := s.Redis.Scan(ctx, cursor, "hbrp:repeater:*", 0).Result()
+		if err != nil {
+			return nil, errNoSuchRepeater
+		}
+		for _, key := range keys {
+			repeaterNum, err := strconv.Atoi(strings.Replace(key, "hbrp:repeater:", "", 1))
+			if err != nil {
+				return nil, errCastRepeater
+			}
+			repeaters = append(repeaters, uint(repeaterNum))
+		}
+
+		if cursor == 0 {
+			break
+		}
+	}
+	return repeaters, nil
+}

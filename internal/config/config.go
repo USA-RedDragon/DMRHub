@@ -48,6 +48,7 @@ type Config struct {
 	PasswordSalt             string
 	ListenAddr               string
 	DMRPort                  int
+	OpenBridgePort           int
 	HTTPPort                 int
 	CORSHosts                []string
 	TrustedProxies           []string
@@ -80,6 +81,12 @@ func loadConfig() Config {
 		httpPort = 0
 	}
 
+	portStr = os.Getenv("OPENBRIDGE_PORT")
+	openBridgePort, err := strconv.ParseInt(portStr, 10, 0)
+	if err != nil {
+		openBridgePort = 0
+	}
+
 	tmpConfig := Config{
 		RedisHost:                os.Getenv("REDIS_HOST"),
 		postgresUser:             os.Getenv("PG_USER"),
@@ -97,6 +104,7 @@ func loadConfig() Config {
 		InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),
 		RedisPassword:            os.Getenv("REDIS_PASSWORD"),
 		Debug:                    os.Getenv("DEBUG") != "",
+		OpenBridgePort:           int(openBridgePort),
 	}
 	if tmpConfig.RedisHost == "" {
 		tmpConfig.RedisHost = "localhost:6379"
@@ -119,11 +127,11 @@ func loadConfig() Config {
 	tmpConfig.PostgresDSN = "host=" + tmpConfig.postgresHost + " port=" + strconv.FormatInt(int64(tmpConfig.postgresPort), 10) + " user=" + tmpConfig.postgresUser + " dbname=" + tmpConfig.postgresDatabase + " password=" + tmpConfig.postgresPassword
 	if tmpConfig.strSecret == "" {
 		tmpConfig.strSecret = "secret"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Session secret not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "SECRET not set, using INSECURE default")
 	}
 	if tmpConfig.PasswordSalt == "" {
 		tmpConfig.PasswordSalt = "salt"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Password salt not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "PASSWORD_SALT not set, using INSECURE default")
 	}
 	if tmpConfig.ListenAddr == "" {
 		tmpConfig.ListenAddr = "0.0.0.0"
@@ -131,11 +139,14 @@ func loadConfig() Config {
 	if tmpConfig.DMRPort == 0 {
 		tmpConfig.DMRPort = 62031
 	}
+	if tmpConfig.OpenBridgePort == 0 {
+		logging.GetLogger(logging.Error).Log(loadConfig, "OPENBRIDGE_PORT not set, disabling OpenBridge support")
+	}
 	if tmpConfig.HTTPPort == 0 {
 		tmpConfig.HTTPPort = 3005
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
-		logging.GetLogger(logging.Error).Log(loadConfig, "Initial admin user password not set, using auto-generated password")
+		logging.GetLogger(logging.Error).Log(loadConfig, "INIT_ADMIN_USER_PASSWORD not set, using auto-generated password")
 		const randLen = 15
 		const randNums = 4
 		const randSpecial = 2
@@ -147,7 +158,7 @@ func loadConfig() Config {
 	}
 	if tmpConfig.RedisPassword == "" {
 		tmpConfig.RedisPassword = "password"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Redis password not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "REDIS_PASSWORD not set, using INSECURE default")
 	}
 	// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 	corsHosts := os.Getenv("CORS_HOSTS")

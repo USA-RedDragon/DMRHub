@@ -21,69 +21,76 @@
 
 <template>
   <div>
-    <PVToast />
+    <Toast />
     <ConfirmDialog>
       <template #message="slotProps">
         <div class="flex p-4">
           <p>
-            You will need to use this DMRGateway configuration to connect to the
+            You will need to use this password configuration to connect to the
             network.
-            <span style="color: red"
+            <br /><span style="color: red"
               >Save this now, as you will not be able to retrieve it
               again.</span
             >
-            <br /><br />
+            <br />Your Peer password is:
+            <code style="color: orange">{{ slotProps.message.message }}</code>
           </p>
-          <pre style="background-color: #444; padding: 1em; font-size: 12px">
-[DMR Network 2]
-Name=AREDN
-Enabled=1
-Address={{ this.hostname }}
-Port=62031
-Password="{{ slotProps.message.message }}"
-Id={{ this.radioID }}
-Location=1
-Debug=0
-</pre
-          >
         </div>
       </template>
     </ConfirmDialog>
-    <form @submit.prevent="handleRepeater(!v$.$invalid)">
+    <form @submit.prevent="handlePeer(!v$.$invalid)">
       <Card>
-        <template #title>New Repeater</template>
+        <template #title>New Peer</template>
         <template #content>
           <span class="p-float-label">
             <InputText
-              id="radioID"
+              id="id"
               type="text"
-              v-model="v$.radioID.$model"
+              v-model="v$.id.$model"
               :class="{
-                'p-invalid': v$.radioID.$invalid && submitted,
+                'p-invalid': v$.id.$invalid && submitted,
               }"
             />
-            <label
-              for="radioID"
-              :class="{ 'p-error': v$.radioID.$invalid && submitted }"
-              >DMR Radio ID</label
+            <label for="id" :class="{ 'p-error': v$.id.$invalid && submitted }"
+              >Peer ID</label
             >
           </span>
-          <span v-if="v$.radioID.$error && submitted">
-            <span v-for="(error, index) of v$.radioID.$errors" :key="index">
+          <span v-if="v$.id.$error && submitted">
+            <span v-for="(error, index) of v$.id.$errors" :key="index">
               <small class="p-error">{{ error.$message }}</small>
             </span>
             <br />
           </span>
           <span v-else>
             <small
-              v-if="
-                (v$.radioID.$invalid && submitted) ||
-                v$.radioID.$pending.$response
-              "
+              v-if="(v$.id.$invalid && submitted) || v$.id.$pending.$response"
               class="p-error"
-              >{{
-                v$.radioID.required.$message.replace("Value", "Radio ID")
-              }}</small
+              >{{ v$.id.required.$message.replace("Value", "Peer ID") }}</small
+            >
+          </span>
+          <br />
+          <span>
+            <Checkbox
+              id="ingress"
+              inputId="ingress"
+              v-model="ingress"
+              :binary="true"
+            />
+            <label for="ingress"
+              >&nbsp;&nbsp;Peer should receive traffic from the server?</label
+            >
+          </span>
+          <br />
+          <br />
+          <span>
+            <Checkbox
+              id="egress"
+              inputId="egress"
+              v-model="egress"
+              :binary="true"
+            />
+            <label for="egress"
+              >&nbsp;&nbsp;Peer should send traffic to the server?</label
             >
           </span>
         </template>
@@ -104,6 +111,7 @@ Debug=0
 
 <script>
 import Card from 'primevue/card/sfc';
+import Checkbox from 'primevue/checkbox/sfc';
 import Button from 'primevue/button/sfc';
 import InputText from 'primevue/inputtext/sfc';
 import API from '@/services/API';
@@ -114,6 +122,7 @@ import { required, numeric } from '@vuelidate/validators';
 export default {
   components: {
     Card,
+    Checkbox,
     PVButton: Button,
     InputText,
   },
@@ -122,51 +131,54 @@ export default {
   mounted() {},
   data: function() {
     return {
-      radioID: '',
+      id: '',
+      ingress: false,
+      egress: false,
       submitted: false,
       hostname: window.location.hostname,
     };
   },
   validations() {
     return {
-      radioID: {
+      id: {
         required,
         numeric,
       },
     };
   },
   methods: {
-    handleRepeater(isFormValid) {
+    handlePeer(isFormValid) {
       this.submitted = true;
       if (!isFormValid) {
         return;
       }
 
-      const numericID = parseInt(this.radioID);
+      const numericID = parseInt(this.id);
       if (!numericID) {
         return;
       }
-      API.post('/repeaters', {
+      API.post('/peers', {
         id: numericID,
-        password: this.repeater_password,
+        ingress: this.ingress,
+        egress: this.egress,
       })
         .then((res) => {
           if (!res.data) {
             this.$toast.add({
               summary: 'Error',
               severity: 'error',
-              detail: `Error registering repeater`,
+              detail: `Error registering peer`,
               life: 3000,
             });
           } else {
             this.$confirm.require({
               message: res.data.password,
-              header: 'Repeater Created',
+              header: 'Peer Created',
               acceptClass: 'p-button-success',
               rejectClass: 'remove-reject-button',
               acceptLabel: 'OK',
               accept: () => {
-                this.$router.push('/repeaters');
+                this.$router.push('/repeaters/peers');
               },
             });
           }
@@ -184,7 +196,7 @@ export default {
             this.$toast.add({
               summary: 'Error',
               severity: 'error',
-              detail: `Error deleting repeater`,
+              detail: `Error creating peer`,
               life: 3000,
             });
           }

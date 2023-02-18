@@ -186,7 +186,7 @@ export default {
             this.$toast.add({
               summary: "Error",
               severity: "error",
-              detail: `Error deleting repeater`,
+              detail: `Error creating repeater`,
               life: 3000,
             });
           }

@@ -56,7 +56,7 @@ func MakeDB() *gorm.DB {
 		}
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if err != nil {
 		klog.Fatalf("Failed to migrate database: %s", err)
 	}
@@ -64,28 +64,16 @@ func MakeDB() *gorm.DB {
 		klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{})
-	if err != nil {
-		klog.Fatalf("Failed to migrate database with AppSettings: %s", err)
-	}
-	if db.Error != nil {
-		klog.Fatalf(fmt.Sprintf("Failed to migrate database with AppSettings: %s", db.Error))
-	}
-
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
-	result := db.Where("id = ?", 0).Limit(1).Find(&appSettings)
+	result := db.First(&appSettings)
 	if result.RowsAffected == 0 {
 		if config.GetConfig().Debug {
-			klog.Infof("App settings entry doesn't exist, migrating db and creating it")
+			klog.Infof("App settings entry doesn't exist, creating it")
 		}
 		// The record doesn't exist, so create it
 		appSettings = models.AppSettings{
 			HasSeeded: false,
-		}
-		err = db.AutoMigrate(&models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
-		if err != nil {
-			klog.Fatalf("Failed to migrate database: %s", err)
 		}
 		if db.Error != nil {
 			klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))

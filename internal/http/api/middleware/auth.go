@@ -233,6 +233,65 @@ func RequireLogin() gin.HandlerFunc {
 	}
 }
 
+func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		id := c.Param("id")
+		userID := session.Get("user_id")
+		if userID == nil {
+			if config.GetConfig().Debug {
+				klog.Error("RequirePeerOwnerOrAdmin: Failed to get user_id from session")
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		uid, ok := userID.(uint)
+		if !ok {
+			klog.Error("RequirePeerOwnerOrAdmin: Unable to convert user_id to uint")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		ctx := c.Request.Context()
+		span := trace.SpanFromContext(ctx)
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("http.auth", "RequirePeerOwnerOrAdmin"),
+				attribute.Int("user.id", int(uid)),
+			)
+		}
+
+		valid := false
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			klog.Error("RequirePeerOwnerOrAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		db = db.WithContext(ctx)
+		// Open up the DB and check if the user is an admin or if they own peer with id = id
+		var user models.User
+		db.Find(&user, "id = ?", uid)
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.Bool("user.admin", user.Admin),
+			)
+		}
+		if user.Approved && !user.Suspended && user.Admin {
+			valid = true
+		} else {
+			var peer models.Peer
+			db.Find(&peer, "radio_id = ?", id)
+			if peer.OwnerID == user.ID && !user.Suspended && user.Approved {
+				valid = true
+			}
+		}
+
+		if !valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		}
+	}
+}
+
 func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)

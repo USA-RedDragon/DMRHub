@@ -61,7 +61,7 @@ func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallT
 		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
 			IP:   net.ParseIP(config.GetConfig().ListenAddr),
-			Port: config.GetConfig().DMRPort,
+			Port: config.GetConfig().OpenBridgePort,
 		},
 		DB:          db,
 		Redis:       makeRedisClient(redis),
@@ -91,7 +91,7 @@ func (s *Server) Start(ctx context.Context) {
 
 	s.Server = server
 
-	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	klog.Infof("OpenBridge Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subcribeOutgoing(ctx)
@@ -261,7 +261,14 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		klog.Infof("DMR Data from Peer ID: %d", peerID)
 	}
 
-	if !s.validateHMAC(ctx, packetBytes, hmacBytes, models.FindPeerByID(s.DB, peerID)) {
+	if !models.PeerIDExists(s.DB, peerID) {
+		klog.Warningf("Unknown peer ID: %d", peerID)
+		return
+	}
+
+	peer := models.FindPeerByID(s.DB, peerID)
+
+	if !s.validateHMAC(ctx, packetBytes, hmacBytes, peer) {
 		klog.Warningf("Invalid OpenBridge HMAC")
 		return
 	}
@@ -272,9 +279,10 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	s.TrackCall(ctx, packet, isVoice)
-
-	s.sendPacket(ctx, packet.Dst, packet)
+	if peer.Egress {
+		s.TrackCall(ctx, packet, isVoice)
+		s.sendPacket(ctx, packet.Dst, packet)
+	}
 }
 
 func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bool) {

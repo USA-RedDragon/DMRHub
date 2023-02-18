@@ -70,6 +70,9 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
+	if !p.Ingress {
+		return
+	}
 	m.subscriptionsMutex.RLock()
 	_, ok := m.subscriptions[p.ID]
 	m.subscriptionsMutex.RUnlock()

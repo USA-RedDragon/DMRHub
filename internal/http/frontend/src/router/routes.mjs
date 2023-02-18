@@ -26,32 +26,42 @@ export default [
   {
     path: "/login",
     name: "Login",
-    component: () => import("../views/LoginPage.vue"),
+    component: () => import("../views/auth/LoginPage.vue"),
   },
   {
     path: "/register",
     name: "Register",
-    component: () => import("../views/RegisterPage.vue"),
+    component: () => import("../views/auth/RegisterPage.vue"),
   },
   {
     path: "/repeaters",
     name: "Repeaters",
-    component: () => import("../views/RepeatersPage.vue"),
+    component: () => import("../views/repeaters/RepeatersPage.vue"),
   },
   {
     path: "/repeaters/new",
     name: "NewRepeater",
-    component: () => import("../views/NewRepeaterPage.vue"),
+    component: () => import("../views/repeaters/NewRepeaterPage.vue"),
+  },
+  {
+    path: "/repeaters/peers",
+    name: "Peers",
+    component: () => import("../views/peers/PeersPage.vue"),
+  },
+  {
+    path: "/repeaters/peers/new",
+    name: "NewPeeer",
+    component: () => import("../views/peers/NewPeerPage.vue"),
   },
   {
     path: "/talkgroups",
     name: "Talkgroups",
-    component: () => import("../views/TalkgroupsPage.vue"),
+    component: () => import("../views/talkgroups/TalkgroupsPage.vue"),
   },
   {
     path: "/talkgroups/owned",
     name: "OwnedTalkgroups",
-    component: () => import("../views/OwnedTalkgroupsPage.vue"),
+    component: () => import("../views/talkgroups/OwnedTalkgroupsPage.vue"),
   },
   {
     path: "/admin/repeaters",

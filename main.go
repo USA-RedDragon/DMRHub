@@ -187,7 +187,7 @@ func main() {
 		}
 	}()
 
-	if models.CountPeers(database) > 0 {
+	if config.GetConfig().OpenBridgePort != 0 {
 		// Start the OpenBridge server
 		openbridgeServer := openbridge.MakeServer(database, redis, callTracker)
 		openbridgeServer.Start(ctx)

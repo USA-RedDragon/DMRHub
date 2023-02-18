@@ -27,7 +27,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
@@ -168,15 +169,17 @@ func main() {
 		}
 	}
 
-	dmrServer := dmr.MakeServer(database, redis)
-	dmrServer.Listen(ctx)
-	defer dmrServer.Stop(ctx)
+	callTracker := calltracker.NewCallTracker(database, redis)
+
+	hbrpServer := hbrp.MakeServer(database, redis, callTracker)
+	hbrpServer.Start(ctx)
+	defer hbrpServer.Stop(ctx)
 
 	go func() {
 		// For each repeater in the DB, start a gofunc to listen for calls
 		repeaters := models.ListRepeaters(database)
 		for _, repeater := range repeaters {
-			go dmr.GetRepeaterSubscriptionManager().ListenForCalls(ctx, redis, repeater)
+			go hbrp.GetSubscriptionManager().ListenForCalls(ctx, redis, repeater)
 		}
 	}()
 

@@ -17,25 +17,29 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr
+package parrot
 
 import (
 	"context"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 )
 
 // Parrot is a struct that stores packets and repeats them back to the repeater.
 type Parrot struct {
-	Redis redisParrotStorage
+	Redis  redisParrotStorage
+	Tracer trace.Tracer
 }
 
 // NewParrot creates a new parrot instance.
 func NewParrot(redis *redis.Client) *Parrot {
 	return &Parrot{
-		Redis: makeRedisParrotStorage(redis),
+		Redis:  makeRedisParrotStorage(redis),
+		Tracer: otel.Tracer("parrot"),
 	}
 }
 
@@ -46,6 +50,9 @@ func (p *Parrot) IsStarted(ctx context.Context, streamID uint) bool {
 
 // StartStream starts a new stream.
 func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint) bool {
+	ctx, span := p.Tracer.Start(ctx, "StartStream")
+	defer span.End()
+
 	if !p.Redis.exists(ctx, streamID) {
 		p.Redis.store(ctx, streamID, repeaterID)
 		return true
@@ -56,6 +63,9 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 
 // RecordPacket records a packet from the stream.
 func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.Packet) {
+	ctx, span := p.Tracer.Start(ctx, "RecordPacket")
+	defer span.End()
+
 	go p.Redis.refresh(ctx, streamID)
 
 	// Grab the repeater ID to go ahead and mark the packet as being routed back.
@@ -79,11 +89,17 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 
 // StopStream stops a stream.
 func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
+	ctx, span := p.Tracer.Start(ctx, "StopStream")
+	defer span.End()
+
 	p.Redis.delete(ctx, streamID)
 }
 
 // GetStream returns the stream.
 func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
+	ctx, span := p.Tracer.Start(ctx, "GetStream")
+	defer span.End()
+
 	// Empty array of packet byte arrays.
 	packets, err := p.Redis.getStream(ctx, streamID)
 	if err != nil {

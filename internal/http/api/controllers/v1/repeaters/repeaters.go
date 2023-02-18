@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
@@ -230,8 +230,8 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		}
 
 		db.Save(&repeater)
-		dmr.GetRepeaterSubscriptionManager().CancelAllSubscriptions(repeater)
-		go dmr.GetRepeaterSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
+		hbrp.GetSubscriptionManager().CancelAllSubscriptions(repeater)
+		go hbrp.GetSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater does not exist"})
@@ -368,7 +368,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
 			return
 		}
-		go dmr.GetRepeaterSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
+		go hbrp.GetSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -454,7 +454,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go dmr.GetRepeaterSubscriptionManager().ListenForCallsOn(c.Request.Context(), redis, repeater, talkgroup.ID)
+	go hbrp.GetSubscriptionManager().ListenForCallsOn(c.Request.Context(), redis, repeater, talkgroup.ID)
 	db.Save(&repeater)
 }
 
@@ -521,7 +521,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS1DynamicTalkgroupID = nil
 
-			dmr.GetRepeaterSubscriptionManager().CancelSubscription(repeater, oldTGID)
+			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
 
 			db.Save(&repeater)
 		case "2":
@@ -534,7 +534,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS2DynamicTalkgroupID = nil
 
-			dmr.GetRepeaterSubscriptionManager().CancelSubscription(repeater, oldTGID)
+			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
 
 			db.Save(&repeater)
 		}
@@ -553,7 +553,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1StaticTalkgroups"})
 						return
 					}
-					dmr.GetRepeaterSubscriptionManager().CancelSubscription(repeater, oldID)
+					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
 					db.Save(&repeater)
 					found = true
 					break
@@ -577,7 +577,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2StaticTalkgroups"})
 						return
 					}
-					dmr.GetRepeaterSubscriptionManager().CancelSubscription(repeater, oldID)
+					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
 					db.Save(&repeater)
 					found = true
 					break

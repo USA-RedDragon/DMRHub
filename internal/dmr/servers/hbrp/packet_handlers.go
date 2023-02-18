@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr
+package hbrp
 
 import (
 	"context"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"k8s.io/klog/v2"
@@ -43,11 +44,11 @@ const max32Bit = 0xFFFFFFFF
 
 func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
 	valid := true
-	if !s.Redis.exists(ctx, repeaterID) {
+	if !s.Redis.repeaterExists(ctx, repeaterID) {
 		klog.Warningf("Repeater %d does not exist", repeaterID)
 		valid = false
 	}
-	repeater, err := s.Redis.get(ctx, repeaterID)
+	repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 	if err != nil {
 		klog.Warningf("Error getting repeater %d from redis", repeaterID)
 		valid = false
@@ -83,7 +84,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
 				repeater.TS2DynamicTalkgroup = talkgroup
 				repeater.TS2DynamicTalkgroupID = &packet.Dst
-				go GetRepeaterSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+				go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
 				s.DB.Save(&repeater)
 			}
 		} else {
@@ -91,7 +92,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 				repeater.TS1DynamicTalkgroup = talkgroup
 				repeater.TS1DynamicTalkgroupID = &packet.Dst
-				go GetRepeaterSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+				go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
 				s.DB.Save(&repeater)
 			}
 		}
@@ -101,6 +102,9 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 }
 
 func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleDMRAPacket")
+	defer span.End()
+
 	const dmrALength = 15
 	if len(data) < dmrALength {
 		klog.Warningf("Invalid packet length: %d", len(data))
@@ -113,7 +117,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		klog.Infof("DMR talk alias from Repeater ID: %d", repeaterIDBytes)
 	}
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
-		s.Redis.ping(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
 		if dbRepeater.RadioID == 0 {
 			// Repeater not found, drop
@@ -136,14 +140,14 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) trackCall(ctx context.Context, packet models.Packet, isVoice bool) {
+func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bool) {
 	// Don't call track unlink
 	if packet.Dst != 4000 && isVoice {
 		go func() {
-			if !s.CallTracker.IsCallActive(packet) {
+			if !s.CallTracker.IsCallActive(ctx, packet) {
 				s.CallTracker.StartCall(ctx, packet)
 			}
-			if s.CallTracker.IsCallActive(packet) {
+			if s.CallTracker.IsCallActive(ctx, packet) {
 				s.CallTracker.ProcessCallPacket(ctx, packet)
 				if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 					s.CallTracker.EndCall(ctx, packet)
@@ -202,7 +206,10 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 	}
 }
 
-func (s *Server) doUnlink(packet models.Packet, dbRepeater models.Repeater) {
+func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater models.Repeater) {
+	_, span := s.Tracer.Start(ctx, "doUnlink")
+	defer span.End()
+
 	if packet.Slot {
 		klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
 		if dbRepeater.TS2DynamicTalkgroupID != nil {
@@ -212,7 +219,7 @@ func (s *Server) doUnlink(packet models.Packet, dbRepeater models.Repeater) {
 			if err != nil {
 				klog.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
 			}
-			GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
+			GetSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 		}
 	} else {
 		klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
@@ -223,13 +230,16 @@ func (s *Server) doUnlink(packet models.Packet, dbRepeater models.Repeater) {
 			if err != nil {
 				klog.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
 			}
-			GetRepeaterSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
+			GetSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 		}
 	}
 	s.DB.Save(&dbRepeater)
 }
 
 func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes []byte) {
+	ctx, span := s.Tracer.Start(ctx, "hbrpUserCall")
+	defer span.End()
+
 	// This is to a user
 	// Search the database for the user
 	if models.UserIDExists(s.DB, packet.Dst) {
@@ -239,7 +249,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
 		if s.DB.Error != nil {
 			klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
-		} else if lastCall.ID != 0 && s.Redis.exists(ctx, lastCall.RepeaterID) {
+		} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
 			// If the last call exists and that repeater is online
 			// Send the packet to the last user call's repeater
 			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
@@ -248,48 +258,12 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		// For each user repeaters
 		for _, repeater := range user.Repeaters {
 			// If the repeater is online and the last user call was not to this repeater
-			if repeater.RadioID != lastCall.RepeaterID && s.Redis.exists(ctx, repeater.RadioID) {
+			if repeater.RadioID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, repeater.RadioID) {
 				// Send the packet to the repeater
 				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
 			}
 		}
 	}
-}
-
-func (s *Server) checkPacketType(packet models.Packet) (bool, bool) {
-	isVoice := false
-	isData := false
-	switch packet.FrameType {
-	case dmrconst.FrameDataSync:
-		switch dmrconst.DataType(packet.DTypeOrVSeq) {
-		case dmrconst.DTypeVoiceTerm:
-			isVoice = true
-			if config.GetConfig().Debug {
-				klog.Infof("Voice terminator from %d", packet.Src)
-			}
-		case dmrconst.DTypeVoiceHead:
-			isVoice = true
-			if config.GetConfig().Debug {
-				klog.Infof("Voice header from %d", packet.Src)
-			}
-		default:
-			isData = true
-			if config.GetConfig().Debug {
-				klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-			}
-		}
-	case dmrconst.FrameVoice:
-		isVoice = true
-		if config.GetConfig().Debug {
-			klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
-		}
-	case dmrconst.FrameVoiceSync:
-		isVoice = true
-		if config.GetConfig().Debug {
-			klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-		}
-	}
-	return isVoice, isData
 }
 
 func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
@@ -304,7 +278,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		klog.Infof("DMR Data from Repeater ID: %d", repeaterID)
 	}
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
-		s.Redis.ping(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
 
 		var dbRepeater models.Repeater
 		if models.RepeaterIDExists(s.DB, repeaterID) {
@@ -321,13 +295,13 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			klog.Infof("DMRD packet: %s", packet.String())
 		}
 
-		isVoice, isData := s.checkPacketType(packet)
+		isVoice, isData := utils.CheckPacketType(packet)
 
 		if packet.Dst == 0 {
 			return
 		}
 
-		s.trackCall(ctx, packet, isVoice)
+		s.TrackCall(ctx, packet, isVoice)
 
 		if packet.Dst == dmrconst.ParrotUser && isVoice {
 			s.doParrot(ctx, packet, repeaterID)
@@ -336,7 +310,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		}
 
 		if packet.Dst == 4000 && isVoice {
-			s.doUnlink(packet, dbRepeater)
+			s.doUnlink(ctx, packet, dbRepeater)
 			return
 		}
 
@@ -396,6 +370,9 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTOPacket")
+	defer span.End()
+
 	const rptoMin = 8
 	const rptoMax = 300
 	const rptoRepeaterIDOffset = 4
@@ -416,7 +393,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
-		s.Redis.ping(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		if models.RepeaterIDExists(s.DB, repeaterID) {
 			dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
 			dbRepeater.LastPing = time.Now()
@@ -436,6 +413,9 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTLPacket")
+	defer span.End()
+
 	// RPTL packets are 8 bytes long
 	const rptlLen = 8
 	const rptlRepeaterIDOffset = 4
@@ -454,7 +434,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		repeater.Connection = "RPTL-RECEIVED"
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
-		s.Redis.store(ctx, repeaterID, repeater)
+		s.Redis.storeRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 		if config.GetConfig().Debug {
 			klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterID)
@@ -471,7 +451,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		repeater.Connection = "RPTL-RECEIVED"
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
-		s.Redis.store(ctx, repeaterID, repeater)
+		s.Redis.storeRepeater(ctx, repeaterID, repeater)
 		// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
 		var saltBytes [4]byte
 		if len(bigSalt.Bytes()) < len(saltBytes) {
@@ -480,11 +460,14 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			copy(saltBytes[:], bigSalt.Bytes())
 		}
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, saltBytes[:])
-		s.Redis.updateConnection(ctx, repeaterID, "CHALLENGE_SENT")
+		s.Redis.updateRepeaterConnection(ctx, repeaterID, "CHALLENGE_SENT")
 	}
 }
 
 func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTKPacket")
+	defer span.End()
+
 	// RPTK packets are 8 bytes long + a 32 byte sha256 hash
 	const rptkLen = 40
 	if len(data) != rptkLen {
@@ -519,11 +502,11 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			return
 		}
 
-		s.Redis.ping(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater.LastPing = time.Now()
 		s.DB.Save(&dbRepeater)
 
-		repeater, err := s.Redis.get(ctx, repeaterID)
+		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from redis: %v", err)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
@@ -540,7 +523,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		calcedSalt := binary.BigEndian.Uint32(hash[:])
 		if calcedSalt == rxSalt {
 			klog.Infof("Repeater ID %d authed, sending ACK", repeaterID)
-			s.Redis.updateConnection(ctx, repeaterID, "WAITING_CONFIG")
+			s.Redis.updateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 			go func() {
 				time.Sleep(1 * time.Second)
@@ -555,6 +538,9 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTCLPacket")
+	defer span.End()
+
 	// RPTCL packets are 8 bytes long
 	const rptclLen = 8
 	if len(data) != rptclLen {
@@ -567,12 +553,15 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr,
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
-	if !s.Redis.delete(ctx, repeaterID) {
+	if !s.Redis.deleteRepeater(ctx, repeaterID) {
 		klog.Warningf("Repeater ID %d not deleted", repeaterID)
 	}
 }
 
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTCPacket")
+	defer span.End()
+
 	// RPTC packets are 302 bytes long
 	const rptcLen = 302
 	if len(data) != rptcLen {
@@ -586,8 +575,8 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 
 	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", *remoteAddr) {
-		s.Redis.ping(ctx, repeaterID)
-		repeater, err := s.Redis.get(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from redis: %v", err)
 			return
@@ -716,7 +705,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		}
 
 		repeater.Connection = "YES"
-		s.Redis.store(ctx, repeaterID, repeater)
+		s.Redis.storeRepeater(ctx, repeaterID, repeater)
 		klog.Infof("Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
@@ -743,6 +732,9 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := s.Tracer.Start(ctx, "handleRPTPINGPacket")
+	defer span.End()
+
 	// RPTP packets are 11 bytes long
 	const rptpLength = 11
 	if len(data) != rptpLength {
@@ -754,7 +746,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAdd
 	klog.Infof("Ping from %d", repeaterID)
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
-		s.Redis.ping(ctx, repeaterID)
+		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
 		if dbRepeater.RadioID == 0 {
 			// No repeater found, drop
@@ -763,13 +755,13 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAdd
 		}
 		dbRepeater.LastPing = time.Now()
 		s.DB.Save(&dbRepeater)
-		repeater, err := s.Redis.get(ctx, repeaterID)
+		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
 		}
 		repeater.PingsReceived++
-		s.Redis.store(ctx, repeaterID, repeater)
+		s.Redis.storeRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTPONG, repeaterIDBytes)
 	} else {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)

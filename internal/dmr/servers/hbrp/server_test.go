@@ -17,13 +17,13 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package dmr_test
+package hbrp_test
 
 import (
 	"testing"
 )
 
-func TestNoop2(t *testing.T) {
+func TestNoop(t *testing.T) {
 	t.Parallel()
 	t.Log("Noop")
 }

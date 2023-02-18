@@ -32,5 +32,6 @@ services:
     ports:
       - 3005:3005
       - 62031:62031/udp
+      - 62032:62032/udp
 volumes:
   postgres:

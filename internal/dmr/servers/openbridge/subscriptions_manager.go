@@ -70,6 +70,9 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
+	if !p.Ingress {
+		return
+	}
 	m.subscriptionsMutex.RLock()
 	_, ok := m.subscriptions[p.ID]
 	m.subscriptionsMutex.RUnlock()
@@ -130,7 +133,11 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client
 				klog.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
 			}
-			packet := models.UnpackPacket(rawPacket.Data)
+			packet, ok := models.UnpackPacket(rawPacket.Data)
+			if !ok {
+				klog.Errorf("Failed to unpack packet: %s", err)
+				continue
+			}
 
 			if packet.Repeater == p.ID {
 				continue

@@ -24,6 +24,7 @@ import (
 	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
+	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
 	v1UsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
@@ -56,6 +57,7 @@ func ApplyRoutes(router *gin.Engine, db *gorm.DB, redis *redis.Client, ratelimit
 	ws.Use(ratelimit)
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(websocketControllers.CreateRepeatersWebsocket(db, redis)))
 	ws.GET("/calls", websocket.CreateHandler(websocketControllers.CreateCallsWebsocket(db, redis)))
+	ws.GET("/peers", websocket.CreateHandler(websocketControllers.CreatePeersWebsocket(db, redis)))
 }
 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
@@ -105,6 +107,15 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Users.GET("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.GETUser)
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.PATCHUser)
 	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.DELETEUser)
+
+	v1Peers := group.Group("/peers")
+	// Paginated
+	v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
+	// Paginated
+	v1Peers.GET("/my", middleware.RequireLogin(), v1PeersControllers.GETMyPeers)
+	v1Peers.POST("", middleware.RequireLogin(), v1PeersControllers.POSTPeer)
+	v1Peers.GET("/:id", middleware.RequireLogin(), v1PeersControllers.GETPeer)
+	v1Peers.DELETE("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeer)
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in

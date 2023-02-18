@@ -34,7 +34,7 @@ export default [
       changefreq: 'monthly',
       priority: 0.75,
     },
-    component: () => import('../views/LoginPage.vue'),
+    component: () => import('../views/auth/LoginPage.vue'),
   },
   {
     path: '/register',
@@ -43,7 +43,7 @@ export default [
       changefreq: 'monthly',
       priority: 0.75,
     },
-    component: () => import('../views/RegisterPage.vue'),
+    component: () => import('../views/auth/RegisterPage.vue'),
   },
   {
     path: '/repeaters',
@@ -52,7 +52,7 @@ export default [
       changefreq: 'daily',
       priority: 1,
     },
-    component: () => import('../views/RepeatersPage.vue'),
+    component: () => import('../views/repeaters/RepeatersPage.vue'),
   },
   {
     path: '/repeaters/new',
@@ -61,7 +61,25 @@ export default [
       changefreq: 'monthly',
       priority: 0.75,
     },
-    component: () => import('../views/NewRepeaterPage.vue'),
+    component: () => import('../views/repeaters/NewRepeaterPage.vue'),
+  },
+  {
+    path: '/repeaters/peers',
+    name: 'Peers',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 0.75,
+    },
+    component: () => import('../views/peers/PeersPage.vue'),
+  },
+  {
+    path: '/repeaters/peers/new',
+    name: 'NewPeer',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 0.75,
+    },
+    component: () => import('../views/peers/NewPeerPage.vue'),
   },
   {
     path: '/talkgroups',
@@ -70,7 +88,7 @@ export default [
       changefreq: 'daily',
       priority: 1,
     },
-    component: () => import('../views/TalkgroupsPage.vue'),
+    component: () => import('../views/talkgroups/TalkgroupsPage.vue'),
   },
   {
     path: '/talkgroups/owned',
@@ -79,7 +97,7 @@ export default [
       changefreq: 'daily',
       priority: 1,
     },
-    component: () => import('../views/OwnedTalkgroupsPage.vue'),
+    component: () => import('../views/talkgroups/OwnedTalkgroupsPage.vue'),
   },
   {
     path: '/admin/repeaters',

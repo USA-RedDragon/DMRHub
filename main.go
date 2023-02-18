@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
@@ -198,7 +199,7 @@ func start() int {
 		return nil
 	})
 
-	if models.CountPeers(database) > 0 {
+	if config.GetConfig().OpenBridgePort != 0 {
 		// Start the OpenBridge server
 		openbridgeServer := openbridge.MakeServer(database, redis, callTracker)
 		openbridgeServer.Start(ctx)

@@ -27,9 +27,53 @@
     <div class="wrapper">
       <nav>
         <RouterLink to="/">Home</RouterLink>
-        <RouterLink v-if="this.userStore.loggedIn" to="/repeaters"
-          >Repeaters</RouterLink
+
+        <router-link v-if="this.userStore.loggedIn" to="#" custom>
+          <a
+            href="#"
+            @click="toggleRepeatersMenu"
+            :class="{
+              adminNavLink: true,
+              'router-link-active': this.$route.path.startsWith('/repeaters'),
+            }"
+            >Repeaters</a
+          >
+        </router-link>
+        <Menu
+          v-if="this.userStore.loggedIn"
+          ref="repeatersMenu"
+          :popup="true"
+          :model="[
+            {
+              label: '&nbsp;&nbsp;MMDVM-like Repeaters',
+              to: '/repeaters',
+            },
+            {
+              label: '&nbsp;&nbsp;OpenBridge Peers',
+              to: '/repeaters/peers',
+            },
+          ]"
         >
+          <template #item="{ item }">
+            <router-link
+              :to="item.to"
+              custom
+              v-slot="{ href, navigate, isActive, isExactActive }"
+            >
+              <a
+                :href="href"
+                @click="navigate"
+                :class="{
+                  adminNavLink: true,
+                  'router-link-active': isActive,
+                  'router-link-active-exact': isExactActive,
+                }"
+              >
+                <div>{{ item.label }}</div>
+              </a>
+            </router-link>
+          </template>
+        </Menu>
 
         <router-link v-if="this.userStore.loggedIn" to="#" custom>
           <a
@@ -197,6 +241,9 @@ export default {
     },
     toggleTalkgroupsMenu(event) {
       this.$refs.talkgroupsMenu.toggle(event);
+    },
+    toggleRepeatersMenu(event) {
+      this.$refs.repeatersMenu.toggle(event);
     },
   },
   computed: {

@@ -1,9 +1,9 @@
 codecov:
     notify:
-        after_n_builds: 3
+        after_n_builds: 5
 comment:
     require_changes: true
-    after_n_builds: 3
+    after_n_builds: 5
 github_checks:
     annotations: false
 parsers:

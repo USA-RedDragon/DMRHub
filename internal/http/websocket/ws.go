@@ -202,8 +202,8 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 	}
 }
 
-func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc) {
-	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, func(c *gin.Context) {
+func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, userSuspension, func(c *gin.Context) {
 		session := sessions.Default(c)
 		h.repeaterHandler(c.Request.Context(), session, c.Writer, c.Request)
 	})

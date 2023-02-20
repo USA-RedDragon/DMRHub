@@ -231,7 +231,10 @@ func start() int {
 				const timeout = 5 * time.Second
 				ctx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
-				_ = cleanup(ctx)
+				err := cleanup(ctx)
+				if err != nil {
+					logging.GetLogger(logging.Error).Logf(start, "Failed to shutdown tracer: %s", err)
+				}
 			}
 		}(wg)
 

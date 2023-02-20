@@ -387,11 +387,13 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 	c.inFlightCallsMutex.RLock()
 	for _, lcall := range c.inFlightCalls {
 		c.inFlightCallsMutex.RUnlock()
+		defer c.inFlightCallsMutex.RLock()
 		if lcall.StreamID == packet.StreamID && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
 			c.updateCall(ctx, lcall, packet)
 			return
 		}
 	}
+	c.inFlightCallsMutex.RUnlock()
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
@@ -408,6 +410,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	c.inFlightCallsMutex.RLock()
 	for _, call := range c.inFlightCalls {
 		c.inFlightCallsMutex.RUnlock()
+		defer c.inFlightCallsMutex.RLock()
 		if call.StreamID == packet.StreamID && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
 			// Delete the call end timer
 			c.callEndTimersMutex.RLock()
@@ -422,7 +425,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 				// This is probably a key-up, so delete the call from the db
 				call := call
 				c.db.Delete(&call)
-				return
+				break
 			}
 
 			// If the call doesn't have a term, we lost that packet
@@ -455,4 +458,5 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 		}
 	}
+	c.inFlightCallsMutex.RUnlock()
 }

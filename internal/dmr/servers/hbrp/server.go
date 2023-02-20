@@ -184,7 +184,7 @@ func (s *Server) Start(ctx context.Context) {
 	s.Server = server
 	s.Started = true
 
-	klog.Infof("DMR Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	klog.Infof("HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subscribePackets(ctx)

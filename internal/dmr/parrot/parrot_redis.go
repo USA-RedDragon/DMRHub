@@ -48,34 +48,33 @@ const parrotExpireTime = 5 * time.Minute
 
 func makeRedisParrotStorage(redis *redis.Client) redisParrotStorage {
 	return redisParrotStorage{
-		Redis:  redis,
-		Tracer: otel.Tracer("parrot-redis"),
+		Redis: redis,
 	}
 }
 
 func (r *redisParrotStorage) store(ctx context.Context, streamID uint, repeaterID uint) {
-	ctx, span := r.Tracer.Start(ctx, "store")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	r.Redis.Set(ctx, fmt.Sprintf("parrot:stream:%d", streamID), repeaterID, parrotExpireTime)
 }
 
 func (r *redisParrotStorage) exists(ctx context.Context, streamID uint) bool {
-	ctx, span := r.Tracer.Start(ctx, "exists")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	return r.Redis.Exists(ctx, fmt.Sprintf("parrot:stream:%d", streamID)).Val() == 1
 }
 
 func (r *redisParrotStorage) refresh(ctx context.Context, streamID uint) {
-	ctx, span := r.Tracer.Start(ctx, "refresh")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	r.Redis.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime)
 }
 
 func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
-	ctx, span := r.Tracer.Start(ctx, "get")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	repeaterIDStr, err := r.Redis.Get(ctx, fmt.Sprintf("parrot:stream:%d", streamID)).Result()
@@ -90,7 +89,7 @@ func (r *redisParrotStorage) get(ctx context.Context, streamID uint) (uint, erro
 }
 
 func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet models.Packet) error {
-	ctx, span := r.Tracer.Start(ctx, "stream")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	packetBytes, err := packet.MarshalMsg(nil)
@@ -103,7 +102,7 @@ func (r *redisParrotStorage) stream(ctx context.Context, streamID uint, packet m
 }
 
 func (r *redisParrotStorage) delete(ctx context.Context, streamID uint) {
-	ctx, span := r.Tracer.Start(ctx, "delete")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	r.Redis.Del(ctx, fmt.Sprintf("parrot:stream:%d", streamID))
@@ -111,7 +110,7 @@ func (r *redisParrotStorage) delete(ctx context.Context, streamID uint) {
 }
 
 func (r *redisParrotStorage) getStream(ctx context.Context, streamID uint) ([]models.Packet, error) {
-	ctx, span := r.Tracer.Start(ctx, "getStream")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// Empty array of packet byte arrays

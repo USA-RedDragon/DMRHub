@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
 	"k8s.io/klog/v2"
 )
 
@@ -98,6 +99,8 @@ func (m *SubscriptionManager) CancelAllSubscriptions(p models.Repeater) {
 }
 
 func (m *SubscriptionManager) ListenForCallsOn(ctx context.Context, redis *redis.Client, p models.Repeater, talkgroupID uint) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
 	m.subscriptionsMutex.RLock()
 	_, ok := m.subscriptions[p.RadioID][talkgroupID]
 	m.subscriptionsMutex.RUnlock()
@@ -121,6 +124,9 @@ func (m *SubscriptionManager) ListenForCalls(ctx context.Context, redis *redis.C
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
 	m.subscriptionsMutex.RLock()
 	_, ok := m.subscriptions[p.RadioID]
 	m.subscriptionsMutex.RUnlock()

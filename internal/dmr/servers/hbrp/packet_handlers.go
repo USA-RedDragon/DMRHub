@@ -36,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
+	"go.opentelemetry.io/otel"
 	"k8s.io/klog/v2"
 )
 
@@ -43,6 +44,8 @@ const parrotDelay = 3 * time.Second
 const max32Bit = 0xFFFFFFFF
 
 func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
 	valid := true
 	if !s.Redis.repeaterExists(ctx, repeaterID) {
 		klog.Warningf("Repeater %d does not exist", repeaterID)
@@ -70,6 +73,10 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 	// of the current `packet.Slot`) doesn't match the packet's `Dst`
 	// field, then we need to update the database entry to reflect
 	// the new dynamic talkgroup on the appropriate slot.
+
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
 	if models.RepeaterIDExists(s.DB, packet.Repeater) {
 		if !models.TalkgroupIDExists(s.DB, packet.Dst) {
 			if config.GetConfig().Debug {
@@ -102,7 +109,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 }
 
 func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleDMRAPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	const dmrALength = 15
@@ -142,6 +149,10 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bool) {
 	// Don't call track unlink
+
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
 	if packet.Dst != 4000 && isVoice {
 		go func() {
 			if !s.CallTracker.IsCallActive(ctx, packet) {
@@ -158,6 +169,8 @@ func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bo
 }
 
 func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID uint) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
 	if !s.Parrot.IsStarted(ctx, packet.StreamID) {
 		s.Parrot.StartStream(ctx, packet.StreamID, repeaterID)
 		if config.GetConfig().Debug {
@@ -207,7 +220,7 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 }
 
 func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater models.Repeater) {
-	_, span := s.Tracer.Start(ctx, "doUnlink")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	if packet.Slot {
@@ -237,7 +250,7 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 }
 
 func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes []byte) {
-	ctx, span := s.Tracer.Start(ctx, "hbrpUserCall")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// This is to a user
@@ -267,6 +280,9 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 }
 
 func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
 	// DMRD packets are either 53 or 55 bytes long
 	if len(data) != 53 && len(data) != 55 {
 		klog.Warningf("Invalid DMRD packet length: %d", len(data))
@@ -370,7 +386,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTOPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	const rptoMin = 8
@@ -413,7 +429,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTLPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// RPTL packets are 8 bytes long
@@ -465,7 +481,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTKPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// RPTK packets are 8 bytes long + a 32 byte sha256 hash
@@ -538,7 +554,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTCLPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// RPTCL packets are 8 bytes long
@@ -559,7 +575,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr,
 }
 
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTCPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// RPTC packets are 302 bytes long
@@ -732,7 +748,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 }
 
 func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleRPTPINGPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// RPTP packets are 11 bytes long

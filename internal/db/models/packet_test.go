@@ -56,6 +56,47 @@ func TestDecode(t *testing.T) {
 	t.Log(knownGoodPacket.String())
 }
 
+func FuzzDecode(f *testing.F) {
+	f.Fuzz(func(t *testing.T, a []byte) {
+		t.Parallel()
+		models.UnpackPacket(a)
+	})
+}
+
+func FuzzEncode(f *testing.F) {
+	f.Fuzz(func(t *testing.T, signature string, seq uint, src uint, dst uint, repeater uint, slot bool, groupCall bool, frameType uint, dtypeOrVSeq uint, streamID uint, ber int, rssi int, dmrData []byte) {
+		t.Parallel()
+		dmrByteData := [33]byte{}
+		// DMRData needs to be a [33]byte
+		if len(dmrData) > 33 {
+			copy(dmrByteData[:], dmrData[:33])
+		} else if len(dmrData) < 33 {
+			// fill dmrByteData with dmrData and then fill the rest with 0s
+			copy(dmrByteData[:], dmrData[:])
+			for i := len(dmrData); i < 33; i++ {
+				dmrByteData[i] = 0
+			}
+		}
+
+		packet := models.Packet{
+			Signature:   signature,
+			Seq:         seq,
+			Src:         src,
+			Dst:         dst,
+			Repeater:    repeater,
+			Slot:        slot,
+			GroupCall:   groupCall,
+			FrameType:   dmrconst.FrameType(frameType),
+			DTypeOrVSeq: dtypeOrVSeq,
+			StreamID:    streamID,
+			BER:         ber,
+			RSSI:        rssi,
+			DMRData:     dmrByteData,
+		}
+		packet.Encode()
+	})
+}
+
 func TestEncode(t *testing.T) {
 	t.Parallel()
 	if !cmp.Equal(knownGoodPacketBytes, knownGoodPacket.Encode()) {

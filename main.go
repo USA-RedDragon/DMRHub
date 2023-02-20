@@ -21,7 +21,10 @@ package main
 
 import (
 	"context"
+	"os"
 	"runtime"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,6 +40,7 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	_ "github.com/tinylib/msgp/printer"
+	"github.com/ztrue/shutdown"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -183,5 +187,53 @@ func main() {
 		}
 	}()
 
-	http.Start(database, redis)
+	http := http.MakeServer(database, redis)
+	http.Start()
+	defer http.Stop()
+
+	stop := func(sig os.Signal) {
+		klog.Infof("Shutting down due to %v", sig)
+		wg := new(sync.WaitGroup)
+		wg.Add(3)
+
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			scheduler.Stop()
+		}(wg)
+
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			hbrp.GetSubscriptionManager().CancelAllSubscriptions()
+			hbrpServer.Stop(ctx)
+		}(wg)
+
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			http.Stop()
+		}(wg)
+
+		// Wait for all the servers to stop
+		wg.Wait()
+		const timeout = 10 * time.Second
+
+		c := make(chan struct{})
+		go func() {
+			defer close(c)
+			wg.Wait()
+		}()
+		select {
+		case <-c:
+			klog.Info("Shutdown safely completed")
+			os.Exit(0)
+		case <-time.After(timeout):
+			klog.Error("Shutdown timed out")
+			os.Exit(1)
+		}
+
+	}
+	defer stop(syscall.SIGINT)
+
+	shutdown.AddWithParam(stop)
+
+	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 }

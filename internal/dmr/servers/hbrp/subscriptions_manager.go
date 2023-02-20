@@ -85,9 +85,22 @@ func (m *SubscriptionManager) CancelSubscription(p models.Repeater, talkgroupID 
 	}
 }
 
-func (m *SubscriptionManager) CancelAllSubscriptions(p models.Repeater) {
+func (m *SubscriptionManager) CancelAllSubscriptions() {
 	if config.GetConfig().Debug {
-		klog.Errorf("Cancelling all newly inactive subscriptions for repeater %d", p.RadioID)
+		klog.Errorf("Cancelling all subscriptions")
+	}
+	m.subscriptionsMutex.RLock()
+	for radioID := range m.subscriptions {
+		m.subscriptionsMutex.RUnlock()
+		m.CancelAllRepeaterSubscriptions(models.Repeater{RadioID: radioID})
+		m.subscriptionsMutex.RLock()
+	}
+	m.subscriptionsMutex.RUnlock()
+}
+
+func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) {
+	if config.GetConfig().Debug {
+		klog.Errorf("Cancelling all subscriptions for repeater %d", p.RadioID)
 	}
 	m.subscriptionsMutex.RLock()
 	for tgID := range m.subscriptions[p.RadioID] {

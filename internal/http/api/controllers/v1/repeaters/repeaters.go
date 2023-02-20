@@ -230,7 +230,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		}
 
 		db.Save(&repeater)
-		hbrp.GetSubscriptionManager().CancelAllSubscriptions(repeater)
+		hbrp.GetSubscriptionManager().CancelAllRepeaterSubscriptions(repeater)
 		go hbrp.GetSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 	} else {

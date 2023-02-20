@@ -20,6 +20,7 @@
 package http
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -49,10 +50,44 @@ var (
 	ErrReadDir = errors.New("error reading directory")
 )
 
+type Server struct {
+	*http.Server
+	shutdownChannel chan bool
+}
+
 const defTimeout = 10 * time.Second
 const debugWriteTimeout = 60 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 10
+
+func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
+	if config.GetConfig().Debug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := CreateRouter(db, redisClient)
+
+	writeTimeout := defTimeout
+	if config.GetConfig().Debug {
+		writeTimeout = debugWriteTimeout
+	}
+
+	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
+	s := &http.Server{
+		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
+		Handler:      r,
+		ReadTimeout:  defTimeout,
+		WriteTimeout: writeTimeout,
+	}
+	s.SetKeepAlivesEnabled(false)
+
+	return Server{
+		s,
+		make(chan bool),
+	}
+}
 
 // FS is the embedded frontend files
 //
@@ -290,34 +325,29 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 	}
 }
 
-// Start the HTTP server.
-func Start(db *gorm.DB, redisClient *redis.Client) {
-	if config.GetConfig().Debug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
+func (s *Server) Stop() {
+	klog.Infof("Stopping HTTP Server")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.Shutdown(ctx); err != nil {
+		klog.Errorf("Failed to shutdown HTTP server: %s", err)
 	}
+	<-s.shutdownChannel
+}
 
-	r := CreateRouter(db, redisClient)
-
-	writeTimeout := defTimeout
-	if config.GetConfig().Debug {
-		writeTimeout = debugWriteTimeout
-	}
-
-	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
-	s := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
-		Handler:      r,
-		ReadTimeout:  defTimeout,
-		WriteTimeout: writeTimeout,
-	}
-	s.SetKeepAlivesEnabled(false)
-
-	err := s.ListenAndServe()
-	if err != nil {
-		klog.Fatalf("Failed to start HTTP server: %s", err)
-	}
+func (s *Server) Start() {
+	go func() {
+		err := s.ListenAndServe()
+		if err != nil {
+			switch err {
+			case http.ErrServerClosed:
+				s.shutdownChannel <- true
+				break
+			default:
+				klog.Fatalf("Failed to start HTTP server: %s", err)
+			}
+		}
+	}()
 }
 
 func getAllFilenames(fs *embed.FS, dir string) ([]string, error) {

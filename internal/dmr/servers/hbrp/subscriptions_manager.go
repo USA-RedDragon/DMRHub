@@ -283,7 +283,11 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 				continue
 			}
 			// This packet is already for us and we don't want to modify the slot
-			packet := models.UnpackPacket(rawPacket.Data)
+			packet, ok := models.UnpackPacket(rawPacket.Data)
+			if !ok {
+				klog.Errorf("Failed to unpack packet")
+				continue
+			}
 			packet.Repeater = p.RadioID
 			redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 		}
@@ -335,7 +339,11 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 				klog.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
 			}
-			packet := models.UnpackPacket(rawPacket.Data)
+			packet, ok := models.UnpackPacket(rawPacket.Data)
+			if !ok {
+				klog.Errorf("Failed to unpack packet")
+				continue
+			}
 
 			if packet.Repeater == p.RadioID {
 				continue

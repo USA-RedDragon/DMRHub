@@ -304,7 +304,11 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			klog.Warningf("Repeater %d not found in DB", repeaterID)
 			return
 		}
-		packet := models.UnpackPacket(data)
+		packet, ok := models.UnpackPacket(data)
+		if !ok {
+			klog.Warningf("Failed to unpack packet from repeater %d", repeaterID)
+			return
+		}
 
 		if config.GetConfig().Debug {
 			klog.Infof("DMRD packet: %s", packet.String())

@@ -89,8 +89,14 @@ func (p Packet) Equal(other Packet) bool {
 	return true
 }
 
-func UnpackPacket(data []byte) Packet {
+func UnpackPacket(data []byte) (Packet, bool) {
 	var packet Packet
+	if len(data) < dmrconst.HBRPPacketLength {
+		return packet, false
+	}
+	if len(data) > dmrconst.HBRPMaxPacketLength {
+		return packet, false
+	}
 	packet.Signature = string(data[:4])
 	packet.Seq = uint(data[4])
 	packet.Src = uint(data[5])<<16 | uint(data[6])<<8 | uint(data[7])
@@ -121,7 +127,7 @@ func UnpackPacket(data []byte) Packet {
 	} else {
 		packet.RSSI = -1
 	}
-	return packet
+	return packet, true
 }
 
 func (p *Packet) String() string {

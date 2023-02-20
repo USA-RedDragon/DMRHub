@@ -145,7 +145,11 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 		}
 	}()
 	for msg := range pubsub.Channel() {
-		packet := models.UnpackPacket([]byte(msg.Payload))
+		packet, ok := models.UnpackPacket([]byte(msg.Payload))
+		if !ok {
+			klog.Errorf("Error unpacking packet")
+			continue
+		}
 		repeater, err := s.Redis.getRepeater(ctx, packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)

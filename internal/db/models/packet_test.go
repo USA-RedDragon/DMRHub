@@ -46,7 +46,11 @@ var knownGoodPacket = models.Packet{
 
 func TestDecode(t *testing.T) {
 	t.Parallel()
-	if !cmp.Equal(knownGoodPacket, models.UnpackPacket(knownGoodPacketBytes)) {
+	packet, ok := models.UnpackPacket(knownGoodPacketBytes)
+	if !ok {
+		t.Errorf("Packet did not decode properly")
+	}
+	if !cmp.Equal(knownGoodPacket, packet) {
 		t.Errorf("Packet did not decode properly")
 	}
 	t.Log(knownGoodPacket.String())
@@ -63,8 +67,8 @@ var knownGoodPacketBytesNoRSSIandBER = []byte{68, 77, 82, 68, 1, 0, 0, 2, 0, 0, 
 
 func TestPacketWithoutRSSIandBERIsNegOne(t *testing.T) {
 	t.Parallel()
-	p := models.UnpackPacket(knownGoodPacketBytesNoRSSIandBER)
-	if p.RSSI != -1 || p.BER != -1 {
+	p, ok := models.UnpackPacket(knownGoodPacketBytesNoRSSIandBER)
+	if !ok || p.RSSI != -1 || p.BER != -1 {
 		t.Errorf("Packet did not decode properly")
 	}
 }
@@ -88,8 +92,8 @@ var knownGoodPrivatePacket = models.Packet{
 
 func TestPacketPrivateDecode(t *testing.T) {
 	t.Parallel()
-	p := models.UnpackPacket(knownGoodPacketPrivate)
-	if p.GroupCall {
+	p, ok := models.UnpackPacket(knownGoodPacketPrivate)
+	if p.GroupCall || !ok {
 		t.Errorf("Packet did not decode properly")
 	}
 }

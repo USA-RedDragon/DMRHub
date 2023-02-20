@@ -112,3 +112,4 @@ const (
 )
 
 const HBRPPacketLength = 53
+const HBRPMaxPacketLength = 55

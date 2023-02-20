@@ -1,7 +1,11 @@
 codecov:
-    require_ci_to_pass: yes
     notify:
-        wait_for_ci: yes
         after_n_builds: 3
 comment:
+    require_changes: true
     after_n_builds: 3
+github_checks:
+    annotations: false
+parsers:
+    go:
+        partials_as_hits: true

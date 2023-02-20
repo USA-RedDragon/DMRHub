@@ -218,32 +218,30 @@ func (s *Server) Start(ctx context.Context) {
 }
 
 func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
-	go func() {
-		if !s.Started {
-			klog.Warningf("Server not started, not sending command")
-			return
-		}
-		if config.GetConfig().Debug {
-			klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
-		}
-		commandPrefixedData := append([]byte(command), data...)
-		repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
-		if err != nil {
-			klog.Errorf("Error getting repeater from Redis", err)
-			return
-		}
-		p := models.RawDMRPacket{
-			Data:       commandPrefixedData,
-			RemoteIP:   repeater.IP,
-			RemotePort: repeater.Port,
-		}
-		packedBytes, err := p.MarshalMsg(nil)
-		if err != nil {
-			klog.Errorf("Error marshalling packet", err)
-			return
-		}
-		s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
-	}()
+	if !s.Started && command != dmrconst.CommandMSTCL {
+		klog.Warningf("Server not started, not sending command")
+		return
+	}
+	if config.GetConfig().Debug {
+		klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
+	}
+	commandPrefixedData := append([]byte(command), data...)
+	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
+	if err != nil {
+		klog.Errorf("Error getting repeater from Redis", err)
+		return
+	}
+	p := models.RawDMRPacket{
+		Data:       commandPrefixedData,
+		RemoteIP:   repeater.IP,
+		RemotePort: repeater.Port,
+	}
+	packedBytes, err := p.MarshalMsg(nil)
+	if err != nil {
+		klog.Errorf("Error marshalling packet", err)
+		return
+	}
+	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
@@ -251,28 +249,26 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		klog.Warningf("Server not started, not sending command")
 		return
 	}
-	go func() {
-		if config.GetConfig().Debug {
-			klog.Infof("Sending Packet: %s\n", packet.String())
-			klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
-		}
-		repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
-		if err != nil {
-			klog.Errorf("Error getting repeater from Redis", err)
-			return
-		}
-		p := models.RawDMRPacket{
-			Data:       packet.Encode(),
-			RemoteIP:   repeater.IP,
-			RemotePort: repeater.Port,
-		}
-		packedBytes, err := p.MarshalMsg(nil)
-		if err != nil {
-			klog.Errorf("Error marshalling packet", err)
-			return
-		}
-		s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
-	}()
+	if config.GetConfig().Debug {
+		klog.Infof("Sending Packet: %s\n", packet.String())
+		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
+	}
+	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
+	if err != nil {
+		klog.Errorf("Error getting repeater from Redis", err)
+		return
+	}
+	p := models.RawDMRPacket{
+		Data:       packet.Encode(),
+		RemoteIP:   repeater.IP,
+		RemotePort: repeater.Port,
+	}
+	packedBytes, err := p.MarshalMsg(nil)
+	if err != nil {
+		klog.Errorf("Error marshalling packet", err)
+		return
+	}
+	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {

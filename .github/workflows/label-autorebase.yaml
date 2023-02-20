@@ -1,0 +1,14 @@
+name: Add Autorebase Label to all PRs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, unlocked]
+
+jobs:
+  add_label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.PAT }}
+          labels: autorebase:opt-in

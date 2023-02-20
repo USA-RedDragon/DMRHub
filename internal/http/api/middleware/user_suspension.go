@@ -52,7 +52,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequirePeerOwnerOrAdmin: Unable to get DB from context")
+			klog.Error("SuspendedUserLockout: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

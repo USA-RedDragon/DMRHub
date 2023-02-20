@@ -174,7 +174,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 
 // IsCallActive checks if a call is active.
 func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	c.inFlightCallsMutex.RLock()

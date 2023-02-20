@@ -327,7 +327,8 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 
 func (s *Server) Stop() {
 	klog.Infof("Stopping HTTP Server")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	const timeout = 5 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
 		klog.Errorf("Failed to shutdown HTTP server: %s", err)
@@ -339,10 +340,9 @@ func (s *Server) Start() {
 	go func() {
 		err := s.ListenAndServe()
 		if err != nil {
-			switch err {
-			case http.ErrServerClosed:
+			switch {
+			case errors.Is(err, http.ErrServerClosed):
 				s.shutdownChannel <- true
-				break
 			default:
 				klog.Fatalf("Failed to start HTTP server: %s", err)
 			}

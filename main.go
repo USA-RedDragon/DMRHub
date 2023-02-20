@@ -194,26 +194,27 @@ func main() {
 	stop := func(sig os.Signal) {
 		klog.Infof("Shutting down due to %v", sig)
 		wg := new(sync.WaitGroup)
-		wg.Add(3)
 
+		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
 			scheduler.Stop()
 		}(wg)
 
+		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
 			hbrp.GetSubscriptionManager().CancelAllSubscriptions()
 			hbrpServer.Stop(ctx)
 		}(wg)
 
+		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
 			http.Stop()
 		}(wg)
 
 		// Wait for all the servers to stop
-		wg.Wait()
 		const timeout = 10 * time.Second
 
 		c := make(chan struct{})
@@ -229,7 +230,6 @@ func main() {
 			klog.Error("Shutdown timed out")
 			os.Exit(1)
 		}
-
 	}
 	defer stop(syscall.SIGINT)
 

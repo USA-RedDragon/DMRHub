@@ -220,7 +220,7 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 }
 
 func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater models.Repeater) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	if packet.Slot {

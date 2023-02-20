@@ -119,8 +119,10 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 		},
 	})
 
-	ws.ApplyRoutes(r, ratelimitMW)
-	api.ApplyRoutes(r, ratelimitMW)
+	userLockoutMiddleware := middleware.SuspendedUserLockout()
+
+	ws.ApplyRoutes(r, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(r, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 

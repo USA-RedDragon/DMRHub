@@ -112,7 +112,7 @@ func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) 
 }
 
 func (m *SubscriptionManager) ListenForCallsOn(ctx context.Context, redis *redis.Client, p models.Repeater, talkgroupID uint) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "SubscriptionManager.ListenForCallsOn")
 	defer span.End()
 	m.subscriptionsMutex.RLock()
 	_, ok := m.subscriptions[p.RadioID][talkgroupID]
@@ -137,7 +137,7 @@ func (m *SubscriptionManager) ListenForCalls(ctx context.Context, redis *redis.C
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
-	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "SubscriptionManager.ListenForCalls")
 	defer span.End()
 
 	m.subscriptionsMutex.RLock()

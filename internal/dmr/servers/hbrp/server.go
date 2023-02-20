@@ -31,7 +31,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -46,7 +45,6 @@ type Server struct {
 	DB            *gorm.DB
 	Redis         redisClient
 	CallTracker   *calltracker.CallTracker
-	Tracer        trace.Tracer
 }
 
 const largestMessageSize = 302
@@ -72,7 +70,7 @@ func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallT
 // Stop stops the DMR server.
 func (s *Server) Stop(ctx context.Context) {
 	// Send a MSTCL command to each repeater.
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
 
 	repeaters, err := s.Redis.listRepeaters(ctx)
@@ -165,7 +163,7 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 
 // Start starts the DMR server.
 func (s *Server) Start(ctx context.Context) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Start")
 	defer span.End()
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {

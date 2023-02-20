@@ -25,14 +25,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 )
 
 // Parrot is a struct that stores packets and repeats them back to the repeater.
 type Parrot struct {
-	Redis  redisParrotStorage
-	Tracer trace.Tracer
+	Redis redisParrotStorage
 }
 
 // NewParrot creates a new parrot instance.
@@ -49,7 +47,7 @@ func (p *Parrot) IsStarted(ctx context.Context, streamID uint) bool {
 
 // StartStream starts a new stream.
 func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.StartStream")
 	defer span.End()
 
 	if !p.Redis.exists(ctx, streamID) {
@@ -62,7 +60,7 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 
 // RecordPacket records a packet from the stream.
 func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.RecordPacket")
 	defer span.End()
 
 	go p.Redis.refresh(ctx, streamID)
@@ -88,7 +86,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 
 // StopStream stops a stream.
 func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.StopStream")
 	defer span.End()
 
 	p.Redis.delete(ctx, streamID)
@@ -96,7 +94,7 @@ func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
 
 // GetStream returns the stream.
 func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.GetStream")
 	defer span.End()
 
 	// Empty array of packet byte arrays.

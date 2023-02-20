@@ -91,8 +91,9 @@ func main() {
 
 	scheduler := gocron.NewScheduler(time.UTC)
 
+	var cleanup func(context.Context) error
 	if config.GetConfig().OTLPEndpoint != "" {
-		cleanup := initTracer()
+		cleanup = initTracer()
 		defer func() {
 			err := cleanup(ctx)
 			if err != nil {
@@ -211,6 +212,16 @@ func main() {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
+			if config.GetConfig().OTLPEndpoint != "" {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+				cleanup(ctx)
+			}
+		}(wg)
+
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
 			http.Stop()
 		}(wg)
 
@@ -224,6 +235,7 @@ func main() {
 		}()
 		select {
 		case <-c:
+			redis.Close()
 			klog.Info("Shutdown safely completed")
 			os.Exit(0)
 		case <-time.After(timeout):

@@ -63,7 +63,7 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 
 // StartCall starts tracking a new call.
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
 	defer span.End()
 
 	var sourceUser models.User
@@ -174,7 +174,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 
 // IsCallActive checks if a call is active.
 func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bool {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.IsCallActive")
 	defer span.End()
 
 	c.inFlightCallsMutex.RLock()
@@ -225,7 +225,7 @@ type jsonCallResponse struct {
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
 	defer span.End()
 
 	// copy call into a jsonCallResponse
@@ -292,7 +292,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 }
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.updateCall")
 	defer span.End()
 
 	// Reset call end timer
@@ -395,7 +395,7 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 
 // ProcessCallPacket processes a packet and updates the call.
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.ProcessCallPacket")
 	defer span.End()
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
@@ -413,7 +413,7 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "calltracker.endCallHandler")
 	defer span.End()
 
 	return func() {
@@ -424,7 +424,7 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 
 // EndCall ends a call.
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.EndCall")
 	defer span.End()
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls

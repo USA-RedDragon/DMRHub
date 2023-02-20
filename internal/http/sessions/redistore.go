@@ -279,7 +279,7 @@ func (s *RediStore) Delete(r *http.Request, w http.ResponseWriter, session *sess
 
 // ping does an internal ping against a server to check if it is alive.
 func (s *RediStore) ping(ctx context.Context) (bool, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "RediStore.ping")
 	defer span.End()
 	data, err := s.DB.Ping(ctx).Result()
 	if err != nil || data != "PONG" {
@@ -290,7 +290,7 @@ func (s *RediStore) ping(ctx context.Context) (bool, error) {
 
 // save stores the session in redis.
 func (s *RediStore) save(ctx context.Context, session *sessions.Session) error {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "RediStore.save")
 	defer span.End()
 	b, err := s.serializer.Serialize(session)
 	if err != nil {
@@ -313,7 +313,7 @@ func (s *RediStore) save(ctx context.Context, session *sessions.Session) error {
 // load reads the session from redis.
 // returns true if there is a sessoin data in DB.
 func (s *RediStore) load(ctx context.Context, session *sessions.Session) (bool, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "RediStore.load")
 	defer span.End()
 	data, err := s.DB.Get(ctx, s.keyPrefix+session.ID).Result()
 	if err != nil {
@@ -331,7 +331,7 @@ func (s *RediStore) load(ctx context.Context, session *sessions.Session) (bool, 
 
 // delete removes keys from redis if MaxAge<0.
 func (s *RediStore) delete(ctx context.Context, session *sessions.Session) error {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "RediStore.delete")
 	defer span.End()
 	if _, err := s.DB.Del(ctx, s.keyPrefix+session.ID).Result(); err != nil {
 		return ErrDeletingSession

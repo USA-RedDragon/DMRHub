@@ -30,13 +30,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 )
 
 type redisClient struct {
-	Redis  *redis.Client
-	Tracer trace.Tracer
+	Redis *redis.Client
 }
 
 var (
@@ -54,7 +52,7 @@ func makeRedisClient(redis *redis.Client) redisClient {
 }
 
 func (s *redisClient) updateRepeaterPing(ctx context.Context, repeaterID uint) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterPing")
 	defer span.End()
 
 	repeater, err := s.getRepeater(ctx, repeaterID)
@@ -68,7 +66,7 @@ func (s *redisClient) updateRepeaterPing(ctx context.Context, repeaterID uint) {
 }
 
 func (s *redisClient) updateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterConnection")
 	defer span.End()
 
 	repeater, err := s.getRepeater(ctx, repeaterID)
@@ -81,14 +79,14 @@ func (s *redisClient) updateRepeaterConnection(ctx context.Context, repeaterID u
 }
 
 func (s *redisClient) deleteRepeater(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.deleteRepeater")
 	defer span.End()
 
 	return s.Redis.Del(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
 }
 
 func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.storeRepeater")
 	defer span.End()
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
@@ -101,7 +99,7 @@ func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeat
 }
 
 func (s *redisClient) getRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.getRepeater")
 	defer span.End()
 
 	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
@@ -119,14 +117,14 @@ func (s *redisClient) getRepeater(ctx context.Context, repeaterID uint) (models.
 }
 
 func (s *redisClient) repeaterExists(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.repeaterExists")
 	defer span.End()
 
 	return s.Redis.Exists(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
 }
 
 func (s *redisClient) listRepeaters(ctx context.Context) ([]uint, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.listRepeaters")
 	defer span.End()
 
 	var cursor uint64

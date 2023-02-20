@@ -134,7 +134,7 @@ func DELETERepeater(c *gin.Context) {
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Repeater ID"})
 		return
 	}
 	models.DeleteRepeater(db, uint(idUint64))

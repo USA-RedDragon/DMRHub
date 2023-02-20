@@ -31,7 +31,6 @@ import (
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
@@ -50,7 +49,6 @@ type CallTracker struct {
 	callEndTimersMutex sync.RWMutex
 	inFlightCalls      map[uint]*models.Call
 	inFlightCallsMutex sync.RWMutex
-	tracer             trace.Tracer
 }
 
 // NewCallTracker creates a new CallTracker.
@@ -60,13 +58,12 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 		redis:         redis,
 		callEndTimers: make(map[uint]*time.Timer),
 		inFlightCalls: make(map[uint]*models.Call),
-		tracer:        otel.Tracer("calltracker"),
 	}
 }
 
 // StartCall starts tracking a new call.
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
-	ctx, span := c.tracer.Start(ctx, "StartCall")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	var sourceUser models.User
@@ -177,7 +174,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 
 // IsCallActive checks if a call is active.
 func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bool {
-	_, span := c.tracer.Start(ctx, "IsCallActive")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	c.inFlightCallsMutex.RLock()
@@ -228,7 +225,7 @@ type jsonCallResponse struct {
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet models.Packet) {
-	ctx, span := c.tracer.Start(ctx, "publishCall")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// copy call into a jsonCallResponse
@@ -295,7 +292,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 }
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
-	ctx, span := c.tracer.Start(ctx, "updateCall")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// Reset call end timer
@@ -398,7 +395,7 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 
 // ProcessCallPacket processes a packet and updates the call.
 func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
-	ctx, span := c.tracer.Start(ctx, "ProcessCallPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
@@ -416,7 +413,7 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
-	ctx, span := c.tracer.Start(ctx, "endCallHandler")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	return func() {
@@ -427,7 +424,7 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 
 // EndCall ends a call.
 func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
-	ctx, span := c.tracer.Start(ctx, "EndCall")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls

@@ -38,8 +38,7 @@ type Parrot struct {
 // NewParrot creates a new parrot instance.
 func NewParrot(redis *redis.Client) *Parrot {
 	return &Parrot{
-		Redis:  makeRedisParrotStorage(redis),
-		Tracer: otel.Tracer("parrot"),
+		Redis: makeRedisParrotStorage(redis),
 	}
 }
 
@@ -50,7 +49,7 @@ func (p *Parrot) IsStarted(ctx context.Context, streamID uint) bool {
 
 // StartStream starts a new stream.
 func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint) bool {
-	ctx, span := p.Tracer.Start(ctx, "StartStream")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	if !p.Redis.exists(ctx, streamID) {
@@ -63,7 +62,7 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 
 // RecordPacket records a packet from the stream.
 func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.Packet) {
-	ctx, span := p.Tracer.Start(ctx, "RecordPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	go p.Redis.refresh(ctx, streamID)
@@ -89,7 +88,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 
 // StopStream stops a stream.
 func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
-	ctx, span := p.Tracer.Start(ctx, "StopStream")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	p.Redis.delete(ctx, streamID)
@@ -97,7 +96,7 @@ func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
 
 // GetStream returns the stream.
 func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
-	ctx, span := p.Tracer.Start(ctx, "GetStream")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	// Empty array of packet byte arrays.

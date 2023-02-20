@@ -66,13 +66,15 @@ func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallT
 		DB:          db,
 		Redis:       makeRedisClient(redis),
 		CallTracker: callTracker,
-		Tracer:      otel.Tracer("dmr-hbrp-server"),
 	}
 }
 
 // Stop stops the DMR server.
 func (s *Server) Stop(ctx context.Context) {
 	// Send a MSTCL command to each repeater.
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
 	repeaters, err := s.Redis.listRepeaters(ctx)
 	if err != nil {
 		klog.Errorf("Error scanning redis for repeaters", err)
@@ -163,6 +165,8 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 
 // Start starts the DMR server.
 func (s *Server) Start(ctx context.Context) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
 		klog.Exitf("Error opening UDP Socket", err)
@@ -272,7 +276,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
-	ctx, span := s.Tracer.Start(ctx, "handleHBRPPacket")
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 	const signatureLength = 4
 	if len(data) < signatureLength {

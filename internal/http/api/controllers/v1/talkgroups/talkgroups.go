@@ -191,7 +191,8 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 			}
 			err = db.Save(&talkgroup).Error
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				klog.Errorf("Error saving talkgroup: %s", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"message": "Talkgroup admins cleared"})

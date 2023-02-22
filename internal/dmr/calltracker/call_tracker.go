@@ -237,38 +237,51 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 	jsonCall.Active = call.Active
 	jsonCall.TimeSlot = call.TimeSlot
 	jsonCall.GroupCall = call.GroupCall
+	if call.IsToTalkgroup {
+		jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
+		jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
+		jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
+	}
+	if call.IsToUser {
+		jsonCall.ToUser.ID = call.ToUser.ID
+		jsonCall.ToUser.Callsign = call.ToUser.Callsign
+	}
+	if call.IsToRepeater {
+		jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+		jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
+	}
 	jsonCall.IsToTalkgroup = call.IsToTalkgroup
-	jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
-	jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
-	jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
 	jsonCall.IsToUser = call.IsToUser
-	jsonCall.ToUser.ID = call.ToUser.ID
-	jsonCall.ToUser.Callsign = call.ToUser.Callsign
 	jsonCall.IsToRepeater = call.IsToRepeater
-	jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
-	jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
 	jsonCall.Loss = call.Loss
 	jsonCall.Jitter = call.Jitter
 	jsonCall.BER = call.BER
 	jsonCall.RSSI = call.RSSI
 	// Publish the call JSON to Redis
-	var callJSON []byte
 	callJSON, err := json.Marshal(jsonCall)
 	if err != nil {
 		klog.Errorf("Error marshalling call JSON: %v", err)
 		return
 	}
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
+		origCallJSON, err := json.Marshal(call)
+		if err != nil {
+			klog.Errorf("Error marshalling call JSON: %v", err)
+			return
+		}
+		_, err = c.redis.Publish(ctx, "calls:public", origCallJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)
 			return
 		}
 	}
-	_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
-	if err != nil {
-		klog.Errorf("Error publishing call JSON: %v", err)
-		return
+
+	if call.TotalPackets%2 == 0 {
+		_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
+		if err != nil {
+			klog.Errorf("Error publishing call JSON: %v", err)
+			return
+		}
 	}
 }
 
@@ -301,9 +314,9 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2 //nolint:golint,gomnd
 	}
 
-	if call.TotalPackets%2 == 0 {
-		go c.publishCall(ctx, call, packet)
-	}
+	call.CallData = append(call.CallData, packet.DMRData[:]...)
+
+	go c.publishCall(ctx, call, packet)
 }
 
 func calcSequenceLoss(call *models.Call, packet models.Packet) {

@@ -37,6 +37,15 @@ import (
 func RequireAdminOrTGOwner() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
@@ -100,6 +109,15 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
@@ -153,6 +171,14 @@ func RequireSuperAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		session := sessions.Default(c)
+
+		defer func() {
+			if recover() != nil {
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
@@ -184,7 +210,17 @@ func RequireSuperAdmin() gin.HandlerFunc {
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
+
 		if userID == nil {
 			if config.GetConfig().Debug {
 				klog.Error("RequireLogin: Failed to get user_id from session")
@@ -237,6 +273,15 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
@@ -296,6 +341,15 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
@@ -358,6 +412,15 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		id := c.Param("id")
+
+		defer func() {
+			if recover() != nil {
+				klog.Error("RequireLogin: Recovered from panic")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {

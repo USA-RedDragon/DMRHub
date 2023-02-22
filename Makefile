@@ -58,7 +58,7 @@ lint:
 
 test:
 	@echo "--> Running tests"
-	@env CGO_ENABLED=0 go test -v ./...
+	@env CGO_ENABLED=0 go test -p 2 -v ./...
 	@echo "--> Done"
 
 benchmark:

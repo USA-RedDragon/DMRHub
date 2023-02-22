@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 const { defineConfig } = require('cypress');
 const process = require('process');
 

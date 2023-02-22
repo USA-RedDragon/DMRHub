@@ -22,7 +22,6 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -259,36 +258,18 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet
 		klog.Errorf("Error marshalling call JSON: %v", err)
 		return
 	}
-	// Save for hoseline:
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
+		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)
 			return
 		}
 	}
-
-	// This definitely needs to be refactored to not loop
-	// through all repeaters every time a call packet is received
-	go func() {
-		// Iterate all repeaters to see if they want the call
-		var repeaters []models.Repeater
-		alreadyPublished := make(map[uint]bool)
-		c.db.Preload("Owner").Find(&repeaters)
-		for _, repeater := range repeaters {
-			want, _ := repeater.WantRX(packet)
-			if want && !alreadyPublished[repeater.OwnerID] {
-				// Publish the call to the repeater owner's call history
-				c.redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
-				alreadyPublished[repeater.OwnerID] = true
-				continue
-			}
-			if repeater.OwnerID == call.UserID {
-				c.redis.Publish(ctx, fmt.Sprintf("calls:%d", repeater.OwnerID), callJSON)
-				alreadyPublished[repeater.OwnerID] = true
-			}
-		}
-	}()
+	_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
+	if err != nil {
+		klog.Errorf("Error publishing call JSON: %v", err)
+		return
+	}
 }
 
 func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {

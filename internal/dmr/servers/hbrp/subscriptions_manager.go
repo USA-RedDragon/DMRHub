@@ -21,6 +21,7 @@ package hbrp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
 
@@ -237,6 +239,48 @@ func (m *SubscriptionManager) ListenForCalls(ctx context.Context, redis *redis.C
 			m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Unlock()
 			m.subscriptionsMutex.Unlock()
 			go m.subscribeTG(newCtx, redis, p, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
+		}
+	}
+}
+
+func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.DB, redis *redis.Client, userID uint) {
+	klog.Infof("Listening for websocket for user %d", userID)
+	pubsub := redis.Subscribe(ctx, "calls")
+	defer func() {
+		err := pubsub.Unsubscribe(ctx, "calls")
+		if err != nil {
+			klog.Errorf("Error unsubscribing from calls: %s", err)
+		}
+		err = pubsub.Close()
+		if err != nil {
+			klog.Errorf("Error closing pubsub connection: %s", err)
+		}
+	}()
+	pubsubChannel := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			klog.Infof("Websocket context done for user %d", userID)
+			return
+		case msg := <-pubsubChannel:
+			var call models.Call
+			err := json.Unmarshal([]byte(msg.Payload), &call)
+			if err != nil {
+				klog.Errorf("Error unmarshalling call: %s", err)
+				continue
+			}
+
+			if !models.UserIDExists(db, userID) {
+				continue
+			}
+			user := models.FindUserByID(db, userID)
+
+			for _, p := range user.Repeaters {
+				want, _ := p.WantRXCall(call)
+				if want {
+					redis.Publish(ctx, fmt.Sprintf("calls:%d", userID), msg.Payload)
+				}
+			}
 		}
 	}
 }

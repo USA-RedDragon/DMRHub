@@ -157,6 +157,32 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 	return false, false
 }
 
+func (p *Repeater) WantRXCall(call Call) (bool, bool) {
+	if call.DestinationID == p.RadioID {
+		return true, call.TimeSlot
+	}
+
+	if p.TS2DynamicTalkgroupID != nil {
+		if call.DestinationID == *p.TS2DynamicTalkgroupID {
+			return true, true
+		}
+	}
+
+	if p.TS1DynamicTalkgroupID != nil {
+		if call.DestinationID == *p.TS1DynamicTalkgroupID {
+			return true, false
+		}
+	}
+
+	if p.InTS2StaticTalkgroups(call.DestinationID) {
+		return true, true
+	} else if p.InTS1StaticTalkgroups(call.DestinationID) {
+		return true, false
+	}
+
+	return false, false
+}
+
 func (p *Repeater) InTS2StaticTalkgroups(dest uint) bool {
 	for _, tg := range p.TS2StaticTalkgroups {
 		if dest == tg.ID {

@@ -528,7 +528,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
 		if err != nil {
-			klog.Exitf("Error generating random salt", err)
+			klog.Errorf("Error generating random salt", err)
 		}
 		repeater.Salt = uint32(bigSalt.Uint64())
 		repeater.IP = remoteAddr.IP.String()

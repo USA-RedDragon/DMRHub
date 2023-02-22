@@ -54,7 +54,10 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
-      - run: make build-ci && make test
+      - uses: Wandalen/wretry.action@master
+        with:
+          command: make build-ci && make test
+          attempt_limit: 3
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}

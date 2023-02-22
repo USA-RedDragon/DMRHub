@@ -127,6 +127,8 @@ func (t *TestDB) createRedis() *redis.Client {
 
 	if !connected {
 		klog.Fatalf("Could not connect to redis: %s", err)
+		_ = t.client.Close()
+		_ = t.redisContainer.Close()
 	}
 
 	return t.client

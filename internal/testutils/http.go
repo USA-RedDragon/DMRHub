@@ -111,11 +111,24 @@ func (t *TestDB) createRedis() *redis.Client {
 		MinIdleConns:    runtime.GOMAXPROCS(0),
 		ConnMaxIdleTime: maxIdleTime,
 	})
-	_, err = t.client.Ping(context.Background()).Result()
-	if err != nil {
-		_ = t.redisContainer.Close()
-		klog.Fatalf("Failed to connect to redis: %s", err)
+
+	connected := false
+	triesLeft := 10
+
+	for !connected && triesLeft > 0 {
+		_, err = t.client.Ping(context.Background()).Result()
+		if err != nil {
+			triesLeft--
+			time.Sleep(1 * time.Second)
+		} else {
+			connected = true
+		}
 	}
+
+	if !connected {
+		klog.Fatalf("Could not connect to redis: %s", err)
+	}
+
 	return t.client
 }
 

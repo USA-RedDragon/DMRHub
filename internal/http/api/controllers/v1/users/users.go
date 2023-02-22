@@ -102,6 +102,30 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 
+		// Check if the username is already taken
+		var user models.User
+		err := db.Find(&user, "username = ?", json.Username).Error
+		if err != nil {
+			klog.Errorf("POSTUser: Error getting user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			return
+		} else if user.ID != 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+			return
+		}
+
+		// Check if the DMR ID is already taken
+		exists, err := models.UserIDExists(db, json.DMRId)
+		if err != nil {
+			klog.Errorf("POSTUser: Error getting user: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			return
+		}
+		if exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is already registered"})
+			return
+		}
+
 		if config.GetConfig().HIBPAPIKey != "" {
 			goPwned := gopwned.NewClient(nil, config.GetConfig().HIBPAPIKey)
 			h := sha1.New() //#nosec G401 -- False positive, we are not using this for crypto, just HIBP
@@ -142,30 +166,6 @@ func POSTUser(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Password has been reported in a data breach. Please use another one"})
 				return
 			}
-		}
-
-		// Check if the username is already taken
-		var user models.User
-		err := db.Find(&user, "username = ?", json.Username).Error
-		if err != nil {
-			klog.Errorf("POSTUser: Error getting user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
-			return
-		} else if user.ID != 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
-			return
-		}
-
-		// Check if the DMR ID is already taken
-		exists, err := models.UserIDExists(db, json.DMRId)
-		if err != nil {
-			klog.Errorf("POSTUser: Error getting user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
-			return
-		}
-		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is already taken"})
-			return
 		}
 
 		// argon2 the password

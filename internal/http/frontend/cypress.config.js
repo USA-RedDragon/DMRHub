@@ -3,26 +3,27 @@ const process = require("process");
 
 module.exports = defineConfig({
   video: process.env.BROWSER !== "firefox",
-  reporter: 'cypress-multi-reporters',
+  reporter: "cypress-multi-reporters",
   reporterOptions: {
-    reporterEnabled: 'cypress-mochawesome-reporter, mocha-junit-reporter',
+    reporterEnabled: "cypress-mochawesome-reporter, mocha-junit-reporter",
     mochaJunitReporterReporterOptions: {
-      mochaFile: 'reports/e2e/junit.xml',
+      mochaFile: "reports/e2e/junit.xml",
     },
     cypressMochawesomeReporterReporterOptions: {
       charts: true,
       embeddedScreenshots: true,
       inlineAssets: true,
-      reportDir: 'reports/e2e',
+      reportDir: "reports/e2e",
     },
   },
   e2e: {
     setupNodeEvents(on, config) {
       require("@cypress/code-coverage/task")(on, config);
-      require('cypress-mochawesome-reporter/plugin')(on);
+      require("cypress-mochawesome-reporter/plugin")(on);
       return config;
     },
     specPattern: "tests/e2e/**/*.{cy,spec}.{js,jsx,ts,tsx}",
+    excludeSpecPattern: "tests/e2e/screenshots/*",
     baseUrl: "http://localhost:4173",
   },
 });

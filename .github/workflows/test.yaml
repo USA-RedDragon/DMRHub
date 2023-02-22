@@ -27,6 +27,46 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  frontend-eslint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "19.6"
+
+      - run: cd internal/http/frontend && npm ci
+
+      - name: Save Code Linting Report JSON
+        run: cd internal/http/frontend && npm run lint:report
+
+      - name: Annotate Code Linting Results
+        if: always()
+        uses: ataylorme/eslint-annotate-action@v2
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          report-json: "internal/http/eslint_report.json"
+
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: frontend-eslint-report
+          if-no-files-found: error
+          retention-days: 30
+          path: internal/http/frontend/eslint_report.json
+
   frontend-unit-tests:
     runs-on: ubuntu-latest
     permissions:

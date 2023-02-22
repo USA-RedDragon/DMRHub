@@ -28,3 +28,4 @@ coverage
 *.sw?
 .nyc_output/
 reports/
+eslint_report.json

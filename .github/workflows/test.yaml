@@ -57,7 +57,7 @@ jobs:
         uses: ataylorme/eslint-annotate-action@v2
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
-          report-json: "internal/http/eslint_report.json"
+          report-json: "internal/http/frontend/eslint_report.json"
 
       - uses: actions/upload-artifact@v3
         if: always()

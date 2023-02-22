@@ -77,34 +77,61 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.switchDynamicTalkgroup")
 	defer span.End()
 
-	if models.RepeaterIDExists(s.DB, packet.Repeater) {
-		if !models.TalkgroupIDExists(s.DB, packet.Dst) {
-			if config.GetConfig().Debug {
-				klog.Infof("Repeater %d not found in DB", packet.Repeater)
-			}
-			return
-		}
-		repeater := models.FindRepeaterByID(s.DB, packet.Repeater)
-		talkgroup := models.FindTalkgroupByID(s.DB, packet.Dst)
-		if packet.Slot {
-			if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != packet.Dst {
-				klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
-				repeater.TS2DynamicTalkgroup = talkgroup
-				repeater.TS2DynamicTalkgroupID = &packet.Dst
-				go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
-				s.DB.Save(&repeater)
-			}
-		} else {
-			if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
-				klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
-				repeater.TS1DynamicTalkgroup = talkgroup
-				repeater.TS1DynamicTalkgroupID = &packet.Dst
-				go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
-				s.DB.Save(&repeater)
-			}
-		}
-	} else if config.GetConfig().Debug {
+	repeaterExists, err := models.RepeaterIDExists(s.DB, packet.Repeater)
+	if err != nil {
+		klog.Errorf("Error checking if repeater %d exists: %s", packet.Repeater, err.Error())
+		return
+	}
+
+	if !repeaterExists {
 		klog.Infof("Repeater %d not found in DB", packet.Repeater)
+		return
+	}
+
+	talkgroupExists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
+	if err != nil {
+		klog.Errorf("Error checking if talkgroup %d exists: %s", packet.Dst, err.Error())
+		return
+	}
+
+	if !talkgroupExists {
+		klog.Infof("Talkgroup %d not found in DB", packet.Dst)
+		return
+	}
+
+	repeater, err := models.FindRepeaterByID(s.DB, packet.Repeater)
+	if err != nil {
+		klog.Errorf("Error finding repeater %d: %s", packet.Repeater, err.Error())
+		return
+	}
+
+	talkgroup, err := models.FindTalkgroupByID(s.DB, packet.Dst)
+	if err != nil {
+		klog.Errorf("Error finding talkgroup %d: %s", packet.Dst, err.Error())
+		return
+	}
+	if packet.Slot {
+		if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != packet.Dst {
+			klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
+			repeater.TS2DynamicTalkgroup = talkgroup
+			repeater.TS2DynamicTalkgroupID = &packet.Dst
+			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+			err := s.DB.Save(&repeater).Error
+			if err != nil {
+				klog.Errorf("Error saving repeater: %s", err.Error())
+			}
+		}
+	} else {
+		if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
+			klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
+			repeater.TS1DynamicTalkgroup = talkgroup
+			repeater.TS1DynamicTalkgroupID = &packet.Dst
+			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+			err := s.DB.Save(&repeater).Error
+			if err != nil {
+				klog.Errorf("Error saving repeater: %s", err.Error())
+			}
+		}
 	}
 }
 
@@ -125,14 +152,18 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
-		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
-		if dbRepeater.RadioID == 0 {
+		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
 			// Repeater not found, drop
 			klog.Warningf("Repeater %d not found in DB", repeaterID)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
-		s.DB.Save(&dbRepeater)
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater: %s", err.Error())
+			return
+		}
 
 		typeBytes := data[8:9]
 		// Type can be 0 for a full talk alias, or 1,2,3 for talk alias blocks
@@ -245,35 +276,50 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 			GetSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 		}
 	}
-	s.DB.Save(&dbRepeater)
+	err := s.DB.Save(&dbRepeater).Error
+	if err != nil {
+		klog.Errorf("Error saving repeater: %s", err)
+	}
 }
 
 func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.doUser")
 	defer span.End()
 
-	// This is to a user
-	// Search the database for the user
-	if models.UserIDExists(s.DB, packet.Dst) {
-		user := models.FindUserByID(s.DB, packet.Dst)
-		// Query lastheard where UserID == user.ID LIMIT 1
-		var lastCall models.Call
-		s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall)
-		if s.DB.Error != nil {
-			klog.Errorf("Error querying last call for user %d: %s", user.ID, s.DB.Error)
-		} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
-			// If the last call exists and that repeater is online
-			// Send the packet to the last user call's repeater
-			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
-		}
+	userExists, err := models.UserIDExists(s.DB, packet.Dst)
+	if err != nil {
+		klog.Errorf("Error checking if user exists: %s", err)
+		return
+	}
 
-		// For each user repeaters
-		for _, repeater := range user.Repeaters {
-			// If the repeater is online and the last user call was not to this repeater
-			if repeater.RadioID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, repeater.RadioID) {
-				// Send the packet to the repeater
-				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
-			}
+	if !userExists {
+		klog.Warningf("User %d does not exist", packet.Dst)
+		return
+	}
+
+	user, err := models.FindUserByID(s.DB, packet.Dst)
+	if err != nil {
+		klog.Errorf("Error finding user: %s", err)
+		return
+	}
+
+	// Query lastheard where UserID == user.ID LIMIT 1
+	var lastCall models.Call
+	err = s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
+	if err != nil {
+		klog.Errorf("Error querying last call for user %d: %s", user.ID, err)
+	} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
+		// If the last call exists and that repeater is online
+		// Send the packet to the last user call's repeater
+		s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
+	}
+
+	// For each user repeaters
+	for _, repeater := range user.Repeaters {
+		// If the repeater is online and the last user call was not to this repeater
+		if repeater.RadioID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, repeater.RadioID) {
+			// Send the packet to the repeater
+			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
 		}
 	}
 }
@@ -295,15 +341,29 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 
-		var dbRepeater models.Repeater
-		if models.RepeaterIDExists(s.DB, repeaterID) {
-			dbRepeater = models.FindRepeaterByID(s.DB, repeaterID)
-			dbRepeater.LastPing = time.Now()
-			s.DB.Save(&dbRepeater)
-		} else {
-			klog.Warningf("Repeater %d not found in DB", repeaterID)
+		exists, err := models.RepeaterIDExists(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error checking if repeater exists: %s", err)
 			return
 		}
+
+		if !exists {
+			klog.Warningf("Repeater %d does not exist", repeaterID)
+			return
+		}
+
+		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error finding repeater: %s", err)
+			return
+		}
+		dbRepeater.LastPing = time.Now()
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater: %s", err)
+			return
+		}
+
 		packet, ok := models.UnpackPacket(data)
 		if !ok {
 			klog.Warningf("Failed to unpack packet from repeater %d", repeaterID)
@@ -413,13 +473,30 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
-		if models.RepeaterIDExists(s.DB, repeaterID) {
-			dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
-			dbRepeater.LastPing = time.Now()
-			s.DB.Save(&dbRepeater)
-		} else {
+
+		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error finding repeater: %s", err)
 			return
 		}
+
+		if !repeaterExists {
+			klog.Warning("Repeater does not exist")
+			return
+		}
+
+		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error finding repeater: %s", err)
+			return
+		}
+		dbRepeater.LastPing = time.Now()
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater: %s", err)
+			return
+		}
+
 		// Options is a string from data[8:]
 		options := string(data[8:])
 		if config.GetConfig().Debug {
@@ -445,7 +522,12 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	klog.Infof("Login from Repeater ID: %d", repeaterID)
-	if !models.RepeaterIDExists(s.DB, repeaterID) {
+	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
+	if err != nil {
+		klog.Errorf("Error finding repeater: %s", err)
+		return
+	}
+	if !exists {
 		repeater := models.Repeater{}
 		repeater.RadioID = repeaterID
 		repeater.IP = remoteAddr.IP.String()
@@ -459,7 +541,12 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterID)
 		}
 	} else {
-		repeater := models.FindRepeaterByID(s.DB, repeaterID)
+		repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error finding repeater: %s", err)
+			return
+		}
+
 		bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
 		if err != nil {
 			klog.Exitf("Error generating random salt", err)
@@ -502,8 +589,18 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		password := ""
 		var dbRepeater models.Repeater
 
-		if models.RepeaterIDExists(s.DB, repeaterID) {
-			dbRepeater = models.FindRepeaterByID(s.DB, repeaterID)
+		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error checking if repeater exists: %s", err)
+			return
+		}
+
+		if repeaterExists {
+			dbRepeater, err = models.FindRepeaterByID(s.DB, repeaterID)
+			if err != nil {
+				klog.Errorf("Error finding repeater: %s", err)
+				return
+			}
 			password = dbRepeater.Password
 		} else {
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
@@ -523,7 +620,11 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater.LastPing = time.Now()
-		s.DB.Save(&dbRepeater)
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater to db: %v", err)
+			return
+		}
 
 		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
@@ -577,6 +678,133 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr,
 	}
 }
 
+func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
+	repeater.Connected = time.Now()
+	repeater.LastPing = time.Now()
+
+	repeater.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
+	if len(repeater.Callsign) < 4 || len(repeater.Callsign) > 8 {
+		klog.Errorf("Invalid callsign: %s", repeater.Callsign)
+		return
+	}
+	if !dmrconst.CallsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
+		klog.Errorf("Invalid callsign: %s", repeater.Callsign)
+		return
+	}
+
+	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing RXFreq", err)
+		return
+	}
+	repeater.RXFrequency = uint(rxFreq)
+
+	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing TXFreq", err)
+		return
+	}
+	repeater.TXFrequency = uint(txFreq)
+
+	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing TXPower", err)
+		return
+	}
+	repeater.TXPower = uint(txPower)
+	const maxTXPower = 99
+	if repeater.TXPower > maxTXPower {
+		repeater.TXPower = maxTXPower
+	}
+
+	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing ColorCode", err)
+		return
+	}
+	const maxColorCode = 15
+	if colorCode > maxColorCode {
+		klog.Errorf("Invalid ColorCode: %d", colorCode)
+		return
+	}
+	repeater.ColorCode = uint(colorCode)
+
+	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
+	if err != nil {
+		klog.Errorf("Error parsing Latitude", err)
+		return
+	}
+	if lat < -90 || lat > 90 {
+		klog.Errorf("Invalid Latitude: %f", lat)
+		return
+	}
+	repeater.Latitude = float32(lat)
+
+	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
+	if err != nil {
+		klog.Errorf("Error parsing Longitude", err)
+		return
+	}
+	if long < -180 || long > 180 {
+		klog.Errorf("Invalid Longitude: %f", long)
+		return
+	}
+	repeater.Longitude = float32(long)
+
+	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing Height", err)
+		return
+	}
+	const maxHeight = 999
+	if height > maxHeight {
+		height = maxHeight
+	}
+	repeater.Height = int(height)
+
+	repeater.Location = strings.TrimRight(string(data[58:78]), " ")
+	const maxLocation = 20
+	if len(repeater.Location) > maxLocation {
+		repeater.Location = repeater.Location[:maxLocation]
+	}
+
+	repeater.Description = strings.TrimRight(string(data[78:97]), " ")
+	const maxDescription = 20
+	if len(repeater.Description) > maxDescription {
+		repeater.Description = repeater.Description[:maxDescription]
+	}
+
+	slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing Slots", err)
+		return
+	}
+	repeater.Slots = uint(slots)
+
+	repeater.URL = strings.TrimRight(string(data[98:222]), " ")
+	const maxURL = 124
+	if len(repeater.URL) > maxURL {
+		repeater.URL = repeater.URL[:maxURL]
+	}
+
+	repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
+	const maxSoftwareID = 40
+	if len(repeater.SoftwareID) > maxSoftwareID {
+		repeater.SoftwareID = repeater.SoftwareID[:maxSoftwareID]
+	} else if repeater.SoftwareID == "" {
+		repeater.SoftwareID = "github.com/USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
+	}
+	repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
+	const maxPackageID = 40
+	if len(repeater.PackageID) > maxPackageID {
+		repeater.PackageID = repeater.PackageID[:maxPackageID]
+	} else if repeater.PackageID == "" {
+		repeater.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
+	}
+
+	repeater.Connection = "YES"
+}
+
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCPacket")
 	defer span.End()
@@ -600,134 +828,16 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 			klog.Errorf("Error getting repeater from redis: %v", err)
 			return
 		}
-		repeater.Connected = time.Now()
-		repeater.LastPing = time.Now()
 
-		repeater.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
-		if len(repeater.Callsign) < 4 || len(repeater.Callsign) > 8 {
-			klog.Errorf("Invalid callsign: %s", repeater.Callsign)
-			return
-		}
-		if !dmrconst.CallsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
-			klog.Errorf("Invalid callsign: %s", repeater.Callsign)
-			return
-		}
-
-		rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing RXFreq", err)
-			return
-		}
-		repeater.RXFrequency = uint(rxFreq)
-
-		txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing TXFreq", err)
-			return
-		}
-		repeater.TXFrequency = uint(txFreq)
-
-		txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing TXPower", err)
-			return
-		}
-		repeater.TXPower = uint(txPower)
-		const maxTXPower = 99
-		if repeater.TXPower > maxTXPower {
-			repeater.TXPower = maxTXPower
-		}
-
-		colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing ColorCode", err)
-			return
-		}
-		const maxColorCode = 15
-		if colorCode > maxColorCode {
-			klog.Errorf("Invalid ColorCode: %d", colorCode)
-			return
-		}
-		repeater.ColorCode = uint(colorCode)
-
-		lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
-		if err != nil {
-			klog.Errorf("Error parsing Latitude", err)
-			return
-		}
-		if lat < -90 || lat > 90 {
-			klog.Errorf("Invalid Latitude: %f", lat)
-			return
-		}
-		repeater.Latitude = float32(lat)
-
-		long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
-		if err != nil {
-			klog.Errorf("Error parsing Longitude", err)
-			return
-		}
-		if long < -180 || long > 180 {
-			klog.Errorf("Invalid Longitude: %f", long)
-			return
-		}
-		repeater.Longitude = float32(long)
-
-		height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing Height", err)
-			return
-		}
-		const maxHeight = 999
-		if height > maxHeight {
-			height = maxHeight
-		}
-		repeater.Height = int(height)
-
-		repeater.Location = strings.TrimRight(string(data[58:78]), " ")
-		const maxLocation = 20
-		if len(repeater.Location) > maxLocation {
-			repeater.Location = repeater.Location[:maxLocation]
-		}
-
-		repeater.Description = strings.TrimRight(string(data[78:97]), " ")
-		const maxDescription = 20
-		if len(repeater.Description) > maxDescription {
-			repeater.Description = repeater.Description[:maxDescription]
-		}
-
-		slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
-		if err != nil {
-			klog.Errorf("Error parsing Slots", err)
-			return
-		}
-		repeater.Slots = uint(slots)
-
-		repeater.URL = strings.TrimRight(string(data[98:222]), " ")
-		const maxURL = 124
-		if len(repeater.URL) > maxURL {
-			repeater.URL = repeater.URL[:maxURL]
-		}
-
-		repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
-		const maxSoftwareID = 40
-		if len(repeater.SoftwareID) > maxSoftwareID {
-			repeater.SoftwareID = repeater.SoftwareID[:maxSoftwareID]
-		} else if repeater.SoftwareID == "" {
-			repeater.SoftwareID = "github.com/USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
-		}
-		repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
-		const maxPackageID = 40
-		if len(repeater.PackageID) > maxPackageID {
-			repeater.PackageID = repeater.PackageID[:maxPackageID]
-		} else if repeater.PackageID == "" {
-			repeater.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
-		}
-
-		repeater.Connection = "YES"
+		s.updateRedisRepeater(data, &repeater)
 		s.Redis.storeRepeater(ctx, repeaterID, repeater)
 		klog.Infof("Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
-		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
+		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
+			klog.Errorf("Error finding repeater: %v", err)
+			return
+		}
 		dbRepeater.Connected = repeater.Connected
 		dbRepeater.LastPing = repeater.LastPing
 		dbRepeater.Callsign = repeater.Callsign
@@ -744,7 +854,10 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		dbRepeater.URL = repeater.URL
 		dbRepeater.SoftwareID = repeater.SoftwareID
 		dbRepeater.PackageID = repeater.PackageID
-		s.DB.Save(&dbRepeater)
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater to database: %s", err)
+		}
 	} else {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
@@ -766,14 +879,18 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAdd
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
-		dbRepeater := models.FindRepeaterByID(s.DB, repeaterID)
-		if dbRepeater.RadioID == 0 {
+		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+		if err != nil {
 			// No repeater found, drop
 			klog.Warningf("No repeater found for ID %d", repeaterID)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
-		s.DB.Save(&dbRepeater)
+		err = s.DB.Save(&dbRepeater).Error
+		if err != nil {
+			klog.Errorf("Error saving repeater to database: %s", err)
+		}
+
 		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)

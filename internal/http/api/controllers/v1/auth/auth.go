@@ -63,10 +63,7 @@ func POSTLogin(c *gin.Context) {
 		} else {
 			db.Find(&user, "callsign = ?", json.Callsign)
 		}
-		if user.ID == 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
-			return
-		}
+
 		verified, err := utils.VerifyPassword(json.Password, user.Password, config.GetConfig().PasswordSalt)
 		klog.Infof("POSTLogin: Password verified %v", verified)
 		if verified && err == nil {

@@ -17,6 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//nolint:golint,wrapcheck
 package models
 
 import (
@@ -40,31 +41,31 @@ type Talkgroup struct {
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-func ListTalkgroups(db *gorm.DB) []Talkgroup {
+func ListTalkgroups(db *gorm.DB) ([]Talkgroup, error) {
 	var talkgroups []Talkgroup
-	db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups)
-	return talkgroups
+	err := db.Preload("Admins").Preload("NCOs").Order("id asc").Find(&talkgroups).Error
+	return talkgroups, err
 }
 
-func CountTalkgroups(db *gorm.DB) int {
+func CountTalkgroups(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&Talkgroup{}).Count(&count)
-	return int(count)
+	err := db.Model(&Talkgroup{}).Count(&count).Error
+	return int(count), err
 }
 
-func TalkgroupIDExists(db *gorm.DB, id uint) bool {
+func TalkgroupIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
-	db.Model(&Talkgroup{}).Where("ID = ?", id).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&Talkgroup{}).Where("ID = ?", id).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func FindTalkgroupByID(db *gorm.DB, id uint) Talkgroup {
+func FindTalkgroupByID(db *gorm.DB, id uint) (Talkgroup, error) {
 	var talkgroup Talkgroup
-	db.Preload("Admins").Preload("NCOs").First(&talkgroup, id)
-	return talkgroup
+	err := db.Preload("Admins").Preload("NCOs").First(&talkgroup, id).Error
+	return talkgroup, err
 }
 
-func DeleteTalkgroup(db *gorm.DB, id uint) {
+func DeleteTalkgroup(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		// Delete calls where IsToTalkgroup is true and IsToTalkgroupID is id
 		tx.Unscoped().Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, id).Delete(&Call{})
@@ -82,7 +83,11 @@ func DeleteTalkgroup(db *gorm.DB, id uint) {
 				repeater.TS2DynamicTalkgroup = Talkgroup{}
 				repeater.TS2DynamicTalkgroupID = nil
 			}
-			tx.Save(&repeater)
+			err := tx.Save(&repeater).Error
+			if err != nil {
+				klog.Errorf("Error saving repeater: %s", err)
+				return err
+			}
 		}
 
 		tx.Unscoped().Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
@@ -94,7 +99,9 @@ func DeleteTalkgroup(db *gorm.DB, id uint) {
 	})
 	if err != nil {
 		klog.Errorf("Error deleting talkgroup: %s", err)
+		return err
 	}
+	return nil
 }
 
 func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
@@ -108,12 +115,12 @@ func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
 	return talkgroups, nil
 }
 
-func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) int {
+func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) (int, error) {
 	var count int64
-	db.Model(&Talkgroup{}).Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
+	err := db.Model(&Talkgroup{}).Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
 		Joins("JOIN users on talkgroup_admins.user_id=users.id").
-		Where("users.id=?", ownerID).Count(&count)
-	return int(count)
+		Where("users.id=?", ownerID).Count(&count).Error
+	return int(count), err
 }
 
 type TalkgroupsSeeder struct {

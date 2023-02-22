@@ -182,7 +182,11 @@ func main() {
 
 	go func() {
 		// For each repeater in the DB, start a gofunc to listen for calls
-		repeaters := models.ListRepeaters(database)
+		repeaters, err := models.ListRepeaters(database)
+		if err != nil {
+			klog.Fatalf("Failed to list repeaters: %s", err)
+			return
+		}
 		for _, repeater := range repeaters {
 			go hbrp.GetSubscriptionManager().ListenForCalls(ctx, redis, repeater)
 		}

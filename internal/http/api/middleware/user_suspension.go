@@ -58,13 +58,25 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		}
 		db = db.WithContext(c.Request.Context())
 
-		if !models.UserIDExists(db, uid) {
+		userExists, err := models.UserIDExists(db, uid)
+		if err != nil {
+			klog.Error("SuspendedUserLockout: Unable to check if user exists")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+
+		if !userExists {
 			klog.Error("SuspendedUserLockout: User ID does not exist")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
-		user := models.FindUserByID(db, uid)
+		user, err := models.FindUserByID(db, uid)
+		if err != nil {
+			klog.Error("SuspendedUserLockout: Unable to find user by ID")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
 
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)

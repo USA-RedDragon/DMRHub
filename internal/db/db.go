@@ -20,7 +20,6 @@
 package db
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"time"
@@ -60,9 +59,6 @@ func MakeDB() *gorm.DB {
 	if err != nil {
 		klog.Fatalf("Failed to migrate database: %s", err)
 	}
-	if db.Error != nil {
-		klog.Fatalf(fmt.Sprintf("Failed with error %s", db.Error))
-	}
 
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
@@ -75,7 +71,10 @@ func MakeDB() *gorm.DB {
 		appSettings = models.AppSettings{
 			HasSeeded: false,
 		}
-		db.Create(&appSettings)
+		err := db.Create(&appSettings).Error
+		if err != nil {
+			klog.Fatalf("Failed to create app settings: %s", err)
+		}
 		if config.GetConfig().Debug {
 			klog.Infof("App settings saved")
 		}
@@ -95,7 +94,10 @@ func MakeDB() *gorm.DB {
 			klog.Fatalf("Failed to seed database: %s", err)
 		}
 		appSettings.HasSeeded = true
-		db.Save(&appSettings)
+		err := db.Save(&appSettings).Error
+		if err != nil {
+			klog.Fatalf("Failed to save app settings: %s", err)
+		}
 	}
 
 	sqlDB, err := db.DB()

@@ -17,6 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//nolint:golint,wrapcheck
 package models
 
 import (
@@ -78,49 +79,49 @@ func (p *Repeater) String() string {
 	return string(jsn)
 }
 
-func ListRepeaters(db *gorm.DB) []Repeater {
+func ListRepeaters(db *gorm.DB) ([]Repeater, error) {
 	var repeaters []Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Order("radio_id asc").Find(&repeaters)
-	return repeaters
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Order("radio_id asc").Find(&repeaters).Error
+	return repeaters, err
 }
 
-func CountRepeaters(db *gorm.DB) int {
+func CountRepeaters(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&Repeater{}).Count(&count)
-	return int(count)
+	err := db.Model(&Repeater{}).Count(&count).Error
+	return int(count), err
 }
 
-func GetUserRepeaters(db *gorm.DB, id uint) []Repeater {
+func GetUserRepeaters(db *gorm.DB, id uint) ([]Repeater, error) {
 	var repeaters []Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", id).Order("radio_id asc").Find(&repeaters)
-	return repeaters
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", id).Order("radio_id asc").Find(&repeaters).Error
+	return repeaters, err
 }
 
-func CountUserRepeaters(db *gorm.DB, id uint) int {
+func CountUserRepeaters(db *gorm.DB, id uint) (int, error) {
 	var count int64
-	db.Model(&Repeater{}).Where("owner_id = ?", id).Count(&count)
-	return int(count)
+	err := db.Model(&Repeater{}).Where("owner_id = ?", id).Count(&count).Error
+	return int(count), err
 }
 
-func FindRepeaterByID(db *gorm.DB, id uint) Repeater {
+func FindRepeaterByID(db *gorm.DB, id uint) (Repeater, error) {
 	var repeater Repeater
-	db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").First(&repeater, id)
-	return repeater
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").First(&repeater, id).Error
+	return repeater, err
 }
 
-func RepeaterExists(db *gorm.DB, repeater Repeater) bool {
+func RepeaterExists(db *gorm.DB, repeater Repeater) (bool, error) {
 	var count int64
-	db.Model(&Repeater{}).Where("radio_id = ?", repeater.RadioID).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&Repeater{}).Where("radio_id = ?", repeater.RadioID).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func RepeaterIDExists(db *gorm.DB, id uint) bool {
+func RepeaterIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
-	db.Model(&Repeater{}).Where("radio_id = ?", id).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&Repeater{}).Where("radio_id = ?", id).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func DeleteRepeater(db *gorm.DB, id uint) {
+func DeleteRepeater(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{})
 		tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
@@ -128,7 +129,9 @@ func DeleteRepeater(db *gorm.DB, id uint) {
 	})
 	if err != nil {
 		klog.Errorf("Error deleting repeater: %s", err)
+		return err
 	}
+	return nil
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {

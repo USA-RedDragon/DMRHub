@@ -17,6 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//nolint:golint,wrapcheck
 package models
 
 import (
@@ -49,70 +50,70 @@ func (u User) TableName() string {
 	return "users"
 }
 
-func UserExists(db *gorm.DB, user User) bool {
+func UserExists(db *gorm.DB, user User) (bool, error) {
 	var count int64
-	db.Model(&User{}).Where("ID = ?", user.ID).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&User{}).Where("ID = ?", user.ID).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func UserIDExists(db *gorm.DB, id uint) bool {
+func UserIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
-	db.Model(&User{}).Where("ID = ?", id).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&User{}).Where("ID = ?", id).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func FindUserByID(db *gorm.DB, id uint) User {
+func FindUserByID(db *gorm.DB, id uint) (User, error) {
 	var user User
-	db.Preload("Repeaters").First(&user, id)
-	return user
+	err := db.Preload("Repeaters").First(&user, id).Error
+	return user, err
 }
 
-func ListUsers(db *gorm.DB) []User {
+func ListUsers(db *gorm.DB) ([]User, error) {
 	var users []User
-	db.Preload("Repeaters").Find(&users)
-	return users
+	err := db.Preload("Repeaters").Find(&users).Error
+	return users, err
 }
 
-func CountUsers(db *gorm.DB) int {
+func CountUsers(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&User{}).Count(&count)
-	return int(count)
+	err := db.Model(&User{}).Count(&count).Error
+	return int(count), err
 }
 
-func FindUserAdmins(db *gorm.DB) []User {
+func FindUserAdmins(db *gorm.DB) ([]User, error) {
 	var users []User
-	db.Preload("Repeaters").Where("admin = ?", true).Find(&users)
-	return users
+	err := db.Preload("Repeaters").Where("admin = ?", true).Find(&users).Error
+	return users, err
 }
 
-func CountUserAdmins(db *gorm.DB) int {
+func CountUserAdmins(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&User{}).Where("admin = ?", true).Count(&count)
-	return int(count)
+	err := db.Model(&User{}).Where("admin = ?", true).Count(&count).Error
+	return int(count), err
 }
 
-func FindUserSuspended(db *gorm.DB) []User {
+func FindUserSuspended(db *gorm.DB) ([]User, error) {
 	var users []User
-	db.Preload("Repeaters").Where("suspended = ?", true).Find(&users)
-	return users
+	err := db.Preload("Repeaters").Where("suspended = ?", true).Find(&users).Error
+	return users, err
 }
 
-func CountUserSuspended(db *gorm.DB) int {
+func CountUserSuspended(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&User{}).Where("suspended = ?", true).Count(&count)
-	return int(count)
+	err := db.Model(&User{}).Where("suspended = ?", true).Count(&count).Error
+	return int(count), err
 }
 
-func FindUserUnapproved(db *gorm.DB) []User {
+func FindUserUnapproved(db *gorm.DB) ([]User, error) {
 	var users []User
-	db.Preload("Repeaters").Where("approved = ?", false).Find(&users)
-	return users
+	err := db.Preload("Repeaters").Where("approved = ?", false).Find(&users).Error
+	return users, err
 }
 
-func CountUserUnapproved(db *gorm.DB) int {
+func CountUserUnapproved(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&User{}).Where("approved = ?", false).Count(&count)
-	return int(count)
+	err := db.Model(&User{}).Where("approved = ?", false).Count(&count).Error
+	return int(count), err
 }
 
 type UsersSeeder struct {
@@ -150,7 +151,7 @@ func (s *UsersSeeder) Clear(db *gorm.DB) error {
 	return nil
 }
 
-func DeleteUser(db *gorm.DB, id uint) {
+func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
 		tx.Where("owner_id = ?", id).Find(&repeaters)
@@ -165,5 +166,7 @@ func DeleteUser(db *gorm.DB, id uint) {
 	})
 	if err != nil {
 		klog.Errorf("Error deleting user: %s", err)
+		return err
 	}
+	return nil
 }

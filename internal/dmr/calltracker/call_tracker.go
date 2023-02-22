@@ -68,19 +68,43 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	var sourceUser models.User
 	var sourceRepeater models.Repeater
 
-	if !models.UserIDExists(c.db, packet.Src) {
+	userExists, err := models.UserIDExists(c.db, packet.Src)
+	if err != nil {
+		klog.Errorf("Error checking if user %d exists: %s", packet.Src, err)
+		return
+	}
+
+	if !userExists {
 		if config.GetConfig().Debug {
 			klog.Errorf("User %d does not exist", packet.Src)
 		}
 		return
 	}
-	sourceUser = models.FindUserByID(c.db, packet.Src)
 
-	if !models.RepeaterIDExists(c.db, packet.Repeater) {
-		klog.Errorf("Repeater %d does not exist", packet.Repeater)
+	sourceUser, err = models.FindUserByID(c.db, packet.Src)
+	if err != nil {
+		klog.Errorf("Error finding user %d: %s", packet.Src, err)
 		return
 	}
-	sourceRepeater = models.FindRepeaterByID(c.db, packet.Repeater)
+
+	repeaterExists, err := models.RepeaterIDExists(c.db, packet.Repeater)
+	if err != nil {
+		klog.Errorf("Error checking if repeater %d exists: %s", packet.Repeater, err)
+		return
+	}
+
+	if !repeaterExists {
+		if config.GetConfig().Debug {
+			klog.Errorf("Repeater %d does not exist", packet.Repeater)
+		}
+		return
+	}
+
+	sourceRepeater, err = models.FindRepeaterByID(c.db, packet.Repeater)
+	if err != nil {
+		klog.Errorf("Error finding repeater %d: %s", packet.Repeater, err)
+		return
+	}
 
 	isToRepeater, isToTalkgroup, isToUser := false, false, false
 	var destUser models.User
@@ -91,26 +115,56 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	// if packet.GroupCall is true, then packet.Dst is either a talkgroup or a repeater
 	// if packet.GroupCall is false, then packet.Dst is a user
 	if packet.GroupCall {
-		// Decide between talkgroup and repeater
-		if !models.TalkgroupIDExists(c.db, packet.Dst) {
-			if !models.RepeaterIDExists(c.db, packet.Dst) {
-				klog.Errorf("Cannot find packet destination %d", packet.Dst)
+		talkgroupExists, err := models.TalkgroupIDExists(c.db, packet.Dst)
+		if err != nil {
+			klog.Errorf("Error checking if talkgroup %d exists: %s", packet.Dst, err)
+			return
+		}
+
+		repeaterExists, err := models.RepeaterIDExists(c.db, packet.Dst)
+		if err != nil {
+			klog.Errorf("Error checking if repeater %d exists: %s", packet.Dst, err)
+			return
+		}
+
+		switch {
+		case talkgroupExists:
+			isToTalkgroup = true
+			destTalkgroup, err = models.FindTalkgroupByID(c.db, packet.Dst)
+			if err != nil {
+				klog.Errorf("Error finding talkgroup %d: %s", packet.Dst, err)
 				return
 			}
+		case repeaterExists:
 			isToRepeater = true
-			destRepeater = models.FindRepeaterByID(c.db, packet.Dst)
-		} else {
-			isToTalkgroup = true
-			destTalkgroup = models.FindTalkgroupByID(c.db, packet.Dst)
-		}
-	} else {
-		// Find the user
-		if !models.UserIDExists(c.db, packet.Dst) {
+			destRepeater, err = models.FindRepeaterByID(c.db, packet.Dst)
+			if err != nil {
+				klog.Errorf("Error finding repeater %d: %s", packet.Dst, err)
+				return
+			}
+		default:
 			klog.Errorf("Cannot find packet destination %d", packet.Dst)
 			return
 		}
+	} else {
+		// Find the user
+		userExists, err = models.UserIDExists(c.db, packet.Dst)
+		if err != nil {
+			klog.Errorf("Error checking if user %d exists: %s", packet.Dst, err)
+			return
+		}
+
+		if !userExists {
+			klog.Errorf("Cannot find packet destination %d", packet.Dst)
+			return
+		}
+
 		isToUser = true
-		destUser = models.FindUserByID(c.db, packet.Dst)
+		destUser, err = models.FindUserByID(c.db, packet.Dst)
+		if err != nil {
+			klog.Errorf("Error finding user %d: %s", packet.Dst, err)
+			return
+		}
 	}
 
 	call := models.Call{
@@ -150,9 +204,9 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	}
 
 	// Create the call in the database
-	c.db.Create(&call)
-	if c.db.Error != nil {
-		klog.Errorf("Error creating call: %v", c.db.Error)
+	err = c.db.Create(&call).Error
+	if err != nil {
+		klog.Errorf("Error creating call: %v", err)
 		return
 	}
 
@@ -223,7 +277,7 @@ type jsonCallResponse struct {
 	RSSI          float32                   `json:"rssi"`
 }
 
-func (c *CallTracker) publishCall(ctx context.Context, call *models.Call, packet models.Packet) {
+func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
 	defer span.End()
 
@@ -316,7 +370,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 
 	call.CallData = append(call.CallData, packet.DMRData[:]...)
 
-	go c.publishCall(ctx, call, packet)
+	go c.publishCall(ctx, call)
 }
 
 func calcSequenceLoss(call *models.Call, packet models.Packet) {
@@ -465,8 +519,12 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			call.Active = false
 			call.Duration = time.Since(call.StartTime)
 			call.Loss = float32(call.LostSequences / call.TotalPackets)
-			c.db.Save(call)
-			c.publishCall(ctx, call, packet)
+			err := c.db.Save(call).Error
+			if err != nil {
+				klog.Errorf("Error saving call: %v", err)
+				return
+			}
+			c.publishCall(ctx, call)
 			c.inFlightCallsMutex.Lock()
 			delete(c.inFlightCalls, call.ID)
 			c.inFlightCallsMutex.Unlock()

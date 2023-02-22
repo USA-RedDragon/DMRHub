@@ -270,10 +270,21 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 				continue
 			}
 
-			if !models.UserIDExists(db, userID) {
+			userExists, err := models.UserIDExists(db, userID)
+			if err != nil {
+				klog.Errorf("Error checking if user exists: %s", err)
 				continue
 			}
-			user := models.FindUserByID(db, userID)
+
+			if !userExists {
+				continue
+			}
+
+			user, err := models.FindUserByID(db, userID)
+			if err != nil {
+				klog.Errorf("Error finding user: %s", err)
+				continue
+			}
 
 			for _, p := range user.Repeaters {
 				want, _ := p.WantRXCall(call)

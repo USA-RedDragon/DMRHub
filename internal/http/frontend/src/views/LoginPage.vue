@@ -2,26 +2,26 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
 <template>
   <div>
-    <Toast />
+    <PVToast />
     <form @submit.prevent="handleLogin(!v$.$invalid)">
       <Card>
         <template #title>Login</template>
@@ -77,7 +77,7 @@
         </template>
         <template #footer>
           <div class="card-footer">
-            <Button
+            <PVButton
               class="p-button-raised p-button-rounded"
               icon="pi pi-lock"
               label="Login"
@@ -91,32 +91,30 @@
 </template>
 
 <script>
-import Checkbox from "primevue/checkbox/sfc";
-import InputText from "primevue/inputtext/sfc";
-import Button from "primevue/button/sfc";
-import Card from "primevue/card/sfc";
-import API from "@/services/API";
+import InputText from 'primevue/inputtext/sfc';
+import Button from 'primevue/button/sfc';
+import Card from 'primevue/card/sfc';
+import API from '@/services/API';
 
-import { useVuelidate } from "@vuelidate/core";
-import { required } from "@vuelidate/validators";
+import { useVuelidate } from '@vuelidate/core';
+import { required } from '@vuelidate/validators';
 
-import { mapStores } from "pinia";
-import { useUserStore } from "@/store";
+import { mapStores } from 'pinia';
+import { useUserStore } from '@/store';
 
 export default {
   components: {
-    Checkbox,
     InputText,
-    Button,
+    PVButton: Button,
     Card,
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
-  data: function () {
+  data: function() {
     return {
-      username: "",
-      password: "",
+      username: '',
+      password: '',
       submitted: false,
     };
   },
@@ -137,34 +135,34 @@ export default {
         return;
       }
 
-      API.post("/auth/login", {
+      API.post('/auth/login', {
         username: this.username,
         password: this.password,
       })
         .then((_res) => {
-          API.get("/users/me").then((res) => {
+          API.get('/users/me').then((res) => {
             this.userStore.id = res.data.id;
             this.userStore.callsign = res.data.callsign;
             this.userStore.username = res.data.username;
             this.userStore.admin = res.data.admin;
             this.userStore.created_at = res.data.created_at;
             this.userStore.loggedIn = true;
-            this.$router.push("/");
+            this.$router.push('/');
           });
         })
         .catch((err) => {
           console.error(err);
           if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
-              summary: "Error",
-              severity: "error",
+              summary: 'Error',
+              severity: 'error',
               detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
-              summary: "Error",
-              severity: "error",
+              summary: 'Error',
+              severity: 'error',
               detail: `Error logging in`,
               life: 3000,
             });

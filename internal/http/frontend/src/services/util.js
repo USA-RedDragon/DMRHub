@@ -18,21 +18,21 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 export function getWebsocketURI() {
-  var loc = window.location;
-  var new_uri;
-  if (loc.protocol === "https:") {
-    new_uri = "wss:";
+  const loc = window.location;
+  let newURI;
+  if (loc.protocol === 'https:') {
+    newURI = 'wss:';
   } else {
-    new_uri = "ws:";
+    newURI = 'ws:';
   }
   // nodejs development
   if (window.location.port == 5173) {
     // Change port to 3005
-    new_uri += "//" + loc.hostname + ":3005";
+    newURI += '//' + loc.hostname + ':3005';
   } else {
-    new_uri += "//" + loc.host;
+    newURI += '//' + loc.host;
   }
-  new_uri += "/ws";
-  console.log('Websocket URI: "' + new_uri + '"');
-  return new_uri;
+  newURI += '/ws';
+  console.log('Websocket URI: "' + newURI + '"');
+  return newURI;
 }

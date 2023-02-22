@@ -2,26 +2,26 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
 <template>
   <div>
-    <Toast />
+    <PVToast />
     <ConfirmDialog>
       <template #message="slotProps">
         <div class="flex p-4">
@@ -89,7 +89,7 @@ Debug=0
         </template>
         <template #footer>
           <div class="card-footer">
-            <Button
+            <PVButton
               class="p-button-raised p-button-rounded"
               icon="pi pi-save"
               label="Save"
@@ -103,28 +103,26 @@ Debug=0
 </template>
 
 <script>
-import Card from "primevue/card/sfc";
-import Checkbox from "primevue/checkbox/sfc";
-import Button from "primevue/button/sfc";
-import InputText from "primevue/inputtext/sfc";
-import API from "@/services/API";
+import Card from 'primevue/card/sfc';
+import Button from 'primevue/button/sfc';
+import InputText from 'primevue/inputtext/sfc';
+import API from '@/services/API';
 
-import { useVuelidate } from "@vuelidate/core";
-import { required, numeric } from "@vuelidate/validators";
+import { useVuelidate } from '@vuelidate/core';
+import { required, numeric } from '@vuelidate/validators';
 
 export default {
   components: {
     Card,
-    Checkbox,
-    Button,
+    PVButton: Button,
     InputText,
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
-  data: function () {
+  data: function() {
     return {
-      radioID: "",
+      radioID: '',
       submitted: false,
       hostname: window.location.hostname,
     };
@@ -144,31 +142,31 @@ export default {
         return;
       }
 
-      var numericID = parseInt(this.radioID);
+      const numericID = parseInt(this.radioID);
       if (!numericID) {
         return;
       }
-      API.post("/repeaters", {
+      API.post('/repeaters', {
         id: numericID,
         password: this.repeater_password,
       })
         .then((res) => {
           if (!res.data) {
             this.$toast.add({
-              summary: "Error",
-              severity: "error",
+              summary: 'Error',
+              severity: 'error',
               detail: `Error registering repeater`,
               life: 3000,
             });
           } else {
             this.$confirm.require({
               message: res.data.password,
-              header: "Repeater Created",
-              acceptClass: "p-button-success",
-              rejectClass: "remove-reject-button",
-              acceptLabel: "OK",
+              header: 'Repeater Created',
+              acceptClass: 'p-button-success',
+              rejectClass: 'remove-reject-button',
+              acceptLabel: 'OK',
               accept: () => {
-                this.$router.push("/repeaters");
+                this.$router.push('/repeaters');
               },
             });
           }
@@ -177,15 +175,15 @@ export default {
           console.error(err);
           if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
-              summary: "Error",
-              severity: "error",
+              summary: 'Error',
+              severity: 'error',
               detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
-              summary: "Error",
-              severity: "error",
+              summary: 'Error',
+              severity: 'error',
               detail: `Error deleting repeater`,
               life: 3000,
             });

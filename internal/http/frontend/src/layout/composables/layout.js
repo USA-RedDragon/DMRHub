@@ -17,10 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { toRefs, reactive } from "vue";
+import { toRefs, reactive } from 'vue';
 
 const layoutConfig = reactive({
-  theme: "mdc-dark-indigo",
+  theme: 'mdc-dark-indigo',
   scale: 16,
 });
 
@@ -31,7 +31,7 @@ export function useLayout() {
 
   const setScale = (scale) => {
     layoutConfig.scale = scale;
-    window.localStorage.setItem("scale", scale);
+    window.localStorage.setItem('scale', scale);
   };
 
   return {

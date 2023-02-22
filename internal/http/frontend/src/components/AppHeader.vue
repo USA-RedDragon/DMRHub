@@ -2,20 +2,20 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
@@ -42,7 +42,7 @@
             >Talkgroups</a
           >
         </router-link>
-        <Menu
+        <PVMenu
           v-if="this.userStore.loggedIn"
           ref="talkgroupsMenu"
           :popup="true"
@@ -76,7 +76,7 @@
               </a>
             </router-link>
           </template>
-        </Menu>
+        </PVMenu>
 
         <router-link
           v-if="this.userStore.loggedIn && this.userStore.admin"
@@ -93,7 +93,7 @@
             >Admin</a
           >
         </router-link>
-        <Menu
+        <PVMenu
           v-if="this.userStore.loggedIn && this.userStore.admin"
           ref="adminMenu"
           :popup="true"
@@ -135,7 +135,7 @@
               </a>
             </router-link>
           </template>
-        </Menu>
+        </PVMenu>
         <RouterLink v-if="!this.userStore.loggedIn" to="/register"
           >Register</RouterLink
         >
@@ -149,27 +149,26 @@
 </template>
 
 <script>
-import Menu from "primevue/menu/sfc";
-import API from "@/services/API";
+import Menu from 'primevue/menu/sfc';
+import API from '@/services/API';
 
-import { mapStores } from "pinia";
-import { useUserStore } from "@/store";
+import { mapStores } from 'pinia';
+import { useUserStore } from '@/store';
 
 export default {
-  name: "Header",
   components: {
-    Menu,
+    PVMenu: Menu,
   },
-  data: function () {
+  data: function() {
     return {};
   },
   mounted() {},
   methods: {
     logout() {
-      API.get("/auth/logout")
+      API.get('/auth/logout')
         .then((_res) => {
           this.userStore.loggedIn = false;
-          this.$router.push("/login");
+          this.$router.push('/login');
         })
         .catch((err) => {
           console.error(err);

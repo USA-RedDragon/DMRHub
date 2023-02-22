@@ -17,24 +17,24 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createApp } from "vue";
-import { createPinia } from "pinia";
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 
-import PrimeVue from "primevue/config";
-import ToastService from "primevue/toastservice";
-import DialogService from "primevue/dialogservice";
-import ConfirmationService from "primevue/confirmationservice";
-import Toast from "primevue/toast";
-import ConfirmDialog from "primevue/confirmdialog";
+import PrimeVue from 'primevue/config';
+import ToastService from 'primevue/toastservice';
+import DialogService from 'primevue/dialogservice';
+import ConfirmationService from 'primevue/confirmationservice';
+import Toast from 'primevue/toast';
+import ConfirmDialog from 'primevue/confirmdialog';
 
-import App from "./App.vue";
-import router from "./router";
+import App from './App.vue';
+import router from './router';
 
-import "primeflex/primeflex.scss";
-import "primeicons/primeicons.css";
-import "primevue/resources/primevue.min.css";
+import 'primeflex/primeflex.scss';
+import 'primeicons/primeicons.css';
+import 'primevue/resources/primevue.min.css';
 
-import "./assets/main.css";
+import './assets/main.css';
 
 const pinia = createPinia();
 const app = createApp(App);
@@ -46,7 +46,7 @@ app.use(pinia);
 app.use(PrimeVue);
 app.use(router);
 
-app.component("Toast", Toast);
-app.component("ConfirmDialog", ConfirmDialog);
+app.component('PVToast', Toast);
+app.component('ConfirmDialog', ConfirmDialog);
 
-app.mount("#app");
+app.mount('#app');

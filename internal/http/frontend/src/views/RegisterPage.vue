@@ -2,26 +2,26 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
 <template>
   <div>
-    <Toast />
+    <PVToast />
     <form @submit.prevent="handleRegister(!v$.$invalid)">
       <Card>
         <template #title>Register</template>
@@ -194,7 +194,7 @@
         </template>
         <template #footer>
           <div class="card-footer">
-            <Button
+            <PVButton
               class="p-button-raised p-button-rounded"
               icon="pi pi-user"
               type="submit"
@@ -208,30 +208,30 @@
 </template>
 
 <script>
-import InputText from "primevue/inputtext/sfc";
-import Button from "primevue/button/sfc";
-import Card from "primevue/card/sfc";
-import API from "@/services/API";
+import InputText from 'primevue/inputtext/sfc';
+import Button from 'primevue/button/sfc';
+import Card from 'primevue/card/sfc';
+import API from '@/services/API';
 
-import { useVuelidate } from "@vuelidate/core";
-import { required, sameAs, numeric } from "@vuelidate/validators";
+import { useVuelidate } from '@vuelidate/core';
+import { required, sameAs, numeric } from '@vuelidate/validators';
 
 export default {
   components: {
     InputText,
-    Button,
+    PVButton: Button,
     Card,
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},
-  data: function () {
+  data: function() {
     return {
-      dmr_id: "",
-      username: "",
-      callsign: "",
-      password: "",
-      confirmPassword: "",
+      dmr_id: '',
+      username: '',
+      callsign: '',
+      password: '',
+      confirmPassword: '',
       submitted: false,
     };
   },
@@ -263,11 +263,11 @@ export default {
         return;
       }
 
-      var numericID = parseInt(this.dmr_id);
+      const numericID = parseInt(this.dmr_id);
       if (!numericID) {
         this.$toast.add({
-          severity: "error",
-          summary: "Error",
+          severity: 'error',
+          summary: 'Error',
           detail: `DMR ID must be a number`,
           life: 3000,
         });
@@ -275,14 +275,14 @@ export default {
       }
       if (this.confirmPassword != this.password) {
         this.$toast.add({
-          severity: "error",
-          summary: "Error",
+          severity: 'error',
+          summary: 'Error',
           detail: `Passwords do not match`,
           life: 3000,
         });
         return;
       }
-      API.post("/users", {
+      API.post('/users', {
         id: numericID,
         callsign: this.callsign,
         username: this.username,
@@ -290,29 +290,29 @@ export default {
       })
         .then((res) => {
           this.$toast.add({
-            severity: "success",
-            summary: "Success",
+            severity: 'success',
+            summary: 'Success',
             detail: res.data.message,
             life: 3000,
           });
           setTimeout(() => {
-            this.$router.push("/");
+            this.$router.push('/');
           }, 3000);
         })
         .catch((err) => {
           console.error(err);
           if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
+              severity: 'error',
+              summary: 'Error',
               detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
-              detail: "An unknown error occurred",
+              severity: 'error',
+              summary: 'Error',
+              detail: 'An unknown error occurred',
               life: 3000,
             });
           }

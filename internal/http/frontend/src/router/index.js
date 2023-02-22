@@ -17,8 +17,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from "vue-router";
-import routes from "./routes";
+import { createRouter, createWebHistory } from 'vue-router';
+import routes from './routes';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

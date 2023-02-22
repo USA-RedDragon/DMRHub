@@ -2,29 +2,29 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
 <script setup>
-import Button from "primevue/button/sfc";
-import Sidebar from "primevue/sidebar/sfc";
+import Button from 'primevue/button/sfc';
+import Sidebar from 'primevue/sidebar/sfc';
 
-import { ref } from "vue";
-import { useLayout } from "@/layout/composables/layout";
+import { ref } from 'vue';
+import { useLayout } from '@/layout/composables/layout';
 
 defineProps({
   simple: {
@@ -43,29 +43,29 @@ const onConfigButtonClick = () => {
 const onChangeTheme = (theme) => {
   // Save layoutConfig to localStorage
   window.localStorage.setItem(
-    "theme",
-    JSON.stringify(theme).replace('"', "").replace('"', "")
+    'theme',
+    JSON.stringify(theme).replace('"', '').replace('"', ''),
   );
-  const elementId = "theme-css";
+  const elementId = 'theme-css';
   const linkElement = document.getElementById(elementId);
   const cloneLinkElement = linkElement.cloneNode(true);
   const newThemeUrl = linkElement
-    .getAttribute("href")
+    .getAttribute('href')
     .replace(layoutConfig.theme.value, theme);
-  cloneLinkElement.setAttribute("id", elementId + "-clone");
-  cloneLinkElement.setAttribute("href", newThemeUrl);
-  cloneLinkElement.addEventListener("load", () => {
+  cloneLinkElement.setAttribute('id', elementId + '-clone');
+  cloneLinkElement.setAttribute('href', newThemeUrl);
+  cloneLinkElement.addEventListener('load', () => {
     linkElement.remove();
-    cloneLinkElement.setAttribute("id", elementId);
+    cloneLinkElement.setAttribute('id', elementId);
     changeThemeSettings(theme);
   });
   linkElement.parentNode.insertBefore(
     cloneLinkElement,
-    linkElement.nextSibling
+    linkElement.nextSibling,
   );
 };
 
-const theme = window.localStorage.getItem("theme");
+const theme = window.localStorage.getItem('theme');
 if (theme) {
   onChangeTheme(theme);
 }
@@ -79,10 +79,10 @@ const incrementScale = () => {
   applyScale();
 };
 const applyScale = () => {
-  document.documentElement.style.fontSize = layoutConfig.scale.value + "px";
+  document.documentElement.style.fontSize = layoutConfig.scale.value + 'px';
 };
 
-const scale = window.localStorage.getItem("scale");
+const scale = window.localStorage.getItem('scale');
 if (scale) {
   setScale(parseInt(scale));
   applyScale();

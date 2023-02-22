@@ -12,7 +12,7 @@
     "test:e2e:dev": "start-server-and-test 'vite dev --port 4173' :4173 'cypress open --e2e'",
     "test:unit": "vitest run --coverage",
     "test:unit:dev": "vitest",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
+    "lint": "eslint --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore src/ tests/",
     "lint:fix": "npm run lint -- --fix",
     "lint:report": "npm run lint -- --output-file eslint_report.json --format json"
   },
@@ -40,6 +40,7 @@
     "cypress-mochawesome-reporter": "^3.3.0",
     "cypress-multi-reporters": "^1.6.2",
     "eslint": "^8.34.0",
+    "eslint-config-google": "^0.14.0",
     "eslint-plugin-cypress": "^2.12.1",
     "eslint-plugin-vue": "^9.9.0",
     "mocha-junit-reporter": "^2.2.0",

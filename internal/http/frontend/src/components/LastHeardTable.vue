@@ -2,20 +2,20 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
@@ -89,22 +89,22 @@
 </template>
 
 <script>
-import DataTable from "primevue/datatable/sfc";
-import Column from "primevue/column/sfc";
+import DataTable from 'primevue/datatable/sfc';
+import Column from 'primevue/column/sfc';
 
-import moment from "moment";
+import moment from 'moment';
 
-import { getWebsocketURI } from "@/services/util";
-import API from "@/services/API";
+import { getWebsocketURI } from '@/services/util';
+import API from '@/services/API';
 
 export default {
-  name: "LastHeardTable",
+  name: 'LastHeardTable',
   props: {},
   components: {
     DataTable,
     Column,
   },
-  data: function () {
+  data: function() {
     return {
       lastheard: [],
       totalRecords: 0,
@@ -114,7 +114,7 @@ export default {
   },
   mounted() {
     this.fetchData();
-    this.socket = new WebSocket(getWebsocketURI() + "/calls");
+    this.socket = new WebSocket(getWebsocketURI() + '/calls');
     this.mapSocketEvents();
   },
   unmounted() {
@@ -140,28 +140,28 @@ export default {
         });
     },
     cleanData(data) {
-      let copyData = JSON.parse(JSON.stringify(data));
+      const copyData = JSON.parse(JSON.stringify(data));
       for (let i = 0; i < copyData.length; i++) {
         copyData[i].start_time = moment(copyData[i].start_time);
 
-        if (typeof copyData[i].duration == "number") {
+        if (typeof copyData[i].duration == 'number') {
           copyData[i].duration = (copyData[i].duration / 1000000000).toFixed(1);
         }
 
         // loss is in a ratio, multiply by 100 to get a percentage
-        if (typeof copyData[i].loss == "number") {
+        if (typeof copyData[i].loss == 'number') {
           copyData[i].loss = (copyData[i].loss * 100).toFixed(1);
         }
 
-        if (typeof copyData[i].ber == "number") {
+        if (typeof copyData[i].ber == 'number') {
           copyData[i].ber = (copyData[i].ber * 100).toFixed(1);
         }
 
-        if (typeof copyData[i].jitter == "number") {
+        if (typeof copyData[i].jitter == 'number') {
           copyData[i].jitter = copyData[i].jitter.toFixed(1);
         }
 
-        if (typeof copyData[i].rssi == "number") {
+        if (typeof copyData[i].rssi == 'number') {
           copyData[i].rssi = copyData[i].rssi.toFixed(0);
         }
       }
@@ -169,22 +169,22 @@ export default {
       return copyData;
     },
     mapSocketEvents() {
-      this.socket.addEventListener("open", (event) => {
-        console.log("Connected to calls websocket");
-        this.socket.send("PING");
+      this.socket.addEventListener('open', (_event) => {
+        console.log('Connected to calls websocket');
+        this.socket.send('PING');
       });
 
-      this.socket.addEventListener("error", (event) => {
-        console.error("Error from calls websocket", event);
+      this.socket.addEventListener('error', (event) => {
+        console.error('Error from calls websocket', event);
         this.socket.close();
-        this.socket = new WebSocket(getWebsocketURI() + "/calls");
+        this.socket = new WebSocket(getWebsocketURI() + '/calls');
         this.mapSocketEvents();
       });
 
-      this.socket.addEventListener("message", (event) => {
-        if (event.data == "PONG") {
+      this.socket.addEventListener('message', (event) => {
+        if (event.data == 'PONG') {
           setTimeout(() => {
-            this.socket.send("PING");
+            this.socket.send('PING');
           }, 1000);
           return;
         }
@@ -193,7 +193,7 @@ export default {
         // If it is, we need to update it
         // If it isn't, we need to add it
         let found = false;
-        let copyLastheard = JSON.parse(JSON.stringify(this.lastheard));
+        const copyLastheard = JSON.parse(JSON.stringify(this.lastheard));
 
         for (let i = 0; i < copyLastheard.length; i++) {
           if (copyLastheard[i].id == call.id) {

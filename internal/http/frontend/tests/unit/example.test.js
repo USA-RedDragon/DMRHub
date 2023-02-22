@@ -17,8 +17,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { test } from "vitest";
+import { test } from 'vitest';
 
-test("name", async () => {
+test('name', async () => {
   /* ... */
 }, 1000);

@@ -17,22 +17,22 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { defineStore } from "pinia";
+import { defineStore } from 'pinia';
 
-export const useUserStore = defineStore("user", {
+export const useUserStore = defineStore('user', {
   state: () => ({
     loggedIn: false,
     id: 0,
-    callsign: "",
-    username: "",
+    callsign: '',
+    username: '',
     admin: false,
-    created_at: "",
+    created_at: '',
   }),
   getters: {},
   actions: {},
 });
 
-export const useSettingsStore = defineStore("settings", {
+export const useSettingsStore = defineStore('settings', {
   state: () => ({
     refreshInterval: 5000,
   }),

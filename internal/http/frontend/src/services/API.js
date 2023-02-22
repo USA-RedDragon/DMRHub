@@ -17,16 +17,16 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import axios from "axios";
+import axios from 'axios';
 
-var baseURL;
+let baseURL;
 
 // nodejs development
 if (window.location.port == 5173) {
   // Change port to 3005
-  baseURL = "http://localhost:3005/api/v1";
+  baseURL = 'http://localhost:3005/api/v1';
 } else {
-  baseURL = "/api/v1";
+  baseURL = '/api/v1';
 }
 
 const instance = axios.create({
@@ -44,16 +44,16 @@ instance.interceptors.response.use(
     }
     const status = error.response.status;
     if (
-      window.location.pathname !== "/login" &&
-      window.location.pathname !== "/" &&
-      window.location.pathname !== "/register" &&
+      window.location.pathname !== '/login' &&
+      window.location.pathname !== '/' &&
+      window.location.pathname !== '/register' &&
       (status === 401 || status === 403)
     ) {
-      window.location = "/login";
+      window.location = '/login';
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default instance;

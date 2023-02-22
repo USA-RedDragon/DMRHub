@@ -2,20 +2,20 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
@@ -41,7 +41,7 @@
       :header="this.$props.approval ? 'Approve?' : 'Approved'"
     >
       <template #body="slotProps" v-if="this.$props.approval">
-        <Button
+        <PVButton
           label="Approve"
           class="p-button-raised p-button-rounded"
           @click="handleApprovePage(slotProps.data)"
@@ -54,7 +54,7 @@
     </Column>
     <Column field="suspended" header="Suspend?" v-if="!this.$props.approval">
       <template #body="slotProps">
-        <Checkbox
+        <PVCheckbox
           v-model="slotProps.data.suspended"
           :binary="true"
           @change="handleSuspend($event, slotProps.data)"
@@ -63,7 +63,7 @@
     </Column>
     <Column field="admin" header="Admin?" v-if="!this.$props.approval">
       <template #body="slotProps">
-        <Checkbox
+        <PVCheckbox
           v-model="slotProps.data.admin"
           :binary="true"
           @change="handleAdmin($event, slotProps.data)"
@@ -81,48 +81,48 @@
       }}</template>
     </Column>
     <template #expansion="slotProps">
-      <Button
+      <PVButton
         class="p-button-raised p-button-rounded p-button-primary"
         icon="pi pi-pencil"
         label="Edit"
         @click="editUser(slotProps.data)"
-      ></Button>
-      <Button
+      ></PVButton>
+      <PVButton
         class="p-button-raised p-button-rounded p-button-danger"
         icon="pi pi-trash"
         label="Delete"
         style="margin-left: 0.5em"
         @click="deleteUser(slotProps.data)"
-      ></Button>
+      ></PVButton>
     </template>
   </DataTable>
 </template>
 
 <script>
-import Button from "primevue/button/sfc";
-import Checkbox from "primevue/checkbox/sfc";
-import DataTable from "primevue/datatable/sfc";
-import Column from "primevue/column/sfc";
+import Button from 'primevue/button/sfc';
+import Checkbox from 'primevue/checkbox/sfc';
+import DataTable from 'primevue/datatable/sfc';
+import Column from 'primevue/column/sfc';
 
-import moment from "moment";
+import moment from 'moment';
 
-import { mapStores } from "pinia";
-import { useUserStore, useSettingsStore } from "@/store";
+import { mapStores } from 'pinia';
+import { useUserStore, useSettingsStore } from '@/store';
 
-import API from "@/services/API";
+import API from '@/services/API';
 
 export default {
-  name: "UserTable",
+  name: 'UserTable',
   props: {
     approval: Boolean,
   },
   components: {
-    Button,
-    Checkbox,
+    PVButton: Button,
+    PVCheckbox: Checkbox,
     DataTable,
     Column,
   },
-  data: function () {
+  data: function() {
     return {
       users: [],
       expandedRows: [],
@@ -135,7 +135,7 @@ export default {
     this.fetchData();
     this.refresh = setInterval(
       this.fetchData,
-      this.settingsStore.refreshInterval
+      this.settingsStore.refreshInterval,
     );
   },
   unmounted() {
@@ -154,7 +154,7 @@ export default {
               res.data.users[i].repeaters = res.data.users[i].repeaters.length;
 
               res.data.users[i].created_at = moment(
-                res.data.users[i].created_at
+                res.data.users[i].created_at,
               );
             }
             this.users = res.data.users;
@@ -171,7 +171,7 @@ export default {
               res.data.users[i].repeaters = res.data.users[i].repeaters.length;
 
               res.data.users[i].created_at = moment(
-                res.data.users[i].created_at
+                res.data.users[i].created_at,
               );
             }
             this.users = res.data.users;
@@ -185,18 +185,18 @@ export default {
     },
     handleApprovePage(user) {
       this.$confirm.require({
-        message: "Are you sure you want to approve this user?",
-        header: "Approve User",
-        icon: "pi pi-exclamation-triangle",
-        acceptClass: "p-button-danger",
+        message: 'Are you sure you want to approve this user?',
+        header: 'Approve User',
+        icon: 'pi pi-exclamation-triangle',
+        acceptClass: 'p-button-danger',
         accept: () => {
-          API.post("/users/approve/" + user.id, {})
-            .then((res) => {
+          API.post('/users/approve/' + user.id, {})
+            .then((_res) => {
               // Refresh user data
               this.fetchData();
               this.$toast.add({
-                summary: "Confirmed",
-                severity: "success",
+                summary: 'Confirmed',
+                severity: 'success',
                 detail: `User ${user.id} approved`,
                 life: 3000,
               });
@@ -204,8 +204,8 @@ export default {
             .catch((err) => {
               console.error(err);
               this.$toast.add({
-                summary: "Error",
-                severity: "error",
+                summary: 'Error',
+                severity: 'error',
                 detail: `Error approving user ${user.id}`,
                 life: 3000,
               });
@@ -215,14 +215,14 @@ export default {
       });
     },
     handleSuspend(event, user) {
-      var action = user.suspended ? "suspend" : "unsuspend";
-      var actionVerb = user.suspended ? "suspended" : "unsuspended";
+      const action = user.suspended ? 'suspend' : 'unsuspend';
+      const actionVerb = user.suspended ? 'suspended' : 'unsuspended';
       // Don't allow the user to uncheck the admin box
       API.post(`/users/${action}/${user.id}`, {})
         .then(() => {
           this.$toast.add({
-            summary: "Confirmed",
-            severity: "success",
+            summary: 'Confirmed',
+            severity: 'success',
             detail: `User ${user.id} ${actionVerb}`,
             life: 3000,
           });
@@ -232,16 +232,16 @@ export default {
           console.error(err);
           if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
+              severity: 'error',
+              summary: 'Error',
               detail: err.response.data.error,
               life: 3000,
             });
           } else {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
-              detail: "An unknown error occurred",
+              severity: 'error',
+              summary: 'Error',
+              detail: 'An unknown error occurred',
               life: 3000,
             });
           }
@@ -249,15 +249,15 @@ export default {
         });
     },
     handleAdmin(event, user) {
-      var action = user.admin ? "promote" : "demote";
-      var actionVerb = user.admin ? "promoted" : "demoted";
+      const action = user.admin ? 'promote' : 'demote';
+      const actionVerb = user.admin ? 'promoted' : 'demoted';
       // Don't allow the user to uncheck the admin box
       if (this.userStore.id == 999999) {
         API.post(`/users/${action}/${user.id}`, {})
           .then(() => {
             this.$toast.add({
-              summary: "Confirmed",
-              severity: "success",
+              summary: 'Confirmed',
+              severity: 'success',
               detail: `User ${user.id} ${actionVerb}`,
               life: 3000,
             });
@@ -267,16 +267,16 @@ export default {
             console.error(err);
             if (err.response && err.response.data && err.response.data.error) {
               this.$toast.add({
-                severity: "error",
-                summary: "Error",
+                severity: 'error',
+                summary: 'Error',
                 detail: err.response.data.error,
                 life: 3000,
               });
             } else {
               this.$toast.add({
-                severity: "error",
-                summary: "Error",
-                detail: "An unknown error occurred",
+                severity: 'error',
+                summary: 'Error',
+                detail: 'An unknown error occurred',
                 life: 3000,
               });
             }
@@ -284,18 +284,18 @@ export default {
           });
       } else {
         this.$toast.add({
-          summary: "Only the System Admin can do this.",
-          severity: "error",
+          summary: 'Only the System Admin can do this.',
+          severity: 'error',
           detail: `Standard Admins cannot promote other users.`,
           life: 3000,
         });
         this.fetchData();
       }
     },
-    editUser(user) {
+    editUser(_user) {
       this.$toast.add({
-        summary: "Not Implemented",
-        severity: "error",
+        summary: 'Not Implemented',
+        severity: 'error',
         detail: `Users cannot be edited yet.`,
         life: 3000,
       });
@@ -303,16 +303,16 @@ export default {
     deleteUser(user) {
       if (this.userStore.id == 999999) {
         this.$confirm.require({
-          message: "Are you sure you want to delete this user?",
-          header: "Delete User",
-          icon: "pi pi-exclamation-triangle",
-          acceptClass: "p-button-danger",
+          message: 'Are you sure you want to delete this user?',
+          header: 'Delete User',
+          icon: 'pi pi-exclamation-triangle',
+          acceptClass: 'p-button-danger',
           accept: () => {
-            API.delete("/users/" + user.id)
-              .then((res) => {
+            API.delete('/users/' + user.id)
+              .then((_res) => {
                 this.$toast.add({
-                  summary: "Confirmed",
-                  severity: "success",
+                  summary: 'Confirmed',
+                  severity: 'success',
                   detail: `User ${user.id} deleted`,
                   life: 3000,
                 });
@@ -321,8 +321,8 @@ export default {
               .catch((err) => {
                 console.error(err);
                 this.$toast.add({
-                  severity: "error",
-                  summary: "Error",
+                  severity: 'error',
+                  summary: 'Error',
                   detail: `Error deleting user ${user.id}`,
                   life: 3000,
                 });
@@ -332,8 +332,8 @@ export default {
         });
       } else {
         this.$toast.add({
-          summary: "Only the System Admin can do this.",
-          severity: "error",
+          summary: 'Only the System Admin can do this.',
+          severity: 'error',
           detail: `Standard admins cannot delete other users.`,
           life: 3000,
         });

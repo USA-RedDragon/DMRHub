@@ -2,20 +2,20 @@
   SPDX-License-Identifier: AGPL-3.0-or-later
   DMRHub - Run a DMR network server in a single binary
   Copyright (C) 2023 Jacob McSwain
-  
+
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU Affero General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-  
+
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU Affero General Public License for more details.
-  
+
   You should have received a copy of the GNU Affero General Public License
   along with this program. If not, see <https:  www.gnu.org/licenses/>.
-  
+
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 -->
 
@@ -34,7 +34,7 @@
     <template v-if="this.$props.admin" #header>
       <div class="table-header-container">
         <RouterLink to="/admin/talkgroups/new">
-          <Button
+          <PVButton
             class="p-button-raised p-button-rounded p-button-success"
             icon="pi pi-plus"
             label="Add New Talkgroup"
@@ -135,70 +135,68 @@
       v-if="this.$props.admin || this.$props.owner"
       #expansion="slotProps"
     >
-      <Button
+      <PVButton
         v-if="!slotProps.data.editable"
         class="p-button-raised p-button-rounded p-button-primary"
         icon="pi pi-pencil"
         label="Edit"
         @click="startEdit(slotProps.data)"
-      ></Button>
-      <Button
+      ></PVButton>
+      <PVButton
         v-if="slotProps.data.editable"
         class="p-button-raised p-button-rounded p-button-success"
         icon="pi pi-check"
         label="Save"
         @click="saveTalkgroup(slotProps.data)"
-      ></Button>
-      <Button
+      ></PVButton>
+      <PVButton
         v-if="slotProps.data.editable"
         class="p-button-raised p-button-rounded p-button-primary"
         icon="pi pi-ban"
         label="Cancel"
         style="margin-left: 0.5em"
         @click="cancelEdit(slotProps.data)"
-      ></Button>
-      <Button
+      ></PVButton>
+      <PVButton
         v-if="this.$props.admin && !slotProps.data.editable"
         class="p-button-raised p-button-rounded p-button-danger"
         icon="pi pi-trash"
         label="Delete"
         style="margin-left: 0.5em"
         @click="deleteTalkgroup(slotProps.data)"
-      ></Button>
+      ></PVButton>
     </template>
   </DataTable>
 </template>
 
 <script>
-import Button from "primevue/button/sfc";
-import DataTable from "primevue/datatable/sfc";
-import Column from "primevue/column/sfc";
-import InputText from "primevue/inputtext/sfc";
-import Chip from "primevue/chip/sfc";
-import MultiSelect from "primevue/multiselect/sfc";
+import Button from 'primevue/button/sfc';
+import DataTable from 'primevue/datatable/sfc';
+import Column from 'primevue/column/sfc';
+import InputText from 'primevue/inputtext/sfc';
+import MultiSelect from 'primevue/multiselect/sfc';
 
-import moment from "moment";
+import moment from 'moment';
 
-import { mapStores } from "pinia";
-import { useSettingsStore } from "@/store";
+import { mapStores } from 'pinia';
+import { useSettingsStore } from '@/store';
 
-import API from "@/services/API";
+import API from '@/services/API';
 
 export default {
-  name: "TalkgroupTable",
+  name: 'TalkgroupTable',
   props: {
     admin: Boolean,
     owner: Boolean,
   },
   components: {
-    Button,
+    PVButton: Button,
     DataTable,
     Column,
     InputText,
     MultiSelect,
-    Chip,
   },
-  data: function () {
+  data: function() {
     return {
       talkgroups: [],
       refresh: null,
@@ -213,7 +211,7 @@ export default {
     this.fetchData();
     this.refresh = setInterval(
       this.fetchData,
-      this.settingsStore.refreshInterval
+      this.settingsStore.refreshInterval,
     );
   },
   unmounted() {
@@ -232,9 +230,9 @@ export default {
         return;
       }
       if (this.$props.owner || this.$props.admin) {
-        API.get("/users?limit=none")
+        API.get('/users?limit=none')
           .then((res) => {
-            var parrotIndex = -1;
+            let parrotIndex = -1;
             for (let i = 0; i < res.data.users.length; i++) {
               res.data.users[
                 i
@@ -276,7 +274,7 @@ export default {
       }
     },
     cleanData(data) {
-      let copyData = JSON.parse(JSON.stringify(data));
+      const copyData = JSON.parse(JSON.stringify(data));
 
       for (let i = 0; i < copyData.length; i++) {
         copyData[i].created_at = moment(copyData[i].created_at);
@@ -314,16 +312,16 @@ export default {
     deleteTalkgroup(talkgroup) {
       // First, show a confirmation dialog
       this.$confirm.require({
-        message: "Are you sure you want to delete this talkgroup?",
-        header: "Delete Talkgroup",
-        icon: "pi pi-exclamation-triangle",
-        acceptClass: "p-button-danger",
+        message: 'Are you sure you want to delete this talkgroup?',
+        header: 'Delete Talkgroup',
+        icon: 'pi pi-exclamation-triangle',
+        acceptClass: 'p-button-danger',
         accept: () => {
-          API.delete("/talkgroups/" + talkgroup.id)
-            .then((res) => {
+          API.delete('/talkgroups/' + talkgroup.id)
+            .then((_res) => {
               this.$toast.add({
-                summary: "Confirmed",
-                severity: "success",
+                summary: 'Confirmed',
+                severity: 'success',
                 detail: `Talkgroup ${talkgroup.id} deleted`,
                 life: 3000,
               });
@@ -332,8 +330,8 @@ export default {
             .catch((err) => {
               console.error(err);
               this.$toast.add({
-                severity: "error",
-                summary: "Error",
+                severity: 'error',
+                summary: 'Error',
                 detail: `Error deleting talkgroup ${talkgroup.id}`,
                 life: 3000,
               });
@@ -343,25 +341,25 @@ export default {
       });
     },
     saveTalkgroup(talkgroup) {
-      API.patch("/talkgroups/" + talkgroup.id, {
+      API.patch('/talkgroups/' + talkgroup.id, {
         name: talkgroup.name,
         description: talkgroup.description,
       })
-        .then((res) => {
+        .then((_res) => {
           this.$toast.add({
-            severity: "success",
-            summary: "Success",
-            detail: "Talkgroup updated",
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Talkgroup updated',
             life: 3000,
           });
           API.post(`/talkgroups/${talkgroup.id}/admins`, {
             user_ids: talkgroup.admins.map((admin) => admin.id),
           })
-            .then((res) => {
+            .then((_res) => {
               API.post(`/talkgroups/${talkgroup.id}/ncos`, {
                 user_ids: talkgroup.ncos.map((nco) => nco.id),
               })
-                .then((res) => {
+                .then((_res) => {
                   talkgroup.editable = false;
                   this.editableTalkgroups--;
                   if (this.editableTalkgroups == 0) {
@@ -376,19 +374,19 @@ export default {
                     err.response.data.error
                   ) {
                     this.$toast.add({
-                      severity: "error",
-                      summary: "Error",
+                      severity: 'error',
+                      summary: 'Error',
                       detail:
-                        "Failed to update talkgroup admins: " +
+                        'Failed to update talkgroup admins: ' +
                         err.response.data.error,
                       life: 3000,
                     });
                     return;
                   } else {
                     this.$toast.add({
-                      severity: "error",
-                      summary: "Error",
-                      detail: "Failed to update talkgroup admins",
+                      severity: 'error',
+                      summary: 'Error',
+                      detail: 'Failed to update talkgroup admins',
                       life: 3000,
                     });
                   }
@@ -402,19 +400,19 @@ export default {
                 err.response.data.error
               ) {
                 this.$toast.add({
-                  severity: "error",
-                  summary: "Error",
+                  severity: 'error',
+                  summary: 'Error',
                   detail:
-                    "Failed to update talkgroup admins: " +
+                    'Failed to update talkgroup admins: ' +
                     err.response.data.error,
                   life: 3000,
                 });
                 return;
               } else {
                 this.$toast.add({
-                  severity: "error",
-                  summary: "Error",
-                  detail: "Failed to update talkgroup admins",
+                  severity: 'error',
+                  summary: 'Error',
+                  detail: 'Failed to update talkgroup admins',
                   life: 3000,
                 });
               }
@@ -424,17 +422,17 @@ export default {
           console.error(err);
           if (err.response && err.response.data && err.response.data.error) {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
-              detail: "Failed to update talkgroup: " + err.response.data.error,
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Failed to update talkgroup: ' + err.response.data.error,
               life: 3000,
             });
             return;
           } else {
             this.$toast.add({
-              severity: "error",
-              summary: "Error",
-              detail: "Failed to update talkgroup",
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Failed to update talkgroup',
               life: 3000,
             });
           }

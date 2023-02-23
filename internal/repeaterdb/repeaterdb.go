@@ -22,7 +22,6 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"

@@ -70,7 +70,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(initTracer, "Could not set resources: ", err)
+		logging.GetLogger(logging.Error).Logf(initTracer, "Could not set resources: %v", err)
 	}
 
 	otel.SetTracerProvider(
@@ -190,7 +190,7 @@ func start() int {
 		// For each repeater in the DB, start a gofunc to listen for calls
 		repeaters, err := models.ListRepeaters(database)
 		if err != nil {
-			return err
+			return err //nolint:golint,wrapcheck
 		}
 		for _, repeater := range repeaters {
 			go hbrp.GetSubscriptionManager().ListenForCalls(ctx, redis, repeater)
@@ -228,9 +228,10 @@ func start() int {
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
 			if config.GetConfig().OTLPEndpoint != "" {
-				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				const timeout = 5 * time.Second
+				ctx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
-				cleanup(ctx)
+				_ = cleanup(ctx)
 			}
 		}(wg)
 

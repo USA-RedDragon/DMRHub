@@ -13,13 +13,14 @@ import (
 type LogType string
 
 const (
-	Access LogType = LogType("access")
-	Error  LogType = LogType("error")
+	Access          LogType = LogType("access")
+	Error           LogType = LogType("error")
+	maxInFlightLogs         = 200
 )
 
 var (
-	accessLog *Logger
-	errorLog  *Logger
+	accessLog *Logger //nolint:golint,gochecknoglobals
+	errorLog  *Logger //nolint:golint,gochecknoglobals
 )
 
 func GetLogger(logType LogType) *Logger {
@@ -56,7 +57,7 @@ func createLogger(logType LogType) *Logger {
 		// to create it, then create a local log file
 		file := fmt.Sprintf("/var/log/DMRHub/DMRHub.%s.log", logType)
 		if _, err := os.Stat("/var/log/DMRHub"); os.IsNotExist(err) {
-			err := os.Mkdir("/var/log/DMRHub", 0755)
+			err := os.Mkdir("/var/log/DMRHub", 0755) //nolint:golint,gomnd
 			if err != nil {
 				logFile = createLocalLog(logType)
 				break
@@ -67,13 +68,13 @@ func createLogger(logType LogType) *Logger {
 				break
 			}
 
-			logFile, err = os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665)
+			logFile, err = os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665) //nolint:golint,gomnd
 			if err != nil {
 				logFile = createLocalLog(logType)
 				break
 			}
 		} else {
-			logFile, err = os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665)
+			logFile, err = os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665) //nolint:golint,gomnd
 			if err != nil {
 				logFile = createLocalLog(logType)
 				break
@@ -93,7 +94,7 @@ func createLogger(logType LogType) *Logger {
 		logger:  sysLogger,
 		file:    logFile,
 		Writer:  sysLogger.Writer(),
-		channel: make(chan string, 200),
+		channel: make(chan string, maxInFlightLogs),
 	}
 
 	go logger.Relay()
@@ -102,12 +103,8 @@ func createLogger(logType LogType) *Logger {
 }
 
 func (l *Logger) Relay() {
-	for {
-		select {
-		case msg, ok := <-l.channel:
-			if !ok {
-				return
-			}
+	for msg := range l.channel {
+		if msg != "" {
 			l.logger.Print(msg)
 		}
 	}
@@ -115,7 +112,7 @@ func (l *Logger) Relay() {
 
 func createLocalLog(logType LogType) *os.File {
 	file := fmt.Sprintf("DMRHub.%s.log", logType)
-	logFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665)
+	logFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0665) //nolint:golint,gomnd
 	if err != nil {
 		log.Fatalf("Failed to create log file: %s:\n%v", file, err)
 	}

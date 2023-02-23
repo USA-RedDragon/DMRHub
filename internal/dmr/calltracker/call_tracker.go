@@ -188,7 +188,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		Loss:           0.0,
 		Jitter:         0.0,
 		LastFrameNum:   dmrconst.VoiceA,
-		LastSeq:        256,
+		LastSeq:        256, //nolint:golint,gomnd // 256 is 1+ the max sequence number
 		RSSI:           0,
 		BER:            0.0,
 		TotalBits:      0,
@@ -492,7 +492,6 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			delete(c.inFlightCalls, call.ID)
 
 			logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
-
 		}
 	}
 	c.inFlightCallsMutex.Unlock()

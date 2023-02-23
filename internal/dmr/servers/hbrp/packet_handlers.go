@@ -297,7 +297,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
-		s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", lastCall.RepeaterID), packedBytes)
+		s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes)
 	}
 
 	// For each user repeaters
@@ -305,7 +305,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		// If the repeater is online and the last user call was not to this repeater
 		if repeater.RadioID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, repeater.RadioID) {
 			// Send the packet to the repeater
-			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", repeater.RadioID), packedBytes)
+			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeater.RadioID), packedBytes)
 		}
 	}
 }
@@ -381,7 +381,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		case packet.GroupCall && isVoice:
 			go s.switchDynamicTalkgroup(ctx, packet)
 
-			// We can just use redis to publish to "packets:talkgroup:<id>"
+			// We can just use redis to publish to "hbrp:packets:talkgroup:<id>"
 			var rawPacket models.RawDMRPacket
 			rawPacket.Data = data
 			rawPacket.RemoteIP = remoteAddr.IP.String()
@@ -391,7 +391,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 				klog.Errorf("Error marshalling raw packet", err)
 				return
 			}
-			s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:talkgroup:%d", packet.Dst), packedBytes)
+			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes)
 		case !packet.GroupCall && isVoice:
 			// packet.Dst is either a repeater or a user
 			// If it's a repeater, we need to send it to the repeater
@@ -420,7 +420,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			)
 			if (packet.Dst >= rptIDMin && packet.Dst <= rptIDMax) || (packet.Dst >= hotspotIDMin && packet.Dst <= hotspotIDMax) {
 				// This is to a repeater
-				s.Redis.Redis.Publish(ctx, fmt.Sprintf("packets:repeater:%d", packet.Dst), packedBytes)
+				s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes)
 			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
 				s.doUser(ctx, packet, packedBytes)
 			}

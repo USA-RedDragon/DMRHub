@@ -418,7 +418,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
 				err := pubsub.Unsubscribe(ctx, fmt.Sprintf("hbrp:packets:talkgroup:%d", tg))
 				if err != nil {
-					klog.Errorf("Error unsubscribing from packets:talkgroup:%d: %s", tg, err)
+					klog.Errorf("Error unsubscribing from hbrp:packets:talkgroup:%d: %s", tg, err)
 				}
 				err = pubsub.Close()
 				if err != nil {

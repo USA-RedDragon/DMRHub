@@ -245,7 +245,7 @@ func (m *SubscriptionManager) ListenForCalls(ctx context.Context, redis *redis.C
 }
 
 func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.DB, redis *redis.Client, userID uint) {
-	klog.Infof("Listening for websocket for user %d", userID)
+	logging.GetLogger(logging.Access).Logf(m.ListenForWebsocket, "Listening for websocket for user %d", userID)
 	pubsub := redis.Subscribe(ctx, "calls")
 	defer func() {
 		err := pubsub.Unsubscribe(ctx, "calls")
@@ -261,7 +261,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 	for {
 		select {
 		case <-ctx.Done():
-			klog.Infof("Websocket context done for user %d", userID)
+			logging.GetLogger(logging.Access).Logf(m.ListenForWebsocket, "Websocket context done for user %d", userID)
 			return
 		case msg := <-pubsubChannel:
 			var call models.Call

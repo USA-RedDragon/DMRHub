@@ -363,15 +363,29 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	// time the last packet was. We'll use this to calculate the average jitter.
 	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2 //nolint:golint,gomnd
 
+	call.Duration = time.Since(call.StartTime)
+
+	lastTotalPackets := call.TotalPackets
+	lastLostSequences := call.LostSequences
 	calcSequenceLoss(call, packet)
 
-	if packet.BER > 0 {
-		call.TotalBits += 141
-		call.BER = ((call.BER + float32(packet.BER)) / float32(call.TotalBits)) / 2 //nolint:golint,gomnd
+	lastLoss := call.Loss
+	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
+
+	// Safety net: If the loss underflows, set it to the last value
+	if call.Loss > 1 {
+		call.Loss = lastLoss
+		call.TotalPackets = lastTotalPackets
+		call.LostSequences = lastLostSequences
 	}
 
-	call.Duration = time.Since(call.StartTime)
-	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
+	call.TotalBits += 141
+	if packet.BER > 0 {
+		call.TotalErrors += packet.BER
+	}
+
+	call.BER = float32(call.TotalErrors) / float32(call.TotalBits)
+
 	call.Active = true
 	if packet.RSSI > 0 {
 		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2 //nolint:golint,gomnd
@@ -499,24 +513,9 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 				break
 			}
 
-			// If the call doesn't have a term, we lost that packet
-			if !call.HasTerm {
-				call.LostSequences++
-				call.TotalPackets++
-				if config.GetConfig().Debug {
-					logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d ended without a term", packet.StreamID)
-				}
-			}
-
-			// If lastFrameNum != 5, Calculate the number of lost packets by subtracting the last frame number from 5 and adding it to the lost sequences
-			if call.LastFrameNum != dmrconst.VoiceF {
-				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum
-				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum
-			}
-
-			call.Active = false
 			call.Duration = time.Since(call.StartTime)
-			call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
+			call.Active = false
+
 			err := c.db.Save(call).Error
 			if err != nil {
 				klog.Errorf("Error saving call: %v", err)

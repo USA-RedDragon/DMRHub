@@ -57,6 +57,7 @@ type Call struct {
 	BER            float32        `json:"ber"`
 	RSSI           float32        `json:"rssi"`
 	TotalBits      uint           `json:"-"`
+	TotalErrors    int            `json:"-"`
 	LastPacketTime time.Time      `json:"-"`
 	HasHeader      bool           `json:"-"`
 	HasTerm        bool           `json:"-"`

@@ -136,7 +136,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 	}
 }
 
-func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRAPacket")
 	defer span.End()
 
@@ -149,7 +149,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	logging.GetLogger(logging.Access).Logf(s.handleDMRAPacket, "DMR talk alias from Repeater ID: %d", repeaterIDBytes)
-	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
@@ -310,7 +310,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	}
 }
 
-func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRDPacket")
 	defer span.End()
 
@@ -322,7 +322,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[11:15]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	logging.GetLogger(logging.Access).Logf(s.handleDMRDPacket, "DMR Data from Repeater ID: %d", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 
 		exists, err := models.RepeaterIDExists(s.DB, repeaterID)
@@ -432,7 +432,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTOPacket")
 	defer span.End()
 
@@ -452,7 +452,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[rptoRepeaterIDOffset : rptoRepeaterIDOffset+repeaterIDLength]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 
-	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 
 		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
@@ -487,7 +487,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTLPacket")
 	defer span.End()
 
@@ -549,7 +549,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTKPacket")
 	defer span.End()
 
@@ -564,7 +564,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	if config.GetConfig().Debug {
 		logging.GetLogger(logging.Access).Logf(s.handleRPTKPacket, "Challenge Response from Repeater ID: %d", repeaterID)
 	}
-	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT", remoteAddr) {
 		password := ""
 		var dbRepeater models.Repeater
 
@@ -636,7 +636,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCLPacket")
 	defer span.End()
 
@@ -649,7 +649,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr,
 	repeaterIDBytes := data[5:9]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	logging.GetLogger(logging.Access).Logf(s.handleRPTCLPacket, "Disconnect from Repeater ID: %d", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
 	if !s.Redis.deleteRepeater(ctx, repeaterID) {
@@ -784,7 +784,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 	repeater.Connection = "YES"
 }
 
-func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCPacket")
 	defer span.End()
 
@@ -800,7 +800,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		logging.GetLogger(logging.Access).Logf(s.handleRPTCPacket, "Repeater config from %d", repeaterID)
 	}
 
-	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
 		if err != nil {
@@ -842,7 +842,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 }
 
-func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTPINGPacket")
 	defer span.End()
 
@@ -858,7 +858,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAdd
 		logging.GetLogger(logging.Access).Logf(s.handleRPTPINGPacket, "Ping from %d", repeaterID)
 	}
 
-	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {

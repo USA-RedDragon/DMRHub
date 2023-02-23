@@ -111,7 +111,7 @@ func (s *Server) listen(ctx context.Context) {
 				klog.Errorf("Error unmarshalling packet", err)
 				continue
 			}
-			s.handlePacket(ctx, &net.UDPAddr{
+			s.handlePacket(ctx, net.UDPAddr{
 				IP:   net.ParseIP(packet.RemoteIP),
 				Port: packet.RemotePort,
 			}, packet.Data)
@@ -210,19 +210,17 @@ func (s *Server) Start(ctx context.Context) {
 			if config.GetConfig().Debug {
 				logging.GetLogger(logging.Access).Logf(s.Start, "Read a message from %v\n", remoteaddr)
 			}
-			go func() {
-				p := models.RawDMRPacket{
-					Data:       s.Buffer[:length],
-					RemoteIP:   remoteaddr.IP.String(),
-					RemotePort: remoteaddr.Port,
-				}
-				packedBytes, err := p.MarshalMsg(nil)
-				if err != nil {
-					klog.Errorf("Error marshalling packet", err)
-					return
-				}
-				s.Redis.Redis.Publish(ctx, "hbrp:incoming", packedBytes)
-			}()
+			p := models.RawDMRPacket{
+				Data:       s.Buffer[:length],
+				RemoteIP:   remoteaddr.IP.String(),
+				RemotePort: remoteaddr.Port,
+			}
+			packedBytes, err := p.MarshalMsg(nil)
+			if err != nil {
+				klog.Errorf("Error marshalling packet", err)
+				return
+			}
+			s.Redis.Redis.Publish(ctx, "hbrp:incoming", packedBytes)
 		}
 	}()
 }
@@ -280,7 +278,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
 }
 
-func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 	const signatureLength = 4

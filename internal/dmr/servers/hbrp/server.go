@@ -98,17 +98,24 @@ func (s *Server) listen(ctx context.Context) {
 			klog.Errorf("Error closing pubsub", err)
 		}
 	}()
-	for msg := range pubsub.Channel() {
-		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
-		if err != nil {
-			klog.Errorf("Error unmarshalling packet", err)
-			continue
+	pubsubChannel := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			klog.Info("Stopping HBRP server")
+			return
+		case msg := <-pubsubChannel:
+			var packet models.RawDMRPacket
+			_, err := packet.UnmarshalMsg([]byte(msg.Payload))
+			if err != nil {
+				klog.Errorf("Error unmarshalling packet", err)
+				continue
+			}
+			s.handlePacket(ctx, &net.UDPAddr{
+				IP:   net.ParseIP(packet.RemoteIP),
+				Port: packet.RemotePort,
+			}, packet.Data)
 		}
-		s.handlePacket(ctx, &net.UDPAddr{
-			IP:   net.ParseIP(packet.RemoteIP),
-			Port: packet.RemotePort,
-		}, packet.Data)
 	}
 }
 

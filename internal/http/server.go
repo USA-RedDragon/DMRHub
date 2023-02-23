@@ -346,6 +346,7 @@ func (s *Server) Start() {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
 				s.shutdownChannel <- true
+				return
 			default:
 				klog.Fatalf("Failed to start HTTP server: %s", err)
 			}

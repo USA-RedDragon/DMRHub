@@ -321,24 +321,22 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 		return
 	}
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		origCallJSON, err := json.Marshal(call)
-		if err != nil {
-			klog.Errorf("Error marshalling call JSON: %v", err)
-			return
-		}
-		_, err = c.redis.Publish(ctx, "calls:public", origCallJSON).Result()
+		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)
 			return
 		}
 	}
 
-	if call.TotalPackets%2 == 0 {
-		_, err = c.redis.Publish(ctx, "calls", callJSON).Result()
-		if err != nil {
-			klog.Errorf("Error publishing call JSON: %v", err)
-			return
-		}
+	origCallJSON, err := json.Marshal(call)
+	if err != nil {
+		klog.Errorf("Error marshalling call JSON: %v", err)
+		return
+	}
+	_, err = c.redis.Publish(ctx, "calls", origCallJSON).Result()
+	if err != nil {
+		klog.Errorf("Error publishing call JSON: %v", err)
+		return
 	}
 }
 
@@ -451,16 +449,14 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
-	c.inFlightCallsMutex.RLock()
+	c.inFlightCallsMutex.Lock()
 	for _, lcall := range c.inFlightCalls {
-		c.inFlightCallsMutex.RUnlock()
-		defer c.inFlightCallsMutex.RLock()
 		if lcall.StreamID == packet.StreamID && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
 			c.updateCall(ctx, lcall, packet)
-			return
+			break
 		}
 	}
-	c.inFlightCallsMutex.RUnlock()
+	c.inFlightCallsMutex.Unlock()
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
@@ -480,19 +476,13 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
 	// active that somehow have the same StreamId, we'll also query on the other fields.
-	c.inFlightCallsMutex.RLock()
+	c.inFlightCallsMutex.Lock()
 	for _, call := range c.inFlightCalls {
-		c.inFlightCallsMutex.RUnlock()
-		defer c.inFlightCallsMutex.RLock()
 		if call.StreamID == packet.StreamID && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
 			// Delete the call end timer
-			c.callEndTimersMutex.RLock()
 			timer := c.callEndTimers[call.ID]
-			c.callEndTimersMutex.RUnlock()
 			timer.Stop()
-			c.callEndTimersMutex.Lock()
 			delete(c.callEndTimers, call.ID)
-			c.callEndTimersMutex.Unlock()
 
 			if time.Since(call.StartTime) < 100*time.Millisecond {
 				// This is probably a key-up, so delete the call from the db
@@ -522,15 +512,15 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			err := c.db.Save(call).Error
 			if err != nil {
 				klog.Errorf("Error saving call: %v", err)
-				return
+				break
 			}
+
 			c.publishCall(ctx, call)
-			c.inFlightCallsMutex.Lock()
 			delete(c.inFlightCalls, call.ID)
+
 			logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 
-			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 		}
 	}
-	c.inFlightCallsMutex.RUnlock()
+	c.inFlightCallsMutex.Unlock()
 }

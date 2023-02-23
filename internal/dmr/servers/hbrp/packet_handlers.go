@@ -183,17 +183,15 @@ func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bo
 	defer span.End()
 
 	if packet.Dst != 4000 && isVoice {
-		go func() {
-			if !s.CallTracker.IsCallActive(ctx, packet) {
-				s.CallTracker.StartCall(ctx, packet)
+		if !s.CallTracker.IsCallActive(ctx, packet) {
+			s.CallTracker.StartCall(ctx, packet)
+		}
+		if s.CallTracker.IsCallActive(ctx, packet) {
+			s.CallTracker.ProcessCallPacket(ctx, packet)
+			if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+				s.CallTracker.EndCall(ctx, packet)
 			}
-			if s.CallTracker.IsCallActive(ctx, packet) {
-				s.CallTracker.ProcessCallPacket(ctx, packet)
-				if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-					s.CallTracker.EndCall(ctx, packet)
-				}
-			}
-		}()
+		}
 	}
 }
 
@@ -212,23 +210,12 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 		go func() {
 			packets := s.Parrot.GetStream(ctx, packet.StreamID)
 			time.Sleep(parrotDelay)
-			started := false
 			// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
 			// This is to ensure that the DMR repeater doesn't drop the packet
 			startedTime := time.Now()
-			for j, pkt := range packets {
+			for _, pkt := range packets {
 				s.sendPacket(ctx, repeaterID, pkt)
-
-				go func() {
-					if !started {
-						s.CallTracker.StartCall(ctx, pkt)
-						started = true
-					}
-					s.CallTracker.ProcessCallPacket(ctx, pkt)
-					if j == len(packets)-1 {
-						s.CallTracker.EndCall(ctx, pkt)
-					}
-				}()
+				s.TrackCall(ctx, pkt, true)
 				// Calculate the time since the call started
 				elapsed := time.Since(startedTime)
 				const packetTiming = 60 * time.Millisecond

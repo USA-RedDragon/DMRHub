@@ -137,33 +137,22 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 		}
 	}()
 
+	newCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	userIDIface := session.Get("user_id")
 	var pubsub *redis.PubSub
 	if userIDIface == nil {
 		// User ID not found, subscribe to public calls
 		pubsub = h.redis.Subscribe(ctx, "calls:public")
-		defer func() {
-			err := pubsub.Unsubscribe(ctx, "calls:public")
-			if err != nil {
-				klog.Errorf("Failed to unsubscribe from calls: %v", err)
-			}
-		}()
 	} else {
 		userID, ok := userIDIface.(uint)
 		if !ok {
 			klog.Errorf("Failed to convert user ID to uint")
 			return
 		}
-		newCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
 		go hbrp.GetSubscriptionManager().ListenForWebsocket(newCtx, h.database, h.redis, userID)
 		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
-		defer func() {
-			err := pubsub.Unsubscribe(ctx, fmt.Sprintf("calls:%d", userID))
-			if err != nil {
-				klog.Errorf("Failed to unsubscribe from calls: %v", err)
-			}
-		}()
 	}
 	defer func() {
 		err := pubsub.Close()

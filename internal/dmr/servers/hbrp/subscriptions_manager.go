@@ -278,6 +278,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 			}
 
 			if !userExists {
+				klog.Errorf("User %d does not exist", userID)
 				continue
 			}
 
@@ -289,8 +290,10 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 
 			for _, p := range user.Repeaters {
 				want, _ := p.WantRXCall(call)
-				if want {
+				if want || call.User.ID == userID || call.DestinationID == p.OwnerID {
+					klog.Info("Sending call to redis")
 					redis.Publish(ctx, fmt.Sprintf("calls:%d", userID), msg.Payload)
+					break
 				}
 			}
 		}

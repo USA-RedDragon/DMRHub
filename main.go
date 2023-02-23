@@ -48,7 +48,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"k8s.io/klog/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 func initTracer() func(context.Context) error {
@@ -185,21 +185,27 @@ func start() int {
 	hbrpServer.Start(ctx)
 	defer hbrpServer.Stop(ctx)
 
-	go func() {
+	g := new(errgroup.Group)
+	g.Go(func() error {
 		// For each repeater in the DB, start a gofunc to listen for calls
 		repeaters, err := models.ListRepeaters(database)
 		if err != nil {
-			klog.Fatalf("Failed to list repeaters: %s", err)
-			return
+			return err
 		}
 		for _, repeater := range repeaters {
 			go hbrp.GetSubscriptionManager().ListenForCalls(ctx, redis, repeater)
 		}
-	}()
+		return nil
+	})
 
 	http := http.MakeServer(database, redis)
 	http.Start()
 	defer http.Stop()
+
+	if err := g.Wait(); err != nil {
+		logging.GetLogger(logging.Error).Logf(start, "Failed to start repeater listeners: %s", err)
+		return 1
+	}
 
 	stop := func(sig os.Signal) {
 		logging.GetLogger(logging.Error).Logf(start, "Shutting down due to %v", sig)

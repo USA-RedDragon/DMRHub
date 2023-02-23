@@ -142,6 +142,10 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 		return true, packet.Slot
 	}
 
+	if packet.Dst == p.OwnerID {
+		return true, packet.Slot
+	}
+
 	if p.TS2DynamicTalkgroupID != nil {
 		if packet.Dst == *p.TS2DynamicTalkgroupID {
 			return true, true
@@ -165,6 +169,10 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 
 func (p *Repeater) WantRXCall(call Call) (bool, bool) {
 	if call.DestinationID == p.RadioID {
+		return true, call.TimeSlot
+	}
+
+	if call.DestinationID == p.OwnerID {
 		return true, call.TimeSlot
 	}
 

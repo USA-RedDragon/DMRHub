@@ -31,6 +31,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.13.0
 	go.opentelemetry.io/otel/trace v1.13.0
 	golang.org/x/crypto v0.6.0
+	golang.org/x/sync v0.1.0
 	gorm.io/driver/postgres v1.4.8
 	gorm.io/gorm v1.24.5
 	k8s.io/klog/v2 v2.90.0
@@ -103,7 +104,6 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
-	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect

@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -245,83 +246,48 @@ func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bo
 	return false
 }
 
-type jsonCallResponseUser struct {
-	ID       uint   `json:"id"`
-	Callsign string `json:"callsign"`
-}
-
-type jsonCallResponseRepeater struct {
-	RadioID  uint   `json:"radio_id"`
-	Callsign string `json:"callsign"`
-}
-
-type jsonCallResponseTalkgroup struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-type jsonCallResponse struct {
-	ID            uint                      `json:"id"`
-	User          jsonCallResponseUser      `json:"user"`
-	StartTime     time.Time                 `json:"start_time"`
-	Duration      time.Duration             `json:"duration"`
-	Active        bool                      `json:"active"`
-	TimeSlot      bool                      `json:"time_slot"`
-	GroupCall     bool                      `json:"group_call"`
-	IsToTalkgroup bool                      `json:"is_to_talkgroup"`
-	ToTalkgroup   jsonCallResponseTalkgroup `json:"to_talkgroup"`
-	IsToUser      bool                      `json:"is_to_user"`
-	ToUser        jsonCallResponseUser      `json:"to_user"`
-	IsToRepeater  bool                      `json:"is_to_repeater"`
-	ToRepeater    jsonCallResponseRepeater  `json:"to_repeater"`
-	Loss          float32                   `json:"loss"`
-	Jitter        float32                   `json:"jitter"`
-	BER           float32                   `json:"ber"`
-	RSSI          float32                   `json:"rssi"`
-}
-
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
 	defer span.End()
 
-	// copy call into a jsonCallResponse
-	var jsonCall jsonCallResponse
-	jsonCall.ID = call.ID
-	jsonCall.User.ID = call.User.ID
-	jsonCall.User.Callsign = call.User.Callsign
-	jsonCall.StartTime = call.StartTime
-	jsonCall.Duration = call.Duration
-	jsonCall.Active = call.Active
-	jsonCall.TimeSlot = call.TimeSlot
-	jsonCall.GroupCall = call.GroupCall
-	if call.IsToTalkgroup {
-		jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
-		jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
-		jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
-	}
-	if call.IsToUser {
-		jsonCall.ToUser.ID = call.ToUser.ID
-		jsonCall.ToUser.Callsign = call.ToUser.Callsign
-	}
-	if call.IsToRepeater {
-		jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
-		jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
-	}
-	jsonCall.IsToTalkgroup = call.IsToTalkgroup
-	jsonCall.IsToUser = call.IsToUser
-	jsonCall.IsToRepeater = call.IsToRepeater
-	jsonCall.Loss = call.Loss
-	jsonCall.Jitter = call.Jitter
-	jsonCall.BER = call.BER
-	jsonCall.RSSI = call.RSSI
-	// Publish the call JSON to Redis
-	callJSON, err := json.Marshal(jsonCall)
-	if err != nil {
-		klog.Errorf("Error marshalling call JSON: %v", err)
-		return
-	}
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
+		// copy call into a jsonCallResponse
+		var jsonCall apimodels.WSCallResponse
+		jsonCall.ID = call.ID
+		jsonCall.User.ID = call.User.ID
+		jsonCall.User.Callsign = call.User.Callsign
+		jsonCall.StartTime = call.StartTime
+		jsonCall.Duration = call.Duration
+		jsonCall.Active = call.Active
+		jsonCall.TimeSlot = call.TimeSlot
+		jsonCall.GroupCall = call.GroupCall
+		if call.IsToTalkgroup {
+			jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
+			jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
+			jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
+		}
+		if call.IsToUser {
+			jsonCall.ToUser.ID = call.ToUser.ID
+			jsonCall.ToUser.Callsign = call.ToUser.Callsign
+		}
+		if call.IsToRepeater {
+			jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+			jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
+		}
+		jsonCall.IsToTalkgroup = call.IsToTalkgroup
+		jsonCall.IsToUser = call.IsToUser
+		jsonCall.IsToRepeater = call.IsToRepeater
+		jsonCall.Loss = call.Loss
+		jsonCall.Jitter = call.Jitter
+		jsonCall.BER = call.BER
+		jsonCall.RSSI = call.RSSI
+		// Publish the call JSON to Redis
+		callJSON, err := json.Marshal(jsonCall)
+		if err != nil {
+			klog.Errorf("Error marshalling call JSON: %v", err)
+			return
+		}
+
 		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
 		if err != nil {
 			klog.Errorf("Error publishing call JSON: %v", err)

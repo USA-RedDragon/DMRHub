@@ -53,6 +53,7 @@ type Call struct {
 	Loss           float32        `json:"loss"`
 	Jitter         float32        `json:"jitter"`
 	LastFrameNum   uint           `json:"-"`
+	LastSeq        uint           `json:"-"`
 	BER            float32        `json:"ber"`
 	RSSI           float32        `json:"rssi"`
 	TotalBits      uint           `json:"-"`

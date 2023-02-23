@@ -187,6 +187,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		Loss:           0.0,
 		Jitter:         0.0,
 		LastFrameNum:   dmrconst.VoiceA,
+		LastSeq:        256,
 		RSSI:           0,
 		BER:            0.0,
 		TotalBits:      0,
@@ -349,6 +350,13 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	c.callEndTimers[call.ID].Reset(timerDelay)
 	c.callEndTimersMutex.Unlock()
 
+	if call.LastSeq == packet.Seq {
+		// This is a dup
+		return
+	}
+
+	call.LastSeq = packet.Seq
+
 	elapsed := time.Since(call.LastPacketTime)
 	call.LastPacketTime = time.Now()
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
@@ -508,7 +516,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 			call.Active = false
 			call.Duration = time.Since(call.StartTime)
-			call.Loss = float32(call.LostSequences / call.TotalPackets)
+			call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
 			err := c.db.Save(call).Error
 			if err != nil {
 				klog.Errorf("Error saving call: %v", err)

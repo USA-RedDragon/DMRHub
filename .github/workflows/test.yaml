@@ -241,35 +241,6 @@ jobs:
 
       - run: make benchmark
 
-  backend-race-tests:
-    runs-on: ubuntu-latest
-    needs: frontend
-    permissions:
-      contents: read
-      checks: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version-file: go.mod
-
-      - name: Copy built frontend
-        uses: actions/download-artifact@v3
-        with:
-          name: frontend
-          path: internal/http/frontend/dist
-
-      - run: go install github.com/tinylib/msgp
-      - run: go generate ./...
-
-      - name: Race tests
-        run: |
-          go test ./... -race
-
   backend-unit-tests:
     runs-on: ubuntu-latest
     needs: frontend

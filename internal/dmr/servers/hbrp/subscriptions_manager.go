@@ -291,7 +291,6 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 			for _, p := range user.Repeaters {
 				want, _ := p.WantRXCall(call)
 				if want || call.User.ID == userID || call.DestinationID == p.OwnerID {
-					klog.Info("Sending call to redis")
 					redis.Publish(ctx, fmt.Sprintf("calls:%d", userID), msg.Payload)
 					break
 				}

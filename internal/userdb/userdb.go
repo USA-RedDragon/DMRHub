@@ -22,6 +22,7 @@ package userdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -33,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
 )
@@ -256,7 +258,7 @@ func Update() error {
 	userDB.dmrUserMapUpdatingLock.RUnlock()
 	userDB.dmrUserMapLock.Unlock()
 
-	klog.Infof("Update complete. Loaded %d DMR users", Len())
+	logging.GetLogger(logging.Error).Logf(Update, "Update complete. Loaded %d DMR users", Len())
 
 	return nil
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"go.opentelemetry.io/otel"
 	"k8s.io/klog/v2"
@@ -112,7 +113,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 	}
 	if packet.Slot {
 		if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != packet.Dst {
-			klog.Infof("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
+			logging.GetLogger(logging.Access).Logf(s.switchDynamicTalkgroup, "Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
 			repeater.TS2DynamicTalkgroup = talkgroup
 			repeater.TS2DynamicTalkgroupID = &packet.Dst
 			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
@@ -123,7 +124,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 		}
 	} else {
 		if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
-			klog.Infof("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
+			logging.GetLogger(logging.Access).Logf(s.switchDynamicTalkgroup, "Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 			repeater.TS1DynamicTalkgroup = talkgroup
 			repeater.TS1DynamicTalkgroupID = &packet.Dst
 			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
@@ -147,9 +148,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	if config.GetConfig().Debug {
-		klog.Infof("DMR talk alias from Repeater ID: %d", repeaterIDBytes)
-	}
+	logging.GetLogger(logging.Access).Logf(s.handleDMRAPacket, "DMR talk alias from Repeater ID: %d", repeaterIDBytes)
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
@@ -204,7 +203,7 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 	if !s.Parrot.IsStarted(ctx, packet.StreamID) {
 		s.Parrot.StartStream(ctx, packet.StreamID, repeaterID)
 		if config.GetConfig().Debug {
-			klog.Infof("Parrot call from %d", packet.Src)
+			logging.GetLogger(logging.Access).Logf(s.doParrot, "Parrot call from %d", packet.Src)
 		}
 	}
 	s.Parrot.RecordPacket(ctx, packet.StreamID, packet)
@@ -254,7 +253,7 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 	defer span.End()
 
 	if packet.Slot {
-		klog.Infof("Unlinking timeslot 2 from %d", packet.Repeater)
+		logging.GetLogger(logging.Access).Logf(s.doUnlink, "Unlinking timeslot 2 from %d", packet.Repeater)
 		if dbRepeater.TS2DynamicTalkgroupID != nil {
 			oldTGID := *dbRepeater.TS2DynamicTalkgroupID
 			s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
@@ -265,7 +264,7 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 			GetSubscriptionManager().CancelSubscription(dbRepeater, oldTGID)
 		}
 	} else {
-		klog.Infof("Unlinking timeslot 1 from %d", packet.Repeater)
+		logging.GetLogger(logging.Access).Logf(s.doUnlink, "Unlinking timeslot 1 from %d", packet.Repeater)
 		if dbRepeater.TS1DynamicTalkgroupID != nil {
 			oldTGID := *dbRepeater.TS1DynamicTalkgroupID
 			s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
@@ -335,9 +334,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 	repeaterIDBytes := data[11:15]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	if config.GetConfig().Debug {
-		klog.Infof("DMR Data from Repeater ID: %d", repeaterID)
-	}
+	logging.GetLogger(logging.Access).Logf(s.handleDMRDPacket, "DMR Data from Repeater ID: %d", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
 
@@ -371,7 +368,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		}
 
 		if config.GetConfig().Debug {
-			klog.Infof("DMRD packet: %s", packet.String())
+			logging.GetLogger(logging.Access).Logf(s.handleDMRDPacket, "DMRD packet: %s", packet.String())
 		}
 
 		isVoice, isData := utils.CheckPacketType(packet)
@@ -467,9 +464,6 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 	repeaterIDBytes := data[rptoRepeaterIDOffset : rptoRepeaterIDOffset+repeaterIDLength]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	if config.GetConfig().Debug {
-		klog.Infof("Set options from %d", repeaterID)
-	}
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)
@@ -499,9 +493,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 		// Options is a string from data[8:]
 		options := string(data[8:])
-		if config.GetConfig().Debug {
-			klog.Infof("Received Options from repeater %d: %s", repeaterID, options)
-		}
+		logging.GetLogger(logging.Access).Logf(s.handleRPTOPacket, "Received Options from repeater %d: %s", repeaterID, options)
 
 		// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
 		// Options are not yet supported
@@ -521,7 +513,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	}
 	repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	klog.Infof("Login from Repeater ID: %d", repeaterID)
+	logging.GetLogger(logging.Access).Logf(s.handleRPTLPacket, "Login from Repeater ID: %d", repeaterID)
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
 	if err != nil {
 		klog.Errorf("Error finding repeater: %s", err)
@@ -583,7 +575,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	if config.GetConfig().Debug {
-		klog.Infof("Challenge Response from Repeater ID: %d", repeaterID)
+		logging.GetLogger(logging.Access).Logf(s.handleRPTKPacket, "Challenge Response from Repeater ID: %d", repeaterID)
 	}
 	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT", *remoteAddr) {
 		password := ""
@@ -642,7 +634,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 		hash := sha256.Sum256(append(saltBytes, []byte(password)...))
 		calcedSalt := binary.BigEndian.Uint32(hash[:])
 		if calcedSalt == rxSalt {
-			klog.Infof("Repeater ID %d authed, sending ACK", repeaterID)
+			logging.GetLogger(logging.Access).Logf(s.handleRPTKPacket, "Repeater ID %d authed, sending ACK", repeaterID)
 			s.Redis.updateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 			go func() {
@@ -669,7 +661,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr *net.UDPAddr,
 	}
 	repeaterIDBytes := data[5:9]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	klog.Infof("Disconnect from Repeater ID: %d", repeaterID)
+	logging.GetLogger(logging.Access).Logf(s.handleRPTCLPacket, "Disconnect from Repeater ID: %d", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
@@ -818,7 +810,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	if config.GetConfig().Debug {
-		klog.Infof("Repeater config from %d", repeaterID)
+		logging.GetLogger(logging.Access).Logf(s.handleRPTCPacket, "Repeater config from %d", repeaterID)
 	}
 
 	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", *remoteAddr) {
@@ -831,7 +823,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr *net.UDPAddr, 
 
 		s.updateRedisRepeater(data, &repeater)
 		s.Redis.storeRepeater(ctx, repeaterID, repeater)
-		klog.Infof("Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
+		logging.GetLogger(logging.Access).Logf(s.handleRPTCPacket, "Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
@@ -875,7 +867,9 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr *net.UDPAdd
 	}
 	repeaterIDBytes := data[7:11]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	klog.Infof("Ping from %d", repeaterID)
+	if config.GetConfig().Debug {
+		logging.GetLogger(logging.Access).Logf(s.handleRPTPINGPacket, "Ping from %d", repeaterID)
+	}
 
 	if s.validRepeater(ctx, repeaterID, "YES", *remoteAddr) {
 		s.Redis.updateRepeaterPing(ctx, repeaterID)

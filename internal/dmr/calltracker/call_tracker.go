@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -167,6 +168,8 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		}
 	}
 
+	logging.GetLogger(logging.Error).Logf(c.StartCall, "Starting call from %d to %d", packet.Src, packet.Dst)
+
 	call := models.Call{
 		StreamID:       packet.StreamID,
 		StartTime:      time.Now(),
@@ -216,7 +219,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	c.inFlightCallsMutex.Unlock()
 
 	if config.GetConfig().Debug {
-		klog.Infof("Started call %d", call.StreamID)
+		logging.GetLogger(logging.Access).Logf(c.StartCall, "Started call %d", call.StreamID)
 	}
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
@@ -503,7 +506,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 				call.LostSequences++
 				call.TotalPackets++
 				if config.GetConfig().Debug {
-					klog.Errorf("Call %d ended without a term", packet.StreamID)
+					logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d ended without a term", packet.StreamID)
 				}
 			}
 
@@ -511,9 +514,6 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			if call.LastFrameNum != dmrconst.VoiceF {
 				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum
 				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum
-				if config.GetConfig().Debug {
-					klog.Errorf("Call %d ended with %d lost packets", packet.StreamID, dmrconst.VoiceF-call.LastFrameNum)
-				}
 			}
 
 			call.Active = false
@@ -527,7 +527,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 			c.publishCall(ctx, call)
 			c.inFlightCallsMutex.Lock()
 			delete(c.inFlightCalls, call.ID)
-			c.inFlightCallsMutex.Unlock()
+			logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 
 			klog.Infof("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 		}

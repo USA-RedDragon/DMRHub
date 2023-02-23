@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -298,7 +299,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 
 func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redis.Client, p models.Repeater) {
 	if config.GetConfig().Debug {
-		klog.Infof("Listening for calls on repeater %d", p.RadioID)
+		logging.GetLogger(logging.Error).Logf(m.subscribeRepeater, "Listening for calls on repeater %d", p.RadioID)
 	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.RadioID))
 	defer func() {

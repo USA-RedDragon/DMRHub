@@ -22,6 +22,7 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -34,6 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
 )
@@ -270,7 +272,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMapUpdatingLock.RUnlock()
 	repeaterDB.dmrRepeaterMapLock.Unlock()
 
-	klog.Infof("Update complete. Loaded %d DMR repeaters", Len())
+	logging.GetLogger(logging.Error).Logf(Update, "Update complete. Loaded %d DMR repeaters", Len())
 
 	return nil
 }

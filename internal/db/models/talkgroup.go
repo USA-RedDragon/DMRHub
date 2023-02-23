@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"k8s.io/klog/v2"
 )
 
 type Talkgroup struct {
@@ -85,7 +85,7 @@ func DeleteTalkgroup(db *gorm.DB, id uint) error {
 			}
 			err := tx.Save(&repeater).Error
 			if err != nil {
-				klog.Errorf("Error saving repeater: %s", err)
+				logging.GetLogger(logging.Error).Logf(DeleteTalkgroup, "Error saving repeater: %s", err)
 				return err
 			}
 		}
@@ -98,7 +98,7 @@ func DeleteTalkgroup(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		klog.Errorf("Error deleting talkgroup: %s", err)
+		logging.GetLogger(logging.Error).Logf(DeleteTalkgroup, "Error deleting talkgroup: %s", err)
 		return err
 	}
 	return nil
@@ -109,7 +109,7 @@ func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {
 	if err := db.Joins("JOIN talkgroup_admins on talkgroup_admins.talkgroup_id=talkgroups.id").
 		Joins("JOIN users on talkgroup_admins.user_id=users.id").Order("id asc").Where("users.id=?", ownerID).
 		Group("talkgroups.id").Find(&talkgroups).Error; err != nil {
-		klog.Errorf("Error getting talkgroups owned by user %d: %v", ownerID, err)
+		logging.GetLogger(logging.Error).Logf(FindTalkgroupsByOwnerID, "Error getting talkgroups owned by user %d: %v", ownerID, err)
 		return nil, err
 	}
 	return talkgroups, nil

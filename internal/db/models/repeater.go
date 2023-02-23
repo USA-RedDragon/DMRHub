@@ -24,9 +24,10 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"k8s.io/klog/v2"
 )
 
 // Repeater is the model for a DMR repeater
@@ -73,7 +74,9 @@ type Repeater struct {
 func (p *Repeater) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		klog.Errorf("Failed to marshal repeater to json: %s", err)
+		if config.GetConfig().Debug {
+			logging.GetLogger(logging.Error).Logf(p.String, "Failed to marshal repeater to json: %s", err)
+		}
 		return ""
 	}
 	return string(jsn)
@@ -128,7 +131,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		klog.Errorf("Error deleting repeater: %s", err)
+		logging.GetLogger(logging.Error).Logf(DeleteRepeater, "Error deleting repeater: %s", err)
 		return err
 	}
 	return nil

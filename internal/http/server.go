@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	redisSessions "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
 	websocketHandler "github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/pprof"
@@ -74,7 +75,7 @@ func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
 		writeTimeout = debugWriteTimeout
 	}
 
-	klog.Infof("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
+	logging.GetLogger(logging.Error).Logf(MakeServer, "HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
 	s := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
 		Handler:      r,
@@ -123,13 +124,15 @@ func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client) {
 }
 
 func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
-	r := gin.Default()
-
 	if config.GetConfig().Debug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	r := gin.New()
+	r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.Access).Writer))
+	r.Use(gin.Recovery())
 
 	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
 	if err != nil {

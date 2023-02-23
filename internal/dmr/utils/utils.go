@@ -23,7 +23,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
-	"k8s.io/klog/v2"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 )
 
 func CheckPacketType(packet models.Packet) (bool, bool) {
@@ -35,28 +35,28 @@ func CheckPacketType(packet models.Packet) (bool, bool) {
 		case dmrconst.DTypeVoiceTerm:
 			isVoice = true
 			if config.GetConfig().Debug {
-				klog.Infof("Voice terminator from %d", packet.Src)
+				logging.GetLogger(logging.Access).Logf(CheckPacketType, "Voice terminator from %d", packet.Src)
 			}
 		case dmrconst.DTypeVoiceHead:
 			isVoice = true
 			if config.GetConfig().Debug {
-				klog.Infof("Voice header from %d", packet.Src)
+				logging.GetLogger(logging.Access).Logf(CheckPacketType, "Voice header from %d", packet.Src)
 			}
 		default:
 			isData = true
 			if config.GetConfig().Debug {
-				klog.Infof("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+				logging.GetLogger(logging.Access).Logf(CheckPacketType, "Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 			}
 		}
 	case dmrconst.FrameVoice:
 		isVoice = true
 		if config.GetConfig().Debug {
-			klog.Infof("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
+			logging.GetLogger(logging.Access).Logf(CheckPacketType, "Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
 		}
 	case dmrconst.FrameVoiceSync:
 		isVoice = true
 		if config.GetConfig().Debug {
-			klog.Infof("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
+			logging.GetLogger(logging.Access).Logf(CheckPacketType, "Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
 		}
 	}
 	return isVoice, isData

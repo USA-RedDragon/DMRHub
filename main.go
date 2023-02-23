@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -59,7 +60,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		klog.Fatal(err)
+		logging.GetLogger(logging.Error).Logf(initTracer, "Failed tracing app: %v", err)
 	}
 	resources, err := resource.New(
 		context.Background(),
@@ -69,7 +70,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		klog.Infof("Could not set resources: ", err)
+		logging.GetLogger(logging.Error).Logf(initTracer, "Could not set resources: ", err)
 	}
 
 	otel.SetTracerProvider(
@@ -83,9 +84,13 @@ func initTracer() func(context.Context) error {
 }
 
 func main() {
-	defer klog.Flush()
+	os.Exit(start())
+}
 
-	klog.Infof("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+func start() int {
+	logging.GetLogger(logging.Error).Logf(main, "DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+	logging.GetLogger(logging.Access).Logf(main, "DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+	defer logging.Close()
 
 	ctx := context.Background()
 
@@ -97,7 +102,7 @@ func main() {
 		defer func() {
 			err := cleanup(ctx)
 			if err != nil {
-				klog.Errorf("Failed to shutdown tracer: %s", err)
+				logging.GetLogger(logging.Error).Logf(start, "Failed to shutdown tracer: %s", err)
 			}
 		}()
 	}
@@ -108,33 +113,33 @@ func main() {
 	go func() {
 		err := repeaterdb.Update()
 		if err != nil {
-			klog.Errorf("Failed to update repeater database: %s using built in one", err)
+			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s using built in one", err)
 		}
 	}()
 	_, err := scheduler.Every(1).Day().At("00:00").Do(func() {
 		err := repeaterdb.Update()
 		if err != nil {
-			klog.Errorf("Failed to update repeater database: %s", err)
+			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s", err)
 		}
 	})
 	if err != nil {
-		klog.Errorf("Failed to schedule repeater update: %s", err)
+		logging.GetLogger(logging.Error).Logf(start, "Failed to schedule repeater update: %s", err)
 	}
 
 	go func() {
 		err = userdb.Update()
 		if err != nil {
-			klog.Errorf("Failed to update user database: %s using built in one", err)
+			logging.GetLogger(logging.Error).Logf(start, "Failed to update user database: %s using built in one", err)
 		}
 	}()
 	_, err = scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = userdb.Update()
 		if err != nil {
-			klog.Errorf("Failed to update repeater database: %s", err)
+			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s", err)
 		}
 	})
 	if err != nil {
-		klog.Errorf("Failed to schedule user update: %s", err)
+		logging.GetLogger(logging.Error).Logf(start, "Failed to schedule user update: %s", err)
 	}
 
 	scheduler.StartAsync()
@@ -152,25 +157,25 @@ func main() {
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {
-		klog.Errorf("Failed to connect to redis: %s", err)
-		return
+		logging.GetLogger(logging.Error).Logf(start, "Failed to connect to redis: %s", err)
+		return 1
 	}
 	defer func() {
 		err := redis.Close()
 		if err != nil {
-			klog.Errorf("Failed to close redis: %s", err)
+			logging.GetLogger(logging.Error).Logf(start, "Failed to close redis: %s", err)
 		}
 	}()
 	if config.GetConfig().OTLPEndpoint != "" {
 		if err := redisotel.InstrumentTracing(redis); err != nil {
-			klog.Errorf("Failed to trace redis: %s", err)
-			return
+			logging.GetLogger(logging.Error).Logf(start, "Failed to trace redis: %s", err)
+			return 1
 		}
 
 		// Enable metrics instrumentation.
 		if err := redisotel.InstrumentMetrics(redis); err != nil {
-			klog.Errorf("Failed to instrument redis: %s", err)
-			return
+			logging.GetLogger(logging.Error).Logf(start, "Failed to instrument redis: %s", err)
+			return 1
 		}
 	}
 
@@ -197,7 +202,7 @@ func main() {
 	defer http.Stop()
 
 	stop := func(sig os.Signal) {
-		klog.Infof("Shutting down due to %v", sig)
+		logging.GetLogger(logging.Error).Logf(start, "Shutting down due to %v", sig)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -240,10 +245,12 @@ func main() {
 		select {
 		case <-c:
 			redis.Close()
-			klog.Info("Shutdown safely completed")
+			logging.GetLogger(logging.Error).Log(start, "Shutdown safely completed")
+			logging.Close()
 			os.Exit(0)
 		case <-time.After(timeout):
-			klog.Error("Shutdown timed out")
+			logging.GetLogger(logging.Error).Log(start, "Shutdown timed out")
+			logging.Close()
 			os.Exit(1)
 		}
 	}
@@ -252,4 +259,6 @@ func main() {
 	shutdown.AddWithParam(stop)
 
 	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
+
+	return 0
 }

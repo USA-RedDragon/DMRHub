@@ -29,8 +29,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"golang.org/x/crypto/pbkdf2"
-	"k8s.io/klog/v2"
 )
 
 // Config stores the application configuration.
@@ -119,11 +119,11 @@ func loadConfig() Config {
 	tmpConfig.PostgresDSN = "host=" + tmpConfig.postgresHost + " port=" + strconv.FormatInt(int64(tmpConfig.postgresPort), 10) + " user=" + tmpConfig.postgresUser + " dbname=" + tmpConfig.postgresDatabase + " password=" + tmpConfig.postgresPassword
 	if tmpConfig.strSecret == "" {
 		tmpConfig.strSecret = "secret"
-		klog.Warning("Session secret not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "Session secret not set, using INSECURE default")
 	}
 	if tmpConfig.PasswordSalt == "" {
 		tmpConfig.PasswordSalt = "salt"
-		klog.Warning("Password salt not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "Password salt not set, using INSECURE default")
 	}
 	if tmpConfig.ListenAddr == "" {
 		tmpConfig.ListenAddr = "0.0.0.0"
@@ -135,18 +135,19 @@ func loadConfig() Config {
 		tmpConfig.HTTPPort = 3005
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
-		klog.Warning("Initial admin user password not set, using auto-generated password")
+		logging.GetLogger(logging.Error).Log(loadConfig, "Initial admin user password not set, using auto-generated password")
 		const randLen = 15
 		const randNums = 4
 		const randSpecial = 2
 		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(randLen, randNums, randSpecial)
 		if err != nil {
-			klog.Error("Password generation failed")
+			logging.GetLogger(logging.Error).Log(loadConfig, "Password generation failed")
+			os.Exit(1)
 		}
 	}
 	if tmpConfig.RedisPassword == "" {
 		tmpConfig.RedisPassword = "password"
-		klog.Warning("Redis password not set, using INSECURE default")
+		logging.GetLogger(logging.Error).Log(loadConfig, "Redis password not set, using INSECURE default")
 	}
 	// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 	corsHosts := os.Getenv("CORS_HOSTS")
@@ -165,8 +166,8 @@ func loadConfig() Config {
 		tmpConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 	}
 	if tmpConfig.Debug {
-		klog.Warning("Debug mode enabled, this should not be used in production")
-		klog.Info("Config: %+v", tmpConfig)
+		logging.GetLogger(logging.Error).Log(loadConfig, "Debug mode enabled, this should not be used in production")
+		logging.GetLogger(logging.Error).Logf(loadConfig, "Config: %+v", tmpConfig)
 	}
 	const iterations = 4096
 	const keyLen = 32
@@ -189,7 +190,8 @@ func GetConfig() *Config {
 
 	curConfig, ok := currentConfig.Load().(Config)
 	if !ok {
-		klog.Fatalf("Failed to load config")
+		logging.GetLogger(logging.Error).Log(GetConfig, "Failed to load config")
+		os.Exit(1)
 	}
 	return &curConfig
 }

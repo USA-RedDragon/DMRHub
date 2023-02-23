@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -186,7 +187,7 @@ func (s *Server) Start(ctx context.Context) {
 	s.Server = server
 	s.Started = true
 
-	klog.Infof("HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	logging.GetLogger(logging.Error).Logf(s.Start, "HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subscribePackets(ctx)
@@ -195,12 +196,12 @@ func (s *Server) Start(ctx context.Context) {
 	go func() {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-			if config.GetConfig().Debug {
-				klog.Infof("Read a message from %v\n", remoteaddr)
-			}
 			if err != nil {
 				klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
 				continue
+			}
+			if config.GetConfig().Debug {
+				logging.GetLogger(logging.Access).Logf(s.Start, "Read a message from %v\n", remoteaddr)
 			}
 			go func() {
 				p := models.RawDMRPacket{
@@ -225,7 +226,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		return
 	}
 	if config.GetConfig().Debug {
-		klog.Infof("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
+		logging.GetLogger(logging.Access).Logf(s.sendCommand, "Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
 	}
 	commandPrefixedData := append([]byte(command), data...)
 	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
@@ -252,8 +253,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		return
 	}
 	if config.GetConfig().Debug {
-		klog.Infof("Sending Packet: %s\n", packet.String())
-		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
+		logging.GetLogger(logging.Access).Logf(s.sendPacket, "Sending DMR packet %s to repeater: %d", packet.String(), repeaterIDBytes)
 	}
 	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
 	if err != nil {

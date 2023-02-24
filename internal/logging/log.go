@@ -21,44 +21,41 @@ const (
 )
 
 var (
-	accessLog *Logger //nolint:golint,gochecknoglobals
-	errorLog  *Logger //nolint:golint,gochecknoglobals
-	isInit    atomic.Bool
-	loaded    atomic.Bool
+	accessLog    *Logger     //nolint:golint,gochecknoglobals
+	errorLog     *Logger     //nolint:golint,gochecknoglobals
+	isAccessInit atomic.Bool //nolint:golint,gochecknoglobals
+	accessLoaded atomic.Bool //nolint:golint,gochecknoglobals
+	isErrorInit  atomic.Bool //nolint:golint,gochecknoglobals
+	errorLoaded  atomic.Bool //nolint:golint,gochecknoglobals
 )
 
-func getLogger(logType LogType) *Logger {
+func GetLogger(logType LogType) *Logger {
+	const loadDelay = 100 * time.Nanosecond
+
 	switch logType {
 	case Access:
-		if accessLog != nil {
-			return accessLog
+		lastInit := isAccessInit.Swap(true)
+		if !lastInit {
+			accessLog = createLogger(logType)
+			accessLoaded.Store(true)
 		}
-		// Create access logger
-		return createLogger(logType)
+		for !accessLoaded.Load() {
+			time.Sleep(loadDelay)
+		}
+		return accessLog
 	case Error:
-		if errorLog != nil {
-			return errorLog
+		lastInit := isErrorInit.Swap(true)
+		if !lastInit {
+			errorLog = createLogger(logType)
+			errorLoaded.Store(true)
 		}
-		// Create error logger
-		return createLogger(logType)
+		for !errorLoaded.Load() {
+			time.Sleep(loadDelay)
+		}
+		return errorLog
 	default:
 		panic("Logging failed")
 	}
-}
-
-func GetLogger(logType LogType) *Logger {
-	lastInit := isInit.Swap(true)
-	if !lastInit {
-		logger := getLogger(logType)
-		loaded.Store(true)
-		return logger
-	}
-	for !loaded.Load() {
-		const loadDelay = 100 * time.Nanosecond
-		time.Sleep(loadDelay)
-	}
-
-	return getLogger(logType)
 }
 
 func createLogger(logType LogType) *Logger {

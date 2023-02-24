@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 type LogType string
@@ -21,27 +23,42 @@ const (
 var (
 	accessLog *Logger //nolint:golint,gochecknoglobals
 	errorLog  *Logger //nolint:golint,gochecknoglobals
+	isInit    atomic.Bool
+	loaded    atomic.Bool
 )
 
-func GetLogger(logType LogType) *Logger {
+func getLogger(logType LogType) *Logger {
 	switch logType {
 	case Access:
 		if accessLog != nil {
 			return accessLog
 		}
 		// Create access logger
-		accessLog = createLogger(logType)
-		return accessLog
+		return createLogger(logType)
 	case Error:
 		if errorLog != nil {
 			return errorLog
 		}
 		// Create error logger
-		errorLog = createLogger(logType)
-		return errorLog
+		return createLogger(logType)
 	default:
 		panic("Logging failed")
 	}
+}
+
+func GetLogger(logType LogType) *Logger {
+	lastInit := isInit.Swap(true)
+	if !lastInit {
+		logger := getLogger(logType)
+		loaded.Store(true)
+		return logger
+	}
+	for !loaded.Load() {
+		const loadDelay = 100 * time.Nanosecond
+		time.Sleep(loadDelay)
+	}
+
+	return getLogger(logType)
 }
 
 func createLogger(logType LogType) *Logger {

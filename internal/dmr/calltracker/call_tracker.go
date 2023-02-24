@@ -22,7 +22,6 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -54,8 +53,6 @@ type callMapStruct struct {
 	TimeSlot      bool
 	GroupCall     bool
 }
-
-var errCallHash = fmt.Errorf("Error hashing call")
 
 func getCallHashFromPacket(packet models.Packet) (string, error) {
 	v := callMapStruct{

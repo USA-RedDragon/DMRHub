@@ -22,7 +22,8 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
-	"sync"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -30,6 +31,8 @@ import (
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/mitchellh/hashstructure/v2"
+	"github.com/puzpuzpuz/xsync/v2"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -42,23 +45,68 @@ const timerDelay = 2 * time.Second
 const packetTimingMs = 60
 const pct = 100
 
+// These are the keys that we use to create a consistent hash
+type callMapStruct struct {
+	Active        bool
+	StreamID      uint
+	UserID        uint
+	DestinationID uint
+	TimeSlot      bool
+	GroupCall     bool
+}
+
+var errCallHash = fmt.Errorf("Error hashing call")
+
+func getCallHashFromPacket(packet models.Packet) (string, error) {
+	v := callMapStruct{
+		Active:        true,
+		StreamID:      packet.StreamID,
+		UserID:        packet.Src,
+		DestinationID: packet.Dst,
+		TimeSlot:      packet.Slot,
+		GroupCall:     packet.GroupCall,
+	}
+
+	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
+	if err != nil {
+		klog.Errorf("CallTracker: Error hashing call: %v", err)
+	}
+	return strconv.Itoa(int(hash)), err
+}
+
+func getCallHash(call models.Call) (string, error) {
+	v := callMapStruct{
+		Active:        call.Active,
+		StreamID:      call.StreamID,
+		UserID:        call.UserID,
+		DestinationID: call.DestinationID,
+		TimeSlot:      call.TimeSlot,
+		GroupCall:     call.GroupCall,
+	}
+
+	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
+	if err != nil {
+		klog.Errorf("CallTracker: Error hashing call: %v", err)
+	}
+	return strconv.Itoa(int(hash)), err
+}
+
 // CallTracker is a struct that holds the state of the calls that are currently in progress.
 type CallTracker struct {
-	db                 *gorm.DB
-	redis              *redis.Client
-	callEndTimers      map[uint]*time.Timer
-	callEndTimersMutex sync.RWMutex
-	inFlightCalls      map[uint]*models.Call
-	inFlightCallsMutex sync.RWMutex
+	db            *gorm.DB
+	redis         *redis.Client
+	callEndTimers *xsync.Map
+	inFlightCalls *xsync.Map
 }
 
 // NewCallTracker creates a new CallTracker.
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
+	xsync.NewMap()
 	return &CallTracker{
 		db:            db,
 		redis:         redis,
-		callEndTimers: make(map[uint]*time.Timer),
-		inFlightCalls: make(map[uint]*models.Call),
+		callEndTimers: xsync.NewMap(),
+		inFlightCalls: xsync.NewMap(),
 	}
 }
 
@@ -215,19 +263,20 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		return
 	}
 
+	callHash, err := getCallHash(call)
+	if err != nil {
+		return
+	}
+
 	// Add the call to the active calls map
-	c.inFlightCallsMutex.Lock()
-	c.inFlightCalls[call.ID] = &call
-	c.inFlightCallsMutex.Unlock()
+	c.inFlightCalls.Store(callHash, &call)
 
 	if config.GetConfig().Debug {
 		logging.GetLogger(logging.Access).Logf(c.StartCall, "Started call %d", call.StreamID)
 	}
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.callEndTimersMutex.Lock()
-	c.callEndTimers[call.ID] = time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet))
-	c.callEndTimersMutex.Unlock()
+	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet)))
 }
 
 // IsCallActive checks if a call is active.
@@ -235,15 +284,13 @@ func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bo
 	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.IsCallActive")
 	defer span.End()
 
-	c.inFlightCallsMutex.RLock()
-	for _, call := range c.inFlightCalls {
-		if call.Active && call.StreamID == packet.StreamID && call.UserID == packet.Src && call.DestinationID == packet.Dst && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall {
-			c.inFlightCallsMutex.RUnlock()
-			return true
-		}
+	callHash, err := getCallHashFromPacket(packet)
+	if err != nil {
+		return false
 	}
-	c.inFlightCallsMutex.RUnlock()
-	return false
+
+	_, ok := c.inFlightCalls.Load(callHash)
+	return ok
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
@@ -311,10 +358,23 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.updateCall")
 	defer span.End()
 
+	hash, err := getCallHash(*call)
+	if err != nil {
+		return
+	}
+
+	timerInterface, ok := c.callEndTimers.Load(hash)
+	if !ok {
+		return
+	}
+
+	timer, ok := timerInterface.(*time.Timer)
+	if !ok {
+		return
+	}
+
 	// Reset call end timer
-	c.callEndTimersMutex.Lock()
-	c.callEndTimers[call.ID].Reset(timerDelay)
-	c.callEndTimersMutex.Unlock()
+	timer.Reset(timerDelay)
 
 	if call.LastSeq == packet.Seq {
 		// This is a dup
@@ -435,16 +495,25 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.ProcessCallPacket")
 	defer span.End()
 
-	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
-	// active that somehow have the same StreamId, we'll also query on the other fields.
-	c.inFlightCallsMutex.Lock()
-	for _, lcall := range c.inFlightCalls {
-		if lcall.StreamID == packet.StreamID && lcall.Active && lcall.TimeSlot == packet.Slot && lcall.GroupCall == packet.GroupCall && lcall.UserID == packet.Src {
-			c.updateCall(ctx, lcall, packet)
-			break
-		}
+	hash, err := getCallHashFromPacket(packet)
+	if err != nil {
+		klog.Errorf("Error getting call hash from packet: %v", err)
+		return
 	}
-	c.inFlightCallsMutex.Unlock()
+
+	callInterface, ok := c.inFlightCalls.Load(hash)
+	if !ok {
+		klog.Errorf("Active call not found")
+		return
+	}
+
+	call, ok := callInterface.(*models.Call)
+	if !ok {
+		klog.Errorf("Active call not found")
+		return
+	}
+
+	c.updateCall(ctx, call, packet)
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
@@ -462,37 +531,53 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.EndCall")
 	defer span.End()
 
-	// Querying on packet.StreamId and call.Active should be enough to find the call, but in the event that there are multiple calls
-	// active that somehow have the same StreamId, we'll also query on the other fields.
-	c.inFlightCallsMutex.Lock()
-	for _, call := range c.inFlightCalls {
-		if call.StreamID == packet.StreamID && call.Active && call.TimeSlot == packet.Slot && call.GroupCall == packet.GroupCall && call.UserID == packet.Src {
-			// Delete the call end timer
-			timer := c.callEndTimers[call.ID]
+	hash, err := getCallHashFromPacket(packet)
+	if err != nil {
+		klog.Errorf("Error getting call hash from packet: %v", err)
+		return
+	}
+
+	callInterface, ok := c.inFlightCalls.LoadAndDelete(hash)
+	if !ok {
+		klog.Errorf("Active call not found")
+		return
+	}
+
+	call, ok := callInterface.(*models.Call)
+	if !ok {
+		klog.Errorf("Active call not found")
+		return
+	}
+
+	if time.Since(call.StartTime) < 100*time.Millisecond {
+		// This is probably a key-up, so delete the call from the db
+		c.db.Unscoped().Delete(call)
+		return
+	}
+
+	// Delete the call end timer
+	timerInterface, ok := c.callEndTimers.LoadAndDelete(hash)
+	if !ok {
+		klog.Errorf("Call end timer not found")
+	} else {
+		timer, ok := timerInterface.(*time.Timer)
+		if !ok {
+			klog.Errorf("Call end timer not found")
+		} else {
 			timer.Stop()
-			delete(c.callEndTimers, call.ID)
-
-			if time.Since(call.StartTime) < 100*time.Millisecond {
-				// This is probably a key-up, so delete the call from the db
-				call := call
-				c.db.Delete(&call)
-				break
-			}
-
-			call.Duration = time.Since(call.StartTime)
-			call.Active = false
-
-			err := c.db.Save(call).Error
-			if err != nil {
-				klog.Errorf("Error saving call: %v", err)
-				break
-			}
-
-			c.publishCall(ctx, call)
-			delete(c.inFlightCalls, call.ID)
-
-			logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 		}
 	}
-	c.inFlightCallsMutex.Unlock()
+
+	call.Duration = time.Since(call.StartTime)
+	call.Active = false
+
+	err = c.db.Save(call).Error
+	if err != nil {
+		klog.Errorf("Error saving call: %v", err)
+		return
+	}
+
+	c.publishCall(ctx, call)
+
+	logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 }

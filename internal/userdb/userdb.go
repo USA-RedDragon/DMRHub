@@ -29,12 +29,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/puzpuzpuz/xsync/v2"
 	"github.com/ulikunitz/xz"
 )
 
@@ -56,12 +57,10 @@ var (
 const waitTime = 100 * time.Millisecond
 
 type UserDB struct {
-	uncompressedJSON       []byte
-	dmrUsers               atomic.Value
-	dmrUserMap             map[uint]DMRUser
-	dmrUserMapLock         sync.RWMutex
-	dmrUserMapUpdating     map[uint]DMRUser
-	dmrUserMapUpdatingLock sync.RWMutex
+	uncompressedJSON   []byte
+	dmrUsers           atomic.Value
+	dmrUserMap         *xsync.Map
+	dmrUserMapUpdating *xsync.Map
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -97,9 +96,12 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	userDB.dmrUserMapLock.RLock()
-	user, ok := userDB.dmrUserMap[dmrID]
-	userDB.dmrUserMapLock.RUnlock()
+	userInterface, ok := userDB.dmrUserMap.Load(strconv.Itoa(int(dmrID)))
+	if !ok {
+		return false
+	}
+
+	user, ok := userInterface.(DMRUser)
 	if !ok {
 		return false
 	}
@@ -126,12 +128,9 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMapLock.Lock()
-		userDB.dmrUserMap = make(map[uint]DMRUser)
-		userDB.dmrUserMapLock.Unlock()
-		userDB.dmrUserMapUpdatingLock.Lock()
-		userDB.dmrUserMapUpdating = make(map[uint]DMRUser)
-		userDB.dmrUserMapUpdatingLock.Unlock()
+		userDB.dmrUserMap = xsync.NewMap()
+		userDB.dmrUserMapUpdating = xsync.NewMap()
+
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -155,17 +154,12 @@ func UnpackDB() {
 		}
 		tmpDB.Date = userDB.builtInDate
 		userDB.dmrUsers.Store(tmpDB)
-		userDB.dmrUserMapUpdatingLock.Lock()
 		for i := range tmpDB.Users {
-			userDB.dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
+			userDB.dmrUserMapUpdating.Store(strconv.Itoa(int(tmpDB.Users[i].ID)), tmpDB.Users[i])
 		}
-		userDB.dmrUserMapUpdatingLock.Unlock()
 
-		userDB.dmrUserMapLock.Lock()
-		userDB.dmrUserMapUpdatingLock.RLock()
 		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdatingLock.RUnlock()
-		userDB.dmrUserMapLock.Unlock()
+		userDB.dmrUserMapUpdating = xsync.NewMap()
 		userDB.isDone.Store(true)
 	}
 
@@ -199,10 +193,15 @@ func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	userDB.dmrUserMapLock.RLock()
-	user, ok := userDB.dmrUserMap[dmrID]
-	userDB.dmrUserMapLock.RUnlock()
-	return user, ok
+	userIface, ok := userDB.dmrUserMap.Load(strconv.Itoa(int(dmrID)))
+	if !ok {
+		return DMRUser{}, false
+	}
+	user, ok := userIface.(DMRUser)
+	if !ok {
+		return DMRUser{}, false
+	}
+	return user, true
 }
 
 func Update() error {
@@ -251,18 +250,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	userDB.dmrUsers.Store(tmpDB)
 
-	userDB.dmrUserMapUpdatingLock.Lock()
-	userDB.dmrUserMapUpdating = make(map[uint]DMRUser)
+	userDB.dmrUserMapUpdating = xsync.NewMap()
 	for i := range tmpDB.Users {
-		userDB.dmrUserMapUpdating[tmpDB.Users[i].ID] = tmpDB.Users[i]
+		userDB.dmrUserMapUpdating.Store(strconv.Itoa(int(tmpDB.Users[i].ID)), tmpDB.Users[i])
 	}
-	userDB.dmrUserMapUpdatingLock.Unlock()
 
-	userDB.dmrUserMapLock.Lock()
-	userDB.dmrUserMapUpdatingLock.RLock()
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdatingLock.RUnlock()
-	userDB.dmrUserMapLock.Unlock()
+	userDB.dmrUserMapUpdating = xsync.NewMap()
 
 	logging.Errorf("Update complete. Loaded %d DMR users", Len())
 

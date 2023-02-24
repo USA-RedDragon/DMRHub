@@ -22,14 +22,13 @@ package userdb
 import (
 	"bytes"
 	"context"
-	"strconv"
-
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"

@@ -30,11 +30,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/puzpuzpuz/xsync/v2"
 	"github.com/ulikunitz/xz"
 	"k8s.io/klog/v2"
 )
@@ -57,12 +57,10 @@ var (
 const waitTime = 100 * time.Millisecond
 
 type RepeaterDB struct {
-	uncompressedJSON           []byte
-	dmrRepeaters               atomic.Value
-	dmrRepeaterMap             map[uint]DMRRepeater
-	dmrRepeaterMapLock         sync.RWMutex
-	dmrRepeaterMapUpdating     map[uint]DMRRepeater
-	dmrRepeaterMapUpdatingLock sync.RWMutex
+	uncompressedJSON       []byte
+	dmrRepeaters           atomic.Value
+	dmrRepeaterMap         *xsync.Map
+	dmrRepeaterMapUpdating *xsync.Map
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -104,9 +102,13 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 	if !repeaterDB.isDone.Load() {
 		UnpackDB()
 	}
-	repeaterDB.dmrRepeaterMapLock.RLock()
-	repeater, ok := repeaterDB.dmrRepeaterMap[dmrID]
-	repeaterDB.dmrRepeaterMapLock.RUnlock()
+
+	repeaterInterface, ok := repeaterDB.dmrRepeaterMap.Load(strconv.Itoa(int(dmrID)))
+	if !ok {
+		return false
+	}
+
+	repeater, ok := repeaterInterface.(DMRRepeater)
 	if !ok {
 		return false
 	}
@@ -129,12 +131,8 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
-		repeaterDB.dmrRepeaterMapLock.Lock()
-		repeaterDB.dmrRepeaterMap = make(map[uint]DMRRepeater)
-		repeaterDB.dmrRepeaterMapLock.Unlock()
-		repeaterDB.dmrRepeaterMapUpdatingLock.Lock()
-		repeaterDB.dmrRepeaterMapUpdating = make(map[uint]DMRRepeater)
-		repeaterDB.dmrRepeaterMapUpdatingLock.Unlock()
+		repeaterDB.dmrRepeaterMap = xsync.NewMap()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -155,22 +153,12 @@ func UnpackDB() {
 
 		tmpDB.Date = repeaterDB.builtInDate
 		repeaterDB.dmrRepeaters.Store(tmpDB)
-		repeaterDB.dmrRepeaterMapUpdatingLock.Lock()
 		for i := range tmpDB.Repeaters {
-			id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
-			if err != nil {
-				klog.Errorf("Error converting repeater ID to int: %v", err)
-				continue
-			}
-			repeaterDB.dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
+			repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
 		}
-		repeaterDB.dmrRepeaterMapUpdatingLock.Unlock()
 
-		repeaterDB.dmrRepeaterMapLock.Lock()
-		repeaterDB.dmrRepeaterMapUpdatingLock.RLock()
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-		repeaterDB.dmrRepeaterMapUpdatingLock.RUnlock()
-		repeaterDB.dmrRepeaterMapLock.Unlock()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
 		repeaterDB.isDone.Store(true)
 	}
 
@@ -202,10 +190,15 @@ func Get(id uint) (DMRRepeater, bool) {
 	if !repeaterDB.isDone.Load() {
 		UnpackDB()
 	}
-	repeaterDB.dmrRepeaterMapLock.RLock()
-	user, ok := repeaterDB.dmrRepeaterMap[id]
-	repeaterDB.dmrRepeaterMapLock.RUnlock()
-	return user, ok
+	repeaterIface, ok := repeaterDB.dmrRepeaterMap.Load(strconv.Itoa(int(id)))
+	if !ok {
+		return DMRRepeater{}, false
+	}
+	repeater, ok := repeaterIface.(DMRRepeater)
+	if !ok {
+		return DMRRepeater{}, false
+	}
+	return repeater, true
 }
 
 func Update() error {
@@ -253,23 +246,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	repeaterDB.dmrRepeaters.Store(tmpDB)
 
-	repeaterDB.dmrRepeaterMapUpdatingLock.Lock()
-	repeaterDB.dmrRepeaterMapUpdating = make(map[uint]DMRRepeater)
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
 	for i := range tmpDB.Repeaters {
-		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
-		if err != nil {
-			klog.Errorf("Error converting repeater ID to int: %v", err)
-			continue
-		}
-		repeaterDB.dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
+		repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
 	}
-	repeaterDB.dmrRepeaterMapUpdatingLock.Unlock()
 
-	repeaterDB.dmrRepeaterMapLock.Lock()
-	repeaterDB.dmrRepeaterMapUpdatingLock.RLock()
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-	repeaterDB.dmrRepeaterMapUpdatingLock.RUnlock()
-	repeaterDB.dmrRepeaterMapLock.Unlock()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
 
 	logging.GetLogger(logging.Error).Logf(Update, "Update complete. Loaded %d DMR repeaters", Len())
 

@@ -156,8 +156,8 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		var repeaters []Repeater
 		tx.Where("owner_id = ?", id).Find(&repeaters)
 		for _, repeater := range repeaters {
-			tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeater.RadioID, repeater.RadioID).Delete(&Call{})
-			tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
+			tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeater.ID, repeater.ID).Delete(&Call{})
+			tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(repeater)
 			tx.Unscoped().Table("talkgroup_admins").Where("user_id = ?", id).Delete(&Talkgroup{})
 			tx.Unscoped().Table("talkgroup_ncos").Where("user_id = ?", id).Delete(&Talkgroup{})
 		}

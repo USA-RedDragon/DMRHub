@@ -34,7 +34,6 @@ import (
 //
 //go:generate go run github.com/tinylib/msgp
 type Repeater struct {
-	RadioID               uint           `json:"id" gorm:"primaryKey" msg:"radio_id"`
 	Connection            string         `json:"-" gorm:"-" msg:"connection"`
 	Connected             time.Time      `json:"connected_time" msg:"connected"`
 	PingsReceived         uint           `json:"-" gorm:"-" msg:"pings_received"`
@@ -42,20 +41,6 @@ type Repeater struct {
 	IP                    string         `json:"-" gorm:"-" msg:"ip"`
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
-	Callsign              string         `json:"callsign" msg:"callsign"`
-	RXFrequency           uint           `json:"rx_frequency" msg:"rx_frequency"`
-	TXFrequency           uint           `json:"tx_frequency" msg:"tx_frequency"`
-	TXPower               uint           `json:"tx_power" msg:"tx_power"`
-	ColorCode             uint           `json:"color_code" msg:"color_code"`
-	Latitude              float32        `json:"latitude" msg:"latitude"`
-	Longitude             float32        `json:"longitude" msg:"longitude"`
-	Height                int            `json:"height" msg:"height"`
-	Location              string         `json:"location" msg:"location"`
-	Description           string         `json:"description" msg:"description"`
-	Slots                 uint           `json:"slots" msg:"slots"`
-	URL                   string         `json:"url" msg:"url"`
-	SoftwareID            string         `json:"software_id" msg:"software_id"`
-	PackageID             string         `json:"package_id" msg:"package_id"`
 	Password              string         `json:"-" msg:"-"`
 	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
 	TS2StaticTalkgroups   []Talkgroup    `json:"ts2_static_talkgroups" gorm:"many2many:repeater_ts2_static_talkgroups;" msg:"-"`
@@ -69,6 +54,7 @@ type Repeater struct {
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
+	RepeaterConfiguration
 }
 
 func (p *Repeater) String() string {
@@ -84,7 +70,7 @@ func (p *Repeater) String() string {
 
 func ListRepeaters(db *gorm.DB) ([]Repeater, error) {
 	var repeaters []Repeater
-	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Order("radio_id asc").Find(&repeaters).Error
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Order("id asc").Find(&repeaters).Error
 	return repeaters, err
 }
 
@@ -96,7 +82,7 @@ func CountRepeaters(db *gorm.DB) (int, error) {
 
 func GetUserRepeaters(db *gorm.DB, id uint) ([]Repeater, error) {
 	var repeaters []Repeater
-	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", id).Order("radio_id asc").Find(&repeaters).Error
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", id).Order("id asc").Find(&repeaters).Error
 	return repeaters, err
 }
 
@@ -114,20 +100,20 @@ func FindRepeaterByID(db *gorm.DB, id uint) (Repeater, error) {
 
 func RepeaterExists(db *gorm.DB, repeater Repeater) (bool, error) {
 	var count int64
-	err := db.Model(&Repeater{}).Where("radio_id = ?", repeater.RadioID).Limit(1).Count(&count).Error
+	err := db.Model(&Repeater{}).Where("id = ?", repeater.ID).Limit(1).Count(&count).Error
 	return count > 0, err
 }
 
 func RepeaterIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
-	err := db.Model(&Repeater{}).Where("radio_id = ?", id).Limit(1).Count(&count).Error
+	err := db.Model(&Repeater{}).Where("id = ?", id).Limit(1).Count(&count).Error
 	return count > 0, err
 }
 
 func DeleteRepeater(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{})
-		tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
+		tx.Unscoped().Where("id = ?", id).Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{})
 		return nil
 	})
 	if err != nil {
@@ -138,7 +124,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {
-	if packet.Dst == p.RadioID {
+	if packet.Dst == p.ID {
 		return true, packet.Slot
 	}
 
@@ -168,7 +154,7 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 }
 
 func (p *Repeater) WantRXCall(call Call) (bool, bool) {
-	if call.DestinationID == p.RadioID {
+	if call.DestinationID == p.ID {
 		return true, call.TimeSlot
 	}
 

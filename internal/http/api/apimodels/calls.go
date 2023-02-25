@@ -26,7 +26,7 @@ type WSCallResponseUser struct {
 }
 
 type WSCallResponseRepeater struct {
-	RadioID  uint   `json:"radio_id"`
+	RadioID  uint   `json:"id"`
 	Callsign string `json:"callsign"`
 }
 

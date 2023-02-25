@@ -51,7 +51,7 @@ func GetSubscriptionManager() *SubscriptionManager {
 }
 
 func (m *SubscriptionManager) CancelSubscription(p models.Repeater, talkgroupID uint) {
-	radioSubscriptions, ok := m.subscriptions.Load(p.RadioID)
+	radioSubscriptions, ok := m.subscriptions.Load(p.ID)
 	if !ok {
 		return
 	}
@@ -87,16 +87,16 @@ func (m *SubscriptionManager) CancelAllSubscriptions() {
 		logging.Errorf("Cancelling all subscriptions")
 	}
 	m.subscriptions.Range(func(radioID uint, value *xsync.MapOf[uint, *context.CancelFunc]) bool {
-		m.CancelAllRepeaterSubscriptions(models.Repeater{RadioID: radioID})
+		m.CancelAllRepeaterSubscriptions(models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: radioID}})
 		return true
 	})
 }
 
 func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) {
 	if config.GetConfig().Debug {
-		logging.Errorf("Cancelling all subscriptions for repeater %d", p.RadioID)
+		logging.Errorf("Cancelling all subscriptions for repeater %d", p.ID)
 	}
-	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	radioSubs, ok := m.subscriptions.Load(p.ID)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) 
 func (m *SubscriptionManager) ListenForCallsOn(redis *redis.Client, p models.Repeater, talkgroupID uint) {
 	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCallsOn")
 	defer span.End()
-	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	radioSubs, ok := m.subscriptions.Load(p.ID)
 	if !ok {
 		return
 	}
@@ -129,21 +129,21 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCalls")
 	defer span.End()
 
-	_, ok := m.subscriptions.Load(p.RadioID)
+	_, ok := m.subscriptions.Load(p.ID)
 	if !ok {
-		m.subscriptions.Store(p.RadioID, xsync.NewIntegerMapOf[uint, *context.CancelFunc]())
+		m.subscriptions.Store(p.ID, xsync.NewIntegerMapOf[uint, *context.CancelFunc]())
 	}
 
-	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	radioSubs, ok := m.subscriptions.Load(p.ID)
 	if !ok {
 		logging.Error("Failed to load radio subscriptions")
 		return
 	}
 
-	_, ok = radioSubs.Load(p.RadioID)
+	_, ok = radioSubs.Load(p.ID)
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
-		radioSubs.Store(p.RadioID, &cancel)
+		radioSubs.Store(p.ID, &cancel)
 		go m.subscribeRepeater(newCtx, redis, p) //nolint:golint,contextcheck
 	}
 
@@ -249,7 +249,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 						jsonCall.ToUser.Callsign = call.ToUser.Callsign
 					}
 					if call.IsToRepeater {
-						jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+						jsonCall.ToRepeater.RadioID = call.ToRepeater.ID
 						jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
 					}
 					jsonCall.IsToTalkgroup = call.IsToTalkgroup
@@ -275,13 +275,13 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 
 func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redis.Client, p models.Repeater) {
 	if config.GetConfig().Debug {
-		logging.Errorf("Listening for calls on repeater %d", p.RadioID)
+		logging.Errorf("Listening for calls on repeater %d", p.ID)
 	}
-	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.RadioID))
+	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.ID))
 	defer func() {
-		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.RadioID))
+		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.ID))
 		if err != nil {
-			logging.Errorf("Error unsubscribing from hbrp:packets:repeater:%d: %s", p.RadioID, err)
+			logging.Errorf("Error unsubscribing from hbrp:packets:repeater:%d: %s", p.ID, err)
 		}
 		err = pubsub.Close()
 		if err != nil {
@@ -293,11 +293,11 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 		select {
 		case <-ctx.Done():
 			if config.GetConfig().Debug {
-				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d", p.RadioID)
+				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d", p.ID)
 			}
-			radioSubs, ok := m.subscriptions.Load(p.RadioID)
+			radioSubs, ok := m.subscriptions.Load(p.ID)
 			if ok {
-				radioSubs.Delete(p.RadioID)
+				radioSubs.Delete(p.ID)
 			}
 			return
 		case msg := <-pubsubChannel:
@@ -313,7 +313,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 				logging.Errorf("Failed to unpack packet")
 				continue
 			}
-			packet.Repeater = p.RadioID
+			packet.Repeater = p.ID
 			redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 		}
 	}
@@ -324,7 +324,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 		return
 	}
 	if config.GetConfig().Debug {
-		logging.Logf("Listening for calls on repeater %d, talkgroup %d", p.RadioID, tg)
+		logging.Logf("Listening for calls on repeater %d, talkgroup %d", p.ID, tg)
 	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:talkgroup:%d", tg))
 	defer func() {
@@ -343,9 +343,9 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 		select {
 		case <-ctx.Done():
 			if config.GetConfig().Debug {
-				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d, talkgroup %d", p.RadioID, tg)
+				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d, talkgroup %d", p.ID, tg)
 			}
-			radioSubs, ok := m.subscriptions.Load(p.RadioID)
+			radioSubs, ok := m.subscriptions.Load(p.ID)
 			if ok {
 				radioSubs.Delete(tg)
 			}
@@ -363,7 +363,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 				continue
 			}
 
-			if packet.Repeater == p.RadioID {
+			if packet.Repeater == p.ID {
 				continue
 			}
 
@@ -371,7 +371,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 			if want {
 				// This packet is for the repeater's dynamic talkgroup
 				// We need to send it to the repeater
-				packet.Repeater = p.RadioID
+				packet.Repeater = p.ID
 				packet.Slot = slot
 				redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 			} else {

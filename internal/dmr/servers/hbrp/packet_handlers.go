@@ -303,9 +303,9 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	// For each user repeaters
 	for _, repeater := range user.Repeaters {
 		// If the repeater is online and the last user call was not to this repeater
-		if repeater.RadioID != lastCall.RepeaterID && s.Redis.RepeaterExists(ctx, repeater.RadioID) {
+		if repeater.ID != lastCall.RepeaterID && s.Redis.RepeaterExists(ctx, lastCall.RepeaterID) {
 			// Send the packet to the repeater
-			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeater.RadioID), packedBytes)
+			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes)
 		}
 	}
 }
@@ -535,7 +535,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	}
 	if !exists {
 		repeater := models.Repeater{}
-		repeater.RadioID = repeaterID
+		repeater.ID = repeaterID
 		repeater.IP = remoteAddr.IP.String()
 		repeater.Port = remoteAddr.Port
 		repeater.Connection = "RPTL-RECEIVED"
@@ -717,7 +717,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		logging.Errorf("Error parsing TXPower: %v", err)
 		return
 	}
-	repeater.TXPower = uint(txPower)
+	repeater.TXPower = uint8(txPower)
 	const maxTXPower = 99
 	if repeater.TXPower > maxTXPower {
 		repeater.TXPower = maxTXPower
@@ -733,7 +733,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		logging.Errorf("Invalid ColorCode: %d", colorCode)
 		return
 	}
-	repeater.ColorCode = uint(colorCode)
+	repeater.ColorCode = uint8(colorCode)
 
 	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 	if err != nil {
@@ -744,7 +744,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		logging.Errorf("Invalid Latitude: %f", lat)
 		return
 	}
-	repeater.Latitude = float32(lat)
+	repeater.Latitude = lat
 
 	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 	if err != nil {
@@ -755,7 +755,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		logging.Errorf("Invalid Longitude: %f", long)
 		return
 	}
-	repeater.Longitude = float32(long)
+	repeater.Longitude = long
 
 	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 	if err != nil {
@@ -766,7 +766,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 	if height > maxHeight {
 		height = maxHeight
 	}
-	repeater.Height = int(height)
+	repeater.Height = uint16(height)
 
 	repeater.Location = strings.TrimRight(string(data[58:78]), " ")
 	const maxLocation = 20
@@ -774,33 +774,33 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		repeater.Location = repeater.Location[:maxLocation]
 	}
 
-	repeater.Description = strings.TrimRight(string(data[78:97]), " ")
+	repeater.Description = strings.TrimRight(string(data[78:98]), " ")
 	const maxDescription = 20
 	if len(repeater.Description) > maxDescription {
 		repeater.Description = repeater.Description[:maxDescription]
 	}
 
-	slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
+	slots, err := strconv.ParseInt(strings.TrimRight(string(data[98:99]), " "), 0, 32)
 	if err != nil {
 		logging.Errorf("Error parsing Slots: %v", err)
 		return
 	}
 	repeater.Slots = uint(slots)
 
-	repeater.URL = strings.TrimRight(string(data[98:222]), " ")
+	repeater.URL = strings.TrimRight(string(data[99:223]), " ")
 	const maxURL = 124
 	if len(repeater.URL) > maxURL {
 		repeater.URL = repeater.URL[:maxURL]
 	}
 
-	repeater.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
+	repeater.SoftwareID = strings.TrimRight(string(data[223:263]), " ")
 	const maxSoftwareID = 40
 	if len(repeater.SoftwareID) > maxSoftwareID {
 		repeater.SoftwareID = repeater.SoftwareID[:maxSoftwareID]
 	} else if repeater.SoftwareID == "" {
-		repeater.SoftwareID = "github.com/USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
+		repeater.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
 	}
-	repeater.PackageID = strings.TrimRight(string(data[262:302]), " ")
+	repeater.PackageID = strings.TrimRight(string(data[263:302]), " ")
 	const maxPackageID = 40
 	if len(repeater.PackageID) > maxPackageID {
 		repeater.PackageID = repeater.PackageID[:maxPackageID]

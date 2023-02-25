@@ -123,6 +123,25 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 	return nil
 }
 
+func (p *Repeater) UpdateFromRedis(repeater Repeater) {
+	p.Connected = repeater.Connected
+	p.LastPing = repeater.LastPing
+	p.Callsign = repeater.Callsign
+	p.RXFrequency = repeater.RXFrequency
+	p.TXFrequency = repeater.TXFrequency
+	p.TXPower = repeater.TXPower
+	p.ColorCode = repeater.ColorCode
+	p.Latitude = repeater.Latitude
+	p.Longitude = repeater.Longitude
+	p.Height = repeater.Height
+	p.Location = repeater.Location
+	p.Description = repeater.Description
+	p.Slots = repeater.Slots
+	p.URL = repeater.URL
+	p.SoftwareID = repeater.SoftwareID
+	p.PackageID = repeater.PackageID
+}
+
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 	if packet.Dst == p.ID {
 		return true, packet.Slot

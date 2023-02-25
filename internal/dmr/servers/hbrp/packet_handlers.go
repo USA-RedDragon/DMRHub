@@ -27,8 +27,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,7 +35,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"go.opentelemetry.io/otel"
 )
 
@@ -684,133 +681,6 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	}
 }
 
-func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
-	repeater.Connected = time.Now()
-	repeater.LastPing = time.Now()
-
-	repeater.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
-	if len(repeater.Callsign) < 4 || len(repeater.Callsign) > 8 {
-		logging.Errorf("Invalid callsign: %s", repeater.Callsign)
-		return
-	}
-	if !dmrconst.CallsignRegex.MatchString(strings.ToUpper(repeater.Callsign)) {
-		logging.Errorf("Invalid callsign: %s", repeater.Callsign)
-		return
-	}
-
-	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing RXFreq: %v", err)
-		return
-	}
-	repeater.RXFrequency = uint(rxFreq)
-
-	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing TXFreq: %v", err)
-		return
-	}
-	repeater.TXFrequency = uint(txFreq)
-
-	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing TXPower: %v", err)
-		return
-	}
-	repeater.TXPower = uint8(txPower)
-	const maxTXPower = 99
-	if repeater.TXPower > maxTXPower {
-		repeater.TXPower = maxTXPower
-	}
-
-	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing ColorCode: %v", err)
-		return
-	}
-	const maxColorCode = 15
-	if colorCode > maxColorCode {
-		logging.Errorf("Invalid ColorCode: %d", colorCode)
-		return
-	}
-	repeater.ColorCode = uint8(colorCode)
-
-	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
-	if err != nil {
-		logging.Errorf("Error parsing Latitude: %v", err)
-		return
-	}
-	if lat < -90 || lat > 90 {
-		logging.Errorf("Invalid Latitude: %f", lat)
-		return
-	}
-	repeater.Latitude = lat
-
-	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
-	if err != nil {
-		logging.Errorf("Error parsing Longitude: %v", err)
-		return
-	}
-	if long < -180 || long > 180 {
-		logging.Errorf("Invalid Longitude: %f", long)
-		return
-	}
-	repeater.Longitude = long
-
-	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing Height: %v", err)
-		return
-	}
-	const maxHeight = 999
-	if height > maxHeight {
-		height = maxHeight
-	}
-	repeater.Height = uint16(height)
-
-	repeater.Location = strings.TrimRight(string(data[58:78]), " ")
-	const maxLocation = 20
-	if len(repeater.Location) > maxLocation {
-		repeater.Location = repeater.Location[:maxLocation]
-	}
-
-	repeater.Description = strings.TrimRight(string(data[78:98]), " ")
-	const maxDescription = 20
-	if len(repeater.Description) > maxDescription {
-		repeater.Description = repeater.Description[:maxDescription]
-	}
-
-	slots, err := strconv.ParseInt(strings.TrimRight(string(data[98:99]), " "), 0, 32)
-	if err != nil {
-		logging.Errorf("Error parsing Slots: %v", err)
-		return
-	}
-	repeater.Slots = uint(slots)
-
-	repeater.URL = strings.TrimRight(string(data[99:223]), " ")
-	const maxURL = 124
-	if len(repeater.URL) > maxURL {
-		repeater.URL = repeater.URL[:maxURL]
-	}
-
-	repeater.SoftwareID = strings.TrimRight(string(data[223:263]), " ")
-	const maxSoftwareID = 40
-	if len(repeater.SoftwareID) > maxSoftwareID {
-		repeater.SoftwareID = repeater.SoftwareID[:maxSoftwareID]
-	} else if repeater.SoftwareID == "" {
-		repeater.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
-	}
-	repeater.PackageID = strings.TrimRight(string(data[263:302]), " ")
-	const maxPackageID = 40
-	if len(repeater.PackageID) > maxPackageID {
-		repeater.PackageID = repeater.PackageID[:maxPackageID]
-	} else if repeater.PackageID == "" {
-		repeater.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
-	}
-
-	repeater.Connection = "YES"
-}
-
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCPacket")
 	defer span.End()
@@ -832,37 +702,35 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater, err := s.Redis.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			logging.Errorf("Error getting repeater from redis: %v", err)
+			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
 
-		s.updateRedisRepeater(data, &repeater)
+		err = repeater.ParseConfig(data)
+		if err != nil {
+			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
+			return
+		}
+
+		repeater.Connected = time.Now()
+		repeater.LastPing = time.Now()
+		repeater.Connection = "YES"
+
 		s.Redis.StoreRepeater(ctx, repeaterID, repeater)
 		logging.Logf("Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			logging.Errorf("Error finding repeater: %v", err)
+			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
-		dbRepeater.Connected = repeater.Connected
-		dbRepeater.LastPing = repeater.LastPing
-		dbRepeater.Callsign = repeater.Callsign
-		dbRepeater.RXFrequency = repeater.RXFrequency
-		dbRepeater.TXFrequency = repeater.TXFrequency
-		dbRepeater.TXPower = repeater.TXPower
-		dbRepeater.ColorCode = repeater.ColorCode
-		dbRepeater.Latitude = repeater.Latitude
-		dbRepeater.Longitude = repeater.Longitude
-		dbRepeater.Height = repeater.Height
-		dbRepeater.Location = repeater.Location
-		dbRepeater.Description = repeater.Description
-		dbRepeater.Slots = repeater.Slots
-		dbRepeater.URL = repeater.URL
-		dbRepeater.SoftwareID = repeater.SoftwareID
-		dbRepeater.PackageID = repeater.PackageID
+		dbRepeater.UpdateFromRedis(repeater)
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
 			logging.Errorf("Error saving repeater to database: %s", err)
+			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
+			return
 		}
 	} else {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)

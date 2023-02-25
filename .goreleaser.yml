@@ -190,3 +190,6 @@ docker_signs:
   - artifacts: all
     stdin: "{{ .Env.COSIGN_PASSWORD}}"
     args: ["sign", "--key=/tmp/cosign.key", "${artifact}"]
+
+milestones:
+  - close: true

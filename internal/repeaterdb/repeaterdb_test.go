@@ -22,6 +22,9 @@ package repeaterdb
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 )
 
 func TestRepeaterdb(t *testing.T) {
@@ -91,13 +94,15 @@ func TestRepeaterdbInvalidRepeater(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	t.Parallel()
-	err := Update()
-	if err != nil {
-		t.Error(err)
-	}
-	if repeaterDB.builtInDate == GetDate() {
-		t.Error("Update did not update the database")
-	}
+	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
+		err := Update()
+		if err != nil {
+			r.Errorf("Update failed: %v", err)
+		}
+		if repeaterDB.builtInDate == GetDate() {
+			r.Errorf("Update did not update the database")
+		}
+	})
 }
 
 func BenchmarkRepeaterDB(b *testing.B) {

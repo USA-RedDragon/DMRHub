@@ -63,7 +63,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(initTracer, "Failed tracing app: %v", err)
+		logging.Errorf("Failed tracing app: %v", err)
 	}
 	resources, err := resource.New(
 		context.Background(),
@@ -73,7 +73,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(initTracer, "Could not set resources: %v", err)
+		logging.Errorf("Could not set resources: %v", err)
 	}
 
 	otel.SetTracerProvider(
@@ -91,8 +91,8 @@ func main() {
 }
 
 func start() int {
-	logging.GetLogger(logging.Error).Logf(main, "DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
-	logging.GetLogger(logging.Access).Logf(main, "DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+	logging.Errorf("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+	logging.Logf("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
 	defer logging.Close()
 
 	ctx := context.Background()
@@ -105,11 +105,11 @@ func start() int {
 		defer func() {
 			err := cleanup(ctx)
 			if err != nil {
-				logging.GetLogger(logging.Error).Logf(start, "Failed to shutdown tracer: %s", err)
+				logging.Errorf("Failed to shutdown tracer: %s", err)
 			}
 		}()
 	}
-        go metrics.CreateMetricsServer()
+	go metrics.CreateMetricsServer()
 
 	database := db.MakeDB()
 
@@ -117,33 +117,33 @@ func start() int {
 	go func() {
 		err := repeaterdb.Update()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s using built in one", err)
+			logging.Errorf("Failed to update repeater database: %s using built in one", err)
 		}
 	}()
 	_, err := scheduler.Every(1).Day().At("00:00").Do(func() {
 		err := repeaterdb.Update()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s", err)
+			logging.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(start, "Failed to schedule repeater update: %s", err)
+		logging.Errorf("Failed to schedule repeater update: %s", err)
 	}
 
 	go func() {
 		err = userdb.Update()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to update user database: %s using built in one", err)
+			logging.Errorf("Failed to update user database: %s using built in one", err)
 		}
 	}()
 	_, err = scheduler.Every(1).Day().At("00:00").Do(func() {
 		err = userdb.Update()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to update repeater database: %s", err)
+			logging.Errorf("Failed to update repeater database: %s", err)
 		}
 	})
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(start, "Failed to schedule user update: %s", err)
+		logging.Errorf("Failed to schedule user update: %s", err)
 	}
 
 	scheduler.StartAsync()
@@ -161,24 +161,24 @@ func start() int {
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(start, "Failed to connect to redis: %s", err)
+		logging.Errorf("Failed to connect to redis: %s", err)
 		return 1
 	}
 	defer func() {
 		err := redis.Close()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to close redis: %s", err)
+			logging.Errorf("Failed to close redis: %s", err)
 		}
 	}()
 	if config.GetConfig().OTLPEndpoint != "" {
 		if err := redisotel.InstrumentTracing(redis); err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to trace redis: %s", err)
+			logging.Errorf("Failed to trace redis: %s", err)
 			return 1
 		}
 
 		// Enable metrics instrumentation.
 		if err := redisotel.InstrumentMetrics(redis); err != nil {
-			logging.GetLogger(logging.Error).Logf(start, "Failed to instrument redis: %s", err)
+			logging.Errorf("Failed to instrument redis: %s", err)
 			return 1
 		}
 	}
@@ -188,7 +188,11 @@ func start() int {
 	redisClient := servers.MakeRedisClient(redis)
 
 	hbrpServer := hbrp.MakeServer(database, redis, redisClient, callTracker)
-	hbrpServer.Start(ctx)
+	err = hbrpServer.Start(ctx)
+	if err != nil {
+		logging.Errorf("Failed to start HBRP server: %v", err)
+		return 1
+	}
 	defer hbrpServer.Stop(ctx)
 
 	g := new(errgroup.Group)
@@ -220,16 +224,20 @@ func start() int {
 	}
 
 	http := http.MakeServer(database, redis)
-	http.Start()
+	err = http.Start()
+	if err != nil {
+		logging.Errorf("Failed to start HTTP server %v", err)
+		return 1
+	}
 	defer http.Stop()
 
 	if err := g.Wait(); err != nil {
-		logging.GetLogger(logging.Error).Logf(start, "Failed to start repeater listeners: %s", err)
+		logging.Errorf("Failed to start repeater listeners: %s", err)
 		return 1
 	}
 
 	stop := func(sig os.Signal) {
-		logging.GetLogger(logging.Error).Logf(start, "Shutting down due to %v", sig)
+		logging.Errorf("Shutting down due to %v", sig)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -254,7 +262,7 @@ func start() int {
 				defer cancel()
 				err := cleanup(ctx)
 				if err != nil {
-					logging.GetLogger(logging.Error).Logf(start, "Failed to shutdown tracer: %s", err)
+					logging.Errorf("Failed to shutdown tracer: %s", err)
 				}
 			}
 		}(wg)
@@ -276,11 +284,11 @@ func start() int {
 		select {
 		case <-c:
 			redis.Close()
-			logging.GetLogger(logging.Error).Log(start, "Shutdown safely completed")
+			logging.Error("Shutdown safely completed")
 			logging.Close()
 			os.Exit(0)
 		case <-time.After(timeout):
-			logging.GetLogger(logging.Error).Log(start, "Shutdown timed out")
+			logging.Error("Shutdown timed out")
 			logging.Close()
 			os.Exit(1)
 		}

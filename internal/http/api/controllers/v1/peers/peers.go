@@ -27,11 +27,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -42,13 +42,13 @@ const (
 func GETPeers(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -60,13 +60,13 @@ func GETPeers(c *gin.Context) {
 func GETMyPeers(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -74,14 +74,14 @@ func GETMyPeers(c *gin.Context) {
 
 	userID := session.Get("user_id")
 	if userID == nil {
-		klog.Error("userID not found")
+		logging.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		klog.Errorf("Unable to convert userID to uint: %v", userID)
+		logging.Errorf("Unable to convert userID to uint: %v", userID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -89,7 +89,7 @@ func GETMyPeers(c *gin.Context) {
 	// Get all peers owned by user
 	peers := models.GetUserPeers(db, uid)
 	if db.Error != nil {
-		klog.Errorf("Error getting peers owned by user %d: %v", userID, db.Error)
+		logging.Errorf("Error getting peers owned by user %d: %v", userID, db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting peers owned by user"})
 		return
 	}
@@ -102,7 +102,7 @@ func GETMyPeers(c *gin.Context) {
 func GETPeer(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -124,7 +124,7 @@ func GETPeer(c *gin.Context) {
 func DELETEPeer(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -145,23 +145,23 @@ func POSTPeer(c *gin.Context) {
 	session := sessions.Default(c)
 	usID := session.Get("user_id")
 	if usID == nil {
-		klog.Error("userID not found")
+		logging.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	userID, ok := usID.(uint)
 	if !ok {
-		klog.Error("userID cast failed")
+		logging.Error("userID cast failed")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	redis, ok := c.MustGet("Redis").(*redis.Client)
 	if !ok {
-		klog.Error("Redis cast failed")
+		logging.Error("Redis cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -169,11 +169,11 @@ func POSTPeer(c *gin.Context) {
 	var json apimodels.PeerPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTPeer: JSON data is invalid: %v", err)
+		logging.Errorf("POSTPeer: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if models.PeerIDExists(db, json.ID) {
-			klog.Errorf("POSTPeer: Peer ID already exists: %v", json.ID)
+			logging.Errorf("POSTPeer: Peer ID already exists: %v", json.ID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID already exists"})
 			return
 		}
@@ -185,7 +185,7 @@ func POSTPeer(c *gin.Context) {
 
 		// Peer validated to fit within a 4 byte integer
 		if json.ID <= 0 || json.ID > 4294967295 {
-			klog.Errorf("POSTPeer: Peer ID is invalid: %v", json.ID)
+			logging.Errorf("POSTPeer: Peer ID is invalid: %v", json.ID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID is invalid"})
 			return
 		}
@@ -198,7 +198,7 @@ func POSTPeer(c *gin.Context) {
 		const randSpecial = 2
 		peer.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
-			klog.Errorf("Failed to generate a peer password %v", err)
+			logging.Errorf("Failed to generate a peer password %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a peer password"})
 			return
 		}
@@ -206,7 +206,7 @@ func POSTPeer(c *gin.Context) {
 		var user models.User
 		db.First(&user, json.OwnerID)
 		if db.Error != nil {
-			klog.Errorf("Error getting user %d: %v", userID, db.Error)
+			logging.Errorf("Error getting user %d: %v", userID, db.Error)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 			return
 		}

@@ -30,12 +30,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -46,26 +46,26 @@ const (
 func GETRepeaters(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	repeaters, err := models.ListRepeaters(db)
 	if err != nil {
-		klog.Errorf("Error getting repeaters: %v", err)
+		logging.Errorf("Error getting repeaters: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters"})
 		return
 	}
 
 	count, err := models.CountRepeaters(cDb)
 	if err != nil {
-		klog.Errorf("Error getting repeaters: %v", err)
+		logging.Errorf("Error getting repeaters: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters"})
 		return
 	}
@@ -76,13 +76,13 @@ func GETRepeaters(c *gin.Context) {
 func GETMyRepeaters(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -90,14 +90,14 @@ func GETMyRepeaters(c *gin.Context) {
 
 	userID := session.Get("user_id")
 	if userID == nil {
-		klog.Error("userID not found")
+		logging.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		klog.Errorf("Unable to convert userID to uint: %v", userID)
+		logging.Errorf("Unable to convert userID to uint: %v", userID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -105,14 +105,14 @@ func GETMyRepeaters(c *gin.Context) {
 	// Get all repeaters owned by user
 	repeaters, err := models.GetUserRepeaters(db, uid)
 	if err != nil {
-		klog.Errorf("Error getting repeaters owned by user %d: %v", userID, err)
+		logging.Errorf("Error getting repeaters owned by user %d: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
 
 	count, err := models.CountUserRepeaters(cDb, uid)
 	if err != nil {
-		klog.Errorf("Error getting repeaters owned by user %d: %v", userID, err)
+		logging.Errorf("Error getting repeaters owned by user %d: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
 		return
 	}
@@ -123,7 +123,7 @@ func GETMyRepeaters(c *gin.Context) {
 func GETRepeater(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -136,7 +136,7 @@ func GETRepeater(c *gin.Context) {
 	}
 	repeaterExists, err := models.RepeaterIDExists(db, uint(repeaterID))
 	if err != nil {
-		klog.Errorf("Error checking if repeater exists: %v", err)
+		logging.Errorf("Error checking if repeater exists: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if repeater exists"})
 		return
 	}
@@ -148,7 +148,7 @@ func GETRepeater(c *gin.Context) {
 
 	repeater, err := models.FindRepeaterByID(db, uint(repeaterID))
 	if err != nil {
-		klog.Errorf("Error getting repeater: %v", err)
+		logging.Errorf("Error getting repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
 		return
 	}
@@ -159,7 +159,7 @@ func GETRepeater(c *gin.Context) {
 func DELETERepeater(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -170,7 +170,7 @@ func DELETERepeater(c *gin.Context) {
 	}
 	err = models.DeleteRepeater(db, uint(idUint64))
 	if err != nil {
-		klog.Errorf("Error deleting repeater: %v", err)
+		logging.Errorf("Error deleting repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting repeater"})
 		return
 	}
@@ -180,13 +180,13 @@ func DELETERepeater(c *gin.Context) {
 func POSTRepeaterTalkgroups(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	redis, ok := c.MustGet("Redis").(*redis.Client)
 	if !ok {
-		klog.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -202,13 +202,13 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	var json apimodels.RepeaterTalkgroupsPost
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: JSON data is invalid: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 		return
 	}
 	repeaterExists, err := models.RepeaterIDExists(db, repeaterID)
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: Error checking if repeater exists: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: Error checking if repeater exists: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if repeater exists"})
 		return
 	}
@@ -220,21 +220,21 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 
 	repeater, err := models.FindRepeaterByID(db, repeaterID)
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: Error getting repeater: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: Error getting repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
 		return
 	}
 
 	err = db.Model(&repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1StaticTalkgroups: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: Error updating TS1StaticTalkgroups: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1StaticTalkgroups"})
 		return
 	}
 	repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
 	err = db.Model(&repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2StaticTalkgroups: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: Error updating TS2StaticTalkgroups: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2StaticTalkgroups"})
 		return
 	}
@@ -244,7 +244,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		repeater.TS1DynamicTalkgroupID = nil
 		err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
 		if err != nil {
-			klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS1DynamicTalkgroup: %v", err)
+			logging.Errorf("POSTRepeaterTalkgroups: Error deleting TS1DynamicTalkgroup: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1DynamicTalkgroup"})
 			return
 		}
@@ -253,7 +253,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
 		err = db.Model(&repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
 		if err != nil {
-			klog.Errorf("POSTRepeaterTalkgroups: Error updating TS1DynamicTalkgroup: %v", err)
+			logging.Errorf("POSTRepeaterTalkgroups: Error updating TS1DynamicTalkgroup: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1DynamicTalkgroup"})
 			return
 		}
@@ -263,7 +263,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		repeater.TS2DynamicTalkgroupID = nil
 		err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
 		if err != nil {
-			klog.Errorf("POSTRepeaterTalkgroups: Error deleting TS2DynamicTalkgroup: %v", err)
+			logging.Errorf("POSTRepeaterTalkgroups: Error deleting TS2DynamicTalkgroup: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2DynamicTalkgroup"})
 			return
 		}
@@ -272,7 +272,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
 		err = db.Model(&repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
 		if err != nil {
-			klog.Errorf("POSTRepeaterTalkgroups: Error updating TS2DynamicTalkgroup: %v", err)
+			logging.Errorf("POSTRepeaterTalkgroups: Error updating TS2DynamicTalkgroup: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2DynamicTalkgroup"})
 			return
 		}
@@ -280,7 +280,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 
 	err = db.Save(&repeater).Error
 	if err != nil {
-		klog.Errorf("POSTRepeaterTalkgroups: Error saving repeater: %v", err)
+		logging.Errorf("POSTRepeaterTalkgroups: Error saving repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
@@ -293,30 +293,30 @@ func POSTRepeater(c *gin.Context) {
 	session := sessions.Default(c)
 	usID := session.Get("user_id")
 	if usID == nil {
-		klog.Error("userID not found")
+		logging.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	userID, ok := usID.(uint)
 	if !ok {
-		klog.Error("userID cast failed")
+		logging.Error("userID cast failed")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	redis, ok := c.MustGet("Redis").(*redis.Client)
 	if !ok {
-		klog.Error("Redis cast failed")
+		logging.Error("Redis cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
 	user, err := models.FindUserByID(db, userID)
 	if err != nil {
-		klog.Errorf("Error getting user %d: %v", userID, err)
+		logging.Errorf("Error getting user %d: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -324,7 +324,7 @@ func POSTRepeater(c *gin.Context) {
 	var json apimodels.RepeaterPost
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTRepeater: JSON data is invalid: %v", err)
+		logging.Errorf("POSTRepeater: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		var repeater models.Repeater
@@ -347,7 +347,7 @@ func POSTRepeater(c *gin.Context) {
 			}
 			r, ok := repeaterdb.Get(json.RadioID)
 			if !ok {
-				klog.Error("Error getting repeater from database")
+				logging.Error("Error getting repeater from database")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
 				return
 			}
@@ -359,7 +359,7 @@ func POSTRepeater(c *gin.Context) {
 			// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
 			mhZFloat, parseErr := strconv.ParseFloat(r.Frequency, 32)
 			if parseErr != nil {
-				klog.Errorf("Error converting frequency to float: %v", parseErr)
+				logging.Errorf("Error converting frequency to float: %v", parseErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
 				return
 			}
@@ -378,7 +378,7 @@ func POSTRepeater(c *gin.Context) {
 			// convert the offset to a float
 			offsetFloat, parseErr := strconv.ParseFloat(r.Offset, 32)
 			if parseErr != nil {
-				klog.Errorf("Error converting offset to float: %v\nError:", r.Offset, parseErr)
+				logging.Errorf("Error converting offset to float: %v\nError: %v", r.Offset, parseErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
 				return
 			}
@@ -404,7 +404,7 @@ func POSTRepeater(c *gin.Context) {
 		const randSpecial = 2
 		repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
-			klog.Errorf("Failed to generate a repeater password %v", err)
+			logging.Errorf("Failed to generate a repeater password %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
 			return
 		}
@@ -414,7 +414,7 @@ func POSTRepeater(c *gin.Context) {
 		repeater.OwnerID = user.ID
 		err := db.Preload("Owner").Create(&repeater).Error
 		if err != nil {
-			klog.Errorf("Error creating repeater: %v", err)
+			logging.Errorf("Error creating repeater: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
@@ -426,13 +426,13 @@ func POSTRepeater(c *gin.Context) {
 func POSTRepeaterLink(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	redis, ok := c.MustGet("Redis").(*redis.Client)
 	if !ok {
-		klog.Error("Redis cast failed")
+		logging.Error("Redis cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -448,7 +448,7 @@ func POSTRepeaterLink(c *gin.Context) {
 
 	repeater, err := models.FindRepeaterByID(db, uint(id))
 	if err != nil {
-		klog.Errorf("Error finding repeater: %v", err)
+		logging.Errorf("Error finding repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding repeater"})
 		return
 	}
@@ -471,7 +471,7 @@ func POSTRepeaterLink(c *gin.Context) {
 	// Validate target is a valid talkgroup
 	exists, err := models.TalkgroupIDExists(db, uint(targetInt))
 	if err != nil {
-		klog.Errorf("Error validating target: %v", err)
+		logging.Errorf("Error validating target: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error validating target"})
 		return
 	}
@@ -482,7 +482,7 @@ func POSTRepeaterLink(c *gin.Context) {
 
 	talkgroup, err := models.FindTalkgroupByID(db, uint(targetInt))
 	if err != nil {
-		klog.Errorf("Error finding talkgroup: %v", err)
+		logging.Errorf("Error finding talkgroup: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 		return
 	}
@@ -505,7 +505,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			// Append TS1StaticTalkgroups association on repeater to target
 			err := db.Model(&repeater).Association("TS1StaticTalkgroups").Append(&talkgroup)
 			if err != nil {
-				klog.Errorf("Error appending TS1StaticTalkgroups: %v", err)
+				logging.Errorf("Error appending TS1StaticTalkgroups: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS1StaticTalkgroups"})
 				return
 			}
@@ -513,7 +513,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			// Append TS2StaticTalkgroups association on repeater to target
 			err := db.Model(&repeater).Association("TS2StaticTalkgroups").Append(&talkgroup)
 			if err != nil {
-				klog.Errorf("Error appending TS2StaticTalkgroups: %v", err)
+				logging.Errorf("Error appending TS2StaticTalkgroups: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS2StaticTalkgroups"})
 				return
 			}
@@ -522,7 +522,7 @@ func POSTRepeaterLink(c *gin.Context) {
 	go hbrp.GetSubscriptionManager().ListenForCallsOn(c.Request.Context(), redis, repeater, talkgroup.ID)
 	err = db.Save(&repeater).Error
 	if err != nil {
-		klog.Errorf("Error saving repeater: %v", err)
+		logging.Errorf("Error saving repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
@@ -532,7 +532,7 @@ func POSTRepeaterLink(c *gin.Context) {
 func POSTRepeaterUnlink(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -560,7 +560,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	targetUint := uint(targetUint64)
 	talkgroupExists, err := models.TalkgroupIDExists(db, targetUint)
 	if err != nil {
-		klog.Errorf("Error validating target: %v", err)
+		logging.Errorf("Error validating target: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error validating target"})
 		return
 	}
@@ -572,7 +572,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 	talkgroup, err := models.FindTalkgroupByID(db, targetUint)
 	if err != nil {
-		klog.Errorf("Error finding talkgroup: %v", err)
+		logging.Errorf("Error finding talkgroup: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 		return
 	}
@@ -587,7 +587,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 	repeaterExists, err := models.RepeaterIDExists(db, idUint)
 	if err != nil {
-		klog.Errorf("Error validating repeater: %v", err)
+		logging.Errorf("Error validating repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error validating repeater"})
 		return
 	}
@@ -599,7 +599,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 	repeater, err := models.FindRepeaterByID(db, idUint)
 	if err != nil {
-		klog.Errorf("Error finding repeater: %v", err)
+		logging.Errorf("Error finding repeater: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding repeater"})
 		return
 	}
@@ -621,7 +621,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 			err := db.Save(&repeater).Error
 			if err != nil {
-				klog.Errorf("Error saving repeater: %v", err)
+				logging.Errorf("Error saving repeater: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 				return
 			}
@@ -639,7 +639,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 			err := db.Save(&repeater).Error
 			if err != nil {
-				klog.Errorf("Error saving repeater: %v", err)
+				logging.Errorf("Error saving repeater: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 				return
 			}
@@ -655,14 +655,14 @@ func POSTRepeaterUnlink(c *gin.Context) {
 					oldID := talkgroup.ID
 					err := db.Model(&repeater).Association("TS1StaticTalkgroups").Delete(&talkgroup)
 					if err != nil {
-						klog.Errorf("Error deleting TS1StaticTalkgroups: %v", err)
+						logging.Errorf("Error deleting TS1StaticTalkgroups: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1StaticTalkgroups"})
 						return
 					}
 					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
 					err = db.Save(&repeater).Error
 					if err != nil {
-						klog.Errorf("Error saving repeater: %v", err)
+						logging.Errorf("Error saving repeater: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 						return
 					}
@@ -684,14 +684,14 @@ func POSTRepeaterUnlink(c *gin.Context) {
 					oldID := talkgroup.ID
 					err := db.Model(&repeater).Association("TS2StaticTalkgroups").Delete(&talkgroup)
 					if err != nil {
-						klog.Errorf("Error deleting TS2StaticTalkgroups: %v", err)
+						logging.Errorf("Error deleting TS2StaticTalkgroups: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2StaticTalkgroups"})
 						return
 					}
 					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
 					err = db.Save(&repeater).Error
 					if err != nil {
-						klog.Errorf("Error saving repeater: %v", err)
+						logging.Errorf("Error saving repeater: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 						return
 					}

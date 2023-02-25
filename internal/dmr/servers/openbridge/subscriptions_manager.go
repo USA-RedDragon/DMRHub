@@ -25,9 +25,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"k8s.io/klog/v2"
 )
 
 var subscriptionManager *SubscriptionManager //nolint:golint,gochecknoglobals
@@ -93,17 +93,17 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client
 
 func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client, p models.Peer) {
 	if config.GetConfig().Debug {
-		klog.Infof("Listening for calls on peer %d", p.ID)
+		logging.Logf("Listening for calls on peer %d", p.ID)
 	}
 	pubsub := redis.Subscribe(ctx, "openbridge:packets")
 	defer func() {
 		err := pubsub.Unsubscribe(ctx, "openbridge:packets")
 		if err != nil {
-			klog.Errorf("Error unsubscribing from openbridge:packets: %s", err)
+			logging.Errorf("Error unsubscribing from openbridge:packets: %s", err)
 		}
 		err = pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub connection: %s", err)
+			logging.Errorf("Error closing pubsub connection: %s", err)
 		}
 	}()
 	pubsubChannel := pubsub.Channel()
@@ -112,7 +112,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client
 		select {
 		case <-ctx.Done():
 			if config.GetConfig().Debug {
-				klog.Info("Context canceled, stopping subscription to openbridge:packets")
+				logging.Log("Context canceled, stopping subscription to openbridge:packets")
 			}
 			m.subscriptionsMutex.Lock()
 			_, ok := m.subscriptionCancelMutex[p.ID]
@@ -130,12 +130,12 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg([]byte(msg.Payload))
 			if err != nil {
-				klog.Errorf("Failed to unmarshal raw packet: %s", err)
+				logging.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
 			}
 			packet, ok := models.UnpackPacket(rawPacket.Data)
 			if !ok {
-				klog.Errorf("Failed to unpack packet: %s", err)
+				logging.Errorf("Failed to unpack packet: %s", err)
 				continue
 			}
 

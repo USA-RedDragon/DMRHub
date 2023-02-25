@@ -23,8 +23,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 // PeerRule is the model for an OpenBridge DMR peer's routing rules
@@ -47,7 +47,7 @@ type PeerRule struct {
 func (p *PeerRule) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		klog.Errorf("Failed to marshal peer rule to json: %s", err)
+		logging.Errorf("Failed to marshal peer rule to json: %s", err)
 		return ""
 	}
 	return string(jsn)

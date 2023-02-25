@@ -22,6 +22,8 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
+	"os"
+
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -36,7 +38,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/ulikunitz/xz"
-	"k8s.io/klog/v2"
 )
 
 //go:embed repeaterdb-date.txt
@@ -138,19 +139,23 @@ func UnpackDB() {
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
-			klog.Fatalf("Error parsing built-in date: %v", err)
+			logging.Errorf("Error parsing built-in date: %v", err)
+			os.Exit(1)
 		}
 		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
 		if err != nil {
-			klog.Fatalf("NewReader error %s", err)
+			logging.Errorf("NewReader error %s", err)
+			os.Exit(1)
 		}
 		repeaterDB.uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
-			klog.Fatalf("ReadAll error %s", err)
+			logging.Errorf("ReadAll error %s", err)
+			os.Exit(1)
 		}
 		var tmpDB dmrRepeaterDB
 		if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
-			klog.Exitf("Error decoding DMR repeaters database: %v", err)
+			logging.Errorf("Error decoding DMR repeaters database: %v", err)
+			os.Exit(1)
 		}
 
 		tmpDB.Date = repeaterDB.builtInDate
@@ -159,7 +164,7 @@ func UnpackDB() {
 		for i := range tmpDB.Repeaters {
 			id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
 			if err != nil {
-				klog.Errorf("Error converting repeater ID to int: %v", err)
+				logging.Errorf("Error converting repeater ID to int: %v", err)
 				continue
 			}
 			repeaterDB.dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
@@ -180,10 +185,12 @@ func UnpackDB() {
 
 	rptdb, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		klog.Exit("Error loading DMR users database")
+		logging.Errorf("Error loading DMR users database")
+		os.Exit(1)
 	}
 	if len(rptdb.Repeaters) == 0 {
-		klog.Exit("No DMR users found in database")
+		logging.Errorf("No DMR users found in database")
+		os.Exit(1)
 	}
 }
 
@@ -193,7 +200,7 @@ func Len() int {
 	}
 	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		klog.Error("Error loading DMR users database")
+		logging.Error("Error loading DMR users database")
 	}
 	return len(db.Repeaters)
 }
@@ -237,17 +244,18 @@ func Update() error {
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			klog.Errorf("Error closing response body: %v", err)
+			logging.Errorf("Error closing response body: %v", err)
 		}
 	}()
 	var tmpDB dmrRepeaterDB
 	if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
-		klog.Errorf("Error decoding DMR repeaters database: %v", err)
+		logging.Errorf("Error decoding DMR repeaters database: %v", err)
 		return ErrUpdateFailed
 	}
 
 	if len(tmpDB.Repeaters) == 0 {
-		klog.Exit("No DMR repeaters found in database")
+		logging.Error("No DMR repeaters found in database")
+		os.Exit(1)
 	}
 
 	tmpDB.Date = time.Now()
@@ -258,7 +266,7 @@ func Update() error {
 	for i := range tmpDB.Repeaters {
 		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
 		if err != nil {
-			klog.Errorf("Error converting repeater ID to int: %v", err)
+			logging.Errorf("Error converting repeater ID to int: %v", err)
 			continue
 		}
 		repeaterDB.dmrRepeaterMapUpdating[uint(id)] = tmpDB.Repeaters[i]
@@ -271,7 +279,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMapUpdatingLock.RUnlock()
 	repeaterDB.dmrRepeaterMapLock.Unlock()
 
-	logging.GetLogger(logging.Error).Logf(Update, "Update complete. Loaded %d DMR repeaters", Len())
+	logging.Logf("Update complete. Loaded %d DMR repeaters", Len())
 
 	return nil
 }
@@ -282,7 +290,7 @@ func GetDate() time.Time {
 	}
 	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		klog.Error("Error loading DMR users database")
+		logging.Error("Error loading DMR users database")
 	}
 	return db.Date
 }

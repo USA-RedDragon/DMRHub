@@ -25,10 +25,10 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"k8s.io/klog/v2"
 )
 
 const bufferSize = 1024
@@ -82,7 +82,7 @@ func CreateHandler(ws Websocket) func(*gin.Context) {
 		session := sessions.Default(c)
 		conn, err := handler.wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			klog.Errorf("Failed to set websocket upgrade: %v", err)
+			logging.Errorf("Failed to set websocket upgrade: %v", err)
 			return
 		}
 		handler.conn = conn
@@ -91,7 +91,7 @@ func CreateHandler(ws Websocket) func(*gin.Context) {
 			handler.handler.OnDisconnect(c, c.Request, session)
 			err := handler.conn.Close()
 			if err != nil {
-				klog.Errorf("Failed to close websocket: %v", err)
+				logging.Errorf("Failed to close websocket: %v", err)
 			}
 		}()
 		handler.handle(c.Request.Context(), session, c.Request)

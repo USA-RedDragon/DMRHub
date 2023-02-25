@@ -42,8 +42,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -74,7 +74,7 @@ func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
 		writeTimeout = debugWriteTimeout
 	}
 
-	logging.GetLogger(logging.Error).Logf(MakeServer, "HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
+	logging.Errorf("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
 	s := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
 		Handler:      r,
@@ -130,12 +130,12 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 	}
 
 	r := gin.New()
-	r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.Access).Writer))
+	r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
 	r.Use(gin.Recovery())
 
 	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
 	if err != nil {
-		klog.Error(err)
+		logging.Errorf("Failed setting trusted proxies: %v", err)
 	}
 
 	addMiddleware(r, db, redisClient)
@@ -167,18 +167,18 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 	staticGroup.GET("/", func(c *gin.Context) {
 		file, err := FS.Open("frontend/dist/index.html")
 		if err != nil {
-			klog.Errorf("Failed to open file: %s", err)
+			logging.Errorf("Failed to open file: %s", err)
 			return
 		}
 		defer func() {
 			err := file.Close()
 			if err != nil {
-				klog.Errorf("Failed to close file: %s", err)
+				logging.Errorf("Failed to close file: %s", err)
 			}
 		}()
 		fileContent, getErr := io.ReadAll(file)
 		if getErr != nil {
-			klog.Errorf("Failed to read file: %s", getErr)
+			logging.Errorf("Failed to read file: %s", getErr)
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -199,7 +199,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 			// Get the first wildcard
 			wild, have := c.Params.Get("wild")
 			if !have {
-				klog.Errorf("Failed to get wildcard")
+				logging.Errorf("Failed to get wildcard")
 				return
 			}
 			// Add the first wildcard to the path
@@ -210,7 +210,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 				for j := 1; j <= thisDepth; j++ {
 					wild, have := c.Params.Get(fmt.Sprintf("wild%d", j))
 					if !have {
-						klog.Errorf("Failed to get wildcard")
+						logging.Errorf("Failed to get wildcard")
 						return
 					}
 					wildPath = path.Join(wildPath, wild)
@@ -220,19 +220,19 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 			if fileErr != nil {
 				file, fileErr = FS.Open("frontend/dist/index.html")
 				if fileErr != nil {
-					klog.Errorf("Failed to open file: %s", fileErr)
+					logging.Errorf("Failed to open file: %s", fileErr)
 					return
 				}
 			}
 			defer func() {
 				err := file.Close()
 				if err != nil {
-					klog.Errorf("Failed to close file: %s", err)
+					logging.Errorf("Failed to close file: %s", err)
 				}
 			}()
 			fileContent, readErr := io.ReadAll(file)
 			if readErr != nil {
-				klog.Errorf("Failed to read file: %s", readErr)
+				logging.Errorf("Failed to read file: %s", readErr)
 				return
 			}
 			c.Data(http.StatusOK, "text/html", fileContent)
@@ -245,7 +245,7 @@ func addFrontendRoutes(r *gin.Engine) {
 
 	files, err := getAllFilenames(&FS, "frontend/dist")
 	if err != nil {
-		klog.Errorf("Failed to read directory: %s", err)
+		logging.Errorf("Failed to read directory: %s", err)
 	}
 	const wildcardDepth = 4
 	addFrontendWildcards(staticGroup, wildcardDepth)
@@ -257,18 +257,18 @@ func addFrontendRoutes(r *gin.Engine) {
 		staticGroup.GET(staticName, func(c *gin.Context) {
 			file, fileErr := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if fileErr != nil {
-				klog.Errorf("Failed to open file: %s", fileErr)
+				logging.Errorf("Failed to open file: %s", fileErr)
 				return
 			}
 			defer func() {
 				err = file.Close()
 				if err != nil {
-					klog.Errorf("Failed to close file: %s", err)
+					logging.Errorf("Failed to close file: %s", err)
 				}
 			}()
 			fileContent, fileErr := io.ReadAll(file)
 			if fileErr != nil {
-				klog.Errorf("Failed to read file: %s", fileErr)
+				logging.Errorf("Failed to read file: %s", fileErr)
 				return
 			}
 			handleMime(c, fileContent, entry)
@@ -324,29 +324,39 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 }
 
 func (s *Server) Stop() {
-	klog.Infof("Stopping HTTP Server")
+	logging.Logf("Stopping HTTP Server")
 	const timeout = 5 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
-		klog.Errorf("Failed to shutdown HTTP server: %s", err)
+		logging.Errorf("Failed to shutdown HTTP server: %s", err)
 	}
 	<-s.shutdownChannel
 }
 
-func (s *Server) Start() {
-	go func() {
+var ErrClosed = errors.New("Server closed")
+var ErrFailed = errors.New("Failed to start server")
+
+func (s *Server) Start() error {
+	g := new(errgroup.Group)
+	g.Go(func() error {
 		err := s.ListenAndServe()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
 				s.shutdownChannel <- true
-				return
+				return ErrClosed
 			default:
-				klog.Fatalf("Failed to start HTTP server: %s", err)
+				logging.Errorf("Failed to start HTTP server: %s", err)
+				return ErrFailed
 			}
 		}
-	}()
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return err //nolint:golint,wrapcheck
+	}
+	return nil
 }
 
 func getAllFilenames(fs *embed.FS, dir string) ([]string, error) {

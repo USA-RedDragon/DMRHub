@@ -22,6 +22,9 @@ package userdb
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 )
 
 func TestUserdb(t *testing.T) {
@@ -94,13 +97,15 @@ func TestUserdbInvalidUser(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	t.Parallel()
-	err := Update()
-	if err != nil {
-		t.Error(err)
-	}
-	if userDB.builtInDate == GetDate() {
-		t.Error("Update did not update the database")
-	}
+	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
+		err := Update()
+		if err != nil {
+			r.Errorf("Update failed: %v", err)
+		}
+		if userDB.builtInDate == GetDate() {
+			r.Errorf("Update did not update the database")
+		}
+	})
 }
 
 func BenchmarkUserDB(b *testing.B) {

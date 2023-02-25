@@ -619,7 +619,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
 
-			err := db.Save(&repeater)
+			err := db.Save(&repeater).Error
 			if err != nil {
 				klog.Errorf("Error saving repeater: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
@@ -637,7 +637,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
 
-			err := db.Save(&repeater)
+			err := db.Save(&repeater).Error
 			if err != nil {
 				klog.Errorf("Error saving repeater: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})

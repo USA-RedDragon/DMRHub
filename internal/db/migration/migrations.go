@@ -32,10 +32,16 @@ func Migrate(db *gorm.DB) error {
 		{
 			ID: "202302242025",
 			Migrate: func(tx *gorm.DB) error {
-				return tx.Migrator().RenameColumn(&models.Repeater{}, "radio_id", "id")
+				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
+					return tx.Migrator().RenameColumn(&models.Repeater{}, "radio_id", "id")
+				}
+				return nil
 			},
 			Rollback: func(tx *gorm.DB) error {
-				return tx.Migrator().RenameColumn(&models.Repeater{}, "id", "radio_id")
+				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "id") && !db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
+					return tx.Migrator().RenameColumn(&models.Repeater{}, "id", "radio_id")
+				}
+				return nil
 			},
 		},
 	})

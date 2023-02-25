@@ -22,10 +22,12 @@ package models
 import (
 	"errors"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
+	"k8s.io/klog/v2"
 )
 
 //go:generate msgp
@@ -52,6 +54,8 @@ var (
 	ErrInvalidColorCode = errors.New("invalid color code")
 	ErrInvalidLatitude  = errors.New("invalid latitude")
 	ErrInvalidLongitude = errors.New("invalid longitude")
+	ErrInvalidInt       = errors.New("invalid integer")
+	ErrInvalidFloat     = errors.New("invalid float")
 )
 
 const (
@@ -63,6 +67,84 @@ const (
 	LenSoftwareID  = 40
 	LenPackageID   = 40
 )
+
+func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
+	c.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
+
+	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing rx frequency", err)
+		return ErrInvalidInt
+	}
+	c.RXFrequency = uint(rxFreq)
+
+	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing tx frequency", err)
+		return ErrInvalidInt
+	}
+	c.TXFrequency = uint(txFreq)
+
+	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing tx power", err)
+		return ErrInvalidInt
+	}
+	c.TXPower = uint8(txPower)
+
+	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing color code", err)
+		return ErrInvalidInt
+	}
+	c.ColorCode = uint8(colorCode)
+
+	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
+	if err != nil {
+		klog.Errorf("Error parsing latitude", err)
+		return ErrInvalidFloat
+	}
+	c.Latitude = lat
+
+	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
+	if err != nil {
+		klog.Errorf("Error parsing longitude", err)
+		return ErrInvalidFloat
+	}
+	c.Longitude = long
+
+	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing height", err)
+		return ErrInvalidInt
+	}
+	c.Height = uint16(height)
+
+	c.Location = strings.TrimRight(string(data[58:78]), " ")
+
+	c.Description = strings.TrimRight(string(data[78:98]), " ")
+
+	slots, err := strconv.ParseInt(strings.TrimRight(string(data[98:99]), " "), 0, 32)
+	if err != nil {
+		klog.Errorf("Error parsing slots", err)
+		return ErrInvalidInt
+	}
+	c.Slots = uint(slots)
+
+	c.URL = strings.TrimRight(string(data[99:223]), " ")
+
+	c.SoftwareID = strings.TrimRight(string(data[223:263]), " ")
+	if c.SoftwareID == "" {
+		c.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
+	}
+
+	c.PackageID = strings.TrimRight(string(data[263:302]), " ")
+	if c.PackageID == "" {
+		c.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
+	}
+
+	return c.Check()
+}
 
 func (c *RepeaterConfiguration) Check() error {
 	if len(c.Callsign) < 4 || len(c.Callsign) > 8 {

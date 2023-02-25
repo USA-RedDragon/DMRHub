@@ -29,6 +29,7 @@ import (
 	"github.com/ztrue/shutdown"
 )
 
+//lint:ignore U1000 this is an example
 func main() { //nolint:golint,unused
 	c, err := NewClient(&models.RepeaterConfiguration{
 		ID:          319186801,

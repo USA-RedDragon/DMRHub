@@ -49,8 +49,8 @@ type Server struct {
 }
 
 var (
-	ErrOpenSocket   = errors.New("Error opening socket")
-	ErrSocketBuffer = errors.New("Error setting socket buffer size")
+	ErrOpenSocket   = errors.New("error opening socket")
+	ErrSocketBuffer = errors.New("error setting socket buffer size")
 )
 
 const largestMessageSize = 302

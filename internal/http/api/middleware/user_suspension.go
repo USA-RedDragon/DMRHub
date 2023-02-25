@@ -24,12 +24,12 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 func SuspendedUserLockout() gin.HandlerFunc {
@@ -38,21 +38,21 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("SuspendedUserLockout: Failed to get user_id from session")
+				logging.Error("SuspendedUserLockout: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("SuspendedUserLockout: Unable to convert user_id to uint")
+			logging.Error("SuspendedUserLockout: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("SuspendedUserLockout: Unable to get DB from context")
+			logging.Error("SuspendedUserLockout: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -60,20 +60,20 @@ func SuspendedUserLockout() gin.HandlerFunc {
 
 		userExists, err := models.UserIDExists(db, uid)
 		if err != nil {
-			klog.Error("SuspendedUserLockout: Unable to check if user exists")
+			logging.Error("SuspendedUserLockout: Unable to check if user exists")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		if !userExists {
-			klog.Error("SuspendedUserLockout: User ID does not exist")
+			logging.Error("SuspendedUserLockout: User ID does not exist")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		user, err := models.FindUserByID(db, uid)
 		if err != nil {
-			klog.Error("SuspendedUserLockout: Unable to find user by ID")
+			logging.Error("SuspendedUserLockout: Unable to find user by ID")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -87,7 +87,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		}
 
 		if user.Suspended {
-			klog.Error("SuspendedUserLockout: User is suspended")
+			logging.Error("SuspendedUserLockout: User is suspended")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
 			return
 		}

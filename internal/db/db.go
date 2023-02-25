@@ -39,21 +39,21 @@ func MakeDB() *gorm.DB {
 	var db *gorm.DB
 	var err error
 	if os.Getenv("TEST") != "" {
-		logging.GetLogger(logging.Error).Log(MakeDB, "Using in-memory database for testing")
+		logging.Error("Using in-memory database for testing")
 		db, err = gorm.Open(sqlite.Open(""), &gorm.Config{})
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(MakeDB, "Could not open database: %s", err)
+			logging.Errorf("Could not open database: %s", err)
 			os.Exit(1)
 		}
 	} else {
 		db, err = gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(MakeDB, "Could not open database: %s", err)
+			logging.Errorf("Could not open database: %s", err)
 			os.Exit(1)
 		}
 		if config.GetConfig().OTLPEndpoint != "" {
 			if err = db.Use(otelgorm.NewPlugin()); err != nil {
-				logging.GetLogger(logging.Error).Logf(MakeDB, "Could not trace database: %s", err)
+				logging.Errorf("Could not trace database: %s", err)
 				os.Exit(1)
 			}
 		}
@@ -61,13 +61,13 @@ func MakeDB() *gorm.DB {
 
 	err = migration.Migrate(db)
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(MakeDB, "Could not migrate database: %s", err)
+		logging.Errorf("Could not migrate database: %s", err)
 		os.Exit(1)
 	}
 
 	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(MakeDB, "Could not migrate database: %s", err)
+		logging.Errorf("Could not migrate database: %s", err)
 		os.Exit(1)
 	}
 
@@ -76,7 +76,7 @@ func MakeDB() *gorm.DB {
 	result := db.First(&appSettings)
 	if result.RowsAffected == 0 {
 		if config.GetConfig().Debug {
-			logging.GetLogger(logging.Error).Log(MakeDB, "App settings entry doesn't exist, creating it")
+			logging.Error("App settings entry doesn't exist, creating it")
 		}
 		// The record doesn't exist, so create it
 		appSettings = models.AppSettings{
@@ -84,11 +84,11 @@ func MakeDB() *gorm.DB {
 		}
 		err := db.Create(&appSettings).Error
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(MakeDB, "Failed to create app settings: %s", err)
+			logging.Errorf("Failed to create app settings: %s", err)
 			os.Exit(1)
 		}
 		if config.GetConfig().Debug {
-			logging.GetLogger(logging.Error).Log(MakeDB, "App settings saved")
+			logging.Error("App settings saved")
 		}
 	}
 
@@ -103,20 +103,20 @@ func MakeDB() *gorm.DB {
 		// Apply seed
 		err = seedersStack.Seed()
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(MakeDB, "Failed to seed database: %s", err)
+			logging.Errorf("Failed to seed database: %s", err)
 			os.Exit(1)
 		}
 		appSettings.HasSeeded = true
 		err := db.Save(&appSettings).Error
 		if err != nil {
-			logging.GetLogger(logging.Error).Logf(MakeDB, "Failed to save app settings: %s", err)
+			logging.Errorf("Failed to save app settings: %s", err)
 			os.Exit(1)
 		}
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(MakeDB, "Failed to open database: %s", err)
+		logging.Errorf("Failed to open database: %s", err)
 		os.Exit(1)
 	}
 	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))

@@ -33,7 +33,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"k8s.io/klog/v2"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 )
 
 type authState uint8
@@ -208,7 +208,7 @@ func (c *Client) parse(b []byte, f chan<- *models.Packet) error {
 		} else if bytes.Equal(b[:len(dmrconst.CommandRPTACK)], []byte(dmrconst.CommandRPTACK)) {
 			if n := copy(c.nonce[:], b[len(dmrconst.CommandRPTACK):]); n != len(c.nonce) {
 				c.auth = authFailed
-				klog.Errorf("homebrew: received short nonce: %d: %v", n)
+				logging.Errorf("homebrew: received short nonce: %d", n)
 				return ErrMasterShortNonce
 			}
 			log.Println("homebrew: received nonce, sending password")

@@ -37,7 +37,6 @@ require (
 	golang.org/x/sync v0.1.0
 	gorm.io/driver/postgres v1.4.8
 	gorm.io/gorm v1.24.5
-	k8s.io/klog/v2 v2.90.0
 )
 
 require (

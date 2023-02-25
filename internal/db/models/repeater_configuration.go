@@ -26,8 +26,8 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
-	"k8s.io/klog/v2"
 )
 
 //go:generate msgp
@@ -73,49 +73,49 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
 
 	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing rx frequency", err)
+		logging.Errorf("Error parsing rx frequency: %v", err)
 		return ErrInvalidInt
 	}
 	c.RXFrequency = uint(rxFreq)
 
 	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing tx frequency", err)
+		logging.Errorf("Error parsing tx frequency: %v", err)
 		return ErrInvalidInt
 	}
 	c.TXFrequency = uint(txFreq)
 
 	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing tx power", err)
+		logging.Errorf("Error parsing tx power: %v", err)
 		return ErrInvalidInt
 	}
 	c.TXPower = uint8(txPower)
 
 	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing color code", err)
+		logging.Errorf("Error parsing color code: %v", err)
 		return ErrInvalidInt
 	}
 	c.ColorCode = uint8(colorCode)
 
 	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 	if err != nil {
-		klog.Errorf("Error parsing latitude", err)
+		logging.Errorf("Error parsing latitude: %v", err)
 		return ErrInvalidFloat
 	}
 	c.Latitude = lat
 
 	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 	if err != nil {
-		klog.Errorf("Error parsing longitude", err)
+		logging.Errorf("Error parsing longitude: %v", err)
 		return ErrInvalidFloat
 	}
 	c.Longitude = long
 
 	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing height", err)
+		logging.Errorf("Error parsing height: %v", err)
 		return ErrInvalidInt
 	}
 	c.Height = uint16(height)
@@ -126,7 +126,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
 
 	slots, err := strconv.ParseInt(strings.TrimRight(string(data[98:99]), " "), 0, 32)
 	if err != nil {
-		klog.Errorf("Error parsing slots", err)
+		logging.Errorf("Error parsing slots: %v", err)
 		return ErrInvalidInt
 	}
 	c.Slots = uint(slots)

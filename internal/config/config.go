@@ -119,11 +119,11 @@ func loadConfig() Config {
 	tmpConfig.PostgresDSN = "host=" + tmpConfig.postgresHost + " port=" + strconv.FormatInt(int64(tmpConfig.postgresPort), 10) + " user=" + tmpConfig.postgresUser + " dbname=" + tmpConfig.postgresDatabase + " password=" + tmpConfig.postgresPassword
 	if tmpConfig.strSecret == "" {
 		tmpConfig.strSecret = "secret"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Session secret not set, using INSECURE default")
+		logging.Error("Session secret not set, using INSECURE default")
 	}
 	if tmpConfig.PasswordSalt == "" {
 		tmpConfig.PasswordSalt = "salt"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Password salt not set, using INSECURE default")
+		logging.Error("Password salt not set, using INSECURE default")
 	}
 	if tmpConfig.ListenAddr == "" {
 		tmpConfig.ListenAddr = "0.0.0.0"
@@ -135,19 +135,19 @@ func loadConfig() Config {
 		tmpConfig.HTTPPort = 3005
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
-		logging.GetLogger(logging.Error).Log(loadConfig, "Initial admin user password not set, using auto-generated password")
+		logging.Error("Initial admin user password not set, using auto-generated password")
 		const randLen = 15
 		const randNums = 4
 		const randSpecial = 2
 		tmpConfig.InitialAdminUserPassword, err = utils.RandomPassword(randLen, randNums, randSpecial)
 		if err != nil {
-			logging.GetLogger(logging.Error).Log(loadConfig, "Password generation failed")
+			logging.Error("Password generation failed")
 			os.Exit(1)
 		}
 	}
 	if tmpConfig.RedisPassword == "" {
 		tmpConfig.RedisPassword = "password"
-		logging.GetLogger(logging.Error).Log(loadConfig, "Redis password not set, using INSECURE default")
+		logging.Error("Redis password not set, using INSECURE default")
 	}
 	// CORS_HOSTS is a comma separated list of hosts that are allowed to access the API
 	corsHosts := os.Getenv("CORS_HOSTS")
@@ -166,8 +166,8 @@ func loadConfig() Config {
 		tmpConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 	}
 	if tmpConfig.Debug {
-		logging.GetLogger(logging.Error).Log(loadConfig, "Debug mode enabled, this should not be used in production")
-		logging.GetLogger(logging.Error).Logf(loadConfig, "Config: %+v", tmpConfig)
+		logging.Error("Debug mode enabled, this should not be used in production")
+		logging.Errorf("Config: %+v", tmpConfig)
 	}
 	const iterations = 4096
 	const keyLen = 32
@@ -190,7 +190,7 @@ func GetConfig() *Config {
 
 	curConfig, ok := currentConfig.Load().(Config)
 	if !ok {
-		logging.GetLogger(logging.Error).Log(GetConfig, "Failed to load config")
+		logging.Error("Failed to load config")
 		os.Exit(1)
 	}
 	return &curConfig

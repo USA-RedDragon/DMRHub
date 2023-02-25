@@ -28,8 +28,8 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"golang.org/x/crypto/argon2"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -67,7 +67,7 @@ func HashPassword(password string, salt string) string {
 	// Fill the salt with cryptographically secure random bytes.
 	_, err := rand.Read(params.salt)
 	if err != nil {
-		klog.Errorf("HashPassword: %v", err)
+		logging.Errorf("HashPassword: %v", err)
 	}
 
 	bytes := argon2.IDKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)

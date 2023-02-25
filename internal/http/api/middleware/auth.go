@@ -325,7 +325,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 			valid = true
 		} else {
 			var repeater models.Repeater
-			db.Find(&repeater, "radio_id = ?", id)
+			db.Find(&repeater, "id = ?", id)
 			if repeater.OwnerID == user.ID && !user.Suspended && user.Approved {
 				valid = true
 			}

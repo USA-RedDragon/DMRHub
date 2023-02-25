@@ -57,7 +57,7 @@
         </span>
         <span v-if="slotProps.data.is_to_repeater">
           {{ slotProps.data.to_repeater.callsign }} |
-          {{ slotProps.data.to_repeater.radio_id }}
+          {{ slotProps.data.to_repeater.id }}
         </span>
         <span v-if="slotProps.data.is_to_user">
           {{ slotProps.data.to_user.callsign }} |

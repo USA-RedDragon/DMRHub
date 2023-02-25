@@ -352,7 +352,7 @@ func POSTRepeater(c *gin.Context) {
 				return
 			}
 			repeater.Callsign = r.Callsign
-			repeater.ColorCode = r.ColorCode
+			repeater.ColorCode = uint8(r.ColorCode)
 			// Location is a string with r.City, r.State, and r.Country, set repeater.Location
 			repeater.Location = r.City + ", " + r.State + ", " + r.Country
 			repeater.Description = r.MapInfo
@@ -396,7 +396,7 @@ func POSTRepeater(c *gin.Context) {
 			return
 		}
 
-		repeater.RadioID = json.RadioID
+		repeater.ID = json.RadioID
 
 		// Generate a random password of 8 characters
 		const randLen = 8

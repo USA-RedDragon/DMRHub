@@ -221,7 +221,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		User:           sourceUser,
 		UserID:         sourceUser.ID,
 		Repeater:       sourceRepeater,
-		RepeaterID:     sourceRepeater.RadioID,
+		RepeaterID:     sourceRepeater.ID,
 		TimeSlot:       packet.Slot,
 		GroupCall:      packet.GroupCall,
 		DestinationID:  packet.Dst,
@@ -313,7 +313,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 			jsonCall.ToUser.Callsign = call.ToUser.Callsign
 		}
 		if call.IsToRepeater {
-			jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+			jsonCall.ToRepeater.RadioID = call.ToRepeater.ID
 			jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
 		}
 		jsonCall.IsToTalkgroup = call.IsToTalkgroup

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/glebarez/sqlite"
@@ -56,6 +57,12 @@ func MakeDB() *gorm.DB {
 				os.Exit(1)
 			}
 		}
+	}
+
+	err = migration.Migrate(db)
+	if err != nil {
+		logging.GetLogger(logging.Error).Logf(MakeDB, "Could not migrate database: %s", err)
+		os.Exit(1)
 	}
 
 	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})

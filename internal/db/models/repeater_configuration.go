@@ -30,7 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 )
 
-//go:generate msgp
+//go:generate go run github.com/tinylib/msgp@latest
 type RepeaterConfiguration struct {
 	Callsign    string  `json:"callsign" msg:"callsign"`
 	ID          uint    `json:"id" gorm:"primaryKey" msg:"id"`

@@ -32,7 +32,7 @@ import (
 
 // Repeater is the model for a DMR repeater
 //
-//go:generate msgp
+//go:generate go run github.com/tinylib/msgp@latest
 type Repeater struct {
 	Connection            string         `json:"-" gorm:"-" msg:"connection"`
 	Connected             time.Time      `json:"connected_time" msg:"connected"`

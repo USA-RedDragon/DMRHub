@@ -27,7 +27,7 @@ import (
 
 // Packet is a DMR packet
 //
-//go:generate msgp
+//go:generate go run github.com/tinylib/msgp@latest
 type Packet struct {
 	Signature   string             `msg:"signature"`
 	Seq         uint               `msg:"seq"`

@@ -172,3 +172,6 @@ builds:
         goos: darwin
     env:
       - CGO_ENABLED=0
+
+milestones:
+  - close: true

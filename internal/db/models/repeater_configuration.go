@@ -54,6 +54,16 @@ var (
 	ErrInvalidLongitude = errors.New("invalid longitude")
 )
 
+const (
+	MaxTXPower     = 99
+	MaxHeight      = 999
+	LenLocation    = 20
+	LenDescription = 20
+	LenURL         = 124
+	LenSoftwareID  = 40
+	LenPackageID   = 40
+)
+
 func (c *RepeaterConfiguration) Check() error {
 	if len(c.Callsign) < 4 || len(c.Callsign) > 8 {
 		return ErrInvalidCallsign
@@ -63,11 +73,11 @@ func (c *RepeaterConfiguration) Check() error {
 		return ErrInvalidCallsign
 	}
 
-	if c.TXPower > 99 {
-		c.TXPower = 99
+	if c.TXPower > MaxTXPower {
+		c.TXPower = MaxTXPower
 	}
 
-	if c.ColorCode < 0 || c.ColorCode > 15 {
+	if c.ColorCode < 1 || c.ColorCode > 15 {
 		return ErrInvalidColorCode
 	}
 
@@ -79,30 +89,30 @@ func (c *RepeaterConfiguration) Check() error {
 		return ErrInvalidLongitude
 	}
 
-	if c.Height > 999 {
-		c.Height = 999
+	if c.Height > MaxHeight {
+		c.Height = MaxHeight
 	}
 
-	if len(c.Location) > 20 {
-		c.Location = c.Location[:20]
+	if len(c.Location) > LenLocation {
+		c.Location = c.Location[:LenLocation]
 	}
 
-	if len(c.Description) > 20 {
-		c.Description = c.Description[:20]
+	if len(c.Description) > LenDescription {
+		c.Description = c.Description[:LenDescription]
 	}
 
-	if len(c.URL) > 124 {
-		c.URL = c.URL[:124]
+	if len(c.URL) > LenURL {
+		c.URL = c.URL[:LenURL]
 	}
 
-	if len(c.SoftwareID) > 40 {
-		c.SoftwareID = c.SoftwareID[:40]
+	if len(c.SoftwareID) > LenSoftwareID {
+		c.SoftwareID = c.SoftwareID[:LenSoftwareID]
 	} else if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
 	}
 
-	if len(c.PackageID) > 40 {
-		c.PackageID = c.PackageID[:40]
+	if len(c.PackageID) > LenPackageID {
+		c.PackageID = c.PackageID[:LenPackageID]
 	} else if c.PackageID == "" {
 		c.PackageID = runtime.Version()
 	}

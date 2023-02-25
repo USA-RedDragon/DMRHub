@@ -294,7 +294,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	err = s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
 	if err != nil {
 		klog.Errorf("Error querying last call for user %d: %s", user.ID, err)
-	} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, uint(lastCall.RepeaterID)) {
+	} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
 		s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes)
@@ -303,7 +303,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	// For each user repeaters
 	for _, repeater := range user.Repeaters {
 		// If the repeater is online and the last user call was not to this repeater
-		if repeater.ID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, uint(lastCall.RepeaterID)) {
+		if repeater.ID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
 			// Send the packet to the repeater
 			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes)
 		}
@@ -717,7 +717,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		klog.Errorf("Invalid Latitude: %f", lat)
 		return
 	}
-	repeater.Latitude = float64(lat)
+	repeater.Latitude = lat
 
 	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 	if err != nil {
@@ -728,7 +728,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 		klog.Errorf("Invalid Longitude: %f", long)
 		return
 	}
-	repeater.Longitude = float64(long)
+	repeater.Longitude = long
 
 	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 	if err != nil {

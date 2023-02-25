@@ -141,10 +141,10 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 		return
 	}
 
-	_, ok = radioSubs.Load(uint(p.ID))
+	_, ok = radioSubs.Load(p.ID)
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
-		radioSubs.Store(uint(p.ID), &cancel)
+		radioSubs.Store(p.ID, &cancel)
 		go m.subscribeRepeater(newCtx, redis, p) //nolint:golint,contextcheck
 	}
 
@@ -298,7 +298,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 			}
 			radioSubs, ok := m.subscriptions.Load(p.ID)
 			if ok {
-				radioSubs.Delete(uint(p.ID))
+				radioSubs.Delete(p.ID)
 			}
 			return
 		case msg := <-pubsubChannel:
@@ -314,7 +314,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 				klog.Errorf("Failed to unpack packet")
 				continue
 			}
-			packet.Repeater = uint(p.ID)
+			packet.Repeater = p.ID
 			redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 		}
 	}
@@ -364,7 +364,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 				continue
 			}
 
-			if packet.Repeater == uint(p.ID) {
+			if packet.Repeater == p.ID {
 				continue
 			}
 
@@ -372,7 +372,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 			if want {
 				// This packet is for the repeater's dynamic talkgroup
 				// We need to send it to the repeater
-				packet.Repeater = uint(p.ID)
+				packet.Repeater = p.ID
 				packet.Slot = slot
 				redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 			} else {

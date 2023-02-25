@@ -124,7 +124,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {
-	if packet.Dst == uint(p.ID) {
+	if packet.Dst == p.ID {
 		return true, packet.Slot
 	}
 
@@ -154,7 +154,7 @@ func (p *Repeater) WantRX(packet Packet) (bool, bool) {
 }
 
 func (p *Repeater) WantRXCall(call Call) (bool, bool) {
-	if call.DestinationID == uint(p.ID) {
+	if call.DestinationID == p.ID {
 		return true, call.TimeSlot
 	}
 

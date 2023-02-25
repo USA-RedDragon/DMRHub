@@ -17,6 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//nolint:golint,wrapcheck
 package migration
 
 import (

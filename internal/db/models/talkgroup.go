@@ -23,7 +23,7 @@ package models
 import (
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"

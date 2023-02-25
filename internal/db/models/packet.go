@@ -22,7 +22,7 @@ package models
 import (
 	"fmt"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 )
 
 // Packet is a DMR packet

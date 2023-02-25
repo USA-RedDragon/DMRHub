@@ -23,12 +23,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/puzpuzpuz/xsync/v2"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -38,208 +38,146 @@ import (
 var subscriptionManager *SubscriptionManager //nolint:golint,gochecknoglobals
 
 type SubscriptionManager struct {
-	subscriptions           map[uint]map[uint]context.CancelFunc
-	subscriptionsMutex      *sync.RWMutex
-	subscriptionCancelMutex map[uint]map[uint]*sync.RWMutex
+	// stores map[uint]context.CancelFunc indexed by strconv.Itoa(int(radioID))
+	subscriptions *xsync.MapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]]
 }
 
 func GetSubscriptionManager() *SubscriptionManager {
 	if subscriptionManager == nil {
 		subscriptionManager = &SubscriptionManager{
-			subscriptions:           make(map[uint]map[uint]context.CancelFunc),
-			subscriptionsMutex:      &sync.RWMutex{},
-			subscriptionCancelMutex: make(map[uint]map[uint]*sync.RWMutex),
+			subscriptions: xsync.NewIntegerMapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]](),
 		}
 	}
 	return subscriptionManager
 }
 
 func (m *SubscriptionManager) CancelSubscription(p models.Repeater, talkgroupID uint) {
-	m.subscriptionsMutex.RLock()
-	m.subscriptionCancelMutex[p.RadioID][talkgroupID].RLock()
-	cancel, ok := m.subscriptions[p.RadioID][talkgroupID]
-	m.subscriptionCancelMutex[p.RadioID][talkgroupID].RUnlock()
-	m.subscriptionsMutex.RUnlock()
-	if ok {
-		// Check if the talkgroup is already subscribed to on a different slot
-		// If it is, don't cancel the subscription
-		if p.TS1DynamicTalkgroupID != nil && *p.TS1DynamicTalkgroupID == talkgroupID {
-			return
-		}
-		if p.TS2DynamicTalkgroupID != nil && *p.TS2DynamicTalkgroupID == talkgroupID {
-			return
-		}
-		for _, tg := range p.TS1StaticTalkgroups {
-			if tg.ID == talkgroupID {
-				return
-			}
-		}
-		for _, tg := range p.TS2StaticTalkgroups {
-			if tg.ID == talkgroupID {
-				return
-			}
-		}
-		m.subscriptionsMutex.Lock()
-		m.subscriptionCancelMutex[p.RadioID][talkgroupID].Lock()
-		delete(m.subscriptions[p.RadioID], talkgroupID)
-		m.subscriptionCancelMutex[p.RadioID][talkgroupID].Unlock()
-		delete(m.subscriptionCancelMutex[p.RadioID], talkgroupID)
-		m.subscriptionsMutex.Unlock()
-		cancel()
+	radioSubscriptions, ok := m.subscriptions.Load(p.RadioID)
+	if !ok {
+		return
 	}
+
+	// Check if the talkgroup is already subscribed to on a different slot
+	// If it is, don't cancel the subscription
+	if p.TS1DynamicTalkgroupID != nil && *p.TS1DynamicTalkgroupID == talkgroupID {
+		return
+	}
+	if p.TS2DynamicTalkgroupID != nil && *p.TS2DynamicTalkgroupID == talkgroupID {
+		return
+	}
+	for _, tg := range p.TS1StaticTalkgroups {
+		if tg.ID == talkgroupID {
+			return
+		}
+	}
+	for _, tg := range p.TS2StaticTalkgroups {
+		if tg.ID == talkgroupID {
+			return
+		}
+	}
+	cancelPtr, ok := radioSubscriptions.LoadAndDelete(talkgroupID)
+	if !ok {
+		return
+	}
+	cancel := *cancelPtr
+	cancel()
 }
 
 func (m *SubscriptionManager) CancelAllSubscriptions() {
 	if config.GetConfig().Debug {
 		klog.Errorf("Cancelling all subscriptions")
 	}
-	m.subscriptionsMutex.RLock()
-	for radioID := range m.subscriptions {
-		m.subscriptionsMutex.RUnlock()
+	m.subscriptions.Range(func(radioID uint, value *xsync.MapOf[uint, *context.CancelFunc]) bool {
 		m.CancelAllRepeaterSubscriptions(models.Repeater{RadioID: radioID})
-		m.subscriptionsMutex.RLock()
-	}
-	m.subscriptionsMutex.RUnlock()
+		return true
+	})
 }
 
 func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) {
 	if config.GetConfig().Debug {
 		klog.Errorf("Cancelling all subscriptions for repeater %d", p.RadioID)
 	}
-	m.subscriptionsMutex.RLock()
-	for tgID := range m.subscriptions[p.RadioID] {
-		m.subscriptionsMutex.RUnlock()
-		m.CancelSubscription(p, tgID)
-		m.subscriptionsMutex.RLock()
+	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	if !ok {
+		return
 	}
-	m.subscriptionsMutex.RUnlock()
+	radioSubs.Range(func(tgID uint, value *context.CancelFunc) bool {
+		m.CancelSubscription(p, tgID)
+		return true
+	})
 }
 
-func (m *SubscriptionManager) ListenForCallsOn(ctx context.Context, redis *redis.Client, p models.Repeater, talkgroupID uint) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "SubscriptionManager.ListenForCallsOn")
+func (m *SubscriptionManager) ListenForCallsOn(redis *redis.Client, p models.Repeater, talkgroupID uint) {
+	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCallsOn")
 	defer span.End()
-	m.subscriptionsMutex.RLock()
-	_, ok := m.subscriptions[p.RadioID][talkgroupID]
-	m.subscriptionsMutex.RUnlock()
+	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	if !ok {
+		return
+	}
+	_, ok = radioSubs.Load(talkgroupID)
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
-		m.subscriptionsMutex.Lock()
-		_, ok = m.subscriptionCancelMutex[p.RadioID][talkgroupID]
-		if !ok {
-			m.subscriptionCancelMutex[p.RadioID][talkgroupID] = &sync.RWMutex{}
-		}
-		m.subscriptionCancelMutex[p.RadioID][talkgroupID].Lock()
-		m.subscriptions[p.RadioID][talkgroupID] = cancel
-		m.subscriptionCancelMutex[p.RadioID][talkgroupID].Unlock()
-		m.subscriptionsMutex.Unlock()
+		radioSubs.Store(talkgroupID, &cancel)
 		go m.subscribeTG(newCtx, redis, p, talkgroupID) //nolint:golint,contextcheck
 	}
 }
 
-func (m *SubscriptionManager) ListenForCalls(ctx context.Context, redis *redis.Client, p models.Repeater) {
+func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repeater) {
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
 	// with the destination repeater ID as this one
-	_, span := otel.Tracer("DMRHub").Start(ctx, "SubscriptionManager.ListenForCalls")
+	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCalls")
 	defer span.End()
 
-	m.subscriptionsMutex.RLock()
-	_, ok := m.subscriptions[p.RadioID]
-	m.subscriptionsMutex.RUnlock()
+	_, ok := m.subscriptions.Load(p.RadioID)
 	if !ok {
-		m.subscriptionsMutex.Lock()
-		m.subscriptions[p.RadioID] = make(map[uint]context.CancelFunc)
-		m.subscriptionCancelMutex[p.RadioID] = make(map[uint]*sync.RWMutex)
-		m.subscriptionsMutex.Unlock()
+		m.subscriptions.Store(p.RadioID, xsync.NewIntegerMapOf[uint, *context.CancelFunc]())
 	}
-	m.subscriptionsMutex.RLock()
-	_, ok = m.subscriptions[p.RadioID][p.RadioID]
-	m.subscriptionsMutex.RUnlock()
+
+	radioSubs, ok := m.subscriptions.Load(p.RadioID)
+	if !ok {
+		logging.GetLogger(logging.Error).Log(m.ListenForCalls, "Failed to load radio subscriptions")
+		return
+	}
+
+	_, ok = radioSubs.Load(p.RadioID)
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
-		m.subscriptionsMutex.Lock()
-		_, ok = m.subscriptionCancelMutex[p.RadioID][p.RadioID]
-		if !ok {
-			m.subscriptionCancelMutex[p.RadioID][p.RadioID] = &sync.RWMutex{}
-		}
-		m.subscriptionCancelMutex[p.RadioID][p.RadioID].Lock()
-		m.subscriptions[p.RadioID][p.RadioID] = cancel
-		m.subscriptionCancelMutex[p.RadioID][p.RadioID].Unlock()
-		m.subscriptionsMutex.Unlock()
+		radioSubs.Store(p.RadioID, &cancel)
 		go m.subscribeRepeater(newCtx, redis, p) //nolint:golint,contextcheck
 	}
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
-		m.subscriptionsMutex.RLock()
-		_, ok := m.subscriptions[p.RadioID][tg.ID]
-		m.subscriptionsMutex.RUnlock()
+		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
-			m.subscriptionsMutex.Lock()
-			_, ok = m.subscriptionCancelMutex[p.RadioID][tg.ID]
-			if !ok {
-				m.subscriptionCancelMutex[p.RadioID][tg.ID] = &sync.RWMutex{}
-			}
-			m.subscriptionCancelMutex[p.RadioID][tg.ID].Lock()
-			m.subscriptions[p.RadioID][tg.ID] = cancel
-			m.subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
-			m.subscriptionsMutex.Unlock()
+			radioSubs.Store(tg.ID, &cancel)
 			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
-		m.subscriptionsMutex.RLock()
-		_, ok := m.subscriptions[p.RadioID][tg.ID]
-		m.subscriptionsMutex.RUnlock()
+		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
-			m.subscriptionsMutex.Lock()
-			_, ok = m.subscriptionCancelMutex[p.RadioID][tg.ID]
-			if !ok {
-				m.subscriptionCancelMutex[p.RadioID][tg.ID] = &sync.RWMutex{}
-			}
-			m.subscriptionCancelMutex[p.RadioID][tg.ID].Lock()
-			m.subscriptions[p.RadioID][tg.ID] = cancel
-			m.subscriptionCancelMutex[p.RadioID][tg.ID].Unlock()
-			m.subscriptionsMutex.Unlock()
+			radioSubs.Store(tg.ID, &cancel)
 			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS1DynamicTalkgroupID != nil {
-		m.subscriptionsMutex.RLock()
-		_, ok := m.subscriptions[p.RadioID][*p.TS1DynamicTalkgroupID]
-		m.subscriptionsMutex.RUnlock()
+		_, ok := radioSubs.Load(*p.TS1DynamicTalkgroupID)
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
-			m.subscriptionsMutex.Lock()
-			_, ok = m.subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID]
-			if !ok {
-				m.subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID] = &sync.RWMutex{}
-			}
-			m.subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID].Lock()
-			m.subscriptions[p.RadioID][*p.TS1DynamicTalkgroupID] = cancel
-			m.subscriptionCancelMutex[p.RadioID][*p.TS1DynamicTalkgroupID].Unlock()
-			m.subscriptionsMutex.Unlock()
+			radioSubs.Store(*p.TS1DynamicTalkgroupID, &cancel)
 			go m.subscribeTG(newCtx, redis, p, *p.TS1DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
-		m.subscriptionsMutex.RLock()
-		_, ok := m.subscriptions[p.RadioID][*p.TS2DynamicTalkgroupID]
-		m.subscriptionsMutex.RUnlock()
+		_, ok := radioSubs.Load(*p.TS2DynamicTalkgroupID)
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
-			m.subscriptionsMutex.Lock()
-			_, ok = m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID]
-			if !ok {
-				m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID] = &sync.RWMutex{}
-			}
-			m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Lock()
-			m.subscriptions[p.RadioID][*p.TS2DynamicTalkgroupID] = cancel
-			m.subscriptionCancelMutex[p.RadioID][*p.TS2DynamicTalkgroupID].Unlock()
-			m.subscriptionsMutex.Unlock()
+			radioSubs.Store(*p.TS2DynamicTalkgroupID, &cancel)
 			go m.subscribeTG(newCtx, redis, p, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
@@ -358,17 +296,10 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 			if config.GetConfig().Debug {
 				klog.Infof("Context canceled, stopping subscription to hbrp:packets:repeater:%d", p.RadioID)
 			}
-			m.subscriptionsMutex.Lock()
-			_, ok := m.subscriptionCancelMutex[p.RadioID][p.RadioID]
+			radioSubs, ok := m.subscriptions.Load(p.RadioID)
 			if ok {
-				m.subscriptionCancelMutex[p.RadioID][p.RadioID].Lock()
+				radioSubs.Delete(p.RadioID)
 			}
-			delete(m.subscriptions[p.RadioID], p.RadioID)
-			if ok {
-				m.subscriptionCancelMutex[p.RadioID][p.RadioID].Unlock()
-				delete(m.subscriptionCancelMutex[p.RadioID], p.RadioID)
-			}
-			m.subscriptionsMutex.Unlock()
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}
@@ -415,17 +346,10 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 			if config.GetConfig().Debug {
 				klog.Infof("Context canceled, stopping subscription to hbrp:packets:repeater:%d, talkgroup %d", p.RadioID, tg)
 			}
-			m.subscriptionsMutex.Lock()
-			_, ok := m.subscriptionCancelMutex[p.RadioID][tg]
+			radioSubs, ok := m.subscriptions.Load(p.RadioID)
 			if ok {
-				m.subscriptionCancelMutex[p.RadioID][tg].Lock()
+				radioSubs.Delete(tg)
 			}
-			delete(m.subscriptions[p.RadioID], tg)
-			if ok {
-				m.subscriptionCancelMutex[p.RadioID][tg].Unlock()
-				delete(m.subscriptionCancelMutex[p.RadioID], tg)
-			}
-			m.subscriptionsMutex.Unlock()
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}

@@ -59,8 +59,8 @@ const waitTime = 100 * time.Millisecond
 type RepeaterDB struct {
 	uncompressedJSON       []byte
 	dmrRepeaters           atomic.Value
-	dmrRepeaterMap         *xsync.Map
-	dmrRepeaterMapUpdating *xsync.Map
+	dmrRepeaterMap         *xsync.MapOf[uint, DMRRepeater]
+	dmrRepeaterMapUpdating *xsync.MapOf[uint, DMRRepeater]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -103,12 +103,7 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 		UnpackDB()
 	}
 
-	repeaterInterface, ok := repeaterDB.dmrRepeaterMap.Load(strconv.Itoa(int(dmrID)))
-	if !ok {
-		return false
-	}
-
-	repeater, ok := repeaterInterface.(DMRRepeater)
+	repeater, ok := repeaterDB.dmrRepeaterMap.Load(dmrID)
 	if !ok {
 		return false
 	}
@@ -131,8 +126,8 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
-		repeaterDB.dmrRepeaterMap = xsync.NewMap()
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
+		repeaterDB.dmrRepeaterMap = xsync.NewIntegerMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -154,11 +149,15 @@ func UnpackDB() {
 		tmpDB.Date = repeaterDB.builtInDate
 		repeaterDB.dmrRepeaters.Store(tmpDB)
 		for i := range tmpDB.Repeaters {
-			repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
+			id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
+			if err != nil {
+				continue
+			}
+			repeaterDB.dmrRepeaterMapUpdating.Store(uint(id), tmpDB.Repeaters[i])
 		}
 
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
 		repeaterDB.isDone.Store(true)
 	}
 
@@ -190,11 +189,7 @@ func Get(id uint) (DMRRepeater, bool) {
 	if !repeaterDB.isDone.Load() {
 		UnpackDB()
 	}
-	repeaterIface, ok := repeaterDB.dmrRepeaterMap.Load(strconv.Itoa(int(id)))
-	if !ok {
-		return DMRRepeater{}, false
-	}
-	repeater, ok := repeaterIface.(DMRRepeater)
+	repeater, ok := repeaterDB.dmrRepeaterMap.Load(id)
 	if !ok {
 		return DMRRepeater{}, false
 	}
@@ -246,13 +241,17 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	repeaterDB.dmrRepeaters.Store(tmpDB)
 
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
 	for i := range tmpDB.Repeaters {
-		repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
+		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
+		if err != nil {
+			continue
+		}
+		repeaterDB.dmrRepeaterMapUpdating.Store(uint(id), tmpDB.Repeaters[i])
 	}
 
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
 
 	logging.GetLogger(logging.Error).Logf(Update, "Update complete. Loaded %d DMR repeaters", Len())
 

@@ -22,7 +22,6 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -54,7 +53,7 @@ type callMapStruct struct {
 	GroupCall     bool
 }
 
-func getCallHashFromPacket(packet models.Packet) (string, error) {
+func getCallHashFromPacket(packet models.Packet) (uint64, error) {
 	v := callMapStruct{
 		Active:        true,
 		StreamID:      packet.StreamID,
@@ -68,10 +67,10 @@ func getCallHashFromPacket(packet models.Packet) (string, error) {
 	if err != nil {
 		klog.Errorf("CallTracker: Error hashing call: %v", err)
 	}
-	return strconv.Itoa(int(hash)), err
+	return hash, err //nolint:golint,wrapcheck
 }
 
-func getCallHash(call models.Call) (string, error) {
+func getCallHash(call models.Call) (uint64, error) {
 	v := callMapStruct{
 		Active:        call.Active,
 		StreamID:      call.StreamID,
@@ -85,25 +84,24 @@ func getCallHash(call models.Call) (string, error) {
 	if err != nil {
 		klog.Errorf("CallTracker: Error hashing call: %v", err)
 	}
-	return strconv.Itoa(int(hash)), err
+	return hash, err //nolint:golint,wrapcheck
 }
 
 // CallTracker is a struct that holds the state of the calls that are currently in progress.
 type CallTracker struct {
 	db            *gorm.DB
 	redis         *redis.Client
-	callEndTimers *xsync.Map
-	inFlightCalls *xsync.Map
+	callEndTimers *xsync.MapOf[uint64, *time.Timer]
+	inFlightCalls *xsync.MapOf[uint64, *models.Call]
 }
 
 // NewCallTracker creates a new CallTracker.
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
-	xsync.NewMap()
 	return &CallTracker{
 		db:            db,
 		redis:         redis,
-		callEndTimers: xsync.NewMap(),
-		inFlightCalls: xsync.NewMap(),
+		callEndTimers: xsync.NewIntegerMapOf[uint64, *time.Timer](),
+		inFlightCalls: xsync.NewIntegerMapOf[uint64, *models.Call](),
 	}
 }
 
@@ -360,12 +358,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		return
 	}
 
-	timerInterface, ok := c.callEndTimers.Load(hash)
-	if !ok {
-		return
-	}
-
-	timer, ok := timerInterface.(*time.Timer)
+	timer, ok := c.callEndTimers.Load(hash)
 	if !ok {
 		return
 	}
@@ -498,13 +491,7 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 		return
 	}
 
-	callInterface, ok := c.inFlightCalls.Load(hash)
-	if !ok {
-		klog.Errorf("Active call not found")
-		return
-	}
-
-	call, ok := callInterface.(*models.Call)
+	call, ok := c.inFlightCalls.Load(hash)
 	if !ok {
 		klog.Errorf("Active call not found")
 		return
@@ -534,13 +521,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 		return
 	}
 
-	callInterface, ok := c.inFlightCalls.LoadAndDelete(hash)
-	if !ok {
-		klog.Errorf("Active call not found")
-		return
-	}
-
-	call, ok := callInterface.(*models.Call)
+	call, ok := c.inFlightCalls.LoadAndDelete(hash)
 	if !ok {
 		klog.Errorf("Active call not found")
 		return
@@ -553,16 +534,11 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	}
 
 	// Delete the call end timer
-	timerInterface, ok := c.callEndTimers.LoadAndDelete(hash)
+	timer, ok := c.callEndTimers.LoadAndDelete(hash)
 	if !ok {
 		klog.Errorf("Call end timer not found")
 	} else {
-		timer, ok := timerInterface.(*time.Timer)
-		if !ok {
-			klog.Errorf("Call end timer not found")
-		} else {
-			timer.Stop()
-		}
+		timer.Stop()
 	}
 
 	call.Duration = time.Since(call.StartTime)

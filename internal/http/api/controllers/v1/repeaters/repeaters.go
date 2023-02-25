@@ -285,7 +285,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		return
 	}
 	hbrp.GetSubscriptionManager().CancelAllRepeaterSubscriptions(repeater)
-	go hbrp.GetSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
+	go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
@@ -418,7 +418,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
-		go hbrp.GetSubscriptionManager().ListenForCalls(c.Request.Context(), redis, repeater)
+		go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -519,7 +519,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go hbrp.GetSubscriptionManager().ListenForCallsOn(c.Request.Context(), redis, repeater, talkgroup.ID)
+	go hbrp.GetSubscriptionManager().ListenForCallsOn(redis, repeater, talkgroup.ID)
 	err = db.Save(&repeater).Error
 	if err != nil {
 		logging.Errorf("Error saving repeater: %v", err)

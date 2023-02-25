@@ -29,7 +29,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -59,8 +58,8 @@ const waitTime = 100 * time.Millisecond
 type UserDB struct {
 	uncompressedJSON   []byte
 	dmrUsers           atomic.Value
-	dmrUserMap         *xsync.Map
-	dmrUserMapUpdating *xsync.Map
+	dmrUserMap         *xsync.MapOf[uint, DMRUser]
+	dmrUserMapUpdating *xsync.MapOf[uint, DMRUser]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -96,12 +95,7 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	userInterface, ok := userDB.dmrUserMap.Load(strconv.Itoa(int(dmrID)))
-	if !ok {
-		return false
-	}
-
-	user, ok := userInterface.(DMRUser)
+	user, ok := userDB.dmrUserMap.Load(dmrID)
 	if !ok {
 		return false
 	}
@@ -128,8 +122,8 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMap = xsync.NewMap()
-		userDB.dmrUserMapUpdating = xsync.NewMap()
+		userDB.dmrUserMap = xsync.NewIntegerMapOf[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
 
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
@@ -155,11 +149,11 @@ func UnpackDB() {
 		tmpDB.Date = userDB.builtInDate
 		userDB.dmrUsers.Store(tmpDB)
 		for i := range tmpDB.Users {
-			userDB.dmrUserMapUpdating.Store(strconv.Itoa(int(tmpDB.Users[i].ID)), tmpDB.Users[i])
+			userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
 		}
 
 		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdating = xsync.NewMap()
+		userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
 		userDB.isDone.Store(true)
 	}
 
@@ -193,11 +187,7 @@ func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	userIface, ok := userDB.dmrUserMap.Load(strconv.Itoa(int(dmrID)))
-	if !ok {
-		return DMRUser{}, false
-	}
-	user, ok := userIface.(DMRUser)
+	user, ok := userDB.dmrUserMap.Load(dmrID)
 	if !ok {
 		return DMRUser{}, false
 	}
@@ -250,13 +240,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	userDB.dmrUsers.Store(tmpDB)
 
-	userDB.dmrUserMapUpdating = xsync.NewMap()
+	userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
 	for i := range tmpDB.Users {
-		userDB.dmrUserMapUpdating.Store(strconv.Itoa(int(tmpDB.Users[i].ID)), tmpDB.Users[i])
+		userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
 	}
 
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdating = xsync.NewMap()
+	userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
 
 	logging.Errorf("Update complete. Loaded %d DMR users", Len())
 

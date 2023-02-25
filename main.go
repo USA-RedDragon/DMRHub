@@ -203,7 +203,7 @@ func start() int {
 			return err //nolint:golint,wrapcheck
 		}
 		for _, repeater := range repeaters {
-			go hbrp.GetSubscriptionManager().ListenForCalls(ctx, redis, repeater)
+			go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
 		}
 		return nil
 	})

@@ -75,7 +75,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 	// field, then we need to update the database entry to reflect
 	// the new dynamic talkgroup on the appropriate slot.
 
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.switchDynamicTalkgroup")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.switchDynamicTalkgroup")
 	defer span.End()
 
 	repeaterExists, err := models.RepeaterIDExists(s.DB, packet.Repeater)
@@ -116,7 +116,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 			logging.Logf("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
 			repeater.TS2DynamicTalkgroup = talkgroup
 			repeater.TS2DynamicTalkgroupID = &packet.Dst
-			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+			go GetSubscriptionManager().ListenForCallsOn(s.Redis.Redis, repeater, packet.Dst) //nolint:golint,contextcheck
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
 				logging.Errorf("Error saving repeater: %s", err.Error())
@@ -127,7 +127,7 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 			logging.Logf("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
 			repeater.TS1DynamicTalkgroup = talkgroup
 			repeater.TS1DynamicTalkgroupID = &packet.Dst
-			go GetSubscriptionManager().ListenForCallsOn(ctx, s.Redis.Redis, repeater, packet.Dst)
+			go GetSubscriptionManager().ListenForCallsOn(s.Redis.Redis, repeater, packet.Dst) //nolint:golint,contextcheck
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
 				logging.Errorf("Error saving repeater: %s", err.Error())

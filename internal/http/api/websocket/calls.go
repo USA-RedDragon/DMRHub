@@ -26,11 +26,11 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	gorillaWebsocket "github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 type CallsWebsocket struct {
@@ -62,7 +62,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w webso
 	} else {
 		userID, ok := userIDIface.(uint)
 		if !ok {
-			klog.Errorf("Failed to convert user ID to uint")
+			logging.Errorf("Failed to convert user ID to uint")
 			return
 		}
 		go hbrp.GetSubscriptionManager().ListenForWebsocket(newCtx, c.db, c.redis, userID)
@@ -90,7 +90,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w webso
 func (c *CallsWebsocket) OnDisconnect(ctx context.Context, r *http.Request, _ sessions.Session) {
 	err := c.subscription.Close()
 	if err != nil {
-		klog.Errorf("Failed to close pubsub: %v", err)
+		logging.Errorf("Failed to close pubsub: %v", err)
 	}
 	c.cancel()
 }

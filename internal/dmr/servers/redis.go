@@ -28,9 +28,9 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"k8s.io/klog/v2"
 )
 
 type RedisClient struct {
@@ -59,7 +59,7 @@ func (s *RedisClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return
 	}
 	repeater.LastPing = time.Now()
@@ -73,7 +73,7 @@ func (s *RedisClient) UpdateRepeaterConnection(ctx context.Context, repeaterID u
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return
 	}
 	repeater.Connection = connection
@@ -93,7 +93,7 @@ func (s *RedisClient) StoreRepeater(ctx context.Context, repeaterID uint, repeat
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling repeater", err)
+		logging.Errorf("Error marshalling repeater: %v", err)
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
@@ -106,13 +106,13 @@ func (s *RedisClient) GetRepeater(ctx context.Context, repeaterID uint) (models.
 
 	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
 	if err != nil {
-		klog.Errorf("Error unmarshalling repeater", err)
+		logging.Errorf("Error unmarshalling repeater: %v", err)
 		return models.Repeater{}, ErrUnmarshalRepeater
 	}
 	return repeater, nil
@@ -157,13 +157,13 @@ func (s *RedisClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, er
 
 	peerBits, err := s.Redis.Get(ctx, fmt.Sprintf("openbridge:peer:%d", peerID)).Result()
 	if err != nil {
-		klog.Errorf("Error getting peer from redis", err)
+		logging.Errorf("Error getting peer from redis: %v", err)
 		return models.Peer{}, ErrNoSuchPeer
 	}
 	var peer models.Peer
 	_, err = peer.UnmarshalMsg([]byte(peerBits))
 	if err != nil {
-		klog.Errorf("Error unmarshalling peer", err)
+		logging.Errorf("Error unmarshalling peer: %v", err)
 		return models.Peer{}, ErrUnmarshalPeer
 	}
 	return peer, nil

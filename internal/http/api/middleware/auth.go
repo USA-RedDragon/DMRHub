@@ -26,12 +26,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 func RequireAdminOrTGOwner() gin.HandlerFunc {
@@ -40,7 +40,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -49,14 +49,14 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireAdminOrTGOwner: Failed to get user_id from session")
+				logging.Error("RequireAdminOrTGOwner: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireAdminOrTGOwner: Unable to convert user_id to uint")
+			logging.Error("RequireAdminOrTGOwner: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -73,7 +73,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		// Open up the DB and check if the user is an admin
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireAdminOrTGOwner: Unable to get DB from context")
+			logging.Error("RequireAdminOrTGOwner: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -91,7 +91,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 			// Check if the user is the owner of any talkgroups
 			talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
 			if err != nil {
-				klog.Error(err)
+				logging.Errorf("Failed to find talkgroups for owner %d: %v", uid, err)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 				return
 			}
@@ -112,7 +112,7 @@ func RequireAdmin() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -121,14 +121,14 @@ func RequireAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireAdmin: Failed to get user_id from session")
+				logging.Error("RequireAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireAdmin: Unable to convert user_id to uint")
+			logging.Error("RequireAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -145,7 +145,7 @@ func RequireAdmin() gin.HandlerFunc {
 		// Open up the DB and check if the user is an admin
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireAdmin: Unable to get DB from context")
+			logging.Error("RequireAdmin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -182,14 +182,14 @@ func RequireSuperAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireSuperAdmin: Failed to get user_id from session")
+				logging.Error("RequireSuperAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireSuperAdmin: Unable to convert user_id to uint")
+			logging.Error("RequireSuperAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -201,7 +201,7 @@ func RequireSuperAdmin() gin.HandlerFunc {
 			)
 		}
 		if uid != dmrconst.SuperAdminUser {
-			klog.Error("User is not a super admin")
+			logging.Error("User is not a super admin")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}
@@ -213,7 +213,7 @@ func RequireLogin() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -223,14 +223,14 @@ func RequireLogin() gin.HandlerFunc {
 
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireLogin: Failed to get user_id from session")
+				logging.Error("RequireLogin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireLogin: Unable to convert user_id to uint")
+			logging.Error("RequireLogin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -247,7 +247,7 @@ func RequireLogin() gin.HandlerFunc {
 		// Open up the DB and check if the user exists
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireLogin: Unable to get DB from context")
+			logging.Error("RequireLogin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -276,14 +276,14 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequirePeerOwnerOrAdmin: Failed to get user_id from session")
+				logging.Error("RequirePeerOwnerOrAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequirePeerOwnerOrAdmin: Unable to convert user_id to uint")
+			logging.Error("RequirePeerOwnerOrAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -299,7 +299,7 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		valid := false
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequirePeerOwnerOrAdmin: Unable to get DB from context")
+			logging.Error("RequirePeerOwnerOrAdmin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -335,7 +335,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -344,14 +344,14 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireRepeaterOwnerOrAdmin: Failed to get user_id from session")
+				logging.Error("RequireRepeaterOwnerOrAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireRepeaterOwnerOrAdmin: Unable to convert user_id to uint")
+			logging.Error("RequireRepeaterOwnerOrAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -367,7 +367,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		valid := false
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireRepeaterOwnerOrAdmin: Unable to get DB from context")
+			logging.Error("RequireRepeaterOwnerOrAdmin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -403,7 +403,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -412,14 +412,14 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireTalkgroupOwnerOrAdmin: Failed to get user_id from session")
+				logging.Error("RequireTalkgroupOwnerOrAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireTalkgroupOwnerOrAdmin: Unable to convert user_id to uint")
+			logging.Error("RequireTalkgroupOwnerOrAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -435,7 +435,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		valid := false
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireTalkgroupOwnerOrAdmin: Unable to get DB from context")
+			logging.Error("RequireTalkgroupOwnerOrAdmin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -474,7 +474,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 
 		defer func() {
 			if recover() != nil {
-				klog.Error("RequireLogin: Recovered from panic")
+				logging.Error("RequireLogin: Recovered from panic")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -483,14 +483,14 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			if config.GetConfig().Debug {
-				klog.Error("RequireSelfOrAdmin: Failed to get user_id from session")
+				logging.Error("RequireSelfOrAdmin: Failed to get user_id from session")
 			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			klog.Error("RequireSelfOrAdmin: Unable to convert user_id to uint")
+			logging.Error("RequireSelfOrAdmin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -507,7 +507,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			klog.Error("RequireSelfOrAdmin: Unable to get DB from context")
+			logging.Error("RequireSelfOrAdmin: Unable to get DB from context")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

@@ -26,10 +26,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"k8s.io/klog/v2"
 )
 
 type User struct {
@@ -143,7 +143,7 @@ func (s *UsersSeeder) Seed(db *gorm.DB) error {
 			Password: utils.HashPassword(config.GetConfig().InitialAdminUserPassword, config.GetConfig().PasswordSalt),
 		},
 	}
-	klog.Errorf("!#!#!#!#!# Initial admin user password: %s #!#!#!#!#!", config.GetConfig().InitialAdminUserPassword)
+	logging.Errorf("!#!#!#!#!# Initial admin user password: %s #!#!#!#!#!", config.GetConfig().InitialAdminUserPassword)
 	return db.CreateInBatches(users, s.Configuration.Rows).Error
 }
 
@@ -165,7 +165,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		klog.Errorf("Error deleting user: %s", err)
+		logging.Errorf("Error deleting user: %s", err)
 		return err
 	}
 	return nil

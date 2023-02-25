@@ -25,6 +25,7 @@ import (
 	"crypto/sha1" //#nosec G505 -- False positive, used for a protocol
 	"encoding/binary"
 	"net"
+	"os"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -32,10 +33,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 const packetLength = 73
@@ -77,21 +78,24 @@ func (s *Server) Start(ctx context.Context) {
 
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error opening UDP Socket: %v", err)
+		os.Exit(1)
 	}
 
 	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error setting UDP Socket read buffer: %v", err)
+		os.Exit(1)
 	}
 	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error setting UDP Socket write buffer: %v", err)
+		os.Exit(1)
 	}
 
 	s.Server = server
 
-	klog.Infof("OpenBridge Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	logging.Logf("OpenBridge Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subcribeOutgoing(ctx)
@@ -100,10 +104,10 @@ func (s *Server) Start(ctx context.Context) {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if config.GetConfig().Debug {
-				klog.Infof("Read a message from %v\n", remoteaddr)
+				logging.Logf("Read a message from %v\n", remoteaddr)
 			}
 			if err != nil {
-				klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
+				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
 				continue
 			}
 			go func() {
@@ -114,7 +118,7 @@ func (s *Server) Start(ctx context.Context) {
 				}
 				packedBytes, err := p.MarshalMsg(nil)
 				if err != nil {
-					klog.Errorf("Error marshalling packet", err)
+					logging.Errorf("Error marshalling packet", err)
 					return
 				}
 				s.Redis.Redis.Publish(ctx, "openbridge:incoming", packedBytes)
@@ -135,14 +139,14 @@ func (s *Server) listen(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
-			klog.Errorf("Error unmarshalling packet", err)
+			logging.Errorf("Error unmarshalling packet", err)
 			continue
 		}
 		go s.handlePacket(ctx, &net.UDPAddr{
@@ -157,18 +161,18 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		packet, ok := models.UnpackPacket([]byte(msg.Payload))
 		if !ok {
-			klog.Errorf("Error unpacking packet")
+			logging.Errorf("Error unpacking packet")
 			continue
 		}
 		peer, err := s.Redis.GetPeer(ctx, packet.Repeater)
 		if err != nil {
-			klog.Errorf("Error getting peer %d from redis", packet.Repeater)
+			logging.Errorf("Error getting peer %d from redis", packet.Repeater)
 			continue
 		}
 		// OpenBridge is always TS1
@@ -178,24 +182,24 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 			Port: peer.Port,
 		})
 		if err != nil {
-			klog.Errorf("Error sending packet", err)
+			logging.Errorf("Error sending packet", err)
 		}
 	}
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
-		klog.Errorf("Invalid packet type: %s", packet.Signature)
+		logging.Errorf("Invalid packet type: %s", packet.Signature)
 		return
 	}
 
 	if config.GetConfig().Debug {
-		klog.Infof("Sending Packet: %s\n", packet.String())
-		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
+		logging.Logf("Sending Packet: %s\n", packet.String())
+		logging.Logf("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
 	}
 	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		klog.Errorf("Error getting repeater from Redis", err)
+		logging.Errorf("Error getting repeater from Redis: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -205,7 +209,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling packet", err)
+		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
 	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)
@@ -218,11 +222,11 @@ func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes
 	h := hmac.New(sha1.New, []byte(peer.Password))
 	_, err := h.Write(packetBytes)
 	if err != nil {
-		klog.Warningf("Error hashing OpenBridge packet: %s", err)
+		logging.Errorf("Error hashing OpenBridge packet: %s", err)
 		return false
 	}
 	if !hmac.Equal(h.Sum(nil), hmacBytes) {
-		klog.Warningf("Invalid OpenBridge HMAC")
+		logging.Error("Invalid OpenBridge HMAC")
 		return false
 	}
 	return true
@@ -235,12 +239,12 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	const signatureLength = 4
 
 	if len(data) != packetLength {
-		klog.Warningf("Invalid OpenBridge packet length: %d", len(data))
+		logging.Errorf("Invalid OpenBridge packet length: %d", len(data))
 		return
 	}
 
 	if dmrconst.Command(data[:signatureLength]) != dmrconst.CommandDMRD {
-		klog.Warningf("Unknown command: %s", data[:signatureLength])
+		logging.Errorf("Unknown command: %s", data[:signatureLength])
 		return
 	}
 
@@ -249,35 +253,35 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 
 	packet, ok := models.UnpackPacket(packetBytes)
 	if !ok {
-		klog.Warningf("Invalid OpenBridge packet")
+		logging.Error("Invalid OpenBridge packet")
 		return
 	}
 
 	if config.GetConfig().Debug {
-		klog.Infof("DMRD packet: %s", packet.String())
+		logging.Logf("DMRD packet: %s", packet.String())
 	}
 
 	if packet.Slot {
 		// Drop TS2 packets on OpenBridge
-		klog.Warningf("Dropping TS2 packet from OpenBridge")
+		logging.Log("Dropping TS2 packet from OpenBridge")
 		return
 	}
 
 	peerIDBytes := data[11:15]
 	peerID := uint(binary.BigEndian.Uint32(peerIDBytes))
 	if config.GetConfig().Debug {
-		klog.Infof("DMR Data from Peer ID: %d", peerID)
+		logging.Logf("DMR Data from Peer ID: %d", peerID)
 	}
 
 	if !models.PeerIDExists(s.DB, peerID) {
-		klog.Warningf("Unknown peer ID: %d", peerID)
+		logging.Errorf("Unknown peer ID: %d", peerID)
 		return
 	}
 
 	peer := models.FindPeerByID(s.DB, peerID)
 
 	if !s.validateHMAC(ctx, packetBytes, hmacBytes, peer) {
-		klog.Warningf("Invalid OpenBridge HMAC")
+		logging.Error("Invalid OpenBridge HMAC")
 		return
 	}
 

@@ -23,9 +23,9 @@ import (
 	"context"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"k8s.io/klog/v2"
 )
 
 // Parrot is a struct that stores packets and repeats them back to the repeater.
@@ -54,7 +54,7 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 		p.Redis.store(ctx, streamID, repeaterID)
 		return true
 	}
-	klog.Warningf("Parrot: Stream %d already started", streamID)
+	logging.Errorf("Parrot: Stream %d already started", streamID)
 	return false
 }
 
@@ -68,7 +68,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	// Grab the repeater ID to go ahead and mark the packet as being routed back.
 	repeaterID, err := p.Redis.get(ctx, streamID)
 	if err != nil {
-		klog.Errorf("Error getting parrot stream from redis", err)
+		logging.Errorf("Error getting parrot stream from redis: %v", err)
 		return
 	}
 
@@ -80,7 +80,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 
 	err = p.Redis.stream(ctx, streamID, packet)
 	if err != nil {
-		klog.Errorf("Error storing parrot stream in redis", err)
+		logging.Errorf("Error storing parrot stream in redis: %v", err)
 	}
 }
 
@@ -100,7 +100,7 @@ func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
 	// Empty array of packet byte arrays.
 	packets, err := p.Redis.getStream(ctx, streamID)
 	if err != nil {
-		klog.Errorf("Error getting parrot stream from redis: %s", err)
+		logging.Errorf("Error getting parrot stream from redis: %s", err)
 		return nil
 	}
 

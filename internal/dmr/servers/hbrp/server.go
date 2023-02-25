@@ -22,6 +22,7 @@ package hbrp
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -34,7 +35,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 // Server is the DMR server.
@@ -48,6 +48,11 @@ type Server struct {
 	Redis         *servers.RedisClient
 	CallTracker   *calltracker.CallTracker
 }
+
+var (
+	ErrOpenSocket   = errors.New("Error opening socket")
+	ErrSocketBuffer = errors.New("Error setting socket buffer size")
+)
 
 const largestMessageSize = 302
 const repeaterIDLength = 4
@@ -77,11 +82,11 @@ func (s *Server) Stop(ctx context.Context) {
 
 	repeaters, err := s.Redis.ListRepeaters(ctx)
 	if err != nil {
-		klog.Errorf("Error scanning redis for repeaters", err)
+		logging.Errorf("Error scanning redis for repeaters: %v", err)
 	}
 	for _, repeater := range repeaters {
 		if config.GetConfig().Debug {
-			klog.Infof("Repeater found: %d", repeater)
+			logging.Logf("Repeater found: %d", repeater)
 		}
 		s.Redis.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, repeaterIDLength)
@@ -96,20 +101,20 @@ func (s *Server) listen(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
 	pubsubChannel := pubsub.Channel()
 	for {
 		select {
 		case <-ctx.Done():
-			klog.Info("Stopping HBRP server")
+			logging.Log("Stopping HBRP server")
 			return
 		case msg := <-pubsubChannel:
 			var packet models.RawDMRPacket
 			_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 			if err != nil {
-				klog.Errorf("Error unmarshalling packet", err)
+				logging.Errorf("Error unmarshalling packet: %v", err)
 				continue
 			}
 			s.handlePacket(ctx, net.UDPAddr{
@@ -125,14 +130,14 @@ func (s *Server) subscribePackets(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
-			klog.Errorf("Error unmarshalling packet", err)
+			logging.Errorf("Error unmarshalling packet: %v", err)
 			continue
 		}
 		_, err = s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
@@ -140,7 +145,7 @@ func (s *Server) subscribePackets(ctx context.Context) {
 			Port: packet.RemotePort,
 		})
 		if err != nil {
-			klog.Errorf("Error sending packet", err)
+			logging.Errorf("Error sending packet: %v", err)
 		}
 	}
 }
@@ -150,18 +155,18 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		packet, ok := models.UnpackPacket([]byte(msg.Payload))
 		if !ok {
-			klog.Errorf("Error unpacking packet")
+			logging.Error("Error unpacking packet")
 			continue
 		}
 		repeater, err := s.Redis.GetRepeater(ctx, packet.Repeater)
 		if err != nil {
-			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
+			logging.Errorf("Error getting repeater %d from redis", packet.Repeater)
 			continue
 		}
 		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
@@ -169,33 +174,36 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 			Port: repeater.Port,
 		})
 		if err != nil {
-			klog.Errorf("Error sending packet", err)
+			logging.Errorf("Error sending packet: %v", err)
 		}
 	}
 }
 
 // Start starts the DMR server.
-func (s *Server) Start(ctx context.Context) {
+func (s *Server) Start(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Start")
 	defer span.End()
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error opening UDP Socket: %v", err)
+		return ErrOpenSocket
 	}
 
 	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error setting read buffer on UDP Socket: %v", err)
+		return ErrSocketBuffer
 	}
 	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
-		klog.Exitf("Error opening UDP Socket", err)
+		logging.Errorf("Error setting write buffer on UDP Socket: %v", err)
+		return ErrSocketBuffer
 	}
 
 	s.Server = server
 	s.Started = true
 
-	logging.GetLogger(logging.Error).Logf(s.Start, "HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	logging.Errorf("HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subscribePackets(ctx)
@@ -205,11 +213,11 @@ func (s *Server) Start(ctx context.Context) {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if err != nil {
-				klog.Warningf("Error reading from UDP Socket, Swallowing Error: %v", err)
+				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
 				continue
 			}
 			if config.GetConfig().Debug {
-				logging.GetLogger(logging.Access).Logf(s.Start, "Read a message from %v\n", remoteaddr)
+				logging.Logf("Read a message from %v\n", remoteaddr)
 			}
 			p := models.RawDMRPacket{
 				Data:       s.Buffer[:length],
@@ -218,26 +226,28 @@ func (s *Server) Start(ctx context.Context) {
 			}
 			packedBytes, err := p.MarshalMsg(nil)
 			if err != nil {
-				klog.Errorf("Error marshalling packet", err)
+				logging.Errorf("Error marshalling packet: %v", err)
 				return
 			}
 			s.Redis.Redis.Publish(ctx, "hbrp:incoming", packedBytes)
 		}
 	}()
+
+	return nil
 }
 
 func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
 	if !s.Started && command != dmrconst.CommandMSTCL {
-		klog.Warningf("Server not started, not sending command")
+		logging.Errorf("Server not started, not sending command")
 		return
 	}
 	if config.GetConfig().Debug {
-		logging.GetLogger(logging.Access).Logf(s.sendCommand, "Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
+		logging.Logf("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
 	}
 	commandPrefixedData := append([]byte(command), data...)
 	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		klog.Errorf("Error getting repeater from Redis", err)
+		logging.Errorf("Error getting repeater from Redis: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -247,7 +257,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling packet", err)
+		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
 	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
@@ -255,17 +265,17 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 
 func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
-		klog.Errorf("Invalid packet type: %s", packet.Signature)
+		logging.Errorf("Invalid packet type: %s", packet.Signature)
 		return
 	}
 
 	if config.GetConfig().Debug {
-		klog.Infof("Sending Packet: %s\n", packet.String())
-		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
+		logging.Logf("Sending Packet: %s\n", packet.String())
+		logging.Logf("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
 	}
 	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		klog.Errorf("Error getting repeater from Redis", err)
+		logging.Errorf("Error getting repeater from Redis", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -275,7 +285,7 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling packet", err)
+		logging.Errorf("Error marshalling packet", err)
 		return
 	}
 	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)
@@ -283,15 +293,15 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if !s.Started {
-		klog.Warningf("Server not started, not sending command")
+		logging.Errorf("Server not started, not sending command")
 		return
 	}
 	if config.GetConfig().Debug {
-		logging.GetLogger(logging.Access).Logf(s.sendPacket, "Sending DMR packet %s to repeater: %d", packet.String(), repeaterIDBytes)
+		logging.Logf("Sending DMR packet %s to repeater: %d", packet.String(), repeaterIDBytes)
 	}
 	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		klog.Errorf("Error getting repeater from Redis", err)
+		logging.Errorf("Error getting repeater from Redis: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -301,7 +311,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling packet", err)
+		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
 	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
@@ -313,7 +323,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 	const signatureLength = 4
 	if len(data) < signatureLength {
 		// Not enough data here to be a valid packet
-		klog.Warningf("Invalid packet length: %d", len(data))
+		logging.Errorf("Invalid packet length: %d", len(data))
 		return
 	}
 
@@ -338,16 +348,16 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 		s.handleRPTPINGPacket(ctx, remoteAddr, data)
 	// I don't think we ever receive these
 	case dmrconst.CommandRPTACK[:4]:
-		klog.Warning("TODO: RPTACK")
+		logging.Error("TODO: RPTACK")
 	case dmrconst.CommandMSTCL[:4]:
-		klog.Warning("TODO: MSTCL")
+		logging.Error("TODO: MSTCL")
 	case dmrconst.CommandMSTNAK[:4]:
-		klog.Warning("TODO: MSTNAK")
+		logging.Error("TODO: MSTNAK")
 	case dmrconst.CommandMSTPONG[:4]:
-		klog.Warning("TODO: MSTPONG")
+		logging.Error("TODO: MSTPONG")
 	case dmrconst.CommandRPTSBKN[:4]:
-		klog.Warning("TODO: RPTSBKN")
+		logging.Error("TODO: RPTSBKN")
 	default:
-		klog.Warningf("Unknown command: %s", dmrconst.Command(data[:4]))
+		logging.Errorf("Unknown command: %s", dmrconst.Command(data[:4]))
 	}
 }

@@ -23,8 +23,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 // Peer is the model for an OpenBridge DMR peer
@@ -48,7 +48,7 @@ type Peer struct {
 func (p *Peer) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		klog.Errorf("Failed to marshal peer to json: %s", err)
+		logging.Errorf("Failed to marshal peer to json: %s", err)
 		return ""
 	}
 	return string(jsn)
@@ -99,6 +99,6 @@ func PeerIDExists(db *gorm.DB, id uint) bool {
 func DeletePeer(db *gorm.DB, id uint) {
 	tx := db.Unscoped().Delete(&Peer{ID: id})
 	if tx.Error != nil {
-		klog.Errorf("Error deleting repeater: %s", tx.Error)
+		logging.Errorf("Error deleting repeater: %s", tx.Error)
 	}
 }

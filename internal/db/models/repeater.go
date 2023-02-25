@@ -75,7 +75,7 @@ func (p *Repeater) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
 		if config.GetConfig().Debug {
-			logging.GetLogger(logging.Error).Logf(p.String, "Failed to marshal repeater to json: %s", err)
+			logging.Errorf("Failed to marshal repeater to json: %s", err)
 		}
 		return ""
 	}
@@ -131,7 +131,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		logging.GetLogger(logging.Error).Logf(DeleteRepeater, "Error deleting repeater: %s", err)
+		logging.Errorf("Error deleting repeater: %s", err)
 		return err
 	}
 	return nil

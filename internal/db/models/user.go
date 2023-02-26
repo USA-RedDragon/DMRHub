@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"k8s.io/klog/v2"
 )
 
 type User struct {
@@ -143,7 +143,7 @@ func (s *UsersSeeder) Seed(db *gorm.DB) error {
 			Password: utils.HashPassword(config.GetConfig().InitialAdminUserPassword, config.GetConfig().PasswordSalt),
 		},
 	}
-	klog.Errorf("!#!#!#!#!# Initial admin user password: %s #!#!#!#!#!", config.GetConfig().InitialAdminUserPassword)
+	logging.Errorf("!#!#!#!#!# Initial admin user password: %s #!#!#!#!#!", config.GetConfig().InitialAdminUserPassword)
 	return db.CreateInBatches(users, s.Configuration.Rows).Error
 }
 
@@ -156,8 +156,8 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		var repeaters []Repeater
 		tx.Where("owner_id = ?", id).Find(&repeaters)
 		for _, repeater := range repeaters {
-			tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeater.RadioID, repeater.RadioID).Delete(&Call{})
-			tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{RadioID: id})
+			tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeater.ID, repeater.ID).Delete(&Call{})
+			tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(repeater)
 			tx.Unscoped().Table("talkgroup_admins").Where("user_id = ?", id).Delete(&Talkgroup{})
 			tx.Unscoped().Table("talkgroup_ncos").Where("user_id = ?", id).Delete(&Talkgroup{})
 		}
@@ -165,7 +165,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		klog.Errorf("Error deleting user: %s", err)
+		logging.Errorf("Error deleting user: %s", err)
 		return err
 	}
 	return nil

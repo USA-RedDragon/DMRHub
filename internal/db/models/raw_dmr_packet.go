@@ -21,7 +21,7 @@ package models
 
 // RawDMRPacket is a raw DMR packet
 //
-//go:generate msgp
+//go:generate go run github.com/tinylib/msgp@latest
 type RawDMRPacket struct {
 	Data       []byte `msg:"data"`
 	RemoteIP   string `msg:"remote_ip"`

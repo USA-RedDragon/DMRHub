@@ -30,5 +30,5 @@ var (
 	GitCommit string
 
 	// Version of the program
-	Version = "1.0.17" //nolint:golint,gochecknoglobals
+	Version = "1.1.0" //nolint:golint,gochecknoglobals
 )

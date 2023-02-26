@@ -31,12 +31,12 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 type TestDB struct {
@@ -51,13 +51,15 @@ func (t *TestDB) createRedis() *redis.Client {
 	}
 	pool, err := dockertest.NewPool("")
 	if err != nil {
-		klog.Fatalf("Could not construct pool: %s", err)
+		logging.Errorf("Could not construct pool: %s", err)
+		return nil
 	}
 
 	// uses pool to try to connect to Docker
 	err = pool.Client.Ping()
 	if err != nil {
-		klog.Fatalf("Could not connect to Docker: %s", err)
+		logging.Errorf("Could not connect to Docker: %s", err)
+		return nil
 	}
 
 	// Start ports at a random number above 10000
@@ -68,7 +70,8 @@ func (t *TestDB) createRedis() *redis.Client {
 	bigPort, err := rand.Int(rand.Reader, big.NewInt(highestPort))
 	port := uint16(bigPort.Uint64() + startPort)
 	if err != nil {
-		klog.Fatalf("Could not generate random port: %s", err)
+		logging.Errorf("Could not generate random port: %s", err)
+		return nil
 	}
 
 	for {
@@ -97,7 +100,8 @@ func (t *TestDB) createRedis() *redis.Client {
 		},
 	})
 	if err != nil {
-		klog.Fatalf("Could not start resource: %s", err)
+		logging.Errorf("Could not start resource: %s", err)
+		return nil
 	}
 
 	const connsPerCPU = 10
@@ -126,9 +130,10 @@ func (t *TestDB) createRedis() *redis.Client {
 	}
 
 	if !connected {
-		klog.Fatalf("Could not connect to redis: %s", err)
+		logging.Errorf("Could not connect to redis: %s", err)
 		_ = t.client.Close()
 		_ = t.redisContainer.Close()
+		return nil
 	}
 
 	return t.client

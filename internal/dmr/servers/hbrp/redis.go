@@ -28,9 +28,9 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"k8s.io/klog/v2"
 )
 
 type redisClient struct {
@@ -57,7 +57,7 @@ func (s *redisClient) updateRepeaterPing(ctx context.Context, repeaterID uint) {
 
 	repeater, err := s.getRepeater(ctx, repeaterID)
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return
 	}
 	repeater.LastPing = time.Now()
@@ -71,7 +71,7 @@ func (s *redisClient) updateRepeaterConnection(ctx context.Context, repeaterID u
 
 	repeater, err := s.getRepeater(ctx, repeaterID)
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return
 	}
 	repeater.Connection = connection
@@ -91,7 +91,7 @@ func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeat
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
 	if err != nil {
-		klog.Errorf("Error marshalling repeater", err)
+		logging.Errorf("Error marshalling repeater: %v", err)
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
@@ -104,13 +104,13 @@ func (s *redisClient) getRepeater(ctx context.Context, repeaterID uint) (models.
 
 	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
 	if err != nil {
-		klog.Errorf("Error getting repeater from redis", err)
+		logging.Errorf("Error getting repeater from redis: %v", err)
 		return models.Repeater{}, errNoSuchRepeater
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
 	if err != nil {
-		klog.Errorf("Error unmarshalling repeater", err)
+		logging.Errorf("Error unmarshalling repeater: %v", err)
 		return models.Repeater{}, errUnmarshalRepeater
 	}
 	return repeater, nil

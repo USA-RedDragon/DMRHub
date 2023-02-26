@@ -22,12 +22,11 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmrconst"
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/mitchellh/hashstructure/v2"
@@ -35,7 +34,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 // Assuming +/-7ms of jitter, we'll wait 2 seconds before we consider a call to be over
@@ -54,7 +52,7 @@ type callMapStruct struct {
 	GroupCall     bool
 }
 
-func getCallHashFromPacket(packet models.Packet) (string, error) {
+func getCallHashFromPacket(packet models.Packet) (uint64, error) {
 	v := callMapStruct{
 		Active:        true,
 		StreamID:      packet.StreamID,
@@ -66,12 +64,12 @@ func getCallHashFromPacket(packet models.Packet) (string, error) {
 
 	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
 	if err != nil {
-		klog.Errorf("CallTracker: Error hashing call: %v", err)
+		logging.Errorf("CallTracker: Error hashing call: %v", err)
 	}
-	return strconv.Itoa(int(hash)), err
+	return hash, err //nolint:golint,wrapcheck
 }
 
-func getCallHash(call models.Call) (string, error) {
+func getCallHash(call models.Call) (uint64, error) {
 	v := callMapStruct{
 		Active:        call.Active,
 		StreamID:      call.StreamID,
@@ -83,27 +81,26 @@ func getCallHash(call models.Call) (string, error) {
 
 	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
 	if err != nil {
-		klog.Errorf("CallTracker: Error hashing call: %v", err)
+		logging.Errorf("CallTracker: Error hashing call: %v", err)
 	}
-	return strconv.Itoa(int(hash)), err
+	return hash, err //nolint:golint,wrapcheck
 }
 
 // CallTracker is a struct that holds the state of the calls that are currently in progress.
 type CallTracker struct {
 	db            *gorm.DB
 	redis         *redis.Client
-	callEndTimers *xsync.Map
-	inFlightCalls *xsync.Map
+	callEndTimers *xsync.MapOf[uint64, *time.Timer]
+	inFlightCalls *xsync.MapOf[uint64, *models.Call]
 }
 
 // NewCallTracker creates a new CallTracker.
 func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
-	xsync.NewMap()
 	return &CallTracker{
 		db:            db,
 		redis:         redis,
-		callEndTimers: xsync.NewMap(),
-		inFlightCalls: xsync.NewMap(),
+		callEndTimers: xsync.NewIntegerMapOf[uint64, *time.Timer](),
+		inFlightCalls: xsync.NewIntegerMapOf[uint64, *models.Call](),
 	}
 }
 
@@ -117,39 +114,39 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 
 	userExists, err := models.UserIDExists(c.db, packet.Src)
 	if err != nil {
-		klog.Errorf("Error checking if user %d exists: %s", packet.Src, err)
+		logging.Errorf("Error checking if user %d exists: %s", packet.Src, err)
 		return
 	}
 
 	if !userExists {
 		if config.GetConfig().Debug {
-			klog.Errorf("User %d does not exist", packet.Src)
+			logging.Errorf("User %d does not exist", packet.Src)
 		}
 		return
 	}
 
 	sourceUser, err = models.FindUserByID(c.db, packet.Src)
 	if err != nil {
-		klog.Errorf("Error finding user %d: %s", packet.Src, err)
+		logging.Errorf("Error finding user %d: %s", packet.Src, err)
 		return
 	}
 
 	repeaterExists, err := models.RepeaterIDExists(c.db, packet.Repeater)
 	if err != nil {
-		klog.Errorf("Error checking if repeater %d exists: %s", packet.Repeater, err)
+		logging.Errorf("Error checking if repeater %d exists: %s", packet.Repeater, err)
 		return
 	}
 
 	if !repeaterExists {
 		if config.GetConfig().Debug {
-			klog.Errorf("Repeater %d does not exist", packet.Repeater)
+			logging.Errorf("Repeater %d does not exist", packet.Repeater)
 		}
 		return
 	}
 
 	sourceRepeater, err = models.FindRepeaterByID(c.db, packet.Repeater)
 	if err != nil {
-		klog.Errorf("Error finding repeater %d: %s", packet.Repeater, err)
+		logging.Errorf("Error finding repeater %d: %s", packet.Repeater, err)
 		return
 	}
 
@@ -164,13 +161,13 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	if packet.GroupCall {
 		talkgroupExists, err := models.TalkgroupIDExists(c.db, packet.Dst)
 		if err != nil {
-			klog.Errorf("Error checking if talkgroup %d exists: %s", packet.Dst, err)
+			logging.Errorf("Error checking if talkgroup %d exists: %s", packet.Dst, err)
 			return
 		}
 
 		repeaterExists, err := models.RepeaterIDExists(c.db, packet.Dst)
 		if err != nil {
-			klog.Errorf("Error checking if repeater %d exists: %s", packet.Dst, err)
+			logging.Errorf("Error checking if repeater %d exists: %s", packet.Dst, err)
 			return
 		}
 
@@ -179,42 +176,42 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 			isToTalkgroup = true
 			destTalkgroup, err = models.FindTalkgroupByID(c.db, packet.Dst)
 			if err != nil {
-				klog.Errorf("Error finding talkgroup %d: %s", packet.Dst, err)
+				logging.Errorf("Error finding talkgroup %d: %s", packet.Dst, err)
 				return
 			}
 		case repeaterExists:
 			isToRepeater = true
 			destRepeater, err = models.FindRepeaterByID(c.db, packet.Dst)
 			if err != nil {
-				klog.Errorf("Error finding repeater %d: %s", packet.Dst, err)
+				logging.Errorf("Error finding repeater %d: %s", packet.Dst, err)
 				return
 			}
 		default:
-			klog.Errorf("Cannot find packet destination %d", packet.Dst)
+			logging.Errorf("Cannot find packet destination %d", packet.Dst)
 			return
 		}
 	} else {
 		// Find the user
 		userExists, err = models.UserIDExists(c.db, packet.Dst)
 		if err != nil {
-			klog.Errorf("Error checking if user %d exists: %s", packet.Dst, err)
+			logging.Errorf("Error checking if user %d exists: %s", packet.Dst, err)
 			return
 		}
 
 		if !userExists {
-			klog.Errorf("Cannot find packet destination %d", packet.Dst)
+			logging.Errorf("Cannot find packet destination %d", packet.Dst)
 			return
 		}
 
 		isToUser = true
 		destUser, err = models.FindUserByID(c.db, packet.Dst)
 		if err != nil {
-			klog.Errorf("Error finding user %d: %s", packet.Dst, err)
+			logging.Errorf("Error finding user %d: %s", packet.Dst, err)
 			return
 		}
 	}
 
-	logging.GetLogger(logging.Error).Logf(c.StartCall, "Starting call from %d to %d", packet.Src, packet.Dst)
+	logging.Logf("Starting call from %d to %d", packet.Src, packet.Dst)
 
 	call := models.Call{
 		StreamID:       packet.StreamID,
@@ -223,7 +220,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		User:           sourceUser,
 		UserID:         sourceUser.ID,
 		Repeater:       sourceRepeater,
-		RepeaterID:     sourceRepeater.RadioID,
+		RepeaterID:     sourceRepeater.ID,
 		TimeSlot:       packet.Slot,
 		GroupCall:      packet.GroupCall,
 		DestinationID:  packet.Dst,
@@ -256,7 +253,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	// Create the call in the database
 	err = c.db.Create(&call).Error
 	if err != nil {
-		klog.Errorf("Error creating call: %v", err)
+		logging.Errorf("Error creating call: %v", err)
 		return
 	}
 
@@ -269,7 +266,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	c.inFlightCalls.Store(callHash, &call)
 
 	if config.GetConfig().Debug {
-		logging.GetLogger(logging.Access).Logf(c.StartCall, "Started call %d", call.StreamID)
+		logging.Logf("Started call %d", call.StreamID)
 	}
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
@@ -315,7 +312,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 			jsonCall.ToUser.Callsign = call.ToUser.Callsign
 		}
 		if call.IsToRepeater {
-			jsonCall.ToRepeater.RadioID = call.ToRepeater.RadioID
+			jsonCall.ToRepeater.RadioID = call.ToRepeater.ID
 			jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
 		}
 		jsonCall.IsToTalkgroup = call.IsToTalkgroup
@@ -328,25 +325,25 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 		// Publish the call JSON to Redis
 		callJSON, err := json.Marshal(jsonCall)
 		if err != nil {
-			klog.Errorf("Error marshalling call JSON: %v", err)
+			logging.Errorf("Error marshalling call JSON: %v", err)
 			return
 		}
 
 		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
 		if err != nil {
-			klog.Errorf("Error publishing call JSON: %v", err)
+			logging.Errorf("Error publishing call JSON: %v", err)
 			return
 		}
 	}
 
 	origCallJSON, err := json.Marshal(call)
 	if err != nil {
-		klog.Errorf("Error marshalling call JSON: %v", err)
+		logging.Errorf("Error marshalling call JSON: %v", err)
 		return
 	}
 	_, err = c.redis.Publish(ctx, "calls", origCallJSON).Result()
 	if err != nil {
-		klog.Errorf("Error publishing call JSON: %v", err)
+		logging.Errorf("Error publishing call JSON: %v", err)
 		return
 	}
 }
@@ -360,12 +357,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 		return
 	}
 
-	timerInterface, ok := c.callEndTimers.Load(hash)
-	if !ok {
-		return
-	}
-
-	timer, ok := timerInterface.(*time.Timer)
+	timer, ok := c.callEndTimers.Load(hash)
 	if !ok {
 		return
 	}
@@ -494,19 +486,13 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 
 	hash, err := getCallHashFromPacket(packet)
 	if err != nil {
-		klog.Errorf("Error getting call hash from packet: %v", err)
+		logging.Errorf("Error getting call hash from packet: %v", err)
 		return
 	}
 
-	callInterface, ok := c.inFlightCalls.Load(hash)
+	call, ok := c.inFlightCalls.Load(hash)
 	if !ok {
-		klog.Errorf("Active call not found")
-		return
-	}
-
-	call, ok := callInterface.(*models.Call)
-	if !ok {
-		klog.Errorf("Active call not found")
+		logging.Errorf("Active call not found")
 		return
 	}
 
@@ -518,7 +504,7 @@ func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) f
 	defer span.End()
 
 	return func() {
-		klog.Errorf("Call %d timed out", packet.StreamID)
+		logging.Errorf("Call %d timed out", packet.StreamID)
 		c.EndCall(ctx, packet)
 	}
 }
@@ -530,19 +516,13 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 	hash, err := getCallHashFromPacket(packet)
 	if err != nil {
-		klog.Errorf("Error getting call hash from packet: %v", err)
+		logging.Errorf("Error getting call hash from packet: %v", err)
 		return
 	}
 
-	callInterface, ok := c.inFlightCalls.LoadAndDelete(hash)
+	call, ok := c.inFlightCalls.LoadAndDelete(hash)
 	if !ok {
-		klog.Errorf("Active call not found")
-		return
-	}
-
-	call, ok := callInterface.(*models.Call)
-	if !ok {
-		klog.Errorf("Active call not found")
+		logging.Errorf("Active call not found")
 		return
 	}
 
@@ -553,16 +533,11 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	}
 
 	// Delete the call end timer
-	timerInterface, ok := c.callEndTimers.LoadAndDelete(hash)
+	timer, ok := c.callEndTimers.LoadAndDelete(hash)
 	if !ok {
-		klog.Errorf("Call end timer not found")
+		logging.Errorf("Call end timer not found")
 	} else {
-		timer, ok := timerInterface.(*time.Timer)
-		if !ok {
-			klog.Errorf("Call end timer not found")
-		} else {
-			timer.Stop()
-		}
+		timer.Stop()
 	}
 
 	call.Duration = time.Since(call.StartTime)
@@ -570,11 +545,11 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 	err = c.db.Save(call).Error
 	if err != nil {
-		klog.Errorf("Error saving call: %v", err)
+		logging.Errorf("Error saving call: %v", err)
 		return
 	}
 
 	c.publishCall(ctx, call)
 
-	logging.GetLogger(logging.Access).Logf(c.EndCall, "Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
+	logging.Logf("Call %d from %d to %d via %d ended with duration %v, %f%% Loss, %f%% BER, %fdBm RSSI, and %fms Jitter", packet.StreamID, packet.Src, packet.Dst, packet.Repeater, call.Duration, call.Loss*pct, call.BER*pct, call.RSSI, call.Jitter)
 }

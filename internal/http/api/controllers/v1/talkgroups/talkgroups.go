@@ -26,10 +26,10 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 const maxNameLength = 20
@@ -38,26 +38,26 @@ const maxDescriptionLength = 240
 func GETTalkgroups(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	talkgroups, err := models.ListTalkgroups(db)
 	if err != nil {
-		klog.Errorf("Error listing talkgroups: %s", err)
+		logging.Errorf("Error listing talkgroups: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error listing talkgroups"})
 		return
 	}
 
 	total, err := models.CountTalkgroups(cDb)
 	if err != nil {
-		klog.Errorf("Error counting talkgroups: %s", err)
+		logging.Errorf("Error counting talkgroups: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting talkgroups"})
 		return
 	}
@@ -68,13 +68,13 @@ func GETTalkgroups(c *gin.Context) {
 func GETMyTalkgroups(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -82,27 +82,27 @@ func GETMyTalkgroups(c *gin.Context) {
 
 	userID := session.Get("user_id")
 	if userID == nil {
-		klog.Error("userID not found")
+		logging.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		klog.Error("userID cast failed")
+		logging.Error("userID cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
 	talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
 	if err != nil {
-		klog.Errorf("Error listing talkgroups: %s", err)
+		logging.Errorf("Error listing talkgroups: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error listing talkgroups"})
 		return
 	}
 	total, err := models.CountTalkgroupsByOwnerID(cDb, uid)
 	if err != nil {
-		klog.Errorf("Error counting talkgroups: %s", err)
+		logging.Errorf("Error counting talkgroups: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting talkgroups"})
 		return
 	}
@@ -113,7 +113,7 @@ func GETMyTalkgroups(c *gin.Context) {
 func GETTalkgroup(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -126,7 +126,7 @@ func GETTalkgroup(c *gin.Context) {
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", id)
 	if err != nil {
-		klog.Errorf("Error finding talkgroup: %s", err)
+		logging.Errorf("Error finding talkgroup: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 		return
 	}
@@ -136,7 +136,7 @@ func GETTalkgroup(c *gin.Context) {
 func DELETETalkgroup(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -147,7 +147,7 @@ func DELETETalkgroup(c *gin.Context) {
 	}
 	err = models.DeleteTalkgroup(db, uint(idUint64))
 	if err != nil {
-		klog.Errorf("Error deleting talkgroup: %s", err)
+		logging.Errorf("Error deleting talkgroup: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting talkgroup"})
 		return
 	}
@@ -157,7 +157,7 @@ func DELETETalkgroup(c *gin.Context) {
 func POSTTalkgroupNCOs(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -170,7 +170,7 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	if err != nil {
-		klog.Errorf("Error finding talkgroup: %s", err)
+		logging.Errorf("Error finding talkgroup: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 		return
 	}
@@ -178,20 +178,20 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 	var json apimodels.TalkgroupAdminAction
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTTalkgroupNCOs: JSON data is invalid: %v", err)
+		logging.Errorf("POSTTalkgroupNCOs: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if len(json.UserIDs) == 0 {
 			// remove all NCOs
 			err := db.Model(&talkgroup).Association("NCOs").Clear()
 			if err != nil {
-				klog.Errorf("Error clearing NCOs: %s", err)
+				logging.Errorf("Error clearing NCOs: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing NCOs"})
 				return
 			}
 			err = db.Save(&talkgroup).Error
 			if err != nil {
-				klog.Errorf("Error saving talkgroup: %s", err)
+				logging.Errorf("Error saving talkgroup: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 				return
 			}
@@ -201,27 +201,27 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 		// add NCOs
 		err := db.Model(&talkgroup).Association("NCOs").Clear()
 		if err != nil {
-			klog.Errorf("Error clearing NCOs: %s", err)
+			logging.Errorf("Error clearing NCOs: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing NCOs"})
 			return
 		}
 		for _, userID := range json.UserIDs {
 			user, err := models.FindUserByID(db, userID)
 			if err != nil {
-				klog.Errorf("Error finding user: %s", err)
+				logging.Errorf("Error finding user: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
 				return
 			}
 			err = db.Model(&talkgroup).Association("NCOs").Append(&user)
 			if err != nil {
-				klog.Errorf("Error appending NCO: %s", err)
+				logging.Errorf("Error appending NCO: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending NCO"})
 				return
 			}
 		}
 		err = db.Save(&talkgroup).Error
 		if err != nil {
-			klog.Errorf("Error saving talkgroup: %s", err)
+			logging.Errorf("Error saving talkgroup: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 			return
 		}
@@ -232,7 +232,7 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 func POSTTalkgroupAdmins(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -245,7 +245,7 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	if err != nil {
-		klog.Errorf("Error finding talkgroup: %s", err)
+		logging.Errorf("Error finding talkgroup: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 		return
 	}
@@ -253,20 +253,20 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 	var json apimodels.TalkgroupAdminAction
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTTalkgroupAdmins: JSON data is invalid: %v", err)
+		logging.Errorf("POSTTalkgroupAdmins: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if len(json.UserIDs) == 0 {
 			// remove all Admins
 			err := db.Model(&talkgroup).Association("Admins").Clear()
 			if err != nil {
-				klog.Errorf("Error clearing talkgroup admins: %s", err)
+				logging.Errorf("Error clearing talkgroup admins: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup admins"})
 				return
 			}
 			err = db.Save(&talkgroup).Error
 			if err != nil {
-				klog.Errorf("Error saving talkgroup: %s", err)
+				logging.Errorf("Error saving talkgroup: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 				return
 			}
@@ -276,27 +276,27 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 		// add Admins
 		err := db.Model(&talkgroup).Association("Admins").Clear()
 		if err != nil {
-			klog.Errorf("Error clearing talkgroup admins: %s", err)
+			logging.Errorf("Error clearing talkgroup admins: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup admins"})
 			return
 		}
 		for _, userID := range json.UserIDs {
 			user, err := models.FindUserByID(db, userID)
 			if err != nil {
-				klog.Errorf("Error finding user: %s", err)
+				logging.Errorf("Error finding user: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
 				return
 			}
 			err = db.Model(&talkgroup).Association("Admins").Append(&user)
 			if err != nil {
-				klog.Errorf("Error appending admin: %s", err)
+				logging.Errorf("Error appending admin: %s", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending admin"})
 				return
 			}
 		}
 		err = db.Save(&talkgroup).Error
 		if err != nil {
-			klog.Errorf("Error saving talkgroup: %s", err)
+			logging.Errorf("Error saving talkgroup: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 			return
 		}
@@ -307,7 +307,7 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 func PATCHTalkgroup(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -320,12 +320,12 @@ func PATCHTalkgroup(c *gin.Context) {
 	var json apimodels.TalkgroupPatch
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("PATCHTalkgroup: JSON data is invalid: %v", err)
+		logging.Errorf("PATCHTalkgroup: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 		if err != nil {
-			klog.Errorf("Error finding talkgroup: %s", err)
+			logging.Errorf("Error finding talkgroup: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
 			return
 		}
@@ -362,7 +362,7 @@ func PATCHTalkgroup(c *gin.Context) {
 
 		err = db.Save(&talkgroup).Error
 		if err != nil {
-			klog.Errorf("Error saving talkgroup: %s", err)
+			logging.Errorf("Error saving talkgroup: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 			return
 		}
@@ -372,14 +372,14 @@ func PATCHTalkgroup(c *gin.Context) {
 func POSTTalkgroup(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		klog.Error("DB cast failed")
+		logging.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	var json apimodels.TalkgroupPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		klog.Errorf("POSTTalkgroup: JSON data is invalid: %v", err)
+		logging.Errorf("POSTTalkgroup: JSON data is invalid: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if json.Name == "" {
@@ -401,7 +401,7 @@ func POSTTalkgroup(c *gin.Context) {
 		// Validate json.ID is not already in use
 		exists, err := models.TalkgroupIDExists(db, json.ID)
 		if err != nil {
-			klog.Errorf("Error checking if talkgroup ID exists: %s", err)
+			logging.Errorf("Error checking if talkgroup ID exists: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if talkgroup ID exists"})
 			return
 		}
@@ -418,7 +418,7 @@ func POSTTalkgroup(c *gin.Context) {
 
 		err = db.Create(&talkgroup).Error
 		if err != nil {
-			klog.Errorf("Error creating talkgroup: %s", err)
+			logging.Errorf("Error creating talkgroup: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating talkgroup"})
 			return
 		}

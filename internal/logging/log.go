@@ -1,3 +1,22 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
 package logging
 
 import (
@@ -5,8 +24,9 @@ import (
 	"io"
 	"log"
 	"os"
-	"reflect"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -15,8 +35,8 @@ import (
 type LogType string
 
 const (
-	Access          LogType = LogType("access")
-	Error           LogType = LogType("error")
+	AccessType      LogType = LogType("access")
+	ErrorType       LogType = LogType("error")
 	maxInFlightLogs         = 200
 )
 
@@ -33,7 +53,7 @@ func GetLogger(logType LogType) *Logger {
 	const loadDelay = 100 * time.Nanosecond
 
 	switch logType {
-	case Access:
+	case AccessType:
 		lastInit := isAccessInit.Swap(true)
 		if !lastInit {
 			accessLog = createLogger(logType)
@@ -43,7 +63,7 @@ func GetLogger(logType LogType) *Logger {
 			time.Sleep(loadDelay)
 		}
 		return accessLog
-	case Error:
+	case ErrorType:
 		lastInit := isErrorInit.Swap(true)
 		if !lastInit {
 			errorLog = createLogger(logType)
@@ -98,9 +118,9 @@ func createLogger(logType LogType) *Logger {
 
 	var sysLogger *log.Logger
 	switch logType {
-	case Access:
+	case AccessType:
 		sysLogger = log.New(logFile, "", log.LstdFlags)
-	case Error:
+	case ErrorType:
 		sysLogger = log.New(io.MultiWriter(os.Stderr, logFile), "", log.LstdFlags)
 	}
 
@@ -111,12 +131,12 @@ func createLogger(logType LogType) *Logger {
 		channel: make(chan string, maxInFlightLogs),
 	}
 
-	go logger.Relay()
+	go logger.relay()
 
 	return logger
 }
 
-func (l *Logger) Relay() {
+func (l *Logger) relay() {
 	for msg := range l.channel {
 		if msg != "" {
 			l.logger.Print(msg)
@@ -140,19 +160,34 @@ type Logger struct {
 	channel chan string
 }
 
-// Pass the function itself to the logger
-func (l *Logger) Log(function interface{}, format string) {
-	l.channel <- fmt.Sprintf("%s: %s", getFunctionName(function), format)
+func Error(format string) {
+	GetLogger(ErrorType).channel <- fmt.Sprintf("%s: %s", getPrefix(), format)
 }
 
-func (l *Logger) Logf(function interface{}, format string, args ...interface{}) {
-	l.channel <- fmt.Sprintf("%s: %s", getFunctionName(function), fmt.Sprintf(format, args...))
+func Errorf(format string, args ...interface{}) {
+	GetLogger(ErrorType).channel <- fmt.Sprintf("%s: %s", getPrefix(), fmt.Sprintf(format, args...))
+}
+
+func Log(format string) {
+	GetLogger(AccessType).channel <- fmt.Sprintf("%s: %s", getPrefix(), format)
+}
+
+func Logf(format string, args ...interface{}) {
+	GetLogger(AccessType).channel <- fmt.Sprintf("%s: %s", getPrefix(), fmt.Sprintf(format, args...))
 }
 
 // Use a tiny bit of reflection to get the name of the function
-func getFunctionName(i interface{}) string {
-	name := runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
-	return strings.TrimPrefix(name, "github.com/USA-RedDragon/DMRHub/")
+func getPrefix() string {
+	const skip = 2 // logf, public func, user function
+	pc, file, line, ok := runtime.Caller(skip)
+	if !ok {
+		return ""
+	}
+	name := strings.TrimPrefix(
+		runtime.FuncForPC(pc).Name(), "github.com/USA-RedDragon/DMRHub/",
+	)
+
+	return fmt.Sprintf("[%s@%s:%s]", name, filepath.Base(file), strconv.Itoa(line))
 }
 
 func Close() {

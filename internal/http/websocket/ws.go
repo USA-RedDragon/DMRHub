@@ -28,12 +28,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"k8s.io/klog/v2"
 )
 
 type WSHandler struct {
@@ -82,13 +82,13 @@ func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		klog.Errorf("Failed to set websocket upgrade: %v", err)
+		logging.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			klog.Errorf("Failed to close websocket: %v", err)
+			logging.Errorf("Failed to close websocket: %v", err)
 		}
 	}()
 
@@ -127,13 +127,13 @@ func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w h
 func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		klog.Errorf("Failed to set websocket upgrade: %v", err)
+		logging.Errorf("Failed to set websocket upgrade: %v", err)
 		return
 	}
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			klog.Errorf("Failed to close websocket: %v", err)
+			logging.Errorf("Failed to close websocket: %v", err)
 		}
 	}()
 
@@ -148,7 +148,7 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 	} else {
 		userID, ok := userIDIface.(uint)
 		if !ok {
-			klog.Errorf("Failed to convert user ID to uint")
+			logging.Errorf("Failed to convert user ID to uint")
 			return
 		}
 		go hbrp.GetSubscriptionManager().ListenForWebsocket(newCtx, h.database, h.redis, userID)
@@ -157,7 +157,7 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			klog.Errorf("Failed to close pubsub: %v", err)
+			logging.Errorf("Failed to close pubsub: %v", err)
 		}
 	}()
 
@@ -184,7 +184,7 @@ func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w
 	go func() {
 		for msg := range pubsub.Channel() {
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
-				klog.Errorf("Failed to write message to websocket: %v", err)
+				logging.Errorf("Failed to write message to websocket: %v", err)
 				readFailed <- "write failed"
 				return
 			}

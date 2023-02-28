@@ -27,11 +27,11 @@ require (
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.1.21
 	github.com/ztrue/shutdown v0.1.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.39.0
-	go.opentelemetry.io/otel v1.13.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.13.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.13.0
-	go.opentelemetry.io/otel/sdk v1.13.0
-	go.opentelemetry.io/otel/trace v1.13.0
+	go.opentelemetry.io/otel v1.14.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.14.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.14.0
+	go.opentelemetry.io/otel/sdk v1.14.0
+	go.opentelemetry.io/otel/trace v1.14.0
 	golang.org/x/crypto v0.6.0
 	golang.org/x/sync v0.1.0
 	gorm.io/driver/postgres v1.4.8
@@ -100,7 +100,7 @@ require (
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.13.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.14.0 // indirect
 	go.opentelemetry.io/otel/metric v0.36.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
@@ -109,8 +109,8 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect
-	google.golang.org/genproto v0.0.0-20221118155620-16455021b5e6 // indirect
-	google.golang.org/grpc v1.52.3 // indirect
+	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
+	google.golang.org/grpc v1.53.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

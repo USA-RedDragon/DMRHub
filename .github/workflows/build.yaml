@@ -7,6 +7,10 @@ on:
       - cherry-pick-rebase-pull-request**
   pull_request:
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     runs-on: ubuntu-latest

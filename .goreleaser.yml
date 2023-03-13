@@ -180,7 +180,7 @@ signs:
       [
         "sign-blob",
         "--key=/tmp/cosign.key",
-        "--output=${signature}",
+        "--output-signature=${signature}",
         "${artifact}",
       ]
     artifacts: all

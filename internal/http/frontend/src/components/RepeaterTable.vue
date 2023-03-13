@@ -286,6 +286,7 @@ import moment from 'moment';
 
 import API from '@/services/API';
 import { getWebsocketURI } from '@/services/util';
+import ws from '@/services/ws';
 
 export default {
   name: 'RepeaterTable',
@@ -315,8 +316,7 @@ export default {
   mounted() {
     this.fetchData();
     if (!this.$props.admin) {
-      this.socket = new WebSocket(getWebsocketURI() + '/repeaters');
-      this.mapSocketEvents();
+      this.socket = ws.connect(getWebsocketURI() + '/repeaters', this.onWebsocketMessage);
     }
   },
   unmounted() {
@@ -521,27 +521,7 @@ export default {
         reject: () => {},
       });
     },
-    mapSocketEvents() {
-      this.socket.addEventListener('open', (_event) => {
-        console.log('Connected to repeaters websocket');
-        this.socket.send('PING');
-      });
-
-      this.socket.addEventListener('error', (event) => {
-        console.error('Error from repeaters websocket', event);
-        this.socket.close();
-        this.socket = new WebSocket(getWebsocketURI() + '/repeaters');
-        this.mapSocketEvents();
-      });
-
-      this.socket.addEventListener('message', (event) => {
-        if (event.data == 'PONG') {
-          setTimeout(() => {
-            this.socket.send('PING');
-          }, 1000);
-          return;
-        }
-      });
+    onWebsocketMessage(_event) {
     },
   },
 };

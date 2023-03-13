@@ -172,8 +172,3 @@ builds:
         goos: darwin
     env:
       - CGO_ENABLED=0
-
-docker_signs:
-  - artifacts: all
-    stdin: "{{ .Env.COSIGN_PASSWORD}}"
-    args: ["sign", "--key=/tmp/cosign.key", "${artifact}"]

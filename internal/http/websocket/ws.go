@@ -34,8 +34,8 @@ import (
 const bufferSize = 1024
 
 type Websocket interface {
-	OnMessage(ctx context.Context, r *http.Request, w WebsocketWriter, session sessions.Session, msg []byte, t int)
-	OnConnect(ctx context.Context, r *http.Request, w WebsocketWriter, session sessions.Session)
+	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
+	OnConnect(ctx context.Context, r *http.Request, w Writer, session sessions.Session)
 	OnDisconnect(ctx context.Context, r *http.Request, session sessions.Session)
 }
 
@@ -80,42 +80,27 @@ func CreateHandler(ws Websocket) func(*gin.Context) {
 
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
-		err := handler.Upgrade(c.Request.Context(), c.Writer, c.Request)
+		conn, err := handler.wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			klog.Errorf("Failed to set websocket upgrade: %v", err)
 			return
 		}
+		handler.conn = conn
+
 		defer func() {
 			handler.handler.OnDisconnect(c, c.Request, session)
-			err := handler.Close()
+			err := handler.conn.Close()
 			if err != nil {
 				klog.Errorf("Failed to close websocket: %v", err)
 			}
 		}()
-		handler.Handle(c.Request.Context(), session, c.Writer, c.Request)
+		handler.handle(c.Request.Context(), session, c.Request)
 	}
 }
 
-func (h *WSHandler) Upgrade(c context.Context, w gin.ResponseWriter, r *http.Request) error {
-	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return err
-	}
-	h.conn = conn
-	return nil
-}
-
-func (h *WSHandler) Close() error {
-	err := h.conn.Close()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (h *WSHandler) Handle(c context.Context, s sessions.Session, w gin.ResponseWriter, r *http.Request) {
+func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Request) {
 	writer := wsWriter{
-		writer: make(chan WebsocketMessage, bufferSize),
+		writer: make(chan Message, bufferSize),
 		error:  make(chan string),
 	}
 	h.handler.OnConnect(c, r, writer, s)
@@ -127,16 +112,17 @@ func (h *WSHandler) Handle(c context.Context, s sessions.Session, w gin.Response
 				writer.Error("read failed")
 				break
 			}
-			if t == websocket.PingMessage {
-				writer.WriteMessage(WebsocketMessage{
+			switch {
+			case t == websocket.PingMessage:
+				writer.WriteMessage(Message{
 					Type: websocket.PongMessage,
 				})
-			} else if strings.EqualFold(string(msg), "ping") {
-				writer.WriteMessage(WebsocketMessage{
+			case strings.EqualFold(string(msg), "ping"):
+				writer.WriteMessage(Message{
 					Type: websocket.TextMessage,
 					Data: []byte("PONG"),
 				})
-			} else {
+			default:
 				h.handler.OnMessage(c, r, writer, s, msg, t)
 			}
 		}

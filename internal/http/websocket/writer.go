@@ -19,22 +19,22 @@
 
 package websocket
 
-type WebsocketMessage struct {
+type Message struct {
 	Type int
 	Data []byte
 }
 
-type WebsocketWriter interface {
-	WriteMessage(message WebsocketMessage)
+type Writer interface {
+	WriteMessage(message Message)
 	Error(message string)
 }
 
 type wsWriter struct {
-	writer chan WebsocketMessage
+	writer chan Message
 	error  chan string
 }
 
-func (w wsWriter) WriteMessage(message WebsocketMessage) {
+func (w wsWriter) WriteMessage(message Message) {
 	w.writer <- message
 }
 

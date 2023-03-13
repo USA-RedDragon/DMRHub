@@ -25,7 +25,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/gin-contrib/sessions"
-
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )

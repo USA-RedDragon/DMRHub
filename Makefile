@@ -11,7 +11,6 @@ fmt:
 install-deps:
 	@echo "--> Installing Golang dependencies"
 	go get
-	go install github.com/tinylib/msgp
 	@echo "--> Done"
 
 build-frontend:

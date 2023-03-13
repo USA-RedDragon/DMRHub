@@ -27,14 +27,23 @@ import (
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
 	v1UsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
+	websocketControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 // ApplyRoutes to the HTTP Mux.
-func ApplyRoutes(router *gin.Engine, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+func ApplyRoutes(router *gin.Engine, db *gorm.DB, redis *redis.Client, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit)
 	v1(apiV1, userSuspension)
+
+	ws := router.Group("/ws")
+	ws.Use(ratelimit)
+	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(websocketControllers.CreateRepeatersWebsocket(db, redis)))
+	ws.GET("/calls", websocket.CreateHandler(websocketControllers.CreateCallsWebsocket(db, redis)))
 }
 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {

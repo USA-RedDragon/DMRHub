@@ -34,7 +34,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	redisSessions "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
-	websocketHandler "github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
@@ -139,8 +138,6 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 		klog.Error(err)
 	}
 
-	ws := websocketHandler.CreateHandler(db, redisClient)
-
 	addMiddleware(r, db, redisClient)
 
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
@@ -159,8 +156,7 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 
 	userLockoutMiddleware := middleware.SuspendedUserLockout()
 
-	ws.ApplyRoutes(r, ratelimitMW, userLockoutMiddleware)
-	api.ApplyRoutes(r, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(r, db, redisClient, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 

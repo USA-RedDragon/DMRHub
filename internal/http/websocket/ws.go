@@ -21,33 +21,32 @@ package websocket
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
-	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 	"k8s.io/klog/v2"
 )
 
-type WSHandler struct {
-	wsUpgrader websocket.Upgrader
-	redis      *redis.Client
-	database   *gorm.DB
-}
-
 const bufferSize = 1024
 
-func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
-	return &WSHandler{
-		redis:    redis,
-		database: db,
+type Websocket interface {
+	OnMessage(ctx context.Context, r *http.Request, w WebsocketWriter, session sessions.Session, msg []byte, t int)
+	OnConnect(ctx context.Context, r *http.Request, w WebsocketWriter, session sessions.Session)
+	OnDisconnect(ctx context.Context, r *http.Request, session sessions.Session)
+}
+
+type WSHandler struct {
+	wsUpgrader websocket.Upgrader
+	handler    Websocket
+	conn       *websocket.Conn
+}
+
+func CreateHandler(ws Websocket) func(*gin.Context) {
+	handler := &WSHandler{
 		wsUpgrader: websocket.Upgrader{
 			HandshakeTimeout: 0,
 			ReadBufferSize:   bufferSize,
@@ -76,135 +75,84 @@ func CreateHandler(db *gorm.DB, redis *redis.Client) *WSHandler {
 			},
 			EnableCompression: true,
 		},
+		handler: ws,
 	}
-}
 
-func (h *WSHandler) repeaterHandler(ctx context.Context, _ sessions.Session, w http.ResponseWriter, r *http.Request) {
-	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		klog.Errorf("Failed to set websocket upgrade: %v", err)
-		return
-	}
-	defer func() {
-		err := conn.Close()
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		err := handler.Upgrade(c.Request.Context(), c.Writer, c.Request)
 		if err != nil {
-			klog.Errorf("Failed to close websocket: %v", err)
-		}
-	}()
-
-	readFailed := make(chan string)
-	go func() {
-		for {
-			t, msg, err := conn.ReadMessage()
-			if err != nil {
-				readFailed <- "read failed"
-				break
-			}
-			if string(msg) == "PING" {
-				msg = []byte("PONG")
-				err = conn.WriteMessage(t, msg)
-				if err != nil {
-					readFailed <- "write failed"
-					break
-				}
-				continue
-			}
-
-			err = conn.WriteMessage(t, msg)
-			if err != nil {
-				readFailed <- "write failed"
-				break
-			}
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-	case <-readFailed:
-	}
-}
-
-func (h *WSHandler) callHandler(ctx context.Context, session sessions.Session, w http.ResponseWriter, r *http.Request) {
-	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		klog.Errorf("Failed to set websocket upgrade: %v", err)
-		return
-	}
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			klog.Errorf("Failed to close websocket: %v", err)
-		}
-	}()
-
-	newCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	userIDIface := session.Get("user_id")
-	var pubsub *redis.PubSub
-	if userIDIface == nil {
-		// User ID not found, subscribe to public calls
-		pubsub = h.redis.Subscribe(ctx, "calls:public")
-	} else {
-		userID, ok := userIDIface.(uint)
-		if !ok {
-			klog.Errorf("Failed to convert user ID to uint")
+			klog.Errorf("Failed to set websocket upgrade: %v", err)
 			return
 		}
-		go hbrp.GetSubscriptionManager().ListenForWebsocket(newCtx, h.database, h.redis, userID)
-		pubsub = h.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
+		defer func() {
+			handler.handler.OnDisconnect(c, c.Request, session)
+			err := handler.Close()
+			if err != nil {
+				klog.Errorf("Failed to close websocket: %v", err)
+			}
+		}()
+		handler.Handle(c.Request.Context(), session, c.Writer, c.Request)
 	}
-	defer func() {
-		err := pubsub.Close()
-		if err != nil {
-			klog.Errorf("Failed to close pubsub: %v", err)
-		}
-	}()
+}
 
-	readFailed := make(chan string)
+func (h *WSHandler) Upgrade(c context.Context, w gin.ResponseWriter, r *http.Request) error {
+	conn, err := h.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return err
+	}
+	h.conn = conn
+	return nil
+}
+
+func (h *WSHandler) Close() error {
+	err := h.conn.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *WSHandler) Handle(c context.Context, s sessions.Session, w gin.ResponseWriter, r *http.Request) {
+	writer := wsWriter{
+		writer: make(chan WebsocketMessage, bufferSize),
+		error:  make(chan string),
+	}
+	h.handler.OnConnect(c, r, writer, s)
+
 	go func() {
 		for {
-			t, msg, err := conn.ReadMessage()
+			t, msg, err := h.conn.ReadMessage()
 			if err != nil {
-				readFailed <- "read failed"
+				writer.Error("read failed")
 				break
 			}
-			if string(msg) == "PING" {
-				msg = []byte("PONG")
-				err = conn.WriteMessage(t, msg)
-				if err != nil {
-					readFailed <- "write failed"
-					break
-				}
-				continue
+			if t == websocket.PingMessage {
+				writer.WriteMessage(WebsocketMessage{
+					Type: websocket.PongMessage,
+				})
+			} else if strings.EqualFold(string(msg), "ping") {
+				writer.WriteMessage(WebsocketMessage{
+					Type: websocket.TextMessage,
+					Data: []byte("PONG"),
+				})
+			} else {
+				h.handler.OnMessage(c, r, writer, s, msg, t)
 			}
 		}
 	}()
 
-	go func() {
-		for msg := range pubsub.Channel() {
-			if err := conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
-				klog.Errorf("Failed to write message to websocket: %v", err)
-				readFailed <- "write failed"
+	for {
+		select {
+		case <-c.Done():
+			return
+		case <-writer.error:
+			return
+		case msg := <-writer.writer:
+			err := h.conn.WriteMessage(msg.Type, msg.Data)
+			if err != nil {
 				return
 			}
 		}
-	}()
-
-	select {
-	case <-ctx.Done():
-	case <-readFailed:
 	}
-}
-
-func (h *WSHandler) ApplyRoutes(r *gin.Engine, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
-	r.GET("/ws/repeaters", middleware.RequireLogin(), ratelimit, userSuspension, func(c *gin.Context) {
-		session := sessions.Default(c)
-		h.repeaterHandler(c.Request.Context(), session, c.Writer, c.Request)
-	})
-
-	r.GET("/ws/calls", ratelimit, func(c *gin.Context) {
-		session := sessions.Default(c)
-		h.callHandler(c.Request.Context(), session, c.Writer, c.Request)
-	})
 }

@@ -48,10 +48,10 @@ func CreateCallsWebsocket(db *gorm.DB, redis *redis.Client) *CallsWebsocket {
 	}
 }
 
-func (c *CallsWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.WebsocketWriter, _ sessions.Session, msg []byte, t int) {
+func (c *CallsWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session, msg []byte, t int) {
 }
 
-func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.WebsocketWriter, session sessions.Session) {
+func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) {
 	newCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
@@ -78,7 +78,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w webso
 			case <-newCtx.Done():
 				return
 			case msg := <-channel:
-				w.WriteMessage(websocket.WebsocketMessage{
+				w.WriteMessage(websocket.Message{
 					Type: gorillaWebsocket.TextMessage,
 					Data: []byte(msg.Payload),
 				})

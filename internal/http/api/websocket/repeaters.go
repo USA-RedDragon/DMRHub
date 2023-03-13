@@ -31,10 +31,8 @@ import (
 
 type RepeatersWebsocket struct {
 	websocket.Websocket
-	redis        *redis.Client
-	db           *gorm.DB
-	subscription *redis.PubSub
-	cancel       context.CancelFunc
+	redis *redis.Client
+	db    *gorm.DB
 }
 
 func CreateRepeatersWebsocket(db *gorm.DB, redis *redis.Client) *RepeatersWebsocket {
@@ -44,10 +42,10 @@ func CreateRepeatersWebsocket(db *gorm.DB, redis *redis.Client) *RepeatersWebsoc
 	}
 }
 
-func (c *RepeatersWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.WebsocketWriter, _ sessions.Session, msg []byte, t int) {
+func (c *RepeatersWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session, msg []byte, t int) {
 }
 
-func (c *RepeatersWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.WebsocketWriter, session sessions.Session) {
+func (c *RepeatersWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) {
 }
 
 func (c *RepeatersWebsocket) OnDisconnect(ctx context.Context, r *http.Request, _ sessions.Session) {

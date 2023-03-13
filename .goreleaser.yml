@@ -173,17 +173,6 @@ builds:
     env:
       - CGO_ENABLED=0
 
-signs:
-  - cmd: cosign
-    stdin: "{{ .Env.COSIGN_PASSWORD}}"
-    args:
-      [
-        "sign-blob",
-        "--key=/tmp/cosign.key",
-        "--output-signature=${signature}",
-        "${artifact}",
-      ]
-    artifacts: all
 docker_signs:
   - artifacts: all
     stdin: "{{ .Env.COSIGN_PASSWORD}}"

@@ -96,6 +96,7 @@ import moment from 'moment';
 
 import { getWebsocketURI } from '@/services/util';
 import API from '@/services/API';
+import ws from '@/services/ws';
 
 export default {
   name: 'LastHeardTable',
@@ -114,8 +115,7 @@ export default {
   },
   mounted() {
     this.fetchData();
-    this.socket = new WebSocket(getWebsocketURI() + '/calls');
-    this.mapSocketEvents();
+    this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
   },
   unmounted() {
     if (this.socket) {
@@ -168,51 +168,31 @@ export default {
 
       return copyData;
     },
-    mapSocketEvents() {
-      this.socket.addEventListener('open', (_event) => {
-        console.log('Connected to calls websocket');
-        this.socket.send('PING');
-      });
+    onWebsocketMessage() {
+      const call = JSON.parse(event.data);
+      // We need to check that the call is not already in the table
+      // If it is, we need to update it
+      // If it isn't, we need to add it
+      let found = false;
+      const copyLastheard = JSON.parse(JSON.stringify(this.lastheard));
 
-      this.socket.addEventListener('error', (event) => {
-        console.error('Error from calls websocket', event);
-        this.socket.close();
-        this.socket = new WebSocket(getWebsocketURI() + '/calls');
-        this.mapSocketEvents();
-      });
-
-      this.socket.addEventListener('message', (event) => {
-        if (event.data == 'PONG') {
-          setTimeout(() => {
-            this.socket.send('PING');
-          }, 1000);
-          return;
+      for (let i = 0; i < copyLastheard.length; i++) {
+        if (copyLastheard[i].id == call.id) {
+          found = true;
+          copyLastheard[i] = call;
+          break;
         }
-        const call = JSON.parse(event.data);
-        // We need to check that the call is not already in the table
-        // If it is, we need to update it
-        // If it isn't, we need to add it
-        let found = false;
-        const copyLastheard = JSON.parse(JSON.stringify(this.lastheard));
+      }
 
-        for (let i = 0; i < copyLastheard.length; i++) {
-          if (copyLastheard[i].id == call.id) {
-            found = true;
-            copyLastheard[i] = call;
-            break;
-          }
-        }
+      if (!found && copyLastheard.length == 10) {
+        copyLastheard.pop();
+      }
 
-        if (!found && copyLastheard.length == 10) {
-          copyLastheard.pop();
-        }
+      if (!found && copyLastheard.length < 10) {
+        copyLastheard.unshift(call);
+      }
 
-        if (!found && copyLastheard.length < 10) {
-          copyLastheard.unshift(call);
-        }
-
-        this.lastheard = this.cleanData(copyLastheard);
-      });
+      this.lastheard = this.cleanData(copyLastheard);
     },
   },
 };

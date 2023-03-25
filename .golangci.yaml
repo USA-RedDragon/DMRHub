@@ -58,3 +58,7 @@ linters:
     - wastedassign
     - whitespace
     - wrapcheck
+
+linters-settings:
+  goheader:
+    template-path: .copyright-header

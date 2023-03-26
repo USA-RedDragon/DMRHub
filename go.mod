@@ -35,7 +35,7 @@ require (
 	golang.org/x/crypto v0.7.0
 	golang.org/x/sync v0.1.0
 	gorm.io/driver/postgres v1.5.0
-	gorm.io/gorm v1.24.7-0.20230324020705-b444011d094d
+	gorm.io/gorm f3874339efd8
 	k8s.io/klog/v2 v2.90.1
 )
 

@@ -284,9 +284,9 @@ export default {
       }
       API.post('/users', {
         id: numericID,
-        callsign: this.callsign,
-        username: this.username,
-        password: this.password,
+        callsign: this.callsign.trim(),
+        username: this.username.trim(),
+        password: this.password.trim(),
       })
         .then((res) => {
           this.$toast.add({

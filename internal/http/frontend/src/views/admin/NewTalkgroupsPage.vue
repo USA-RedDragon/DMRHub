@@ -261,8 +261,8 @@ export default {
       }
       API.post('/talkgroups', {
         id: numericID,
-        name: this.name,
-        description: this.description,
+        name: this.name.trim(),
+        description: this.description.trim(),
       })
         .then((_res) => {
           API.post(`/talkgroups/${numericID}/admins`, {

@@ -136,8 +136,8 @@ export default {
       }
 
       API.post('/auth/login', {
-        username: this.username,
-        password: this.password,
+        username: this.username.trim(),
+        password: this.password.trim(),
       })
         .then((_res) => {
           API.get('/users/me').then((res) => {

@@ -31,7 +31,6 @@
     "@cypress/code-coverage": "^3.10.1",
     "@rushstack/eslint-patch": "^1.2.0",
     "@vitejs/plugin-vue": "^4.1.0",
-    "@vitest/coverage-c8": "^0.29.8",
     "@vitest/coverage-istanbul": "^0.29.8",
     "@vitest/ui": "^0.29.8",
     "@vue/eslint-config-prettier": "^7.1.0",

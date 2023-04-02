@@ -33,7 +33,7 @@
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
+import Card from 'primevue/card';
 
 import RepeaterTable from '@/components/RepeaterTable.vue';
 

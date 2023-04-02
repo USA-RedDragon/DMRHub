@@ -31,7 +31,7 @@
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
+import Card from 'primevue/card';
 import LastHeardTable from '@/components/LastHeardTable.vue';
 
 export default {

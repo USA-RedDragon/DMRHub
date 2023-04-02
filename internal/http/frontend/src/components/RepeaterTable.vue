@@ -276,12 +276,12 @@
 </template>
 
 <script>
-import Button from 'primevue/button/sfc';
-import DataTable from 'primevue/datatable/sfc';
-import Column from 'primevue/column/sfc';
-import MultiSelect from 'primevue/multiselect/sfc';
-import Dropdown from 'primevue/dropdown/sfc';
-import Chip from 'primevue/chip/sfc';
+import Button from 'primevue/button';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import MultiSelect from 'primevue/multiselect';
+import Dropdown from 'primevue/dropdown';
+import Chip from 'primevue/chip';
 import moment from 'moment';
 
 import API from '@/services/API';

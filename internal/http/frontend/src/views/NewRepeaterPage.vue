@@ -103,9 +103,9 @@ Debug=0
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
-import Button from 'primevue/button/sfc';
-import InputText from 'primevue/inputtext/sfc';
+import Card from 'primevue/card';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';

@@ -170,11 +170,11 @@
 </template>
 
 <script>
-import Button from 'primevue/button/sfc';
-import DataTable from 'primevue/datatable/sfc';
-import Column from 'primevue/column/sfc';
-import InputText from 'primevue/inputtext/sfc';
-import MultiSelect from 'primevue/multiselect/sfc';
+import Button from 'primevue/button';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import InputText from 'primevue/inputtext';
+import MultiSelect from 'primevue/multiselect';
 
 import moment from 'moment';
 

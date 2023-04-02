@@ -20,8 +20,8 @@
 -->
 
 <script setup>
-import Button from 'primevue/button/sfc';
-import Sidebar from 'primevue/sidebar/sfc';
+import Button from 'primevue/button';
+import Sidebar from 'primevue/sidebar';
 
 import { ref } from 'vue';
 import { useLayout } from '@/layout/composables/layout';

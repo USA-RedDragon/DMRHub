@@ -176,10 +176,10 @@
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
-import Button from 'primevue/button/sfc';
-import InputText from 'primevue/inputtext/sfc';
-import MultiSelect from 'primevue/multiselect/sfc';
+import Card from 'primevue/card';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import MultiSelect from 'primevue/multiselect';
 import API from '@/services/API';
 import { useVuelidate } from '@vuelidate/core';
 import { required, numeric, maxLength } from '@vuelidate/validators';

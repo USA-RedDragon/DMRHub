@@ -89,8 +89,8 @@
 </template>
 
 <script>
-import DataTable from 'primevue/datatable/sfc';
-import Column from 'primevue/column/sfc';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
 
 import moment from 'moment';
 

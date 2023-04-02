@@ -149,7 +149,7 @@
 </template>
 
 <script>
-import Menu from 'primevue/menu/sfc';
+import Menu from 'primevue/menu';
 import API from '@/services/API';
 
 import { mapStores } from 'pinia';

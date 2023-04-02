@@ -32,7 +32,7 @@
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
+import Card from 'primevue/card';
 
 export default {
   components: {

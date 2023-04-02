@@ -91,9 +91,9 @@
 </template>
 
 <script>
-import InputText from 'primevue/inputtext/sfc';
-import Button from 'primevue/button/sfc';
-import Card from 'primevue/card/sfc';
+import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
+import Card from 'primevue/card';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';

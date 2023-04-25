@@ -31,7 +31,7 @@ export default defineConfig({
     coverage: {
       all: true,
       enabled: true,
-      provider: 'istanbul',
+      provider: 'c8',
       reporter: ['html', 'lcov', 'text'],
       reportsDirectory: 'coverage/unit',
       src: ['src'],

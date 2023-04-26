@@ -366,7 +366,7 @@ func POSTRepeater(c *gin.Context) {
 			const mHzToHz = 1000000
 			repeater.TXFrequency = uint(mhZFloat * mHzToHz)
 			// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
-			positiveOffset := false
+			var positiveOffset bool
 			if strings.HasPrefix(r.Offset, "-") {
 				positiveOffset = false
 			} else {

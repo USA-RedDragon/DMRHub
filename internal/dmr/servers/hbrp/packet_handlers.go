@@ -565,7 +565,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		logging.GetLogger(logging.Access).Logf(s.handleRPTKPacket, "Challenge Response from Repeater ID: %d", repeaterID)
 	}
 	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT", remoteAddr) {
-		password := ""
+		var password string
 		var dbRepeater models.Repeater
 
 		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)

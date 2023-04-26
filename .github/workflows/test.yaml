@@ -113,22 +113,6 @@ jobs:
           check_name: Frontend Unit Tests
           job_name: Tests
 
-      - uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: frontend-unit
-          files: ./internal/http/frontend/coverage/unit/lcov.info
-          fail_ci_if_error: true
-
-      - uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: frontend-unit-coverage
-          path: internal/http/frontend/coverage/unit
-          if-no-files-found: error
-          retention-days: 30
-
   frontend-e2e-tests:
     runs-on: ubuntu-latest
     permissions:
@@ -157,22 +141,6 @@ jobs:
       - run: cd internal/http/frontend && npm ci
 
       - run: make frontend-e2e-test-${{ matrix.browser }}
-
-      - uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: frontend-e2e-${{ matrix.browser }}
-          files: ./internal/http/frontend/coverage/e2e/lcov.info
-          fail_ci_if_error: true
-
-      - uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: frontend-e2e-coverage-${{ matrix.browser }}
-          path: internal/http/frontend/coverage/e2e
-          if-no-files-found: error
-          retention-days: 30
 
       - uses: actions/upload-artifact@v3
         if: always()

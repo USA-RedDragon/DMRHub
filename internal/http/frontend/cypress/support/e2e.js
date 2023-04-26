@@ -12,7 +12,6 @@
 // You can read more here:
 // https://on.cypress.io/configuration
 // ***********************************************************
-import '@cypress/code-coverage/support';
 import 'cypress-mochawesome-reporter/register';
 
 // Import commands.js using ES2015 syntax:

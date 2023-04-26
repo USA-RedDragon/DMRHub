@@ -118,9 +118,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: frontend-unit
-          files: ./coverage/unit/lcov.info
+          files: ./internal/http/frontend/coverage/unit/lcov.info
           fail_ci_if_error: true
-          working-directory: ./internal/http/frontend
 
       - uses: actions/upload-artifact@v3
         if: always()
@@ -164,9 +163,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: frontend-e2e-${{ matrix.browser }}
-          files: ./coverage/e2e/lcov.info
+          files: ./internal/http/frontend/coverage/e2e/lcov.info
           fail_ci_if_error: true
-          working-directory: ./internal/http/frontend
 
       - uses: actions/upload-artifact@v3
         if: always()

@@ -23,7 +23,7 @@
     "pinia": "^2.0.36",
     "primeflex": "^3.3.0",
     "primeicons": "^6.0.1",
-    "primevue": "^3.28.0",
+    "primevue": "^3.29.0",
     "vue": "^3.3.1",
     "vue-router": "^4.2.0"
   },

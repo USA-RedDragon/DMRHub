@@ -25,7 +25,7 @@
     "primeicons": "^6.0.1",
     "primevue": "^3.29.1",
     "vue": "^3.3.2",
-    "vue-router": "^4.2.0"
+    "vue-router": "^4.2.1"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.2.0",

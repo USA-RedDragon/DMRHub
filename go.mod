@@ -33,7 +33,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.16.0
 	go.opentelemetry.io/otel/trace v1.16.0
 	golang.org/x/crypto v0.10.0
-	golang.org/x/sync v0.2.0
+	golang.org/x/sync v0.3.0
 	gorm.io/driver/postgres v1.5.2
 	gorm.io/gorm v1.25.1
 	k8s.io/klog/v2 v2.100.1

@@ -20,7 +20,7 @@ require (
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/puzpuzpuz/xsync/v2 v2.4.1
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
-	github.com/redis/go-redis/v9 v9.0.5
+	github.com/redis/go-redis/v9 v9.1.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tinylib/msgp v1.1.8
 	github.com/ulikunitz/xz v0.5.11

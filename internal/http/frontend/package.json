@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.3.3",
-    "@vitejs/plugin-vue": "^4.3.2",
+    "@vitejs/plugin-vue": "^4.3.3",
     "@vitest/ui": "^0.34.2",
     "@vue/eslint-config-prettier": "^7.1.0",
     "axios": "^1.4.0",

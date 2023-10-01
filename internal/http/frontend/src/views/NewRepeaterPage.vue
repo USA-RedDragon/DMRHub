@@ -148,7 +148,6 @@ export default {
       }
       API.post('/repeaters', {
         id: numericID,
-        password: this.repeater_password.trim(),
       })
         .then((res) => {
           if (!res.data) {

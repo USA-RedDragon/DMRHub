@@ -204,7 +204,6 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 			}
 			// Add the first wildcard to the path
 			wildPath = path.Join(wildPath, wild)
-			klog.Errorf("path.Join(wildPath, wild) = %s", path.Join(wildPath, wild))
 
 			if thisDepth > 0 {
 				// Get the rest of the wildcards

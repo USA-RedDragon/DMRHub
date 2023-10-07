@@ -25,9 +25,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/gin-gonic/gin"
 )
+
+func GETNetworkName(c *gin.Context) {
+	_, err := io.WriteString(c.Writer, config.GetConfig().NetworkName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting network name"})
+	}
+}
 
 func GETVersion(c *gin.Context) {
 	_, err := io.WriteString(c.Writer, fmt.Sprintf("%s-%s", sdk.Version, sdk.GitCommit))

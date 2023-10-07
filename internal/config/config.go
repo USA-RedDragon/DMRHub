@@ -55,6 +55,7 @@ type Config struct {
 	OTLPEndpoint             string
 	InitialAdminUserPassword string
 	Debug                    bool
+	NetworkName              string
 }
 
 var currentConfig atomic.Value //nolint:golint,gochecknoglobals
@@ -97,6 +98,7 @@ func loadConfig() Config {
 		InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),
 		RedisPassword:            os.Getenv("REDIS_PASSWORD"),
 		Debug:                    os.Getenv("DEBUG") != "",
+		NetworkName:              os.Getenv("NETWORK_NAME"),
 	}
 	if tmpConfig.RedisHost == "" {
 		tmpConfig.RedisHost = "localhost:6379"
@@ -133,6 +135,9 @@ func loadConfig() Config {
 	}
 	if tmpConfig.HTTPPort == 0 {
 		tmpConfig.HTTPPort = 3005
+	}
+	if tmpConfig.NetworkName == "" {
+		tmpConfig.NetworkName = "DMRHub"
 	}
 	if tmpConfig.InitialAdminUserPassword == "" {
 		logging.GetLogger(logging.Error).Log(loadConfig, "Initial admin user password not set, using auto-generated password")

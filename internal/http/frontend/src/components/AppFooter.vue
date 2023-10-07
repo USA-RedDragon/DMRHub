@@ -22,7 +22,7 @@
 <template>
   <div class="footer">
     <p>
-      This project proudly open
+      DMRHub is proudly open
       <a href="https://github.com/USA-RedDragon/DMRHub" target="_blank"
         >source</a
       >

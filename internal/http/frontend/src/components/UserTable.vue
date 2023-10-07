@@ -126,20 +126,14 @@ export default {
     return {
       users: [],
       expandedRows: [],
-      refresh: null,
       loading: false,
       totalRecords: 0,
     };
   },
   mounted() {
     this.fetchData();
-    this.refresh = setInterval(
-      this.fetchData,
-      this.settingsStore.refreshInterval,
-    );
   },
   unmounted() {
-    clearInterval(this.refresh);
   },
   methods: {
     onPage(event) {

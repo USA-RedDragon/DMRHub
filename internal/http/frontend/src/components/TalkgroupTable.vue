@@ -199,7 +199,6 @@ export default {
   data: function() {
     return {
       talkgroups: [],
-      refresh: null,
       expandedRows: [],
       editableTalkgroups: 0,
       totalRecords: 0,
@@ -209,13 +208,8 @@ export default {
   },
   mounted() {
     this.fetchData();
-    this.refresh = setInterval(
-      this.fetchData,
-      this.settingsStore.refreshInterval,
-    );
   },
   unmounted() {
-    clearInterval(this.refresh);
     if (this.socket) {
       this.socket.close();
     }

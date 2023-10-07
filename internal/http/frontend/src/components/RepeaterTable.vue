@@ -308,7 +308,6 @@ export default {
       expandedRows: [],
       socket: null,
       editableRepeaters: 0,
-      refresh: null,
       totalRecords: 0,
       loading: false,
     };
@@ -320,7 +319,6 @@ export default {
     }
   },
   unmounted() {
-    clearInterval(this.refresh);
     if (this.socket) {
       this.socket.close();
     }

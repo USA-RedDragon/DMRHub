@@ -34,7 +34,6 @@ export const useUserStore = defineStore('user', {
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
-    refreshInterval: 5000,
   }),
   getters: {},
   actions: {},

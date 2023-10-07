@@ -105,6 +105,7 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardTalkgroup)
 
+	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/version", v1Controllers.GETVersion)
 	group.GET("/ping", v1Controllers.GETPing)
 }

@@ -20,6 +20,7 @@
 package api
 
 import (
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
@@ -36,6 +37,17 @@ import (
 
 // ApplyRoutes to the HTTP Mux.
 func ApplyRoutes(router *gin.Engine, db *gorm.DB, redis *redis.Client, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+	router.GET("/robots.txt", func(c *gin.Context) {
+		if config.GetConfig().AllowScraping {
+			if config.GetConfig().CustomRobotsTxt != "" {
+				c.String(200, "Sitemap: /sitemap.xml\nDisallow: /admin\n"+config.GetConfig().CustomRobotsTxt)
+				return
+			}
+			c.String(200, "User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: /sitemap.xml")
+			return
+		}
+		c.String(200, "User-agent: *\nDisallow: /")
+	})
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit)
 	v1(apiV1, userSuspension)

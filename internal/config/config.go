@@ -56,6 +56,8 @@ type Config struct {
 	InitialAdminUserPassword string
 	Debug                    bool
 	NetworkName              string
+	AllowScraping            bool
+	CustomRobotsTxt          string
 }
 
 var currentConfig atomic.Value //nolint:golint,gochecknoglobals
@@ -99,6 +101,8 @@ func loadConfig() Config {
 		RedisPassword:            os.Getenv("REDIS_PASSWORD"),
 		Debug:                    os.Getenv("DEBUG") != "",
 		NetworkName:              os.Getenv("NETWORK_NAME"),
+		AllowScraping:            os.Getenv("ALLOW_SCRAPING") != "",
+		CustomRobotsTxt:          os.Getenv("CUSTOM_ROBOTS_TXT"),
 	}
 	if tmpConfig.RedisHost == "" {
 		tmpConfig.RedisHost = "localhost:6379"

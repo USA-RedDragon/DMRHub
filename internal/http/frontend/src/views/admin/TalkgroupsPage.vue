@@ -42,6 +42,10 @@ export default {
     Card,
     TalkgroupTable,
   },
+  head: {
+    title: 'Talkgroups',
+    titleTemplate: 'Admin | %s | ' + (localStorage.getItem('title') || 'DMRHub'),
+  },
   created() {},
   mounted() {},
   unmounted() {},

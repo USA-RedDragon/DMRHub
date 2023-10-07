@@ -44,6 +44,15 @@ export default {
     AppFooter,
     ThemeConfig,
   },
+  head: {
+    titleTemplate: '%s | ' + (localStorage.getItem('title') || 'DMRHub'),
+    meta: [
+      {
+        name: 'description',
+        content: 'DMRHub is a DMR network server like TGIF or BrandMeister ran in a single binary.',
+      },
+    ],
+  },
   data() {
     return {
       // localStorage in Firefox is string-only

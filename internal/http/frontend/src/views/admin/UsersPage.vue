@@ -41,6 +41,10 @@ export default {
     Card,
     UserTable,
   },
+  head: {
+    title: 'Users',
+    titleTemplate: 'Admin | %s | ' + (localStorage.getItem('title') || 'DMRHub'),
+  },
   created() {},
   mounted() {},
   unmounted() {},

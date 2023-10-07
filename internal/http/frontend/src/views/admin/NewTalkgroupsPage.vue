@@ -191,6 +191,10 @@ export default {
     InputText,
     MultiSelect,
   },
+  head: {
+    title: 'New Talkgroup',
+    titleTemplate: 'Admin | %s | ' + (localStorage.getItem('title') || 'DMRHub'),
+  },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {

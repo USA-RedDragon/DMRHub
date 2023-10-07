@@ -108,10 +108,8 @@ export default {
     PVButton: Button,
     Card,
   },
-  metaInfo: {
-    meta: [
-      { name: 'description', content: 'Login to DMRHub' },
-    ],
+  head: {
+    title: 'Login',
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},

@@ -165,16 +165,12 @@ export default {
     };
   },
   created() {
-    window.document.title = this.title.endsWith('DMRHub') ?
-      this.title : this.title + ' | DMRHub';
     this.getTitle();
   },
   mounted() {},
   methods: {
     setTitle(title) {
       localStorage.setItem('title', title);
-      window.document.title = title.endsWith('DMRHub') ?
-        title : title + ' | DMRHub';
       this.title = title;
     },
     getTitle() {

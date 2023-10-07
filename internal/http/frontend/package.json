@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.5.1",
+    "@unhead/vue": "^1.7.4",
     "@vitejs/plugin-vue": "^4.4.0",
     "@vitest/ui": "^0.34.6",
     "@vue/eslint-config-prettier": "^8.0.0",
@@ -51,7 +52,6 @@
     "sitemap": "^7.1.1",
     "start-server-and-test": "^2.0.1",
     "vite": "^4.4.11",
-    "vitest": "^0.34.6",
-    "vue-meta": "^2.4.0"
+    "vitest": "^0.34.6"
   }
 }

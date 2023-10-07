@@ -42,6 +42,10 @@ export default {
     Card,
     RepeaterTable,
   },
+  head: {
+    title: 'Repeaters',
+    titleTemplate: 'Admin | %s | ' + (localStorage.getItem('title') || 'DMRHub'),
+  },
   created() {},
   mounted() {},
   unmounted() {},

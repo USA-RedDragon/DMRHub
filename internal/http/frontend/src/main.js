@@ -19,8 +19,7 @@
 
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-
-import VueMeta from 'vue-meta';
+import { VueHeadMixin, createHead } from '@unhead/vue';
 
 import PrimeVue from 'primevue/config';
 import ToastService from 'primevue/toastservice';
@@ -40,8 +39,9 @@ import './assets/main.css';
 
 const pinia = createPinia();
 const app = createApp(App);
-
-app.use(VueMeta);
+app.mixin(VueHeadMixin);
+const head = createHead();
+app.use(head);
 app.use(ToastService);
 app.use(DialogService);
 app.use(ConfirmationService);

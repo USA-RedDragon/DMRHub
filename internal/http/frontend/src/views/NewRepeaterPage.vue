@@ -117,6 +117,11 @@ export default {
     PVButton: Button,
     InputText,
   },
+  metaInfo: {
+    meta: [
+      { name: 'description', content: 'Add New DMRHub Repeater' },
+    ],
+  },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
   mounted() {},

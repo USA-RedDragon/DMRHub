@@ -38,6 +38,11 @@ export default {
   components: {
     Card,
   },
+  metaInfo: {
+    meta: [
+      { name: 'description', content: 'View DMRHub Repeater Details' },
+    ],
+  },
   created() {},
   mounted() {},
   data: function() {

@@ -42,6 +42,11 @@ export default {
     Card,
     TalkgroupTable,
   },
+  metaInfo: {
+    meta: [
+      { name: 'description', content: 'View Owned DMRHub Talkgroups' },
+    ],
+  },
   created() {},
   mounted() {},
   unmounted() {},

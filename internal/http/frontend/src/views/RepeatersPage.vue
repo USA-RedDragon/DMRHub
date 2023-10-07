@@ -42,6 +42,11 @@ export default {
     Card,
     RepeaterTable,
   },
+  metaInfo: {
+    meta: [
+      { name: 'description', content: 'View DMRHub Repeaters' },
+    ],
+  },
   created() {},
   mounted() {},
   unmounted() {},

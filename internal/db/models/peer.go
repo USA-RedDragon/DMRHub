@@ -29,7 +29,7 @@ import (
 
 // Peer is the model for an OpenBridge DMR peer
 //
-//go:generate msgp
+//go:generate go run github.com/tinylib/msgp
 type Peer struct {
 	ID        uint           `json:"id" gorm:"primaryKey" msg:"id"`
 	LastPing  time.Time      `json:"last_ping_time" msg:"last_ping"`

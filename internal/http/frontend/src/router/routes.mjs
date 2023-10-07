@@ -21,36 +21,64 @@ export default [
   {
     path: '/',
     name: 'Main',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 1,
+    },
     component: () => import('../views/MainPage.vue'),
   },
   {
     path: '/login',
     name: 'Login',
+    sitemap: {
+      changefreq: 'monthly',
+      priority: 0.75,
+    },
     component: () => import('../views/LoginPage.vue'),
   },
   {
     path: '/register',
     name: 'Register',
+    sitemap: {
+      changefreq: 'monthly',
+      priority: 0.75,
+    },
     component: () => import('../views/RegisterPage.vue'),
   },
   {
     path: '/repeaters',
     name: 'Repeaters',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 1,
+    },
     component: () => import('../views/RepeatersPage.vue'),
   },
   {
     path: '/repeaters/new',
     name: 'NewRepeater',
+    sitemap: {
+      changefreq: 'monthly',
+      priority: 0.75,
+    },
     component: () => import('../views/NewRepeaterPage.vue'),
   },
   {
     path: '/talkgroups',
     name: 'Talkgroups',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 1,
+    },
     component: () => import('../views/TalkgroupsPage.vue'),
   },
   {
     path: '/talkgroups/owned',
     name: 'OwnedTalkgroups',
+    sitemap: {
+      changefreq: 'daily',
+      priority: 1,
+    },
     component: () => import('../views/OwnedTalkgroupsPage.vue'),
   },
   {

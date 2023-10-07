@@ -72,7 +72,7 @@ export default {
     this.fetchData();
     this.refresh = setInterval(
       this.fetchData,
-      this.settingsStore.refreshInterval,
+      5000,
     );
   },
   unmounted() {

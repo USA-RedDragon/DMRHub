@@ -13,6 +13,10 @@ Run a DMR network (like TGIF or BrandMeister) server with a single binary compat
 - [User's Guide](https://github.com/USA-RedDragon/DMRHub/wiki/User's-Guide)
 - [Building Manually](https://github.com/USA-RedDragon/DMRHub/wiki/Building-Manually)
 
+## Live Server
+
+<https://dmrhub.net> is running the "canonical" version of DMRHub. Feel free to request an account!
+
 ## Screenshots
 
 ![Lastheard](/doc/Screenshots/lastheard.png)

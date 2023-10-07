@@ -22,7 +22,7 @@
 <template>
   <header>
     <h1>
-      <RouterLink to="/">DMRHub</RouterLink>
+      <RouterLink to="/">{{ title }}</RouterLink>
     </h1>
     <div class="wrapper">
       <nav>
@@ -160,10 +160,32 @@ export default {
     PVMenu: Menu,
   },
   data: function() {
-    return {};
+    return {
+      title: localStorage.getItem('title') || 'DMRHub',
+    };
+  },
+  created() {
+    window.document.title = this.title.endsWith(' | DMRHub') ?
+      this.title : this.title + ' | DMRHub';
+    this.getTitle();
   },
   mounted() {},
   methods: {
+    setTitle(title) {
+      localStorage.setItem('title', title);
+      window.document.title = title.endsWith(' | DMRHub') ?
+        title : title + ' | DMRHub';
+      this.title = title;
+    },
+    getTitle() {
+      API.get('/network/name')
+        .then((response) => {
+          this.setTitle(response.data);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
     logout() {
       API.get('/auth/logout')
         .then((_res) => {

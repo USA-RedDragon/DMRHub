@@ -171,6 +171,8 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 			klog.Errorf("Error getting peer %d from redis", packet.Repeater)
 			continue
 		}
+		// OpenBridge is always TS1
+		packet.Slot = false
 		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
 			IP:   net.ParseIP(peer.IP),
 			Port: peer.Port,

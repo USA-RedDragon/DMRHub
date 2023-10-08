@@ -113,8 +113,8 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
 	// Paginated
 	v1Peers.GET("/my", middleware.RequireLogin(), v1PeersControllers.GETMyPeers)
-	v1Peers.POST("", middleware.RequireLogin(), v1PeersControllers.POSTPeer)
-	v1Peers.GET("/:id", middleware.RequireLogin(), v1PeersControllers.GETPeer)
+	v1Peers.POST("", middleware.RequireAdmin(), v1PeersControllers.POSTPeer)
+	v1Peers.GET("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeer)
 	v1Peers.DELETE("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeer)
 
 	v1Lastheard := group.Group("/lastheard")

@@ -27,6 +27,7 @@ export const useUserStore = defineStore('user', {
     username: '',
     admin: false,
     created_at: '',
+    hasOpenBridgePeers: false,
   }),
   getters: {},
   actions: {},

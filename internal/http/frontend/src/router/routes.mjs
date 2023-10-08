@@ -64,22 +64,23 @@ export default [
     component: () => import('../views/repeaters/NewRepeaterPage.vue'),
   },
   {
-    path: '/repeaters/peers',
-    name: 'Peers',
+    path: '/peers',
+    name: 'UserOpenBridgePeers',
     sitemap: {
       changefreq: 'daily',
       priority: 0.75,
     },
-    component: () => import('../views/peers/PeersPage.vue'),
+    component: () => import('../views/peers/OpenBridgePeersPage.vue'),
   },
   {
-    path: '/repeaters/peers/new',
-    name: 'NewPeer',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 0.75,
-    },
-    component: () => import('../views/peers/NewPeerPage.vue'),
+    path: '/admin/peers',
+    name: 'OpenBridgePeers',
+    component: () => import('../views/admin/OpenBridgePeersPage.vue'),
+  },
+  {
+    path: '/admin/peers/new',
+    name: 'NewOpenBridgePeer',
+    component: () => import('../views/admin/NewOpenBridgePeerPage.vue'),
   },
   {
     path: '/talkgroups',

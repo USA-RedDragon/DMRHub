@@ -43,6 +43,39 @@
         <template #title>New Peer</template>
         <template #content>
           <span class="p-float-label">
+            <PVDropdown
+              id="owner"
+              v-model="owner"
+              :options="allUsers"
+              :filter="true"
+              optionLabel="display"
+              display="chip"
+              style="width: 100%"
+            >
+              <template #chip="slotProps">
+                {{ slotProps.value.display }}
+              </template>
+              <template #option="slotProps">
+                {{ slotProps.option.display }}
+              </template>
+            </PVDropdown>
+            <label for="owner">Owner</label>
+          </span>
+          <span v-if="v$.owner.$error && submitted">
+            <span v-for="(error, index) of v$.owner.$errors" :key="index">
+              <small class="p-error">{{ error.$message.replace("Value", "Owner") }}</small>
+            </span>
+            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="(v$.owner.$invalid && submitted) || v$.owner.$pending.$response"
+              class="p-error"
+              >{{ v$.owner.required.$message.replace("Value", "Owner") }}</small
+            >
+          </span>
+          <br />
+          <span class="p-float-label">
             <InputText
               id="id"
               type="text"
@@ -57,7 +90,7 @@
           </span>
           <span v-if="v$.id.$error && submitted">
             <span v-for="(error, index) of v$.id.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Peer ID") }}</small>
             </span>
             <br />
           </span>
@@ -77,7 +110,7 @@
               :binary="true"
             />
             <label for="ingress"
-              >&nbsp;&nbsp;Peer should receive traffic from the server?</label
+              >&nbsp;&nbsp;Receive DMR traffic from this peer</label
             >
           </span>
           <br />
@@ -90,7 +123,7 @@
               :binary="true"
             />
             <label for="egress"
-              >&nbsp;&nbsp;Peer should send traffic to the server?</label
+              >&nbsp;&nbsp;Transmit DMR traffic to this peer</label
             >
           </span>
         </template>
@@ -113,6 +146,7 @@
 import Card from 'primevue/card';
 import Checkbox from 'primevue/checkbox';
 import Button from 'primevue/button';
+import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import API from '@/services/API';
 
@@ -124,13 +158,16 @@ export default {
     Card,
     Checkbox,
     PVButton: Button,
+    PVDropdown: Dropdown,
     InputText,
   },
   head: {
     title: 'New OpenBridge Peer',
   },
   setup: () => ({ v$: useVuelidate() }),
-  created() {},
+  created() {
+    this.getData();
+  },
   mounted() {},
   data: function() {
     return {
@@ -139,6 +176,8 @@ export default {
       egress: false,
       submitted: false,
       hostname: window.location.hostname,
+      allUsers: [],
+      owner: null,
     };
   },
   validations() {
@@ -147,9 +186,34 @@ export default {
         required,
         numeric,
       },
+      owner: {
+        required,
+      },
     };
   },
   methods: {
+    getData() {
+      API.get('/users?limit=none')
+        .then((res) => {
+          this.allUsers = res.data.users;
+          let parrotIndex = -1;
+          for (let i = 0; i < this.allUsers.length; i++) {
+            this.allUsers[
+              i
+            ].display = `${this.allUsers[i].id} - ${this.allUsers[i].callsign}`;
+            // Remove user with id 9990 (parrot)
+            if (this.allUsers[i].id === 9990) {
+              parrotIndex = i;
+            }
+          }
+          if (parrotIndex !== -1) {
+            this.allUsers.splice(parrotIndex, 1);
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    },
     handlePeer(isFormValid) {
       this.submitted = true;
       if (!isFormValid) {
@@ -162,6 +226,7 @@ export default {
       }
       API.post('/peers', {
         id: numericID,
+        owner: this.owner.id,
         ingress: this.ingress,
         egress: this.egress,
       })
@@ -181,7 +246,7 @@ export default {
               rejectClass: 'remove-reject-button',
               acceptLabel: 'OK',
               accept: () => {
-                this.$router.push('/repeaters/peers');
+                this.$router.push('/admin/peers');
               },
             });
           }

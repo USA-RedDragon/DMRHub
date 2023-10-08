@@ -33,9 +33,9 @@
     :scrollable="true"
     @page="onPage($event)"
   >
-    <template #header v-if="!this.$props.admin">
+    <template #header v-if="this.$props.admin">
       <div class="table-header-container">
-        <RouterLink to="/repeaters/peers/new">
+        <RouterLink to="/admin/peers/new">
           <PVButton
             class="p-button-raised p-button-rounded p-button-success"
             icon="pi pi-plus"
@@ -217,7 +217,8 @@ export default {
     deletePeer(peer) {
       // First, show a confirmation dialog
       this.$confirm.require({
-        message: 'Are you sure you want to delete this peer?',
+        message: 'Are you sure you want to delete this peer?' +
+          (this.$props.admin ? '':' Only admins may create them.'),
         header: 'Delete Peer',
         icon: 'pi pi-exclamation-triangle',
         acceptClass: 'p-button-danger',

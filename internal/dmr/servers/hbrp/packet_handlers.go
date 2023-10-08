@@ -33,6 +33,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
@@ -375,6 +376,19 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		if packet.Dst == 4000 && isVoice {
 			s.doUnlink(ctx, packet, dbRepeater)
 			return
+		}
+
+		if config.GetConfig().OpenBridgePort != 0 {
+			go func() {
+				// We need to send this packet to all peers except the one that sent it
+				peers := models.ListPeers(s.DB)
+				for _, p := range peers {
+					shouldEgress, _ := rules.PeerShouldEgress(s.DB, &p, &packet)
+					if shouldEgress {
+						s.sendOpenBridgePacket(ctx, p.ID, packet)
+					}
+				}
+			}()
 		}
 
 		switch {

@@ -58,7 +58,7 @@ func MakeDB() *gorm.DB {
 		}
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if err != nil {
 		logging.GetLogger(logging.Error).Logf(MakeDB, "Could not migrate database: %s", err)
 		os.Exit(1)

@@ -253,6 +253,34 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
 }
 
+func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
+	if packet.Signature != string(dmrconst.CommandDMRD) {
+		klog.Errorf("Invalid packet type: %s", packet.Signature)
+		return
+	}
+
+	if config.GetConfig().Debug {
+		klog.Infof("Sending Packet: %s\n", packet.String())
+		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
+	}
+	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
+	if err != nil {
+		klog.Errorf("Error getting repeater from Redis", err)
+		return
+	}
+	p := models.RawDMRPacket{
+		Data:       packet.Encode(),
+		RemoteIP:   repeater.IP,
+		RemotePort: repeater.Port,
+	}
+	packedBytes, err := p.MarshalMsg(nil)
+	if err != nil {
+		klog.Errorf("Error marshalling packet", err)
+		return
+	}
+	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)
+}
+
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if !s.Started {
 		klog.Warningf("Server not started, not sending command")

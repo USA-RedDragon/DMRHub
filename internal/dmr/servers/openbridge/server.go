@@ -29,7 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"go.opentelemetry.io/otel"
@@ -279,16 +279,26 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	isVoice, _ := utils.CheckPacketType(packet)
-
-	if packet.Dst == 0 {
+	shouldIngress, reason := rules.PeerShouldIngress(s.DB, &peer, &packet)
+	if !shouldIngress {
+		klog.Warningf("Peer %d is not allowed to ingress: %d", peerID, reason)
 		return
 	}
 
-	if peer.Egress {
-		s.TrackCall(ctx, packet, isVoice)
-		s.sendPacket(ctx, packet.Dst, packet)
+	// We need to send this packet to all peers except the one that sent it
+	peers := models.ListPeers(s.DB)
+	for _, p := range peers {
+		if p.ID == peerID {
+			continue
+		}
+		shouldEgress, _ := rules.PeerShouldEgress(s.DB, &p, &packet)
+		if shouldEgress {
+			s.sendPacket(ctx, p.ID, packet)
+		}
 	}
+
+	// s.TrackCall(ctx, pkt, true)
+	// TODO: And if this packet goes to a destination we are aware of, send it there too
 }
 
 func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bool) {

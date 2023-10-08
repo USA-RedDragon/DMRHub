@@ -145,7 +145,7 @@ func (s *Server) listen(ctx context.Context) {
 			klog.Errorf("Error unmarshalling packet", err)
 			continue
 		}
-		s.handlePacket(ctx, &net.UDPAddr{
+		go s.handlePacket(ctx, &net.UDPAddr{
 			IP:   net.ParseIP(packet.RemoteIP),
 			Port: packet.RemotePort,
 		}, packet.Data)

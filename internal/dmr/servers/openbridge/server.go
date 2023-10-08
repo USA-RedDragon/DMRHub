@@ -125,8 +125,6 @@ func (s *Server) Start(ctx context.Context) {
 
 // Stop stops the DMR server.
 func (s *Server) Stop(ctx context.Context) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
-	defer span.End()
 }
 
 func (s *Server) listen(ctx context.Context) {
@@ -212,7 +210,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 }
 
 func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes []byte, peer models.Peer) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.validateHMAC")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.validateHMAC")
 	defer span.End()
 
 	h := hmac.New(sha1.New, []byte(peer.Password))

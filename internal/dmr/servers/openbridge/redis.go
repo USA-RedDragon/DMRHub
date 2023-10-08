@@ -39,7 +39,6 @@ type redisClient struct {
 var (
 	errNoSuchPeer    = errors.New("no such peer")
 	errUnmarshalPeer = errors.New("unmarshal peer")
-	errCastPeer      = errors.New("unable to cast peer id")
 )
 
 func makeRedisClient(redis *redis.Client) redisClient {

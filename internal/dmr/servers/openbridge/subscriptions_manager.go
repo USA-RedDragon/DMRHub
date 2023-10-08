@@ -67,7 +67,7 @@ func (m *SubscriptionManager) CancelSubscription(p models.Peer) {
 }
 
 func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client, p models.Peer) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
 	if !p.Ingress {

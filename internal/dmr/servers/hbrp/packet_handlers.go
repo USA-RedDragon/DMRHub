@@ -379,6 +379,15 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		switch {
 		case packet.GroupCall && isVoice:
+			exists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
+			if err != nil {
+				klog.Errorf("Error checking if talkgroup exists: %s", err)
+				return
+			}
+			if !exists {
+				klog.Warningf("Talkgroup %d does not exist", packet.Dst)
+				return
+			}
 			go s.switchDynamicTalkgroup(ctx, packet)
 
 			// We can just use redis to publish to "hbrp:packets:talkgroup:<id>"
@@ -420,8 +429,25 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			)
 			if (packet.Dst >= rptIDMin && packet.Dst <= rptIDMax) || (packet.Dst >= hotspotIDMin && packet.Dst <= hotspotIDMax) {
 				// This is to a repeater
+				exists, err := models.RepeaterIDExists(s.DB, packet.Dst)
+				if err != nil {
+					klog.Errorf("Error checking if repeater exists: %s", err)
+				}
+				if !exists {
+					klog.Warningf("Repeater %d does not exist", packet.Dst)
+					return
+				}
 				s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes)
 			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
+				exists, err := models.UserIDExists(s.DB, packet.Dst)
+				if err != nil {
+					klog.Errorf("Error checking if user exists: %s", err)
+					return
+				}
+				if !exists {
+					klog.Warningf("User %d does not exist", packet.Dst)
+					return
+				}
 				s.doUser(ctx, packet, packedBytes)
 			}
 		case isData:

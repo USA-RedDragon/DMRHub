@@ -36,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -108,6 +109,7 @@ func start() int {
 			}
 		}()
 	}
+        go metrics.CreateMetricsServer()
 
 	database := db.MakeDB()
 

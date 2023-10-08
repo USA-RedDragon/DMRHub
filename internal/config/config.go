@@ -48,6 +48,7 @@ type Config struct {
 	PasswordSalt             string
 	ListenAddr               string
 	DMRPort                  int
+	MetricsPort              int
 	OpenBridgePort           int
 	HTTPPort                 int
 	CORSHosts                []string
@@ -90,6 +91,12 @@ func loadConfig() Config {
 		openBridgePort = 0
 	}
 
+	portStr = os.Getenv("METRICS_PORT")
+	metricsPort, err := strconv.ParseInt(portStr, 10, 0)
+	if err != nil {
+		metricsPort = 0
+	}
+
 	tmpConfig := Config{
 		RedisHost:                os.Getenv("REDIS_HOST"),
 		postgresUser:             os.Getenv("PG_USER"),
@@ -102,6 +109,7 @@ func loadConfig() Config {
 		ListenAddr:               os.Getenv("LISTEN_ADDR"),
 		DMRPort:                  int(dmrPort),
 		HTTPPort:                 int(httpPort),
+		MetricsPort:              int(metricsPort),
 		HIBPAPIKey:               os.Getenv("HIBP_API_KEY"),
 		OTLPEndpoint:             os.Getenv("OTLP_ENDPOINT"),
 		InitialAdminUserPassword: os.Getenv("INIT_ADMIN_USER_PASSWORD"),

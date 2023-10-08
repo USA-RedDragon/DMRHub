@@ -308,17 +308,15 @@ func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bo
 	defer span.End()
 
 	// Don't call track unlink
-	if isVoice {
-		go func() {
-			if !s.CallTracker.IsCallActive(ctx, packet) {
-				s.CallTracker.StartCall(ctx, packet)
+	if packet.Dst != 4000 && isVoice {
+		if !s.CallTracker.IsCallActive(ctx, packet) {
+			s.CallTracker.StartCall(ctx, packet)
+		}
+		if s.CallTracker.IsCallActive(ctx, packet) {
+			s.CallTracker.ProcessCallPacket(ctx, packet)
+			if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+				s.CallTracker.EndCall(ctx, packet)
 			}
-			if s.CallTracker.IsCallActive(ctx, packet) {
-				s.CallTracker.ProcessCallPacket(ctx, packet)
-				if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-					s.CallTracker.EndCall(ctx, packet)
-				}
-			}
-		}()
+		}
 	}
 }

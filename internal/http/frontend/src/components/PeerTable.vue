@@ -116,10 +116,10 @@
 </template>
 
 <script>
-import Button from 'primevue/button/sfc';
-import Checkbox from 'primevue/checkbox/sfc';
-import DataTable from 'primevue/datatable/sfc';
-import Column from 'primevue/column/sfc';
+import Button from 'primevue/button';
+import Checkbox from 'primevue/checkbox';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
 import moment from 'moment';
 
 import API from '@/services/API';

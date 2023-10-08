@@ -110,10 +110,10 @@
 </template>
 
 <script>
-import Card from 'primevue/card/sfc';
-import Checkbox from 'primevue/checkbox/sfc';
-import Button from 'primevue/button/sfc';
-import InputText from 'primevue/inputtext/sfc';
+import Card from 'primevue/card';
+import Checkbox from 'primevue/checkbox';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';

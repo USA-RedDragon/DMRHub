@@ -43,7 +43,7 @@
           </span>
           <span v-if="v$.username.$error && submitted">
             <span v-for="(error, index) of v$.username.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Username") }}</small>
             </span>
             <br />
           </span>
@@ -65,7 +65,7 @@
           </span>
           <span v-if="v$.password.$error && submitted">
             <span v-for="(error, index) of v$.password.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Password") }}</small>
             </span>
             <br />
           </span>

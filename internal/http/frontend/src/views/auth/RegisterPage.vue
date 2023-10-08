@@ -43,7 +43,7 @@
           </span>
           <span v-if="v$.dmr_id.$error && submitted">
             <span v-for="(error, index) of v$.dmr_id.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "DMR ID") }}</small>
               <br />
             </span>
           </span>
@@ -54,7 +54,7 @@
                 v$.dmr_id.$pending.$response
               "
               class="p-error"
-              >{{ v$.dmr_id.required.$message }}
+              >{{ v$.dmr_id.required.$message.replace("Value", "DMR ID") }}
               <br />
             </small>
           </span>
@@ -76,7 +76,7 @@
           </span>
           <span v-if="v$.username.$error && submitted">
             <span v-for="(error, index) of v$.username.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Username") }}</small>
               <br />
             </span>
           </span>
@@ -87,7 +87,7 @@
                 v$.username.$pending.$response
               "
               class="p-error"
-              >{{ v$.username.required.$message }}
+              >{{ v$.username.required.$message.replace("Value", "Username") }}
               <br />
             </small>
           </span>
@@ -107,7 +107,7 @@
           </span>
           <span v-if="v$.callsign.$error && submitted">
             <span v-for="(error, index) of v$.callsign.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Callsign") }}</small>
               <br />
             </span>
           </span>
@@ -118,7 +118,7 @@
                 v$.callsign.$pending.$response
               "
               class="p-error"
-              >{{ v$.callsign.required.$message }}
+              >{{ v$.callsign.required.$message.replace("Value", "Callsign") }}
               <br />
             </small>
           </span>
@@ -140,7 +140,7 @@
           </span>
           <span v-if="v$.password.$error && submitted">
             <span v-for="(error, index) of v$.password.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Password") }}</small>
               <br />
             </span>
           </span>
@@ -151,7 +151,7 @@
                 v$.password.$pending.$response
               "
               class="p-error"
-              >{{ v$.password.required.$message }}
+              >{{ v$.password.required.$message.replace("Value", "Password") }}
               <br />
             </small>
           </span>
@@ -176,7 +176,7 @@
               v-for="(error, index) of v$.confirmPassword.$errors"
               :key="index"
             >
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Confirm Password") }}</small>
               <br />
             </span>
           </span>
@@ -187,7 +187,7 @@
                 v$.confirmPassword.$pending.$response
               "
               class="p-error"
-              >{{ v$.confirmPassword.required.$message }}
+              >{{ v$.confirmPassword.required.$message.replace("Value", "Confirm Password") }}
               <br />
             </small>
           </span>

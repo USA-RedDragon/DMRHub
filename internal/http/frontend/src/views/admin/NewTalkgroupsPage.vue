@@ -41,7 +41,7 @@
           </span>
           <span v-if="v$.id.$error && submitted">
             <span v-for="(error, index) of v$.id.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "ID") }}</small>
             </span>
           </span>
           <span v-else>
@@ -70,7 +70,7 @@
           </span>
           <span v-if="v$.name.$error && submitted">
             <span v-for="(error, index) of v$.name.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Name") }}</small>
               <br />
             </span>
           </span>
@@ -102,7 +102,7 @@
           </span>
           <span v-if="v$.description.$error && submitted">
             <span v-for="(error, index) of v$.description.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Description") }}</small>
             </span>
             <br />
           </span>

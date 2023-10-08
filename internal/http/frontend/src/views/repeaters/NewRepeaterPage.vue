@@ -70,7 +70,7 @@ Debug=0
           </span>
           <span v-if="v$.radioID.$error && submitted">
             <span v-for="(error, index) of v$.radioID.$errors" :key="index">
-              <small class="p-error">{{ error.$message }}</small>
+              <small class="p-error">{{ error.$message.replace("Value", "Radio ID") }}</small>
             </span>
             <br />
           </span>

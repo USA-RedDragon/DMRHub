@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/redis/go-redis/v9"
@@ -44,7 +45,7 @@ type Server struct {
 	Started       bool
 	Parrot        *parrot.Parrot
 	DB            *gorm.DB
-	Redis         redisClient
+	Redis         *servers.RedisClient
 	CallTracker   *calltracker.CallTracker
 }
 
@@ -53,7 +54,7 @@ const repeaterIDLength = 4
 const bufferSize = 1000000 // 1MB
 
 // MakeServer creates a new DMR server.
-func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallTracker) Server {
+func MakeServer(db *gorm.DB, redis *redis.Client, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker) Server {
 	return Server{
 		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
@@ -63,7 +64,7 @@ func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallT
 		Started:     false,
 		Parrot:      parrot.NewParrot(redis),
 		DB:          db,
-		Redis:       makeRedisClient(redis),
+		Redis:       redisClient,
 		CallTracker: callTracker,
 	}
 }
@@ -74,7 +75,7 @@ func (s *Server) Stop(ctx context.Context) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
 
-	repeaters, err := s.Redis.listRepeaters(ctx)
+	repeaters, err := s.Redis.ListRepeaters(ctx)
 	if err != nil {
 		klog.Errorf("Error scanning redis for repeaters", err)
 	}
@@ -82,7 +83,7 @@ func (s *Server) Stop(ctx context.Context) {
 		if config.GetConfig().Debug {
 			klog.Infof("Repeater found: %d", repeater)
 		}
-		s.Redis.updateRepeaterConnection(ctx, repeater, "DISCONNECTED")
+		s.Redis.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, repeaterIDLength)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
 		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
@@ -158,7 +159,7 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 			klog.Errorf("Error unpacking packet")
 			continue
 		}
-		repeater, err := s.Redis.getRepeater(ctx, packet.Repeater)
+		repeater, err := s.Redis.GetRepeater(ctx, packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting repeater %d from redis", packet.Repeater)
 			continue
@@ -234,7 +235,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		logging.GetLogger(logging.Access).Logf(s.sendCommand, "Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
 	}
 	commandPrefixedData := append([]byte(command), data...)
-	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
+	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
 		klog.Errorf("Error getting repeater from Redis", err)
 		return
@@ -260,7 +261,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	if config.GetConfig().Debug {
 		logging.GetLogger(logging.Access).Logf(s.sendPacket, "Sending DMR packet %s to repeater: %d", packet.String(), repeaterIDBytes)
 	}
-	repeater, err := s.Redis.getRepeater(ctx, repeaterIDBytes)
+	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
 		klog.Errorf("Error getting repeater from Redis", err)
 		return

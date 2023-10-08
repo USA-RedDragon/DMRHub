@@ -30,8 +30,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmrconst"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -50,13 +50,13 @@ type Server struct {
 	Tracer        trace.Tracer
 
 	DB    *gorm.DB
-	Redis redisClient
+	Redis *servers.RedisClient
 
 	CallTracker *calltracker.CallTracker
 }
 
 // MakeServer creates a new DMR server.
-func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallTracker) Server {
+func MakeServer(db *gorm.DB, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker) Server {
 	return Server{
 		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
@@ -64,7 +64,7 @@ func MakeServer(db *gorm.DB, redis *redis.Client, callTracker *calltracker.CallT
 			Port: config.GetConfig().OpenBridgePort,
 		},
 		DB:          db,
-		Redis:       makeRedisClient(redis),
+		Redis:       redisClient,
 		CallTracker: callTracker,
 		Tracer:      otel.Tracer("dmr-openbridge-server"),
 	}
@@ -166,7 +166,7 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 			klog.Errorf("Error unpacking packet")
 			continue
 		}
-		peer, err := s.Redis.getPeer(ctx, packet.Repeater)
+		peer, err := s.Redis.GetPeer(ctx, packet.Repeater)
 		if err != nil {
 			klog.Errorf("Error getting peer %d from redis", packet.Repeater)
 			continue
@@ -191,7 +191,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		klog.Infof("Sending Packet: %s\n", packet.String())
 		klog.Infof("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
 	}
-	repeater, err := s.Redis.getPeer(ctx, repeaterIDBytes)
+	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
 		klog.Errorf("Error getting repeater from Redis", err)
 		return

@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
@@ -182,7 +183,9 @@ func start() int {
 
 	callTracker := calltracker.NewCallTracker(database, redis)
 
-	hbrpServer := hbrp.MakeServer(database, redis, callTracker)
+	redisClient := servers.MakeRedisClient(redis)
+
+	hbrpServer := hbrp.MakeServer(database, redis, redisClient, callTracker)
 	hbrpServer.Start(ctx)
 	defer hbrpServer.Stop(ctx)
 
@@ -201,7 +204,7 @@ func start() int {
 
 	if config.GetConfig().OpenBridgePort != 0 {
 		// Start the OpenBridge server
-		openbridgeServer := openbridge.MakeServer(database, redis, callTracker)
+		openbridgeServer := openbridge.MakeServer(database, redisClient, callTracker)
 		openbridgeServer.Start(ctx)
 		defer openbridgeServer.Stop(ctx)
 

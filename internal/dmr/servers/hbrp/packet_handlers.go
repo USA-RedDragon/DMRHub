@@ -48,11 +48,11 @@ func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection 
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.validRepeater")
 	defer span.End()
 	valid := true
-	if !s.Redis.repeaterExists(ctx, repeaterID) {
+	if !s.Redis.RepeaterExists(ctx, repeaterID) {
 		klog.Warningf("Repeater %d does not exist", repeaterID)
 		valid = false
 	}
-	repeater, err := s.Redis.getRepeater(ctx, repeaterID)
+	repeater, err := s.Redis.GetRepeater(ctx, repeaterID)
 	if err != nil {
 		klog.Warningf("Error getting repeater %d from redis", repeaterID)
 		valid = false
@@ -150,7 +150,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	logging.GetLogger(logging.Access).Logf(s.handleDMRAPacket, "DMR talk alias from Repeater ID: %d", repeaterIDBytes)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			// Repeater not found, drop
@@ -294,7 +294,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	err = s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
 	if err != nil {
 		klog.Errorf("Error querying last call for user %d: %s", user.ID, err)
-	} else if lastCall.ID != 0 && s.Redis.repeaterExists(ctx, lastCall.RepeaterID) {
+	} else if lastCall.ID != 0 && s.Redis.RepeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
 		s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes)
@@ -303,7 +303,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	// For each user repeaters
 	for _, repeater := range user.Repeaters {
 		// If the repeater is online and the last user call was not to this repeater
-		if repeater.RadioID != lastCall.RepeaterID && s.Redis.repeaterExists(ctx, repeater.RadioID) {
+		if repeater.RadioID != lastCall.RepeaterID && s.Redis.RepeaterExists(ctx, repeater.RadioID) {
 			// Send the packet to the repeater
 			s.Redis.Redis.Publish(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeater.RadioID), packedBytes)
 		}
@@ -323,7 +323,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	logging.GetLogger(logging.Access).Logf(s.handleDMRDPacket, "DMR Data from Repeater ID: %d", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 
 		exists, err := models.RepeaterIDExists(s.DB, repeaterID)
 		if err != nil {
@@ -479,7 +479,7 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 
 		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
 		if err != nil {
@@ -540,7 +540,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.Connection = "RPTL-RECEIVED"
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
-		s.Redis.storeRepeater(ctx, repeaterID, repeater)
+		s.Redis.StoreRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 		if config.GetConfig().Debug {
 			klog.Infof("Repeater ID %d is not valid, sending NAK", repeaterID)
@@ -562,7 +562,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.Connection = "RPTL-RECEIVED"
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
-		s.Redis.storeRepeater(ctx, repeaterID, repeater)
+		s.Redis.StoreRepeater(ctx, repeaterID, repeater)
 		// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
 		var saltBytes [4]byte
 		if len(bigSalt.Bytes()) < len(saltBytes) {
@@ -571,7 +571,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			copy(saltBytes[:], bigSalt.Bytes())
 		}
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, saltBytes[:])
-		s.Redis.updateRepeaterConnection(ctx, repeaterID, "CHALLENGE_SENT")
+		s.Redis.UpdateRepeaterConnection(ctx, repeaterID, "CHALLENGE_SENT")
 	}
 }
 
@@ -623,7 +623,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			return
 		}
 
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
@@ -631,7 +631,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			return
 		}
 
-		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
+		repeater, err := s.Redis.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from redis: %v", err)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
@@ -648,7 +648,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		calcedSalt := binary.BigEndian.Uint32(hash[:])
 		if calcedSalt == rxSalt {
 			logging.GetLogger(logging.Access).Logf(s.handleRPTKPacket, "Repeater ID %d authed, sending ACK", repeaterID)
-			s.Redis.updateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
+			s.Redis.UpdateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 			go func() {
 				time.Sleep(1 * time.Second)
@@ -678,7 +678,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
-	if !s.Redis.deleteRepeater(ctx, repeaterID) {
+	if !s.Redis.DeleteRepeater(ctx, repeaterID) {
 		klog.Warningf("Repeater ID %d not deleted", repeaterID)
 	}
 }
@@ -827,15 +827,15 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	}
 
 	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", remoteAddr) {
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
-		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
+		repeater, err := s.Redis.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from redis: %v", err)
 			return
 		}
 
 		s.updateRedisRepeater(data, &repeater)
-		s.Redis.storeRepeater(ctx, repeaterID, repeater)
+		s.Redis.StoreRepeater(ctx, repeaterID, repeater)
 		logging.GetLogger(logging.Access).Logf(s.handleRPTCPacket, "Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
@@ -885,7 +885,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 	}
 
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.Redis.updateRepeaterPing(ctx, repeaterID)
+		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			// No repeater found, drop
@@ -898,13 +898,13 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 			klog.Errorf("Error saving repeater to database: %s", err)
 		}
 
-		repeater, err := s.Redis.getRepeater(ctx, repeaterID)
+		repeater, err := s.Redis.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			klog.Errorf("Error getting repeater from Redis", err)
 			return
 		}
 		repeater.PingsReceived++
-		s.Redis.storeRepeater(ctx, repeaterID, repeater)
+		s.Redis.StoreRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTPONG, repeaterIDBytes)
 	} else {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)

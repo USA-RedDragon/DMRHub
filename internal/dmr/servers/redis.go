@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package hbrp
+package servers
 
 import (
 	"context"
@@ -33,59 +33,61 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type redisClient struct {
+type RedisClient struct {
 	Redis *redis.Client
 }
 
 var (
-	errNoSuchRepeater    = errors.New("no such repeater")
-	errUnmarshalRepeater = errors.New("unmarshal repeater")
-	errCastRepeater      = errors.New("unable to cast repeater id")
+	ErrNoSuchRepeater    = errors.New("no such repeater")
+	ErrUnmarshalRepeater = errors.New("unmarshal repeater")
+	ErrCastRepeater      = errors.New("unable to cast repeater id")
+	ErrNoSuchPeer        = errors.New("no such peer")
+	ErrUnmarshalPeer     = errors.New("unmarshal peer")
 )
 
 const repeaterExpireTime = 5 * time.Minute
 
-func makeRedisClient(redis *redis.Client) redisClient {
-	return redisClient{
+func MakeRedisClient(redis *redis.Client) *RedisClient {
+	return &RedisClient{
 		Redis: redis,
 	}
 }
 
-func (s *redisClient) updateRepeaterPing(ctx context.Context, repeaterID uint) {
+func (s *RedisClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterPing")
 	defer span.End()
 
-	repeater, err := s.getRepeater(ctx, repeaterID)
+	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
 		return
 	}
 	repeater.LastPing = time.Now()
-	s.storeRepeater(ctx, repeaterID, repeater)
+	s.StoreRepeater(ctx, repeaterID, repeater)
 	s.Redis.Expire(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
 }
 
-func (s *redisClient) updateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
+func (s *RedisClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterConnection")
 	defer span.End()
 
-	repeater, err := s.getRepeater(ctx, repeaterID)
+	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
 		return
 	}
 	repeater.Connection = connection
-	s.storeRepeater(ctx, repeaterID, repeater)
+	s.StoreRepeater(ctx, repeaterID, repeater)
 }
 
-func (s *redisClient) deleteRepeater(ctx context.Context, repeaterID uint) bool {
+func (s *RedisClient) DeleteRepeater(ctx context.Context, repeaterID uint) bool {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.deleteRepeater")
 	defer span.End()
 
 	return s.Redis.Del(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
 }
 
-func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
+func (s *RedisClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.storeRepeater")
 	defer span.End()
 
@@ -98,32 +100,32 @@ func (s *redisClient) storeRepeater(ctx context.Context, repeaterID uint, repeat
 	s.Redis.Set(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes, repeaterExpireTime)
 }
 
-func (s *redisClient) getRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
+func (s *RedisClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.getRepeater")
 	defer span.End()
 
 	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
 	if err != nil {
 		klog.Errorf("Error getting repeater from redis", err)
-		return models.Repeater{}, errNoSuchRepeater
+		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
 	if err != nil {
 		klog.Errorf("Error unmarshalling repeater", err)
-		return models.Repeater{}, errUnmarshalRepeater
+		return models.Repeater{}, ErrUnmarshalRepeater
 	}
 	return repeater, nil
 }
 
-func (s *redisClient) repeaterExists(ctx context.Context, repeaterID uint) bool {
+func (s *RedisClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.repeaterExists")
 	defer span.End()
 
 	return s.Redis.Exists(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
 }
 
-func (s *redisClient) listRepeaters(ctx context.Context) ([]uint, error) {
+func (s *RedisClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.listRepeaters")
 	defer span.End()
 
@@ -132,12 +134,12 @@ func (s *redisClient) listRepeaters(ctx context.Context) ([]uint, error) {
 	for {
 		keys, _, err := s.Redis.Scan(ctx, cursor, "hbrp:repeater:*", 0).Result()
 		if err != nil {
-			return nil, errNoSuchRepeater
+			return nil, ErrNoSuchRepeater
 		}
 		for _, key := range keys {
 			repeaterNum, err := strconv.Atoi(strings.Replace(key, "hbrp:repeater:", "", 1))
 			if err != nil {
-				return nil, errCastRepeater
+				return nil, ErrCastRepeater
 			}
 			repeaters = append(repeaters, uint(repeaterNum))
 		}
@@ -147,4 +149,22 @@ func (s *redisClient) listRepeaters(ctx context.Context) ([]uint, error) {
 		}
 	}
 	return repeaters, nil
+}
+
+func (s *RedisClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
+	peerBits, err := s.Redis.Get(ctx, fmt.Sprintf("openbridge:peer:%d", peerID)).Result()
+	if err != nil {
+		klog.Errorf("Error getting peer from redis", err)
+		return models.Peer{}, ErrNoSuchPeer
+	}
+	var peer models.Peer
+	_, err = peer.UnmarshalMsg([]byte(peerBits))
+	if err != nil {
+		klog.Errorf("Error unmarshalling peer", err)
+		return models.Peer{}, ErrUnmarshalPeer
+	}
+	return peer, nil
 }

@@ -26,6 +26,7 @@
     dataKey="id"
     :lazy="true"
     :paginator="true"
+    :first="first"
     :rows="10"
     :totalRecords="totalRecords"
     :loading="loading"
@@ -128,6 +129,7 @@ export default {
       expandedRows: [],
       loading: false,
       totalRecords: 0,
+      first: 0,
     };
   },
   mounted() {
@@ -138,6 +140,7 @@ export default {
   methods: {
     onPage(event) {
       this.loading = true;
+      this.first = event.page * event.rows;
       this.fetchData(event.page + 1, event.rows);
     },
     fetchData(page = 1, limit = 10) {

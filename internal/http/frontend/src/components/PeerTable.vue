@@ -25,6 +25,7 @@
     v-model:expandedRows="expandedRows"
     dataKey="id"
     :lazy="true"
+    :first="first"
     :paginator="true"
     :rows="10"
     :totalRecords="totalRecords"
@@ -144,6 +145,7 @@ export default {
       editablePeers: 0,
       refresh: null,
       totalRecords: 0,
+      first: 0,
       loading: false,
     };
   },
@@ -163,6 +165,7 @@ export default {
   methods: {
     onPage(event) {
       this.loading = true;
+      this.first = event.page * event.rows;
       this.fetchData(event.page + 1, event.rows);
     },
     fetchData(page = 1, limit = 10) {

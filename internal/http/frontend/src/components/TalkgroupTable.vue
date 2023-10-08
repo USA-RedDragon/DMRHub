@@ -23,8 +23,8 @@
   <DataTable
     v-model:expandedRows="expandedRows"
     :value="talkgroups"
-    :first="first"
     :lazy="true"
+    :first="first"
     :paginator="true"
     :rows="10"
     :totalRecords="totalRecords"
@@ -219,7 +219,7 @@ export default {
   methods: {
     onPage(event) {
       this.loading = true;
-      this.first = (event.page) * event.rows;
+      this.first = event.page * event.rows;
       this.fetchData(event.page + 1, event.rows);
     },
     fetchData(page = 1, limit = 10) {

@@ -23,6 +23,7 @@
   <DataTable
     :value="lastheard"
     :lazy="true"
+    :first="first"
     :paginator="true"
     :rows="10"
     :totalRecords="totalRecords"
@@ -109,6 +110,7 @@ export default {
     return {
       lastheard: [],
       totalRecords: 0,
+      first: 0,
       socket: null,
       loading: false,
     };
@@ -126,6 +128,7 @@ export default {
   methods: {
     onPage(event) {
       this.loading = true;
+      this.first = event.page * event.rows;
       this.fetchData(event.page + 1, event.rows);
     },
     fetchData(page = 1, limit = 10) {

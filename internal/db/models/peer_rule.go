@@ -38,7 +38,6 @@ type PeerRule struct {
 	// SubjectID is the ID of the subject (talkgroup/user/repeater)
 	SubjectIDMin uint `json:"subject_id_min"`
 	SubjectIDMax uint `json:"subject_id_max"`
-	Allow        bool `json:"allow"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"-"`

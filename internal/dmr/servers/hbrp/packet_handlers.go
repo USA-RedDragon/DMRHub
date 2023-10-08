@@ -383,8 +383,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 				// We need to send this packet to all peers except the one that sent it
 				peers := models.ListPeers(s.DB)
 				for _, p := range peers {
-					shouldEgress, _ := rules.PeerShouldEgress(s.DB, &p, &packet)
-					if shouldEgress {
+					if rules.PeerShouldEgress(s.DB, &p, &packet) {
 						s.sendOpenBridgePacket(ctx, p.ID, packet)
 					}
 				}

@@ -281,9 +281,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	shouldIngress, reason := rules.PeerShouldIngress(s.DB, &peer, &packet)
-	if !shouldIngress {
-		klog.Warningf("Peer %d is not allowed to ingress: %d", peerID, reason)
+	if !rules.PeerShouldIngress(s.DB, &peer, &packet) {
 		return
 	}
 
@@ -293,8 +291,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		if p.ID == peerID {
 			continue
 		}
-		shouldEgress, _ := rules.PeerShouldEgress(s.DB, &p, &packet)
-		if shouldEgress {
+		if rules.PeerShouldEgress(s.DB, &p, &packet) {
 			s.sendPacket(ctx, p.ID, packet)
 		}
 	}

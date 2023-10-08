@@ -166,14 +166,6 @@ func POSTPeer(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	db.First(&user, userID)
-	if db.Error != nil {
-		klog.Errorf("Error getting user %d: %v", userID, db.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
-		return
-	}
-
 	var json apimodels.PeerPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
@@ -211,9 +203,17 @@ func POSTPeer(c *gin.Context) {
 			return
 		}
 
+		var user models.User
+		db.First(&user, json.OwnerID)
+		if db.Error != nil {
+			klog.Errorf("Error getting user %d: %v", userID, db.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			return
+		}
+
 		// Find user by userID
 		peer.Owner = user
-		peer.OwnerID = user.ID
+		peer.OwnerID = json.OwnerID
 		db.Preload("Owner").Create(&peer)
 		if db.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})

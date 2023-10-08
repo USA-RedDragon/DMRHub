@@ -21,6 +21,7 @@ package apimodels
 
 type PeerPost struct {
 	ID      uint `json:"id" binding:"required"`
+	OwnerID uint `json:"owner" binding:"required"`
 	Ingress bool `json:"ingress"`
 	Egress  bool `json:"egress"`
 }

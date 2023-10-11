@@ -326,17 +326,6 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.Redis.UpdateRepeaterPing(ctx, repeaterID)
 
-		exists, err := models.RepeaterIDExists(s.DB, repeaterID)
-		if err != nil {
-			klog.Errorf("Error checking if repeater exists: %s", err)
-			return
-		}
-
-		if !exists {
-			klog.Warningf("Repeater %d does not exist", repeaterID)
-			return
-		}
-
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			klog.Errorf("Error finding repeater: %s", err)
@@ -355,15 +344,15 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			return
 		}
 
+		if packet.Dst == 0 {
+			return
+		}
+
 		if config.GetConfig().Debug {
 			logging.GetLogger(logging.Access).Logf(s.handleDMRDPacket, "DMRD packet: %s", packet.String())
 		}
 
 		isVoice, isData := utils.CheckPacketType(packet)
-
-		if packet.Dst == 0 {
-			return
-		}
 
 		s.TrackCall(ctx, packet, isVoice)
 

@@ -33,30 +33,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  staticcheck:
-    name: StaticCheck
-    needs: frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version-file: go.mod
-      - name: Copy built frontend
-        uses: actions/download-artifact@v3
-        with:
-          name: frontend
-          path: internal/http/frontend/dist
-      - run: go generate ./...
-      - name: check
-        uses: USA-RedDragon/golang-github-actions@v1.2.6
-        with:
-          run: staticcheck
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          CGO_ENABLED: "0"
-
   golangci:
     name: lint
     needs: frontend

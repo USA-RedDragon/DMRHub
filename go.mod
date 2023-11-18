@@ -3,7 +3,7 @@ module github.com/USA-RedDragon/DMRHub
 go 1.21.4
 
 require (
-	github.com/USA-RedDragon/gin-rate-limit-v9 v1.6.1
+	github.com/JGLTechnologies/gin-rate-limit v1.5.4
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-contrib/pprof v1.4.0
 	github.com/gin-contrib/sessions v0.0.5

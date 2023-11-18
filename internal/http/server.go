@@ -30,12 +30,12 @@ import (
 	"strings"
 	"time"
 
+	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	redisSessions "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	ratelimit "github.com/USA-RedDragon/gin-rate-limit-v9"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-contrib/sessions"

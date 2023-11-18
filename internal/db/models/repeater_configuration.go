@@ -128,9 +128,9 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
 
 	c.Location = strings.TrimRight(string(data[58:78]), " ")
 
-	c.Description = strings.TrimRight(string(data[78:98]), " ")
+	c.Description = strings.TrimRight(string(data[78:97]), " ")
 
-	slots, err := strconv.ParseInt(strings.TrimRight(string(data[98:99]), " "), 0, 32)
+	slots, err := strconv.ParseInt(string(data[97]), 0, 32)
 	if err != nil {
 		logging.Errorf("Error parsing slots: %v", err)
 		return ErrInvalidInt

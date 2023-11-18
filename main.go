@@ -211,7 +211,11 @@ func start() int {
 	if config.GetConfig().OpenBridgePort != 0 {
 		// Start the OpenBridge server
 		openbridgeServer := openbridge.MakeServer(database, redisClient, callTracker)
-		openbridgeServer.Start(ctx)
+		err := openbridgeServer.Start(ctx)
+		if err != nil {
+			logging.Errorf("Failed to start OpenBridge server: %v", err)
+			return 1
+		}
 		defer openbridgeServer.Stop(ctx)
 
 		go func() {

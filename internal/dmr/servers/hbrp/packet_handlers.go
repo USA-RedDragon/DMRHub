@@ -371,7 +371,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 				// We need to send this packet to all peers except the one that sent it
 				peers := models.ListPeers(s.DB)
 				for _, p := range peers {
-					if rules.PeerShouldEgress(s.DB, &p, &packet) {
+					if rules.PeerShouldEgress(s.DB, p, &packet) {
 						s.sendOpenBridgePacket(ctx, p.ID, packet)
 					}
 				}
@@ -700,21 +700,21 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing RXFreq", err)
+		logging.Errorf("Error parsing RXFreq: %v", err)
 		return
 	}
 	repeater.RXFrequency = uint(rxFreq)
 
 	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing TXFreq", err)
+		logging.Errorf("Error parsing TXFreq: %v", err)
 		return
 	}
 	repeater.TXFrequency = uint(txFreq)
 
 	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing TXPower", err)
+		logging.Errorf("Error parsing TXPower: %v", err)
 		return
 	}
 	repeater.TXPower = uint(txPower)
@@ -725,7 +725,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing ColorCode", err)
+		logging.Errorf("Error parsing ColorCode: %v", err)
 		return
 	}
 	const maxColorCode = 15
@@ -737,7 +737,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 	if err != nil {
-		logging.Errorf("Error parsing Latitude", err)
+		logging.Errorf("Error parsing Latitude: %v", err)
 		return
 	}
 	if lat < -90 || lat > 90 {
@@ -748,7 +748,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 	if err != nil {
-		logging.Errorf("Error parsing Longitude", err)
+		logging.Errorf("Error parsing Longitude: %v", err)
 		return
 	}
 	if long < -180 || long > 180 {
@@ -759,7 +759,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing Height", err)
+		logging.Errorf("Error parsing Height: %v", err)
 		return
 	}
 	const maxHeight = 999
@@ -782,7 +782,7 @@ func (s *Server) updateRedisRepeater(data []byte, repeater *models.Repeater) {
 
 	slots, err := strconv.ParseInt(strings.TrimRight(string(data[97:98]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing Slots", err)
+		logging.Errorf("Error parsing Slots: %v", err)
 		return
 	}
 	repeater.Slots = uint(slots)

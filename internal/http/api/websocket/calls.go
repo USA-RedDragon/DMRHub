@@ -48,10 +48,10 @@ func CreateCallsWebsocket(db *gorm.DB, redis *redis.Client) *CallsWebsocket {
 	}
 }
 
-func (c *CallsWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session, msg []byte, t int) {
+func (c *CallsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) {
+func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, session sessions.Session) {
 	newCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
@@ -87,7 +87,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, r *http.Request, w webso
 	}()
 }
 
-func (c *CallsWebsocket) OnDisconnect(ctx context.Context, r *http.Request, _ sessions.Session) {
+func (c *CallsWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
 	err := c.subscription.Close()
 	if err != nil {
 		logging.Errorf("Failed to close pubsub: %v", err)

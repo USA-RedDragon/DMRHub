@@ -42,11 +42,11 @@ func CreateRepeatersWebsocket(db *gorm.DB, redis *redis.Client) *RepeatersWebsoc
 	}
 }
 
-func (c *RepeatersWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session, msg []byte, t int) {
+func (c *RepeatersWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *RepeatersWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) {
+func (c *RepeatersWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) {
 }
 
-func (c *RepeatersWebsocket) OnDisconnect(ctx context.Context, r *http.Request, _ sessions.Session) {
+func (c *RepeatersWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
 }

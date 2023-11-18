@@ -275,7 +275,7 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 	}
 	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from Redis", err)
+		logging.Errorf("Error getting repeater from Redis: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -285,7 +285,7 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling packet", err)
+		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
 	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)

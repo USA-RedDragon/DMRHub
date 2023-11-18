@@ -22,14 +22,13 @@ package userdb
 import (
 	"bytes"
 	"context"
-	"os"
-
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -246,7 +245,7 @@ func Update() error {
 
 	if len(tmpDB.Users) == 0 {
 		logging.Error("No DMR users found in database")
-		os.Exit(1)
+		return ErrUpdateFailed
 	}
 
 	tmpDB.Date = time.Now()

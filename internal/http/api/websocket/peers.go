@@ -42,11 +42,11 @@ func CreatePeersWebsocket(db *gorm.DB, redis *redis.Client) *PeersWebsocket {
 	}
 }
 
-func (c *PeersWebsocket) OnMessage(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session, msg []byte, t int) {
+func (c *PeersWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *PeersWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) {
+func (c *PeersWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) {
 }
 
-func (c *PeersWebsocket) OnDisconnect(ctx context.Context, r *http.Request, _ sessions.Session) {
+func (c *PeersWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
 }

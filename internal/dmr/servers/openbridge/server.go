@@ -24,8 +24,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha1" //#nosec G505 -- False positive, used for a protocol
 	"encoding/binary"
+	"fmt"
 	"net"
-	"os"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -72,25 +72,22 @@ func MakeServer(db *gorm.DB, redisClient *servers.RedisClient, callTracker *call
 }
 
 // Start starts the DMR server.
-func (s *Server) Start(ctx context.Context) {
+func (s *Server) Start(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Start")
 	defer span.End()
 
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
-		logging.Errorf("Error opening UDP Socket: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("error opening UDP Socket: %w", err)
 	}
 
 	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
-		logging.Errorf("Error setting UDP Socket read buffer: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("error setting UDP Socket read buffer: %w", err)
 	}
 	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
-		logging.Errorf("Error setting UDP Socket write buffer: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("error setting UDP Socket write buffer: %w", err)
 	}
 
 	s.Server = server
@@ -118,17 +115,19 @@ func (s *Server) Start(ctx context.Context) {
 				}
 				packedBytes, err := p.MarshalMsg(nil)
 				if err != nil {
-					logging.Errorf("Error marshalling packet", err)
+					logging.Errorf("Error marshalling packet: %v", err)
 					return
 				}
 				s.Redis.Redis.Publish(ctx, "openbridge:incoming", packedBytes)
 			}()
 		}
 	}()
+
+	return nil
 }
 
 // Stop stops the DMR server.
-func (s *Server) Stop(ctx context.Context) {
+func (s *Server) Stop(_ context.Context) {
 }
 
 func (s *Server) listen(ctx context.Context) {
@@ -139,14 +138,14 @@ func (s *Server) listen(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
 		if err != nil {
-			logging.Errorf("Error unmarshalling packet", err)
+			logging.Errorf("Error unmarshalling packet: %v", err)
 			continue
 		}
 		go s.handlePacket(ctx, &net.UDPAddr{
@@ -161,7 +160,7 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub", err)
+			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
@@ -182,7 +181,7 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 			Port: peer.Port,
 		})
 		if err != nil {
-			logging.Errorf("Error sending packet", err)
+			logging.Errorf("Error sending packet: %v", err)
 		}
 	}
 }
@@ -232,7 +231,7 @@ func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes
 	return true
 }
 
-func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
@@ -295,7 +294,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		if p.ID == peerID {
 			continue
 		}
-		if rules.PeerShouldEgress(s.DB, &p, &packet) {
+		if rules.PeerShouldEgress(s.DB, p, &packet) {
 			s.sendPacket(ctx, p.ID, packet)
 		}
 	}

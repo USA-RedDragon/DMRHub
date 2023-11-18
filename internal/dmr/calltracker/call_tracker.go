@@ -99,8 +99,8 @@ func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
 	return &CallTracker{
 		db:            db,
 		redis:         redis,
-		callEndTimers: xsync.NewIntegerMapOf[uint64, *time.Timer](),
-		inFlightCalls: xsync.NewIntegerMapOf[uint64, *models.Call](),
+		callEndTimers: xsync.NewMapOf[uint64, *time.Timer](),
+		inFlightCalls: xsync.NewMapOf[uint64, *models.Call](),
 	}
 }
 

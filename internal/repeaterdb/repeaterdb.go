@@ -22,7 +22,6 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -127,8 +126,8 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
-		repeaterDB.dmrRepeaterMap = xsync.NewIntegerMapOf[uint, DMRRepeater]()
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMap = xsync.NewMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -162,7 +161,7 @@ func UnpackDB() {
 		}
 
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 		repeaterDB.isDone.Store(true)
 	}
 
@@ -249,7 +248,7 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	repeaterDB.dmrRepeaters.Store(tmpDB)
 
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 	for i := range tmpDB.Repeaters {
 		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
 		if err != nil {
@@ -259,7 +258,7 @@ func Update() error {
 	}
 
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 
 	logging.Errorf("Update complete. Loaded %d DMR repeaters", Len())
 

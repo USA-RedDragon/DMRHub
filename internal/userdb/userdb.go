@@ -122,8 +122,8 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 func UnpackDB() {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMap = xsync.NewIntegerMapOf[uint, DMRUser]()
-		userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
+		userDB.dmrUserMap = xsync.NewMapOf[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
@@ -153,7 +153,7 @@ func UnpackDB() {
 		}
 
 		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 		userDB.isDone.Store(true)
 	}
 
@@ -240,13 +240,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	userDB.dmrUsers.Store(tmpDB)
 
-	userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
+	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 	for i := range tmpDB.Users {
 		userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
 	}
 
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdating = xsync.NewIntegerMapOf[uint, DMRUser]()
+	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 
 	logging.Errorf("Update complete. Loaded %d DMR users", Len())
 

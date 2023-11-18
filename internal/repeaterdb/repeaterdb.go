@@ -22,6 +22,7 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -260,7 +261,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewIntegerMapOf[uint, DMRRepeater]()
 
-	logging.Logf("Update complete. Loaded %d DMR repeaters", Len())
+	logging.Errorf("Update complete. Loaded %d DMR repeaters", Len())
 
 	return nil
 }

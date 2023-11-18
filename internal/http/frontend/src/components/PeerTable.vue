@@ -35,11 +35,11 @@
   >
     <template #header v-if="this.$props.admin">
       <div class="table-header-container">
-        <RouterLink to="#">
+        <RouterLink to="/admin/peers/new">
           <PVButton
             class="p-button-raised p-button-rounded p-button-success"
             icon="pi pi-plus"
-            label="Enroll New Peer - INOP"
+            label="Enroll New Peer"
           />
         </RouterLink>
       </div>

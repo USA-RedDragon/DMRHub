@@ -63,6 +63,7 @@ func ApplyRoutes(router *gin.Engine, db *gorm.DB, redis *redis.Client, ratelimit
 }
 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
+	group.GET("/features", v1Controllers.GETFeatures)
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.GET("/logout", v1AuthControllers.GETLogout)

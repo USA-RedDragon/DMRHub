@@ -22,12 +22,12 @@
 <template>
   <header>
     <h1>
-      <RouterLink to="/">{{ title }}</RouterLink>
+      <router-link to="/">{{ title }}</router-link>
     </h1>
     <div class="wrapper">
       <nav>
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink v-if="this.userStore.loggedIn" to="/repeaters">Repeaters</RouterLink>
+        <router-link to="/">Home</router-link>
+        <router-link v-if="this.userStore.loggedIn" to="/repeaters">Repeaters</router-link>
         <router-link v-if="this.userStore.loggedIn" to="#" custom>
           <a
             href="#"
@@ -75,7 +75,7 @@
           </template>
         </PVMenu>
 
-        <RouterLink v-if="this.userStore.hasOpenBridgePeers" to="/peers">OpenBridge Peers</RouterLink>
+        <router-link v-if="this.openBridgeFeature" to="/peers">OpenBridge Peers</router-link>
         <router-link
           v-if="this.userStore.loggedIn && this.userStore.admin"
           to="#"
@@ -95,28 +95,7 @@
           v-if="this.userStore.loggedIn && this.userStore.admin"
           ref="adminMenu"
           :popup="true"
-          :model="[
-            {
-              label: '&nbsp;&nbsp;Talkgroups',
-              to: '/admin/talkgroups',
-            },
-            {
-              label: '&nbsp;&nbsp;Repeaters',
-              to: '/admin/repeaters',
-            },
-            {
-              label: '&nbsp;&nbsp;OpenBridge Peers',
-              to: '/admin/peers',
-            },
-            {
-              label: '&nbsp;&nbsp;Users',
-              to: '/admin/users',
-            },
-            {
-              label: '&nbsp;&nbsp;User Approvals',
-              to: '/admin/users/approval',
-            },
-          ]"
+          :model="this.adminMenu"
         >
           <template #item="{ item }">
             <router-link
@@ -138,11 +117,11 @@
             </router-link>
           </template>
         </PVMenu>
-        <RouterLink v-if="!this.userStore.loggedIn" to="/register"
-          >Register</RouterLink
+        <router-link v-if="!this.userStore.loggedIn" to="/register"
+          >Register</router-link
         >
-        <RouterLink v-if="!this.userStore.loggedIn" to="/login"
-          >Login</RouterLink
+        <router-link v-if="!this.userStore.loggedIn" to="/login"
+          >Login</router-link
         >
         <a v-else href="#" @click="logout()">Logout</a>
       </nav>
@@ -153,6 +132,7 @@
 <script>
 import Menu from 'primevue/menu';
 import API from '@/services/API';
+import features from '@/services/features';
 
 import { mapStores } from 'pinia';
 import { useUserStore } from '@/store';
@@ -164,9 +144,39 @@ export default {
   data: function() {
     return {
       title: localStorage.getItem('title') || 'DMRHub',
+      openBridgeFeature: false,
+      adminMenu: [
+        {
+          label: '\xa0\xa0Talkgroups',
+          to: '/admin/talkgroups',
+        },
+        {
+          label: '\xa0\xa0Repeaters',
+          to: '/admin/repeaters',
+        },
+        {
+          label: '\xa0\xa0Users',
+          to: '/admin/users',
+        },
+        {
+          label: '\xa0\xa0User Approvals',
+          to: '/admin/users/approval',
+        },
+      ],
     };
   },
   created() {
+    features.getFeatures().then(() => {
+      if (features.isEnabled(features.OpenBridge)) {
+        this.openBridgeFeature = true;
+        this.adminMenu.concat(
+          {
+            label: '\xa0\xa0OpenBridge Peers',
+            to: '/admin/peers',
+          },
+        );
+      }
+    });
     this.getTitle();
     this.userHasOpenBridgePeers();
   },
@@ -186,6 +196,10 @@ export default {
         });
     },
     userHasOpenBridgePeers() {
+      if (!this.openBridgeFeature) {
+        this.userStore.hasOpenBridgePeers = false;
+        return;
+      }
       API.get('/peers/my')
         .then((response) => {
           if ('total' in response.data && response.data.total > 0) {

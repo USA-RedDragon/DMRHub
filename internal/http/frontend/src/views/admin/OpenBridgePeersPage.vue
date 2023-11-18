@@ -24,7 +24,7 @@
     <Toast />
     <ConfirmDialog></ConfirmDialog>
     <Card>
-      <template #title>OpenBridge Peers - INOPERABLE</template>
+      <template #title>OpenBridge Peers</template>
       <template #content>
         <PeerTable admin />
       </template>

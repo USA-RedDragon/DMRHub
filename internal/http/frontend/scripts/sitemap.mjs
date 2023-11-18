@@ -11,7 +11,12 @@ const stream = new SitemapStream({ hostname: 'https://dmrhub.net' });
 
 const sitemapRoutes = [];
 
-for (const route of routes) {
+for (const route of routes({
+  OpenBridge: '',
+  isEnabled: () => {
+    return false;
+  },
+})) {
   const path = new Path(route.path);
 
   if (!path.hasUrlParams) {

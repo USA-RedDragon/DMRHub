@@ -17,12 +17,27 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
-import routes from './routes';
+import API from './API.js';
 
-export default (features) => {
-  return createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: routes(features),
-  });
+let features = [];
+
+export default {
+  OpenBridge: 'openbridge',
+  getFeatures() {
+    return new Promise((resolve, reject) => {
+      API.get('/features').then((response) => {
+        if (!('features' in response.data)) {
+          return;
+        }
+        features = response.data.features;
+        resolve(this);
+      }).catch((error) => {
+        console.error(error);
+        reject(error);
+      });
+    });
+  },
+  isEnabled(feature) {
+    return features.includes(feature);
+  },
 };

@@ -17,112 +17,121 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-export default [
-  {
-    path: '/',
-    name: 'Main',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 1,
+export default (features) => {
+  const ret = [
+    {
+      path: '/',
+      name: 'Main',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 1,
+      },
+      component: () => import('../views/MainPage.vue'),
     },
-    component: () => import('../views/MainPage.vue'),
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    sitemap: {
-      changefreq: 'monthly',
-      priority: 0.75,
+    {
+      path: '/login',
+      name: 'Login',
+      sitemap: {
+        changefreq: 'monthly',
+        priority: 0.75,
+      },
+      component: () => import('../views/auth/LoginPage.vue'),
     },
-    component: () => import('../views/auth/LoginPage.vue'),
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    sitemap: {
-      changefreq: 'monthly',
-      priority: 0.75,
+    {
+      path: '/register',
+      name: 'Register',
+      sitemap: {
+        changefreq: 'monthly',
+        priority: 0.75,
+      },
+      component: () => import('../views/auth/RegisterPage.vue'),
     },
-    component: () => import('../views/auth/RegisterPage.vue'),
-  },
-  {
-    path: '/repeaters',
-    name: 'Repeaters',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 1,
+    {
+      path: '/repeaters',
+      name: 'Repeaters',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 1,
+      },
+      component: () => import('../views/repeaters/RepeatersPage.vue'),
     },
-    component: () => import('../views/repeaters/RepeatersPage.vue'),
-  },
-  {
-    path: '/repeaters/new',
-    name: 'NewRepeater',
-    sitemap: {
-      changefreq: 'monthly',
-      priority: 0.75,
+    {
+      path: '/repeaters/new',
+      name: 'NewRepeater',
+      sitemap: {
+        changefreq: 'monthly',
+        priority: 0.75,
+      },
+      component: () => import('../views/repeaters/NewRepeaterPage.vue'),
     },
-    component: () => import('../views/repeaters/NewRepeaterPage.vue'),
-  },
-  {
-    path: '/peers',
-    name: 'UserOpenBridgePeers',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 0.75,
+    {
+      path: '/talkgroups',
+      name: 'Talkgroups',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 1,
+      },
+      component: () => import('../views/talkgroups/TalkgroupsPage.vue'),
     },
-    component: () => import('../views/peers/OpenBridgePeersPage.vue'),
-  },
-  {
-    path: '/admin/peers',
-    name: 'OpenBridgePeers',
-    component: () => import('../views/admin/OpenBridgePeersPage.vue'),
-  },
-  {
-    path: '/admin/peers/new',
-    name: 'NewOpenBridgePeer',
-    component: () => import('../views/admin/NewOpenBridgePeerPage.vue'),
-  },
-  {
-    path: '/talkgroups',
-    name: 'Talkgroups',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 1,
+    {
+      path: '/talkgroups/owned',
+      name: 'OwnedTalkgroups',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 1,
+      },
+      component: () => import('../views/talkgroups/OwnedTalkgroupsPage.vue'),
     },
-    component: () => import('../views/talkgroups/TalkgroupsPage.vue'),
-  },
-  {
-    path: '/talkgroups/owned',
-    name: 'OwnedTalkgroups',
-    sitemap: {
-      changefreq: 'daily',
-      priority: 1,
+    {
+      path: '/admin/repeaters',
+      name: 'AdminRepeaters',
+      component: () => import('../views/admin/RepeatersPage.vue'),
     },
-    component: () => import('../views/talkgroups/OwnedTalkgroupsPage.vue'),
-  },
-  {
-    path: '/admin/repeaters',
-    name: 'AdminRepeaters',
-    component: () => import('../views/admin/RepeatersPage.vue'),
-  },
-  {
-    path: '/admin/talkgroups',
-    name: 'AdminTalkgroups',
-    component: () => import('../views/admin/TalkgroupsPage.vue'),
-  },
-  {
-    path: '/admin/talkgroups/new',
-    name: 'NewTalkgroups',
-    component: () => import('../views/admin/NewTalkgroupsPage.vue'),
-  },
-  {
-    path: '/admin/users',
-    name: 'AdminUsers',
-    component: () => import('../views/admin/UsersPage.vue'),
-  },
-  {
-    path: '/admin/users/approval',
-    name: 'AdminUsersApproval',
-    component: () => import('../views/admin/UsersApprovalPage.vue'),
-  },
-];
+    {
+      path: '/admin/talkgroups',
+      name: 'AdminTalkgroups',
+      component: () => import('../views/admin/TalkgroupsPage.vue'),
+    },
+    {
+      path: '/admin/talkgroups/new',
+      name: 'NewTalkgroups',
+      component: () => import('../views/admin/NewTalkgroupsPage.vue'),
+    },
+    {
+      path: '/admin/users',
+      name: 'AdminUsers',
+      component: () => import('../views/admin/UsersPage.vue'),
+    },
+    {
+      path: '/admin/users/approval',
+      name: 'AdminUsersApproval',
+      component: () => import('../views/admin/UsersApprovalPage.vue'),
+    },
+  ];
+
+  if (features.isEnabled(features.OpenBridge)) {
+    ret.concat([
+      {
+        path: '/peers',
+        name: 'UserOpenBridgePeers',
+        sitemap: {
+          changefreq: 'daily',
+          priority: 0.75,
+        },
+        component: () => import('../views/peers/OpenBridgePeersPage.vue'),
+      },
+      {
+        path: '/admin/peers',
+        name: 'OpenBridgePeers',
+        component: () => import('../views/admin/OpenBridgePeersPage.vue'),
+      },
+      {
+        path: '/admin/peers/new',
+        name: 'NewOpenBridgePeer',
+        component: () => import('../views/admin/NewOpenBridgePeerPage.vue'),
+      },
+    ]);
+  }
+
+  return ret;
+};

@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/featureflags"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
@@ -96,6 +97,8 @@ func start() int {
 	defer logging.Close()
 
 	ctx := context.Background()
+
+	featureflags.Init(config.GetConfig())
 
 	scheduler := gocron.NewScheduler(time.UTC)
 

@@ -17,12 +17,44 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
-import routes from './routes';
+package featureflags
 
-export default (features) => {
-  return createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: routes(features),
-  });
-};
+import (
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/logging"
+)
+
+type FeatureFlag string
+
+const (
+	FeatureFlag_OpenBridge FeatureFlag = "openbridge"
+)
+
+var (
+	featureFlagManager *FeatureFlags
+)
+
+type FeatureFlags struct {
+	config *config.Config
+}
+
+func Init(config *config.Config) *FeatureFlags {
+	ff := &FeatureFlags{
+		config: config,
+	}
+	featureFlagManager = ff
+	return ff
+}
+
+func IsEnabled(flag FeatureFlag) bool {
+	if featureFlagManager == nil {
+		logging.Error("FeatureFlagManager not initialized")
+		return false
+	}
+	for _, v := range featureFlagManager.config.FeatureFlags {
+		if v == string(flag) {
+			return true
+		}
+	}
+	return false
+}

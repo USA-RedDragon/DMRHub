@@ -17,12 +17,15 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
-import routes from './routes';
+package v1
 
-export default (features) => {
-  return createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: routes(features),
-  });
-};
+import (
+	"net/http"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/gin-gonic/gin"
+)
+
+func GETFeatures(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"features": config.GetConfig().FeatureFlags})
+}

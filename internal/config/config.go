@@ -60,6 +60,7 @@ type Config struct {
 	NetworkName              string
 	AllowScraping            bool
 	CustomRobotsTxt          string
+	FeatureFlags             []string
 }
 
 var currentConfig atomic.Value //nolint:golint,gochecknoglobals
@@ -186,6 +187,13 @@ func loadConfig() Config {
 		}
 	} else {
 		tmpConfig.CORSHosts = strings.Split(corsHosts, ",")
+	}
+	// FEATURE_FLAGS is a comma separated list of enabled feature flags
+	featureFlags := os.Getenv("FEATURE_FLAGS")
+	if featureFlags == "" {
+		tmpConfig.FeatureFlags = []string{}
+	} else {
+		tmpConfig.FeatureFlags = strings.Split(featureFlags, ",")
 	}
 	trustedProxies := os.Getenv("TRUSTED_PROXIES")
 	if trustedProxies == "" {

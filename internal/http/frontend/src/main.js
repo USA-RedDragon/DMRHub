@@ -30,6 +30,7 @@ import ConfirmDialog from 'primevue/confirmdialog';
 
 import App from './App.vue';
 import router from './router';
+import features from './services/features';
 
 import 'primeflex/primeflex.scss';
 import 'primeicons/primeicons.css';
@@ -47,9 +48,19 @@ app.use(DialogService);
 app.use(ConfirmationService);
 app.use(pinia);
 app.use(PrimeVue);
-app.use(router);
 
 app.component('PVToast', Toast);
 app.component('ConfirmDialog', ConfirmDialog);
 
-app.mount('#app');
+features.getFeatures().then(() => {
+  app.use(router(features));
+}).catch(() => {
+  app.use(router({
+    OpenBridge: '',
+    isEnabled: () => {
+      return false;
+    },
+  }));
+}).finally(() => {
+  app.mount('#app');
+});

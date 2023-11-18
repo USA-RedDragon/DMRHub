@@ -118,7 +118,7 @@ func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client) {
 	r.Use(cors.New(corsConfig))
 
 	// Sessions
-	sessionStore, _ := redisSessions.NewStore(redisClient, []byte(""), config.GetConfig().Secret)
+	sessionStore, _ := redisSessions.NewStore(redisClient, config.GetConfig().Secret, config.GetConfig().Secret)
 	r.Use(sessions.Sessions("sessions", sessionStore))
 }
 

@@ -44,7 +44,7 @@ type SubscriptionManager struct {
 func GetSubscriptionManager() *SubscriptionManager {
 	if subscriptionManager == nil {
 		subscriptionManager = &SubscriptionManager{
-			subscriptions: xsync.NewIntegerMapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]](),
+			subscriptions: xsync.NewMapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]](),
 		}
 	}
 	return subscriptionManager
@@ -131,7 +131,7 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 
 	_, ok := m.subscriptions.Load(p.ID)
 	if !ok {
-		m.subscriptions.Store(p.ID, xsync.NewIntegerMapOf[uint, *context.CancelFunc]())
+		m.subscriptions.Store(p.ID, xsync.NewMapOf[uint, *context.CancelFunc]())
 	}
 
 	radioSubs, ok := m.subscriptions.Load(p.ID)

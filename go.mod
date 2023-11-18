@@ -12,8 +12,8 @@ require (
 	github.com/go-co-op/gocron v1.36.0
 	github.com/go-gormigrate/gormigrate/v2 v2.1.1
 	github.com/google/go-cmp v0.6.0
-	github.com/gorilla/securecookie v1.1.1
-	github.com/gorilla/sessions v1.2.1
+	github.com/gorilla/securecookie v1.1.2
+	github.com/gorilla/sessions v1.2.2
 	github.com/gorilla/websocket v1.5.1
 	github.com/kachit/gorm-seeder v0.0.3
 	github.com/mavjs/goPwned v0.0.2

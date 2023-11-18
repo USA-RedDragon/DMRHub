@@ -1,8 +1,9 @@
 /* eslint-disable no-undef */
-const { defineConfig } = require('cypress');
-const process = require('process');
+import { defineConfig } from 'cypress';
+import process from 'process';
+import cypressMochawesomeReporter from 'cypress-mochawesome-reporter/plugin.js';
 
-module.exports = defineConfig({
+export default defineConfig({
   video: process.env.BROWSER !== 'firefox',
   reporter: 'cypress-multi-reporters',
   reporterOptions: {
@@ -19,7 +20,7 @@ module.exports = defineConfig({
   },
   e2e: {
     setupNodeEvents(on, config) {
-      require('cypress-mochawesome-reporter/plugin')(on);
+      cypressMochawesomeReporter(on);
       return config;
     },
     specPattern: 'tests/e2e/**/*.{cy,spec}.{js,jsx,ts,tsx}',

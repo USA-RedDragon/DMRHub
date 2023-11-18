@@ -147,7 +147,7 @@ func (s *UsersSeeder) Seed(db *gorm.DB) error {
 	return db.CreateInBatches(users, s.Configuration.Rows).Error
 }
 
-func (s *UsersSeeder) Clear(db *gorm.DB) error {
+func (s *UsersSeeder) Clear(_ *gorm.DB) error {
 	return nil
 }
 

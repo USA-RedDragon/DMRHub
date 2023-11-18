@@ -79,10 +79,9 @@ func (t *TestDB) createRedis() *redis.Client {
 		if err != nil {
 			port++
 			continue
-		} else {
-			listener.Close()
-			break
 		}
+		listener.Close()
+		break
 	}
 
 	// pulls an image, creates a container based on it and runs it

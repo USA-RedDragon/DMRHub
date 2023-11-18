@@ -144,6 +144,6 @@ func (s *TalkgroupsSeeder) Seed(db *gorm.DB) error {
 	return db.CreateInBatches(talkgroups, s.Configuration.Rows).Error
 }
 
-func (s *TalkgroupsSeeder) Clear(db *gorm.DB) error {
+func (s *TalkgroupsSeeder) Clear(_ *gorm.DB) error {
 	return nil
 }

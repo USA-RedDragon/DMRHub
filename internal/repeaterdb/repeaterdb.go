@@ -22,14 +22,13 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-	"os"
-
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -255,7 +254,7 @@ func Update() error {
 
 	if len(tmpDB.Repeaters) == 0 {
 		logging.Error("No DMR repeaters found in database")
-		os.Exit(1)
+		return ErrUpdateFailed
 	}
 
 	tmpDB.Date = time.Now()

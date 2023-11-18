@@ -34,13 +34,19 @@ func Migrate(db *gorm.DB) error {
 			ID: "202302242025",
 			Migrate: func(tx *gorm.DB) error {
 				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
-					return tx.Migrator().RenameColumn(&models.Repeater{}, "radio_id", "id")
+					err := tx.Migrator().RenameColumn(&models.Repeater{}, "radio_id", "id")
+					if err != nil {
+						return fmt.Errorf("could not rename column: %w", err)
+					}
 				}
 				return nil
 			},
 			Rollback: func(tx *gorm.DB) error {
 				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "id") && !db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
-					return tx.Migrator().RenameColumn(&models.Repeater{}, "id", "radio_id")
+					err := tx.Migrator().RenameColumn(&models.Repeater{}, "id", "radio_id")
+					if err != nil {
+						return fmt.Errorf("could not rename column: %w", err)
+					}
 				}
 				return nil
 			},

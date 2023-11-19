@@ -51,6 +51,27 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202311190252",
+			Migrate: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable("repeater_ts1_static_talkgroups") && db.Migrator().HasColumn("repeater_ts1_static_talkgroups", "repeater_radio_id") {
+					err := tx.Migrator().DropTable("repeater_ts1_static_talkgroups")
+					if err != nil {
+						return fmt.Errorf("could not drop table: %w", err)
+					}
+				}
+				if db.Migrator().HasTable("repeater_ts2_static_talkgroups") && db.Migrator().HasColumn("repeater_ts2_static_talkgroups", "repeater_radio_id") {
+					err := tx.Migrator().DropTable("repeater_ts2_static_talkgroups")
+					if err != nil {
+						return fmt.Errorf("could not drop table: %w", err)
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

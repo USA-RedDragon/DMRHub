@@ -137,14 +137,14 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
 	}
 	c.Slots = uint(slots)
 
-	c.URL = strings.TrimRight(string(data[99:223]), " ")
+	c.URL = strings.TrimRight(string(data[98:222]), " ")
 
-	c.SoftwareID = strings.TrimRight(string(data[223:263]), " ")
+	c.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
 	if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
 	}
 
-	c.PackageID = strings.TrimRight(string(data[263:302]), " ")
+	c.PackageID = strings.TrimRight(string(data[262:302]), " ")
 	if c.PackageID == "" {
 		c.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
 	}

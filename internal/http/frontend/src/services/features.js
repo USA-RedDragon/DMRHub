@@ -26,7 +26,7 @@ export default {
   getFeatures() {
     return new Promise((resolve, reject) => {
       API.get('/features').then((response) => {
-        if (!('features' in response.data)) {
+        if (typeof response.data !== 'object' || !('features' in response.data)) {
           return;
         }
         features = response.data.features;

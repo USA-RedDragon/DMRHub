@@ -27,6 +27,7 @@ export default {
     return new Promise((resolve, reject) => {
       API.get('/features').then((response) => {
         if (typeof response.data !== 'object' || !('features' in response.data)) {
+          reject(new Error('Invalid response from server'));
           return;
         }
         features = response.data.features;

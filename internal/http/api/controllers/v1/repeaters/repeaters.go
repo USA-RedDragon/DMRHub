@@ -284,8 +284,8 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
-	hbrp.GetSubscriptionManager().CancelAllRepeaterSubscriptions(repeater)
-	go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
+	hbrp.GetSubscriptionManager(db).CancelAllRepeaterSubscriptions(repeater.ID)
+	go hbrp.GetSubscriptionManager(db).ListenForCalls(redis, repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
@@ -418,7 +418,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
-		go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
+		go hbrp.GetSubscriptionManager(db).ListenForCalls(redis, repeater.ID)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -519,7 +519,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go hbrp.GetSubscriptionManager().ListenForCallsOn(redis, repeater, talkgroup.ID)
+	go hbrp.GetSubscriptionManager(db).ListenForCallsOn(redis, repeater.ID, talkgroup.ID)
 	err = db.Save(&repeater).Error
 	if err != nil {
 		logging.Errorf("Error saving repeater: %v", err)
@@ -617,7 +617,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS1DynamicTalkgroupID = nil
 
-			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
+			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, 1)
 
 			err := db.Save(&repeater).Error
 			if err != nil {
@@ -635,7 +635,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS2DynamicTalkgroupID = nil
 
-			hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldTGID)
+			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, 2)
 
 			err := db.Save(&repeater).Error
 			if err != nil {
@@ -659,7 +659,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1StaticTalkgroups"})
 						return
 					}
-					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
+					hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldID, 1)
 					err = db.Save(&repeater).Error
 					if err != nil {
 						logging.Errorf("Error saving repeater: %v", err)
@@ -688,7 +688,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2StaticTalkgroups"})
 						return
 					}
-					hbrp.GetSubscriptionManager().CancelSubscription(repeater, oldID)
+					hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldID, 2)
 					err = db.Save(&repeater).Error
 					if err != nil {
 						logging.Errorf("Error saving repeater: %v", err)

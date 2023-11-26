@@ -65,7 +65,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 			logging.Errorf("Failed to convert user ID to uint")
 			return
 		}
-		go hbrp.GetSubscriptionManager().ListenForWebsocket(newCtx, c.db, c.redis, userID)
+		go hbrp.GetSubscriptionManager(c.db).ListenForWebsocket(newCtx, c.redis, userID)
 		c.subscription = c.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
 	}
 

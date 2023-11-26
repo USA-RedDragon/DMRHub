@@ -39,31 +39,44 @@ var subscriptionManager *SubscriptionManager //nolint:golint,gochecknoglobals
 type SubscriptionManager struct {
 	// stores map[uint]context.CancelFunc indexed by strconv.Itoa(int(radioID))
 	subscriptions *xsync.MapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]]
+	db            *gorm.DB
 }
 
-func GetSubscriptionManager() *SubscriptionManager {
+func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
 	if subscriptionManager == nil {
 		subscriptionManager = &SubscriptionManager{
 			subscriptions: xsync.NewMapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]](),
+			db:            db,
 		}
 	}
 	return subscriptionManager
 }
 
-func (m *SubscriptionManager) CancelSubscription(p models.Repeater, talkgroupID uint) {
-	radioSubscriptions, ok := m.subscriptions.Load(p.ID)
+func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID uint, slot uint) {
+	radioSubscriptions, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
+		logging.Errorf("Failed to load radio subscriptions for repeater %d", repeaterID)
 		return
 	}
 
-	// Check if the talkgroup is already subscribed to on a different slot
-	// If it is, don't cancel the subscription
-	if p.TS1DynamicTalkgroupID != nil && *p.TS1DynamicTalkgroupID == talkgroupID {
+	p, err := models.FindRepeaterByID(m.db, repeaterID)
+	if err != nil {
+		logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
 		return
 	}
-	if p.TS2DynamicTalkgroupID != nil && *p.TS2DynamicTalkgroupID == talkgroupID {
+
+	// Check the other slot
+	dynamicSlot := p.TS2DynamicTalkgroupID
+	if slot == 2 {
+		dynamicSlot = p.TS1DynamicTalkgroupID
+	}
+
+	// If the other slot is linked to this talkgroup, don't cancel the subscription
+	if dynamicSlot != nil && *dynamicSlot == talkgroupID {
+		logging.Errorf("Not cancelling subscription for repeater %d, talkgroup %d, slot %d because the other slot is linked to this talkgroup", p.ID, talkgroupID, slot)
 		return
 	}
+
 	for _, tg := range p.TS1StaticTalkgroups {
 		if tg.ID == talkgroupID {
 			return
@@ -87,29 +100,30 @@ func (m *SubscriptionManager) CancelAllSubscriptions() {
 		logging.Errorf("Cancelling all subscriptions")
 	}
 	m.subscriptions.Range(func(radioID uint, value *xsync.MapOf[uint, *context.CancelFunc]) bool {
-		m.CancelAllRepeaterSubscriptions(models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: radioID}})
+		m.CancelAllRepeaterSubscriptions(radioID)
 		return true
 	})
 }
 
-func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(p models.Repeater) {
+func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(repeaterID uint) {
 	if config.GetConfig().Debug {
-		logging.Errorf("Cancelling all subscriptions for repeater %d", p.ID)
+		logging.Errorf("Cancelling all subscriptions for repeater %d", repeaterID)
 	}
-	radioSubs, ok := m.subscriptions.Load(p.ID)
+	radioSubs, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
 		return
 	}
 	radioSubs.Range(func(tgID uint, value *context.CancelFunc) bool {
-		m.CancelSubscription(p, tgID)
+		m.CancelSubscription(repeaterID, tgID, 1)
+		m.CancelSubscription(repeaterID, tgID, 2)
 		return true
 	})
 }
 
-func (m *SubscriptionManager) ListenForCallsOn(redis *redis.Client, p models.Repeater, talkgroupID uint) {
+func (m *SubscriptionManager) ListenForCallsOn(redis *redis.Client, repeaterID uint, talkgroupID uint) {
 	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCallsOn")
 	defer span.End()
-	radioSubs, ok := m.subscriptions.Load(p.ID)
+	radioSubs, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
 		return
 	}
@@ -117,11 +131,11 @@ func (m *SubscriptionManager) ListenForCallsOn(redis *redis.Client, p models.Rep
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
 		radioSubs.Store(talkgroupID, &cancel)
-		go m.subscribeTG(newCtx, redis, p, talkgroupID) //nolint:golint,contextcheck
+		go m.subscribeTG(newCtx, redis, repeaterID, talkgroupID) //nolint:golint,contextcheck
 	}
 }
 
-func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repeater) {
+func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, repeaterID uint) {
 	// Subscribe to Redis "packets:repeater:<id>" channel for a dmr.RawDMRPacket
 	// This channel is used to get private calls headed to this repeater
 	// When a packet is received, we need to publish it to "outgoing" channel
@@ -129,22 +143,28 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCalls")
 	defer span.End()
 
-	_, ok := m.subscriptions.Load(p.ID)
+	_, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
-		m.subscriptions.Store(p.ID, xsync.NewMapOf[uint, *context.CancelFunc]())
+		m.subscriptions.Store(repeaterID, xsync.NewMapOf[uint, *context.CancelFunc]())
 	}
 
-	radioSubs, ok := m.subscriptions.Load(p.ID)
+	radioSubs, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
 		logging.Error("Failed to load radio subscriptions")
 		return
 	}
 
-	_, ok = radioSubs.Load(p.ID)
+	p, err := models.FindRepeaterByID(m.db, repeaterID)
+	if err != nil {
+		logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
+		return
+	}
+
+	_, ok = radioSubs.Load(repeaterID)
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
-		radioSubs.Store(p.ID, &cancel)
-		go m.subscribeRepeater(newCtx, redis, p) //nolint:golint,contextcheck
+		radioSubs.Store(repeaterID, &cancel)
+		go m.subscribeRepeater(newCtx, redis, repeaterID) //nolint:golint,contextcheck
 	}
 
 	// Subscribe to Redis "packets:talkgroup:<id>" channel for each talkgroup
@@ -153,7 +173,7 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
-			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, redis, repeaterID, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
@@ -161,7 +181,7 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
-			go m.subscribeTG(newCtx, redis, p, tg.ID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, redis, repeaterID, tg.ID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS1DynamicTalkgroupID != nil {
@@ -169,7 +189,7 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS1DynamicTalkgroupID, &cancel)
-			go m.subscribeTG(newCtx, redis, p, *p.TS1DynamicTalkgroupID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, redis, repeaterID, *p.TS1DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
@@ -177,12 +197,12 @@ func (m *SubscriptionManager) ListenForCalls(redis *redis.Client, p models.Repea
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, &cancel)
-			go m.subscribeTG(newCtx, redis, p, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, redis, repeaterID, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
 		}
 	}
 }
 
-func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.DB, redis *redis.Client, userID uint) {
+func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, redis *redis.Client, userID uint) {
 	logging.Logf("Listening for websocket for user %d", userID)
 	pubsub := redis.Subscribe(ctx, "calls")
 	defer func() {
@@ -209,7 +229,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 				continue
 			}
 
-			userExists, err := models.UserIDExists(db, userID)
+			userExists, err := models.UserIDExists(m.db, userID)
 			if err != nil {
 				logging.Errorf("Error checking if user exists: %s", err)
 				continue
@@ -220,7 +240,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 				continue
 			}
 
-			user, err := models.FindUserByID(db, userID)
+			user, err := models.FindUserByID(m.db, userID)
 			if err != nil {
 				logging.Errorf("Error finding user: %s", err)
 				continue
@@ -273,15 +293,15 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, db *gorm.D
 	}
 }
 
-func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redis.Client, p models.Repeater) {
+func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redis.Client, repeaterID uint) {
 	if config.GetConfig().Debug {
-		logging.Errorf("Listening for calls on repeater %d", p.ID)
+		logging.Errorf("Listening for calls on repeater %d", repeaterID)
 	}
-	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.ID))
+	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID))
 	defer func() {
-		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", p.ID))
+		err := pubsub.Unsubscribe(ctx, fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID))
 		if err != nil {
-			logging.Errorf("Error unsubscribing from hbrp:packets:repeater:%d: %s", p.ID, err)
+			logging.Errorf("Error unsubscribing from hbrp:packets:repeater:%d: %s", repeaterID, err)
 		}
 		err = pubsub.Close()
 		if err != nil {
@@ -293,11 +313,11 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 		select {
 		case <-ctx.Done():
 			if config.GetConfig().Debug {
-				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d", p.ID)
+				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d", repeaterID)
 			}
-			radioSubs, ok := m.subscriptions.Load(p.ID)
+			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
-				radioSubs.Delete(p.ID)
+				radioSubs.Delete(repeaterID)
 			}
 			return
 		case msg := <-pubsubChannel:
@@ -313,18 +333,18 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, redis *redi
 				logging.Errorf("Failed to unpack packet")
 				continue
 			}
-			packet.Repeater = p.ID
+			packet.Repeater = repeaterID
 			redis.Publish(ctx, "hbrp:outgoing:noaddr", packet.Encode())
 		}
 	}
 }
 
-func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Client, p models.Repeater, tg uint) {
+func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Client, repeaterID uint, tg uint) {
 	if tg == 0 {
 		return
 	}
 	if config.GetConfig().Debug {
-		logging.Logf("Listening for calls on repeater %d, talkgroup %d", p.ID, tg)
+		logging.Logf("Listening for calls on repeater %d, talkgroup %d", repeaterID, tg)
 	}
 	pubsub := redis.Subscribe(ctx, fmt.Sprintf("hbrp:packets:talkgroup:%d", tg))
 	defer func() {
@@ -343,9 +363,9 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 		select {
 		case <-ctx.Done():
 			if config.GetConfig().Debug {
-				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d, talkgroup %d", p.ID, tg)
+				logging.Logf("Context canceled, stopping subscription to hbrp:packets:repeater:%d, talkgroup %d", repeaterID, tg)
 			}
-			radioSubs, ok := m.subscriptions.Load(p.ID)
+			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
 				radioSubs.Delete(tg)
 			}
@@ -363,10 +383,15 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, redis *redis.Clie
 				continue
 			}
 
-			if packet.Repeater == p.ID {
+			if packet.Repeater == repeaterID {
 				continue
 			}
 
+			p, err := models.FindRepeaterByID(m.db, repeaterID)
+			if err != nil {
+				logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
+				continue
+			}
 			want, slot := p.WantRX(packet)
 			if want {
 				// This packet is for the repeater's dynamic talkgroup

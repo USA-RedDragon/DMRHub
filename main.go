@@ -206,7 +206,7 @@ func start() int {
 			return err //nolint:golint,wrapcheck
 		}
 		for _, repeater := range repeaters {
-			go hbrp.GetSubscriptionManager().ListenForCalls(redis, repeater)
+			go hbrp.GetSubscriptionManager(database).ListenForCalls(redis, repeater.ID)
 		}
 		return nil
 	})
@@ -256,7 +256,7 @@ func start() int {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			hbrp.GetSubscriptionManager().CancelAllSubscriptions()
+			hbrp.GetSubscriptionManager(database).CancelAllSubscriptions()
 			hbrpServer.Stop(ctx)
 		}(wg)
 

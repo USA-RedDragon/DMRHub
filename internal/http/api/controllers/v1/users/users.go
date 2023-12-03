@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -187,6 +188,16 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "User created, please wait for admin approval"})
+		if config.GetConfig().EnableEmail {
+			err := smtp.Send(
+				config.GetConfig().AdminEmail,
+				"New user registration",
+				fmt.Sprintf("A new user has registered.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d\r\n\r\n<a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
+			)
+			if err != nil {
+				logging.Errorf("POSTUser: Error sending email: %v", err)
+			}
+		}
 	}
 }
 
@@ -231,6 +242,17 @@ func POSTUserDemote(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User demoted"})
+
+	if config.GetConfig().EnableEmail {
+		err := smtp.Send(
+			config.GetConfig().AdminEmail,
+			"Admin user demotion",
+			fmt.Sprintf("An admin has been demoted.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		)
+		if err != nil {
+			logging.Errorf("POSTUserDemote: Error sending email: %v", err)
+		}
+	}
 }
 
 func POSTUserPromote(c *gin.Context) {
@@ -272,6 +294,17 @@ func POSTUserPromote(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
+
+	if config.GetConfig().EnableEmail {
+		err := smtp.Send(
+			config.GetConfig().AdminEmail,
+			"Admin user promotion",
+			fmt.Sprintf("An admin has been promoted.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		)
+		if err != nil {
+			logging.Errorf("POSTUserPromote: Error sending email: %v", err)
+		}
+	}
 }
 
 func POSTUserUnsuspend(c *gin.Context) {

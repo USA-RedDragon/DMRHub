@@ -23,11 +23,13 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -221,5 +223,13 @@ func POSTPeer(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Peer created", "password": peer.Password})
 		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), redis, peer)
+
+		if config.GetConfig().EnableEmail {
+			smtp.Send(
+				config.GetConfig().AdminEmail,
+				"OpenBridge peer created",
+				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
+			)
+		}
 	}
 }

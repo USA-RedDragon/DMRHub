@@ -4,6 +4,8 @@ go 1.21.4
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.4
+	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21
+	github.com/emersion/go-smtp v0.19.0
 	github.com/gin-contrib/cors v1.5.0
 	github.com/gin-contrib/pprof v1.4.0
 	github.com/gin-contrib/sessions v0.0.5

@@ -61,6 +61,15 @@ type Config struct {
 	AllowScraping            bool
 	CustomRobotsTxt          string
 	FeatureFlags             []string
+	SMTPHost                 string
+	SMTPPort                 int
+	SMTPUsername             string
+	SMTPPassword             string
+	SMTPFrom                 string
+	SMTPAuthMethod           string
+	AdminEmail               string
+	EnableEmail              bool
+	CanonicalHost            string
 }
 
 var currentConfig atomic.Value //nolint:golint,gochecknoglobals
@@ -98,6 +107,12 @@ func loadConfig() Config {
 		metricsPort = 0
 	}
 
+	portStr = os.Getenv("SMTP_PORT")
+	smtpPort, err := strconv.ParseInt(portStr, 10, 0)
+	if err != nil {
+		smtpPort = 0
+	}
+
 	tmpConfig := Config{
 		RedisHost:                os.Getenv("REDIS_HOST"),
 		postgresUser:             os.Getenv("PG_USER"),
@@ -120,6 +135,15 @@ func loadConfig() Config {
 		AllowScraping:            os.Getenv("ALLOW_SCRAPING") != "",
 		CustomRobotsTxt:          os.Getenv("CUSTOM_ROBOTS_TXT"),
 		OpenBridgePort:           int(openBridgePort),
+		SMTPHost:                 os.Getenv("SMTP_HOST"),
+		SMTPPort:                 int(smtpPort),
+		SMTPUsername:             os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:             os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:                 os.Getenv("SMTP_FROM"),
+		SMTPAuthMethod:           os.Getenv("SMTP_AUTH_METHOD"),
+		AdminEmail:               os.Getenv("ADMIN_EMAIL"),
+		EnableEmail:              os.Getenv("ENABLE_EMAIL") != "",
+		CanonicalHost:            os.Getenv("CANONICAL_HOST"),
 	}
 	if tmpConfig.RedisHost == "" {
 		tmpConfig.RedisHost = "localhost:6379"
@@ -201,6 +225,18 @@ func loadConfig() Config {
 	} else {
 		tmpConfig.TrustedProxies = strings.Split(trustedProxies, ",")
 	}
+
+	if tmpConfig.CanonicalHost == "" {
+		tmpConfig.CanonicalHost = "localhost"
+	}
+
+	switch tmpConfig.SMTPAuthMethod {
+	case "PLAIN":
+	case "LOGIN":
+	default:
+		logging.Error("SMTP_AUTH_METHOD not set to a valid value. You can ignore this if you are not using email features.")
+	}
+
 	if tmpConfig.Debug {
 		logging.Error("Debug mode enabled, this should not be used in production")
 		logging.Errorf("Config: %+v", tmpConfig)

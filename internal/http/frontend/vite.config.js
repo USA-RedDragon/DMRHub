@@ -15,29 +15,14 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/v1/features': {
-        bypass: (req, res) => {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ features: [''] }));
-        },
+      '/api': {
+        target: 'https://dmrhub.net',
+        changeOrigin: true,
       },
-      '/api/v1/network/name': {
-        bypass: (req, res) => {
-          res.setHeader('Content-Type', 'text/plain');
-          res.end('DMRHub');
-        },
-      },
-      '/api/v1/me': {
-        bypass: (req, res) => {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({}));
-        },
-      },
-      '/api/v1/version': {
-        bypass: (req, res) => {
-          res.setHeader('Content-Type', 'text/plain');
-          res.end('Test');
-        },
+      '/ws': {
+        target: 'wss://dmrhub.net',
+        ws: true,
+        changeOrigin: true,
       },
     },
   },

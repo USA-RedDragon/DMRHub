@@ -19,15 +19,7 @@
 
 import axios from 'axios';
 
-let baseURL;
-
-// nodejs development
-if (window.location.port == 5173) {
-  // Change port to 3005
-  baseURL = 'http://localhost:3005/api/v1';
-} else {
-  baseURL = '/api/v1';
-}
+const baseURL = '/api/v1';
 
 const instance = axios.create({
   baseURL,

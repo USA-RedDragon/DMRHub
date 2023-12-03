@@ -63,6 +63,7 @@ type Config struct {
 	FeatureFlags             []string
 	SMTPHost                 string
 	SMTPPort                 int
+	SMTPImplicitTLS          bool
 	SMTPUsername             string
 	SMTPPassword             string
 	SMTPFrom                 string
@@ -137,6 +138,7 @@ func loadConfig() Config {
 		OpenBridgePort:           int(openBridgePort),
 		SMTPHost:                 os.Getenv("SMTP_HOST"),
 		SMTPPort:                 int(smtpPort),
+		SMTPImplicitTLS:          os.Getenv("SMTP_IMPLICIT_TLS") != "",
 		SMTPUsername:             os.Getenv("SMTP_USERNAME"),
 		SMTPPassword:             os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:                 os.Getenv("SMTP_FROM"),

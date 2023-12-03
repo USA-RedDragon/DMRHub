@@ -37,15 +37,29 @@ func Send(toEmail string, subject string, body string) error {
 		body +
 		"\r\n")
 
-	err := smtp.SendMail(
-		config.SMTPHost+":"+fmt.Sprint(config.SMTPPort),
-		auth,
-		config.SMTPFrom,
-		[]string{toEmail},
-		msg)
-	if err != nil {
-		logging.Errorf("Error sending email: %s", err)
-		return fmt.Errorf("error sending email: %s", err)
+	if config.SMTPImplicitTLS {
+		err := smtp.SendMailTLS(
+			config.SMTPHost+":"+fmt.Sprint(config.SMTPPort),
+			auth,
+			config.SMTPFrom,
+			[]string{toEmail},
+			msg)
+		if err != nil {
+			logging.Errorf("Error sending email: %s", err)
+			return fmt.Errorf("error sending email: %s", err)
+		}
+	} else {
+		err := smtp.SendMail(
+			config.SMTPHost+":"+fmt.Sprint(config.SMTPPort),
+			auth,
+			config.SMTPFrom,
+			[]string{toEmail},
+			msg)
+		if err != nil {
+			logging.Errorf("Error sending email: %s", err)
+			return fmt.Errorf("error sending email: %s", err)
+		}
 	}
+
 	return nil
 }

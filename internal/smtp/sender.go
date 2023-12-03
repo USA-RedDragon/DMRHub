@@ -31,11 +31,16 @@ func Send(toEmail string, subject string, body string) error {
 		return fmt.Errorf("invalid SMTP auth method: %s", config.SMTPAuthMethod)
 	}
 
-	msg := strings.NewReader(fmt.Sprintf("To: %s\r\n", toEmail) +
+	msg := strings.NewReader(fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTPFrom) +
+		fmt.Sprintf("To: %s\r\n", toEmail) +
 		fmt.Sprintf("Subject: %s\r\n", subject) +
-		"\r\n" +
+		fmt.Sprint("Mime-Version: 1.0;\r\n") +
+		fmt.Sprint("Content-Type: text/html; charset=\"ISO-8859-1\";\r\n") +
+		fmt.Sprint("Content-Transfer-Encoding: 7bit;\r\n") +
+		"\r\n<html><body>" +
 		body +
-		"\r\n")
+		"\r\n</body></html>\r\n",
+	)
 
 	if config.SMTPImplicitTLS {
 		err := smtp.SendMailTLS(

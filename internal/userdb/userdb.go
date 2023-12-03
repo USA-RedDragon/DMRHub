@@ -22,6 +22,10 @@ package userdb
 import (
 	"bytes"
 	"context"
+	"log"
+	"math"
+	"path"
+
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -33,9 +37,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/glebarez/sqlite"
 	"github.com/ulikunitz/xz"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
 //go:embed userdb-date.txt
@@ -56,19 +64,11 @@ var (
 const waitTime = 100 * time.Millisecond
 
 type UserDB struct {
-	uncompressedJSON   []byte
-	dmrUsers           atomic.Value
-	dmrUserMap         *xsync.MapOf[uint, DMRUser]
-	dmrUserMapUpdating *xsync.MapOf[uint, DMRUser]
+	db *gorm.DB
 
 	builtInDate time.Time
 	isInited    atomic.Bool
 	isDone      atomic.Bool
-}
-
-type dmrUserDB struct {
-	Users []DMRUser `json:"users"`
-	Date  time.Time `json:"-"`
 }
 
 type DMRUser struct {
@@ -83,6 +83,14 @@ type DMRUser struct {
 	FName    string `json:"fname"`
 }
 
+type LastUpdate struct {
+	LastUpdate time.Time
+}
+
+type dmrUserDB struct {
+	Users []DMRUser `json:"users"`
+}
+
 func IsValidUserID(dmrID uint) bool {
 	// Check that the user id is 7 digits
 	if dmrID < 1000000 || dmrID > 9999999 {
@@ -95,11 +103,8 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	user, ok := userDB.dmrUserMap.Load(dmrID)
-	if !ok {
-		return false
-	}
-
+	var user DMRUser
+	userDB.db.Find(&user, "id = ?", dmrID)
 	if user.ID != dmrID {
 		return false
 	}
@@ -119,76 +124,135 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 	return nil
 }
 
+func setDB() {
+	fileName := path.Join(config.GetConfig().DMRDatabaseDirectory, "users.sqlite")
+	db, err := gorm.Open(sqlite.Open(fileName), &gorm.Config{})
+	if err != nil {
+		logging.Errorf("Could not open database: %s", err)
+		time.Sleep(10 * time.Second)
+		os.Exit(1)
+	}
+
+	err = db.AutoMigrate(&DMRUser{}, &LastUpdate{})
+	if err != nil {
+		logging.Errorf("Could not migrate database: %s", err)
+		time.Sleep(10 * time.Second)
+		os.Exit(1)
+	}
+
+	userDB.db = db
+}
+
 func UnpackDB() {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMap = xsync.NewMapOf[uint, DMRUser]()
-		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
-
+		setDB()
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
 			logging.Errorf("Error parsing built-in date: %v", err)
+			time.Sleep(10 * time.Second)
 			os.Exit(1)
+		}
+		lastUpdate := LastUpdate{}
+		tx := userDB.db.First(&lastUpdate)
+		if tx.RowsAffected > 0 {
+			if !lastUpdate.LastUpdate.IsZero() && (lastUpdate.LastUpdate.After(userDB.builtInDate) || lastUpdate.LastUpdate.Equal(userDB.builtInDate)) {
+				logging.Error("User DB loaded")
+				userDB.isDone.Store(true)
+				return
+			} else {
+				logging.Errorf("Last update %v is before built-in date %v", lastUpdate.LastUpdate, userDB.builtInDate)
+			}
+		} else {
+			logging.Errorf("Error getting last update: %v", tx.Error)
 		}
 		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
 		if err != nil {
 			logging.Errorf("NewReader error %v", err)
+			time.Sleep(10 * time.Second)
 			os.Exit(1)
 		}
-		userDB.uncompressedJSON, err = io.ReadAll(dbReader)
+		uncompressedJSON, err := io.ReadAll(dbReader)
 		if err != nil {
 			logging.Errorf("ReadAll error %v", err)
+			time.Sleep(10 * time.Second)
 			os.Exit(1)
 		}
 		var tmpDB dmrUserDB
-		if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
+		if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
 			logging.Errorf("Error decoding DMR users database: %v", err)
+			time.Sleep(10 * time.Second)
 			os.Exit(1)
 		}
-		tmpDB.Date = userDB.builtInDate
-		userDB.dmrUsers.Store(tmpDB)
-		for i := range tmpDB.Users {
-			userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
+		userDB.db.FirstOrCreate(&LastUpdate{LastUpdate: userDB.builtInDate})
+		err = bulkUpsert(&tmpDB)
+		if err != nil {
+			logging.Errorf("Error bulk inserting users: %v", err)
+			time.Sleep(10 * time.Second)
+			os.Exit(1)
 		}
 
-		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
+		logging.Error("User DB loaded")
+
 		userDB.isDone.Store(true)
 	}
 
 	for !userDB.isDone.Load() {
 		time.Sleep(waitTime)
 	}
+}
 
-	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
-	if !ok {
-		logging.Error("Error loading DMR users database")
-		os.Exit(1)
+func bulkUpsert(tmpDB *dmrUserDB) error {
+	// SQLITE_LIMIT_VARIABLE_NUMBER
+	const limit = 32766
+	// Break the users into batches of SQLITE_LIMIT_VARIABLE_NUMBER / 9 (9 is the number of columns in the table)
+	// This is to prevent SQLITE_ERROR: too many SQL variables
+	batchSize := math.Floor(float64(limit) / 9)
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold: time.Second * 5, // Slow SQL threshold
+			LogLevel:      logger.Warn,     // Log level
+		},
+	)
+	tx := userDB.db.Session(&gorm.Session{Logger: newLogger})
+	for i := 0; i < len(tmpDB.Users); i += int(batchSize) {
+		end := i + int(batchSize)
+		if end > len(tmpDB.Users) {
+			end = len(tmpDB.Users)
+		}
+		tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"state", "radio_id", "surname", "city", "callsign", "country", "name", "f_name"}),
+		}).CreateInBatches(tmpDB.Users[i:end], len(tmpDB.Users[i:end]))
+		if tx.Error != nil {
+			return tx.Error
+		}
 	}
-	if len(usrdb.Users) == 0 {
-		logging.Error("No DMR users found in database")
-		os.Exit(1)
-	}
+	return nil
 }
 
 func Len() int {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
-	if !ok {
-		logging.Error("Error loading DMR users database")
+	var count int64
+	userDB.db.Model(&DMRUser{}).Count(&count)
+	if userDB.db.Error != nil {
+		logging.Errorf("Error counting users: %v", userDB.db.Error)
+		return 0
 	}
-	return len(db.Users)
+	return int(count)
 }
 
 func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	user, ok := userDB.dmrUserMap.Load(dmrID)
-	if !ok {
+	var user DMRUser
+	userDB.db.Find(&user, "id = ?", dmrID)
+	if user.ID != dmrID {
 		return DMRUser{}, false
 	}
 	return user, true
@@ -215,7 +279,7 @@ func Update() error {
 		return ErrUpdateFailed
 	}
 
-	userDB.uncompressedJSON, err = io.ReadAll(resp.Body)
+	uncompressedJSON, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logging.Errorf("ReadAll error %s", err)
 		return ErrUpdateFailed
@@ -227,7 +291,7 @@ func Update() error {
 		}
 	}()
 	var tmpDB dmrUserDB
-	if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
+	if err := json.Unmarshal(uncompressedJSON, &tmpDB); err != nil {
 		logging.Errorf("Error decoding DMR users database: %v", err)
 		return ErrUpdateFailed
 	}
@@ -237,16 +301,13 @@ func Update() error {
 		return ErrUpdateFailed
 	}
 
-	tmpDB.Date = time.Now()
-	userDB.dmrUsers.Store(tmpDB)
-
-	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
-	for i := range tmpDB.Users {
-		userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
+	userDB.db.FirstOrCreate(&LastUpdate{LastUpdate: time.Now()})
+	err = bulkUpsert(&tmpDB)
+	if err != nil {
+		logging.Errorf("Error bulk inserting users: %v", err)
+		time.Sleep(10 * time.Second)
+		os.Exit(1)
 	}
-
-	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 
 	logging.Errorf("Update complete. Loaded %d DMR users", Len())
 
@@ -257,9 +318,11 @@ func GetDate() time.Time {
 	if !userDB.isDone.Load() {
 		UnpackDB()
 	}
-	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
-	if !ok {
+	var lastUpdate LastUpdate
+	userDB.db.Find(&lastUpdate)
+	if lastUpdate.LastUpdate.IsZero() {
 		logging.Error("Error loading DMR users database")
+		return userDB.builtInDate
 	}
-	return db.Date
+	return lastUpdate.LastUpdate
 }

@@ -71,6 +71,7 @@ type Config struct {
 	AdminEmail               string
 	EnableEmail              bool
 	CanonicalHost            string
+	DMRDatabaseDirectory     string
 }
 
 var currentConfig atomic.Value //nolint:golint,gochecknoglobals
@@ -146,6 +147,7 @@ func loadConfig() Config {
 		AdminEmail:               os.Getenv("ADMIN_EMAIL"),
 		EnableEmail:              os.Getenv("ENABLE_EMAIL") != "",
 		CanonicalHost:            os.Getenv("CANONICAL_HOST"),
+		DMRDatabaseDirectory:     os.Getenv("DMR_DATABASE_DIRECTORY"),
 	}
 	if tmpConfig.RedisHost == "" {
 		tmpConfig.RedisHost = "localhost:6379"
@@ -230,6 +232,10 @@ func loadConfig() Config {
 
 	if tmpConfig.CanonicalHost == "" {
 		tmpConfig.CanonicalHost = "localhost"
+	}
+
+	if tmpConfig.DMRDatabaseDirectory == "" {
+		tmpConfig.DMRDatabaseDirectory = "."
 	}
 
 	switch tmpConfig.SMTPAuthMethod {

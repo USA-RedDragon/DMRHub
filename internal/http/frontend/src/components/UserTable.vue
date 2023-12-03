@@ -35,8 +35,32 @@
   >
     <Column :expander="true" v-if="!this.$props.approval" />
     <Column field="id" header="DMR ID"></Column>
-    <Column field="callsign" header="Callsign"></Column>
-    <Column field="username" header="Username"></Column>
+    <Column field="callsign" header="Callsign">
+      <template #body="slotProps">
+        <span v-if="slotProps.data.editing">
+          <span class="p-float-label">
+            <InputText
+              type="text"
+              v-model="slotProps.data.callsign"
+            />
+          </span>
+        </span>
+        <span v-else>{{slotProps.data.callsign}}</span>
+      </template>
+    </Column>
+    <Column field="username" header="Username">
+      <template #body="slotProps">
+        <span v-if="slotProps.data.editing">
+          <span class="p-float-label">
+            <InputText
+              type="text"
+              v-model="slotProps.data.username"
+            />
+          </span>
+        </span>
+        <span v-else>{{slotProps.data.username}}</span>
+      </template>
+    </Column>
     <Column
       field="approved"
       :header="this.$props.approval ? 'Approve?' : 'Approved'"
@@ -86,7 +110,15 @@
         class="p-button-raised p-button-rounded p-button-primary"
         icon="pi pi-pencil"
         label="Edit"
-        @click="editUser(slotProps.data)"
+        v-if="!slotProps.data.editing"
+        @click="editUser(slotProps.data.id)"
+      ></PVButton>
+      <PVButton
+        class="p-button-raised p-button-rounded p-button-primary"
+        icon="pi pi-pencil"
+        label="Save Changes"
+        v-else
+        @click="finishEditingUser(slotProps.data)"
       ></PVButton>
       <PVButton
         class="p-button-raised p-button-rounded p-button-danger"
@@ -111,6 +143,7 @@ import { mapStores } from 'pinia';
 import { useUserStore, useSettingsStore } from '@/store';
 
 import API from '@/services/API';
+import InputText from 'primevue/inputtext';
 
 export default {
   name: 'UserTable',
@@ -122,6 +155,7 @@ export default {
     PVCheckbox: Checkbox,
     DataTable,
     Column,
+    InputText,
   },
   data: function() {
     return {
@@ -166,6 +200,8 @@ export default {
           .then((res) => {
             for (let i = 0; i < res.data.users.length; i++) {
               res.data.users[i].repeaters = res.data.users[i].repeaters.length;
+
+              res.data.users[i].editing = false;
 
               res.data.users[i].created_at = moment(
                 res.data.users[i].created_at,
@@ -289,13 +325,44 @@ export default {
         this.fetchData();
       }
     },
-    editUser(_user) {
-      this.$toast.add({
-        summary: 'Not Implemented',
-        severity: 'error',
-        detail: `Users cannot be edited yet.`,
-        life: 3000,
-      });
+    editUser(userID) {
+      for (let i = 0; i < this.users.length; i++) {
+        if (this.users[i].id === userID) {
+          this.users[i].editing = true;
+          return;
+        }
+      }
+    },
+    finishEditingUser(user) {
+      // Send PATCH
+      API.patch(`/users/${user.id}`, {
+        callsign: user.callsign,
+        username: user.username,
+      })
+        .then((_res) => {
+          for (let i = 0; i < this.users.length; i++) {
+            if (this.users[i].id === user.id) {
+              this.users[i].editing = false;
+              break;
+            }
+          }
+          this.$toast.add({
+            summary: 'Confirmed',
+            severity: 'success',
+            detail: `User ${user.id} updated`,
+            life: 3000,
+          });
+          this.fetchData();
+        })
+        .catch((err) => {
+          console.error(err);
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: `Error updating user ${user.id}`,
+            life: 3000,
+          });
+        });
     },
     deleteUser(user) {
       if (this.userStore.id == 999999) {

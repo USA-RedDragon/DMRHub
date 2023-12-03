@@ -108,15 +108,6 @@ func TestUpdate(t *testing.T) {
 	})
 }
 
-func BenchmarkUserDB(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		UnpackDB()
-		userDB.isInited.Store(false)
-		userDB.isDone.Store(false)
-		userDB.dmrUsers.Store(dmrUserDB{})
-	}
-}
-
 func BenchmarkUserSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()

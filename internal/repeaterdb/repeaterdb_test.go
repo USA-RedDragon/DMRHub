@@ -105,15 +105,6 @@ func TestUpdate(t *testing.T) {
 	})
 }
 
-func BenchmarkRepeaterDB(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		UnpackDB()
-		repeaterDB.isInited.Store(false)
-		repeaterDB.isDone.Store(false)
-		repeaterDB.dmrRepeaters.Store(dmrRepeaterDB{})
-	}
-}
-
 func BenchmarkRepeaterSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()

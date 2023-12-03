@@ -192,7 +192,7 @@ func POSTUser(c *gin.Context) {
 			err := smtp.Send(
 				config.GetConfig().AdminEmail,
 				"New user registration",
-				fmt.Sprintf("A new user has registered.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d\r\n\r\n<a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
+				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
 			)
 			if err != nil {
 				logging.Errorf("POSTUser: Error sending email: %v", err)
@@ -247,7 +247,7 @@ func POSTUserDemote(c *gin.Context) {
 		err := smtp.Send(
 			config.GetConfig().AdminEmail,
 			"Admin user demotion",
-			fmt.Sprintf("An admin has been demoted.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
 			logging.Errorf("POSTUserDemote: Error sending email: %v", err)
@@ -299,7 +299,7 @@ func POSTUserPromote(c *gin.Context) {
 		err := smtp.Send(
 			config.GetConfig().AdminEmail,
 			"Admin user promotion",
-			fmt.Sprintf("An admin has been promoted.\r\n\r\nUsername: %s\r\nCallsign: %s\r\nDMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
 			logging.Errorf("POSTUserPromote: Error sending email: %v", err)

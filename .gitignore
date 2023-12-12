@@ -12,4 +12,3 @@ artifacts/
 report.xml
 report.html
 *.log
-*.sqlite

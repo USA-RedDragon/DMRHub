@@ -9,7 +9,7 @@ COPY --from=alpine:latest /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 COPY DMRHub /
 
-ENV DMR_DATABASE_DIRECTORY=/dmrdb
+ENV DMRDatabaseDirectory=/dmrdb
 COPY --from=dir /dmrdb /dmrdb
 
 ENTRYPOINT ["/DMRHub"]

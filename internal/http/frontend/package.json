@@ -33,7 +33,7 @@
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.6.0",
     "@unhead/vue": "^1.8.9",
-    "@vitejs/plugin-vue": "^4.5.1",
+    "@vitejs/plugin-vue": "^4.5.2",
     "@vitest/ui": "^0.34.6",
     "@vue/eslint-config-prettier": "^8.0.0",
     "axios": "^1.6.2",

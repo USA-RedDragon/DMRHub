@@ -101,7 +101,11 @@ func start() int {
 
 	featureflags.Init(config.GetConfig())
 
-	scheduler := gocron.NewScheduler(time.UTC)
+	scheduler, err := gocron.NewScheduler()
+	if err != nil {
+		logging.Errorf("Failed to create scheduler: %s", err)
+		return 1
+	}
 
 	var cleanup func(context.Context) error
 	if config.GetConfig().OTLPEndpoint != "" {
@@ -124,12 +128,17 @@ func start() int {
 			logging.Errorf("Failed to update repeater database: %s using built in one", err)
 		}
 	}()
-	_, err := scheduler.Every(1).Day().At("00:00").Do(func() {
-		err := repeaterdb.Update()
-		if err != nil {
-			logging.Errorf("Failed to update repeater database: %s", err)
-		}
-	})
+	_, err = scheduler.NewJob(
+		gocron.DailyJob(1, gocron.NewAtTimes(
+			gocron.NewAtTime(0, 0, 0),
+		)),
+		gocron.NewTask(func() {
+			err := repeaterdb.Update()
+			if err != nil {
+				logging.Errorf("Failed to update repeater database: %s", err)
+			}
+		}),
+	)
 	if err != nil {
 		logging.Errorf("Failed to schedule repeater update: %s", err)
 	}
@@ -140,17 +149,22 @@ func start() int {
 			logging.Errorf("Failed to update user database: %s using built in one", err)
 		}
 	}()
-	_, err = scheduler.Every(1).Day().At("00:00").Do(func() {
-		err = userdb.Update()
-		if err != nil {
-			logging.Errorf("Failed to update repeater database: %s", err)
-		}
-	})
+	_, err = scheduler.NewJob(
+		gocron.DailyJob(1, gocron.NewAtTimes(
+			gocron.NewAtTime(0, 0, 0),
+		)),
+		gocron.NewTask(func() {
+			err := userdb.Update()
+			if err != nil {
+				logging.Errorf("Failed to update user database: %s", err)
+			}
+		}),
+	)
 	if err != nil {
 		logging.Errorf("Failed to schedule user update: %s", err)
 	}
 
-	scheduler.StartAsync()
+	scheduler.Start()
 
 	const connsPerCPU = 10
 	const maxIdleTime = 10 * time.Minute
@@ -251,7 +265,14 @@ func start() int {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			scheduler.Stop()
+			err = scheduler.StopJobs()
+			if err != nil {
+				logging.Errorf("Failed to stop scheduler jobs: %s", err)
+			}
+			err = scheduler.Shutdown()
+			if err != nil {
+				logging.Errorf("Failed to stop scheduler: %s", err)
+			}
 		}(wg)
 
 		wg.Add(1)

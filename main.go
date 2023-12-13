@@ -41,7 +41,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
-	"github.com/go-co-op/gocron"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	_ "github.com/tinylib/msgp/printer"

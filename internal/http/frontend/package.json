@@ -31,7 +31,7 @@
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
-    "@rushstack/eslint-patch": "^1.6.0",
+    "@rushstack/eslint-patch": "^1.6.1",
     "@unhead/vue": "^1.8.9",
     "@vitejs/plugin-vue": "^4.5.2",
     "@vitest/ui": "^1.0.4",

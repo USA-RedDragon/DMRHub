@@ -282,7 +282,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backend-test-report
+          name: backend-test-report-xml
           path: report.xml
           if-no-files-found: error
           retention-days: 30
@@ -290,7 +290,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backend-test-report
+          name: backend-test-report-html
           path: report.html
           if-no-files-found: error
           retention-days: 30

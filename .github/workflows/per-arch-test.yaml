@@ -51,7 +51,7 @@ jobs:
       - run: docker run --privileged --rm tonistiigi/binfmt --install all
 
       - name: Copy built frontend
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: frontend
           path: internal/http/frontend/dist

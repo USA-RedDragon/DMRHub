@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
 
@@ -36,7 +36,7 @@ jobs:
           retention-days: 1
 
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: frontend
     permissions:
       contents: read

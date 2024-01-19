@@ -2,8 +2,7 @@
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
         "local>USA-RedDragon/renovate-configs",
-        "local>USA-RedDragon/renovate-configs:golang",
-        "local>USA-RedDragon/renovate-configs:actions-node-version"
+        "local>USA-RedDragon/renovate-configs:golang"
     ],
     "regexManagers": [
         {

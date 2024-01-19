@@ -24,7 +24,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "21.6"
+          node-version-file: .node-version
 
       - run: make build-frontend
 

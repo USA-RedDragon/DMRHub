@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/client_golang v1.18.0
 	github.com/puzpuzpuz/xsync/v3 v3.0.2
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
-	github.com/redis/go-redis/v9 v9.4.0
+	github.com/redis/go-redis/v9 v9.5.1
 	github.com/stretchr/testify v1.8.4
 	github.com/tinylib/msgp v1.1.9
 	github.com/ulikunitz/xz v0.5.11

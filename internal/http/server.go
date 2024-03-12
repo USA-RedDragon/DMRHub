@@ -91,6 +91,7 @@ func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
 
 // FS is the embedded frontend files
 //
+//go:generate sh -c "cd ./frontend && npm ci && npm run build"
 //go:embed frontend/dist/*
 var FS embed.FS
 

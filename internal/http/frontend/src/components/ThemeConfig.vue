@@ -319,7 +319,7 @@ if (scale) {
       </div>
     </div>
 
-    <h5>PrimeOne Design - 2022</h5>
+    <h5>Lara</h5>
     <div class="grid">
       <div class="col-3">
         <button
@@ -419,7 +419,59 @@ if (scale) {
       </div>
     </div>
 
-    <h5>PrimeOne Design - 2021</h5>
+    <h5>Luna</h5>
+    <div class="grid">
+      <div class="col-3">
+        <button
+          class="p-link w-2rem h-2rem"
+          @click="onChangeTheme('luna-amber', 'dark')"
+        >
+          <img
+            src="/layout/images/themes/luna-amber.png"
+            class="w-2rem h-2rem"
+            alt="Luna Amber"
+          />
+        </button>
+      </div>
+      <div class="col-3">
+        <button
+          class="p-link w-2rem h-2rem"
+          @click="onChangeTheme('luna-blue', 'dark')"
+        >
+          <img
+            src="/layout/images/themes/luna-blue.png"
+            class="w-2rem h-2rem"
+            alt="Luna Blue"
+          />
+        </button>
+      </div>
+      <div class="col-3">
+        <button
+          class="p-link w-2rem h-2rem"
+          @click="onChangeTheme('luna-green', 'dark')"
+        >
+          <img
+            src="/layout/images/themes/luna-green.png"
+            class="w-2rem h-2rem"
+            alt="Luna Green"
+          />
+        </button>
+      </div>
+      <div class="col-3">
+        <button
+          class="p-link w-2rem h-2rem"
+          @click="onChangeTheme('luna-pink', 'dark')"
+        >
+          <img
+            src="/layout/images/themes/luna-pink.png"
+            class="w-2rem h-2rem"
+            alt="Luna Pink"
+          />
+        </button>
+      </div>
+    </div>
+
+    <h5>Saga</h5>
     <div class="grid">
       <div class="col-3">
         <button
@@ -469,6 +521,9 @@ if (scale) {
           />
         </button>
       </div>
+    </div>
+    <h5>Vela</h5>
+    <div class="grid">
       <div class="col-3">
         <button
           class="p-link w-2rem h-2rem"
@@ -517,6 +572,9 @@ if (scale) {
           />
         </button>
       </div>
+    </div>
+    <h5>Arya</h5>
+    <div class="grid">
       <div class="col-3">
         <button
           class="p-link w-2rem h-2rem"

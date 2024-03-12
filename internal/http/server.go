@@ -60,14 +60,14 @@ const debugWriteTimeout = 60 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 10
 
-func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
+func MakeServer(db *gorm.DB, redisClient *redis.Client, version, commit string) Server {
 	if config.GetConfig().Debug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := CreateRouter(db, redisClient)
+	r := CreateRouter(db, redisClient, version, commit)
 
 	writeTimeout := defTimeout
 	if config.GetConfig().Debug {
@@ -95,7 +95,7 @@ func MakeServer(db *gorm.DB, redisClient *redis.Client) Server {
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client) {
+func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client, version, commit string) {
 	// Debug
 	if config.GetConfig().Debug {
 		pprof.Register(r)
@@ -121,9 +121,12 @@ func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client) {
 	// Sessions
 	sessionStore, _ := redisSessions.NewStore(redisClient, config.GetConfig().Secret, config.GetConfig().Secret)
 	r.Use(sessions.Sessions("sessions", sessionStore))
+
+	// Versioning
+	r.Use(middleware.VersionProvider(version, commit))
 }
 
-func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
+func CreateRouter(db *gorm.DB, redisClient *redis.Client, version, commit string) *gin.Engine {
 	if config.GetConfig().Debug {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -139,7 +142,7 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client) *gin.Engine {
 		logging.Errorf("Failed setting trusted proxies: %v", err)
 	}
 
-	addMiddleware(r, db, redisClient)
+	addMiddleware(r, db, redisClient, version, commit)
 
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
 		RedisClient: redisClient,

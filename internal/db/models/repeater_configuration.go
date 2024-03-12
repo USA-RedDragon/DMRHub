@@ -27,7 +27,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 )
 
 //go:generate go run github.com/tinylib/msgp
@@ -74,7 +73,7 @@ const (
 	packageIDMaxLen   = 40
 )
 
-func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
+func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
 	c.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
 
 	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
@@ -141,18 +140,18 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte) error {
 
 	c.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
 	if c.SoftwareID == "" {
-		c.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
+		c.SoftwareID = "USA-RedDragon/DMRHub " + version + "-" + commit
 	}
 
 	c.PackageID = strings.TrimRight(string(data[262:302]), " ")
 	if c.PackageID == "" {
-		c.PackageID = "v" + sdk.Version + "-" + sdk.GitCommit
+		c.PackageID = version + "-" + commit
 	}
 
-	return c.Check()
+	return c.Check(version, commit)
 }
 
-func (c *RepeaterConfiguration) Check() error {
+func (c *RepeaterConfiguration) Check(version, commit string) error {
 	if len(c.Callsign) < 4 || len(c.Callsign) > 8 {
 		return ErrInvalidCallsign
 	}
@@ -196,7 +195,7 @@ func (c *RepeaterConfiguration) Check() error {
 	if len(c.SoftwareID) > softwareIDMaxLen {
 		c.SoftwareID = c.SoftwareID[:softwareIDMaxLen]
 	} else if c.SoftwareID == "" {
-		c.SoftwareID = "USA-RedDragon/DMRHub v" + sdk.Version + "-" + sdk.GitCommit
+		c.SoftwareID = "USA-RedDragon/DMRHub v" + version + "-" + commit
 	}
 
 	if len(c.PackageID) > packageIDMaxLen {

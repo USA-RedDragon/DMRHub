@@ -39,7 +39,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
-	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -88,13 +87,21 @@ func initTracer() func(context.Context) error {
 	return exporter.Shutdown
 }
 
+// https://goreleaser.com/cookbooks/using-main.version/
+//
+//nolint:golint,gochecknoglobals
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 func main() {
 	os.Exit(start())
 }
 
 func start() int {
-	logging.Errorf("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
-	logging.Logf("DMRHub v%s-%s", sdk.Version, sdk.GitCommit)
+	logging.Errorf("DMRHub v%s-%s", version, commit)
+	logging.Logf("DMRHub v%s-%s", version, commit)
 	defer logging.Close()
 
 	ctx := context.Background()
@@ -205,7 +212,7 @@ func start() int {
 
 	redisClient := servers.MakeRedisClient(redis)
 
-	hbrpServer := hbrp.MakeServer(database, redis, redisClient, callTracker)
+	hbrpServer := hbrp.MakeServer(database, redis, redisClient, callTracker, version, commit)
 	err = hbrpServer.Start(ctx)
 	if err != nil {
 		logging.Errorf("Failed to start HBRP server: %v", err)
@@ -245,7 +252,7 @@ func start() int {
 		}()
 	}
 
-	http := http.MakeServer(database, redis)
+	http := http.MakeServer(database, redis, version, commit)
 	err = http.Start()
 	if err != nil {
 		logging.Errorf("Failed to start HTTP server %v", err)

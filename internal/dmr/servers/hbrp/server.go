@@ -47,6 +47,8 @@ type Server struct {
 	DB            *gorm.DB
 	Redis         *servers.RedisClient
 	CallTracker   *calltracker.CallTracker
+	Version       string
+	Commit        string
 }
 
 var (
@@ -59,7 +61,7 @@ const repeaterIDLength = 4
 const bufferSize = 1000000 // 1MB
 
 // MakeServer creates a new DMR server.
-func MakeServer(db *gorm.DB, redis *redis.Client, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker) Server {
+func MakeServer(db *gorm.DB, redis *redis.Client, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker, version, commit string) Server {
 	return Server{
 		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
@@ -71,6 +73,8 @@ func MakeServer(db *gorm.DB, redis *redis.Client, redisClient *servers.RedisClie
 		DB:          db,
 		Redis:       redisClient,
 		CallTracker: callTracker,
+		Version:     version,
+		Commit:      commit,
 	}
 }
 

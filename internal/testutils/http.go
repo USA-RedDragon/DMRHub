@@ -161,5 +161,5 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB) {
 	os.Setenv("TEST", "test")
 	var t TestDB
 	t.database = db.MakeDB()
-	return http.CreateRouter(db.MakeDB(), t.createRedis()), &t
+	return http.CreateRouter(db.MakeDB(), t.createRedis(), "test", "deadbeef"), &t
 }

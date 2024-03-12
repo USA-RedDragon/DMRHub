@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/sdk"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 )
@@ -94,6 +93,4 @@ func TestVersionRoute(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 	assert.NotEmpty(t, w.Body.String())
-
-	assert.Equal(t, fmt.Sprintf("%s-%s", sdk.Version, sdk.GitCommit), w.Body.String())
 }

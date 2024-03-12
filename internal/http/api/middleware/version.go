@@ -17,18 +17,16 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package sdk
+package middleware
 
 import (
-	// embed the commit.txt file into the binary.
-	_ "embed"
+	"github.com/gin-gonic/gin"
 )
 
-//go:generate bash -c "bash ../../hack/git_commit.sh > commit.txt"
-var (
-	//go:embed commit.txt
-	GitCommit string
-
-	// Version of the program
-	Version = "1.0.56" //nolint:golint,gochecknoglobals
-)
+func VersionProvider(version, commit string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("Version", version)
+		c.Set("Commit", commit)
+		c.Next()
+	}
+}

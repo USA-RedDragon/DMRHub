@@ -706,7 +706,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			return
 		}
 
-		err = repeater.ParseConfig(data)
+		err = repeater.ParseConfig(data, s.Version, s.Commit)
 		if err != nil {
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return

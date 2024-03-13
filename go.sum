@@ -85,8 +85,8 @@ github.com/glebarez/go-sqlite v1.21.2 h1:3a6LFC4sKahUunAmynQKLZceZCOzUthkRkEAl9g
 github.com/glebarez/go-sqlite v1.21.2/go.mod h1:sfxdZyhQjTM2Wry3gVYWaW072Ri1WMdWJi0k6+3382k=
 github.com/glebarez/sqlite v1.10.0 h1:u4gt8y7OND/cCei/NMHmfbLxF6xP2wgKcT/BJf2pYkc=
 github.com/glebarez/sqlite v1.10.0/go.mod h1:IJ+lfSOmiekhQsFTJRx/lHtGYmCdtAiTaf5wI9u5uHA=
-github.com/go-co-op/gocron/v2 v2.2.5 h1:AGyUDXmSmqnclltaMVrLCtl3viJMY3TcpWdU4dbi/mE=
-github.com/go-co-op/gocron/v2 v2.2.5/go.mod h1:igssOwzZkfcnu3m2kwnCf/mYj4SmhP9ecSgmYjCOHkk=
+github.com/go-co-op/gocron/v2 v2.2.6 h1:sKRt4kemEzY9HnBx9BBnFDPXoOxBy77V4WVtoouhJgg=
+github.com/go-co-op/gocron/v2 v2.2.6/go.mod h1:mZx3gMSlFnb97k3hRqX3+GdlG3+DUwTh6B8fnsTScXg=
 github.com/go-gormigrate/gormigrate/v2 v2.1.1 h1:eGS0WTFRV30r103lU8JNXY27KbviRnqqIDobW3EV3iY=
 github.com/go-gormigrate/gormigrate/v2 v2.1.1/go.mod h1:L7nJ620PFDKei9QOhJzqA8kRCk+E3UbV2f5gv+1ndLc=
 github.com/go-kit/log v0.1.0/go.mod h1:zbhenjAZHb184qTLMA9ZjW7ThYL0H2mk7Q6pNt4vbaY=

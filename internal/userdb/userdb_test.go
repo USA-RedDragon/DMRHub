@@ -102,7 +102,11 @@ func TestUpdate(t *testing.T) {
 		if err != nil {
 			r.Errorf("Update failed: %v", err)
 		}
-		if userDB.builtInDate == GetDate() {
+		date, err := GetDate()
+		if err != nil {
+			r.Errorf("GetDate failed: %v", err)
+		}
+		if userDB.builtInDate == date {
 			r.Errorf("Update did not update the database")
 		}
 	})
@@ -110,7 +114,11 @@ func TestUpdate(t *testing.T) {
 
 func BenchmarkUserDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			b.Errorf("Error unpacking database: %v", err)
+			b.Fail()
+		}
 		userDB.isInited.Store(false)
 		userDB.isDone.Store(false)
 		userDB.dmrUsers.Store(dmrUserDB{})
@@ -120,7 +128,11 @@ func BenchmarkUserDB(b *testing.B) {
 func BenchmarkUserSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()
-	UnpackDB()
+	err := UnpackDB()
+	if err != nil {
+		b.Errorf("Error unpacking database: %v", err)
+		b.Fail()
+	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		ValidUserCallsign(3191868, "KI5VMF")

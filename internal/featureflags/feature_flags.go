@@ -27,10 +27,11 @@ import (
 type FeatureFlag string
 
 const (
-	FeatureFlag_OpenBridge FeatureFlag = "openbridge"
+	FeatureFlagOpenBridge FeatureFlag = "openbridge"
 )
 
 var (
+	//nolint:golint,gochecknoglobals
 	featureFlagManager *FeatureFlags
 )
 

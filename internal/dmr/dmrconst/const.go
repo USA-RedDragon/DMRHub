@@ -113,3 +113,10 @@ const (
 
 const HBRPPacketLength = 53
 const HBRPMaxPacketLength = 55
+
+type Timeslot uint8
+
+const (
+	TimeslotOne Timeslot = 1
+	TimeslotTwo Timeslot = 2
+)

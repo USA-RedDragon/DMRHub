@@ -26,6 +26,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/puzpuzpuz/xsync/v3"
@@ -52,7 +53,7 @@ func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
 	return subscriptionManager
 }
 
-func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID uint, slot uint) {
+func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID uint, slot dmrconst.Timeslot) {
 	radioSubscriptions, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
 		logging.Errorf("Failed to load radio subscriptions for repeater %d", repeaterID)
@@ -67,7 +68,7 @@ func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID ui
 
 	// Check the other slot
 	dynamicSlot := p.TS2DynamicTalkgroupID
-	if slot == 2 {
+	if slot == dmrconst.TimeslotTwo {
 		dynamicSlot = p.TS1DynamicTalkgroupID
 	}
 
@@ -114,8 +115,8 @@ func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(repeaterID uint) {
 		return
 	}
 	radioSubs.Range(func(tgID uint, value *context.CancelFunc) bool {
-		m.CancelSubscription(repeaterID, tgID, 1)
-		m.CancelSubscription(repeaterID, tgID, 2)
+		m.CancelSubscription(repeaterID, tgID, dmrconst.TimeslotOne)
+		m.CancelSubscription(repeaterID, tgID, dmrconst.TimeslotTwo)
 		return true
 	})
 }

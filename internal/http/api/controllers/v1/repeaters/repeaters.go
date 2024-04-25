@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
@@ -617,7 +618,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS1DynamicTalkgroupID = nil
 
-			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, 1)
+			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, dmrconst.TimeslotOne)
 
 			err := db.Save(&repeater).Error
 			if err != nil {
@@ -635,7 +636,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 			repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 			repeater.TS2DynamicTalkgroupID = nil
 
-			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, 2)
+			hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, dmrconst.TimeslotTwo)
 
 			err := db.Save(&repeater).Error
 			if err != nil {
@@ -688,7 +689,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2StaticTalkgroups"})
 						return
 					}
-					hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldID, 2)
+					hbrp.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldID, dmrconst.TimeslotTwo)
 					err = db.Save(&repeater).Error
 					if err != nil {
 						logging.Errorf("Error saving repeater: %v", err)

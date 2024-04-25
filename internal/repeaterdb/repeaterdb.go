@@ -22,7 +22,6 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -51,6 +50,12 @@ var repeaterDB RepeaterDB //nolint:golint,gochecknoglobals
 var (
 	ErrUpdateFailed = errors.New("update failed")
 	ErrUnmarshal    = errors.New("unmarshal failed")
+	ErrLoading      = errors.New("error loading DMR users database")
+	ErrNoRepeaters  = errors.New("no DMR repeaters found in database")
+	ErrParsingDate  = errors.New("error parsing built-in date")
+	ErrXZReader     = errors.New("error creating xz reader")
+	ErrReadDB       = errors.New("error reading database")
+	ErrDecodingDB   = errors.New("error decoding DMR repeaters database")
 )
 
 const waitTime = 100 * time.Millisecond
@@ -134,23 +139,19 @@ func UnpackDB() error {
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
-			logging.Errorf("Error parsing built-in date: %v", err)
-			return err
+			return ErrParsingDate
 		}
 		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
 		if err != nil {
-			logging.Errorf("NewReader error %s", err)
-			return err
+			return ErrXZReader
 		}
 		repeaterDB.uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
-			logging.Errorf("ReadAll error %s", err)
-			return err
+			return ErrReadDB
 		}
 		var tmpDB dmrRepeaterDB
 		if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
-			logging.Errorf("Error decoding DMR repeaters database: %v", err)
-			return err
+			return ErrDecodingDB
 		}
 
 		tmpDB.Date = repeaterDB.builtInDate
@@ -170,12 +171,10 @@ func UnpackDB() error {
 
 	rptdb, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		logging.Errorf("Error loading DMR users database")
-		return errors.New("error loading DMR users database")
+		return ErrLoading
 	}
 	if len(rptdb.Repeaters) == 0 {
-		logging.Errorf("No DMR users found in database")
-		return errors.New("no DMR users found in database")
+		return ErrNoRepeaters
 	}
 	return nil
 }

@@ -245,7 +245,7 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 			if err != nil {
 				logging.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
 			}
-			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, 2)
+			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, dmrconst.TimeslotTwo)
 		}
 	} else {
 		logging.Logf("Unlinking timeslot 1 from %d", packet.Repeater)
@@ -256,7 +256,7 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 			if err != nil {
 				logging.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
 			}
-			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, 1)
+			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, dmrconst.TimeslotOne)
 		}
 	}
 	err := s.DB.Save(&dbRepeater).Error
@@ -307,6 +307,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	}
 }
 
+//nolint:golint,gocyclo
 func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRDPacket")
 	defer span.End()

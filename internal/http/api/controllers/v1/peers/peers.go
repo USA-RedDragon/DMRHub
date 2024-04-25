@@ -225,11 +225,14 @@ func POSTPeer(c *gin.Context) {
 		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), redis, peer)
 
 		if config.GetConfig().EnableEmail {
-			smtp.Send(
+			err = smtp.Send(
 				config.GetConfig().AdminEmail,
 				"OpenBridge peer created",
 				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
 			)
+			if err != nil {
+				logging.Errorf("Failed to send email: %v", err)
+			}
 		}
 	}
 }

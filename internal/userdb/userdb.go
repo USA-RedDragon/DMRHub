@@ -22,7 +22,6 @@ package userdb
 import (
 	"bytes"
 	"context"
-
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -51,6 +50,12 @@ var userDB UserDB //nolint:golint,gochecknoglobals
 var (
 	ErrUpdateFailed = errors.New("update failed")
 	ErrUnmarshal    = errors.New("unmarshal failed")
+	ErrLoading      = errors.New("error loading DMR users database")
+	ErrNoUsers      = errors.New("no DMR users found in database")
+	ErrParsingDate  = errors.New("error parsing built-in date")
+	ErrXZReader     = errors.New("error creating xz reader")
+	ErrReadDB       = errors.New("error reading database")
+	ErrDecodingDB   = errors.New("error decoding DMR users database")
 )
 
 const waitTime = 100 * time.Millisecond
@@ -132,23 +137,19 @@ func UnpackDB() error {
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
-			logging.Errorf("Error parsing built-in date: %v", err)
-			return err
+			return ErrParsingDate
 		}
 		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
 		if err != nil {
-			logging.Errorf("NewReader error %v", err)
-			return err
+			return ErrXZReader
 		}
 		userDB.uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
-			logging.Errorf("ReadAll error %v", err)
-			return err
+			return ErrReadDB
 		}
 		var tmpDB dmrUserDB
 		if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
-			logging.Errorf("Error decoding DMR users database: %v", err)
-			return err
+			return ErrDecodingDB
 		}
 		tmpDB.Date = userDB.builtInDate
 		userDB.dmrUsers.Store(tmpDB)
@@ -168,11 +169,11 @@ func UnpackDB() error {
 	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		logging.Error("Error loading DMR users database")
-		return errors.New("error loading DMR users database")
+		return ErrLoading
 	}
 	if len(usrdb.Users) == 0 {
 		logging.Error("No DMR users found in database")
-		return errors.New("no DMR users found in database")
+		return ErrNoUsers
 	}
 	return nil
 }

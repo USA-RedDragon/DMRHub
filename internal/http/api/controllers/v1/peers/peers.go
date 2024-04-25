@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // DMRHub - Run a DMR network server in a single binary
-// Copyright (C) 2023 Jacob McSwain
+// Copyright (C) 2023-2024 Jacob McSwain
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -225,11 +225,14 @@ func POSTPeer(c *gin.Context) {
 		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), redis, peer)
 
 		if config.GetConfig().EnableEmail {
-			smtp.Send(
+			err = smtp.Send(
 				config.GetConfig().AdminEmail,
 				"OpenBridge peer created",
 				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
 			)
+			if err != nil {
+				logging.Errorf("Failed to send email: %v", err)
+			}
 		}
 	}
 }

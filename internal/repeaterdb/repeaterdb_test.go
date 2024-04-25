@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // DMRHub - Run a DMR network server in a single binary
-// Copyright (C) 2023 Jacob McSwain
+// Copyright (C) 2023-2024 Jacob McSwain
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -48,8 +48,8 @@ func TestRepeaterdbValidRepeater(t *testing.T) {
 	if !ok {
 		t.Error("KP4DJT is not in the database")
 	}
-	if !strings.EqualFold(repeater.ID, "313060") {
-		t.Errorf("KP4DJT has the wrong ID. Expected %d, got %s", 313060, repeater.ID)
+	if repeater.ID != 313060 {
+		t.Errorf("KP4DJT has the wrong ID. Expected %d, got %d", 313060, repeater.ID)
 	}
 	if !strings.EqualFold(repeater.Callsign, "KP4DJT") {
 		t.Errorf("KP4DJT has the wrong callsign. Expected \"%s\", got \"%s\"", "KP4DJT", repeater.Callsign)
@@ -99,7 +99,11 @@ func TestUpdate(t *testing.T) {
 		if err != nil {
 			r.Errorf("Update failed: %v", err)
 		}
-		if repeaterDB.builtInDate == GetDate() {
+		dbDate, err := GetDate()
+		if err != nil {
+			r.Errorf("GetDate failed: %v", err)
+		}
+		if repeaterDB.builtInDate == dbDate {
 			r.Errorf("Update did not update the database")
 		}
 	})
@@ -107,7 +111,11 @@ func TestUpdate(t *testing.T) {
 
 func BenchmarkRepeaterDB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			b.Errorf("UnpackDB failed: %v", err)
+			b.Fail()
+		}
 		repeaterDB.isInited.Store(false)
 		repeaterDB.isDone.Store(false)
 		repeaterDB.dmrRepeaters.Store(dmrRepeaterDB{})
@@ -117,7 +125,11 @@ func BenchmarkRepeaterDB(b *testing.B) {
 func BenchmarkRepeaterSearch(b *testing.B) {
 	// The first run will decompress the database, so we'll do that first
 	b.StopTimer()
-	UnpackDB()
+	err := UnpackDB()
+	if err != nil {
+		b.Errorf("UnpackDB failed: %v", err)
+		b.Fail()
+	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		ValidRepeaterCallsign(313060, "KP4DJT")

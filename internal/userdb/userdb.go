@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // DMRHub - Run a DMR network server in a single binary
-// Copyright (C) 2023 Jacob McSwain
+// Copyright (C) 2023-2024 Jacob McSwain
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -28,7 +28,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -51,6 +50,12 @@ var userDB UserDB //nolint:golint,gochecknoglobals
 var (
 	ErrUpdateFailed = errors.New("update failed")
 	ErrUnmarshal    = errors.New("unmarshal failed")
+	ErrLoading      = errors.New("error loading DMR users database")
+	ErrNoUsers      = errors.New("no DMR users found in database")
+	ErrParsingDate  = errors.New("error parsing built-in date")
+	ErrXZReader     = errors.New("error creating xz reader")
+	ErrReadDB       = errors.New("error reading database")
+	ErrDecodingDB   = errors.New("error decoding DMR users database")
 )
 
 const waitTime = 100 * time.Millisecond
@@ -93,7 +98,11 @@ func IsValidUserID(dmrID uint) bool {
 
 func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			logging.Errorf("Error unpacking database: %v", err)
+			return false
+		}
 	}
 	user, ok := userDB.dmrUserMap.Load(dmrID)
 	if !ok {
@@ -119,7 +128,7 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 	return nil
 }
 
-func UnpackDB() {
+func UnpackDB() error {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
 		userDB.dmrUserMap = xsync.NewMapOf[uint, DMRUser]()
@@ -128,23 +137,19 @@ func UnpackDB() {
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
-			logging.Errorf("Error parsing built-in date: %v", err)
-			os.Exit(1)
+			return ErrParsingDate
 		}
 		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
 		if err != nil {
-			logging.Errorf("NewReader error %v", err)
-			os.Exit(1)
+			return ErrXZReader
 		}
 		userDB.uncompressedJSON, err = io.ReadAll(dbReader)
 		if err != nil {
-			logging.Errorf("ReadAll error %v", err)
-			os.Exit(1)
+			return ErrReadDB
 		}
 		var tmpDB dmrUserDB
 		if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
-			logging.Errorf("Error decoding DMR users database: %v", err)
-			os.Exit(1)
+			return ErrDecodingDB
 		}
 		tmpDB.Date = userDB.builtInDate
 		userDB.dmrUsers.Store(tmpDB)
@@ -164,17 +169,22 @@ func UnpackDB() {
 	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		logging.Error("Error loading DMR users database")
-		os.Exit(1)
+		return ErrLoading
 	}
 	if len(usrdb.Users) == 0 {
 		logging.Error("No DMR users found in database")
-		os.Exit(1)
+		return ErrNoUsers
 	}
+	return nil
 }
 
 func Len() int {
 	if !userDB.isDone.Load() {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			logging.Errorf("Error unpacking database: %v", err)
+			return 0
+		}
 	}
 	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
@@ -185,7 +195,11 @@ func Len() int {
 
 func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			logging.Errorf("Error unpacking database: %v", err)
+			return DMRUser{}, false
+		}
 	}
 	user, ok := userDB.dmrUserMap.Load(dmrID)
 	if !ok {
@@ -196,7 +210,11 @@ func Get(dmrID uint) (DMRUser, bool) {
 
 func Update() error {
 	if !userDB.isDone.Load() {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			logging.Errorf("Error unpacking database: %v", err)
+			return ErrUpdateFailed
+		}
 	}
 	const updateTimeout = 10 * time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
@@ -253,13 +271,16 @@ func Update() error {
 	return nil
 }
 
-func GetDate() time.Time {
+func GetDate() (time.Time, error) {
 	if !userDB.isDone.Load() {
-		UnpackDB()
+		err := UnpackDB()
+		if err != nil {
+			return time.Time{}, err
+		}
 	}
 	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
 		logging.Error("Error loading DMR users database")
 	}
-	return db.Date
+	return db.Date, nil
 }

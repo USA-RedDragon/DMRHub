@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // DMRHub - Run a DMR network server in a single binary
-// Copyright (C) 2023 Jacob McSwain
+// Copyright (C) 2023-2024 Jacob McSwain
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -113,3 +113,10 @@ const (
 
 const HBRPPacketLength = 53
 const HBRPMaxPacketLength = 55
+
+type Timeslot uint8
+
+const (
+	TimeslotOne Timeslot = 1
+	TimeslotTwo Timeslot = 2
+)

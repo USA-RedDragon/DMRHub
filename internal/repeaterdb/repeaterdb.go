@@ -22,7 +22,6 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-	"log/slog"
 
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
@@ -102,7 +101,7 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return false
 		}
 	}
@@ -185,7 +184,7 @@ func Len() int {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return 0
 		}
 	}
@@ -200,7 +199,7 @@ func Get(id uint) (DMRRepeater, bool) {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return DMRRepeater{}, false
 		}
 	}
@@ -215,7 +214,7 @@ func Update() error {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return ErrUpdateFailed
 		}
 	}
@@ -278,7 +277,7 @@ func GetDate() (time.Time, error) {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return time.Time{}, err
 		}
 	}

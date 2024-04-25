@@ -22,7 +22,6 @@ package userdb
 import (
 	"bytes"
 	"context"
-	"log/slog"
 
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
@@ -96,7 +95,7 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("UnpackDB failed", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return false
 		}
 	}
@@ -182,7 +181,7 @@ func Len() int {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("UnpackDB failed", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return 0
 		}
 	}
@@ -197,7 +196,7 @@ func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("UnpackDB failed", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return DMRUser{}, false
 		}
 	}
@@ -212,7 +211,7 @@ func Update() error {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			slog.Error("UnpackDB failed", "error", err)
+			logging.Errorf("Error unpacking database: %v", err)
 			return ErrUpdateFailed
 		}
 	}

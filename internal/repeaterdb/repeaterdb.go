@@ -73,8 +73,8 @@ type dmrRepeaterDB struct {
 }
 
 type DMRRepeater struct {
-	Locator     string `json:"locator"`
-	ID          string `json:"id"`
+	Locator     uint   `json:"locator"`
+	ID          uint   `json:"id"`
 	Callsign    string `json:"callsign"`
 	City        string `json:"city"`
 	State       string `json:"state"`

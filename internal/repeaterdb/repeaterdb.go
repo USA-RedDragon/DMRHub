@@ -153,11 +153,7 @@ func UnpackDB() {
 		tmpDB.Date = repeaterDB.builtInDate
 		repeaterDB.dmrRepeaters.Store(tmpDB)
 		for i := range tmpDB.Repeaters {
-			id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
-			if err != nil {
-				continue
-			}
-			repeaterDB.dmrRepeaterMapUpdating.Store(uint(id), tmpDB.Repeaters[i])
+			repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
 		}
 
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
@@ -250,11 +246,7 @@ func Update() error {
 
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 	for i := range tmpDB.Repeaters {
-		id, err := strconv.Atoi(tmpDB.Repeaters[i].ID)
-		if err != nil {
-			continue
-		}
-		repeaterDB.dmrRepeaterMapUpdating.Store(uint(id), tmpDB.Repeaters[i])
+		repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
 	}
 
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating

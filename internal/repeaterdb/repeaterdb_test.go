@@ -48,7 +48,7 @@ func TestRepeaterdbValidRepeater(t *testing.T) {
 	if !ok {
 		t.Error("KP4DJT is not in the database")
 	}
-	if !strings.EqualFold(repeater.ID, "313060") {
+	if repeater.ID != 313060 {
 		t.Errorf("KP4DJT has the wrong ID. Expected %d, got %s", 313060, repeater.ID)
 	}
 	if !strings.EqualFold(repeater.Callsign, "KP4DJT") {

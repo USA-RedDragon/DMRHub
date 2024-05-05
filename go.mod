@@ -8,7 +8,7 @@ require (
 	github.com/emersion/go-smtp v0.21.1
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-contrib/pprof v1.4.0
-	github.com/gin-contrib/sessions v1.0.0
+	github.com/gin-contrib/sessions v1.0.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron/v2 v2.4.1

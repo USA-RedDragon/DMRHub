@@ -5,7 +5,7 @@ go 1.22.3
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.4
 	github.com/emersion/go-sasl v0.0.0-20231106173351-e73c9f7bad43
-	github.com/emersion/go-smtp v0.21.1
+	github.com/emersion/go-smtp v0.21.2
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-contrib/pprof v1.5.0
 	github.com/gin-contrib/sessions v1.0.1

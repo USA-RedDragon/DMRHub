@@ -16,7 +16,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.2.2
-	github.com/gorilla/websocket v1.5.2
+	github.com/gorilla/websocket v1.5.3
 	github.com/kachit/gorm-seeder v0.0.3
 	github.com/mavjs/goPwned v0.0.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2

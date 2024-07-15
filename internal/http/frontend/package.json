@@ -34,7 +34,7 @@
     "@rushstack/eslint-patch": "^1.10.3",
     "@unhead/vue": "^1.9.16",
     "@vitejs/plugin-vue": "^5.0.5",
-    "@vitest/ui": "^2.0.2",
+    "@vitest/ui": "^2.0.3",
     "@vue/eslint-config-prettier": "^9.0.0",
     "axios": "^1.7.2",
     "cypress": "^13.13.0",
@@ -55,6 +55,6 @@
     "sitemap": "^8.0.0",
     "start-server-and-test": "^2.0.4",
     "vite": "^5.3.3",
-    "vitest": "^2.0.2"
+    "vitest": "^2.0.3"
   }
 }

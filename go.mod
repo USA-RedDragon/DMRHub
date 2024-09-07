@@ -26,7 +26,7 @@ require (
 	github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
 	github.com/redis/go-redis/v9 v9.6.1
 	github.com/stretchr/testify v1.9.0
-	github.com/tinylib/msgp v1.2.0
+	github.com/tinylib/msgp v1.2.1
 	github.com/ulikunitz/xz v0.5.12
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.1
 	github.com/ztrue/shutdown v0.1.1

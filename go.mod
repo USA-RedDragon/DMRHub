@@ -21,7 +21,7 @@ require (
 	github.com/mavjs/goPwned v0.0.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/ory/dockertest/v3 v3.11.0
-	github.com/prometheus/client_golang v1.20.3
+	github.com/prometheus/client_golang v1.20.4
 	github.com/puzpuzpuz/xsync/v3 v3.4.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
 	github.com/redis/go-redis/v9 v9.6.1

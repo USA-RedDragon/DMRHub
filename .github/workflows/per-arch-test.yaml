@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   frontend:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -33,7 +33,7 @@ jobs:
 
   test-linux:
     name: Test Linux
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: frontend
     strategy:
       fail-fast: false

@@ -5,7 +5,7 @@ on:
 
 jobs:
   frontend:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -28,7 +28,7 @@ jobs:
           retention-days: 1
 
   frontend-eslint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -68,7 +68,7 @@ jobs:
           path: internal/http/frontend/eslint_report.json
 
   frontend-unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -114,7 +114,7 @@ jobs:
           job_name: Tests
 
   frontend-e2e-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -181,7 +181,7 @@ jobs:
           retention-days: 30
 
   backend-benchmark-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: frontend
     permissions:
       contents: read
@@ -207,7 +207,7 @@ jobs:
       - run: make benchmark
 
   backend-race-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: frontend
     permissions:
       contents: read
@@ -235,7 +235,7 @@ jobs:
           go test ./... -race
 
   backend-unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: frontend
     permissions:
       contents: read
@@ -296,7 +296,7 @@ jobs:
           retention-days: 30
 
   backend-unit-tests-coverage:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: frontend
     permissions:
       contents: read

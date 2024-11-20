@@ -27,6 +27,7 @@
     <div class="wrapper">
       <nav>
         <router-link to="/">Home</router-link>
+        <router-link to="/lastheard">Last Heard</router-link>
         <router-link v-if="this.userStore.loggedIn" to="/repeaters">Repeaters</router-link>
         <router-link v-if="this.userStore.loggedIn" to="#" custom>
           <a

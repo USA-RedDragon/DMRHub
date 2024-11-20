@@ -22,9 +22,35 @@
 <template>
   <div>
     <Card>
-      <template #title>Last Heard</template>
+      <template #title>Welcome to DMRHub</template>
       <template #content>
-        <LastHeardTable />
+        <h2>What is DMRHub?</h2>
+        <p>
+          DMRHub is an <a href="https://github.com/USA-RedDragon/DMRHub" target="_blank">open-source</a> DMR
+          network server compatible with MMDVM-like devices using the
+          <a href="https://wiki.brandmeister.network/index.php/Homebrew_repeater_protocol" target="_blank">
+            Homebrew repeater prococol</a>. The idea is to be an open source, easy to use alternative to existing
+          networks like BrandMeister and TGIF, but for use in local communication environments, such as over an
+          <a href="https://www.arednmesh.org/" target="_blank">AREDN mesh</a> network.
+        </p>
+        <br />
+        <h2>Special Talkgroups</h2>
+        <p>
+          DMRHub implements a Parrot on Talkgroup 9990 and unlink on Talkgroup 4000.
+        </p>
+        <br />
+        <h2>Useful Links</h2>
+        <ul>
+          <li>
+            <a href="https://github.com/USA-RedDragon/DMRHub/wiki/User's-Guide" target="_blank">DMRHub User's Guide</a>
+          </li>
+          <li>
+            <a href="https://github.com/USA-RedDragon/DMRHub/wiki" target="_blank">DMRHub Wiki</a>
+          </li>
+          <li>
+            <a href="https://github.com/USA-RedDragon/DMRHub/wiki/Admin's-Guide" target="_blank">DMRHub Admin's Guide</a>
+          </li>
+        </ul>
       </template>
     </Card>
   </div>
@@ -32,15 +58,13 @@
 
 <script>
 import Card from 'primevue/card';
-import LastHeardTable from '@/components/LastHeardTable.vue';
 
 export default {
   components: {
     Card,
-    LastHeardTable,
   },
   head: {
-    title: 'Last Heard',
+    title: 'Home',
   },
   created() {},
   mounted() {},

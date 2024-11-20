@@ -29,6 +29,15 @@ export default (features) => {
       component: () => import('../views/MainPage.vue'),
     },
     {
+      path: '/lastheard',
+      name: 'LastHeard',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 1,
+      },
+      component: () => import('../views/LastHeard.vue'),
+    },
+    {
       path: '/login',
       name: 'Login',
       sitemap: {

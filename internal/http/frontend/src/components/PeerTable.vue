@@ -77,9 +77,9 @@
       </template>
     </Column>
     <Column field="created_at" header="Created">
-      <template #body="slotProps">{{
+      <template #body="slotProps"><span v-tooltip="slotProps.data.created_at.toString()">{{
         slotProps.data.created_at.fromNow()
-      }}</template>
+      }}</span></template>
     </Column>
     <template #expansion="slotProps">
       <PVButton

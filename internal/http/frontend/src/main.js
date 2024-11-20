@@ -27,6 +27,7 @@ import DialogService from 'primevue/dialogservice';
 import ConfirmationService from 'primevue/confirmationservice';
 import Toast from 'primevue/toast';
 import ConfirmDialog from 'primevue/confirmdialog';
+import Tooltip from 'primevue/tooltip';
 
 import App from './App.vue';
 import router from './router';
@@ -51,6 +52,7 @@ app.use(PrimeVue);
 
 app.component('PVToast', Toast);
 app.component('ConfirmDialog', ConfirmDialog);
+app.directive('tooltip', Tooltip);
 
 features.getFeatures().then(() => {
   app.use(router(features));

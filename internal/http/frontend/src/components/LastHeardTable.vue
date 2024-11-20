@@ -33,7 +33,7 @@
   >
     <Column field="start_time" header="Time">
       <template #body="slotProps">
-        <span v-if="!slotProps.data.active">{{
+        <span v-if="!slotProps.data.active" v-tooltip="slotProps.data.start_time.toString()">{{
           slotProps.data.start_time.fromNow()
         }}</span>
         <span v-else>Active</span>

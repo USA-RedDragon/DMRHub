@@ -1,7 +1,8 @@
 run:
   timeout: 30m
 
-  skip-files:
+issues:
+  exclude-files:
     - ".*\\_gen\\.go$"
     - ".*\\_gen\\_test\\.go$"
     - ".*\\_test\\.go$"
@@ -21,7 +22,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exportloopref
+    - copyloopvar
     - forcetypeassert
     - gci
     - gocheckcompilerdirectives
@@ -31,10 +32,10 @@ linters:
     - gocritic
     - gocyclo
     - godox
-    - goerr113
+    - err113
     - gofmt
     - goheader
-    - gomnd
+    - mnd
     - gomoddirectives
     - gosec
     - grouper

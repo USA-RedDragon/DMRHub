@@ -21,9 +21,38 @@ package dmrconst_test
 
 import (
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 )
 
-func TestNoop(t *testing.T) {
-	t.Parallel()
-	t.Log("Noop")
+func TestFrameTypeStringUnknown(t *testing.T) {
+	var frameType dmrconst.FrameType = 0xFF
+	expected := "Unknown"
+	if result := frameType.String(); result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
+func TestFrameTypeStringDataSync(t *testing.T) {
+	var frameType dmrconst.FrameType = dmrconst.FrameDataSync
+	expected := "Data Sync"
+	if result := frameType.String(); result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
+func TestFrameTypeStringVoiceSync(t *testing.T) {
+	var frameType dmrconst.FrameType = dmrconst.FrameVoiceSync
+	expected := "Voice Sync"
+	if result := frameType.String(); result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
+func TestFrameTypeStringVoice(t *testing.T) {
+	var frameType dmrconst.FrameType = dmrconst.FrameVoice
+	expected := "Voice"
+	if result := frameType.String(); result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
 }

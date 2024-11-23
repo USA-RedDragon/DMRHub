@@ -167,3 +167,66 @@ func BenchmarkDecodeHomebrewPacket(b *testing.B) {
 		models.UnpackPacket(bytes)
 	}
 }
+
+func TestEqualDifferentSignature(t *testing.T) {
+    t.Parallel()
+    packet1 := models.Packet{
+        Signature:   "DMRD",
+        Seq:         1,
+        Src:         2,
+        Dst:         3,
+        Repeater:    4,
+        Slot:        true,
+        GroupCall:   true,
+        FrameType:   dmrconst.FrameDataSync,
+        DTypeOrVSeq: 5,
+        StreamID:    6,
+        BER:         7,
+        RSSI:        8,
+        DMRData:     [33]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33},
+    }
+    packet2 := packet1
+    packet2.Signature = "DIFF"
+    if packet1.Equal(packet2) {
+        t.Errorf("Expected packets to be different due to different Signature")
+    }
+}
+
+
+func TestEqualDifferentPackets(t *testing.T) {
+    t.Parallel()
+    packet1 := models.Packet{
+        Signature:   "DMRD",
+        Seq:         1,
+        Src:         2,
+        Dst:         3,
+        Repeater:    4,
+        Slot:        true,
+        GroupCall:   true,
+        FrameType:   dmrconst.FrameDataSync,
+        DTypeOrVSeq: 5,
+        StreamID:    6,
+        BER:         7,
+        RSSI:        8,
+        DMRData:     [33]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33},
+    }
+    packet2 := models.Packet{
+        Signature:   "DMRD",
+        Seq:         2,
+        Src:         3,
+        Dst:         4,
+        Repeater:    5,
+        Slot:        false,
+        GroupCall:   false,
+        FrameType:   dmrconst.FrameDataSync,
+        DTypeOrVSeq: 6,
+        StreamID:    7,
+        BER:         8,
+        RSSI:        9,
+        DMRData:     [33]byte{33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+    }
+    if packet1.Equal(packet2) {
+        t.Errorf("Expected packets to be different")
+    }
+}
+

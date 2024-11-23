@@ -20,10 +20,19 @@
 package db_test
 
 import (
+	"os"
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 )
 
-func TestNoop(t *testing.T) {
+func TestMakeDBInMemoryDatabase(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+	os.Setenv("TEST", "true")
+	defer os.Unsetenv("TEST")
+
+	db := db.MakeDB()
+	if db == nil {
+		t.Fatal("Expected a non-nil database instance")
+	}
 }

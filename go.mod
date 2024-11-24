@@ -25,7 +25,7 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.4.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.7.0
 	github.com/redis/go-redis/v9 v9.7.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/tinylib/msgp v1.2.4
 	github.com/ulikunitz/xz v0.5.12
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2

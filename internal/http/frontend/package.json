@@ -36,7 +36,7 @@
     "@vitejs/plugin-vue": "^5.2.0",
     "@vitest/ui": "^2.1.5",
     "@vue/eslint-config-prettier": "^10.1.0",
-    "axios": "^1.7.7",
+    "axios": "^1.7.8",
     "cypress": "^13.16.0",
     "cypress-mochawesome-reporter": "^3.8.2",
     "cypress-multi-reporters": "^2.0.4",

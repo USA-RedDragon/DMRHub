@@ -38,6 +38,7 @@ instance.interceptors.response.use(
     if (
       window.location.pathname !== '/login' &&
       window.location.pathname !== '/' &&
+      window.location.pathname !== '/lastheard' &&
       window.location.pathname !== '/register' &&
       (status === 401 || status === 403)
     ) {

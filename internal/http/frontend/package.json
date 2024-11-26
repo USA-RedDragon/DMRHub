@@ -50,7 +50,7 @@
     "mochawesome-merge": "^4.3.0",
     "mochawesome-report-generator": "^6.2.0",
     "path-parser": "^6.1.0",
-    "prettier": "^3.3.3",
+    "prettier": "^3.4.0",
     "sass": "^1.81.0",
     "sitemap": "^8.0.0",
     "start-server-and-test": "^2.0.8",

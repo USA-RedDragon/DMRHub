@@ -11,7 +11,7 @@ require (
 	github.com/gin-contrib/sessions v1.0.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/glebarez/sqlite v1.11.0
-	github.com/go-co-op/gocron/v2 v2.12.4
+	github.com/go-co-op/gocron/v2 v2.13.0
 	github.com/go-gormigrate/gormigrate/v2 v2.1.3
 	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/securecookie v1.1.2

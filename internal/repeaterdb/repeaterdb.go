@@ -5,7 +5,7 @@
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,12 +22,12 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
-	// Embed the repeaters.json.xz file into the binary.
-	_ "embed"
+	_ "embed" // Embed the repeaters.json.xz file into the binary.
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -40,8 +40,6 @@ import (
 //go:embed repeaterdb-date.txt
 var builtInDateStr string
 
-// https://www.radioid.net/static/rptrs.json
-//
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
@@ -58,7 +56,21 @@ var (
 	ErrDecodingDB   = errors.New("error decoding DMR repeaters database")
 )
 
-const waitTime = 100 * time.Millisecond
+const (
+	waitTime                  = 100 * time.Millisecond
+	defaultRepeatersDBURL     = "https://www.radioid.net/static/rptrs.json"
+	envOverrideRepeatersDBURL = "OVERRIDE_REPEATERS_DB_URL"
+	updateTimeout             = 10 * time.Minute
+)
+
+// getRepeatersDBURL checks if an override is provided via environment
+// variable OVERRIDE_REPEATERS_DB_URL. If not, returns the default URL.
+func getRepeatersDBURL() string {
+	if override := os.Getenv(envOverrideRepeatersDBURL); override != "" {
+		return override
+	}
+	return defaultRepeatersDBURL
+}
 
 type RepeaterDB struct {
 	uncompressedJSON       []byte
@@ -136,6 +148,7 @@ func UnpackDB() error {
 	if !lastInit {
 		repeaterDB.dmrRepeaterMap = xsync.NewMapOf[uint, DMRRepeater]()
 		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
+
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -217,11 +230,15 @@ func Update() error {
 			return ErrUpdateFailed
 		}
 	}
-	const updateTimeout = 10 * time.Minute
+
+	// Use the helper to get the URL from an environment variable,
+	// falling back to the default if not set.
+	url := getRepeatersDBURL()
+
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/rptrs.json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return ErrUpdateFailed
 	}
@@ -245,6 +262,7 @@ func Update() error {
 			logging.Errorf("Error closing response body: %v", err)
 		}
 	}()
+
 	var tmpDB dmrRepeaterDB
 	if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
 		logging.Errorf("Error decoding DMR repeaters database: %v", err)

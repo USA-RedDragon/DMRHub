@@ -39,7 +39,7 @@
     "axios": "^1.7.9",
     "cypress": "^13.17.0",
     "cypress-mochawesome-reporter": "^3.8.2",
-    "cypress-multi-reporters": "^2.0.4",
+    "cypress-multi-reporters": "^2.0.5",
     "cypress-wait-for-stable-dom": "^0.1.0",
     "eslint": "^8.57.1",
     "eslint-config-google": "^0.14.0",

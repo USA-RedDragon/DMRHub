@@ -341,7 +341,7 @@ func Update() error {
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
 	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 
-	logging.Infof("Update complete. Loaded %d DMR users", Len())
+	logging.Log("Update complete. Loaded %d DMR users", Len())
 	return nil
 }
 

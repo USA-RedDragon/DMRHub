@@ -169,7 +169,7 @@ func UnpackDB() error {
 	if forceUsersListCheck {
 		lastCheck := getLastNetworkCheck()
 		if time.Since(lastCheck) > networkCacheDuration {
-			logging.Infof("FORCE_USERS_LIST_CHECK is set; updating from network only.")
+			logging.Log("FORCE_USERS_LIST_CHECK is set; updating from network only.")
 			if err := Update(); err != nil {
 				logging.Errorf("Forced network update failed: %v", err)
 				// No fallback to local data; we must rely on the network if forced.

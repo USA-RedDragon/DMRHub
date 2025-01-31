@@ -63,6 +63,33 @@ const (
 	updateTimeout             = 10 * time.Minute
 )
 
+// --- New additions below:
+
+// forceRepeaterListCheck indicates whether we *only* check the network-updated
+// list (ignoring the embedded or previously loaded local data).
+var forceRepeaterListCheck = os.Getenv("FORCE_REPEATER_LIST_CHECK") != ""
+
+// networkCacheDuration is how long (in minutes) we rely on the cached
+// network data before fetching again.
+const networkCacheDuration = 5 * time.Minute
+
+// lastNetworkCheckTime is the last time we successfully updated from the network.
+var lastNetworkCheckTime atomic.Int64 // store UnixNano time
+
+func getLastNetworkCheck() time.Time {
+	unixNano := lastNetworkCheckTime.Load()
+	if unixNano == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, unixNano)
+}
+
+func setLastNetworkCheck(t time.Time) {
+	lastNetworkCheckTime.Store(t.UnixNano())
+}
+
+// --- End new additions ---
+
 // getRepeatersDBURL checks if an override is provided via environment
 // variable OVERRIDE_REPEATERS_DB_URL. If not, returns the default URL.
 func getRepeatersDBURL() string {
@@ -108,10 +135,7 @@ type DMRRepeater struct {
 
 func IsValidRepeaterID(dmrID uint) bool {
 	// Check that the repeater id is 6 digits
-	if dmrID < 100000 || dmrID > 999999 {
-		return false
-	}
-	return true
+	return dmrID >= 100000 && dmrID <= 999999
 }
 
 func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
@@ -128,11 +152,7 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 		return false
 	}
 
-	if !strings.EqualFold(repeater.Trustee, callsign) {
-		return false
-	}
-
-	return true
+	return strings.EqualFold(repeater.Trustee, callsign)
 }
 
 func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
@@ -143,9 +163,54 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 	return nil
 }
 
+// UnpackDB is responsible for ensuring the internal repeaterDB is initialized.
+//
+// If FORCE_REPEATER_LIST_CHECK is set:
+//   - We ignore the built-in data and rely solely on the network-updated data.
+//   - We only perform an HTTP fetch if 5 minutes (networkCacheDuration) have
+//     passed since the last successful update. Otherwise, we use the in-RAM
+//     cached data from the last network update.
+//
+// If FORCE_REPEATER_LIST_CHECK is not set:
+//   - We do the usual embedded data unpack and fallback, and only call Update()
+//     when you explicitly do so or at first initialization.
 func UnpackDB() error {
+	// 1. If forceRepeaterListCheck is set, skip the embedded/built-in data
+	//    and only rely on the network database (cached for 5 minutes).
+	if forceRepeaterListCheck {
+		lastCheck := getLastNetworkCheck()
+		if time.Since(lastCheck) > networkCacheDuration {
+			logging.Infof("FORCE_REPEATER_LIST_CHECK is set; checking network for repeater DB update")
+			err := Update()
+			if err != nil {
+				// If we fail here, we do NOT fallback to local data. We simply return the error.
+				logging.Errorf("Forced network update failed: %v", err)
+				return err
+			}
+			setLastNetworkCheck(time.Now())
+		}
+
+		// Mark as initialized/done if not set yet.
+		if !repeaterDB.isInited.Load() {
+			repeaterDB.isInited.Store(true)
+		}
+		if !repeaterDB.isDone.Load() {
+			repeaterDB.isDone.Store(true)
+		}
+
+		// Verify we have data
+		rptdb, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
+		if !ok || len(rptdb.Repeaters) == 0 {
+			return ErrNoRepeaters
+		}
+		return nil
+	}
+
+	// 2. If we are not forcing network check, do the original built-in
+	//    data unpack logic (the normal flow).
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
+		// First-time init from embedded data
 		repeaterDB.dmrRepeaterMap = xsync.NewMapOf[uint, DMRRepeater]()
 		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 
@@ -178,6 +243,7 @@ func UnpackDB() error {
 		repeaterDB.isDone.Store(true)
 	}
 
+	// Wait for any in-progress initialization to complete
 	for !repeaterDB.isDone.Load() {
 		time.Sleep(waitTime)
 	}
@@ -222,6 +288,11 @@ func Get(id uint) (DMRRepeater, bool) {
 	return repeater, true
 }
 
+// Update explicitly fetches the repeater data from the network.
+//
+// If FORCE_REPEATER_LIST_CHECK is set, UnpackDB() will call Update() automatically
+// every 5 minutes, ignoring the built-in data. If it's *not* set, you can call
+// Update() manually to refresh.
 func Update() error {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
@@ -247,6 +318,9 @@ func Update() error {
 	if err != nil {
 		return ErrUpdateFailed
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return ErrUpdateFailed
@@ -256,12 +330,6 @@ func Update() error {
 	if err != nil {
 		return ErrUpdateFailed
 	}
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			logging.Errorf("Error closing response body: %v", err)
-		}
-	}()
 
 	var tmpDB dmrRepeaterDB
 	if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
@@ -285,8 +353,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 
-	logging.Errorf("Update complete. Loaded %d DMR repeaters", Len())
-
+	logging.Infof("Update complete. Loaded %d DMR repeaters", Len())
 	return nil
 }
 

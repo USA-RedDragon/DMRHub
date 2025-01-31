@@ -353,7 +353,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 
-	logging.Infof("Update complete. Loaded %d DMR repeaters", Len())
+	logging.Log("Update complete. Loaded %d DMR repeaters", Len())
 	return nil
 }
 

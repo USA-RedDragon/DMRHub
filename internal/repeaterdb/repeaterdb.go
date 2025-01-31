@@ -180,7 +180,7 @@ func UnpackDB() error {
 	if forceRepeaterListCheck {
 		lastCheck := getLastNetworkCheck()
 		if time.Since(lastCheck) > networkCacheDuration {
-			logging.Infof("FORCE_REPEATER_LIST_CHECK is set; checking network for repeater DB update")
+			logging.Log("FORCE_REPEATER_LIST_CHECK is set; checking network for repeater DB update")
 			err := Update()
 			if err != nil {
 				// If we fail here, we do NOT fallback to local data. We simply return the error.

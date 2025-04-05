@@ -49,7 +49,7 @@ jobs:
           path: internal/http/frontend/dist
       - run: go generate ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           skip-cache: true

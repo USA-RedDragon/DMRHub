@@ -29,7 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"

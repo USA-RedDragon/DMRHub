@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/ulikunitz/xz"
 )
 

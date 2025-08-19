@@ -20,76 +20,127 @@
 package db
 
 import (
-	"os"
+	"fmt"
+	"log/slog"
 	"runtime"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/glebarez/sqlite"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-func MakeDB() *gorm.DB {
-	var db *gorm.DB
-	var err error
-	if os.Getenv("TEST") != "" {
-		logging.Error("Using in-memory database for testing")
-		db, err = gorm.Open(sqlite.Open(""), &gorm.Config{})
-		if err != nil {
-			logging.Errorf("Could not open database: %s", err)
-			os.Exit(1)
-		}
-	} else {
-		db, err = gorm.Open(postgres.Open(config.GetConfig().PostgresDSN), &gorm.Config{})
-		if err != nil {
-			logging.Errorf("Could not open database: %s", err)
-			os.Exit(1)
-		}
-		if config.GetConfig().OTLPEndpoint != "" {
-			if err = db.Use(otelgorm.NewPlugin()); err != nil {
-				logging.Errorf("Could not trace database: %s", err)
-				os.Exit(1)
+func getDialect(config *configPkg.Config) gorm.Dialector {
+	var dialector gorm.Dialector
+	switch config.Database.Driver {
+	case configPkg.DatabaseDriverSQLite:
+		params := ""
+		if len(config.Database.ExtraParameters) > 0 {
+			params += "?" + config.Database.ExtraParameters[0]
+			for _, param := range config.Database.ExtraParameters[1:] {
+				params += "&" + param
 			}
+		}
+		dialector = sqlite.Open(
+			config.Database.Database + params,
+		)
+	case configPkg.DatabaseDriverMySQL:
+		hasUser := config.Database.Username != ""
+		hasPassword := config.Database.Password != ""
+		hasUserAndPassword := hasUser && hasPassword
+		prefix := ""
+		switch {
+		case hasUserAndPassword:
+			prefix = fmt.Sprintf("%s:%s@", config.Database.Username, config.Database.Password)
+		case hasUser:
+			prefix = fmt.Sprintf("%s@", config.Database.Username)
+		case hasPassword:
+			prefix = fmt.Sprintf(":%s@", config.Database.Password)
+		}
+		portStr := ""
+		if config.Database.Port != 0 {
+			portStr = fmt.Sprintf(":%d", config.Database.Port)
+		}
+		extraParamsStr := ""
+		if len(config.Database.ExtraParameters) > 0 {
+			extraParamsStr = config.Database.ExtraParameters[0]
+			for _, param := range config.Database.ExtraParameters[1:] {
+				extraParamsStr += "&" + param
+			}
+		}
+		dsn := fmt.Sprintf("%stcp(%s%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&%s",
+			prefix,
+			config.Database.Host,
+			portStr,
+			config.Database.Database,
+			extraParamsStr)
+		dialector = mysql.Open(dsn)
+	case configPkg.DatabaseDriverPostgres:
+		dsn := "host=" + config.Database.Host + " dbname=" + config.Database.Database
+		if config.Database.Port != 0 {
+			dsn += fmt.Sprintf(" port=%d", config.Database.Port)
+		}
+		if config.Database.Username != "" {
+			dsn += " user=" + config.Database.Username
+		}
+		if config.Database.Password != "" {
+			dsn += " password=" + config.Database.Password
+		}
+		if len(config.Database.ExtraParameters) > 0 {
+			for _, param := range config.Database.ExtraParameters {
+				dsn += " " + param
+			}
+		}
+		dialector = postgres.New(postgres.Config{
+			DSN:                  dsn,
+			PreferSimpleProtocol: true,
+		})
+	}
+	return dialector
+}
+
+func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
+	db, err = gorm.Open(getDialect(config))
+	if err != nil {
+		return db, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if config.Metrics.OTLPEndpoint != "" {
+		if err = db.Use(otelgorm.NewPlugin()); err != nil {
+			return db, fmt.Errorf("failed to trace database: %w", err)
 		}
 	}
 
 	err = migration.Migrate(db)
 	if err != nil {
-		logging.Errorf("Could not migrate database: %v", err)
-		os.Exit(1)
+		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
 	if err != nil {
-		logging.Errorf("Could not migrate database: %s", err)
-		os.Exit(1)
+		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
 	if result.RowsAffected == 0 {
-		if config.GetConfig().Debug {
-			logging.Error("App settings entry doesn't exist, creating it")
-		}
+		slog.Debug("App settings entry doesn't exist, creating it")
 		// The record doesn't exist, so create it
 		appSettings = models.AppSettings{
 			HasSeeded: false,
 		}
 		err := db.Create(&appSettings).Error
 		if err != nil {
-			logging.Errorf("Failed to create app settings: %s", err)
-			os.Exit(1)
+			return db, fmt.Errorf("failed to create app settings: %w", err)
 		}
-		if config.GetConfig().Debug {
-			logging.Error("App settings saved")
-		}
+		slog.Debug("App settings created")
 	}
 
 	// If the record exists and HasSeeded is true, then we don't need to seed the database.
@@ -103,21 +154,18 @@ func MakeDB() *gorm.DB {
 		// Apply seed
 		err = seedersStack.Seed()
 		if err != nil {
-			logging.Errorf("Failed to seed database: %s", err)
-			os.Exit(1)
+			return db, fmt.Errorf("failed to seed database: %w", err)
 		}
 		appSettings.HasSeeded = true
-		err := db.Save(&appSettings).Error
+		err = db.Save(&appSettings).Error
 		if err != nil {
-			logging.Errorf("Failed to save app settings: %s", err)
-			os.Exit(1)
+			return db, fmt.Errorf("failed to save app settings: %w", err)
 		}
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		logging.Errorf("Failed to open database: %s", err)
-		os.Exit(1)
+		return db, fmt.Errorf("failed to open database: %w", err)
 	}
 	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
 	const connsPerCPU = 10
@@ -125,5 +173,5 @@ func MakeDB() *gorm.DB {
 	const maxIdleTime = 10 * time.Minute
 	sqlDB.SetConnMaxIdleTime(maxIdleTime)
 
-	return db
+	return
 }

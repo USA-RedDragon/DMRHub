@@ -20,6 +20,7 @@
 package peers
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -29,10 +30,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/USA-RedDragon/DMRHub/internal/smtp"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -161,9 +161,15 @@ func POSTPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	redis, ok := c.MustGet("Redis").(*redis.Client)
+	config, ok := c.MustGet("Config").(*config.Config)
 	if !ok {
-		logging.Error("Redis cast failed")
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
+	if !ok {
+		logging.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -222,17 +228,19 @@ func POSTPeer(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Peer created", "password": peer.Password})
-		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), redis, peer)
+		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), pubsub, peer)
 
-		if config.GetConfig().EnableEmail {
-			err = smtp.Send(
-				config.GetConfig().AdminEmail,
-				"OpenBridge peer created",
-				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
-			)
-			if err != nil {
-				logging.Errorf("Failed to send email: %v", err)
-			}
+		if config.SMTP.Enabled {
+			// TODO: Add email notification for peer creation
+			// err = smtp.Send(
+			// 	config,
+			// 	email,
+			// 	"OpenBridge peer created",
+			// 	"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
+			// )
+			// if err != nil {
+			// 	logging.Errorf("Failed to send email: %v", err)
+			// }
 		}
 	}
 }

@@ -20,13 +20,13 @@
 package middleware
 
 import (
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
-func RedisProvider(redis *redis.Client) gin.HandlerFunc {
+func ConfigProvider(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("Redis", redis)
+		c.Set("Config", config)
 		c.Next()
 	}
 }

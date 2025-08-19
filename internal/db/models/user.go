@@ -23,9 +23,7 @@ package models
 import (
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
@@ -134,16 +132,7 @@ func (s *UsersSeeder) Seed(db *gorm.DB) error {
 			Admin:    false,
 			Approved: true,
 		},
-		{
-			ID:       dmrconst.SuperAdminUser,
-			Callsign: "SystemAdmin",
-			Username: "Admin",
-			Admin:    true,
-			Approved: true,
-			Password: utils.HashPassword(config.GetConfig().InitialAdminUserPassword, config.GetConfig().PasswordSalt),
-		},
 	}
-	logging.Errorf("!#!#!#!#!# Initial admin user password: %s #!#!#!#!#!", config.GetConfig().InitialAdminUserPassword)
 	return db.CreateInBatches(users, s.Configuration.Rows).Error
 }
 

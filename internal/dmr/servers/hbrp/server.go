@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"log/slog"
 	"net"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -31,8 +32,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/redis/go-redis/v9"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -40,12 +42,14 @@ import (
 // Server is the DMR server.
 type Server struct {
 	Buffer        []byte
+	config        *config.Config
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
 	Started       bool
 	Parrot        *parrot.Parrot
 	DB            *gorm.DB
-	Redis         *servers.RedisClient
+	kvClient      *servers.KVClient
+	pubsub        pubsub.PubSub
 	CallTracker   *calltracker.CallTracker
 	Version       string
 	Commit        string
@@ -61,17 +65,19 @@ const repeaterIDLength = 4
 const bufferSize = 1000000 // 1MB
 
 // MakeServer creates a new DMR server.
-func MakeServer(db *gorm.DB, redis *redis.Client, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker, version, commit string) Server {
+func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, callTracker *calltracker.CallTracker, version, commit string) Server {
 	return Server{
 		Buffer: make([]byte, largestMessageSize),
+		config: config,
 		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(config.GetConfig().ListenAddr),
-			Port: config.GetConfig().DMRPort,
+			IP:   net.ParseIP(config.DMR.HBRP.Bind),
+			Port: config.DMR.HBRP.Port,
 		},
 		Started:     false,
-		Parrot:      parrot.NewParrot(redis),
+		Parrot:      parrot.NewParrot(kv),
 		DB:          db,
-		Redis:       redisClient,
+		pubsub:      pubsub,
+		kvClient:    servers.MakeKVClient(kv),
 		CallTracker: callTracker,
 		Version:     version,
 		Commit:      commit,
@@ -84,15 +90,13 @@ func (s *Server) Stop(ctx context.Context) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
 
-	repeaters, err := s.Redis.ListRepeaters(ctx)
+	repeaters, err := s.kvClient.ListRepeaters(ctx)
 	if err != nil {
-		logging.Errorf("Error scanning redis for repeaters: %v", err)
+		logging.Errorf("Error scanning KV for repeaters: %v", err)
 	}
 	for _, repeater := range repeaters {
-		if config.GetConfig().Debug {
-			logging.Logf("Repeater found: %d", repeater)
-		}
-		s.Redis.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
+		slog.Debug("Repeater found", "repeater", repeater)
+		s.kvClient.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, repeaterIDLength)
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
 		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
@@ -101,7 +105,7 @@ func (s *Server) Stop(ctx context.Context) {
 }
 
 func (s *Server) listen(ctx context.Context) {
-	pubsub := s.Redis.Redis.Subscribe(ctx, "hbrp:incoming")
+	pubsub := s.pubsub.Subscribe("hbrp:incoming")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -116,7 +120,7 @@ func (s *Server) listen(ctx context.Context) {
 			return
 		case msg := <-pubsubChannel:
 			var packet models.RawDMRPacket
-			_, err := packet.UnmarshalMsg([]byte(msg.Payload))
+			_, err := packet.UnmarshalMsg([]byte(msg))
 			if err != nil {
 				logging.Errorf("Error unmarshalling packet: %v", err)
 				continue
@@ -130,7 +134,7 @@ func (s *Server) listen(ctx context.Context) {
 }
 
 func (s *Server) subscribePackets(ctx context.Context) {
-	pubsub := s.Redis.Redis.Subscribe(ctx, "hbrp:outgoing")
+	pubsub := s.pubsub.Subscribe("hbrp:outgoing")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -139,7 +143,7 @@ func (s *Server) subscribePackets(ctx context.Context) {
 	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
+		_, err := packet.UnmarshalMsg([]byte(msg))
 		if err != nil {
 			logging.Errorf("Error unmarshalling packet: %v", err)
 			continue
@@ -155,7 +159,7 @@ func (s *Server) subscribePackets(ctx context.Context) {
 }
 
 func (s *Server) subscribeRawPackets(ctx context.Context) {
-	pubsub := s.Redis.Redis.Subscribe(ctx, "hbrp:outgoing:noaddr")
+	pubsub := s.pubsub.Subscribe("hbrp:outgoing:noaddr")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -163,14 +167,14 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 		}
 	}()
 	for msg := range pubsub.Channel() {
-		packet, ok := models.UnpackPacket([]byte(msg.Payload))
+		packet, ok := models.UnpackPacket([]byte(msg))
 		if !ok {
 			logging.Error("Error unpacking packet")
 			continue
 		}
-		repeater, err := s.Redis.GetRepeater(ctx, packet.Repeater)
+		repeater, err := s.kvClient.GetRepeater(ctx, packet.Repeater)
 		if err != nil {
-			logging.Errorf("Error getting repeater %d from redis", packet.Repeater)
+			logging.Errorf("Error getting repeater %d from KV: %v", packet.Repeater, err)
 			continue
 		}
 		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
@@ -220,9 +224,7 @@ func (s *Server) Start(ctx context.Context) error {
 				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
 				continue
 			}
-			if config.GetConfig().Debug {
-				logging.Logf("Read a message from %v\n", remoteaddr)
-			}
+			slog.Debug("Read message from UDP socket", "remoteaddr", remoteaddr, "length", length)
 			p := models.RawDMRPacket{
 				Data:       s.Buffer[:length],
 				RemoteIP:   remoteaddr.IP.String(),
@@ -233,7 +235,7 @@ func (s *Server) Start(ctx context.Context) error {
 				logging.Errorf("Error marshalling packet: %v", err)
 				return
 			}
-			s.Redis.Redis.Publish(ctx, "hbrp:incoming", packedBytes)
+			s.pubsub.Publish("hbrp:incoming", packedBytes)
 		}
 	}()
 
@@ -245,13 +247,11 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		logging.Errorf("Server not started, not sending command")
 		return
 	}
-	if config.GetConfig().Debug {
-		logging.Logf("Sending Command %s to Repeater ID: %d", command, repeaterIDBytes)
-	}
+	slog.Debug("Sending command", "command", command, "repeaterID", repeaterIDBytes)
 	commandPrefixedData := append([]byte(command), data...)
-	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
+	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from Redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -264,7 +264,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
-	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
+	s.pubsub.Publish("hbrp:outgoing", packedBytes)
 }
 
 func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
@@ -273,13 +273,10 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 		return
 	}
 
-	if config.GetConfig().Debug {
-		logging.Logf("Sending Packet: %s\n", packet.String())
-		logging.Logf("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
-	}
-	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
+	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
+	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from Redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -292,7 +289,7 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
-	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)
+	s.pubsub.Publish("openbridge:outgoing", packedBytes)
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
@@ -300,12 +297,10 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		logging.Errorf("Server not started, not sending command")
 		return
 	}
-	if config.GetConfig().Debug {
-		logging.Logf("Sending DMR packet %s to repeater: %d", packet.String(), repeaterIDBytes)
-	}
-	repeater, err := s.Redis.GetRepeater(ctx, repeaterIDBytes)
+	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
+	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from Redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -318,7 +313,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
-	s.Redis.Redis.Publish(ctx, "hbrp:outgoing", packedBytes)
+	s.pubsub.Publish("hbrp:outgoing", packedBytes)
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {

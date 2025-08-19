@@ -21,71 +21,15 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
-	"runtime"
-	"sync"
-	"syscall"
-	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/cmd"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
-	"github.com/USA-RedDragon/DMRHub/internal/featureflags"
-	"github.com/USA-RedDragon/DMRHub/internal/http"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/USA-RedDragon/DMRHub/internal/metrics"
-	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
-	"github.com/USA-RedDragon/DMRHub/internal/userdb"
-	"github.com/go-co-op/gocron/v2"
-	"github.com/redis/go-redis/extra/redisotel/v9"
-	"github.com/redis/go-redis/v9"
+	"github.com/USA-RedDragon/configulator"
 	_ "github.com/tinylib/msgp/printer"
-	"github.com/ztrue/shutdown"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	_ "go.uber.org/automaxprocs"
-	"golang.org/x/sync/errgroup"
 )
-
-func initTracer() func(context.Context) error {
-	exporter, err := otlptrace.New(
-		context.Background(),
-		otlptracegrpc.NewClient(
-			otlptracegrpc.WithInsecure(),
-			otlptracegrpc.WithEndpoint(config.GetConfig().OTLPEndpoint),
-		),
-	)
-	if err != nil {
-		logging.Errorf("Failed tracing app: %v", err)
-	}
-	resources, err := resource.New(
-		context.Background(),
-		resource.WithAttributes(
-			attribute.String("service.name", "DMRHub"),
-			attribute.String("library.language", "go"),
-		),
-	)
-	if err != nil {
-		logging.Errorf("Could not set resources: %v", err)
-	}
-
-	otel.SetTracerProvider(
-		sdktrace.NewTracerProvider(
-			sdktrace.WithSampler(sdktrace.AlwaysSample()),
-			sdktrace.WithBatcher(exporter),
-			sdktrace.WithResource(resources),
-		),
-	)
-	return exporter.Shutdown
-}
 
 // https://goreleaser.com/cookbooks/using-main.version/
 //
@@ -96,244 +40,21 @@ var (
 )
 
 func main() {
-	os.Exit(start())
-}
+	rootCmd := cmd.NewCommand(version, commit)
 
-func start() int {
-	logging.Errorf("DMRHub v%s-%s", version, commit)
-	logging.Logf("DMRHub v%s-%s", version, commit)
-	defer logging.Close()
+	c := configulator.New[config.Config]().
+		WithEnvironmentVariables(&configulator.EnvironmentVariableOptions{
+			Separator: "_",
+		}).
+		WithFile(&configulator.FileOptions{
+			Paths: []string{"config.yaml"},
+		}).
+		WithPFlags(rootCmd.Flags(), nil)
 
-	ctx := context.Background()
+	rootCmd.SetContext(c.WithContext(context.TODO()))
 
-	featureflags.Init(config.GetConfig())
-
-	scheduler, err := gocron.NewScheduler()
-	if err != nil {
-		logging.Errorf("Failed to create scheduler: %s", err)
-		return 1
+	if err := rootCmd.Execute(); err != nil {
+		slog.Error("Encountered an error.", "error", err.Error())
+		os.Exit(1)
 	}
-
-	var cleanup func(context.Context) error
-	if config.GetConfig().OTLPEndpoint != "" {
-		cleanup = initTracer()
-		defer func() {
-			err := cleanup(ctx)
-			if err != nil {
-				logging.Errorf("Failed to shutdown tracer: %s", err)
-			}
-		}()
-	}
-	go metrics.CreateMetricsServer()
-
-	database := db.MakeDB()
-
-	// Dummy call to get the data decoded into memory early
-	go func() {
-		err := repeaterdb.Update()
-		if err != nil {
-			logging.Errorf("Failed to update repeater database: %s using built in one", err)
-		}
-	}()
-	_, err = scheduler.NewJob(
-		gocron.DailyJob(1, gocron.NewAtTimes(
-			gocron.NewAtTime(0, 0, 0),
-		)),
-		gocron.NewTask(func() {
-			err := repeaterdb.Update()
-			if err != nil {
-				logging.Errorf("Failed to update repeater database: %s", err)
-			}
-		}),
-	)
-	if err != nil {
-		logging.Errorf("Failed to schedule repeater update: %s", err)
-	}
-
-	go func() {
-		err = userdb.Update()
-		if err != nil {
-			logging.Errorf("Failed to update user database: %s using built in one", err)
-		}
-	}()
-	_, err = scheduler.NewJob(
-		gocron.DailyJob(1, gocron.NewAtTimes(
-			gocron.NewAtTime(0, 0, 0),
-		)),
-		gocron.NewTask(func() {
-			err := userdb.Update()
-			if err != nil {
-				logging.Errorf("Failed to update user database: %s", err)
-			}
-		}),
-	)
-	if err != nil {
-		logging.Errorf("Failed to schedule user update: %s", err)
-	}
-
-	scheduler.Start()
-
-	const connsPerCPU = 10
-	const maxIdleTime = 10 * time.Minute
-
-	redis := redis.NewClient(&redis.Options{
-		Addr:            config.GetConfig().RedisHost,
-		Password:        config.GetConfig().RedisPassword,
-		PoolFIFO:        true,
-		PoolSize:        runtime.GOMAXPROCS(0) * connsPerCPU,
-		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxIdleTime: maxIdleTime,
-	})
-	_, err = redis.Ping(ctx).Result()
-	if err != nil {
-		logging.Errorf("Failed to connect to redis: %s", err)
-		return 1
-	}
-	defer func() {
-		err := redis.Close()
-		if err != nil {
-			logging.Errorf("Failed to close redis: %s", err)
-		}
-	}()
-	if config.GetConfig().OTLPEndpoint != "" {
-		if err := redisotel.InstrumentTracing(redis); err != nil {
-			logging.Errorf("Failed to trace redis: %s", err)
-			return 1
-		}
-
-		// Enable metrics instrumentation.
-		if err := redisotel.InstrumentMetrics(redis); err != nil {
-			logging.Errorf("Failed to instrument redis: %s", err)
-			return 1
-		}
-	}
-
-	callTracker := calltracker.NewCallTracker(database, redis)
-
-	redisClient := servers.MakeRedisClient(redis)
-
-	hbrpServer := hbrp.MakeServer(database, redis, redisClient, callTracker, version, commit)
-	err = hbrpServer.Start(ctx)
-	if err != nil {
-		logging.Errorf("Failed to start HBRP server: %v", err)
-		return 1
-	}
-	defer hbrpServer.Stop(ctx)
-
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		// For each repeater in the DB, start a gofunc to listen for calls
-		repeaters, err := models.ListRepeaters(database)
-		if err != nil {
-			return err //nolint:golint,wrapcheck
-		}
-		for _, repeater := range repeaters {
-			go hbrp.GetSubscriptionManager(database).ListenForCalls(redis, repeater.ID)
-		}
-		return nil
-	})
-
-	if config.GetConfig().OpenBridgePort != 0 {
-		// Start the OpenBridge server
-		openbridgeServer := openbridge.MakeServer(database, redisClient, callTracker)
-		err := openbridgeServer.Start(ctx)
-		if err != nil {
-			logging.Errorf("Failed to start OpenBridge server: %v", err)
-			return 1
-		}
-		defer openbridgeServer.Stop(ctx)
-
-		go func() {
-			// For each peer in the DB, start a gofunc to listen for calls
-			peers := models.ListPeers(database)
-			for _, peer := range peers {
-				go openbridge.GetSubscriptionManager().Subscribe(ctx, redis, peer)
-			}
-		}()
-	}
-
-	http := http.MakeServer(database, redis, version, commit)
-	err = http.Start()
-	if err != nil {
-		logging.Errorf("Failed to start HTTP server %v", err)
-		return 1
-	}
-	defer http.Stop()
-
-	if err := g.Wait(); err != nil {
-		logging.Errorf("Failed to start repeater listeners: %s", err)
-		return 1
-	}
-
-	stop := func(sig os.Signal) {
-		logging.Errorf("Shutting down due to %v", sig)
-		wg := new(sync.WaitGroup)
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			err = scheduler.StopJobs()
-			if err != nil {
-				logging.Errorf("Failed to stop scheduler jobs: %s", err)
-			}
-			err = scheduler.Shutdown()
-			if err != nil {
-				logging.Errorf("Failed to stop scheduler: %s", err)
-			}
-		}(wg)
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			hbrp.GetSubscriptionManager(database).CancelAllSubscriptions()
-			hbrpServer.Stop(ctx)
-		}(wg)
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			if config.GetConfig().OTLPEndpoint != "" {
-				const timeout = 5 * time.Second
-				ctx, cancel := context.WithTimeout(ctx, timeout)
-				defer cancel()
-				err := cleanup(ctx)
-				if err != nil {
-					logging.Errorf("Failed to shutdown tracer: %s", err)
-				}
-			}
-		}(wg)
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			http.Stop()
-		}(wg)
-
-		// Wait for all the servers to stop
-		const timeout = 10 * time.Second
-
-		c := make(chan struct{})
-		go func() {
-			defer close(c)
-			wg.Wait()
-		}()
-		select {
-		case <-c:
-			redis.Close()
-			logging.Error("Shutdown safely completed")
-			logging.Close()
-			os.Exit(0)
-		case <-time.After(timeout):
-			logging.Error("Shutdown timed out")
-			logging.Close()
-			os.Exit(1)
-		}
-	}
-	defer stop(syscall.SIGINT)
-
-	shutdown.AddWithParam(stop)
-
-	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
-
-	return 0
 }

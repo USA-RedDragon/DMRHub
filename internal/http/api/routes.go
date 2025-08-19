@@ -22,7 +22,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
@@ -33,37 +33,36 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	websocketControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 // ApplyRoutes to the HTTP Mux.
-func ApplyRoutes(router *gin.Engine, db *gorm.DB, redis *redis.Client, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+func ApplyRoutes(config *configPkg.Config, router *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
 	router.GET("/robots.txt", func(c *gin.Context) {
-		if config.GetConfig().AllowScraping {
-			if config.GetConfig().CustomRobotsTxt != "" {
-				c.String(http.StatusOK, "Sitemap: /sitemap.xml\nDisallow: /admin\n"+config.GetConfig().CustomRobotsTxt)
-				return
-			}
+		switch config.HTTP.RobotsTXT.Mode {
+		case configPkg.RobotsTXTModeDisabled:
+			c.String(http.StatusOK, "User-agent: *\nDisallow: /")
+		case configPkg.RobotsTXTModeAllow:
 			c.String(http.StatusOK, "User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: /sitemap.xml")
-			return
+		case configPkg.RobotsTXTModeCustom:
+			c.String(http.StatusOK, config.HTTP.RobotsTXT.Content+"\nSitemap: /sitemap.xml\nDisallow: /admin")
 		}
-		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 	})
+
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit)
 	v1(apiV1, userSuspension)
 
 	ws := router.Group("/ws")
 	ws.Use(ratelimit)
-	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(websocketControllers.CreateRepeatersWebsocket(db, redis)))
-	ws.GET("/calls", websocket.CreateHandler(websocketControllers.CreateCallsWebsocket(db, redis)))
-	ws.GET("/peers", websocket.CreateHandler(websocketControllers.CreatePeersWebsocket(db, redis)))
+	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
+	ws.GET("/calls", websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(db, pubsub)))
+	ws.GET("/peers", websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
 }
 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
-	group.GET("/features", v1Controllers.GETFeatures)
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.GET("/logout", v1AuthControllers.GETLogout)

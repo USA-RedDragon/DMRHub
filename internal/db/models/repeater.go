@@ -22,9 +22,9 @@ package models
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -60,9 +60,7 @@ type Repeater struct {
 func (p *Repeater) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		if config.GetConfig().Debug {
-			logging.Errorf("Failed to marshal repeater to json: %s", err)
-		}
+		slog.Error("Failed to marshal repeater to json", "error", err)
 		return ""
 	}
 	return string(jsn)
@@ -123,7 +121,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 	return nil
 }
 
-func (p *Repeater) UpdateFromRedis(repeater Repeater) {
+func (p *Repeater) UpdateFrom(repeater Repeater) {
 	p.Connected = repeater.Connected
 	p.LastPing = repeater.LastPing
 	p.Callsign = repeater.Callsign

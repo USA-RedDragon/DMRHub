@@ -27,24 +27,24 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 	gorillaWebsocket "github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type CallsWebsocket struct {
 	websocket.Websocket
-	redis        *redis.Client
+	pubsub       pubsub.PubSub
 	db           *gorm.DB
-	subscription *redis.PubSub
+	subscription pubsub.Subscription
 	cancel       context.CancelFunc
 }
 
-func CreateCallsWebsocket(db *gorm.DB, redis *redis.Client) *CallsWebsocket {
+func CreateCallsWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *CallsWebsocket {
 	return &CallsWebsocket{
-		redis: redis,
-		db:    db,
+		pubsub: pubsub,
+		db:     db,
 	}
 }
 
@@ -58,15 +58,15 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 	userIDIface := session.Get("user_id")
 	if userIDIface == nil {
 		// User ID not found, subscribe to public calls
-		c.subscription = c.redis.Subscribe(ctx, "calls:public")
+		c.subscription = c.pubsub.Subscribe("calls:public")
 	} else {
 		userID, ok := userIDIface.(uint)
 		if !ok {
 			logging.Errorf("Failed to convert user ID to uint")
 			return
 		}
-		go hbrp.GetSubscriptionManager(c.db).ListenForWebsocket(newCtx, c.redis, userID)
-		c.subscription = c.redis.Subscribe(ctx, fmt.Sprintf("calls:%d", userID))
+		go hbrp.GetSubscriptionManager(c.db).ListenForWebsocket(newCtx, c.pubsub, userID)
+		c.subscription = c.pubsub.Subscribe(fmt.Sprintf("calls:%d", userID))
 	}
 
 	go func() {
@@ -80,7 +80,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 			case msg := <-channel:
 				w.WriteMessage(websocket.Message{
 					Type: gorillaWebsocket.TextMessage,
-					Data: []byte(msg.Payload),
+					Data: msg,
 				})
 			}
 		}

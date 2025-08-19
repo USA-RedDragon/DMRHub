@@ -22,6 +22,7 @@ package v1
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -31,7 +32,14 @@ import (
 )
 
 func GETNetworkName(c *gin.Context) {
-	_, err := io.WriteString(c.Writer, config.GetConfig().NetworkName)
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	_, err := io.WriteString(c.Writer, config.NetworkName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting network name"})
 	}

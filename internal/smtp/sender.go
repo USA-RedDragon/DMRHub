@@ -22,9 +22,10 @@ package smtp
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -36,26 +37,26 @@ var (
 	ErrSendingEmail      = errors.New("error sending email")
 )
 
-func Send(toEmail string, subject string, body string) error {
-	config := config.GetConfig()
-
-	if !config.EnableEmail {
+func Send(config *configPkg.Config, toEmail string, subject string, body string) error {
+	if !config.SMTP.Enabled {
 		logging.Errorf("Email is disabled, but an email was attempted to be sent")
 		return ErrEmailDisabled
 	}
 
 	var auth sasl.Client
-	switch config.SMTPAuthMethod {
-	case "PLAIN":
-		auth = sasl.NewPlainClient("", config.SMTPUsername, config.SMTPPassword)
-	case "LOGIN":
-		auth = sasl.NewLoginClient(config.SMTPUsername, config.SMTPPassword)
+	switch config.SMTP.AuthMethod {
+	case configPkg.SMTPAuthMethodNone:
+		auth = nil // No authentication
+	case configPkg.SMTPAuthMethodPlain:
+		auth = sasl.NewPlainClient("", config.SMTP.Username, config.SMTP.Password)
+	case configPkg.SMTPAuthMethodLogin:
+		auth = sasl.NewLoginClient(config.SMTP.Username, config.SMTP.Password)
 	default:
-		logging.Errorf("Invalid SMTP auth method: %s", config.SMTPAuthMethod)
+		slog.Error("Invalid SMTP auth method", "method", config.SMTP.AuthMethod)
 		return ErrInvalidAuthMethod
 	}
 
-	msg := strings.NewReader(fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTPFrom) +
+	msg := strings.NewReader(fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTP.From) +
 		fmt.Sprintf("To: %s\r\n", toEmail) +
 		fmt.Sprintf("Subject: %s\r\n", subject) +
 		"Mime-Version: 1.0;\r\n" +
@@ -66,26 +67,27 @@ func Send(toEmail string, subject string, body string) error {
 		"\r\n</body></html>\r\n",
 	)
 
-	if config.SMTPImplicitTLS {
-		err := smtp.SendMailTLS(
-			config.SMTPHost+":"+fmt.Sprint(config.SMTPPort),
+	switch config.SMTP.TLS {
+	case configPkg.SMTPTLSNone, configPkg.SMTPTLSStartTLS:
+		err := smtp.SendMail(
+			config.SMTP.Host+":"+fmt.Sprint(config.SMTP.Port),
 			auth,
-			config.SMTPFrom,
+			config.SMTP.From,
 			[]string{toEmail},
 			msg)
 		if err != nil {
-			logging.Errorf("Error sending email: %v", err)
+			slog.Error("Error sending email", "error", err)
 			return ErrSendingEmail
 		}
-	} else {
-		err := smtp.SendMail(
-			config.SMTPHost+":"+fmt.Sprint(config.SMTPPort),
+	case configPkg.SMTPTLSImplicit:
+		err := smtp.SendMailTLS(
+			config.SMTP.Host+":"+fmt.Sprint(config.SMTP.Port),
 			auth,
-			config.SMTPFrom,
+			config.SMTP.From,
 			[]string{toEmail},
 			msg)
 		if err != nil {
-			logging.Errorf("Error sending email: %v", err)
+			slog.Error("Error sending email with TLS", "error", err)
 			return ErrSendingEmail
 		}
 	}

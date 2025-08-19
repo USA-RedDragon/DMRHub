@@ -17,45 +17,17 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package featureflags
+package middleware
 
 import (
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+
+	"github.com/gin-gonic/gin"
 )
 
-type FeatureFlag string
-
-const (
-	FeatureFlagOpenBridge FeatureFlag = "openbridge"
-)
-
-var (
-	//nolint:golint,gochecknoglobals
-	featureFlagManager *FeatureFlags
-)
-
-type FeatureFlags struct {
-	config *config.Config
-}
-
-func Init(config *config.Config) *FeatureFlags {
-	ff := &FeatureFlags{
-		config: config,
+func PubSubProvider(pubsub pubsub.PubSub) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("PubSub", pubsub)
+		c.Next()
 	}
-	featureFlagManager = ff
-	return ff
-}
-
-func IsEnabled(flag FeatureFlag) bool {
-	if featureFlagManager == nil {
-		logging.Error("FeatureFlagManager not initialized")
-		return false
-	}
-	for _, v := range featureFlagManager.config.FeatureFlags {
-		if v == string(flag) {
-			return true
-		}
-	}
-	return false
 }

@@ -23,26 +23,26 @@ import (
 	"context"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 )
 
 // Parrot is a struct that stores packets and repeats them back to the repeater.
 type Parrot struct {
-	Redis redisParrotStorage
+	storage parrotStorage
 }
 
 // NewParrot creates a new parrot instance.
-func NewParrot(redis *redis.Client) *Parrot {
+func NewParrot(kv kv.KV) *Parrot {
 	return &Parrot{
-		Redis: makeRedisParrotStorage(redis),
+		storage: makeParrotStorage(kv),
 	}
 }
 
 // IsStarted returns true if the stream is already started.
 func (p *Parrot) IsStarted(ctx context.Context, streamID uint) bool {
-	return p.Redis.exists(ctx, streamID)
+	return p.storage.exists(ctx, streamID)
 }
 
 // StartStream starts a new stream.
@@ -50,10 +50,10 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.StartStream")
 	defer span.End()
 
-	if !p.Redis.exists(ctx, streamID) {
-		p.Redis.store(ctx, streamID, repeaterID)
-		return true
+	if !p.storage.exists(ctx, streamID) {
+		p.storage.store(ctx, streamID, repeaterID)
 	}
+
 	logging.Errorf("Parrot: Stream %d already started", streamID)
 	return false
 }
@@ -63,12 +63,12 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.RecordPacket")
 	defer span.End()
 
-	go p.Redis.refresh(ctx, streamID)
+	go p.storage.refresh(ctx, streamID)
 
 	// Grab the repeater ID to go ahead and mark the packet as being routed back.
-	repeaterID, err := p.Redis.get(ctx, streamID)
+	repeaterID, err := p.storage.get(ctx, streamID)
 	if err != nil {
-		logging.Errorf("Error getting parrot stream from redis: %v", err)
+		logging.Errorf("Error getting parrot stream from pubsub: %v", err)
 		return
 	}
 
@@ -78,9 +78,9 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	packet.BER = -1
 	packet.RSSI = -1
 
-	err = p.Redis.stream(ctx, streamID, packet)
+	err = p.storage.stream(ctx, streamID, packet)
 	if err != nil {
-		logging.Errorf("Error storing parrot stream in redis: %v", err)
+		logging.Errorf("Error storing parrot stream in pubsub: %v", err)
 	}
 }
 
@@ -89,7 +89,7 @@ func (p *Parrot) StopStream(ctx context.Context, streamID uint) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.StopStream")
 	defer span.End()
 
-	p.Redis.delete(ctx, streamID)
+	p.storage.delete(ctx, streamID)
 }
 
 // GetStream returns the stream.
@@ -98,9 +98,9 @@ func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
 	defer span.End()
 
 	// Empty array of packet byte arrays.
-	packets, err := p.Redis.getStream(ctx, streamID)
+	packets, err := p.storage.getStream(ctx, streamID)
 	if err != nil {
-		logging.Errorf("Error getting parrot stream from redis: %s", err)
+		logging.Errorf("Error getting parrot stream from storage: %s", err)
 		return nil
 	}
 

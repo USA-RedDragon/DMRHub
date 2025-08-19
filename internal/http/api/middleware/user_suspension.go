@@ -20,9 +20,9 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
@@ -37,9 +37,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		session := sessions.Default(c)
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("SuspendedUserLockout: Failed to get user_id from session")
-			}
+			slog.Debug("SuspendedUserLockout: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

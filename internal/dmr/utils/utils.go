@@ -20,10 +20,10 @@
 package utils
 
 import (
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"log/slog"
+
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 )
 
 func CheckPacketType(packet models.Packet) (bool, bool) {
@@ -34,30 +34,20 @@ func CheckPacketType(packet models.Packet) (bool, bool) {
 		switch dmrconst.DataType(packet.DTypeOrVSeq) {
 		case dmrconst.DTypeVoiceTerm:
 			isVoice = true
-			if config.GetConfig().Debug {
-				logging.Logf("Voice terminator from %d", packet.Src)
-			}
+			slog.Debug("Voice terminator packet received", "src", packet.Src)
 		case dmrconst.DTypeVoiceHead:
 			isVoice = true
-			if config.GetConfig().Debug {
-				logging.Logf("Voice header from %d", packet.Src)
-			}
+			slog.Debug("Voice header packet received", "src", packet.Src)
 		default:
 			isData = true
-			if config.GetConfig().Debug {
-				logging.Logf("Data packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-			}
+			slog.Debug("Data packet received", "src", packet.Src, "dtype", packet.DTypeOrVSeq)
 		}
 	case dmrconst.FrameVoice:
 		isVoice = true
-		if config.GetConfig().Debug {
-			logging.Logf("Voice packet from %d, vseq %d", packet.Src, packet.DTypeOrVSeq)
-		}
+		slog.Debug("Voice packet received", "src", packet.Src, "vseq", packet.DTypeOrVSeq)
 	case dmrconst.FrameVoiceSync:
 		isVoice = true
-		if config.GetConfig().Debug {
-			logging.Logf("Voice sync packet from %d, dtype: %d", packet.Src, packet.DTypeOrVSeq)
-		}
+		slog.Debug("Voice sync packet received", "src", packet.Src, "dtype", packet.DTypeOrVSeq)
 	}
 	return isVoice, isData
 }

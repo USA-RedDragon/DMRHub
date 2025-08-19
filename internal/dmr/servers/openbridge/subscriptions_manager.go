@@ -21,12 +21,12 @@ package openbridge
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/redis/go-redis/v9"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 )
 
@@ -66,7 +66,7 @@ func (m *SubscriptionManager) CancelSubscription(p models.Peer) {
 	}
 }
 
-func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client, p models.Peer) {
+func (m *SubscriptionManager) Subscribe(ctx context.Context, pubsub pubsub.PubSub, p models.Peer) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
@@ -87,33 +87,29 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, redis *redis.Client
 		m.subscriptions[p.ID] = cancel
 		m.subscriptionCancelMutex[p.ID].Unlock()
 		m.subscriptionsMutex.Unlock()
-		go m.subscribe(newCtx, redis, p) //nolint:golint,contextcheck
+		go m.subscribe(newCtx, pubsub, p) //nolint:golint,contextcheck
 	}
 }
 
-func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client, p models.Peer) {
-	if config.GetConfig().Debug {
-		logging.Logf("Listening for calls on peer %d", p.ID)
-	}
-	pubsub := redis.Subscribe(ctx, "openbridge:packets")
+func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSub, p models.Peer) {
+	slog.Debug("Listening for calls on peer", "peerID", p.ID)
+	subscription := pubsub.Subscribe("openbridge:packets")
 	defer func() {
-		err := pubsub.Unsubscribe(ctx, "openbridge:packets")
+		err := subscription.Unsubscribe()
 		if err != nil {
 			logging.Errorf("Error unsubscribing from openbridge:packets: %s", err)
 		}
-		err = pubsub.Close()
+		err = subscription.Close()
 		if err != nil {
 			logging.Errorf("Error closing pubsub connection: %s", err)
 		}
 	}()
-	pubsubChannel := pubsub.Channel()
+	pubsubChannel := subscription.Channel()
 
 	for {
 		select {
 		case <-ctx.Done():
-			if config.GetConfig().Debug {
-				logging.Log("Context canceled, stopping subscription to openbridge:packets")
-			}
+			slog.Debug("Context canceled, stopping subscription to openbridge:packets", "peerID", p.ID)
 			m.subscriptionsMutex.Lock()
 			_, ok := m.subscriptionCancelMutex[p.ID]
 			if ok {
@@ -128,7 +124,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg([]byte(msg.Payload))
+			_, err := rawPacket.UnmarshalMsg([]byte(msg))
 			if err != nil {
 				logging.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
@@ -145,7 +141,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, redis *redis.Client
 
 			packet.Repeater = p.ID
 			packet.Slot = false
-			redis.Publish(ctx, "openbridge:outgoing", packet.Encode())
+			pubsub.Publish("openbridge:outgoing", packet.Encode())
 		}
 	}
 }

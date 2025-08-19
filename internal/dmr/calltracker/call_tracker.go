@@ -22,16 +22,16 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/puzpuzpuz/xsync/v3"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -89,16 +89,16 @@ func getCallHash(call models.Call) (uint64, error) {
 // CallTracker is a struct that holds the state of the calls that are currently in progress.
 type CallTracker struct {
 	db            *gorm.DB
-	redis         *redis.Client
+	pubsub        pubsub.PubSub
 	callEndTimers *xsync.MapOf[uint64, *time.Timer]
 	inFlightCalls *xsync.MapOf[uint64, *models.Call]
 }
 
 // NewCallTracker creates a new CallTracker.
-func NewCallTracker(db *gorm.DB, redis *redis.Client) *CallTracker {
+func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 	return &CallTracker{
 		db:            db,
-		redis:         redis,
+		pubsub:        pubsub,
 		callEndTimers: xsync.NewMapOf[uint64, *time.Timer](),
 		inFlightCalls: xsync.NewMapOf[uint64, *models.Call](),
 	}
@@ -119,9 +119,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	}
 
 	if !userExists {
-		if config.GetConfig().Debug {
-			logging.Errorf("User %d does not exist", packet.Src)
-		}
+		slog.Debug("User does not exist", "userID", packet.Src)
 		return
 	}
 
@@ -138,9 +136,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	}
 
 	if !repeaterExists {
-		if config.GetConfig().Debug {
-			logging.Errorf("Repeater %d does not exist", packet.Repeater)
-		}
+		slog.Debug("Repeater does not exist", "repeaterID", packet.Repeater)
 		return
 	}
 
@@ -265,9 +261,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	// Add the call to the active calls map
 	c.inFlightCalls.Store(callHash, &call)
 
-	if config.GetConfig().Debug {
-		logging.Logf("Started call %d", call.StreamID)
-	}
+	slog.Debug("Started call", "streamID", call.StreamID, "src", call.User.Callsign, "dst", call.DestinationID, "repeater", call.Repeater.Callsign)
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
 	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet)))
@@ -322,15 +316,14 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 		jsonCall.Jitter = call.Jitter
 		jsonCall.BER = call.BER
 		jsonCall.RSSI = call.RSSI
-		// Publish the call JSON to Redis
+		// Publish the call JSON to pubsub
 		callJSON, err := json.Marshal(jsonCall)
 		if err != nil {
 			logging.Errorf("Error marshalling call JSON: %v", err)
 			return
 		}
 
-		_, err = c.redis.Publish(ctx, "calls:public", callJSON).Result()
-		if err != nil {
+		if err = c.pubsub.Publish("calls:public", callJSON); err != nil {
 			logging.Errorf("Error publishing call JSON: %v", err)
 			return
 		}
@@ -341,8 +334,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 		logging.Errorf("Error marshalling call JSON: %v", err)
 		return
 	}
-	_, err = c.redis.Publish(ctx, "calls", origCallJSON).Result()
-	if err != nil {
+	if err = c.pubsub.Publish("calls", origCallJSON); err != nil {
 		logging.Errorf("Error publishing call JSON: %v", err)
 		return
 	}

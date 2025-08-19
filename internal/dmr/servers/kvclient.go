@@ -28,13 +28,13 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 )
 
-type RedisClient struct {
-	Redis *redis.Client
+type KVClient struct {
+	kv kv.KV
 }
 
 var (
@@ -47,48 +47,48 @@ var (
 
 const repeaterExpireTime = 5 * time.Minute
 
-func MakeRedisClient(redis *redis.Client) *RedisClient {
-	return &RedisClient{
-		Redis: redis,
+func MakeKVClient(kv kv.KV) *KVClient {
+	return &KVClient{
+		kv: kv,
 	}
 }
 
-func (s *RedisClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterPing")
+func (s *KVClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.updateRepeaterPing")
 	defer span.End()
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		logging.Errorf("Error getting repeater from redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return
 	}
 	repeater.LastPing = time.Now()
 	s.StoreRepeater(ctx, repeaterID, repeater)
-	s.Redis.Expire(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
+	s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
 }
 
-func (s *RedisClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.updateRepeaterConnection")
+func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.updateRepeaterConnection")
 	defer span.End()
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		logging.Errorf("Error getting repeater from redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return
 	}
 	repeater.Connection = connection
 	s.StoreRepeater(ctx, repeaterID, repeater)
 }
 
-func (s *RedisClient) DeleteRepeater(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.deleteRepeater")
+func (s *KVClient) DeleteRepeater(ctx context.Context, repeaterID uint) bool {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.deleteRepeater")
 	defer span.End()
 
-	return s.Redis.Del(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
+	return s.kv.Delete(fmt.Sprintf("hbrp:repeater:%d", repeaterID)) == nil
 }
 
-func (s *RedisClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.storeRepeater")
+func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.storeRepeater")
 	defer span.End()
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
@@ -97,16 +97,17 @@ func (s *RedisClient) StoreRepeater(ctx context.Context, repeaterID uint, repeat
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	s.Redis.Set(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes, repeaterExpireTime)
+	s.kv.Set(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes)
+	s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
 }
 
-func (s *RedisClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.getRepeater")
+func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getRepeater")
 	defer span.End()
 
-	repeaterBits, err := s.Redis.Get(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Result()
+	repeaterBits, err := s.kv.Get(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
 	if err != nil {
-		logging.Errorf("Error getting repeater from redis: %v", err)
+		logging.Errorf("Error getting repeater from KV: %v", err)
 		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
@@ -118,21 +119,26 @@ func (s *RedisClient) GetRepeater(ctx context.Context, repeaterID uint) (models.
 	return repeater, nil
 }
 
-func (s *RedisClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.repeaterExists")
+func (s *KVClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.repeaterExists")
 	defer span.End()
 
-	return s.Redis.Exists(ctx, fmt.Sprintf("hbrp:repeater:%d", repeaterID)).Val() == 1
+	has, err := s.kv.Has(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
+	if err != nil {
+		logging.Errorf("Error checking if repeater exists in KV: %v", err)
+		return false
+	}
+	return has
 }
 
-func (s *RedisClient) ListRepeaters(ctx context.Context) ([]uint, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "redisClient.listRepeaters")
+func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.listRepeaters")
 	defer span.End()
 
 	var cursor uint64
 	var repeaters []uint
 	for {
-		keys, _, err := s.Redis.Scan(ctx, cursor, "hbrp:repeater:*", 0).Result()
+		keys, _, err := s.kv.Scan(cursor, "hbrp:repeater:*", 0)
 		if err != nil {
 			return nil, ErrNoSuchRepeater
 		}
@@ -151,13 +157,13 @@ func (s *RedisClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 	return repeaters, nil
 }
 
-func (s *RedisClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+func (s *KVClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error) {
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getPeer")
 	defer span.End()
 
-	peerBits, err := s.Redis.Get(ctx, fmt.Sprintf("openbridge:peer:%d", peerID)).Result()
+	peerBits, err := s.kv.Get(fmt.Sprintf("openbridge:peer:%d", peerID))
 	if err != nil {
-		logging.Errorf("Error getting peer from redis: %v", err)
+		logging.Errorf("Error getting peer from KV: %v", err)
 		return models.Peer{}, ErrNoSuchPeer
 	}
 	var peer models.Peer

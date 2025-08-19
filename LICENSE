@@ -659,15 +659,3 @@ specific requirements.
 if any, to sign a "copyright disclaimer" for the program, if necessary.
 For more information on this, and how to apply and follow the GNU AGPL, see
 <https://www.gnu.org/licenses/>.
-
--------------------------------------------------------------------------------
-
-Other works in this project under MIT licenses:
-
-  internal/http/sessions/redis.go is a modified version of
-  https://github.com/gin-contrib/sessions. See their license:
-  https://github.com/gin-contrib/sessions/blob/828f9855fb30f12d40251e5211df3be5c7973e8c/LICENSE
-
-  internal/http/sessions/redistore.go is a modified version of
-  https://github.com/boj/redistore. See their license:
-  https://github.com/boj/redistore/blob/cd5dcc76aeff9ba06b0a924829fe24fd69cdd517/LICENSE

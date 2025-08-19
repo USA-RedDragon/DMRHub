@@ -31,16 +31,15 @@ import (
 	"time"
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
-	"github.com/USA-RedDragon/DMRHub/internal/config"
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
-	redisSessions "github.com/USA-RedDragon/DMRHub/internal/http/sessions"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/pprof"
 	"github.com/gin-contrib/sessions"
+	gormSessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
@@ -60,26 +59,21 @@ const debugWriteTimeout = 60 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 10
 
-func MakeServer(db *gorm.DB, redisClient *redis.Client, version, commit string) Server {
-	if config.GetConfig().Debug {
+func MakeServer(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) Server {
+	if config.LogLevel == configPkg.LogLevelDebug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := CreateRouter(db, redisClient, version, commit)
+	r := CreateRouter(config, db, pubsub, version, commit)
 
-	writeTimeout := defTimeout
-	if config.GetConfig().Debug {
-		writeTimeout = debugWriteTimeout
-	}
-
-	logging.Errorf("HTTP Server listening at %s on port %d\n", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort)
+	logging.Errorf("HTTP Server listening at %s on port %d\n", config.HTTP.Bind, config.HTTP.Port)
 	s := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", config.GetConfig().ListenAddr, config.GetConfig().HTTPPort),
+		Addr:         fmt.Sprintf("%s:%d", config.HTTP.Bind, config.HTTP.Port),
 		Handler:      r,
 		ReadTimeout:  defTimeout,
-		WriteTimeout: writeTimeout,
+		WriteTimeout: defTimeout,
 	}
 	s.SetKeepAlivesEnabled(false)
 
@@ -95,54 +89,50 @@ func MakeServer(db *gorm.DB, redisClient *redis.Client, version, commit string) 
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(r *gin.Engine, db *gorm.DB, redisClient *redis.Client, version, commit string) {
+func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) {
 	// Debug
-	if config.GetConfig().Debug {
-		pprof.Register(r)
-	}
+	// TODO: Make pprof its own server
+	// if config.GetConfig().Debug {
+	// 	pprof.Register(r)
+	// }
 
 	// Tracing
-	if config.GetConfig().OTLPEndpoint != "" {
+	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))
-		r.Use(middleware.TracingProvider())
+		r.Use(middleware.TracingProvider(config))
 	}
 
 	// DBs
 	r.Use(middleware.DatabaseProvider(db))
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
-	r.Use(middleware.RedisProvider(redisClient))
+	r.Use(middleware.PubSubProvider(pubsub))
+	r.Use(middleware.ConfigProvider(config))
 
 	// CORS
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowCredentials = true
-	corsConfig.AllowOrigins = config.GetConfig().CORSHosts
+	corsConfig.AllowOrigins = config.HTTP.CORS.Hosts
 	r.Use(cors.New(corsConfig))
 
 	// Sessions
-	sessionStore, _ := redisSessions.NewStore(redisClient, config.GetConfig().Secret, config.GetConfig().Secret)
+	sessionStore := gormSessions.NewStore(db, true, config.GetDerivedSecret())
 	r.Use(sessions.Sessions("sessions", sessionStore))
 
 	// Versioning
 	r.Use(middleware.VersionProvider(version, commit))
 }
 
-func CreateRouter(db *gorm.DB, redisClient *redis.Client, version, commit string) *gin.Engine {
-	if config.GetConfig().Debug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
+func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
 	r.Use(gin.Recovery())
 
-	err := r.SetTrustedProxies(config.GetConfig().TrustedProxies)
+	err := r.SetTrustedProxies(config.HTTP.TrustedProxies)
 	if err != nil {
 		logging.Errorf("Failed setting trusted proxies: %v", err)
 	}
 
-	addMiddleware(r, db, redisClient, version, commit)
+	addMiddleware(config, r, db, pubsub, version, commit)
 
 	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
 		RedisClient: redisClient,
@@ -160,7 +150,7 @@ func CreateRouter(db *gorm.DB, redisClient *redis.Client, version, commit string
 
 	userLockoutMiddleware := middleware.SuspendedUserLockout()
 
-	api.ApplyRoutes(r, db, redisClient, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(config, r, db, pubsub, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 

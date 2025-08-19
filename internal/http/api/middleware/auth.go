@@ -21,9 +21,9 @@ package middleware
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
@@ -48,9 +48,7 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireAdminOrTGOwner: Failed to get user_id from session")
-			}
+			slog.Debug("RequireAdminOrTGOwner: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -120,9 +118,7 @@ func RequireAdmin() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -181,9 +177,7 @@ func RequireSuperAdmin() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireSuperAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireSuperAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -222,15 +216,13 @@ func RequireLogin() gin.HandlerFunc {
 		userID := session.Get("user_id")
 
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireLogin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireLogin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			logging.Error("RequireLogin: Unable to convert user_id to uint")
+			slog.Debug("RequireLogin: Unable to convert user_id to uint")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -275,9 +267,7 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		id := c.Param("id")
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequirePeerOwnerOrAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequirePeerOwnerOrAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -343,9 +333,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireRepeaterOwnerOrAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireRepeaterOwnerOrAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -411,9 +399,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireTalkgroupOwnerOrAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireTalkgroupOwnerOrAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -482,9 +468,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		}()
 		userID := session.Get("user_id")
 		if userID == nil {
-			if config.GetConfig().Debug {
-				logging.Error("RequireSelfOrAdmin: Failed to get user_id from session")
-			}
+			slog.Debug("RequireSelfOrAdmin: No user_id found in session")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

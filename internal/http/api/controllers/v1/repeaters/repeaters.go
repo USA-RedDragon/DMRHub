@@ -32,10 +32,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -185,9 +185,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	redis, ok := c.MustGet("Redis").(*redis.Client)
+	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		logging.Errorf("Unable to get PubSub from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -286,7 +286,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		return
 	}
 	hbrp.GetSubscriptionManager(db).CancelAllRepeaterSubscriptions(repeater.ID)
-	go hbrp.GetSubscriptionManager(db).ListenForCalls(redis, repeater.ID)
+	go hbrp.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
@@ -308,9 +308,9 @@ func POSTRepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	redis, ok := c.MustGet("Redis").(*redis.Client)
+	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
 	if !ok {
-		logging.Error("Redis cast failed")
+		logging.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -419,7 +419,7 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
-		go hbrp.GetSubscriptionManager(db).ListenForCalls(redis, repeater.ID)
+		go hbrp.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -431,9 +431,9 @@ func POSTRepeaterLink(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	redis, ok := c.MustGet("Redis").(*redis.Client)
+	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
 	if !ok {
-		logging.Error("Redis cast failed")
+		logging.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -520,7 +520,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go hbrp.GetSubscriptionManager(db).ListenForCallsOn(redis, repeater.ID, talkgroup.ID)
+	go hbrp.GetSubscriptionManager(db).ListenForCallsOn(pubsub, repeater.ID, talkgroup.ID)
 	err = db.Save(&repeater).Error
 	if err != nil {
 		logging.Errorf("Error saving repeater: %v", err)

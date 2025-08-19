@@ -22,6 +22,7 @@ package users
 import (
 	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,7 +33,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
-	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -71,6 +71,13 @@ func GETUsers(c *gin.Context) {
 
 // POSTUser is used to register a new user.
 func POSTUser(c *gin.Context) {
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		logging.Error("DB cast failed")
@@ -127,8 +134,8 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 
-		if config.GetConfig().HIBPAPIKey != "" {
-			goPwned := gopwned.NewClient(nil, config.GetConfig().HIBPAPIKey)
+		if config.HIBPAPIKey != "" {
+			goPwned := gopwned.NewClient(nil, config.HIBPAPIKey)
 			h := sha1.New() //#nosec G401 -- False positive, we are not using this for crypto, just HIBP
 			h.Write([]byte(json.Password))
 			sha1HashedPW := fmt.Sprintf("%X", h.Sum(nil))
@@ -170,7 +177,7 @@ func POSTUser(c *gin.Context) {
 		}
 
 		// argon2 the password
-		hashedPassword := utils.HashPassword(json.Password, config.GetConfig().PasswordSalt)
+		hashedPassword := utils.HashPassword(json.Password, config.PasswordSalt)
 
 		// store the user in the database with Active = false
 		user = models.User{
@@ -188,15 +195,17 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "User created, please wait for admin approval"})
-		if config.GetConfig().EnableEmail {
-			err := smtp.Send(
-				config.GetConfig().AdminEmail,
-				"New user registration",
-				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
-			)
-			if err != nil {
-				logging.Errorf("POSTUser: Error sending email: %v", err)
-			}
+		if config.SMTP.Enabled {
+			// TODO: add admins to database and send email to them
+			// err := smtp.Send(
+			// 	config,
+			// 	email,
+			// 	"New user registration",
+			// 	fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
+			// )
+			// if err != nil {
+			// 	logging.Errorf("POSTUser: Error sending email: %v", err)
+			// }
 		}
 	}
 }
@@ -208,6 +217,14 @@ func POSTUserDemote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
+
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
 	id := c.Param("id")
 
 	userID, err := strconv.ParseUint(id, 10, 32)
@@ -243,15 +260,17 @@ func POSTUserDemote(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User demoted"})
 
-	if config.GetConfig().EnableEmail {
-		err := smtp.Send(
-			config.GetConfig().AdminEmail,
-			"Admin user demotion",
-			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
-		)
-		if err != nil {
-			logging.Errorf("POSTUserDemote: Error sending email: %v", err)
-		}
+	if config.SMTP.Enabled {
+		// TODO: add admins to database and send email to them
+		// err := smtp.Send(
+		// 	config,
+		// 	email,
+		// 	"Admin user demotion",
+		// 	fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		// )
+		// if err != nil {
+		// 	logging.Errorf("POSTUserDemote: Error sending email: %v", err)
+		// }
 	}
 }
 
@@ -262,6 +281,14 @@ func POSTUserPromote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
+
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
 	id := c.Param("id")
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
@@ -295,15 +322,17 @@ func POSTUserPromote(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
 
-	if config.GetConfig().EnableEmail {
-		err := smtp.Send(
-			config.GetConfig().AdminEmail,
-			"Admin user promotion",
-			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
-		)
-		if err != nil {
-			logging.Errorf("POSTUserPromote: Error sending email: %v", err)
-		}
+	if config.SMTP.Enabled {
+		// TODO: add admins to database and send email to them
+		// err := smtp.Send(
+		// 	config,
+		// 	email,
+		// 	"Admin user promotion",
+		// 	fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		// )
+		// if err != nil {
+		// 	logging.Errorf("POSTUserPromote: Error sending email: %v", err)
+		// }
 	}
 }
 
@@ -516,6 +545,12 @@ func PATCHUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	id := c.Param("id")
 	idInt, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -561,7 +596,7 @@ func PATCHUser(c *gin.Context) {
 		}
 
 		if json.Password != "" {
-			user.Password = utils.HashPassword(json.Password, config.GetConfig().PasswordSalt)
+			user.Password = utils.HashPassword(json.Password, config.PasswordSalt)
 		}
 
 		err = db.Save(&user).Error

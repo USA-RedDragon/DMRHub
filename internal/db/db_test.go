@@ -20,7 +20,6 @@
 package db_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -28,8 +27,6 @@ import (
 
 func TestMakeDBInMemoryDatabase(t *testing.T) {
 	t.Parallel()
-	os.Setenv("TEST", "true")
-	defer os.Unsetenv("TEST")
 
 	db := db.MakeDB()
 	if db == nil {

@@ -30,12 +30,11 @@ import (
 
 const readTimeout = 3 * time.Second
 
-func CreateMetricsServer() {
-	port := config.GetConfig().MetricsPort
-	if port != 0 {
+func CreateMetricsServer(config *config.Config) {
+	if config.Metrics.Enabled {
 		http.Handle("/metrics", promhttp.Handler())
 		server := &http.Server{
-			Addr:              fmt.Sprintf(":%d", port),
+			Addr:              fmt.Sprintf("%s:%d", config.Metrics.Bind, config.Metrics.Port),
 			ReadHeaderTimeout: readTimeout,
 		}
 		err := server.ListenAndServe()

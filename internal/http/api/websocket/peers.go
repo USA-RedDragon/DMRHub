@@ -24,21 +24,21 @@ import (
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type PeersWebsocket struct {
 	websocket.Websocket
-	redis *redis.Client
-	db    *gorm.DB
+	pubsub pubsub.PubSub
+	db     *gorm.DB
 }
 
-func CreatePeersWebsocket(db *gorm.DB, redis *redis.Client) *PeersWebsocket {
+func CreatePeersWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *PeersWebsocket {
 	return &PeersWebsocket{
-		redis: redis,
-		db:    db,
+		pubsub: pubsub,
+		db:     db,
 	}
 }
 

@@ -20,6 +20,7 @@
 package auth
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,6 +38,13 @@ func POSTLogin(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		logging.Errorf("POSTLogin: Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -64,7 +72,7 @@ func POSTLogin(c *gin.Context) {
 			db.Find(&user, "callsign = ?", json.Callsign)
 		}
 
-		verified, err := utils.VerifyPassword(json.Password, user.Password, config.GetConfig().PasswordSalt)
+		verified, err := utils.VerifyPassword(json.Password, user.Password, config.PasswordSalt)
 		logging.Logf("POSTLogin: Password verified %v", verified)
 		if verified && err == nil {
 			if user.Suspended {

@@ -26,9 +26,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func TracingProvider() gin.HandlerFunc {
+func TracingProvider(config *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if config.GetConfig().OTLPEndpoint != "" {
+		if config.Metrics.OTLPEndpoint != "" {
 			ctx := c.Request.Context()
 			span := trace.SpanFromContext(ctx)
 			if span.IsRecording() {

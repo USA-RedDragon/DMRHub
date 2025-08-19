@@ -25,6 +25,7 @@ import (
 	"crypto/sha1" //#nosec G505 -- False positive, used for a protocol
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -33,7 +34,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -50,22 +53,24 @@ type Server struct {
 	Server        *net.UDPConn
 	Tracer        trace.Tracer
 
-	DB    *gorm.DB
-	Redis *servers.RedisClient
+	DB       *gorm.DB
+	kvClient *servers.KVClient
+	pubsub   pubsub.PubSub
 
 	CallTracker *calltracker.CallTracker
 }
 
 // MakeServer creates a new DMR server.
-func MakeServer(db *gorm.DB, redisClient *servers.RedisClient, callTracker *calltracker.CallTracker) Server {
+func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, callTracker *calltracker.CallTracker) Server {
 	return Server{
 		Buffer: make([]byte, largestMessageSize),
 		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(config.GetConfig().ListenAddr),
-			Port: config.GetConfig().OpenBridgePort,
+			IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
+			Port: config.DMR.OpenBridge.Port,
 		},
 		DB:          db,
-		Redis:       redisClient,
+		pubsub:      pubsub,
+		kvClient:    servers.MakeKVClient(kv),
 		CallTracker: callTracker,
 		Tracer:      otel.Tracer("dmr-openbridge-server"),
 	}
@@ -100,9 +105,7 @@ func (s *Server) Start(ctx context.Context) error {
 	go func() {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-			if config.GetConfig().Debug {
-				logging.Logf("Read a message from %v\n", remoteaddr)
-			}
+			slog.Debug("Read from UDP", "length", length, "remoteaddr", remoteaddr, "err", err)
 			if err != nil {
 				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
 				continue
@@ -118,7 +121,7 @@ func (s *Server) Start(ctx context.Context) error {
 					logging.Errorf("Error marshalling packet: %v", err)
 					return
 				}
-				s.Redis.Redis.Publish(ctx, "openbridge:incoming", packedBytes)
+				s.pubsub.Publish("openbridge:incoming", packedBytes)
 			}()
 		}
 	}()
@@ -134,16 +137,16 @@ func (s *Server) listen(ctx context.Context) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.listen")
 	defer span.End()
 
-	pubsub := s.Redis.Redis.Subscribe(ctx, "openbridge:incoming")
+	subscription := s.pubsub.Subscribe("openbridge:incoming")
 	defer func() {
-		err := pubsub.Close()
+		err := subscription.Close()
 		if err != nil {
 			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
-	for msg := range pubsub.Channel() {
+	for msg := range subscription.Channel() {
 		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg([]byte(msg.Payload))
+		_, err := packet.UnmarshalMsg([]byte(msg))
 		if err != nil {
 			logging.Errorf("Error unmarshalling packet: %v", err)
 			continue
@@ -156,22 +159,22 @@ func (s *Server) listen(ctx context.Context) {
 }
 
 func (s *Server) subcribeOutgoing(ctx context.Context) {
-	pubsub := s.Redis.Redis.Subscribe(ctx, "openbridge:outgoing")
+	subscription := s.pubsub.Subscribe("openbridge:outgoing")
 	defer func() {
-		err := pubsub.Close()
+		err := subscription.Close()
 		if err != nil {
 			logging.Errorf("Error closing pubsub: %v", err)
 		}
 	}()
-	for msg := range pubsub.Channel() {
-		packet, ok := models.UnpackPacket([]byte(msg.Payload))
+	for msg := range subscription.Channel() {
+		packet, ok := models.UnpackPacket([]byte(msg))
 		if !ok {
 			logging.Errorf("Error unpacking packet")
 			continue
 		}
-		peer, err := s.Redis.GetPeer(ctx, packet.Repeater)
+		peer, err := s.kvClient.GetPeer(ctx, packet.Repeater)
 		if err != nil {
-			logging.Errorf("Error getting peer %d from redis", packet.Repeater)
+			logging.Errorf("Error getting peer %d from kv: %v", packet.Repeater, err)
 			continue
 		}
 		// OpenBridge is always TS1
@@ -192,13 +195,10 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		return
 	}
 
-	if config.GetConfig().Debug {
-		logging.Logf("Sending Packet: %s\n", packet.String())
-		logging.Logf("Sending DMR packet to Repeater ID: %d", repeaterIDBytes)
-	}
-	repeater, err := s.Redis.GetPeer(ctx, repeaterIDBytes)
+	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
+	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from Redis: %v", err)
+		logging.Errorf("Error getting repeater from kv: %v", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -211,7 +211,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
-	s.Redis.Redis.Publish(ctx, "openbridge:outgoing", packedBytes)
+	s.pubsub.Publish("openbridge:outgoing", packedBytes)
 }
 
 func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes []byte, peer models.Peer) bool {
@@ -256,9 +256,7 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 		return
 	}
 
-	if config.GetConfig().Debug {
-		logging.Logf("DMRD packet: %s", packet.String())
-	}
+	slog.Debug("OpenBridge packet received", "packet", packet.String())
 
 	if packet.Slot {
 		// Drop TS2 packets on OpenBridge
@@ -268,9 +266,7 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 
 	peerIDBytes := data[11:15]
 	peerID := uint(binary.BigEndian.Uint32(peerIDBytes))
-	if config.GetConfig().Debug {
-		logging.Logf("DMR Data from Peer ID: %d", peerID)
-	}
+	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)
 
 	if !models.PeerIDExists(s.DB, peerID) {
 		logging.Errorf("Unknown peer ID: %d", peerID)

@@ -36,7 +36,10 @@ const testTimeout = 1 * time.Minute
 func TestPingRoute(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -62,7 +65,7 @@ func TestPingRoute(t *testing.T) {
 	ctx, cancel2 := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel2()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
 	assert.NoError(t, err)
 
 	router.ServeHTTP(w, req)
@@ -79,7 +82,10 @@ func TestPingRoute(t *testing.T) {
 func TestVersionRoute(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 

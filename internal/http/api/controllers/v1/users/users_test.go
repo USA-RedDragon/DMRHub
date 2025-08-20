@@ -39,7 +39,10 @@ const testTimeout = 1 * time.Minute
 func TestRegisterBadUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -64,7 +67,10 @@ func TestRegisterBadUser(t *testing.T) {
 func TestRegisterBadData(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -79,7 +85,7 @@ func TestRegisterBadData(t *testing.T) {
 	assert.Equal(t, 400, w.Code)
 
 	var resp testutils.APIResponse
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	assert.NoError(t, err)
 	assert.Empty(t, resp.Message)
@@ -89,7 +95,10 @@ func TestRegisterBadData(t *testing.T) {
 func TestRegisterBadDMRId(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -110,7 +119,10 @@ func TestRegisterBadDMRId(t *testing.T) {
 func TestRegisterBadCallsign(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -131,7 +143,10 @@ func TestRegisterBadCallsign(t *testing.T) {
 func TestRegisterLowercaseCallsign(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -152,7 +167,10 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 func TestRegisterUppercaseCallsign(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -173,7 +191,10 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 func TestRegisterDuplicateUsername(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -207,7 +228,10 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 func TestRegisterDuplicateDMRID(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -241,7 +265,10 @@ func TestRegisterDuplicateDMRID(t *testing.T) {
 func TestGetUsers(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -278,7 +305,10 @@ func TestGetUsers(t *testing.T) {
 func TestDeleteUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -311,7 +341,10 @@ func TestDeleteUser(t *testing.T) {
 func TestDeleteInvalidUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -344,7 +377,10 @@ func TestDeleteInvalidUser(t *testing.T) {
 func TestApproveUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -365,7 +401,10 @@ func TestApproveUser(t *testing.T) {
 func TestSuspendUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -409,7 +448,10 @@ func TestSuspendUser(t *testing.T) {
 func TestUnsuspendUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -466,7 +508,10 @@ func TestUnsuspendUser(t *testing.T) {
 func TestGetUserByID(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -500,7 +545,10 @@ func TestGetUserByID(t *testing.T) {
 func TestGetUserMe(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -528,7 +576,10 @@ func TestGetUserMe(t *testing.T) {
 func TestPromoteUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -569,7 +620,10 @@ func TestPromoteUser(t *testing.T) {
 func TestDemoteUser(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 

@@ -29,7 +29,10 @@ import (
 func TestSysadminLogin(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
@@ -43,7 +46,10 @@ func TestSysadminLogin(t *testing.T) {
 func TestLogout(t *testing.T) {
 	t.Parallel()
 
-	router, tdb := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
 	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 

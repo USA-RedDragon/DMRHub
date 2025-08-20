@@ -21,8 +21,8 @@ type KV interface {
 
 // MakeKV creates a new key-value store client.
 func MakeKV(config *config.Config) (KV, error) {
-	if config.Redis.Enabled {
-		return makeKVFromRedis(config)
-	}
+	// if config.Redis.Enabled {
+	// 	return makeKVFromRedis(config)
+	// }
 	return makeInMemoryKV(config)
 }

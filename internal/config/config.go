@@ -49,17 +49,19 @@ func (c Config) GetDerivedSecret() []byte {
 
 // Metrics holds the metrics configuration.
 type Metrics struct {
-	Enabled      bool   `name:"enabled" description:"Enable metrics collection and export" default:"false"`
-	Bind         string `name:"bind" description:"Metrics server listen address" default:"::"`
-	Port         int    `name:"port" description:"Metrics server port" default:"9000"`
-	OTLPEndpoint string `name:"otlp-endpoint" description:"OTLP endpoint for exporting telemetry data"`
+	Enabled        bool     `name:"enabled" description:"Enable metrics collection and export" default:"false"`
+	Bind           string   `name:"bind" description:"Metrics server listen address" default:"::"`
+	Port           int      `name:"port" description:"Metrics server port" default:"9000"`
+	TrustedProxies []string `name:"trusted-proxies" description:"List of trusted proxy IPs for the metrics server"`
+	OTLPEndpoint   string   `name:"otlp-endpoint" description:"OTLP endpoint for exporting telemetry data"`
 }
 
 // PProf holds the PProf configuration.
 type PProf struct {
-	Enabled bool   `name:"enabled" description:"Enable PProf profiling and debugging support" default:"false"`
-	Bind    string `name:"bind" description:"PProf server listen address" default:"::"`
-	Port    int    `name:"port" description:"PProf server port" default:"6060"`
+	Enabled        bool     `name:"enabled" description:"Enable PProf profiling and debugging support" default:"false"`
+	Bind           string   `name:"bind" description:"PProf server listen address" default:"::"`
+	TrustedProxies []string `name:"trusted-proxies" description:"List of trusted proxy IPs for the PProf server"`
+	Port           int      `name:"port" description:"PProf server port" default:"6060"`
 }
 
 // Redis holds the Redis configuration.

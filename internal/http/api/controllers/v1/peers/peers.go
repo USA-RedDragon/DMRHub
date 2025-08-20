@@ -234,6 +234,7 @@ func POSTPeer(c *gin.Context) {
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(
 				config,
+				db,
 				"OpenBridge peer created",
 				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
 			)

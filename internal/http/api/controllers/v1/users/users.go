@@ -199,6 +199,7 @@ func POSTUser(c *gin.Context) {
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(
 				config,
+				db,
 				"New user registration",
 				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.HTTP.CanonicalHost),
 			)
@@ -262,6 +263,7 @@ func POSTUserDemote(c *gin.Context) {
 	if config.SMTP.Enabled {
 		err = smtp.SendToAdmins(
 			config,
+			db,
 			"Admin user demotion",
 			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
@@ -322,6 +324,7 @@ func POSTUserPromote(c *gin.Context) {
 	if config.SMTP.Enabled {
 		err = smtp.SendToAdmins(
 			config,
+			db,
 			"Admin user promotion",
 			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)

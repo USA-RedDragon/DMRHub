@@ -27,10 +27,12 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 )
 
 var (
@@ -39,22 +41,28 @@ var (
 	ErrSendingEmail      = errors.New("error sending email")
 )
 
-func SendToAdmins(config *config.Config, subject, body string) error {
+func SendToAdmins(config *config.Config, db *gorm.DB, subject, body string) error {
 	if !config.SMTP.Enabled {
 		return nil
 	}
 	errGroup := errgroup.Group{}
-	// TODO: pull admins from database
-	// for _, admin := range config.SMTP.Admins {
-	// 	errGroup.Go(func() error {
-	// 		return send(
-	// 			config,
-	// 			admin,
-	// 			subject,
-	// 			body,
-	// 		)
-	// 	})
-	// }
+	users, err := models.FindUserAdmins(db)
+	if err != nil {
+		return fmt.Errorf("failed to fetch admin users: %w", err)
+	}
+	for _, user := range users {
+		if user.Email == "" {
+			continue
+		}
+		errGroup.Go(func() error {
+			return send(
+				config,
+				user.Email,
+				subject,
+				body,
+			)
+		})
+	}
 	return errGroup.Wait()
 }
 

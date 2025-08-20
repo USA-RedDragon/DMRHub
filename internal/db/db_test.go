@@ -22,14 +22,23 @@ package db_test
 import (
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/configulator"
 )
 
 func TestMakeDBInMemoryDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := db.MakeDB()
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+	db, err := db.MakeDB(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
 	if db == nil {
-		t.Fatal("Expected a non-nil database instance")
+		t.Fatal("Expected non-nil database instance, got nil")
 	}
 }

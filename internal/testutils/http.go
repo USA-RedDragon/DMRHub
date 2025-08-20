@@ -25,13 +25,15 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"os"
 	"runtime"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/configulator"
 	"github.com/gin-gonic/gin"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -157,9 +159,22 @@ func (t *TestDB) CloseDB() {
 	t.database = nil
 }
 
-func CreateTestDBRouter() (*gin.Engine, *TestDB) {
-	os.Setenv("TEST", "test")
+func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	var t TestDB
-	t.database = db.MakeDB()
-	return http.CreateRouter(db.MakeDB(), t.createRedis(), "test", "deadbeef"), &t
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
+	}
+
+	t.database, err = db.MakeDB(&defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	pubsub, err := pubsub.MakePubSub(&defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
+	}
+
+	return http.CreateRouter(&defConfig, t.database, pubsub, "test", "deadbeef"), &t, nil
 }

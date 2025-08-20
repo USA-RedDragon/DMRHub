@@ -25,10 +25,12 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -37,7 +39,26 @@ var (
 	ErrSendingEmail      = errors.New("error sending email")
 )
 
-func Send(config *configPkg.Config, toEmail string, subject string, body string) error {
+func SendToAdmins(config *config.Config, subject, body string) error {
+	if !config.SMTP.Enabled {
+		return nil
+	}
+	errGroup := errgroup.Group{}
+	// TODO: pull admins from database
+	// for _, admin := range config.SMTP.Admins {
+	// 	errGroup.Go(func() error {
+	// 		return send(
+	// 			config,
+	// 			admin,
+	// 			subject,
+	// 			body,
+	// 		)
+	// 	})
+	// }
+	return errGroup.Wait()
+}
+
+func send(config *configPkg.Config, toEmail string, subject string, body string) error {
 	if !config.SMTP.Enabled {
 		logging.Errorf("Email is disabled, but an email was attempted to be sent")
 		return ErrEmailDisabled

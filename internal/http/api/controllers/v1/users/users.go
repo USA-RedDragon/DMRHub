@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -196,16 +197,14 @@ func POSTUser(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "User created, please wait for admin approval"})
 		if config.SMTP.Enabled {
-			// TODO: add admins to database and send email to them
-			// err := smtp.Send(
-			// 	config,
-			// 	email,
-			// 	"New user registration",
-			// 	fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.GetConfig().CanonicalHost),
-			// )
-			// if err != nil {
-			// 	logging.Errorf("POSTUser: Error sending email: %v", err)
-			// }
+			err = smtp.SendToAdmins(
+				config,
+				"New user registration",
+				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.HTTP.CanonicalHost),
+			)
+			if err != nil {
+				logging.Errorf("POSTUser: Error sending email: %v", err)
+			}
 		}
 	}
 }
@@ -261,16 +260,14 @@ func POSTUserDemote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User demoted"})
 
 	if config.SMTP.Enabled {
-		// TODO: add admins to database and send email to them
-		// err := smtp.Send(
-		// 	config,
-		// 	email,
-		// 	"Admin user demotion",
-		// 	fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
-		// )
-		// if err != nil {
-		// 	logging.Errorf("POSTUserDemote: Error sending email: %v", err)
-		// }
+		err = smtp.SendToAdmins(
+			config,
+			"Admin user demotion",
+			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		)
+		if err != nil {
+			logging.Errorf("POSTUserDemote: Error sending email: %v", err)
+		}
 	}
 }
 
@@ -323,16 +320,14 @@ func POSTUserPromote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
 
 	if config.SMTP.Enabled {
-		// TODO: add admins to database and send email to them
-		// err := smtp.Send(
-		// 	config,
-		// 	email,
-		// 	"Admin user promotion",
-		// 	fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
-		// )
-		// if err != nil {
-		// 	logging.Errorf("POSTUserPromote: Error sending email: %v", err)
-		// }
+		err = smtp.SendToAdmins(
+			config,
+			"Admin user promotion",
+			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+		)
+		if err != nil {
+			logging.Errorf("POSTUserPromote: Error sending email: %v", err)
+		}
 	}
 }
 

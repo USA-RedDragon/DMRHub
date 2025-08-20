@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -231,16 +232,14 @@ func POSTPeer(c *gin.Context) {
 		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), pubsub, peer)
 
 		if config.SMTP.Enabled {
-			// TODO: Add email notification for peer creation
-			// err = smtp.Send(
-			// 	config,
-			// 	email,
-			// 	"OpenBridge peer created",
-			// 	"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
-			// )
-			// if err != nil {
-			// 	logging.Errorf("Failed to send email: %v", err)
-			// }
+			err = smtp.SendToAdmins(
+				config,
+				"OpenBridge peer created",
+				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
+			)
+			if err != nil {
+				logging.Errorf("POSTPeer: Error sending email: %v", err)
+			}
 		}
 	}
 }

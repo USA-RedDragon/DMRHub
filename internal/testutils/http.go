@@ -30,7 +30,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
@@ -172,6 +174,25 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	adminCount := int64(0)
+	err = t.database.Model(&models.User{}).Where("username = ?", "Admin").Count(&adminCount).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to count admin users: %w", err)
+	}
+	if adminCount < 1 {
+		err = t.database.Create(&models.User{
+			Username:   "Admin",
+			Password:   utils.HashPassword("password", defConfig.PasswordSalt),
+			Admin:      true,
+			SuperAdmin: true,
+			Callsign:   "XXXXXX",
+			Approved:   true,
+		}).Error
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create admin user: %w", err)
+		}
 	}
 
 	pubsub, err := pubsub.MakePubSub(&defConfig)

@@ -91,12 +91,6 @@ func MakeServer(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, ver
 var FS embed.FS
 
 func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) {
-	// Debug
-	// TODO: Make pprof its own server
-	// if config.GetConfig().Debug {
-	// 	pprof.Register(r)
-	// }
-
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))

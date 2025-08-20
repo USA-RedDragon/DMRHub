@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package metrics
+package pprof
 
 import (
 	"fmt"
@@ -27,34 +27,34 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 const readTimeout = 3 * time.Second
 
-func CreateMetricsServer(config *config.Config) {
-	if config.Metrics.Enabled {
+func CreatePProfServer(config *config.Config) {
+	if config.PProf.Enabled {
 		r := gin.New()
 		r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
 		r.Use(gin.Recovery())
 
 		// Tracing
 		if config.Metrics.OTLPEndpoint != "" {
-			r.Use(otelgin.Middleware("metrics"))
+			r.Use(otelgin.Middleware("pprof"))
 			r.Use(middleware.TracingProvider(config))
 		}
 
-		err := r.SetTrustedProxies(config.Metrics.TrustedProxies)
+		err := r.SetTrustedProxies(config.PProf.TrustedProxies)
 		if err != nil {
 			logging.Errorf("Failed setting trusted proxies: %v", err)
 		}
 
-		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+		pprof.Register(r)
 
 		server := &http.Server{
-			Addr:              fmt.Sprintf("%s:%d", config.Metrics.Bind, config.Metrics.Port),
+			Addr:              fmt.Sprintf("%s:%d", config.PProf.Bind, config.PProf.Port),
 			Handler:           r,
 			ReadHeaderTimeout: readTimeout,
 		}

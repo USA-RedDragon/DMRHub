@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -113,6 +114,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		}()
 	}
 	go metrics.CreateMetricsServer(cfg)
+	go pprof.CreatePProfServer(cfg)
 
 	database, err := db.MakeDB(cfg)
 	if err != nil {

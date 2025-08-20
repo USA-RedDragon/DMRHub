@@ -537,7 +537,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.Connected = time.Now()
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
-		slog.Debug("Repeater ID %d is not valid, sending NAK", repeaterID)
+		slog.Debug("Repeater ID is not valid, sending NAK", "repeaterID", repeaterID)
 	} else {
 		repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
@@ -600,13 +600,13 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			password = dbRepeater.Password
 		} else {
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
-			slog.Debug("Repeater ID %d does not exist in db, sending NAK", repeaterID)
+			slog.Debug("Repeater ID does not exist in db, sending NAK", "repeaterID", repeaterID)
 			return
 		}
 
 		if password == "" {
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
-			slog.Debug("Repeater ID %d did not provide password, sending NAK", repeaterID)
+			slog.Debug("Repeater ID did not provide password, sending NAK", "repeaterID", repeaterID)
 			return
 		}
 

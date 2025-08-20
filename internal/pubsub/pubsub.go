@@ -15,8 +15,8 @@ type Subscription interface {
 }
 
 func MakePubSub(config *config.Config) (PubSub, error) {
-	if config.Redis.Enabled {
-		return makePubSubFromRedis(config)
-	}
+	// if config.Redis.Enabled {
+	// 	return makePubSubFromRedis(config)
+	// }
 	return makeInMemoryPubSub(config)
 }

@@ -95,7 +95,7 @@ type HTTP struct {
 
 // CORS holds the CORS configuration for the HTTP server.
 type CORS struct {
-	Enabled bool     `name:"enabled" description:"Enable CORS support for the HTTP server" default:"true"`
+	Enabled bool     `name:"enabled" description:"Enable CORS support for the HTTP server" default:"false"`
 	Hosts   []string `name:"extra-hosts" description:"List of allowed CORS hosts"`
 }
 

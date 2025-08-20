@@ -36,6 +36,7 @@ type User struct {
 	Username  string         `json:"username" gorm:"uniqueIndex" binding:"required"`
 	Password  string         `json:"-"`
 	Admin     bool           `json:"admin"`
+	Email     string         `json:"email"`
 	Approved  bool           `json:"approved" binding:"required"`
 	Suspended bool           `json:"suspended"`
 	Repeaters []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
@@ -118,7 +119,7 @@ type UsersSeeder struct {
 	gorm_seeder.SeederAbstract
 }
 
-const UserSeederRows = 2
+const UserSeederRows = 1
 
 func NewUsersSeeder(cfg gorm_seeder.SeederConfiguration) UsersSeeder {
 	return UsersSeeder{gorm_seeder.NewSeederAbstract(cfg)}

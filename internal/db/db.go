@@ -122,7 +122,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Talkgroup{}, &models.User{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{})
 	if err != nil {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}

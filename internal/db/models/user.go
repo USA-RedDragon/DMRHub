@@ -31,18 +31,19 @@ import (
 )
 
 type User struct {
-	ID        uint           `json:"id" gorm:"primaryKey" binding:"required"`
-	Callsign  string         `json:"callsign" gorm:"uniqueIndex" binding:"required"`
-	Username  string         `json:"username" gorm:"uniqueIndex" binding:"required"`
-	Password  string         `json:"-"`
-	Admin     bool           `json:"admin"`
-	Email     string         `json:"email"`
-	Approved  bool           `json:"approved" binding:"required"`
-	Suspended bool           `json:"suspended"`
-	Repeaters []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"-"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID         uint           `json:"id" gorm:"primaryKey" binding:"required"`
+	Callsign   string         `json:"callsign" gorm:"uniqueIndex" binding:"required"`
+	Username   string         `json:"username" gorm:"uniqueIndex" binding:"required"`
+	Password   string         `json:"-"`
+	Admin      bool           `json:"admin"`
+	SuperAdmin bool           `json:"superAdmin"`
+	Email      string         `json:"email"`
+	Approved   bool           `json:"approved" binding:"required"`
+	Suspended  bool           `json:"suspended"`
+	Repeaters  []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"-"`
+	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {

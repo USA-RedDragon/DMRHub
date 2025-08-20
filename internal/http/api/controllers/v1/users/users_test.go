@@ -285,9 +285,9 @@ func TestGetUsers(t *testing.T) {
 	assert.Equal(t, 2, userResp.Total)
 	for _, user := range userResp.Users {
 		if user.ID != dmrconst.ParrotUser {
-			assert.Equal(t, dmrconst.SuperAdminUser, user.ID)
+			assert.Equal(t, true, user.SuperAdmin)
 			assert.Equal(t, "Admin", user.Username)
-			assert.Equal(t, "SystemAdmin", user.Callsign)
+			assert.Equal(t, "XXXXXX", user.Callsign)
 			assert.Equal(t, true, user.Admin)
 			assert.Equal(t, true, user.Approved)
 			assert.Equal(t, false, user.Suspended)

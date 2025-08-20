@@ -87,6 +87,7 @@ export default {
           this.userStore.callsign = res.data.callsign;
           this.userStore.username = res.data.username;
           this.userStore.admin = res.data.admin;
+          this.userStore.superAdmin = res.data.superAdmin;
           this.userStore.created_at = res.data.created_at;
           this.userStore.loggedIn = true;
         })

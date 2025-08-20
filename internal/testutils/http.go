@@ -166,6 +166,9 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
+	defConfig.Database.Database = "" // Use in-memory database for tests
+	defConfig.Database.ExtraParameters = []string{}
+
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create database: %w", err)

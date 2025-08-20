@@ -26,6 +26,7 @@ export const useUserStore = defineStore('user', {
     callsign: '',
     username: '',
     admin: false,
+    superAdmin: false,
     created_at: '',
     hasOpenBridgePeers: false,
   }),

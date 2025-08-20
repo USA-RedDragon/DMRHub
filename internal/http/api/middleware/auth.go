@@ -25,7 +25,6 @@ import (
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -187,6 +186,19 @@ func RequireSuperAdmin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
+		db, ok := c.MustGet("DB").(*gorm.DB)
+		if !ok {
+			logging.Error("RequireSuperAdmin: Unable to get DB from context")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+		user, err := models.FindUserByID(db, uid)
+		if err != nil {
+			logging.Errorf("RequireSuperAdmin: Failed to find user by ID %d: %v", uid, err)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			return
+		}
+
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
 			span.SetAttributes(
@@ -194,7 +206,7 @@ func RequireSuperAdmin() gin.HandlerFunc {
 				attribute.Int("user.id", int(uid)),
 			)
 		}
-		if uid != dmrconst.SuperAdminUser {
+		if !user.SuperAdmin {
 			logging.Error("User is not a super admin")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}

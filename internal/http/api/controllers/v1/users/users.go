@@ -674,7 +674,7 @@ func POSTUserSuspend(c *gin.Context) {
 		return
 	}
 
-	if user.Admin || user.ID == dmrconst.SuperAdminUser {
+	if user.Admin || user.SuperAdmin {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend an admin"})
 		return
 	}

@@ -285,7 +285,7 @@ export default {
       const action = user.admin ? 'promote' : 'demote';
       const actionVerb = user.admin ? 'promoted' : 'demoted';
       // Don't allow the user to uncheck the admin box
-      if (this.userStore.id == 999999) {
+      if (this.userStore.superAdmin) {
         API.post(`/users/${action}/${user.id}`, {})
           .then(() => {
             this.$toast.add({
@@ -365,7 +365,7 @@ export default {
         });
     },
     deleteUser(user) {
-      if (this.userStore.id == 999999) {
+      if (this.userStore.superAdmin) {
         this.$confirm.require({
           message: 'Are you sure you want to delete this user?',
           header: 'Delete User',

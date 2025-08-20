@@ -98,8 +98,7 @@ const (
 var CallsignRegex = regexp.MustCompile(`^([A-Z0-9]{0,8})$`)
 
 const (
-	ParrotUser     = uint(9990)
-	SuperAdminUser = uint(999999)
+	ParrotUser = uint(9990)
 )
 
 const (

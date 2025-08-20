@@ -104,10 +104,12 @@ func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub 
 	r.Use(middleware.ConfigProvider(config))
 
 	// CORS
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowOrigins = config.HTTP.CORS.Hosts
-	r.Use(cors.New(corsConfig))
+	if config.HTTP.CORS.Enabled {
+		corsConfig := cors.DefaultConfig()
+		corsConfig.AllowCredentials = true
+		corsConfig.AllowOrigins = config.HTTP.CORS.Hosts
+		r.Use(cors.New(corsConfig))
+	}
 
 	// Sessions
 	sessionStore := gormSessions.NewStore(db, true, config.GetDerivedSecret())

@@ -38,13 +38,12 @@ func (s *GORMStore) Limit(key string, c *gin.Context) (ret ratelimit.Info) {
 		slog.Error("Failed to check ratelimit key existence", "error", err)
 		exists = false
 	}
-	var rl *models.Ratelimit
+	rl := &models.Ratelimit{
+		Key: key,
+	}
 	if !exists {
-		rl = &models.Ratelimit{
-			Key:       key,
-			Hits:      0,
-			Timestamp: time.Now(),
-		}
+		rl.Hits = 0
+		rl.Timestamp = time.Now()
 	} else {
 		rl, err = models.FindRatelimitByKey(s.db, key)
 		if err != nil {

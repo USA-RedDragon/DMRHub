@@ -34,6 +34,7 @@ import (
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
+	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
@@ -134,10 +135,10 @@ func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, v
 
 	addMiddleware(config, r, db, pubsub, version, commit)
 
-	ratelimitStore := ratelimit.RedisStore(&ratelimit.RedisOptions{
-		RedisClient: redisClient,
-		Rate:        rateLimitRate,
-		Limit:       rateLimitLimit,
+	ratelimitStore := gormRateLimit.NewGORMStore(&gormRateLimit.GORMOptions{
+		DB:    db,
+		Rate:  rateLimitRate,
+		Limit: rateLimitLimit,
 	})
 	ratelimitMW := ratelimit.RateLimiter(ratelimitStore, &ratelimit.Options{
 		ErrorHandler: func(c *gin.Context, info ratelimit.Info) {

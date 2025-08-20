@@ -23,6 +23,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path"
 
 	"github.com/USA-RedDragon/DMRHub/internal/cmd"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -42,12 +43,27 @@ var (
 func main() {
 	rootCmd := cmd.NewCommand(version, commit)
 
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		slog.Error("Failed to get user config directory.", "error", err.Error())
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0755); err != nil {
+		slog.Error("Failed to create config directory.", "error", err.Error())
+		os.Exit(1)
+	}
+
 	c := configulator.New[config.Config]().
 		WithEnvironmentVariables(&configulator.EnvironmentVariableOptions{
 			Separator: "_",
 		}).
 		WithFile(&configulator.FileOptions{
-			Paths: []string{"config.yaml"},
+			Paths: []string{
+				"config.yaml",
+				"config.yml",
+				path.Join(configDir, "DMRHub", "config.yaml"),
+				path.Join(configDir, "DMRHub", "config.yml"),
+			},
 		}).
 		WithPFlags(rootCmd.Flags(), nil)
 

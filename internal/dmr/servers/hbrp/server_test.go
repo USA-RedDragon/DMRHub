@@ -22,26 +22,44 @@ package hbrp_test
 import (
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
-	"gorm.io/gorm"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/configulator"
 )
 
 func TestMakeServerInitialization(t *testing.T) {
-	db := &gorm.DB{}
-	redisClient := &servers.RedisClient{}
 	callTracker := &calltracker.CallTracker{}
 	version := "1.0.0"
 	commit := "abc123"
 
-	server := hbrp.MakeServer(db, nil, redisClient, callTracker, version, commit)
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+
+	db, err := db.MakeDB(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+
+	kv, err := kv.MakeKV(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create key-value store: %v", err)
+	}
+
+	pubsub, err := pubsub.MakePubSub(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create pubsub: %v", err)
+	}
+
+	server := hbrp.MakeServer(&defConfig, db, pubsub, kv, callTracker, version, commit)
 
 	if server.DB != db {
 		t.Errorf("Expected DB to be %v, got %v", db, server.DB)
-	}
-	if server.Redis != redisClient {
-		t.Errorf("Expected Redis to be %v, got %v", redisClient, server.Redis)
 	}
 	if server.CallTracker != callTracker {
 		t.Errorf("Expected CallTracker to be %v, got %v", callTracker, server.CallTracker)

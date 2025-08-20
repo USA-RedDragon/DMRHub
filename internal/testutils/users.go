@@ -28,7 +28,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/gin-gonic/gin"
@@ -237,7 +236,7 @@ func UnsuspendUser(t *testing.T, router *gin.Engine, dmrID uint, jar CookieJar) 
 func LoginAdmin(t *testing.T, router *gin.Engine) (APIResponse, *httptest.ResponseRecorder, CookieJar) {
 	admin := apimodels.AuthLogin{
 		Username: "Admin",
-		Password: config.GetConfig().InitialAdminUserPassword,
+		Password: "password",
 	}
 
 	return LoginUser(t, router, admin)
@@ -255,7 +254,7 @@ func CreateAndLoginUser(t *testing.T, router *gin.Engine, user apimodels.UserReg
 
 	admin := apimodels.AuthLogin{
 		Username: "Admin",
-		Password: config.GetConfig().InitialAdminUserPassword,
+		Password: "password",
 	}
 
 	resp, w, jar := LoginUser(t, router, admin)

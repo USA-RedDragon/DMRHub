@@ -77,7 +77,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	c, err := configulator.FromContext[config.Config](ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get config from context")
+		return fmt.Errorf("failed to get config from context: %w", err)
 	}
 
 	cfg, err := c.Load()

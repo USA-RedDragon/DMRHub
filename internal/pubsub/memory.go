@@ -19,35 +19,57 @@
 
 package pubsub
 
-import "github.com/USA-RedDragon/DMRHub/internal/config"
+import (
+	"log/slog"
 
-func makeInMemoryPubSub(config *config.Config) (PubSub, error) {
-	return inMemoryPubSub{}, nil
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/puzpuzpuz/xsync/v3"
+)
+
+func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {
+	return inMemoryPubSub{
+		data: xsync.NewMapOf[string, inMemorySubscription](),
+	}, nil
 }
 
 type inMemoryPubSub struct {
+	data *xsync.MapOf[string, inMemorySubscription]
 }
 
 func (ps inMemoryPubSub) Publish(topic string, message []byte) error {
+	ps.makeChannelIfNotExists(topic)
+	sub, _ := ps.data.Load(topic)
+	sub.ch <- message
 	return nil
 }
 
-func (ps inMemoryPubSub) Subscribe(topic string) Subscription {
-	return inMemorySubscription{
-		ch: make(chan []byte),
+func (ps inMemoryPubSub) makeChannelIfNotExists(topic string) {
+	if _, ok := ps.data.Load(topic); !ok {
+		ch := make(chan []byte, 100)
+		ps.data.Store(topic, inMemorySubscription{ch: ch})
 	}
 }
 
+func (ps inMemoryPubSub) Subscribe(topic string) Subscription {
+	ps.makeChannelIfNotExists(topic)
+	sub, _ := ps.data.Load(topic)
+	return sub
+}
+
 func (ps inMemoryPubSub) Close() error {
+	ps.data.Range(func(key string, value inMemorySubscription) bool {
+		err := value.Close()
+		if err != nil {
+			slog.Error("Error closing in-memory subscription", "topic", key, "error", err)
+		}
+		ps.data.Delete(key)
+		return true
+	})
 	return nil
 }
 
 type inMemorySubscription struct {
 	ch chan []byte
-}
-
-func (s inMemorySubscription) Unsubscribe() error {
-	return nil
 }
 
 func (s inMemorySubscription) Close() error {

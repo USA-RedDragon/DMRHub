@@ -30,17 +30,16 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 )
 
-func makeInMemoryKV(_ *config.Config) (KV, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+func makeInMemoryKV(ctx context.Context, _ *config.Config) (KV, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	kv := inMemoryKV{
 		kv:      xsync.NewMapOf[string, kvValue](),
-		ctx:     ctx,
 		cancel:  cancel,
 		metrics: metrics.NewMetrics(),
 	}
 
 	// Start background cleanup goroutine
-	go kv.cleanupExpiredKeys()
+	go kv.cleanupExpiredKeys(ctx)
 
 	return kv, nil
 }
@@ -52,7 +51,6 @@ type kvValue struct {
 
 type inMemoryKV struct {
 	kv      *xsync.MapOf[string, kvValue]
-	ctx     context.Context
 	cancel  context.CancelFunc
 	metrics *metrics.Metrics
 }
@@ -157,7 +155,7 @@ func (kv inMemoryKV) Scan(cursor uint64, match string, count int64) ([]string, u
 	kv.kv.Range(func(key string, value kvValue) bool {
 		keyCount++
 		// Check if the key matches the pattern
-		matched := false
+		var matched bool
 		if match == "" {
 			matched = true // Empty pattern matches all keys
 		} else {
@@ -192,13 +190,13 @@ func (kv inMemoryKV) Close() error {
 }
 
 // cleanupExpiredKeys runs periodically to remove expired keys
-func (kv inMemoryKV) cleanupExpiredKeys() {
+func (kv inMemoryKV) cleanupExpiredKeys(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-kv.ctx.Done():
+		case <-ctx.Done():
 			return // Context cancelled, stop cleanup
 		case <-ticker.C:
 			// Perform cleanup with metrics

@@ -288,12 +288,12 @@ func (sm *serverManager) startRepeaterListeners(database *gorm.DB) error {
 
 // initializeServers creates and starts all server instances
 func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.DB, version, commit string) (*serverManager, error) {
-	kvStore, err := kv.MakeKV(cfg)
+	kvStore, err := kv.MakeKV(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to key-value store: %w", err)
 	}
 
-	pubsubClient, err := pubsub.MakePubSub(cfg)
+	pubsubClient, err := pubsub.MakePubSub(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to pubsub: %w", err)
 	}

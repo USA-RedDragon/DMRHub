@@ -20,6 +20,7 @@
 package kv
 
 import (
+	"context"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -36,9 +37,6 @@ type KV interface {
 }
 
 // MakeKV creates a new key-value store client.
-func MakeKV(config *config.Config) (KV, error) {
-	// if config.Redis.Enabled {
-	// 	return makeKVFromRedis(config)
-	// }
-	return makeInMemoryKV(config)
+func MakeKV(ctx context.Context, config *config.Config) (KV, error) {
+	return makeInMemoryKV(ctx, config)
 }

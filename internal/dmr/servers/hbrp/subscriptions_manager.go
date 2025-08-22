@@ -203,11 +203,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pub
 	slog.Debug("Listening for websocket", "userID", userID)
 	subscription := pubsub.Subscribe("calls")
 	defer func() {
-		err := subscription.Unsubscribe()
-		if err != nil {
-			slog.Error("Error unsubscribing from calls", "error", err)
-		}
-		err = subscription.Close()
+		err := subscription.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
@@ -297,11 +293,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
 	subscription := pubsub.Subscribe(fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID))
 	defer func() {
-		err := subscription.Unsubscribe()
-		if err != nil {
-			slog.Error("Error unsubscribing from hbrp:packets:repeater", "repeaterID", repeaterID, "error", err)
-		}
-		err = subscription.Close()
+		err := subscription.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
@@ -345,11 +337,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 	slog.Debug("Listening for calls on talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
 	subscription := pubsub.Subscribe(fmt.Sprintf("hbrp:packets:talkgroup:%d", tg))
 	defer func() {
-		err := subscription.Unsubscribe()
-		if err != nil {
-			slog.Error("Error unsubscribing from hbrp:packets:talkgroup", "talkgroupID", tg, "error", err)
-		}
-		err = subscription.Close()
+		err := subscription.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
@@ -399,10 +387,6 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 				}
 			} else {
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
-				err := subscription.Unsubscribe()
-				if err != nil {
-					slog.Error("Error unsubscribing from hbrp:packets:talkgroup", "talkgroupID", tg, "error", err)
-				}
 				err = subscription.Close()
 				if err != nil {
 					slog.Error("Error closing pubsub connection", "error", err)

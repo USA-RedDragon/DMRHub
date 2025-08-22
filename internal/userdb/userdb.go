@@ -22,6 +22,7 @@ package userdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -45,7 +46,7 @@ var builtInDateStr string
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var userDB UserDB //nolint:golint,gochecknoglobals
+var userDB UserDB //nolint:gochecknoglobals
 
 var (
 	ErrUpdateFailed = errors.New("update failed")

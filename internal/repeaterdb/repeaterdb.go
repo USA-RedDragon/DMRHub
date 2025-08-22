@@ -22,6 +22,7 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -45,7 +46,7 @@ var builtInDateStr string
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
-var repeaterDB RepeaterDB //nolint:golint,gochecknoglobals
+var repeaterDB RepeaterDB //nolint:gochecknoglobals
 
 var (
 	ErrUpdateFailed = errors.New("update failed")

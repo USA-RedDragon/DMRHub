@@ -128,7 +128,7 @@ func (m *SubscriptionManager) ListenForCallsOn(pubsub pubsub.PubSub, repeaterID 
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
 		radioSubs.Store(talkgroupID, &cancel)
-		go m.subscribeTG(newCtx, pubsub, repeaterID, talkgroupID) //nolint:golint,contextcheck
+		go m.subscribeTG(newCtx, pubsub, repeaterID, talkgroupID)
 	}
 }
 
@@ -161,7 +161,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
 		radioSubs.Store(repeaterID, &cancel)
-		go m.subscribeRepeater(newCtx, pubsub, repeaterID) //nolint:golint,contextcheck
+		go m.subscribeRepeater(newCtx, pubsub, repeaterID)
 	}
 
 	// Subscribe to pubsub "packets:talkgroup:<id>" channel for each talkgroup
@@ -170,7 +170,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
-			go m.subscribeTG(newCtx, pubsub, repeaterID, tg.ID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, pubsub, repeaterID, tg.ID)
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
@@ -178,7 +178,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
-			go m.subscribeTG(newCtx, pubsub, repeaterID, tg.ID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, pubsub, repeaterID, tg.ID)
 		}
 	}
 	if p.TS1DynamicTalkgroupID != nil {
@@ -186,7 +186,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS1DynamicTalkgroupID, &cancel)
-			go m.subscribeTG(newCtx, pubsub, repeaterID, *p.TS1DynamicTalkgroupID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, pubsub, repeaterID, *p.TS1DynamicTalkgroupID)
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
@@ -194,7 +194,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, &cancel)
-			go m.subscribeTG(newCtx, pubsub, repeaterID, *p.TS2DynamicTalkgroupID) //nolint:golint,contextcheck
+			go m.subscribeTG(newCtx, pubsub, repeaterID, *p.TS2DynamicTalkgroupID)
 		}
 	}
 }

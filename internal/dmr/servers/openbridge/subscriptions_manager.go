@@ -86,7 +86,8 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, pubsub pubsub.PubSu
 		m.subscriptions[p.ID] = cancel
 		m.subscriptionCancelMutex[p.ID].Unlock()
 		m.subscriptionsMutex.Unlock()
-		go m.subscribe(newCtx, pubsub, p) //nolint:golint,contextcheck
+		//nolint:contextcheck // Using context.Background() is appropriate for independent subscription lifecycle
+		go m.subscribe(newCtx, pubsub, p)
 	}
 }
 

@@ -112,7 +112,8 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 			slog.Info("Dynamically Linking timeslot 2", "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
 			repeater.TS2DynamicTalkgroup = talkgroup
 			repeater.TS2DynamicTalkgroupID = &packet.Dst
-			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst) //nolint:golint,contextcheck
+			//nolint:contextcheck // ListenForCallsOn doesn't take a context parameter
+			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst)
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
 				slog.Error("Error saving repeater", "error", err)
@@ -123,7 +124,8 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 			slog.Info("Dynamically Linking timeslot 1", "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
 			repeater.TS1DynamicTalkgroup = talkgroup
 			repeater.TS1DynamicTalkgroupID = &packet.Dst
-			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst) //nolint:golint,contextcheck
+			//nolint:contextcheck // ListenForCallsOn doesn't take a context parameter
+			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst)
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
 				slog.Error("Error saving repeater", "error", err)
@@ -308,7 +310,6 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	}
 }
 
-//nolint:golint,gocyclo
 func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRDPacket")
 	defer span.End()

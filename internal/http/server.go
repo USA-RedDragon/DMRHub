@@ -345,7 +345,7 @@ func (s *Server) Start() error {
 		return nil
 	})
 	if err := g.Wait(); err != nil {
-		return err //nolint:golint,wrapcheck
+		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 	return nil
 }

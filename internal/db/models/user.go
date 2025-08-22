@@ -17,10 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-//nolint:golint,wrapcheck
 package models
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -157,7 +157,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 	})
 	if err != nil {
 		slog.Error("Error deleting user", "error", err)
-		return err
+		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
 }

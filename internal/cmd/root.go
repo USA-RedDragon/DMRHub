@@ -300,6 +300,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		}(wg)
 
 		wg.Add(1)
+		//nolint:contextcheck // Stop() doesn't take a context parameter
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
 			http.Stop()

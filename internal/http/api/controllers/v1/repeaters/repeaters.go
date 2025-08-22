@@ -542,7 +542,6 @@ func POSTRepeaterLink(c *gin.Context) {
 	}
 }
 
-//nolint:golint,gocyclo
 func POSTRepeaterUnlink(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {

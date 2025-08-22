@@ -104,15 +104,15 @@ func UnpackPacket(data []byte) (Packet, bool) {
 	packet.Repeater = uint(data[11])<<24 | uint(data[12])<<16 | uint(data[13])<<8 | uint(data[14])
 	bits := data[15]
 	packet.Slot = false
-	if (bits & 0x80) != 0 { //nolint:golint,gomnd
+	if (bits & 0x80) != 0 {
 		packet.Slot = true
 	}
 	packet.GroupCall = true
-	if (bits & 0x40) != 0 { //nolint:golint,gomnd
+	if (bits & 0x40) != 0 {
 		packet.GroupCall = false
 	}
-	packet.FrameType = dmrconst.FrameType((bits & 0x30) >> 4) //nolint:golint,gomnd
-	packet.DTypeOrVSeq = uint(bits & 0xF)                     //nolint:golint,gomnd
+	packet.FrameType = dmrconst.FrameType((bits & 0x30) >> 4)
+	packet.DTypeOrVSeq = uint(bits & 0xF)
 	packet.StreamID = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
 	copy(packet.DMRData[:], data[20:53])
 	// Bytes 53-54 are BER and RSSI, respectively
@@ -142,15 +142,15 @@ func (p *Packet) Encode() []byte {
 	data := make([]byte, dmrconst.HBRPPacketLength)
 	copy(data[:4], []byte(p.Signature))
 	data[4] = byte(p.Seq)
-	data[5] = byte(p.Src >> 16) //nolint:golint,gomnd
-	data[6] = byte(p.Src >> 8)  //nolint:golint,gomnd
+	data[5] = byte(p.Src >> 16)
+	data[6] = byte(p.Src >> 8)
 	data[7] = byte(p.Src)
-	data[8] = byte(p.Dst >> 16) //nolint:golint,gomnd
-	data[9] = byte(p.Dst >> 8)  //nolint:golint,gomnd
+	data[8] = byte(p.Dst >> 16)
+	data[9] = byte(p.Dst >> 8)
 	data[10] = byte(p.Dst)
-	data[11] = byte(p.Repeater >> 24) //nolint:golint,gomnd
-	data[12] = byte(p.Repeater >> 16) //nolint:golint,gomnd
-	data[13] = byte(p.Repeater >> 8)  //nolint:golint,gomnd
+	data[11] = byte(p.Repeater >> 24)
+	data[12] = byte(p.Repeater >> 16)
+	data[13] = byte(p.Repeater >> 8)
 	data[14] = byte(p.Repeater)
 	bits := byte(0)
 	if p.Slot {
@@ -159,12 +159,12 @@ func (p *Packet) Encode() []byte {
 	if !p.GroupCall {
 		bits |= 0x40
 	}
-	bits |= byte(p.FrameType << 4) //nolint:golint,gomnd
+	bits |= byte(p.FrameType << 4)
 	bits |= byte(p.DTypeOrVSeq)
 	data[15] = bits
-	data[16] = byte(p.StreamID >> 24) //nolint:golint,gomnd
-	data[17] = byte(p.StreamID >> 16) //nolint:golint,gomnd
-	data[18] = byte(p.StreamID >> 8)  //nolint:golint,gomnd
+	data[16] = byte(p.StreamID >> 24)
+	data[17] = byte(p.StreamID >> 16)
+	data[18] = byte(p.StreamID >> 8)
 	data[19] = byte(p.StreamID)
 	copy(data[20:53], p.DMRData[:])
 	// If BER and RSSI are set, add them

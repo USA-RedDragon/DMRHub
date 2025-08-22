@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-var subscriptionManager *SubscriptionManager //nolint:golint,gochecknoglobals
+var subscriptionManager *SubscriptionManager //nolint:gochecknoglobals
 
 type SubscriptionManager struct {
 	subscriptions           map[uint]context.CancelFunc

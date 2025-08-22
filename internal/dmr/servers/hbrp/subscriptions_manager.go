@@ -34,7 +34,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var subscriptionManager *SubscriptionManager //nolint:golint,gochecknoglobals
+var subscriptionManager *SubscriptionManager //nolint:gochecknoglobals
 
 type SubscriptionManager struct {
 	// stores map[uint]context.CancelFunc indexed by strconv.Itoa(int(radioID))

@@ -19,7 +19,11 @@
 
 package pubsub
 
-import "github.com/USA-RedDragon/DMRHub/internal/config"
+import (
+	"context"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+)
 
 type PubSub interface {
 	Publish(topic string, message []byte) error
@@ -28,14 +32,13 @@ type PubSub interface {
 }
 
 type Subscription interface {
-	Unsubscribe() error
 	Close() error
 	Channel() <-chan []byte
 }
 
-func MakePubSub(config *config.Config) (PubSub, error) {
-	// if config.Redis.Enabled {
-	// 	return makePubSubFromRedis(config)
-	// }
+func MakePubSub(ctx context.Context, config *config.Config) (PubSub, error) {
+	if config.Redis.Enabled {
+		return makePubSubFromRedis(ctx, config)
+	}
 	return makeInMemoryPubSub(config)
 }

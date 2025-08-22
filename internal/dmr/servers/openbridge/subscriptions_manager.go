@@ -95,11 +95,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 	slog.Debug("Listening for calls on peer", "peerID", p.ID)
 	subscription := pubsub.Subscribe("openbridge:packets")
 	defer func() {
-		err := subscription.Unsubscribe()
-		if err != nil {
-			slog.Error("Error unsubscribing from openbridge:packets", "error", err)
-		}
-		err = subscription.Close()
+		err := subscription.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}

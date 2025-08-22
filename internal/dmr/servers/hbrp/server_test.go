@@ -20,6 +20,7 @@
 package hbrp_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -48,12 +49,12 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	kv, err := kv.MakeKV(&defConfig)
+	kv, err := kv.MakeKV(context.TODO(), &defConfig)
 	if err != nil {
 		t.Fatalf("Failed to create key-value store: %v", err)
 	}
 
-	pubsub, err := pubsub.MakePubSub(&defConfig)
+	pubsub, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	if err != nil {
 		t.Fatalf("Failed to create pubsub: %v", err)
 	}

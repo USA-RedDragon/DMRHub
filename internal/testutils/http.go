@@ -20,6 +20,7 @@
 package testutils
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -94,7 +95,7 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		}
 	}
 
-	pubsub, err := pubsub.MakePubSub(&defConfig)
+	pubsub, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}

@@ -19,11 +19,93 @@
 
 package pubsub
 
-import "github.com/USA-RedDragon/DMRHub/internal/config"
+import (
+	"context"
+	"fmt"
+	"runtime"
 
-func makePubSubFromRedis(config *config.Config) (redisPubSub, error) {
-	return redisPubSub{}, nil
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/consts"
+	"github.com/redis/go-redis/extra/redisotel/v9"
+	"github.com/redis/go-redis/v9"
+)
+
+func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisPubSub, err error) {
+	redis := redis.NewClient(&redis.Options{
+		Addr:            fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
+		Password:        config.Redis.Password,
+		PoolFIFO:        true,
+		PoolSize:        runtime.GOMAXPROCS(0) * consts.ConnsPerCPU,
+		MinIdleConns:    runtime.GOMAXPROCS(0),
+		ConnMaxIdleTime: consts.MaxIdleTime,
+	})
+	_, err = redis.Ping(ctx).Result()
+	if err != nil {
+		err = fmt.Errorf("failed to connect to redis: %w", err)
+		return
+	}
+
+	if config.Metrics.OTLPEndpoint != "" {
+		if err = redisotel.InstrumentTracing(redis); err != nil {
+			err = fmt.Errorf("failed to trace redis: %w", err)
+			return
+		}
+
+		// Enable metrics instrumentation.
+		if err = redisotel.InstrumentMetrics(redis); err != nil {
+			err = fmt.Errorf("failed to instrument redis metrics: %w", err)
+			return
+		}
+	}
+
+	return redisPubSub{client: redis}, nil
 }
 
 type redisPubSub struct {
+	client *redis.Client
+}
+
+func (ps redisPubSub) Publish(topic string, message []byte) error {
+	ctx := context.Background()
+	if err := ps.client.Publish(ctx, topic, message).Err(); err != nil {
+		return fmt.Errorf("failed to publish message to topic %s: %w", topic, err)
+	}
+	return nil
+}
+
+func (ps redisPubSub) Subscribe(topic string) Subscription {
+	ctx := context.Background()
+	sub := ps.client.Subscribe(ctx, topic)
+	ch := sub.Channel()
+	return redisSubscription{ch: ch, sub: sub}
+}
+
+func (ps redisPubSub) Close() error {
+	if err := ps.client.Close(); err != nil {
+		return fmt.Errorf("failed to close redis client: %w", err)
+	}
+	return nil
+}
+
+type redisSubscription struct {
+	ch  <-chan *redis.Message
+	sub *redis.PubSub
+}
+
+func (s redisSubscription) Close() error {
+	if err := s.sub.Close(); err != nil {
+		return fmt.Errorf("failed to close redis subscription: %w", err)
+	}
+	return nil
+}
+
+func (s redisSubscription) Channel() <-chan []byte {
+	ch := make(chan []byte)
+	go func() {
+		for msg := range s.ch {
+			ch <- []byte(msg.Payload)
+		}
+		close(ch)
+	}()
+	return ch
 }

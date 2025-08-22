@@ -82,39 +82,196 @@ var (
 	ErrHTTPCanonicalHostRequired = errors.New("canonical host is required for generating absolute URLs in the HTTP server")
 )
 
+// Validate validates the Redis configuration.
+func (r Redis) Validate() error {
+	if !r.Enabled {
+		return nil
+	}
+
+	if r.Host == "" {
+		return ErrInvalidRedisHost
+	}
+	if r.Port <= 0 || r.Port > 65535 {
+		return ErrInvalidRedisPort
+	}
+
+	return nil
+}
+
+// Validate validates the Database configuration.
+func (d Database) Validate() error {
+	if d.Driver != DatabaseDriverSQLite &&
+		d.Driver != DatabaseDriverPostgres &&
+		d.Driver != DatabaseDriverMySQL {
+		return ErrInvalidDatabaseDriver
+	}
+
+	if d.Driver != DatabaseDriverSQLite && d.Host == "" {
+		return ErrInvalidDatabaseHost
+	}
+
+	if d.Driver != DatabaseDriverSQLite && (d.Port <= 0 || d.Port > 65535) {
+		return ErrInvalidDatabasePort
+	}
+
+	if d.Database == "" {
+		return ErrInvalidDatabaseName
+	}
+
+	return nil
+}
+
+// Validate validates the RobotsTXT configuration.
+func (r RobotsTXT) Validate() error {
+	if r.Mode != RobotsTXTModeAllow &&
+		r.Mode != RobotsTXTModeDisabled &&
+		r.Mode != RobotsTXTModeCustom {
+		return ErrHTTPRobotsTXTModeInvalid
+	}
+
+	if r.Mode == RobotsTXTModeCustom && r.Content == "" {
+		return ErrInvalidHTTPRobotsTXTContent
+	}
+
+	return nil
+}
+
+// Validate validates the HTTP configuration.
+func (h HTTP) Validate() error {
+	if h.Bind == "" {
+		return ErrInvalidHTTPHost
+	}
+
+	if h.Port <= 0 || h.Port > 65535 {
+		return ErrInvalidHTTPPort
+	}
+
+	if h.CanonicalHost == "" {
+		return ErrHTTPCanonicalHostRequired
+	}
+
+	if err := h.RobotsTXT.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate validates the HBRP configuration.
+func (h HBRP) Validate() error {
+	if h.Bind == "" {
+		return ErrInvalidDMRHBRPHost
+	}
+
+	if h.Port <= 0 || h.Port > 65535 {
+		return ErrInvalidDMRHBRPPort
+	}
+
+	return nil
+}
+
+// Validate validates the OpenBridge configuration.
+func (o OpenBridge) Validate() error {
+	if !o.Enabled {
+		return nil
+	}
+
+	if o.Bind == "" {
+		return ErrInvalidDMROpenBridgeHost
+	}
+	if o.Port <= 0 || o.Port > 65535 {
+		return ErrInvalidDMROpenBridgePort
+	}
+
+	return nil
+}
+
+// Validate validates the DMR configuration.
+func (d DMR) Validate() error {
+	if err := d.HBRP.Validate(); err != nil {
+		return err
+	}
+
+	if err := d.OpenBridge.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate validates the SMTP configuration.
+func (s SMTP) Validate() error {
+	if !s.Enabled {
+		return nil
+	}
+
+	if s.Host == "" {
+		return ErrInvalidSMTPHost
+	}
+	if s.Port <= 0 || s.Port > 65535 {
+		return ErrInvalidSMTPPort
+	}
+	if s.AuthMethod != SMTPAuthMethodPlain &&
+		s.AuthMethod != SMTPAuthMethodLogin &&
+		s.AuthMethod != SMTPAuthMethodNone {
+		return ErrInvalidSMTPAuthMethod
+	}
+	if s.TLS != SMTPTLSNone &&
+		s.TLS != SMTPTLSStartTLS &&
+		s.TLS != SMTPTLSImplicit {
+		return ErrInvalidSMTPTLS
+	}
+	if s.From == "" {
+		return ErrSMTPFromRequired
+	}
+	if s.Username == "" && s.AuthMethod != SMTPAuthMethodNone {
+		return ErrInvalidSMTPUsername
+	}
+	if s.Password == "" && s.AuthMethod != SMTPAuthMethodNone {
+		return ErrInvalidSMTPPassword
+	}
+
+	return nil
+}
+
+// Validate validates the Metrics configuration.
+func (m Metrics) Validate() error {
+	if !m.Enabled {
+		return nil
+	}
+
+	if m.Bind == "" {
+		return ErrInvalidMetricsBindAddress
+	}
+	if m.Port <= 0 || m.Port > 65535 {
+		return ErrInvalidMetricsPort
+	}
+
+	return nil
+}
+
+// Validate validates the PProf configuration.
+func (p PProf) Validate() error {
+	if !p.Enabled {
+		return nil
+	}
+
+	if p.Bind == "" {
+		return ErrInvalidPProfBindAddress
+	}
+	if p.Port <= 0 || p.Port > 65535 {
+		return ErrInvalidPProfPort
+	}
+
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.LogLevel != LogLevelDebug &&
 		c.LogLevel != LogLevelInfo &&
 		c.LogLevel != LogLevelWarn &&
 		c.LogLevel != LogLevelError {
 		return ErrInvalidLogLevel
-	}
-
-	if c.Redis.Enabled {
-		if c.Redis.Host == "" {
-			return ErrInvalidRedisHost
-		}
-		if c.Redis.Port <= 0 || c.Redis.Port > 65535 {
-			return ErrInvalidRedisPort
-		}
-	}
-
-	if c.Database.Driver != DatabaseDriverSQLite &&
-		c.Database.Driver != DatabaseDriverPostgres &&
-		c.Database.Driver != DatabaseDriverMySQL {
-		return ErrInvalidDatabaseDriver
-	}
-
-	if c.Database.Driver != DatabaseDriverSQLite && c.Database.Host == "" {
-		return ErrInvalidDatabaseHost
-	}
-
-	if c.Database.Driver != DatabaseDriverSQLite && (c.Database.Port <= 0 || c.Database.Port > 65535) {
-		return ErrInvalidDatabasePort
-	}
-
-	if c.Database.Database == "" {
-		return ErrInvalidDatabaseName
 	}
 
 	if c.Secret == "" {
@@ -125,89 +282,32 @@ func (c Config) Validate() error {
 		return ErrPasswordSaltRequired
 	}
 
-	if c.HTTP.Bind == "" {
-		return ErrInvalidHTTPHost
+	if err := c.Redis.Validate(); err != nil {
+		return err
 	}
 
-	if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
-		return ErrInvalidHTTPPort
+	if err := c.Database.Validate(); err != nil {
+		return err
 	}
 
-	if c.DMR.HBRP.Bind == "" {
-		return ErrInvalidDMRHBRPHost
+	if err := c.HTTP.Validate(); err != nil {
+		return err
 	}
 
-	if c.DMR.HBRP.Port <= 0 || c.DMR.HBRP.Port > 65535 {
-		return ErrInvalidDMRHBRPPort
+	if err := c.DMR.Validate(); err != nil {
+		return err
 	}
 
-	if c.DMR.OpenBridge.Enabled {
-		if c.DMR.OpenBridge.Bind == "" {
-			return ErrInvalidDMROpenBridgeHost
-		}
-		if c.DMR.OpenBridge.Port <= 0 || c.DMR.OpenBridge.Port > 65535 {
-			return ErrInvalidDMROpenBridgePort
-		}
+	if err := c.SMTP.Validate(); err != nil {
+		return err
 	}
 
-	if c.SMTP.Enabled {
-		if c.SMTP.Host == "" {
-			return ErrInvalidSMTPHost
-		}
-		if c.SMTP.Port <= 0 || c.SMTP.Port > 65535 {
-			return ErrInvalidSMTPPort
-		}
-		if c.SMTP.AuthMethod != SMTPAuthMethodPlain &&
-			c.SMTP.AuthMethod != SMTPAuthMethodLogin &&
-			c.SMTP.AuthMethod != SMTPAuthMethodNone {
-			return ErrInvalidSMTPAuthMethod
-		}
-		if c.SMTP.TLS != SMTPTLSNone &&
-			c.SMTP.TLS != SMTPTLSStartTLS &&
-			c.SMTP.TLS != SMTPTLSImplicit {
-			return ErrInvalidSMTPTLS
-		}
-		if c.SMTP.From == "" {
-			return ErrSMTPFromRequired
-		}
-		if c.SMTP.Username == "" && c.SMTP.AuthMethod != SMTPAuthMethodNone {
-			return ErrInvalidSMTPUsername
-		}
-		if c.SMTP.Password == "" && c.SMTP.AuthMethod != SMTPAuthMethodNone {
-			return ErrInvalidSMTPPassword
-		}
+	if err := c.Metrics.Validate(); err != nil {
+		return err
 	}
 
-	if c.HTTP.RobotsTXT.Mode != RobotsTXTModeAllow &&
-		c.HTTP.RobotsTXT.Mode != RobotsTXTModeDisabled &&
-		c.HTTP.RobotsTXT.Mode != RobotsTXTModeCustom {
-		return ErrHTTPRobotsTXTModeInvalid
-	}
-
-	if c.HTTP.RobotsTXT.Mode == RobotsTXTModeCustom && c.HTTP.RobotsTXT.Content == "" {
-		return ErrInvalidHTTPRobotsTXTContent
-	}
-
-	if c.HTTP.CanonicalHost == "" {
-		return ErrHTTPCanonicalHostRequired
-	}
-
-	if c.Metrics.Enabled {
-		if c.Metrics.Bind == "" {
-			return ErrInvalidMetricsBindAddress
-		}
-		if c.Metrics.Port <= 0 || c.Metrics.Port > 65535 {
-			return ErrInvalidMetricsPort
-		}
-	}
-
-	if c.PProf.Enabled {
-		if c.PProf.Bind == "" {
-			return ErrInvalidPProfBindAddress
-		}
-		if c.PProf.Port <= 0 || c.PProf.Port > 65535 {
-			return ErrInvalidPProfPort
-		}
+	if err := c.PProf.Validate(); err != nil {
+		return err
 	}
 
 	return nil

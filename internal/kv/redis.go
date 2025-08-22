@@ -27,3 +27,38 @@ func makeKVFromRedis(config *config.Config) (redisKV, error) {
 
 type redisKV struct {
 }
+
+// const connsPerCPU = 10
+// const maxIdleTime = 10 * time.Minute
+
+// TODO: move this to pubsub and kv packages
+// if cfg.Redis.Enabled {
+// 	redis := redis.NewClient(&redis.Options{
+// 		Addr:            fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+// 		Password:        cfg.Redis.Password,
+// 		PoolFIFO:        true,
+// 		PoolSize:        runtime.GOMAXPROCS(0) * connsPerCPU,
+// 		MinIdleConns:    runtime.GOMAXPROCS(0),
+// 		ConnMaxIdleTime: maxIdleTime,
+// 	})
+// 	_, err = redis.Ping(ctx).Result()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to connect to redis: %w", err)
+// 	}
+// 	defer func() {
+// 		err := redis.Close()
+// 		if err != nil {
+// 			slog.Error("Failed to close redis connection", "error", err)
+// 		}
+// 	}()
+// 	if cfg.Metrics.OTLPEndpoint != "" {
+// 		if err := redisotel.InstrumentTracing(redis); err != nil {
+// 			return fmt.Errorf("failed to trace redis: %w", err)
+// 		}
+
+// 		// Enable metrics instrumentation.
+// 		if err := redisotel.InstrumentMetrics(redis); err != nil {
+// 			return fmt.Errorf("failed to instrument redis metrics: %w", err)
+// 		}
+// 	}
+// }

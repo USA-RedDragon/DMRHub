@@ -53,6 +53,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 )
 
 func NewCommand(version, commit string) *cobra.Command {
@@ -74,16 +75,70 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	fmt.Printf("DMRHub - %s (%s)\n", cmd.Annotations["version"], cmd.Annotations["commit"])
 
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	setupLogger(cfg)
+
+	scheduler, err := setupScheduler()
+	if err != nil {
+		return err
+	}
+
+	cleanup := setupTracing(cfg)
+	defer func() {
+		if cleanup != nil {
+			if err := cleanup(ctx); err != nil {
+				slog.Error("Failed to shutdown tracer", "error", err)
+			}
+		}
+	}()
+
+	startBackgroundServices(cfg)
+
+	database, err := db.MakeDB(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	setupDatabaseJobs(scheduler)
+
+	scheduler.Start()
+
+	servers, err := initializeServers(ctx, cfg, database, cmd.Annotations["version"], cmd.Annotations["commit"])
+	if err != nil {
+		return err
+	}
+	defer servers.shutdown(ctx)
+
+	if err := servers.startRepeaterListeners(database); err != nil {
+		return err
+	}
+
+	setupShutdownHandlers(ctx, scheduler, servers, cleanup)
+
+	return nil
+}
+
+// loadConfig loads the configuration from context
+func loadConfig(ctx context.Context) (*config.Config, error) {
 	c, err := configulator.FromContext[config.Config](ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get config from context: %w", err)
+		return nil, fmt.Errorf("failed to get config from context: %w", err)
 	}
 
 	cfg, err := c.Load()
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	return cfg, nil
+}
+
+// setupLogger configures the structured logger
+func setupLogger(cfg *config.Config) {
 	var logger *slog.Logger
 	switch cfg.LogLevel {
 	case config.LogLevelDebug:
@@ -96,30 +151,33 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelError}))
 	}
 	slog.SetDefault(logger)
+}
 
+// setupScheduler creates and configures the job scheduler
+func setupScheduler() (gocron.Scheduler, error) {
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
-		return fmt.Errorf("failed to create scheduler: %w", err)
+		return nil, fmt.Errorf("failed to create scheduler: %w", err)
 	}
+	return scheduler, nil
+}
 
-	var cleanup func(context.Context) error
-	if cfg.Metrics.OTLPEndpoint != "" {
-		cleanup = initTracer(cfg)
-		defer func() {
-			err := cleanup(ctx)
-			if err != nil {
-				slog.Error("Failed to shutdown tracer", "error", err)
-			}
-		}()
+// setupTracing initializes OpenTelemetry tracing if configured
+func setupTracing(cfg *config.Config) func(context.Context) error {
+	if cfg.Metrics.OTLPEndpoint == "" {
+		return nil
 	}
+	return initTracer(cfg)
+}
+
+// startBackgroundServices starts metrics and pprof servers
+func startBackgroundServices(cfg *config.Config) {
 	go metrics.CreateMetricsServer(cfg)
 	go pprof.CreatePProfServer(cfg)
+}
 
-	database, err := db.MakeDB(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-
+// setupDatabaseJobs configures scheduled jobs for database updates
+func setupDatabaseJobs(scheduler gocron.Scheduler) {
 	// Dummy call to get the data decoded into memory early
 	go func() {
 		err := repeaterdb.Update()
@@ -127,7 +185,8 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 			slog.Error("Failed to update repeater database, using built in one", "error", err)
 		}
 	}()
-	_, err = scheduler.NewJob(
+
+	_, err := scheduler.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(
 			gocron.NewAtTime(0, 0, 0),
 		)),
@@ -143,11 +202,12 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	}
 
 	go func() {
-		err = userdb.Update()
+		err := userdb.Update()
 		if err != nil {
 			slog.Error("Failed to update user database", "error", err)
 		}
 	}()
+
 	_, err = scheduler.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(
 			gocron.NewAtTime(0, 0, 0),
@@ -162,63 +222,40 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		slog.Error("Failed to schedule user update", "error", err)
 	}
+}
 
-	scheduler.Start()
+// serverManager holds all the server instances and their dependencies
+type serverManager struct {
+	hbrpServer       hbrp.Server
+	openbridgeServer *openbridge.Server
+	httpServer       http.Server
+	kv               kv.KV
+	pubsub           pubsub.PubSub
+	database         *gorm.DB
+	cfg              *config.Config
+}
 
-	// const connsPerCPU = 10
-	// const maxIdleTime = 10 * time.Minute
-
-	// TODO: move this to pubsub and kv packages
-	// if cfg.Redis.Enabled {
-	// 	redis := redis.NewClient(&redis.Options{
-	// 		Addr:            fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-	// 		Password:        cfg.Redis.Password,
-	// 		PoolFIFO:        true,
-	// 		PoolSize:        runtime.GOMAXPROCS(0) * connsPerCPU,
-	// 		MinIdleConns:    runtime.GOMAXPROCS(0),
-	// 		ConnMaxIdleTime: maxIdleTime,
-	// 	})
-	// 	_, err = redis.Ping(ctx).Result()
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to connect to redis: %w", err)
-	// 	}
-	// 	defer func() {
-	// 		err := redis.Close()
-	// 		if err != nil {
-	// 			slog.Error("Failed to close redis connection", "error", err)
-	// 		}
-	// 	}()
-	// 	if cfg.Metrics.OTLPEndpoint != "" {
-	// 		if err := redisotel.InstrumentTracing(redis); err != nil {
-	// 			return fmt.Errorf("failed to trace redis: %w", err)
-	// 		}
-
-	// 		// Enable metrics instrumentation.
-	// 		if err := redisotel.InstrumentMetrics(redis); err != nil {
-	// 			return fmt.Errorf("failed to instrument redis metrics: %w", err)
-	// 		}
-	// 	}
-	// }
-
-	kv, err := kv.MakeKV(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to key-value store: %w", err)
+// shutdown gracefully stops all servers
+func (sm *serverManager) shutdown(ctx context.Context) {
+	sm.hbrpServer.Stop(ctx)
+	if sm.openbridgeServer != nil {
+		sm.openbridgeServer.Stop(ctx)
 	}
-
-	pubsub, err := pubsub.MakePubSub(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to pubsub: %w", err)
+	sm.httpServer.Stop(ctx)
+	if sm.pubsub != nil {
+		if err := sm.pubsub.Close(); err != nil {
+			slog.Error("Failed to close pubsub", "error", err)
+		}
 	}
-
-	callTracker := calltracker.NewCallTracker(database, pubsub)
-
-	hbrpServer := hbrp.MakeServer(cfg, database, pubsub, kv, callTracker, cmd.Annotations["version"], cmd.Annotations["commit"])
-	err = hbrpServer.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to start hbrp server: %w", err)
+	if sm.kv != nil {
+		if err := sm.kv.Close(); err != nil {
+			slog.Error("Failed to close kv", "error", err)
+		}
 	}
-	defer hbrpServer.Stop(ctx)
+}
 
+// startRepeaterListeners starts listeners for all repeaters and peers
+func (sm *serverManager) startRepeaterListeners(database *gorm.DB) error {
 	g := new(errgroup.Group)
 	g.Go(func() error {
 		// For each repeater in the DB, start a gofunc to listen for calls
@@ -227,40 +264,77 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("failed to list repeaters: %w", err)
 		}
 		for _, repeater := range repeaters {
-			go hbrp.GetSubscriptionManager(database).ListenForCalls(pubsub, repeater.ID)
+			go hbrp.GetSubscriptionManager(database).ListenForCalls(sm.pubsub, repeater.ID)
 		}
 		return nil
 	})
 
-	if cfg.DMR.OpenBridge.Enabled {
-		// Start the OpenBridge server
-		openbridgeServer := openbridge.MakeServer(cfg, database, pubsub, kv, callTracker)
-		err := openbridgeServer.Start(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to start OpenBridge server: %w", err)
-		}
-		defer openbridgeServer.Stop(ctx)
-
+	if sm.cfg.DMR.OpenBridge.Enabled {
 		go func() {
 			// For each peer in the DB, start a gofunc to listen for calls
 			peers := models.ListPeers(database)
 			for _, peer := range peers {
-				go openbridge.GetSubscriptionManager().Subscribe(ctx, pubsub, peer)
+				go openbridge.GetSubscriptionManager().Subscribe(context.Background(), sm.pubsub, peer)
 			}
 		}()
 	}
-
-	http := http.MakeServer(cfg, database, pubsub, cmd.Annotations["version"], cmd.Annotations["commit"])
-	err = http.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start HTTP server: %w", err)
-	}
-	defer http.Stop()
 
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("failed to start repeater listeners: %w", err)
 	}
 
+	return nil
+}
+
+// initializeServers creates and starts all server instances
+func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.DB, version, commit string) (*serverManager, error) {
+	kvStore, err := kv.MakeKV(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to key-value store: %w", err)
+	}
+
+	pubsubClient, err := pubsub.MakePubSub(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to pubsub: %w", err)
+	}
+
+	callTracker := calltracker.NewCallTracker(database, pubsubClient)
+
+	sm := &serverManager{
+		kv:       kvStore,
+		pubsub:   pubsubClient,
+		database: database,
+		cfg:      cfg,
+	}
+
+	hbrpServer := hbrp.MakeServer(cfg, database, pubsubClient, kvStore, callTracker, version, commit)
+	err = hbrpServer.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start hbrp server: %w", err)
+	}
+	sm.hbrpServer = hbrpServer
+
+	if cfg.DMR.OpenBridge.Enabled {
+		openbridgeServer := openbridge.MakeServer(cfg, database, pubsubClient, kvStore, callTracker)
+		err := openbridgeServer.Start(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start OpenBridge server: %w", err)
+		}
+		sm.openbridgeServer = &openbridgeServer
+	}
+
+	httpServer := http.MakeServer(cfg, database, pubsubClient, version, commit)
+	err = httpServer.Start()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
+	}
+	sm.httpServer = httpServer
+
+	return sm, nil
+}
+
+// setupShutdownHandlers configures graceful shutdown handlers
+func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, servers *serverManager, cleanup func(context.Context) error) {
 	stop := func(sig os.Signal) {
 		slog.Error("Shutting down due to signal", "signal", sig)
 		wg := new(sync.WaitGroup)
@@ -268,7 +342,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			err = scheduler.StopJobs()
+			err := scheduler.StopJobs()
 			if err != nil {
 				slog.Error("Failed to stop scheduler jobs", "error", err)
 			}
@@ -281,29 +355,22 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			hbrp.GetSubscriptionManager(database).CancelAllSubscriptions()
-			hbrpServer.Stop(ctx)
+			hbrp.GetSubscriptionManager(servers.database).CancelAllSubscriptions()
+			servers.shutdown(ctx)
 		}(wg)
 
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			if cfg.Metrics.OTLPEndpoint != "" {
+			if cleanup != nil {
 				const timeout = 5 * time.Second
-				ctx, cancel := context.WithTimeout(ctx, timeout)
+				shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
-				err := cleanup(ctx)
+				err := cleanup(shutdownCtx)
 				if err != nil {
 					slog.Error("Failed to shutdown tracer", "error", err)
 				}
 			}
-		}(wg)
-
-		wg.Add(1)
-		//nolint:contextcheck // Stop() doesn't take a context parameter
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			http.Stop()
 		}(wg)
 
 		// Wait for all the servers to stop
@@ -316,14 +383,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		}()
 		select {
 		case <-c:
-			err = pubsub.Close()
-			if err != nil {
-				slog.Error("Failed to close pubsub", "error", err)
-			}
-			err = kv.Close()
-			if err != nil {
-				slog.Error("Failed to close kv", "error", err)
-			}
 			slog.Info("All servers stopped, shutting down gracefully")
 			os.Exit(0)
 		case <-time.After(timeout):
@@ -336,8 +395,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	shutdown.AddWithParam(stop)
 
 	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
-
-	return nil
 }
 
 func initTracer(config *config.Config) func(context.Context) error {

@@ -314,12 +314,12 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 	}
 }
 
-func (s *Server) Stop() {
+func (s *Server) Stop(ctx context.Context) {
 	slog.Info("Stopping HTTP Server")
 	const timeout = 5 * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	if err := s.Shutdown(ctx); err != nil {
+	if err := s.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Failed to shutdown HTTP server", "error", err)
 	}
 	<-s.shutdownChannel

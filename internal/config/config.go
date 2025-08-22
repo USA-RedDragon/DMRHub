@@ -81,7 +81,7 @@ type Database struct {
 	Port            int            `name:"port" description:"Database port"`
 	Username        string         `name:"username" description:"Database username"`
 	Password        string         `name:"password" description:"Database password"`
-	ExtraParameters []string       `name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"[\"_pragma=foreign_keys(1)\",\"_pragma=journal_mode(WAL)\"]"`
+	ExtraParameters []string       `name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL)"`
 }
 
 // HTTP holds the HTTP server configuration.

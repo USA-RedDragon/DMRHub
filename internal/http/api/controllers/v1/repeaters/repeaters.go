@@ -20,6 +20,7 @@
 package repeaters
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -516,7 +517,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go hbrp.GetSubscriptionManager(db).ListenForCallsOn(pubsub, repeater.ID, talkgroup.ID)
+	go hbrp.GetSubscriptionManager(db).ListenForCallsOn(context.Background(), pubsub, repeater.ID, talkgroup.ID)
 	err = db.Save(repeater).Error
 	if err != nil {
 		slog.Error("Error saving repeater", "error", err)

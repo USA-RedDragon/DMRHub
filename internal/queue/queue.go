@@ -17,28 +17,32 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package kv
+package queue
 
-import (
-	"time"
-
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-)
-
-type KV interface {
-	Has(key string) (bool, error)
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
-	Expire(key string, ttl time.Duration) error
-	Scan(cursor uint64, match string, count int64) ([]string, uint64, error)
-	Close() error
+// Queue is a simple in-memory queue implementation.
+// It uses a map to store multiple byte slices under a single key.
+type Queue struct {
+	data map[string][][]byte // Key -> Array of byte slices
 }
 
-// MakeKV creates a new key-value store client.
-func MakeKV(config *config.Config) (KV, error) {
-	// if config.Redis.Enabled {
-	// 	return makeKVFromRedis(config)
-	// }
-	return makeInMemoryKV(config)
+func NewQueue() *Queue {
+	return &Queue{
+		data: make(map[string][][]byte),
+	}
+}
+
+func (q *Queue) Push(key string, value []byte) (int, error) {
+	q.data[key] = append(q.data[key], value)
+	return len(q.data[key]), nil
+}
+
+func (q *Queue) Drain(key string) [][]byte {
+	values := q.data[key]
+	delete(q.data, key)
+	return values
+}
+
+func (q *Queue) Delete(key string) error {
+	delete(q.data, key)
+	return nil
 }

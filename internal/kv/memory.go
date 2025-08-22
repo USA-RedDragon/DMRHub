@@ -107,43 +107,6 @@ func (kv inMemoryKV) Scan(cursor uint64, match string, count int64) ([]string, u
 	return keys, 0, nil // cursor is not used in this implementation
 }
 
-func (kv inMemoryKV) LLen(key string) (int64, error) {
-	value, ok := kv.kv.Load(key)
-	if !ok {
-		return 0, fmt.Errorf("key %s not found", key)
-	}
-	if value.ttl.Before(time.Now()) {
-		kv.kv.Delete(key) // Remove expired key
-		return 0, fmt.Errorf("key %s has expired", key)
-	}
-	return int64(len(value.values)), nil
-}
-
-func (kv inMemoryKV) LIndex(key string, index int64) ([]byte, error) {
-	value, ok := kv.kv.Load(key)
-	if !ok || index < 0 || int(index) >= len(value.values) {
-		return nil, nil // Key does not exist or index out of range
-	}
-	if value.ttl.Before(time.Now()) {
-		kv.kv.Delete(key) // Remove expired key
-		return nil, fmt.Errorf("key %s has expired", key)
-	}
-	return value.values[index], nil // Return the value at the specified index
-}
-
-func (kv inMemoryKV) RPush(key string, values ...[]byte) (int64, error) {
-	currentValue, ok := kv.kv.Load(key)
-	if !ok {
-		currentValue = kvValue{values: make([][]byte, 0)}
-	}
-
-	// Append new values to the existing values
-	currentValue.values = append(currentValue.values, values...)
-	kv.kv.Store(key, currentValue)
-
-	return int64(len(currentValue.values)), nil // Return the new length of the list
-}
-
 func (kv inMemoryKV) Close() error {
 	// No resources to close in in-memory implementation
 	return nil

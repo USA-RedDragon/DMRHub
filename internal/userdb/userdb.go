@@ -22,7 +22,6 @@ package userdb
 import (
 	"bytes"
 	"context"
-
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"

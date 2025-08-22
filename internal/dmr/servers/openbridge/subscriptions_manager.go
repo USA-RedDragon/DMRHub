@@ -76,7 +76,7 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, pubsub pubsub.PubSu
 	_, ok := m.subscriptions[p.ID]
 	m.subscriptionsMutex.RUnlock()
 	if !ok {
-		newCtx, cancel := context.WithCancel(context.Background())
+		newCtx, cancel := context.WithCancel(ctx)
 		m.subscriptionsMutex.Lock()
 		_, ok = m.subscriptionCancelMutex[p.ID]
 		if !ok {
@@ -86,7 +86,6 @@ func (m *SubscriptionManager) Subscribe(ctx context.Context, pubsub pubsub.PubSu
 		m.subscriptions[p.ID] = cancel
 		m.subscriptionCancelMutex[p.ID].Unlock()
 		m.subscriptionsMutex.Unlock()
-		//nolint:contextcheck // Using context.Background() is appropriate for independent subscription lifecycle
 		go m.subscribe(newCtx, pubsub, p)
 	}
 }

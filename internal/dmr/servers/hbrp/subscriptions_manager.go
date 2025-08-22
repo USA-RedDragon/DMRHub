@@ -117,8 +117,8 @@ func (m *SubscriptionManager) CancelAllRepeaterSubscriptions(repeaterID uint) {
 	})
 }
 
-func (m *SubscriptionManager) ListenForCallsOn(pubsub pubsub.PubSub, repeaterID uint, talkgroupID uint) {
-	_, span := otel.Tracer("DMRHub").Start(context.Background(), "SubscriptionManager.ListenForCallsOn")
+func (m *SubscriptionManager) ListenForCallsOn(ctx context.Context, pubsub pubsub.PubSub, repeaterID uint, talkgroupID uint) {
+	_, span := otel.Tracer("DMRHub").Start(ctx, "SubscriptionManager.ListenForCallsOn")
 	defer span.End()
 	radioSubs, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
@@ -126,7 +126,7 @@ func (m *SubscriptionManager) ListenForCallsOn(pubsub pubsub.PubSub, repeaterID 
 	}
 	_, ok = radioSubs.Load(talkgroupID)
 	if !ok {
-		newCtx, cancel := context.WithCancel(context.Background())
+		newCtx, cancel := context.WithCancel(ctx)
 		radioSubs.Store(talkgroupID, &cancel)
 		go m.subscribeTG(newCtx, pubsub, repeaterID, talkgroupID)
 	}

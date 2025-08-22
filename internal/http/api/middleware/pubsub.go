@@ -21,7 +21,6 @@ package middleware
 
 import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-
 	"github.com/gin-gonic/gin"
 )
 

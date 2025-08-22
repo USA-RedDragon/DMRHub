@@ -282,7 +282,7 @@ func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bo
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
 	defer span.End()
 
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {

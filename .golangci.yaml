@@ -1,13 +1,14 @@
+version: "2"
+
 run:
   timeout: 30m
 
-issues:
-  exclude-files:
-    - ".*\\_gen\\.go$"
-    - ".*\\_gen\\_test\\.go$"
-    - ".*\\_test\\.go$"
-
 linters:
+  exclusions:
+    generated: lax
+  settings:
+    goheader:
+      template-path: .copyright-header
   enable:
     - asasalint
     - asciicheck
@@ -22,9 +23,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - copyloopvar
     - forcetypeassert
-    - gci
     - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
@@ -32,10 +31,7 @@ linters:
     - gocritic
     - gocyclo
     - godox
-    - err113
-    - gofmt
     - goheader
-    - mnd
     - gomoddirectives
     - gosec
     - grouper
@@ -44,14 +40,11 @@ linters:
     - nilerr
     - nilnil
     - noctx
-    - nonamedreturns
     - nosprintfhostport
     - paralleltest
     - prealloc
     - predeclared
     - reassign
-    - revive
-    - testpackage
     - tparallel
     - unconvert
     - unparam
@@ -60,6 +53,8 @@ linters:
     - whitespace
     - wrapcheck
 
-linters-settings:
-  goheader:
-    template-path: .copyright-header
+formatters:
+  enable:
+    - gci
+    - gofmt
+

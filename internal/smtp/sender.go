@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/logging"
@@ -41,7 +40,7 @@ var (
 	ErrSendingEmail      = errors.New("error sending email")
 )
 
-func SendToAdmins(config *config.Config, db *gorm.DB, subject, body string) error {
+func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) error {
 	if !config.SMTP.Enabled {
 		return nil
 	}
@@ -63,7 +62,10 @@ func SendToAdmins(config *config.Config, db *gorm.DB, subject, body string) erro
 			)
 		})
 	}
-	return errGroup.Wait()
+	if err := errGroup.Wait(); err != nil {
+		return fmt.Errorf("failed to send email to admins: %w", err)
+	}
+	return nil
 }
 
 func send(config *configPkg.Config, toEmail string, subject string, body string) error {

@@ -56,7 +56,8 @@ func TestPingRoute(t *testing.T) {
 
 	// Convert ts (time.Now().Unix()) to int64
 	var tsInt int64
-	fmt.Sscanf(w.Body.String(), "%d", &tsInt)
+	_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt)
+	assert.NoError(t, err)
 
 	w = httptest.NewRecorder()
 
@@ -74,7 +75,8 @@ func TestPingRoute(t *testing.T) {
 	assert.NotEmpty(t, w.Body.String())
 
 	var tsInt2 int64
-	fmt.Sscanf(w.Body.String(), "%d", &tsInt2)
+	_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt2)
+	assert.NoError(t, err)
 
 	assert.Greater(t, tsInt2, tsInt)
 }

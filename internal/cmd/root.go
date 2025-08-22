@@ -166,8 +166,8 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	scheduler.Start()
 
-	const connsPerCPU = 10
-	const maxIdleTime = 10 * time.Minute
+	// const connsPerCPU = 10
+	// const maxIdleTime = 10 * time.Minute
 
 	// TODO: move this to pubsub and kv packages
 	// if cfg.Redis.Enabled {
@@ -316,8 +316,14 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		}()
 		select {
 		case <-c:
-			pubsub.Close()
-			kv.Close()
+			err = pubsub.Close()
+			if err != nil {
+				logging.Errorf("Failed to close pubsub: %s", err)
+			}
+			err = kv.Close()
+			if err != nil {
+				logging.Errorf("Failed to close kv: %s", err)
+			}
 			logging.Error("Shutdown safely completed")
 			logging.Close()
 			os.Exit(0)

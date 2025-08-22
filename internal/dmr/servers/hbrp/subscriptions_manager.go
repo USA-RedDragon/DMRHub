@@ -282,7 +282,10 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pub
 						logging.Errorf("Error marshalling call JSON: %v", err)
 						break
 					}
-					pubsub.Publish(fmt.Sprintf("calls:%d", userID), callJSON)
+					if err := pubsub.Publish(fmt.Sprintf("calls:%d", userID), callJSON); err != nil {
+						logging.Errorf("Error publishing call to calls:%d: %s", userID, err)
+						continue
+					}
 					break
 				}
 			}
@@ -315,7 +318,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg([]byte(msg))
+			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
 				logging.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
@@ -327,7 +330,10 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 				continue
 			}
 			packet.Repeater = repeaterID
-			pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode())
+			if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
+				logging.Errorf("Error publishing packet to hbrp:outgoing:noaddr: %s", err)
+				continue
+			}
 		}
 	}
 }
@@ -361,7 +367,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg([]byte(msg))
+			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
 				logging.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
@@ -387,7 +393,10 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 				// We need to send it to the repeater
 				packet.Repeater = p.ID
 				packet.Slot = slot
-				pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode())
+				if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
+					logging.Errorf("Error publishing packet to hbrp:outgoing:noaddr: %s", err)
+					continue
+				}
 			} else {
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
 				err := subscription.Unsubscribe()

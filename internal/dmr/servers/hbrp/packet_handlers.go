@@ -292,7 +292,9 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	} else if lastCall.ID != 0 && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
-		s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes)
+		if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes); err != nil {
+			logging.Errorf("Error publishing packet to repeater %d: %v", lastCall.RepeaterID, err)
+		}
 	}
 
 	// For each user repeaters
@@ -300,7 +302,9 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		// If the repeater is online and the last user call was not to this repeater
 		if repeater.ID != lastCall.RepeaterID && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 			// Send the packet to the repeater
-			s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes)
+			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes); err != nil {
+				logging.Errorf("Error publishing packet to repeater %d: %v", repeater.ID, err)
+			}
 		}
 	}
 }
@@ -395,7 +399,10 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 				logging.Errorf("Error marshalling raw packet: %v", err)
 				return
 			}
-			s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes)
+			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
+				logging.Errorf("Error publishing packet to talkgroup %d: %v", packet.Dst, err)
+				return
+			}
 		case !packet.GroupCall && isVoice:
 			// packet.Dst is either a repeater or a user
 			// If it's a repeater, we need to send it to the repeater
@@ -432,7 +439,10 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 					logging.Errorf("Repeater %d does not exist", packet.Dst)
 					return
 				}
-				s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes)
+				if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes); err != nil {
+					logging.Errorf("Error publishing packet to repeater %d: %v", packet.Dst, err)
+					return
+				}
 			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
 				exists, err := models.UserIDExists(s.DB, packet.Dst)
 				if err != nil {

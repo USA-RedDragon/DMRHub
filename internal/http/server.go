@@ -56,7 +56,6 @@ type Server struct {
 }
 
 const defTimeout = 10 * time.Second
-const debugWriteTimeout = 60 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 10
 
@@ -325,8 +324,8 @@ func (s *Server) Stop() {
 	<-s.shutdownChannel
 }
 
-var ErrClosed = errors.New("Server closed")
-var ErrFailed = errors.New("Failed to start server")
+var ErrClosed = errors.New("server closed")
+var ErrFailed = errors.New("failed to start server")
 
 func (s *Server) Start() error {
 	g := new(errgroup.Group)

@@ -17,10 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-//nolint:golint,wrapcheck
 package models
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -99,7 +99,7 @@ func DeleteTalkgroup(db *gorm.DB, id uint) error {
 	})
 	if err != nil {
 		slog.Error("Error deleting talkgroup", "error", err)
-		return err
+		return fmt.Errorf("failed to delete talkgroup: %w", err)
 	}
 	return nil
 }

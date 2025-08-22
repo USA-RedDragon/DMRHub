@@ -22,6 +22,7 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -64,8 +65,9 @@ func getCallHashFromPacket(packet models.Packet) (uint64, error) {
 	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
 	if err != nil {
 		slog.Error("CallTracker: Error hashing call", "error", err)
+		return hash, fmt.Errorf("failed to hash call from packet: %w", err)
 	}
-	return hash, err //nolint:golint,wrapcheck
+	return hash, nil
 }
 
 func getCallHash(call models.Call) (uint64, error) {
@@ -81,8 +83,9 @@ func getCallHash(call models.Call) (uint64, error) {
 	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
 	if err != nil {
 		slog.Error("CallTracker: Error hashing call", "error", err)
+		return hash, fmt.Errorf("failed to hash call: %w", err)
 	}
-	return hash, err //nolint:golint,wrapcheck
+	return hash, nil
 }
 
 // CallTracker is a struct that holds the state of the calls that are currently in progress.
@@ -225,7 +228,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		Loss:           0.0,
 		Jitter:         0.0,
 		LastFrameNum:   dmrconst.VoiceA,
-		LastSeq:        256, //nolint:golint,gomnd // 256 is 1+ the max sequence number
+		LastSeq:        256, // 256 is 1+ the max sequence number
 		RSSI:           0,
 		BER:            0.0,
 		TotalBits:      0,
@@ -367,7 +370,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	call.LastPacketTime = time.Now()
 	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
 	// time the last packet was. We'll use this to calculate the average jitter.
-	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2 //nolint:golint,gomnd
+	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2
 
 	call.Duration = time.Since(call.StartTime)
 
@@ -394,7 +397,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 
 	call.Active = true
 	if packet.RSSI > 0 {
-		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2 //nolint:golint,gomnd
+		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
 	}
 
 	call.CallData = append(call.CallData, packet.DMRData[:]...)

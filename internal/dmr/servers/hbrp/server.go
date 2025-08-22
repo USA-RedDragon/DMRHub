@@ -340,7 +340,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 		return
 	}
 
-	switch dmrconst.Command(data[:4]) { //nolint:golint,exhaustive
+	switch dmrconst.Command(data[:4]) { //nolint:exhaustive
 	case dmrconst.CommandDMRA:
 		s.handleDMRAPacket(ctx, remoteAddr, data)
 	case dmrconst.CommandDMRD:

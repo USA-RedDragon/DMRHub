@@ -34,7 +34,7 @@ import (
 
 // https://goreleaser.com/cookbooks/using-main.version/
 //
-//nolint:golint,gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	version = "dev"
 	commit  = "none"
@@ -48,7 +48,7 @@ func main() {
 		slog.Error("Failed to get user config directory.", "error", err.Error())
 		os.Exit(1)
 	}
-	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0755); err != nil {
+	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0750); err != nil {
 		slog.Error("Failed to create config directory.", "error", err.Error())
 		os.Exit(1)
 	}

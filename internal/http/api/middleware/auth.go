@@ -22,6 +22,7 @@ package middleware
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -59,10 +60,16 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireAdminOrTGOwner"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireAdminOrTGOwner"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireAdminOrTGOwner"),
+				)
+			}
 		}
 
 		valid := false
@@ -129,10 +136,16 @@ func RequireAdmin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireAdmin"),
+				)
+			}
 		}
 
 		valid := false
@@ -200,10 +213,16 @@ func RequireSuperAdmin() gin.HandlerFunc {
 
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireSuperAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireSuperAdmin"),
+				)
+			}
 		}
 		if !user.SuperAdmin {
 			slog.Error("User is not a super admin")
@@ -240,10 +259,16 @@ func RequireLogin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireLogin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireLogin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireLogin"),
+				)
+			}
 		}
 
 		valid := false
@@ -291,10 +316,16 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequirePeerOwnerOrAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequirePeerOwnerOrAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequirePeerOwnerOrAdmin"),
+				)
+			}
 		}
 
 		valid := false
@@ -357,10 +388,16 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireRepeaterOwnerOrAdmin"),
+				)
+			}
 		}
 
 		valid := false
@@ -423,10 +460,16 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireTalkgroupOwnerOrAdmin"),
+				)
+			}
 		}
 
 		valid := false
@@ -492,10 +535,16 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		ctx := c.Request.Context()
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String("http.auth", "RequireSelfOrAdmin"),
-				attribute.Int("user.id", int(uid)),
-			)
+			if uid <= math.MaxInt32 {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireSelfOrAdmin"),
+					attribute.Int("user.id", int(uid)),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("http.auth", "RequireSelfOrAdmin"),
+				)
+			}
 		}
 
 		valid := false

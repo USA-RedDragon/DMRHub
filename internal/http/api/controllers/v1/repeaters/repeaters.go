@@ -353,6 +353,11 @@ func POSTRepeater(c *gin.Context) {
 				return
 			}
 			repeater.Callsign = r.Callsign
+			if r.ColorCode > 255 {
+				slog.Error("Color code out of range for uint8", "colorCode", r.ColorCode)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Color code out of range"})
+				return
+			}
 			repeater.ColorCode = uint8(r.ColorCode)
 			// Location is a string with r.City, r.State, and r.Country, set repeater.Location
 			repeater.Location = r.City + ", " + r.State + ", " + r.Country
@@ -446,6 +451,10 @@ func POSTRepeaterLink(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater ID"})
 		return
 	}
+	if id < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater ID: negative value"})
+		return
+	}
 
 	repeater, err := models.FindRepeaterByID(db, uint(id))
 	if err != nil {
@@ -467,6 +476,10 @@ func POSTRepeaterLink(c *gin.Context) {
 	targetInt, err := strconv.Atoi(target)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target"})
+		return
+	}
+	if targetInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target: negative value"})
 		return
 	}
 	// Validate target is a valid talkgroup

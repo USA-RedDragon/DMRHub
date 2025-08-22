@@ -293,6 +293,10 @@ func POSTUserPromote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
 		return
 	}
+	if idInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID: negative value"})
+		return
+	}
 
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(idInt))

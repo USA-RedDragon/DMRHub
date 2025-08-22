@@ -154,6 +154,9 @@ func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 			if err != nil {
 				return nil, ErrCastRepeater
 			}
+			if repeaterNum < 0 {
+				return nil, ErrCastRepeater
+			}
 			repeaters = append(repeaters, uint(repeaterNum))
 		}
 

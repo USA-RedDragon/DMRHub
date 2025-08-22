@@ -55,7 +55,7 @@ func (r *parrotStorage) store(ctx context.Context, streamID uint, repeaterID uin
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.store")
 	defer span.End()
 
-	if err := r.kv.Set(fmt.Sprintf("parrot:stream:%d", streamID), []byte(strconv.Itoa(int(repeaterID)))); err != nil {
+	if err := r.kv.Set(fmt.Sprintf("parrot:stream:%d", streamID), []byte(strconv.FormatUint(uint64(repeaterID), 10))); err != nil {
 		slog.Error("Error setting parrot stream", "streamID", streamID, "error", err)
 	}
 	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
@@ -94,6 +94,9 @@ func (r *parrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
 	}
 	repeaterID, err := strconv.Atoi(string(repeaterIDStr))
 	if err != nil {
+		return 0, ErrCast
+	}
+	if repeaterID < 0 {
 		return 0, ErrCast
 	}
 	return uint(repeaterID), nil

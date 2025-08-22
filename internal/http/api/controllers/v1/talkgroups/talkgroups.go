@@ -123,6 +123,10 @@ func GETTalkgroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
 		return
 	}
+	if idInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
+		return
+	}
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", id)
 	if err != nil {
@@ -165,6 +169,10 @@ func POSTTalkgroupNCOs(c *gin.Context) {
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		return
+	}
+	if idInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
 		return
 	}
 
@@ -242,6 +250,10 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
 		return
 	}
+	if idInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
+		return
+	}
 
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	if err != nil {
@@ -315,6 +327,10 @@ func PATCHTalkgroup(c *gin.Context) {
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		return
+	}
+	if idInt < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
 		return
 	}
 	var json apimodels.TalkgroupPatch

@@ -97,6 +97,10 @@ func (s *Server) Stop(ctx context.Context) {
 		slog.Debug("Repeater found", "repeater", repeater)
 		s.kvClient.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
 		repeaterBinary := make([]byte, repeaterIDLength)
+		if repeater > 0xFFFFFFFF {
+			slog.Error("Repeater ID too large for uint32", "repeater", repeater)
+			continue
+		}
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
 		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
 	}

@@ -558,7 +558,16 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		if err != nil {
 			slog.Error("Error generating random salt", "error", err)
 		}
-		repeater.Salt = uint32(bigSalt.Uint64())
+		// Since we're generating from [0, max32Bit), this conversion is safe
+		// but we'll add explicit bounds checking to satisfy gosec
+		saltUint64 := bigSalt.Uint64()
+		if saltUint64 <= 0xFFFFFFFF {
+			repeater.Salt = uint32(saltUint64)
+		} else {
+			// This should never happen given our max32Bit constant, but handle it just in case
+			slog.Error("Generated salt value exceeds uint32 range", "saltValue", saltUint64)
+			repeater.Salt = 0xFFFFFFFF
+		}
 		repeater.IP = remoteAddr.IP.String()
 		repeater.Port = remoteAddr.Port
 		repeater.Connection = "RPTL-RECEIVED"

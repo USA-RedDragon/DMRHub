@@ -81,11 +81,19 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		slog.Error("Error parsing rx frequency", "error", err)
 		return ErrInvalidInt
 	}
+	if rxFreq < 0 {
+		slog.Error("Invalid rx frequency: negative value", "frequency", rxFreq)
+		return ErrInvalidInt
+	}
 	c.RXFrequency = uint(rxFreq)
 
 	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing tx frequency", "error", err)
+		return ErrInvalidInt
+	}
+	if txFreq < 0 {
+		slog.Error("Invalid tx frequency: negative value", "frequency", txFreq)
 		return ErrInvalidInt
 	}
 	c.TXFrequency = uint(txFreq)
@@ -95,11 +103,19 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		slog.Error("Error parsing tx power", "error", err)
 		return ErrInvalidInt
 	}
+	if txPower < 0 || txPower > 255 {
+		slog.Error("Invalid tx power: out of range for uint8", "power", txPower)
+		return ErrInvalidInt
+	}
 	c.TXPower = uint8(txPower)
 
 	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing color code", "error", err)
+		return ErrInvalidInt
+	}
+	if colorCode < 0 || colorCode > 255 {
+		slog.Error("Invalid color code: out of range for uint8", "colorCode", colorCode)
 		return ErrInvalidInt
 	}
 	c.ColorCode = uint8(colorCode)
@@ -123,6 +139,10 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		slog.Error("Error parsing height", "error", err)
 		return ErrInvalidInt
 	}
+	if height < 0 || height > 65535 {
+		slog.Error("Invalid height: out of range for uint16", "height", height)
+		return ErrInvalidInt
+	}
 	c.Height = uint16(height)
 
 	c.Location = strings.TrimRight(string(data[58:78]), " ")
@@ -132,6 +152,10 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	slots, err := strconv.ParseInt(string(data[97]), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing slots", "error", err)
+		return ErrInvalidInt
+	}
+	if slots < 0 {
+		slog.Error("Invalid slots: negative value", "slots", slots)
 		return ErrInvalidInt
 	}
 	c.Slots = uint(slots)

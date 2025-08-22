@@ -104,17 +104,21 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	if err != nil {
 		return false, ErrInvalidHash
 	}
-	p.saltLength = uint32(len(salt))
+	saltLen := len(salt)
+	if saltLen > 0xFFFFFFFF {
+		return false, ErrInvalidHash
+	}
+	p.saltLength = uint32(saltLen)
 
 	hash, err := base64.RawStdEncoding.Strict().DecodeString(vals[5])
 	if err != nil {
 		return false, ErrInvalidHash
 	}
-	p.keyLength = uint32(len(hash))
-
-	if err != nil {
+	hashLen := len(hash)
+	if hashLen > 0xFFFFFFFF {
 		return false, ErrInvalidHash
 	}
+	p.keyLength = uint32(hashLen)
 
 	// Derive the key from the other password using the same parameters.
 	otherHash := argon2.IDKey([]byte(password+pwsalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)

@@ -452,10 +452,10 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 			call.LostSequences += 1 + packet.DTypeOrVSeq
 			call.TotalPackets += 1 + packet.DTypeOrVSeq
 			call.HasHeader = true
-		} else if int(packet.DTypeOrVSeq) != int(call.LastFrameNum)+1 {
+		} else if packet.DTypeOrVSeq != call.LastFrameNum+1 {
 			// We lost some number of packets
 			// We need to be careful here as the sequence number can wrap around and cause us to get a negative number
-			if int(packet.DTypeOrVSeq) < int(call.LastFrameNum) {
+			if packet.DTypeOrVSeq < call.LastFrameNum {
 				// We wrapped around.
 				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq
 				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq

@@ -76,13 +76,17 @@ func (s *GORMStore) Limit(key string, c *gin.Context) (ret ratelimit.Info) {
 		rl.Hits = 0
 	}
 
-	if rl.Hits >= int64(s.limit) {
+	if rl.Hits >= 0 && uint64(rl.Hits) >= uint64(s.limit) {
 		ret.RateLimited = true
 		ret.RemainingHits = 0
 	} else {
 		rl.Timestamp = time.Now()
 		rl.Hits++
-		ret.RemainingHits = s.limit - uint(rl.Hits)
+		if rl.Hits < 0 {
+			ret.RemainingHits = s.limit
+		} else {
+			ret.RemainingHits = s.limit - uint(rl.Hits)
+		}
 	}
 
 	err = s.db.Save(rl).Error

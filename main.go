@@ -29,7 +29,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/configulator"
 	_ "github.com/tinylib/msgp/printer"
-	_ "go.uber.org/automaxprocs"
 )
 
 // https://goreleaser.com/cookbooks/using-main.version/

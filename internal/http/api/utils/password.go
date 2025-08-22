@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/big"
 	"strings"
 
@@ -105,7 +106,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 	saltLen := len(salt)
-	if saltLen > 0xFFFFFFFF {
+	if saltLen > math.MaxInt32 {
 		return false, ErrInvalidHash
 	}
 	p.saltLength = uint32(saltLen)
@@ -115,7 +116,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 	hashLen := len(hash)
-	if hashLen > 0xFFFFFFFF {
+	if hashLen > math.MaxInt32 {
 		return false, ErrInvalidHash
 	}
 	p.keyLength = uint32(hashLen)

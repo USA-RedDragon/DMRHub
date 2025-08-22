@@ -124,7 +124,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 			return
 		case msg := <-pubsubChannel:
 			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg([]byte(msg))
+			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
 				logging.Errorf("Failed to unmarshal raw packet: %s", err)
 				continue
@@ -141,7 +141,9 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 
 			packet.Repeater = p.ID
 			packet.Slot = false
-			pubsub.Publish("openbridge:outgoing", packet.Encode())
+			if err := pubsub.Publish("openbridge:outgoing", packet.Encode()); err != nil {
+				logging.Errorf("Error publishing packet to openbridge:outgoing: %v", err)
+			}
 		}
 	}
 }

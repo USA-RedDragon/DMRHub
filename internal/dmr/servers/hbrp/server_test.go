@@ -32,6 +32,8 @@ import (
 )
 
 func TestMakeServerInitialization(t *testing.T) {
+	t.Parallel()
+
 	callTracker := &calltracker.CallTracker{}
 	version := "1.0.0"
 	commit := "abc123"

@@ -41,6 +41,7 @@ type Config struct {
 	HIBPAPIKey   string   `name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
 }
 
+// GetDerivedSecret generates a derived secret key using PBKDF2 with the configured secret and password salt.
 func (c Config) GetDerivedSecret() []byte {
 	const iterations = 4096
 	const keyLen = 32

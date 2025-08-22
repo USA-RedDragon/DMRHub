@@ -121,7 +121,10 @@ func (s *Server) Start(ctx context.Context) error {
 					logging.Errorf("Error marshalling packet: %v", err)
 					return
 				}
-				s.pubsub.Publish("openbridge:incoming", packedBytes)
+				if err := s.pubsub.Publish("openbridge:incoming", packedBytes); err != nil {
+					logging.Errorf("Error publishing packet to openbridge:incoming: %v", err)
+					return
+				}
 			}()
 		}
 	}()
@@ -146,7 +149,7 @@ func (s *Server) listen(ctx context.Context) {
 	}()
 	for msg := range subscription.Channel() {
 		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg([]byte(msg))
+		_, err := packet.UnmarshalMsg(msg)
 		if err != nil {
 			logging.Errorf("Error unmarshalling packet: %v", err)
 			continue
@@ -167,7 +170,7 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 		}
 	}()
 	for msg := range subscription.Channel() {
-		packet, ok := models.UnpackPacket([]byte(msg))
+		packet, ok := models.UnpackPacket(msg)
 		if !ok {
 			logging.Errorf("Error unpacking packet")
 			continue
@@ -211,7 +214,10 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		logging.Errorf("Error marshalling packet: %v", err)
 		return
 	}
-	s.pubsub.Publish("openbridge:outgoing", packedBytes)
+	if err := s.pubsub.Publish("openbridge:outgoing", packedBytes); err != nil {
+		logging.Errorf("Error publishing packet to openbridge:outgoing: %v", err)
+		return
+	}
 }
 
 func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes []byte, peer models.Peer) bool {

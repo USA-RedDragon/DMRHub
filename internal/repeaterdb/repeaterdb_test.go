@@ -103,7 +103,7 @@ func TestUpdate(t *testing.T) {
 		if err != nil {
 			r.Errorf("GetDate failed: %v", err)
 		}
-		if repeaterDB.builtInDate == dbDate {
+		if time.Time.Equal(repeaterDB.builtInDate, dbDate) {
 			r.Errorf("Update did not update the database")
 		}
 	})

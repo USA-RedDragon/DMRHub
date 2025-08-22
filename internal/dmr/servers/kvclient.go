@@ -64,7 +64,9 @@ func (s *KVClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 	}
 	repeater.LastPing = time.Now()
 	s.StoreRepeater(ctx, repeaterID, repeater)
-	s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
+	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
+		logging.Errorf("Error expiring repeater %d: %v", repeaterID, err)
+	}
 }
 
 func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
@@ -81,14 +83,14 @@ func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint
 }
 
 func (s *KVClient) DeleteRepeater(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.deleteRepeater")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.deleteRepeater")
 	defer span.End()
 
 	return s.kv.Delete(fmt.Sprintf("hbrp:repeater:%d", repeaterID)) == nil
 }
 
 func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.storeRepeater")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.storeRepeater")
 	defer span.End()
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
@@ -97,12 +99,17 @@ func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater 
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	s.kv.Set(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes)
-	s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime)
+	if err := s.kv.Set(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes); err != nil {
+		logging.Errorf("Error setting repeater in KV: %v", err)
+		return
+	}
+	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
+		logging.Errorf("Error expiring repeater %d: %v", repeaterID, err)
+	}
 }
 
 func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getRepeater")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getRepeater")
 	defer span.End()
 
 	repeaterBits, err := s.kv.Get(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
@@ -111,7 +118,7 @@ func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Rep
 		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
-	_, err = repeater.UnmarshalMsg([]byte(repeaterBits))
+	_, err = repeater.UnmarshalMsg(repeaterBits)
 	if err != nil {
 		logging.Errorf("Error unmarshalling repeater: %v", err)
 		return models.Repeater{}, ErrUnmarshalRepeater
@@ -120,7 +127,7 @@ func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Rep
 }
 
 func (s *KVClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.repeaterExists")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.repeaterExists")
 	defer span.End()
 
 	has, err := s.kv.Has(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
@@ -132,7 +139,7 @@ func (s *KVClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
 }
 
 func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.listRepeaters")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.listRepeaters")
 	defer span.End()
 
 	var cursor uint64
@@ -158,7 +165,7 @@ func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 }
 
 func (s *KVClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getPeer")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getPeer")
 	defer span.End()
 
 	peerBits, err := s.kv.Get(fmt.Sprintf("openbridge:peer:%d", peerID))
@@ -167,7 +174,7 @@ func (s *KVClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error
 		return models.Peer{}, ErrNoSuchPeer
 	}
 	var peer models.Peer
-	_, err = peer.UnmarshalMsg([]byte(peerBits))
+	_, err = peer.UnmarshalMsg(peerBits)
 	if err != nil {
 		logging.Errorf("Error unmarshalling peer: %v", err)
 		return models.Peer{}, ErrUnmarshalPeer

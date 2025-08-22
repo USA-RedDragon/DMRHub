@@ -26,6 +26,7 @@ import (
 )
 
 func TestFrameTypeStringUnknown(t *testing.T) {
+	t.Parallel()
 	var frameType dmrconst.FrameType = 0xFF
 	expected := "Unknown"
 	if result := frameType.String(); result != expected {
@@ -34,7 +35,8 @@ func TestFrameTypeStringUnknown(t *testing.T) {
 }
 
 func TestFrameTypeStringDataSync(t *testing.T) {
-	var frameType dmrconst.FrameType = dmrconst.FrameDataSync
+	t.Parallel()
+	var frameType = dmrconst.FrameDataSync
 	expected := "Data Sync"
 	if result := frameType.String(); result != expected {
 		t.Errorf("Expected %s, got %s", expected, result)
@@ -42,7 +44,8 @@ func TestFrameTypeStringDataSync(t *testing.T) {
 }
 
 func TestFrameTypeStringVoiceSync(t *testing.T) {
-	var frameType dmrconst.FrameType = dmrconst.FrameVoiceSync
+	t.Parallel()
+	var frameType = dmrconst.FrameVoiceSync
 	expected := "Voice Sync"
 	if result := frameType.String(); result != expected {
 		t.Errorf("Expected %s, got %s", expected, result)
@@ -50,7 +53,8 @@ func TestFrameTypeStringVoiceSync(t *testing.T) {
 }
 
 func TestFrameTypeStringVoice(t *testing.T) {
-	var frameType dmrconst.FrameType = dmrconst.FrameVoice
+	t.Parallel()
+	var frameType = dmrconst.FrameVoice
 	expected := "Voice"
 	if result := frameType.String(); result != expected {
 		t.Errorf("Expected %s, got %s", expected, result)

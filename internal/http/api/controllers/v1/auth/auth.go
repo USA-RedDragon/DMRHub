@@ -27,7 +27,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -37,7 +36,7 @@ func POSTLogin(c *gin.Context) {
 	session := sessions.Default(c)
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("POSTLogin: Unable to get DB from context")
+		slog.Error("Unable to get DB from context", "function", "POSTLogin")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -52,7 +51,7 @@ func POSTLogin(c *gin.Context) {
 	var json apimodels.AuthLogin
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		logging.Errorf("POSTLogin: JSON data is invalid: %v", err)
+		slog.Error("JSON data is invalid", "function", "POSTLogin", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		// Check that one of username or callsign is not blank
@@ -73,7 +72,7 @@ func POSTLogin(c *gin.Context) {
 		}
 
 		verified, err := utils.VerifyPassword(json.Password, user.Password, config.PasswordSalt)
-		logging.Logf("POSTLogin: Password verified %v", verified)
+		slog.Debug("Password verification completed", "function", "POSTLogin", "verified", verified, "userID", user.ID)
 		if verified && err == nil {
 			if user.Suspended {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
@@ -83,7 +82,7 @@ func POSTLogin(c *gin.Context) {
 				session.Set("user_id", user.ID)
 				err = session.Save()
 				if err != nil {
-					logging.Errorf("POSTLogin: %v", err)
+					slog.Error("Error saving session", "function", "POSTLogin", "error", err, "userID", user.ID)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
 					return
 				}
@@ -93,7 +92,7 @@ func POSTLogin(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User is not approved"})
 			return
 		}
-		logging.Errorf("POSTLogin: %v", err)
+		slog.Error("Password verification failed", "function", "POSTLogin", "error", err)
 	}
 
 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
@@ -104,7 +103,7 @@ func GETLogout(c *gin.Context) {
 	session.Clear()
 	err := session.Save()
 	if err != nil {
-		logging.Errorf("GETLogout: %v", err)
+		slog.Error("Error saving session during logout", "function", "GETLogout", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
 		return
 	}

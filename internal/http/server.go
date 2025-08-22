@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
@@ -35,7 +36,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
@@ -68,7 +68,7 @@ func MakeServer(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, ver
 
 	r := CreateRouter(config, db, pubsub, version, commit)
 
-	logging.Errorf("HTTP Server listening at %s on port %d\n", config.HTTP.Bind, config.HTTP.Port)
+	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", config.HTTP.Bind, config.HTTP.Port),
 		Handler:      r,
@@ -120,12 +120,13 @@ func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub 
 
 func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
+	// Logging middleware replaced or removed; consider using slog for access logs if needed
+	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
 	err := r.SetTrustedProxies(config.HTTP.TrustedProxies)
 	if err != nil {
-		logging.Errorf("Failed setting trusted proxies: %v", err)
+		slog.Error("Failed setting trusted proxies", "error", err)
 	}
 
 	addMiddleware(config, r, db, pubsub, version, commit)
@@ -157,18 +158,18 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 	staticGroup.GET("/", func(c *gin.Context) {
 		file, err := FS.Open("frontend/dist/index.html")
 		if err != nil {
-			logging.Errorf("Failed to open file: %s", err)
+			slog.Error("Failed to open file", "error", err)
 			return
 		}
 		defer func() {
 			err := file.Close()
 			if err != nil {
-				logging.Errorf("Failed to close file: %s", err)
+				slog.Error("Failed to close file", "error", err)
 			}
 		}()
 		fileContent, getErr := io.ReadAll(file)
 		if getErr != nil {
-			logging.Errorf("Failed to read file: %s", getErr)
+			slog.Error("Failed to read file", "error", getErr)
 		}
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
@@ -189,7 +190,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 			// Get the first wildcard
 			wild, have := c.Params.Get("wild")
 			if !have {
-				logging.Errorf("Failed to get wildcard")
+				slog.Error("Failed to get wildcard")
 				return
 			}
 			// Add the first wildcard to the path
@@ -200,7 +201,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 				for j := 1; j <= thisDepth; j++ {
 					wild, have := c.Params.Get(fmt.Sprintf("wild%d", j))
 					if !have {
-						logging.Errorf("Failed to get wildcard")
+						slog.Error("Failed to get wildcard")
 						return
 					}
 					wildPath = path.Join(wildPath, wild)
@@ -210,19 +211,19 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 			if fileErr != nil {
 				file, fileErr = FS.Open("frontend/dist/index.html")
 				if fileErr != nil {
-					logging.Errorf("Failed to open file: %s", fileErr)
+					slog.Error("Failed to open file", "error", fileErr)
 					return
 				}
 			}
 			defer func() {
 				err := file.Close()
 				if err != nil {
-					logging.Errorf("Failed to close file: %s", err)
+					slog.Error("Failed to close file", "error", err)
 				}
 			}()
 			fileContent, readErr := io.ReadAll(file)
 			if readErr != nil {
-				logging.Errorf("Failed to read file: %s", readErr)
+				slog.Error("Failed to read file", "error", readErr)
 				return
 			}
 			c.Data(http.StatusOK, "text/html", fileContent)
@@ -235,7 +236,7 @@ func addFrontendRoutes(r *gin.Engine) {
 
 	files, err := getAllFilenames(&FS, "frontend/dist")
 	if err != nil {
-		logging.Errorf("Failed to read directory: %s", err)
+		slog.Error("Failed to read directory", "error", err)
 	}
 	const wildcardDepth = 4
 	addFrontendWildcards(staticGroup, wildcardDepth)
@@ -247,18 +248,18 @@ func addFrontendRoutes(r *gin.Engine) {
 		staticGroup.GET(staticName, func(c *gin.Context) {
 			file, fileErr := FS.Open(fmt.Sprintf("frontend/dist%s", c.Request.URL.Path))
 			if fileErr != nil {
-				logging.Errorf("Failed to open file: %s", fileErr)
+				slog.Error("Failed to open file", "error", fileErr)
 				return
 			}
 			defer func() {
 				err = file.Close()
 				if err != nil {
-					logging.Errorf("Failed to close file: %s", err)
+					slog.Error("Failed to close file", "error", err)
 				}
 			}()
 			fileContent, fileErr := io.ReadAll(file)
 			if fileErr != nil {
-				logging.Errorf("Failed to read file: %s", fileErr)
+				slog.Error("Failed to read file", "error", fileErr)
 				return
 			}
 			handleMime(c, fileContent, entry)
@@ -314,12 +315,12 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 }
 
 func (s *Server) Stop() {
-	logging.Logf("Stopping HTTP Server")
+	slog.Info("Stopping HTTP Server")
 	const timeout = 5 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := s.Shutdown(ctx); err != nil {
-		logging.Errorf("Failed to shutdown HTTP server: %s", err)
+		slog.Error("Failed to shutdown HTTP server", "error", err)
 	}
 	<-s.shutdownChannel
 }
@@ -337,7 +338,7 @@ func (s *Server) Start() error {
 				s.shutdownChannel <- true
 				return ErrClosed
 			default:
-				logging.Errorf("Failed to start HTTP server: %s", err)
+				slog.Error("Failed to start HTTP server", "error", err)
 				return ErrFailed
 			}
 		}

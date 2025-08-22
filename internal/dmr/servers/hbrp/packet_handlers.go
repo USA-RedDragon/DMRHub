@@ -34,7 +34,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"go.opentelemetry.io/otel"
 )
 
@@ -46,20 +45,20 @@ func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection 
 	defer span.End()
 	valid := true
 	if !s.kvClient.RepeaterExists(ctx, repeaterID) {
-		logging.Errorf("Repeater %d does not exist", repeaterID)
+		slog.Error("Repeater does not exist", "repeaterID", repeaterID)
 		valid = false
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		logging.Errorf("Error getting repeater %d from kv: %s", repeaterID, err)
+		slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
 		valid = false
 	}
 	if repeater.IP != remoteAddr.IP.String() {
-		logging.Errorf("Repeater %d IP %s does not match remote %s", repeaterID, repeater.IP, remoteAddr.IP.String())
+		slog.Error("Repeater IP does not match remote", "repeaterID", repeaterID, "repeaterIP", repeater.IP, "remoteIP", remoteAddr.IP.String())
 		valid = false
 	}
 	if repeater.Connection != connection {
-		logging.Errorf("Repeater %d state %s does not match expected %s", repeaterID, repeater.Connection, connection)
+		slog.Error("Repeater state does not match expected", "repeaterID", repeaterID, "repeaterState", repeater.Connection, "expectedState", connection)
 		valid = false
 	}
 	return valid
@@ -77,57 +76,57 @@ func (s *Server) switchDynamicTalkgroup(ctx context.Context, packet models.Packe
 
 	repeaterExists, err := models.RepeaterIDExists(s.DB, packet.Repeater)
 	if err != nil {
-		logging.Errorf("Error checking if repeater %d exists: %s", packet.Repeater, err.Error())
+		slog.Error("Error checking if repeater exists", "repeaterID", packet.Repeater, "error", err)
 		return
 	}
 
 	if !repeaterExists {
-		logging.Logf("Repeater %d not found in DB", packet.Repeater)
+		slog.Debug("Repeater not found in DB", "repeaterID", packet.Repeater)
 		return
 	}
 
 	talkgroupExists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
 	if err != nil {
-		logging.Errorf("Error checking if talkgroup %d exists: %s", packet.Dst, err.Error())
+		slog.Error("Error checking if talkgroup exists", "talkgroupID", packet.Dst, "error", err)
 		return
 	}
 
 	if !talkgroupExists {
-		logging.Logf("Talkgroup %d not found in DB", packet.Dst)
+		slog.Debug("Talkgroup not found in DB", "talkgroupID", packet.Dst)
 		return
 	}
 
 	repeater, err := models.FindRepeaterByID(s.DB, packet.Repeater)
 	if err != nil {
-		logging.Errorf("Error finding repeater %d: %s", packet.Repeater, err.Error())
+		slog.Error("Error finding repeater", "repeaterID", packet.Repeater, "error", err)
 		return
 	}
 
 	talkgroup, err := models.FindTalkgroupByID(s.DB, packet.Dst)
 	if err != nil {
-		logging.Errorf("Error finding talkgroup %d: %s", packet.Dst, err.Error())
+		slog.Error("Error finding talkgroup", "talkgroupID", packet.Dst, "error", err)
 		return
 	}
 	if packet.Slot {
 		if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != packet.Dst {
-			logging.Logf("Dynamically Linking %d timeslot 2 to %d", packet.Repeater, packet.Dst)
+			slog.Info("Dynamically Linking timeslot 2", "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
 			repeater.TS2DynamicTalkgroup = talkgroup
 			repeater.TS2DynamicTalkgroupID = &packet.Dst
 			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst) //nolint:golint,contextcheck
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
-				logging.Errorf("Error saving repeater: %s", err.Error())
+				slog.Error("Error saving repeater", "error", err)
 			}
 		}
 	} else {
 		if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != packet.Dst {
-			logging.Logf("Dynamically Linking %d timeslot 1 to %d", packet.Repeater, packet.Dst)
+			slog.Info("Dynamically Linking timeslot 1", "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
 			repeater.TS1DynamicTalkgroup = talkgroup
 			repeater.TS1DynamicTalkgroupID = &packet.Dst
 			go GetSubscriptionManager(s.DB).ListenForCallsOn(s.pubsub, repeater.ID, packet.Dst) //nolint:golint,contextcheck
 			err := s.DB.Save(&repeater).Error
 			if err != nil {
-				logging.Errorf("Error saving repeater: %s", err.Error())
+				slog.Error("Error saving repeater", "error", err)
 			}
 		}
 	}
@@ -139,36 +138,36 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 	const dmrALength = 15
 	if len(data) < dmrALength {
-		logging.Errorf("Invalid packet length: %d", len(data))
+		slog.Error("Invalid packet length", "length", len(data))
 		return
 	}
 
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	logging.Logf("DMR talk alias from Repeater ID: %d", repeaterIDBytes)
+	slog.Debug("DMR talk alias from Repeater ID", "repeaterIDBytes", repeaterIDBytes)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			// Repeater not found, drop
-			logging.Errorf("Repeater %d not found in DB", repeaterID)
+			slog.Error("Repeater not found in DB", "repeaterID", repeaterID)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater: %s", err.Error())
+			slog.Error("Error saving repeater", "error", err)
 			return
 		}
 
 		typeBytes := data[8:9]
 		// Type can be 0 for a full talk alias, or 1,2,3 for talk alias blocks
-		logging.Logf("Talk alias type: %d", typeBytes[0])
+		slog.Debug("Talk alias type", "type", typeBytes[0])
 
 		// data is the next 7 bytes
 		data := string(data[9:16])
 		// This is the talker alias
-		logging.Logf("Talk alias data: %s", data)
+		slog.Debug("Talk alias data", "data", data)
 
 		// What to do with this?
 	}
@@ -216,7 +215,7 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 				const packetTiming = 60 * time.Millisecond
 				// If elapsed is greater than 60ms, we're behind and need to catch up
 				if elapsed > packetTiming {
-					logging.Errorf("Parrot call took too long to send, elapsed: %s", elapsed)
+					slog.Error("Parrot call took too long to send", "elapsed", elapsed)
 					// Sleep for 60ms minus the difference between the elapsed time and 60ms
 					time.Sleep(packetTiming - (elapsed - packetTiming))
 				} else {
@@ -235,31 +234,31 @@ func (s *Server) doUnlink(ctx context.Context, packet models.Packet, dbRepeater 
 	defer span.End()
 
 	if packet.Slot {
-		logging.Logf("Unlinking timeslot 2 from %d", packet.Repeater)
+		slog.Info("Unlinking timeslot 2", "repeaterID", packet.Repeater)
 		if dbRepeater.TS2DynamicTalkgroupID != nil {
 			oldTGID := *dbRepeater.TS2DynamicTalkgroupID
 			s.DB.Model(&dbRepeater).Select("TS2DynamicTalkgroupID").Updates(map[string]interface{}{"TS2DynamicTalkgroupID": nil})
 			err := s.DB.Model(&dbRepeater).Association("TS2DynamicTalkgroup").Delete(&dbRepeater.TS2DynamicTalkgroup)
 			if err != nil {
-				logging.Errorf("Error deleting TS2DynamicTalkgroup: %s", err)
+				slog.Error("Error deleting TS2DynamicTalkgroup", "error", err)
 			}
 			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, dmrconst.TimeslotTwo)
 		}
 	} else {
-		logging.Logf("Unlinking timeslot 1 from %d", packet.Repeater)
+		slog.Info("Unlinking timeslot 1", "repeaterID", packet.Repeater)
 		if dbRepeater.TS1DynamicTalkgroupID != nil {
 			oldTGID := *dbRepeater.TS1DynamicTalkgroupID
 			s.DB.Model(&dbRepeater).Select("TS1DynamicTalkgroupID").Updates(map[string]interface{}{"TS1DynamicTalkgroupID": nil})
 			err := s.DB.Model(&dbRepeater).Association("TS1DynamicTalkgroup").Delete(&dbRepeater.TS1DynamicTalkgroup)
 			if err != nil {
-				logging.Errorf("Error deleting TS1DynamicTalkgroup: %s", err)
+				slog.Error("Error deleting TS1DynamicTalkgroup", "error", err)
 			}
 			GetSubscriptionManager(s.DB).CancelSubscription(dbRepeater.ID, oldTGID, dmrconst.TimeslotOne)
 		}
 	}
 	err := s.DB.Save(&dbRepeater).Error
 	if err != nil {
-		logging.Errorf("Error saving repeater: %s", err)
+		slog.Error("Error saving repeater", "error", err)
 	}
 }
 
@@ -269,18 +268,18 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 
 	userExists, err := models.UserIDExists(s.DB, packet.Dst)
 	if err != nil {
-		logging.Errorf("Error checking if user exists: %s", err)
+		slog.Error("Error checking if user exists", "error", err)
 		return
 	}
 
 	if !userExists {
-		logging.Errorf("User %d does not exist", packet.Dst)
+		slog.Error("User does not exist", "userID", packet.Dst)
 		return
 	}
 
 	user, err := models.FindUserByID(s.DB, packet.Dst)
 	if err != nil {
-		logging.Errorf("Error finding user: %s", err)
+		slog.Error("Error finding user", "error", err)
 		return
 	}
 
@@ -288,12 +287,12 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	var lastCall models.Call
 	err = s.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
 	if err != nil {
-		logging.Errorf("Error querying last call for user %d: %v", user.ID, err)
+		slog.Error("Error querying last call for user", "userID", user.ID, "error", err)
 	} else if lastCall.ID != 0 && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
 		if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes); err != nil {
-			logging.Errorf("Error publishing packet to repeater %d: %v", lastCall.RepeaterID, err)
+			slog.Error("Error publishing packet to repeater", "repeaterID", lastCall.RepeaterID, "error", err)
 		}
 	}
 
@@ -303,7 +302,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		if repeater.ID != lastCall.RepeaterID && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 			// Send the packet to the repeater
 			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes); err != nil {
-				logging.Errorf("Error publishing packet to repeater %d: %v", repeater.ID, err)
+				slog.Error("Error publishing packet to repeater", "repeaterID", repeater.ID, "error", err)
 			}
 		}
 	}
@@ -316,30 +315,30 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 	// DMRD packets are either 53 or 55 bytes long
 	if len(data) != 53 && len(data) != 55 {
-		logging.Errorf("Invalid DMRD packet length: %d", len(data))
+		slog.Error("Invalid DMRD packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[11:15]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	logging.Logf("DMR Data from Repeater ID: %d", repeaterID)
+	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error finding repeater: %s", err)
+			slog.Error("Error finding repeater", "error", err)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater: %s", err)
+			slog.Error("Error saving repeater", "error", err)
 			return
 		}
 
 		packet, ok := models.UnpackPacket(data)
 		if !ok {
-			logging.Errorf("Failed to unpack packet from repeater %d", repeaterID)
+			slog.Error("Failed to unpack packet from repeater", "repeaterID", repeaterID)
 			return
 		}
 
@@ -380,11 +379,11 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		case packet.GroupCall && isVoice:
 			exists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
 			if err != nil {
-				logging.Errorf("Error checking if talkgroup exists: %s", err)
+				slog.Error("Error checking if talkgroup exists", "error", err)
 				return
 			}
 			if !exists {
-				logging.Errorf("Talkgroup %d does not exist", packet.Dst)
+				slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
 				return
 			}
 			go s.switchDynamicTalkgroup(ctx, packet)
@@ -396,11 +395,11 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			rawPacket.RemotePort = remoteAddr.Port
 			packedBytes, err := rawPacket.MarshalMsg(nil)
 			if err != nil {
-				logging.Errorf("Error marshalling raw packet: %v", err)
+				slog.Error("Error marshalling raw packet", "error", err)
 				return
 			}
 			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
-				logging.Errorf("Error publishing packet to talkgroup %d: %v", packet.Dst, err)
+				slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
 				return
 			}
 		case !packet.GroupCall && isVoice:
@@ -416,7 +415,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 			packedBytes, err := rawPacket.MarshalMsg(nil)
 			if err != nil {
-				logging.Errorf("Error marshalling raw packet: %v", err)
+				slog.Error("Error marshalling raw packet", "error", err)
 				return
 			}
 
@@ -433,32 +432,32 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 				// This is to a repeater
 				exists, err := models.RepeaterIDExists(s.DB, packet.Dst)
 				if err != nil {
-					logging.Errorf("Error checking if repeater exists: %s", err)
+					slog.Error("Error checking if repeater exists", "error", err)
 				}
 				if !exists {
-					logging.Errorf("Repeater %d does not exist", packet.Dst)
+					slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
 					return
 				}
 				if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes); err != nil {
-					logging.Errorf("Error publishing packet to repeater %d: %v", packet.Dst, err)
+					slog.Error("Error publishing packet to repeater", "repeaterID", packet.Dst, "error", err)
 					return
 				}
 			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
 				exists, err := models.UserIDExists(s.DB, packet.Dst)
 				if err != nil {
-					logging.Errorf("Error checking if user exists: %s", err)
+					slog.Error("Error checking if user exists", "error", err)
 					return
 				}
 				if !exists {
-					logging.Errorf("User %d does not exist", packet.Dst)
+					slog.Error("User does not exist", "userID", packet.Dst)
 					return
 				}
 				s.doUser(ctx, packet, packedBytes)
 			}
 		case isData:
-			logging.Error("Unhandled data packet type")
+			slog.Error("Unhandled data packet type")
 		default:
-			logging.Error("Unhandled packet type")
+			slog.Error("Unhandled packet type")
 		}
 	}
 }
@@ -472,11 +471,11 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	const rptoRepeaterIDOffset = 4
 
 	if len(data) < rptoMin {
-		logging.Error("RPTO packet too short")
+		slog.Error("RPTO packet too short")
 		return
 	}
 	if len(data) > rptoMax {
-		logging.Error("RPTO packet too long")
+		slog.Error("RPTO packet too long")
 		return
 	}
 
@@ -488,30 +487,30 @@ func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error finding repeater: %s", err)
+			slog.Error("Error finding repeater", "error", err)
 			return
 		}
 
 		if !repeaterExists {
-			logging.Error("Repeater does not exist")
+			slog.Error("Repeater does not exist")
 			return
 		}
 
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error finding repeater: %s", err)
+			slog.Error("Error finding repeater", "error", err)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater: %s", err)
+			slog.Error("Error saving repeater", "error", err)
 			return
 		}
 
 		// Options is a string from data[8:]
 		options := string(data[8:])
-		logging.Logf("Received Options from repeater %d: %s", repeaterID, options)
+		slog.Debug("Received Options from repeater", "repeaterID", repeaterID, "options", options)
 
 		// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
 		// Options are not yet supported
@@ -526,15 +525,15 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	const rptlLen = 8
 	const rptlRepeaterIDOffset = 4
 	if len(data) != rptlLen {
-		logging.Errorf("Invalid RPTL packet length: %d", len(data))
+		slog.Error("Invalid RPTL packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	logging.Logf("Login from Repeater ID: %d", repeaterID)
+	slog.Debug("Login from Repeater ID", "repeaterID", repeaterID)
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
 	if err != nil {
-		logging.Errorf("Error finding repeater: %s", err)
+		slog.Error("Error finding repeater", "error", err)
 		return
 	}
 	if !exists {
@@ -551,13 +550,13 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	} else {
 		repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error finding repeater: %s", err)
+			slog.Error("Error finding repeater", "error", err)
 			return
 		}
 
 		bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
 		if err != nil {
-			logging.Errorf("Error generating random salt: %v", err)
+			slog.Error("Error generating random salt", "error", err)
 		}
 		repeater.Salt = uint32(bigSalt.Uint64())
 		repeater.IP = remoteAddr.IP.String()
@@ -585,7 +584,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	// RPTK packets are 8 bytes long + a 32 byte sha256 hash
 	const rptkLen = 40
 	if len(data) != rptkLen {
-		logging.Errorf("Invalid RPTK packet length: %d", len(data))
+		slog.Error("Invalid RPTK packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[4:8]
@@ -597,14 +596,14 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error checking if repeater exists: %s", err)
+			slog.Error("Error checking if repeater exists", "error", err)
 			return
 		}
 
 		if repeaterExists {
 			dbRepeater, err = models.FindRepeaterByID(s.DB, repeaterID)
 			if err != nil {
-				logging.Errorf("Error finding repeater: %s", err)
+				slog.Error("Error finding repeater", "error", err)
 				return
 			}
 			password = dbRepeater.Password
@@ -624,7 +623,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater to db: %v", err)
+			slog.Error("Error saving repeater to db", "error", err)
 			return
 		}
 
@@ -642,7 +641,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		hash := sha256.Sum256(append(saltBytes, []byte(password)...))
 		calcedSalt := binary.BigEndian.Uint32(hash[:])
 		if calcedSalt == rxSalt {
-			logging.Logf("Repeater ID %d authed, sending ACK", repeaterID)
+			slog.Info("Repeater ID authed, sending ACK", "repeaterID", repeaterID)
 			s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 			go func() {
@@ -664,17 +663,17 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	// RPTCL packets are 8 bytes long
 	const rptclLen = 8
 	if len(data) != rptclLen {
-		logging.Errorf("Invalid RPTCL packet length: %d", len(data))
+		slog.Error("Invalid RPTCL packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[5:9]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	logging.Logf("Disconnect from Repeater ID: %d", repeaterID)
+	slog.Debug("Disconnect from Repeater ID", "repeaterID", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
 	if !s.kvClient.DeleteRepeater(ctx, repeaterID) {
-		logging.Errorf("Repeater ID %d not deleted", repeaterID)
+		slog.Error("Repeater ID not deleted", "repeaterID", repeaterID)
 	}
 }
 
@@ -685,7 +684,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	// RPTC packets are 302 bytes long
 	const rptcLen = 302
 	if len(data) != rptcLen {
-		logging.Errorf("Invalid RPTC packet length: %d", len(data))
+		slog.Error("Invalid RPTC packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[4:8]
@@ -696,7 +695,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
-			logging.Errorf("Error getting repeater from kv: %v", err)
+			slog.Error("Error getting repeater from kv", "error", err)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
@@ -712,18 +711,18 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.Connection = "YES"
 
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
-		logging.Logf("Repeater ID %d (%s) connected\n", repeaterID, repeater.Callsign)
+		slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
-			logging.Errorf("Error finding repeater: %v", err)
+			slog.Error("Error finding repeater", "error", err)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
 		dbRepeater.UpdateFrom(repeater)
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater to database: %s", err)
+			slog.Error("Error saving repeater to database", "error", err)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
@@ -739,7 +738,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 	// RPTP packets are 11 bytes long
 	const rptpLength = 11
 	if len(data) != rptpLength {
-		logging.Errorf("Invalid RPTP packet length: %d", len(data))
+		slog.Error("Invalid RPTP packet length", "length", len(data))
 		return
 	}
 	repeaterIDBytes := data[7:11]
@@ -751,18 +750,18 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			// No repeater found, drop
-			logging.Errorf("No repeater found for ID %d", repeaterID)
+			slog.Error("No repeater found for ID", "repeaterID", repeaterID)
 			return
 		}
 		dbRepeater.LastPing = time.Now()
 		err = s.DB.Save(&dbRepeater).Error
 		if err != nil {
-			logging.Errorf("Error saving repeater to database: %s", err)
+			slog.Error("Error saving repeater to database", "error", err)
 		}
 
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
-			logging.Errorf("Error getting repeater from kv: %v", err)
+			slog.Error("Error getting repeater from kv", "error", err)
 			return
 		}
 		repeater.PingsReceived++

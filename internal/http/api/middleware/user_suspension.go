@@ -24,7 +24,6 @@ import (
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -43,14 +42,14 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		}
 		uid, ok := userID.(uint)
 		if !ok {
-			logging.Error("SuspendedUserLockout: Unable to convert user_id to uint")
+			slog.Error("Unable to convert user_id to uint", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
-			logging.Error("SuspendedUserLockout: Unable to get DB from context")
+			slog.Error("Unable to get DB from context", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -58,20 +57,20 @@ func SuspendedUserLockout() gin.HandlerFunc {
 
 		userExists, err := models.UserIDExists(db, uid)
 		if err != nil {
-			logging.Error("SuspendedUserLockout: Unable to check if user exists")
+			slog.Error("Unable to check if user exists", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		if !userExists {
-			logging.Error("SuspendedUserLockout: User ID does not exist")
+			slog.Error("User ID does not exist", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
 
 		user, err := models.FindUserByID(db, uid)
 		if err != nil {
-			logging.Error("SuspendedUserLockout: Unable to find user by ID")
+			slog.Error("Unable to find user by ID", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}
@@ -85,7 +84,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		}
 
 		if user.Suspended {
-			logging.Error("SuspendedUserLockout: User is suspended")
+			slog.Error("User is suspended", "function", "SuspendedUserLockout")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
 			return
 		}

@@ -21,10 +21,10 @@
 package models
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -156,7 +156,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		logging.Errorf("Error deleting user: %s", err)
+		slog.Error("Error deleting user", "error", err)
 		return err
 	}
 	return nil

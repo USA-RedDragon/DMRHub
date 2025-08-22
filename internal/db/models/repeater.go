@@ -22,10 +22,10 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -115,8 +115,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 		return nil
 	})
 	if err != nil {
-		logging.Errorf("Error deleting repeater: %s", err)
-		return err
+		return fmt.Errorf("error deleting repeater: %w", err)
 	}
 	return nil
 }

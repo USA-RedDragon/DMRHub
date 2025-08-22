@@ -22,12 +22,12 @@ package parrot
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"go.opentelemetry.io/otel"
 )
 
@@ -56,10 +56,10 @@ func (r *parrotStorage) store(ctx context.Context, streamID uint, repeaterID uin
 	defer span.End()
 
 	if err := r.kv.Set(fmt.Sprintf("parrot:stream:%d", streamID), []byte(strconv.Itoa(int(repeaterID)))); err != nil {
-		logging.Errorf("Error setting parrot stream: %v", err)
+		slog.Error("Error setting parrot stream", "streamID", streamID, "error", err)
 	}
 	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
-		logging.Errorf("Error expiring parrot stream: %v", err)
+		slog.Error("Error expiring parrot stream", "streamID", streamID, "error", err)
 	}
 }
 
@@ -69,7 +69,7 @@ func (r *parrotStorage) exists(ctx context.Context, streamID uint) bool {
 
 	has, err := r.kv.Has(fmt.Sprintf("parrot:stream:%d", streamID))
 	if err != nil {
-		logging.Errorf("Error checking if parrot stream exists: %v", err)
+		slog.Error("Error checking if parrot stream exists", "streamID", streamID, "error", err)
 		return false
 	}
 	return has
@@ -80,7 +80,7 @@ func (r *parrotStorage) refresh(ctx context.Context, streamID uint) {
 	defer span.End()
 
 	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
-		logging.Errorf("Error refreshing parrot stream: %v", err)
+		slog.Error("Error refreshing parrot stream", "streamID", streamID, "error", err)
 	}
 }
 
@@ -109,7 +109,7 @@ func (r *parrotStorage) stream(ctx context.Context, streamID uint, packet models
 	}
 
 	if _, err := r.kv.RPush(fmt.Sprintf("parrot:stream:%d:packets", streamID), packetBytes); err != nil {
-		logging.Errorf("Error pushing packet to parrot stream: %v", err)
+		slog.Error("Error pushing packet to parrot stream", "streamID", streamID, "error", err)
 	}
 	return nil
 }
@@ -119,10 +119,10 @@ func (r *parrotStorage) delete(ctx context.Context, streamID uint) {
 	defer span.End()
 
 	if err := r.kv.Delete(fmt.Sprintf("parrot:stream:%d", streamID)); err != nil {
-		logging.Errorf("Error deleting parrot stream: %v", err)
+		slog.Error("Error deleting parrot stream", "streamID", streamID, "error", err)
 	}
 	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d:packets", streamID), parrotExpireTime); err != nil {
-		logging.Errorf("Error expiring parrot stream packets: %v", err)
+		slog.Error("Error expiring parrot stream packets", "streamID", streamID, "error", err)
 	}
 }
 
@@ -146,7 +146,7 @@ func (r *parrotStorage) getStream(ctx context.Context, streamID uint) ([]models.
 	}
 	// Delete the stream
 	if err := r.kv.Delete(fmt.Sprintf("parrot:stream:%d:packets", streamID)); err != nil {
-		logging.Errorf("Error deleting parrot stream packets: %v", err)
+		slog.Error("Error deleting parrot stream packets", "streamID", streamID, "error", err)
 	}
 
 	// Empty array of packets

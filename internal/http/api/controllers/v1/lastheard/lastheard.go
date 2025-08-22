@@ -20,11 +20,11 @@
 package lastheard
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -33,13 +33,13 @@ import (
 func GETLastheard(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -55,7 +55,7 @@ func GETLastheard(c *gin.Context) {
 		// Get the last calls for the user
 		uid, ok := userID.(uint)
 		if !ok {
-			logging.Errorf("Unable to convert user_id to uint")
+			slog.Error("Unable to convert user_id to uint")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 			return
 		}
@@ -72,13 +72,13 @@ func GETLastheard(c *gin.Context) {
 func GETLastheardUser(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -97,13 +97,13 @@ func GETLastheardUser(c *gin.Context) {
 func GETLastheardRepeater(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -122,7 +122,7 @@ func GETLastheardRepeater(c *gin.Context) {
 func GETLastheardTalkgroup(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}

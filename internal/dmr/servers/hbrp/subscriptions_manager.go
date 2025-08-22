@@ -28,7 +28,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/otel"
@@ -56,13 +55,13 @@ func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
 func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID uint, slot dmrconst.Timeslot) {
 	radioSubscriptions, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
-		logging.Errorf("Failed to load radio subscriptions for repeater %d", repeaterID)
+		slog.Error("Failed to load radio subscriptions for repeater", "repeaterID", repeaterID)
 		return
 	}
 
 	p, err := models.FindRepeaterByID(m.db, repeaterID)
 	if err != nil {
-		logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
+		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 		return
 	}
 
@@ -74,7 +73,8 @@ func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID ui
 
 	// If the other slot is linked to this talkgroup, don't cancel the subscription
 	if dynamicSlot != nil && *dynamicSlot == talkgroupID {
-		logging.Errorf("Not cancelling subscription for repeater %d, talkgroup %d, slot %d because the other slot is linked to this talkgroup", p.ID, talkgroupID, slot)
+		slog.Error("Not cancelling subscription because the other slot is linked to this talkgroup",
+			"repeaterID", p.ID, "talkgroupID", talkgroupID, "slot", slot)
 		return
 	}
 
@@ -147,13 +147,13 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 
 	radioSubs, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
-		logging.Error("Failed to load radio subscriptions")
+		slog.Error("Failed to load radio subscriptions", "repeaterID", repeaterID)
 		return
 	}
 
 	p, err := models.FindRepeaterByID(m.db, repeaterID)
 	if err != nil {
-		logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
+		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 		return
 	}
 
@@ -200,46 +200,46 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 }
 
 func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pubsub.PubSub, userID uint) {
-	logging.Logf("Listening for websocket for user %d", userID)
+	slog.Debug("Listening for websocket", "userID", userID)
 	subscription := pubsub.Subscribe("calls")
 	defer func() {
 		err := subscription.Unsubscribe()
 		if err != nil {
-			logging.Errorf("Error unsubscribing from calls: %s", err)
+			slog.Error("Error unsubscribing from calls", "error", err)
 		}
 		err = subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub connection: %s", err)
+			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
 	pubsubChannel := subscription.Channel()
 	for {
 		select {
 		case <-ctx.Done():
-			logging.Logf("Websocket context done for user %d", userID)
+			slog.Debug("Websocket context done", "userID", userID)
 			return
 		case msg := <-pubsubChannel:
 			var call models.Call
 			err := json.Unmarshal(msg, &call)
 			if err != nil {
-				logging.Errorf("Error unmarshalling call: %s", err)
+				slog.Error("Error unmarshalling call", "error", err)
 				continue
 			}
 
 			userExists, err := models.UserIDExists(m.db, userID)
 			if err != nil {
-				logging.Errorf("Error checking if user exists: %s", err)
+				slog.Error("Error checking if user exists", "userID", userID, "error", err)
 				continue
 			}
 
 			if !userExists {
-				logging.Errorf("User %d does not exist", userID)
+				slog.Error("User does not exist", "userID", userID)
 				continue
 			}
 
 			user, err := models.FindUserByID(m.db, userID)
 			if err != nil {
-				logging.Errorf("Error finding user: %s", err)
+				slog.Error("Error finding user", "userID", userID, "error", err)
 				continue
 			}
 
@@ -279,11 +279,11 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pub
 					// Publish the call JSON to pubsub
 					callJSON, err := json.Marshal(jsonCall)
 					if err != nil {
-						logging.Errorf("Error marshalling call JSON: %v", err)
+						slog.Error("Error marshalling call JSON", "error", err)
 						break
 					}
 					if err := pubsub.Publish(fmt.Sprintf("calls:%d", userID), callJSON); err != nil {
-						logging.Errorf("Error publishing call to calls:%d: %s", userID, err)
+						slog.Error("Error publishing call", "userID", userID, "error", err)
 						continue
 					}
 					break
@@ -299,11 +299,11 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 	defer func() {
 		err := subscription.Unsubscribe()
 		if err != nil {
-			logging.Errorf("Error unsubscribing from hbrp:packets:repeater:%d: %s", repeaterID, err)
+			slog.Error("Error unsubscribing from hbrp:packets:repeater", "repeaterID", repeaterID, "error", err)
 		}
 		err = subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub connection: %s", err)
+			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
 	pubsubChannel := subscription.Channel()
@@ -320,18 +320,18 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
-				logging.Errorf("Failed to unmarshal raw packet: %s", err)
+				slog.Error("Failed to unmarshal raw packet", "error", err)
 				continue
 			}
 			// This packet is already for us and we don't want to modify the slot
 			packet, ok := models.UnpackPacket(rawPacket.Data)
 			if !ok {
-				logging.Errorf("Failed to unpack packet")
+				slog.Error("Failed to unpack packet")
 				continue
 			}
 			packet.Repeater = repeaterID
 			if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
-				logging.Errorf("Error publishing packet to hbrp:outgoing:noaddr: %s", err)
+				slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
 				continue
 			}
 		}
@@ -347,11 +347,11 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 	defer func() {
 		err := subscription.Unsubscribe()
 		if err != nil {
-			logging.Errorf("Error unsubscribing from hbrp:packets:talkgroup:%d: %s", tg, err)
+			slog.Error("Error unsubscribing from hbrp:packets:talkgroup", "talkgroupID", tg, "error", err)
 		}
 		err = subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub connection: %s", err)
+			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
 	pubsubChannel := subscription.Channel()
@@ -369,12 +369,12 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
-				logging.Errorf("Failed to unmarshal raw packet: %s", err)
+				slog.Error("Failed to unmarshal raw packet", "error", err)
 				continue
 			}
 			packet, ok := models.UnpackPacket(rawPacket.Data)
 			if !ok {
-				logging.Errorf("Failed to unpack packet")
+				slog.Error("Failed to unpack packet")
 				continue
 			}
 
@@ -384,7 +384,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 
 			p, err := models.FindRepeaterByID(m.db, repeaterID)
 			if err != nil {
-				logging.Errorf("Failed to find repeater %d: %s", repeaterID, err)
+				slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 				continue
 			}
 			want, slot := p.WantRX(packet)
@@ -394,18 +394,18 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 				packet.Repeater = p.ID
 				packet.Slot = slot
 				if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
-					logging.Errorf("Error publishing packet to hbrp:outgoing:noaddr: %s", err)
+					slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
 					continue
 				}
 			} else {
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe
 				err := subscription.Unsubscribe()
 				if err != nil {
-					logging.Errorf("Error unsubscribing from hbrp:packets:talkgroup:%d: %s", tg, err)
+					slog.Error("Error unsubscribing from hbrp:packets:talkgroup", "talkgroupID", tg, "error", err)
 				}
 				err = subscription.Close()
 				if err != nil {
-					logging.Errorf("Error closing pubsub connection: %s", err)
+					slog.Error("Error closing pubsub connection", "error", err)
 				}
 				return
 			}

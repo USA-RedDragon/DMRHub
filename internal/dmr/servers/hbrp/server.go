@@ -33,7 +33,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -92,7 +91,7 @@ func (s *Server) Stop(ctx context.Context) {
 
 	repeaters, err := s.kvClient.ListRepeaters(ctx)
 	if err != nil {
-		logging.Errorf("Error scanning KV for repeaters: %v", err)
+		slog.Error("Error scanning KV for repeaters", "error", err)
 	}
 	for _, repeater := range repeaters {
 		slog.Debug("Repeater found", "repeater", repeater)
@@ -109,20 +108,20 @@ func (s *Server) listen(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub: %v", err)
+			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
 	pubsubChannel := pubsub.Channel()
 	for {
 		select {
 		case <-ctx.Done():
-			logging.Log("Stopping HBRP server")
+			slog.Info("Stopping HBRP server")
 			return
 		case msg := <-pubsubChannel:
 			var packet models.RawDMRPacket
 			_, err := packet.UnmarshalMsg(msg)
 			if err != nil {
-				logging.Errorf("Error unmarshalling packet: %v", err)
+				slog.Error("Error unmarshalling packet", "error", err)
 				continue
 			}
 			s.handlePacket(ctx, net.UDPAddr{
@@ -138,14 +137,14 @@ func (s *Server) subscribePackets() {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub: %v", err)
+			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg(msg)
 		if err != nil {
-			logging.Errorf("Error unmarshalling packet: %v", err)
+			slog.Error("Error unmarshalling packet", "error", err)
 			continue
 		}
 		_, err = s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
@@ -153,7 +152,7 @@ func (s *Server) subscribePackets() {
 			Port: packet.RemotePort,
 		})
 		if err != nil {
-			logging.Errorf("Error sending packet: %v", err)
+			slog.Error("Error sending packet", "error", err)
 		}
 	}
 }
@@ -163,18 +162,18 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub: %v", err)
+			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
 	for msg := range pubsub.Channel() {
 		packet, ok := models.UnpackPacket(msg)
 		if !ok {
-			logging.Error("Error unpacking packet")
+			slog.Error("Error unpacking packet")
 			continue
 		}
 		repeater, err := s.kvClient.GetRepeater(ctx, packet.Repeater)
 		if err != nil {
-			logging.Errorf("Error getting repeater %d from KV: %v", packet.Repeater, err)
+			slog.Error("Error getting repeater from KV", "repeaterID", packet.Repeater, "error", err)
 			continue
 		}
 		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
@@ -182,7 +181,7 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 			Port: repeater.Port,
 		})
 		if err != nil {
-			logging.Errorf("Error sending packet: %v", err)
+			slog.Error("Error sending packet", "error", err)
 		}
 	}
 }
@@ -193,25 +192,25 @@ func (s *Server) Start(ctx context.Context) error {
 	defer span.End()
 	server, err := net.ListenUDP("udp", &s.SocketAddress)
 	if err != nil {
-		logging.Errorf("Error opening UDP Socket: %v", err)
+		slog.Error("Error opening UDP Socket", "error", err)
 		return ErrOpenSocket
 	}
 
 	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
-		logging.Errorf("Error setting read buffer on UDP Socket: %v", err)
+		slog.Error("Error setting read buffer on UDP Socket", "error", err)
 		return ErrSocketBuffer
 	}
 	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
-		logging.Errorf("Error setting write buffer on UDP Socket: %v", err)
+		slog.Error("Error setting write buffer on UDP Socket", "error", err)
 		return ErrSocketBuffer
 	}
 
 	s.Server = server
 	s.Started = true
 
-	logging.Errorf("HBRP Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	slog.Info("HBRP Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subscribePackets()
@@ -221,7 +220,7 @@ func (s *Server) Start(ctx context.Context) error {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if err != nil {
-				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
+				slog.Error("Error reading from UDP Socket, Swallowing Error", "error", err)
 				continue
 			}
 			slog.Debug("Read message from UDP socket", "remoteaddr", remoteaddr, "length", length)
@@ -232,11 +231,11 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			packedBytes, err := p.MarshalMsg(nil)
 			if err != nil {
-				logging.Errorf("Error marshalling packet: %v", err)
+				slog.Error("Error marshalling packet", "error", err)
 				return
 			}
 			if err := s.pubsub.Publish("hbrp:incoming", packedBytes); err != nil {
-				logging.Errorf("Error publishing packet to hbrp:incoming: %v", err)
+				slog.Error("Error publishing packet to hbrp:incoming", "error", err)
 				return
 			}
 		}
@@ -247,14 +246,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
 	if !s.Started && command != dmrconst.CommandMSTCL {
-		logging.Errorf("Server not started, not sending command")
+		slog.Error("Server not started, not sending command")
 		return
 	}
 	slog.Debug("Sending command", "command", command, "repeaterID", repeaterIDBytes)
 	commandPrefixedData := append([]byte(command), data...)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "error", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -262,27 +261,26 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		RemoteIP:   repeater.IP,
 		RemotePort: repeater.Port,
 	}
-	packedBytes, err := p.MarshalMsg(nil)
+	packetBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling packet: %v", err)
+		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
-	if err := s.pubsub.Publish("hbrp:outgoing", packedBytes); err != nil {
-		logging.Errorf("Error publishing packet to hbrp:outgoing: %v", err)
-		return
+	if err := s.pubsub.Publish("hbrp:outgoing:noaddr", packetBytes); err != nil {
+		slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
 	}
 }
 
 func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
-		logging.Errorf("Invalid packet type: %s", packet.Signature)
+		slog.Error("Invalid packet type", "signature", packet.Signature)
 		return
 	}
 
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "error", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -292,24 +290,24 @@ func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint,
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling packet: %v", err)
+		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
 	if err := s.pubsub.Publish("openbridge:outgoing", packedBytes); err != nil {
-		logging.Errorf("Error publishing packet to openbridge:outgoing: %v", err)
+		slog.Error("Error publishing packet to openbridge:outgoing", "error", err)
 		return
 	}
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if !s.Started {
-		logging.Errorf("Server not started, not sending command")
+		slog.Error("Server not started, not sending command")
 		return
 	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "error", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -319,11 +317,11 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling packet: %v", err)
+		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
 	if err := s.pubsub.Publish("hbrp:outgoing", packedBytes); err != nil {
-		logging.Errorf("Error publishing packet to hbrp:outgoing: %v", err)
+		slog.Error("Error publishing packet to hbrp:outgoing", "error", err)
 		return
 	}
 }
@@ -334,7 +332,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 	const signatureLength = 4
 	if len(data) < signatureLength {
 		// Not enough data here to be a valid packet
-		logging.Errorf("Invalid packet length: %d", len(data))
+		slog.Error("Invalid packet length", "length", len(data))
 		return
 	}
 
@@ -359,16 +357,16 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 		s.handleRPTPINGPacket(ctx, remoteAddr, data)
 	// I don't think we ever receive these
 	case dmrconst.CommandRPTACK[:4]:
-		logging.Error("TODO: RPTACK")
+		slog.Error("TODO: RPTACK")
 	case dmrconst.CommandMSTCL[:4]:
-		logging.Error("TODO: MSTCL")
+		slog.Error("TODO: MSTCL")
 	case dmrconst.CommandMSTNAK[:4]:
-		logging.Error("TODO: MSTNAK")
+		slog.Error("TODO: MSTNAK")
 	case dmrconst.CommandMSTPONG[:4]:
-		logging.Error("TODO: MSTPONG")
+		slog.Error("TODO: MSTPONG")
 	case dmrconst.CommandRPTSBKN[:4]:
-		logging.Error("TODO: RPTSBKN")
+		slog.Error("TODO: RPTSBKN")
 	default:
-		logging.Errorf("Unknown command: %s", dmrconst.Command(data[:4]))
+		slog.Error("Unknown command", "command", dmrconst.Command(data[:4]))
 	}
 }

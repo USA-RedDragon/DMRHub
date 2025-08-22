@@ -21,12 +21,12 @@ package pprof
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -37,7 +37,7 @@ const readTimeout = 3 * time.Second
 func CreatePProfServer(config *config.Config) {
 	if config.PProf.Enabled {
 		r := gin.New()
-		r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
+		r.Use(gin.Logger())
 		r.Use(gin.Recovery())
 
 		// Tracing
@@ -48,7 +48,7 @@ func CreatePProfServer(config *config.Config) {
 
 		err := r.SetTrustedProxies(config.PProf.TrustedProxies)
 		if err != nil {
-			logging.Errorf("Failed setting trusted proxies: %v", err)
+			slog.Error("Failed setting trusted proxies", "error", err)
 		}
 
 		pprof.Register(r)

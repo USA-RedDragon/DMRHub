@@ -32,7 +32,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
@@ -44,26 +43,26 @@ import (
 func GETUsers(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	users, err := models.ListUsers(db)
 	if err != nil {
-		logging.Errorf("GETUsers: Error getting users: %v", err)
+		slog.Error("Error getting users", "function", "GETUsers", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting users"})
 		return
 	}
 
 	total, err := models.CountUsers(cDb)
 	if err != nil {
-		logging.Errorf("GETUsers: Error getting user count: %v", err)
+		slog.Error("Error getting user count", "function", "GETUsers", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user count"})
 		return
 	}
@@ -81,14 +80,14 @@ func POSTUser(c *gin.Context) {
 
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	var json apimodels.UserRegistration
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		logging.Errorf("POSTUser: JSON data is invalid: %v", err)
+		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if !userdb.IsValidUserID(json.DMRId) {
@@ -115,7 +114,7 @@ func POSTUser(c *gin.Context) {
 		var user models.User
 		err := db.Find(&user, "username = ?", json.Username).Error
 		if err != nil {
-			logging.Errorf("POSTUser: Error getting user: %v", err)
+			slog.Error("Error getting user", "function", "POSTUser", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 			return
 		} else if user.ID != 0 {
@@ -126,7 +125,7 @@ func POSTUser(c *gin.Context) {
 		// Check if the DMR ID is already taken
 		exists, err := models.UserIDExists(db, json.DMRId)
 		if err != nil {
-			logging.Errorf("POSTUser: Error getting user: %v", err)
+			slog.Error("Error getting user", "function", "POSTUser", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 			return
 		}
@@ -149,7 +148,7 @@ func POSTUser(c *gin.Context) {
 					c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests. Please try again in one minute"})
 					return
 				}
-				logging.Errorf("POSTUser: Error getting pwned passwords: %v", err)
+				slog.Error("Error getting pwned passwords", "function", "POSTUser", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting pwned passwords"})
 				return
 			}
@@ -163,7 +162,7 @@ func POSTUser(c *gin.Context) {
 
 				count, err := strconv.ParseInt(strArray[1], 0, 32)
 				if err != nil {
-					logging.Errorf("POSTUser: Error parsing pwned password count: %v", err)
+					slog.Error("Error parsing pwned password count", "function", "POSTUser", "error", err)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error parsing pwned password count"})
 					return
 				}
@@ -191,7 +190,7 @@ func POSTUser(c *gin.Context) {
 		}
 		err = db.Create(&user).Error
 		if err != nil {
-			logging.Errorf("POSTUser: Error creating user: %v", err)
+			slog.Error("Error creating user", "function", "POSTUser", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 			return
 		}
@@ -204,7 +203,7 @@ func POSTUser(c *gin.Context) {
 				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.HTTP.CanonicalHost),
 			)
 			if err != nil {
-				logging.Errorf("POSTUser: Error sending email: %v", err)
+				slog.Error("Error sending email", "function", "POSTUser", "error", err)
 			}
 		}
 	}
@@ -213,7 +212,7 @@ func POSTUser(c *gin.Context) {
 func POSTUserDemote(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -246,7 +245,7 @@ func POSTUserDemote(c *gin.Context) {
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		logging.Errorf("POSTUserDemote: Error getting user: %v", err)
+		slog.Error("Error getting user", "function", "POSTUserDemote", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -254,7 +253,7 @@ func POSTUserDemote(c *gin.Context) {
 	user.Admin = false
 	err = db.Save(&user).Error
 	if err != nil {
-		logging.Errorf("POSTUserDemote: Error saving user: %v", err)
+		slog.Error("Error saving user", "function", "POSTUserDemote", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
 		return
 	}
@@ -268,7 +267,7 @@ func POSTUserDemote(c *gin.Context) {
 			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
-			logging.Errorf("POSTUserDemote: Error sending email: %v", err)
+			slog.Error("Error sending email", "function", "POSTUserDemote", "error", err)
 		}
 	}
 }
@@ -276,7 +275,7 @@ func POSTUserDemote(c *gin.Context) {
 func POSTUserPromote(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -298,7 +297,7 @@ func POSTUserPromote(c *gin.Context) {
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(idInt))
 	if err != nil {
-		logging.Errorf("POSTUserPromote: Error getting user: %v", err)
+		slog.Error("Error getting user", "function", "POSTUserPromote", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -315,7 +314,7 @@ func POSTUserPromote(c *gin.Context) {
 	user.Admin = true
 	err = db.Save(&user).Error
 	if err != nil {
-		logging.Errorf("POSTUserPromote: Error saving user: %v", err)
+		slog.Error("Error saving user", "function", "POSTUserPromote", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
 		return
 	}
@@ -329,7 +328,7 @@ func POSTUserPromote(c *gin.Context) {
 			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
-			logging.Errorf("POSTUserPromote: Error sending email: %v", err)
+			slog.Error("Error sending email", "function", "POSTUserPromote", "error", err)
 		}
 	}
 }
@@ -337,7 +336,7 @@ func POSTUserPromote(c *gin.Context) {
 func POSTUserUnsuspend(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -363,7 +362,7 @@ func POSTUserUnsuspend(c *gin.Context) {
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		logging.Errorf("POSTUserUnsuspend: Error getting user: %v", err)
+		slog.Error("Error getting user", "function", "POSTUserUnsuspend", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -371,7 +370,7 @@ func POSTUserUnsuspend(c *gin.Context) {
 	user.Suspended = false
 	err = db.Save(&user).Error
 	if err != nil {
-		logging.Errorf("POSTUserUnsuspend: Error saving user: %v", err)
+		slog.Error("Error saving user", "function", "POSTUserUnsuspend", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
 		return
 	}
@@ -381,7 +380,7 @@ func POSTUserUnsuspend(c *gin.Context) {
 func POSTUserApprove(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -407,7 +406,7 @@ func POSTUserApprove(c *gin.Context) {
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		logging.Errorf("POSTUserApprove: Error getting user: %v", err)
+		slog.Error("Error getting user", "function", "POSTUserApprove", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 		return
 	}
@@ -415,7 +414,7 @@ func POSTUserApprove(c *gin.Context) {
 	user.Approved = true
 	err = db.Save(&user).Error
 	if err != nil {
-		logging.Errorf("POSTUserApprove: Error saving user: %v", err)
+		slog.Error("Error saving user", "function", "POSTUserApprove", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
 		return
 	}
@@ -425,7 +424,7 @@ func POSTUserApprove(c *gin.Context) {
 func GETUser(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -438,7 +437,7 @@ func GETUser(c *gin.Context) {
 	}
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		logging.Errorf("Error finding user: %v", err)
+		slog.Error("Error finding user", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 	}
 	c.JSON(http.StatusOK, user)
@@ -447,27 +446,27 @@ func GETUser(c *gin.Context) {
 func GETUserAdmins(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
 	users, err := models.FindUserAdmins(db)
 	if err != nil {
-		logging.Errorf("Error finding users: %v", err)
+		slog.Error("Error finding users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Admins not found"})
 		return
 	}
 
 	total, err := models.CountUserAdmins(cDb)
 	if err != nil {
-		logging.Errorf("Error counting users: %v", err)
+		slog.Error("Error counting users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Admins not found"})
 		return
 	}
@@ -478,26 +477,26 @@ func GETUserAdmins(c *gin.Context) {
 func GETUserSuspended(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	// Get all users where approved = false
 	users, err := models.FindUserSuspended(db)
 	if err != nil {
-		logging.Errorf("Error finding users: %v", err)
+		slog.Error("Error finding users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Suspended users not found"})
 		return
 	}
 	total, err := models.CountUserSuspended(cDb)
 	if err != nil {
-		logging.Errorf("Error counting users: %v", err)
+		slog.Error("Error counting users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Suspended users not found"})
 		return
 	}
@@ -508,27 +507,27 @@ func GETUserSuspended(c *gin.Context) {
 func GETUserUnapproved(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	// Get all users where approved = false
 	users, err := models.FindUserUnapproved(db)
 	if err != nil {
-		logging.Errorf("Error finding users: %v", err)
+		slog.Error("Error finding users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unapproved users not found"})
 		return
 	}
 
 	total, err := models.CountUserUnapproved(cDb)
 	if err != nil {
-		logging.Errorf("Error counting users: %v", err)
+		slog.Error("Error counting users", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unapproved users not found"})
 		return
 	}
@@ -539,7 +538,7 @@ func GETUserUnapproved(c *gin.Context) {
 func PATCHUser(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -558,12 +557,12 @@ func PATCHUser(c *gin.Context) {
 	var json apimodels.UserPatch
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		logging.Errorf("PATCHUser: JSON data is invalid: %v", err)
+		slog.Error("JSON data is invalid", "function", "PATCHUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		user, err := models.FindUserByID(db, uint(idInt))
 		if err != nil {
-			logging.Errorf("Error finding user: %v", err)
+			slog.Error("Error finding user", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
 			return
 		}
@@ -583,7 +582,7 @@ func PATCHUser(c *gin.Context) {
 			var existingUser models.User
 			err := db.Find(&existingUser, "username = ?", json.Username).Error
 			if err != nil {
-				logging.Errorf("Error finding user: %v", err)
+				slog.Error("Error finding user", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
 				return
 			} else if existingUser.ID != 0 {
@@ -599,7 +598,7 @@ func PATCHUser(c *gin.Context) {
 
 		err = db.Save(&user).Error
 		if err != nil {
-			logging.Errorf("Error updating user: %v", err)
+			slog.Error("Error updating user", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
 			return
 		}
@@ -610,7 +609,7 @@ func PATCHUser(c *gin.Context) {
 func DELETEUser(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -622,7 +621,7 @@ func DELETEUser(c *gin.Context) {
 
 	exists, err := models.UserIDExists(db, uint(idUint64))
 	if err != nil {
-		logging.Errorf("Error checking if user exists: %v", err)
+		slog.Error("Error checking if user exists", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if user exists"})
 		return
 	}
@@ -633,7 +632,7 @@ func DELETEUser(c *gin.Context) {
 
 	err = models.DeleteUser(db, uint(idUint64))
 	if err != nil {
-		logging.Errorf("Error deleting user: %v", err)
+		slog.Error("Error deleting user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user"})
 		return
 	}
@@ -643,7 +642,7 @@ func DELETEUser(c *gin.Context) {
 func POSTUserSuspend(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -669,7 +668,7 @@ func POSTUserSuspend(c *gin.Context) {
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		logging.Errorf("Error finding user: %v", err)
+		slog.Error("Error finding user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
 		return
 	}
@@ -687,7 +686,7 @@ func POSTUserSuspend(c *gin.Context) {
 	user.Suspended = true
 	err = db.Save(&user).Error
 	if err != nil {
-		logging.Errorf("Error saving user: %v", err)
+		slog.Error("Error saving user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
 		return
 	}
@@ -697,7 +696,7 @@ func POSTUserSuspend(c *gin.Context) {
 func GETUserSelf(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -705,21 +704,21 @@ func GETUserSelf(c *gin.Context) {
 
 	userID := session.Get("user_id")
 	if userID == nil {
-		logging.Error("userID not found")
+		slog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		logging.Error("userID cast failed")
+		slog.Error("userID cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
 	user, err := models.FindUserByID(db, uid)
 	if err != nil {
-		logging.Errorf("Error finding user: %v", err)
+		slog.Error("Error finding user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
 		return
 	}

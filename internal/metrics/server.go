@@ -21,12 +21,12 @@ package metrics
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -37,7 +37,7 @@ const readTimeout = 3 * time.Second
 func CreateMetricsServer(config *config.Config) {
 	if config.Metrics.Enabled {
 		r := gin.New()
-		r.Use(gin.LoggerWithWriter(logging.GetLogger(logging.AccessType).Writer))
+		r.Use(gin.Logger())
 		r.Use(gin.Recovery())
 
 		// Tracing
@@ -48,7 +48,7 @@ func CreateMetricsServer(config *config.Config) {
 
 		err := r.SetTrustedProxies(config.Metrics.TrustedProxies)
 		if err != nil {
-			logging.Errorf("Failed setting trusted proxies: %v", err)
+			slog.Error("Failed setting trusted proxies", "error", err)
 		}
 
 		r.GET("/metrics", gin.WrapH(promhttp.Handler()))

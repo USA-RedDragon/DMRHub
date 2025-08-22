@@ -314,153 +314,233 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRDPacket")
 	defer span.End()
 
+	// Validate packet length
+	if !s.isValidDMRDPacketLength(data) {
+		return
+	}
+
+	repeaterID := s.extractRepeaterID(data)
+	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
+
+	if !s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
+		return
+	}
+
+	// Update repeater ping and database
+	if err := s.updateRepeaterPing(ctx, repeaterID); err != nil {
+		return
+	}
+
+	// Unpack and validate packet
+	packet, ok := models.UnpackPacket(data)
+	if !ok {
+		slog.Error("Failed to unpack packet from repeater", "repeaterID", repeaterID)
+		return
+	}
+
+	if packet.Dst == 0 {
+		return
+	}
+
+	slog.Debug("DMRD packet received", "packet", packet.String(), "remoteAddr", remoteAddr.String())
+
+	// Process the packet
+	s.processDMRDPacket(ctx, packet, data, remoteAddr, repeaterID)
+}
+
+func (s *Server) isValidDMRDPacketLength(data []byte) bool {
 	// DMRD packets are either 53 or 55 bytes long
 	if len(data) != 53 && len(data) != 55 {
 		slog.Error("Invalid DMRD packet length", "length", len(data))
+		return false
+	}
+	return true
+}
+
+func (s *Server) extractRepeaterID(data []byte) uint {
+	repeaterIDBytes := data[11:15]
+	return uint(binary.BigEndian.Uint32(repeaterIDBytes))
+}
+
+func (s *Server) updateRepeaterPing(ctx context.Context, repeaterID uint) error {
+	s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
+
+	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+	if err != nil {
+		slog.Error("Error finding repeater", "error", err)
+		return fmt.Errorf("failed to find repeater %d: %w", repeaterID, err)
+	}
+
+	dbRepeater.LastPing = time.Now()
+	if err := s.DB.Save(&dbRepeater).Error; err != nil {
+		slog.Error("Error saving repeater", "error", err)
+		return fmt.Errorf("failed to save repeater %d: %w", repeaterID, err)
+	}
+
+	return nil
+}
+
+func (s *Server) processDMRDPacket(ctx context.Context, packet models.Packet, data []byte, remoteAddr net.UDPAddr, repeaterID uint) {
+	isVoice, isData := utils.CheckPacketType(packet)
+
+	s.TrackCall(ctx, packet, isVoice)
+
+	// Handle special destinations first
+	if s.handleSpecialDestinations(ctx, packet, isVoice, repeaterID) {
 		return
 	}
-	repeaterIDBytes := data[11:15]
-	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 
+	// Forward to OpenBridge peers if enabled
+	s.forwardToOpenBridge(ctx, packet)
+
+	// Route the packet based on type
+	s.routePacket(ctx, packet, data, remoteAddr, isVoice, isData)
+}
+
+func (s *Server) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, repeaterID uint) bool {
+	if packet.Dst == dmrconst.ParrotUser && isVoice {
+		s.doParrot(ctx, packet, repeaterID)
+		return true
+	}
+
+	if packet.Dst == 4000 && isVoice {
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
-			slog.Error("Error finding repeater", "error", err)
-			return
+			slog.Error("Error finding repeater for unlink", "error", err)
+			return true
 		}
-		dbRepeater.LastPing = time.Now()
-		err = s.DB.Save(&dbRepeater).Error
-		if err != nil {
-			slog.Error("Error saving repeater", "error", err)
-			return
-		}
-
-		packet, ok := models.UnpackPacket(data)
-		if !ok {
-			slog.Error("Failed to unpack packet from repeater", "repeaterID", repeaterID)
-			return
-		}
-
-		if packet.Dst == 0 {
-			return
-		}
-
-		slog.Debug("DMRD packet received", "packet", packet.String(), "remoteAddr", remoteAddr.String())
-
-		isVoice, isData := utils.CheckPacketType(packet)
-
-		s.TrackCall(ctx, packet, isVoice)
-
-		if packet.Dst == dmrconst.ParrotUser && isVoice {
-			s.doParrot(ctx, packet, repeaterID)
-			// Don't route parrot calls
-			return
-		}
-
-		if packet.Dst == 4000 && isVoice {
-			s.doUnlink(ctx, packet, dbRepeater)
-			return
-		}
-
-		if s.config.DMR.OpenBridge.Enabled {
-			go func() {
-				// We need to send this packet to all peers except the one that sent it
-				peers := models.ListPeers(s.DB)
-				for _, p := range peers {
-					if rules.PeerShouldEgress(s.DB, p, &packet) {
-						s.sendOpenBridgePacket(ctx, p.ID, packet)
-					}
-				}
-			}()
-		}
-
-		switch {
-		case packet.GroupCall && isVoice:
-			exists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
-			if err != nil {
-				slog.Error("Error checking if talkgroup exists", "error", err)
-				return
-			}
-			if !exists {
-				slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
-				return
-			}
-			go s.switchDynamicTalkgroup(ctx, packet)
-
-			// We can just use pubsub to publish to "hbrp:packets:talkgroup:<id>"
-			var rawPacket models.RawDMRPacket
-			rawPacket.Data = data
-			rawPacket.RemoteIP = remoteAddr.IP.String()
-			rawPacket.RemotePort = remoteAddr.Port
-			packedBytes, err := rawPacket.MarshalMsg(nil)
-			if err != nil {
-				slog.Error("Error marshalling raw packet", "error", err)
-				return
-			}
-			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
-				slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
-				return
-			}
-		case !packet.GroupCall && isVoice:
-			// packet.Dst is either a repeater or a user
-			// If it's a repeater, we need to send it to the repeater
-			// If it's a user, we need to send it to the repeater that the user is connected to
-			// by looking up the user in the database and iterating through their repeaters
-
-			var rawPacket models.RawDMRPacket
-			rawPacket.Data = data
-			rawPacket.RemoteIP = remoteAddr.IP.String()
-			rawPacket.RemotePort = remoteAddr.Port
-
-			packedBytes, err := rawPacket.MarshalMsg(nil)
-			if err != nil {
-				slog.Error("Error marshalling raw packet", "error", err)
-				return
-			}
-
-			// users have 7 digit IDs, repeaters have 6 digit IDs or 9 digit IDs
-			const (
-				rptIDMin     = 100000
-				rptIDMax     = 999999
-				hotspotIDMin = 100000000
-				hotspotIDMax = 999999999
-				userIDMin    = 1000000
-				userIDMax    = 9999999
-			)
-			if (packet.Dst >= rptIDMin && packet.Dst <= rptIDMax) || (packet.Dst >= hotspotIDMin && packet.Dst <= hotspotIDMax) {
-				// This is to a repeater
-				exists, err := models.RepeaterIDExists(s.DB, packet.Dst)
-				if err != nil {
-					slog.Error("Error checking if repeater exists", "error", err)
-				}
-				if !exists {
-					slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
-					return
-				}
-				if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", packet.Dst), packedBytes); err != nil {
-					slog.Error("Error publishing packet to repeater", "repeaterID", packet.Dst, "error", err)
-					return
-				}
-			} else if packet.Dst >= userIDMin && packet.Dst <= userIDMax {
-				exists, err := models.UserIDExists(s.DB, packet.Dst)
-				if err != nil {
-					slog.Error("Error checking if user exists", "error", err)
-					return
-				}
-				if !exists {
-					slog.Error("User does not exist", "userID", packet.Dst)
-					return
-				}
-				s.doUser(ctx, packet, packedBytes)
-			}
-		case isData:
-			slog.Error("Unhandled data packet type")
-		default:
-			slog.Error("Unhandled packet type")
-		}
+		s.doUnlink(ctx, packet, dbRepeater)
+		return true
 	}
+
+	return false
+}
+
+func (s *Server) forwardToOpenBridge(ctx context.Context, packet models.Packet) {
+	if !s.config.DMR.OpenBridge.Enabled {
+		return
+	}
+
+	go func() {
+		// We need to send this packet to all peers except the one that sent it
+		peers := models.ListPeers(s.DB)
+		for _, p := range peers {
+			if rules.PeerShouldEgress(s.DB, p, &packet) {
+				s.sendOpenBridgePacket(ctx, p.ID, packet)
+			}
+		}
+	}()
+}
+
+func (s *Server) routePacket(ctx context.Context, packet models.Packet, data []byte, remoteAddr net.UDPAddr, isVoice, isData bool) {
+	switch {
+	case packet.GroupCall && isVoice:
+		s.handleGroupCallVoice(ctx, packet, data, remoteAddr)
+	case !packet.GroupCall && isVoice:
+		s.handlePrivateCallVoice(ctx, packet, data, remoteAddr)
+	case isData:
+		slog.Error("Unhandled data packet type")
+	default:
+		slog.Error("Unhandled packet type")
+	}
+}
+
+func (s *Server) handleGroupCallVoice(ctx context.Context, packet models.Packet, data []byte, remoteAddr net.UDPAddr) {
+	exists, err := models.TalkgroupIDExists(s.DB, packet.Dst)
+	if err != nil {
+		slog.Error("Error checking if talkgroup exists", "error", err)
+		return
+	}
+	if !exists {
+		slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
+		return
+	}
+
+	go s.switchDynamicTalkgroup(ctx, packet)
+
+	// Publish to talkgroup
+	rawPacket := s.createRawPacket(data, remoteAddr)
+	packedBytes, err := rawPacket.MarshalMsg(nil)
+	if err != nil {
+		slog.Error("Error marshalling raw packet", "error", err)
+		return
+	}
+
+	if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
+		slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
+	}
+}
+
+func (s *Server) handlePrivateCallVoice(ctx context.Context, packet models.Packet, data []byte, remoteAddr net.UDPAddr) {
+	rawPacket := s.createRawPacket(data, remoteAddr)
+	packedBytes, err := rawPacket.MarshalMsg(nil)
+	if err != nil {
+		slog.Error("Error marshalling raw packet", "error", err)
+		return
+	}
+
+	if s.isRepeaterID(packet.Dst) {
+		s.routeToRepeater(packet.Dst, packedBytes)
+	} else if s.isUserID(packet.Dst) {
+		s.routeToUser(ctx, packet, packedBytes)
+	}
+}
+
+func (s *Server) createRawPacket(data []byte, remoteAddr net.UDPAddr) models.RawDMRPacket {
+	var rawPacket models.RawDMRPacket
+	rawPacket.Data = data
+	rawPacket.RemoteIP = remoteAddr.IP.String()
+	rawPacket.RemotePort = remoteAddr.Port
+	return rawPacket
+}
+
+func (s *Server) isRepeaterID(id uint) bool {
+	// users have 7 digit IDs, repeaters have 6 digit IDs or 9 digit IDs
+	const (
+		rptIDMin     = 100000
+		rptIDMax     = 999999
+		hotspotIDMin = 100000000
+		hotspotIDMax = 999999999
+	)
+	return (id >= rptIDMin && id <= rptIDMax) || (id >= hotspotIDMin && id <= hotspotIDMax)
+}
+
+func (s *Server) isUserID(id uint) bool {
+	const (
+		userIDMin = 1000000
+		userIDMax = 9999999
+	)
+	return id >= userIDMin && id <= userIDMax
+}
+
+func (s *Server) routeToRepeater(repeaterID uint, packedBytes []byte) {
+	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
+	if err != nil {
+		slog.Error("Error checking if repeater exists", "error", err)
+		return
+	}
+	if !exists {
+		slog.Error("Repeater does not exist", "repeaterID", repeaterID)
+		return
+	}
+
+	if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID), packedBytes); err != nil {
+		slog.Error("Error publishing packet to repeater", "repeaterID", repeaterID, "error", err)
+	}
+}
+
+func (s *Server) routeToUser(ctx context.Context, packet models.Packet, packedBytes []byte) {
+	exists, err := models.UserIDExists(s.DB, packet.Dst)
+	if err != nil {
+		slog.Error("Error checking if user exists", "error", err)
+		return
+	}
+	if !exists {
+		slog.Error("User does not exist", "userID", packet.Dst)
+		return
+	}
+
+	s.doUser(ctx, packet, packedBytes)
 }
 
 func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {

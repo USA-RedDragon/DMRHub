@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
-	"time"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/consts"
 	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/glebarez/sqlite"
@@ -168,10 +168,8 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		return db, fmt.Errorf("failed to open database: %w", err)
 	}
 	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
-	const connsPerCPU = 10
-	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * connsPerCPU)
-	const maxIdleTime = 10 * time.Minute
-	sqlDB.SetConnMaxIdleTime(maxIdleTime)
+	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	sqlDB.SetConnMaxIdleTime(consts.MaxIdleTime)
 
 	return
 }

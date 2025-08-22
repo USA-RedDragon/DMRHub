@@ -29,7 +29,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
@@ -45,13 +44,13 @@ const (
 func GETPeers(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -63,13 +62,13 @@ func GETPeers(c *gin.Context) {
 func GETMyPeers(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	cDb, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -77,14 +76,14 @@ func GETMyPeers(c *gin.Context) {
 
 	userID := session.Get("user_id")
 	if userID == nil {
-		logging.Error("userID not found")
+		slog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
-		logging.Errorf("Unable to convert userID to uint: %v", userID)
+		slog.Error("Unable to convert userID to uint", "function", "GETMyPeers", "userID", userID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -92,7 +91,7 @@ func GETMyPeers(c *gin.Context) {
 	// Get all peers owned by user
 	peers := models.GetUserPeers(db, uid)
 	if db.Error != nil {
-		logging.Errorf("Error getting peers owned by user %d: %v", userID, db.Error)
+		slog.Error("Error getting peers owned by user", "userID", userID, "error", db.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting peers owned by user"})
 		return
 	}
@@ -105,7 +104,7 @@ func GETMyPeers(c *gin.Context) {
 func GETPeer(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -127,7 +126,7 @@ func GETPeer(c *gin.Context) {
 func DELETEPeer(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Errorf("Unable to get DB from context")
+		slog.Error("Unable to get DB from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -148,17 +147,17 @@ func POSTPeer(c *gin.Context) {
 	session := sessions.Default(c)
 	usID := session.Get("user_id")
 	if usID == nil {
-		logging.Error("userID not found")
+		slog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	userID, ok := usID.(uint)
 	if !ok {
-		logging.Error("userID cast failed")
+		slog.Error("userID cast failed")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		logging.Error("DB cast failed")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -170,7 +169,7 @@ func POSTPeer(c *gin.Context) {
 	}
 	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
 	if !ok {
-		logging.Error("PubSub cast failed")
+		slog.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -178,11 +177,11 @@ func POSTPeer(c *gin.Context) {
 	var json apimodels.PeerPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		logging.Errorf("POSTPeer: JSON data is invalid: %v", err)
+		slog.Error("JSON data is invalid", "function", "POSTPeer", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
 		if models.PeerIDExists(db, json.ID) {
-			logging.Errorf("POSTPeer: Peer ID already exists: %v", json.ID)
+			slog.Error("Peer ID already exists", "function", "POSTPeer", "peerID", json.ID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID already exists"})
 			return
 		}
@@ -194,7 +193,7 @@ func POSTPeer(c *gin.Context) {
 
 		// Peer validated to fit within a 4 byte integer
 		if json.ID <= 0 || json.ID > 4294967295 {
-			logging.Errorf("POSTPeer: Peer ID is invalid: %v", json.ID)
+			slog.Error("Peer ID is invalid", "function", "POSTPeer", "peerID", json.ID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID is invalid"})
 			return
 		}
@@ -207,7 +206,7 @@ func POSTPeer(c *gin.Context) {
 		const randSpecial = 2
 		peer.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
-			logging.Errorf("Failed to generate a peer password %v", err)
+			slog.Error("Failed to generate a peer password", "function", "POSTPeer", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a peer password"})
 			return
 		}
@@ -215,7 +214,7 @@ func POSTPeer(c *gin.Context) {
 		var user models.User
 		db.First(&user, json.OwnerID)
 		if db.Error != nil {
-			logging.Errorf("Error getting user %d: %v", userID, db.Error)
+			slog.Error("Error getting user", "function", "POSTPeer", "userID", userID, "error", db.Error)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
 			return
 		}
@@ -239,7 +238,7 @@ func POSTPeer(c *gin.Context) {
 				"New OpenBridge peer created with ID "+strconv.FormatUint(uint64(peer.ID), 10)+" by "+peer.Owner.Username,
 			)
 			if err != nil {
-				logging.Errorf("POSTPeer: Error sending email: %v", err)
+				slog.Error("Error sending email", "function", "POSTPeer", "error", err)
 			}
 		}
 	}

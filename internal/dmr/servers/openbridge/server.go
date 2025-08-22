@@ -35,7 +35,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -97,7 +96,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.Server = server
 
-	logging.Logf("OpenBridge Server listening at %s on port %d", s.SocketAddress.IP.String(), s.SocketAddress.Port)
+	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
 	go s.listen(ctx)
 	go s.subcribeOutgoing(ctx)
@@ -107,7 +106,7 @@ func (s *Server) Start(ctx context.Context) error {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			slog.Debug("Read from UDP", "length", length, "remoteaddr", remoteaddr, "err", err)
 			if err != nil {
-				logging.Errorf("Error reading from UDP Socket, Swallowing Error: %v", err)
+				slog.Error("Error reading from UDP Socket, swallowing error", "error", err)
 				continue
 			}
 			go func() {
@@ -118,11 +117,11 @@ func (s *Server) Start(ctx context.Context) error {
 				}
 				packedBytes, err := p.MarshalMsg(nil)
 				if err != nil {
-					logging.Errorf("Error marshalling packet: %v", err)
+					slog.Error("Error marshalling packet", "error", err)
 					return
 				}
 				if err := s.pubsub.Publish("openbridge:incoming", packedBytes); err != nil {
-					logging.Errorf("Error publishing packet to openbridge:incoming: %v", err)
+					slog.Error("Error publishing packet to openbridge:incoming", "error", err)
 					return
 				}
 			}()
@@ -144,14 +143,14 @@ func (s *Server) listen(ctx context.Context) {
 	defer func() {
 		err := subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub: %v", err)
+			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
 	for msg := range subscription.Channel() {
 		var packet models.RawDMRPacket
 		_, err := packet.UnmarshalMsg(msg)
 		if err != nil {
-			logging.Errorf("Error unmarshalling packet: %v", err)
+			slog.Error("Error unmarshalling packet", "error", err)
 			continue
 		}
 		go s.handlePacket(ctx, &net.UDPAddr{
@@ -166,18 +165,18 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 	defer func() {
 		err := subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub: %v", err)
+			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
 	for msg := range subscription.Channel() {
 		packet, ok := models.UnpackPacket(msg)
 		if !ok {
-			logging.Errorf("Error unpacking packet")
+			slog.Error("Error unpacking packet")
 			continue
 		}
 		peer, err := s.kvClient.GetPeer(ctx, packet.Repeater)
 		if err != nil {
-			logging.Errorf("Error getting peer %d from kv: %v", packet.Repeater, err)
+			slog.Error("Error getting peer from kv", "peerID", packet.Repeater, "error", err)
 			continue
 		}
 		// OpenBridge is always TS1
@@ -187,21 +186,21 @@ func (s *Server) subcribeOutgoing(ctx context.Context) {
 			Port: peer.Port,
 		})
 		if err != nil {
-			logging.Errorf("Error sending packet: %v", err)
+			slog.Error("Error sending packet", "error", err)
 		}
 	}
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
-		logging.Errorf("Invalid packet type: %s", packet.Signature)
+		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
 
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
 	if err != nil {
-		logging.Errorf("Error getting repeater from kv: %v", err)
+		slog.Error("Error getting repeater from kv", "repeaterID", repeaterIDBytes, "error", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -211,11 +210,11 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	}
 	packedBytes, err := p.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling packet: %v", err)
+		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
 	if err := s.pubsub.Publish("openbridge:outgoing", packedBytes); err != nil {
-		logging.Errorf("Error publishing packet to openbridge:outgoing: %v", err)
+		slog.Error("Error publishing packet to openbridge:outgoing", "error", err)
 		return
 	}
 }
@@ -227,11 +226,11 @@ func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes
 	h := hmac.New(sha1.New, []byte(peer.Password))
 	_, err := h.Write(packetBytes)
 	if err != nil {
-		logging.Errorf("Error hashing OpenBridge packet: %s", err)
+		slog.Error("Error hashing OpenBridge packet", "error", err)
 		return false
 	}
 	if !hmac.Equal(h.Sum(nil), hmacBytes) {
-		logging.Error("Invalid OpenBridge HMAC")
+		slog.Error("Invalid OpenBridge HMAC")
 		return false
 	}
 	return true
@@ -244,12 +243,12 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 	const signatureLength = 4
 
 	if len(data) != packetLength {
-		logging.Errorf("Invalid OpenBridge packet length: %d", len(data))
+		slog.Error("Invalid OpenBridge packet length", "length", len(data), "expected", packetLength)
 		return
 	}
 
 	if dmrconst.Command(data[:signatureLength]) != dmrconst.CommandDMRD {
-		logging.Errorf("Unknown command: %s", data[:signatureLength])
+		slog.Error("Unknown command", "command", string(data[:signatureLength]))
 		return
 	}
 
@@ -258,7 +257,7 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 
 	packet, ok := models.UnpackPacket(packetBytes)
 	if !ok {
-		logging.Error("Invalid OpenBridge packet")
+		slog.Error("Invalid OpenBridge packet")
 		return
 	}
 
@@ -266,7 +265,7 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 
 	if packet.Slot {
 		// Drop TS2 packets on OpenBridge
-		logging.Log("Dropping TS2 packet from OpenBridge")
+		slog.Debug("Dropping TS2 packet from OpenBridge")
 		return
 	}
 
@@ -275,14 +274,14 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)
 
 	if !models.PeerIDExists(s.DB, peerID) {
-		logging.Errorf("Unknown peer ID: %d", peerID)
+		slog.Error("Unknown peer ID", "peerID", peerID)
 		return
 	}
 
 	peer := models.FindPeerByID(s.DB, peerID)
 
 	if !s.validateHMAC(ctx, packetBytes, hmacBytes, peer) {
-		logging.Error("Invalid OpenBridge HMAC")
+		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
 		return
 	}
 

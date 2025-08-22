@@ -21,9 +21,9 @@ package models
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
 )
 
@@ -47,7 +47,7 @@ type PeerRule struct {
 func (p *PeerRule) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		logging.Errorf("Failed to marshal peer rule to json: %s", err)
+		slog.Error("Failed to marshal peer rule to json", "error", err)
 		return ""
 	}
 	return string(jsn)

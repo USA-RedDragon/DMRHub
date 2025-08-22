@@ -27,7 +27,6 @@ import (
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"golang.org/x/sync/errgroup"
@@ -70,7 +69,7 @@ func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) e
 
 func send(config *configPkg.Config, toEmail string, subject string, body string) error {
 	if !config.SMTP.Enabled {
-		logging.Errorf("Email is disabled, but an email was attempted to be sent")
+		slog.Error("Email is disabled, but an email was attempted to be sent")
 		return ErrEmailDisabled
 	}
 

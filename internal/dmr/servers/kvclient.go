@@ -23,13 +23,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"go.opentelemetry.io/otel"
 )
 
@@ -59,13 +59,13 @@ func (s *KVClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "repeaterID", repeaterID, "error", err)
 		return
 	}
 	repeater.LastPing = time.Now()
 	s.StoreRepeater(ctx, repeaterID, repeater)
 	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
-		logging.Errorf("Error expiring repeater %d: %v", repeaterID, err)
+		slog.Error("Error expiring repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
 
@@ -75,7 +75,7 @@ func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint
 
 	repeater, err := s.GetRepeater(ctx, repeaterID)
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "repeaterID", repeaterID, "error", err)
 		return
 	}
 	repeater.Connection = connection
@@ -95,16 +95,16 @@ func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater 
 
 	repeaterBytes, err := repeater.MarshalMsg(nil)
 	if err != nil {
-		logging.Errorf("Error marshalling repeater: %v", err)
+		slog.Error("Error marshalling repeater", "repeaterID", repeaterID, "error", err)
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
 	if err := s.kv.Set(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes); err != nil {
-		logging.Errorf("Error setting repeater in KV: %v", err)
+		slog.Error("Error setting repeater in KV", "repeaterID", repeaterID, "error", err)
 		return
 	}
 	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
-		logging.Errorf("Error expiring repeater %d: %v", repeaterID, err)
+		slog.Error("Error expiring repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
 
@@ -114,13 +114,13 @@ func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Rep
 
 	repeaterBits, err := s.kv.Get(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
 	if err != nil {
-		logging.Errorf("Error getting repeater from KV: %v", err)
+		slog.Error("Error getting repeater from KV", "repeaterID", repeaterID, "error", err)
 		return models.Repeater{}, ErrNoSuchRepeater
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg(repeaterBits)
 	if err != nil {
-		logging.Errorf("Error unmarshalling repeater: %v", err)
+		slog.Error("Error unmarshalling repeater", "repeaterID", repeaterID, "error", err)
 		return models.Repeater{}, ErrUnmarshalRepeater
 	}
 	return repeater, nil
@@ -132,7 +132,7 @@ func (s *KVClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
 
 	has, err := s.kv.Has(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
 	if err != nil {
-		logging.Errorf("Error checking if repeater exists in KV: %v", err)
+		slog.Error("Error checking if repeater exists in KV", "repeaterID", repeaterID, "error", err)
 		return false
 	}
 	return has
@@ -170,13 +170,13 @@ func (s *KVClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error
 
 	peerBits, err := s.kv.Get(fmt.Sprintf("openbridge:peer:%d", peerID))
 	if err != nil {
-		logging.Errorf("Error getting peer from KV: %v", err)
+		slog.Error("Error getting peer from KV", "peerID", peerID, "error", err)
 		return models.Peer{}, ErrNoSuchPeer
 	}
 	var peer models.Peer
 	_, err = peer.UnmarshalMsg(peerBits)
 	if err != nil {
-		logging.Errorf("Error unmarshalling peer: %v", err)
+		slog.Error("Error unmarshalling peer", "peerID", peerID, "error", err)
 		return models.Peer{}, ErrUnmarshalPeer
 	}
 	return peer, nil

@@ -21,9 +21,9 @@ package models
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"gorm.io/gorm"
 )
 
@@ -48,7 +48,7 @@ type Peer struct {
 func (p *Peer) String() string {
 	jsn, err := json.Marshal(p)
 	if err != nil {
-		logging.Errorf("Failed to marshal peer to json: %s", err)
+		slog.Error("Failed to marshal peer to json", "error", err)
 		return ""
 	}
 	return string(jsn)
@@ -99,6 +99,6 @@ func PeerIDExists(db *gorm.DB, id uint) bool {
 func DeletePeer(db *gorm.DB, id uint) {
 	tx := db.Unscoped().Delete(&Peer{ID: id})
 	if tx.Error != nil {
-		logging.Errorf("Error deleting repeater: %s", tx.Error)
+		slog.Error("Error deleting repeater", "error", tx.Error)
 	}
 }

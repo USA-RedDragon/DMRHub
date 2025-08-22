@@ -25,7 +25,6 @@ import (
 	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 )
@@ -97,11 +96,11 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 	defer func() {
 		err := subscription.Unsubscribe()
 		if err != nil {
-			logging.Errorf("Error unsubscribing from openbridge:packets: %s", err)
+			slog.Error("Error unsubscribing from openbridge:packets", "error", err)
 		}
 		err = subscription.Close()
 		if err != nil {
-			logging.Errorf("Error closing pubsub connection: %s", err)
+			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
 	pubsubChannel := subscription.Channel()
@@ -126,12 +125,12 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
-				logging.Errorf("Failed to unmarshal raw packet: %s", err)
+				slog.Error("Failed to unmarshal raw packet", "error", err)
 				continue
 			}
 			packet, ok := models.UnpackPacket(rawPacket.Data)
 			if !ok {
-				logging.Errorf("Failed to unpack packet: %s", err)
+				slog.Error("Failed to unpack packet")
 				continue
 			}
 
@@ -142,7 +141,7 @@ func (m *SubscriptionManager) subscribe(ctx context.Context, pubsub pubsub.PubSu
 			packet.Repeater = p.ID
 			packet.Slot = false
 			if err := pubsub.Publish("openbridge:outgoing", packet.Encode()); err != nil {
-				logging.Errorf("Error publishing packet to openbridge:outgoing: %v", err)
+				slog.Error("Error publishing packet to openbridge:outgoing", "error", err)
 			}
 		}
 	}

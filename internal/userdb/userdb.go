@@ -27,12 +27,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/ulikunitz/xz"
 )
@@ -100,7 +100,7 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return false
 		}
 	}
@@ -168,11 +168,11 @@ func UnpackDB() error {
 
 	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
-		logging.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR users database")
 		return ErrLoading
 	}
 	if len(usrdb.Users) == 0 {
-		logging.Error("No DMR users found in database")
+		slog.Error("No DMR users found in database")
 		return ErrNoUsers
 	}
 	return nil
@@ -182,13 +182,13 @@ func Len() int {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return 0
 		}
 	}
 	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
-		logging.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR users database")
 	}
 	return len(db.Users)
 }
@@ -197,7 +197,7 @@ func Get(dmrID uint) (DMRUser, bool) {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return DMRUser{}, false
 		}
 	}
@@ -212,7 +212,7 @@ func Update() error {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return ErrUpdateFailed
 		}
 	}
@@ -235,23 +235,23 @@ func Update() error {
 
 	userDB.uncompressedJSON, err = io.ReadAll(resp.Body)
 	if err != nil {
-		logging.Errorf("ReadAll error %s", err)
+		slog.Error("ReadAll error", "error", err)
 		return ErrUpdateFailed
 	}
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			logging.Errorf("Error closing response body: %v", err)
+			slog.Error("Error closing response body", "error", err)
 		}
 	}()
 	var tmpDB dmrUserDB
 	if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
-		logging.Errorf("Error decoding DMR users database: %v", err)
+		slog.Error("Error decoding DMR users database", "error", err)
 		return ErrUpdateFailed
 	}
 
 	if len(tmpDB.Users) == 0 {
-		logging.Error("No DMR users found in database")
+		slog.Error("No DMR users found in database")
 		return ErrUpdateFailed
 	}
 
@@ -266,7 +266,7 @@ func Update() error {
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
 	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
 
-	logging.Errorf("Update complete. Loaded %d DMR users", Len())
+	slog.Info("Update complete", "loadedUsers", Len())
 
 	return nil
 }
@@ -280,7 +280,7 @@ func GetDate() (time.Time, error) {
 	}
 	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
 	if !ok {
-		logging.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR users database")
 	}
 	return db.Date, nil
 }

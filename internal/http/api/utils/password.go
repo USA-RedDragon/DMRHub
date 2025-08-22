@@ -25,10 +25,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -67,7 +67,7 @@ func HashPassword(password string, salt string) string {
 	// Fill the salt with cryptographically secure random bytes.
 	_, err := rand.Read(params.salt)
 	if err != nil {
-		logging.Errorf("HashPassword: %v", err)
+		slog.Error("Error hashing password", "function", "HashPassword", "error", err)
 	}
 
 	bytes := argon2.IDKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)

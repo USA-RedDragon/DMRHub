@@ -21,12 +21,12 @@ package models
 
 import (
 	"errors"
+	"log/slog"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 )
 
 //go:generate go run github.com/tinylib/msgp
@@ -78,49 +78,49 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 
 	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing rx frequency: %v", err)
+		slog.Error("Error parsing rx frequency", "error", err)
 		return ErrInvalidInt
 	}
 	c.RXFrequency = uint(rxFreq)
 
 	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing tx frequency: %v", err)
+		slog.Error("Error parsing tx frequency", "error", err)
 		return ErrInvalidInt
 	}
 	c.TXFrequency = uint(txFreq)
 
 	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing tx power: %v", err)
+		slog.Error("Error parsing tx power", "error", err)
 		return ErrInvalidInt
 	}
 	c.TXPower = uint8(txPower)
 
 	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing color code: %v", err)
+		slog.Error("Error parsing color code", "error", err)
 		return ErrInvalidInt
 	}
 	c.ColorCode = uint8(colorCode)
 
 	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
 	if err != nil {
-		logging.Errorf("Error parsing latitude: %v", err)
+		slog.Error("Error parsing latitude", "error", err)
 		return ErrInvalidFloat
 	}
 	c.Latitude = lat
 
 	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
 	if err != nil {
-		logging.Errorf("Error parsing longitude: %v", err)
+		slog.Error("Error parsing longitude", "error", err)
 		return ErrInvalidFloat
 	}
 	c.Longitude = long
 
 	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing height: %v", err)
+		slog.Error("Error parsing height", "error", err)
 		return ErrInvalidInt
 	}
 	c.Height = uint16(height)
@@ -131,7 +131,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 
 	slots, err := strconv.ParseInt(string(data[97]), 0, 32)
 	if err != nil {
-		logging.Errorf("Error parsing slots: %v", err)
+		slog.Error("Error parsing slots", "error", err)
 		return ErrInvalidInt
 	}
 	c.Slots = uint(slots)

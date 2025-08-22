@@ -21,10 +21,10 @@ package parrot
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"go.opentelemetry.io/otel"
 )
 
@@ -52,9 +52,10 @@ func (p *Parrot) StartStream(ctx context.Context, streamID uint, repeaterID uint
 
 	if !p.storage.exists(ctx, streamID) {
 		p.storage.store(ctx, streamID, repeaterID)
+		return true
 	}
 
-	logging.Errorf("Parrot: Stream %d already started", streamID)
+	slog.Error("Parrot: Stream already started", "streamID", streamID)
 	return false
 }
 
@@ -68,7 +69,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	// Grab the repeater ID to go ahead and mark the packet as being routed back.
 	repeaterID, err := p.storage.get(ctx, streamID)
 	if err != nil {
-		logging.Errorf("Error getting parrot stream from pubsub: %v", err)
+		slog.Error("Error getting parrot stream from pubsub", "error", err)
 		return
 	}
 
@@ -80,7 +81,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 
 	err = p.storage.stream(ctx, streamID, packet)
 	if err != nil {
-		logging.Errorf("Error storing parrot stream in pubsub: %v", err)
+		slog.Error("Error storing parrot stream in pubsub", "error", err)
 	}
 }
 
@@ -100,7 +101,7 @@ func (p *Parrot) GetStream(ctx context.Context, streamID uint) []models.Packet {
 	// Empty array of packet byte arrays.
 	packets, err := p.storage.getStream(ctx, streamID)
 	if err != nil {
-		logging.Errorf("Error getting parrot stream from storage: %s", err)
+		slog.Error("Error getting parrot stream from storage", "error", err)
 		return nil
 	}
 

@@ -21,11 +21,11 @@ package websocket
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -82,7 +82,7 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 		session := sessions.Default(c)
 		conn, err := handler.wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			logging.Errorf("Failed to set websocket upgrade: %v", err)
+			slog.Error("Failed to set websocket upgrade", "error", err)
 			return
 		}
 		handler.conn = conn
@@ -91,7 +91,7 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 			handler.handler.OnDisconnect(c, c.Request, session)
 			err := handler.conn.Close()
 			if err != nil {
-				logging.Errorf("Failed to close websocket: %v", err)
+				slog.Error("Failed to close websocket", "error", err)
 			}
 		}()
 		handler.handle(c.Request.Context(), session, c.Request)

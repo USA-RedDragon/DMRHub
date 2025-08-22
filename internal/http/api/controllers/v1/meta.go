@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/gin-gonic/gin"
 )
 
@@ -48,14 +47,14 @@ func GETNetworkName(c *gin.Context) {
 func GETVersion(c *gin.Context) {
 	version, ok := c.MustGet("Version").(string)
 	if !ok {
-		logging.Errorf("Unable to get Version from context")
+		slog.Error("Unable to get Version from context", "function", "GETVersion")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
 	commit, ok := c.MustGet("Commit").(string)
 	if !ok {
-		logging.Errorf("Unable to get Commit from context")
+		slog.Error("Unable to get Commit from context", "function", "GETVersion")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}

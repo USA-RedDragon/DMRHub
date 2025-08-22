@@ -27,12 +27,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/ulikunitz/xz"
 )
@@ -106,7 +106,7 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return false
 		}
 	}
@@ -183,13 +183,13 @@ func Len() int {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return 0
 		}
 	}
 	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		logging.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR users database")
 	}
 	return len(db.Repeaters)
 }
@@ -198,7 +198,7 @@ func Get(id uint) (DMRRepeater, bool) {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return DMRRepeater{}, false
 		}
 	}
@@ -213,7 +213,7 @@ func Update() error {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return ErrUpdateFailed
 		}
 	}
@@ -242,17 +242,17 @@ func Update() error {
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			logging.Errorf("Error closing response body: %v", err)
+			slog.Error("Error closing response body", "error", err)
 		}
 	}()
 	var tmpDB dmrRepeaterDB
 	if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
-		logging.Errorf("Error decoding DMR repeaters database: %v", err)
+		slog.Error("Error decoding DMR repeaters database", "error", err)
 		return ErrUpdateFailed
 	}
 
 	if len(tmpDB.Repeaters) == 0 {
-		logging.Error("No DMR repeaters found in database")
+		slog.Error("No DMR repeaters found in database")
 		return ErrUpdateFailed
 	}
 
@@ -267,7 +267,7 @@ func Update() error {
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
 
-	logging.Errorf("Update complete. Loaded %d DMR repeaters", Len())
+	slog.Info("Update complete", "loadedRepeaters", Len())
 
 	return nil
 }
@@ -276,13 +276,13 @@ func GetDate() (time.Time, error) {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
-			logging.Errorf("Error unpacking database: %v", err)
+			slog.Error("Error unpacking database", "error", err)
 			return time.Time{}, err
 		}
 	}
 	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
 	if !ok {
-		logging.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR users database")
 	}
 	return db.Date, nil
 }

@@ -36,7 +36,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/logging"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -140,13 +139,13 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		}),
 	)
 	if err != nil {
-		logging.Errorf("Failed to schedule repeater update: %s", err)
+		slog.Error("Failed to schedule repeater update", "error", err)
 	}
 
 	go func() {
 		err = userdb.Update()
 		if err != nil {
-			logging.Errorf("Failed to update user database: %s using built in one", err)
+			slog.Error("Failed to update user database", "error", err)
 		}
 	}()
 	_, err = scheduler.NewJob(
@@ -156,12 +155,12 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		gocron.NewTask(func() {
 			err := userdb.Update()
 			if err != nil {
-				logging.Errorf("Failed to update user database: %s", err)
+				slog.Error("Failed to update user database", "error", err)
 			}
 		}),
 	)
 	if err != nil {
-		logging.Errorf("Failed to schedule user update: %s", err)
+		slog.Error("Failed to schedule user update", "error", err)
 	}
 
 	scheduler.Start()
@@ -271,11 +270,11 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 			defer wg.Done()
 			err = scheduler.StopJobs()
 			if err != nil {
-				logging.Errorf("Failed to stop scheduler jobs: %s", err)
+				slog.Error("Failed to stop scheduler jobs", "error", err)
 			}
 			err = scheduler.Shutdown()
 			if err != nil {
-				logging.Errorf("Failed to stop scheduler: %s", err)
+				slog.Error("Failed to stop scheduler", "error", err)
 			}
 		}(wg)
 
@@ -295,7 +294,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 				defer cancel()
 				err := cleanup(ctx)
 				if err != nil {
-					logging.Errorf("Failed to shutdown tracer: %s", err)
+					slog.Error("Failed to shutdown tracer", "error", err)
 				}
 			}
 		}(wg)
@@ -318,18 +317,16 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		case <-c:
 			err = pubsub.Close()
 			if err != nil {
-				logging.Errorf("Failed to close pubsub: %s", err)
+				slog.Error("Failed to close pubsub", "error", err)
 			}
 			err = kv.Close()
 			if err != nil {
-				logging.Errorf("Failed to close kv: %s", err)
+				slog.Error("Failed to close kv", "error", err)
 			}
-			logging.Error("Shutdown safely completed")
-			logging.Close()
+			slog.Info("All servers stopped, shutting down gracefully")
 			os.Exit(0)
 		case <-time.After(timeout):
-			logging.Error("Shutdown timed out")
-			logging.Close()
+			slog.Error("Shutdown timed out, forcing exit")
 			os.Exit(1)
 		}
 	}
@@ -351,7 +348,7 @@ func initTracer(config *config.Config) func(context.Context) error {
 		),
 	)
 	if err != nil {
-		logging.Errorf("Failed tracing app: %v", err)
+		slog.Error("Failed tracing app", "error", err)
 	}
 	resources, err := resource.New(
 		context.Background(),
@@ -361,7 +358,7 @@ func initTracer(config *config.Config) func(context.Context) error {
 		),
 	)
 	if err != nil {
-		logging.Errorf("Could not set resources: %v", err)
+		slog.Error("Could not set resources", "error", err)
 	}
 
 	otel.SetTracerProvider(

@@ -17,19 +17,26 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
-import { routes, setupwizardRoutes } from './routes';
+package setupwizard
 
-export default (setupwizard) => {
-  if (setupwizard) {
-    return createRouter({
-      history: createWebHistory(import.meta.env.BASE_URL),
-      routes: setupwizardRoutes(),
-    });
-  }
+import (
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
+	v1APIControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
+	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/config"
+	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
+	"github.com/gin-gonic/gin"
+)
 
-  return createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: routes(),
-  });
-};
+// ApplyRoutes to the HTTP Mux.
+func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
+	apiV1 := router.Group("/api/v1")
+	v1(apiV1)
+}
+
+func v1(group *gin.RouterGroup) {
+	group.PUT("/config", v1ConfigControllers.PUTConfig)
+	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
+	group.GET("/network/name", v1APIControllers.GETNetworkName)
+	group.GET("/version", v1APIControllers.GETVersion)
+	group.GET("/ping", v1APIControllers.GETPing)
+}

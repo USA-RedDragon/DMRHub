@@ -17,7 +17,23 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-export default (features) => {
+export function setupwizardRoutes() {
+  return [
+    {
+      path: '/setup',
+      name: 'SetupWizard',
+      component: () => import('../views/SetupWizard.vue'),
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: (_) => {
+        return { path: '/setup' };
+      },
+    },
+  ];
+}
+
+export function routes() {
   const ret = [
     {
       path: '/',
@@ -118,29 +134,29 @@ export default (features) => {
     },
   ];
 
-  if (features.isEnabled(features.OpenBridge)) {
-    ret.concat([
-      {
-        path: '/peers',
-        name: 'UserOpenBridgePeers',
-        sitemap: {
-          changefreq: 'daily',
-          priority: 0.75,
-        },
-        component: () => import('../views/peers/OpenBridgePeersPage.vue'),
-      },
-      {
-        path: '/admin/peers',
-        name: 'OpenBridgePeers',
-        component: () => import('../views/admin/OpenBridgePeersPage.vue'),
-      },
-      {
-        path: '/admin/peers/new',
-        name: 'NewOpenBridgePeer',
-        component: () => import('../views/admin/NewOpenBridgePeerPage.vue'),
-      },
-    ]);
-  }
+  // if (features.isEnabled(features.OpenBridge)) {
+  //   ret.concat([
+  //     {
+  //       path: '/peers',
+  //       name: 'UserOpenBridgePeers',
+  //       sitemap: {
+  //         changefreq: 'daily',
+  //         priority: 0.75,
+  //       },
+  //       component: () => import('../views/peers/OpenBridgePeersPage.vue'),
+  //     },
+  //     {
+  //       path: '/admin/peers',
+  //       name: 'OpenBridgePeers',
+  //       component: () => import('../views/admin/OpenBridgePeersPage.vue'),
+  //     },
+  //     {
+  //       path: '/admin/peers/new',
+  //       name: 'NewOpenBridgePeer',
+  //       component: () => import('../views/admin/NewOpenBridgePeerPage.vue'),
+  //     },
+  //   ]);
+  // }
 
   return ret;
-};
+}

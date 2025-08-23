@@ -1,4 +1,4 @@
-import routes from '../src/router/routes.mjs';
+import { routes } from '../src/router/routes.mjs';
 import { Path } from 'path-parser';
 import fs from 'fs';
 import { SitemapStream, streamToPromise } from 'sitemap';

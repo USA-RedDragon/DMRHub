@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.4
-	github.com/USA-RedDragon/configulator v0.0.0-20250409213831-8d29f1f162be
+	github.com/USA-RedDragon/configulator v0.0.0-20250823002747-62a54292f480
 	github.com/emersion/go-sasl v0.0.0-20231106173351-e73c9f7bad43
 	github.com/emersion/go-smtp v0.21.3
 	github.com/gin-contrib/cors v1.7.5
@@ -114,7 +114,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect

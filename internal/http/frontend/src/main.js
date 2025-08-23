@@ -31,7 +31,7 @@ import Tooltip from 'primevue/tooltip';
 
 import App from './App.vue';
 import router from './router';
-import features from './services/features';
+import API from './services/API.js';
 
 import 'primeflex/primeflex.scss';
 import 'primeicons/primeicons.css';
@@ -54,15 +54,15 @@ app.component('PVToast', Toast);
 app.component('ConfirmDialog', ConfirmDialog);
 app.directive('tooltip', Tooltip);
 
-features.getFeatures().then(() => {
-  app.use(router(features));
+API.get('/setupwizard').then((response) => {
+  if (response.data && response.data.setupwizard) {
+    console.error('Entering setup wizard mode');
+    app.use(router(response.data.setupwizard));
+  } else {
+    app.use(router(false));
+  }
 }).catch(() => {
-  app.use(router({
-    OpenBridge: '',
-    isEnabled: () => {
-      return false;
-    },
-  }));
+  app.use(router(false));
 }).finally(() => {
   app.mount('#app');
 });

@@ -22,9 +22,15 @@
 <template>
   <div>
     <Card>
-      <template #title>SMTP Settings</template>
+      <template #title>Email Settings</template>
       <template #content>
-        <p>SMTP settings</p>
+        <p>DMRHub can send email notifications to admins when:
+          <ul>
+            <li>A new user registers</li>
+            <li>A user is promoted to admin</li>
+            <li>A user is demoted from admin</li>
+          </ul>
+        </p>
         <br />
         <span>
           <Checkbox
@@ -41,36 +47,65 @@
           <InputText id="from" type="text" v-model="from" />
           <label for="from">From Address</label>
         </span>
+        <p v-if="enabled">The email address used as the From address in email notifications</p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="authMethod" type="text" v-model="authMethod" />
+          <Dropdown id="authMethod" v-model="authMethod"  optionValue="value" optionLabel="label" :options="[
+            { label: 'Plain', value: 'plain' },
+            { label: 'Login', value: 'login' },
+            { label: 'None', value: 'none' },
+          ]" />
           <label for="authMethod">Authentication Method</label>
         </span>
+        <p v-if="enabled">
+          The authentication method to use when connecting to the SMTP server.
+          One of <code>plain</code>, <code>login</code>, or <code>none</code>.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="host" type="text" v-model="host" />
           <label for="host">Host</label>
         </span>
+        <p v-if="enabled">
+          The hostname or IP address of the SMTP server to connect to.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p v-if="enabled">
+          The port number of the SMTP server to connect to.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="username" type="text" v-model="username" />
           <label for="username">Username</label>
         </span>
+        <p v-if="enabled">
+          The username to use when connecting to the SMTP server.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="password" type="password" v-model="password" />
           <label for="password">Password</label>
         </span>
+        <p v-if="enabled">
+          The password to use when connecting to the SMTP server.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="tls" type="text" v-model="tls" />
+          <Dropdown id="tls" v-model="tls" optionValue="value" optionLabel="label" :options="[
+            { label: 'None', value: 'none' },
+            { label: 'STARTTLS', value: 'starttls' },
+            { label: 'Implicit', value: 'implicit' },
+          ]" />
           <label for="tls">TLS Mode</label>
         </span>
+        <p v-if="enabled">
+          The TLS mode to use when connecting to the SMTP server. One of
+          <code>none</code>, <code>starttls</code>, or <code>implicit</code>.
+        </p>
       </template>
     </Card>
   </div>
@@ -80,12 +115,14 @@
 import Card from 'primevue/card';
 import Checkbox from 'primevue/checkbox';
 import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
 
 export default {
   components: {
     Card,
     Checkbox,
     InputText,
+    Dropdown,
   },
   props: {
     modelValue: {

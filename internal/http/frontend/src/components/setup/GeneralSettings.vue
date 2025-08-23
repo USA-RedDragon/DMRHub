@@ -30,26 +30,48 @@
           <InputText id="network-name" type="text" v-model="networkName" />
           <label for="network-name">Network Name</label>
         </span>
+        <p>
+          The name of the DMR network. This is used in various places throughout the application.
+        </p>
         <br />
         <span class="p-float-label">
-          <InputText id="log-level" type="text" v-model="logLevel" />
+          <Dropdown id="log-level" v-model="logLevel" optionValue="value" optionLabel="label" :options="[
+            { label: 'Debug', value: 'debug' },
+            { label: 'Info', value: 'info' },
+            { label: 'Warn', value: 'warn' },
+            { label: 'Error', value: 'error' },
+          ]" />
           <label for="log-level">Log Level</label>
         </span>
+        <p>
+          The log level for the application. One of <code>debug</code>, <code>info</code>,
+          <code>warn</code>, or <code>error</code>.
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="secret" type="password" v-model="secret" />
           <label for="secret">Secret</label>
         </span>
+        <p>
+          The secret used to sign session cookies. This should be a long, random string.
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="password-salt" type="password" v-model="passwordSalt" />
           <label for="password-salt">Password Salt</label>
         </span>
+        <p>
+          The salt used to hash user passwords in the database. This should be a long, random string.
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="hibp-api-key" type="password" v-model="hibpApiKey" />
           <label for="hibp-api-key">HaveIBeenPwned API Key</label>
         </span>
+        <p>
+          The API key to use when querying the HaveIBeenPwned API to check for compromised passwords.
+          If empty, password checks are disabled.
+        </p>
       </template>
     </Card>
   </div>
@@ -58,11 +80,13 @@
 <script>
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
+import Dropdown from 'primevue/dropdown';
 
 export default {
   components: {
     Card,
     InputText,
+    Dropdown: Dropdown,
   },
   props: {
     modelValue: {

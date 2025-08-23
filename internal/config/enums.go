@@ -75,7 +75,7 @@ type RobotsTXTMode string
 const (
 	// RobotsTXTModeAllow allows all robots to access the site.
 	RobotsTXTModeAllow RobotsTXTMode = "allow"
-	// RobotsTXTModeDisabled disables the robots.txt file.
+	// RobotsTXTModeDisabled sends a robots.txt file that disallows all robots.
 	RobotsTXTModeDisabled RobotsTXTMode = "disabled"
 	// RobotsTXTModeCustom allows a custom robots.txt file to be served.
 	RobotsTXTModeCustom RobotsTXTMode = "custom"

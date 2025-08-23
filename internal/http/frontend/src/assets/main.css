@@ -61,7 +61,8 @@ html {
   border-radius: var(--border-radius);
 }
 
-.p-inputtext {
+.p-inputtext,
+.p-dropdown {
   width: 100%;
 }
 

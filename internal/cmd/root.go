@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -82,17 +84,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	setupLogger(cfg)
 
-	cleanup := setupTracing(cfg)
-	defer func() {
-		if cleanup != nil {
-			if err := cleanup(ctx); err != nil {
-				slog.Error("Failed to shutdown tracer", "error", err)
-			}
-		}
-	}()
-
-	startBackgroundServices(cfg)
-
 	scheduler, err := setupScheduler()
 	if err != nil {
 		return err
@@ -106,11 +97,24 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		// Validation failed, we need to still run the server to
 		// allow the user to fix the config
 		slog.Info("Configuration validation failed", "error", err)
-		err = waitForConfig(cfg, cmd.Annotations["version"], cmd.Annotations["commit"])
-		if err != nil {
-			return fmt.Errorf("failed during configuration wait: %w", err)
+		exit := waitForConfig(cfg, cmd.Annotations["version"], cmd.Annotations["commit"])
+		if exit {
+			return nil
 		}
 	}
+
+	setupLogger(cfg)
+
+	cleanup := setupTracing(cfg)
+	defer func() {
+		if cleanup != nil {
+			if err := cleanup(ctx); err != nil {
+				slog.Error("Failed to shutdown tracer", "error", err)
+			}
+		}
+	}()
+
+	startBackgroundServices(cfg)
 
 	database, err := db.MakeDB(cfg)
 	if err != nil {
@@ -133,43 +137,49 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 }
 
 // waitForConfig waits for the user to fix the config file
-func waitForConfig(config *config.Config, version, commit string) error {
+func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	slog.Info("Starting a setup wizard at http://localhost:3005/setup")
 	httpServer := http.MakeSetupWizardServer(config, version, commit)
-	err := httpServer.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start HTTP server: %w", err)
-	}
+	go func() {
+		err := httpServer.Start()
+		if err != nil {
+			if !strings.Contains(err.Error(), "server closed") {
+				slog.Error("failed to start HTTP server", "error", err)
+			}
+		}
+	}()
 
 	stop := func(sig os.Signal) {
 		slog.Error("Shutting down due to signal", "signal", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		httpServer.Stop(ctx)
-		os.Exit(0)
+		if sig != nil {
+			exit = true
+		}
 	}
 
-	shutdown.AddWithParam(stop)
-
-	ch := make(chan any, 1)
+	interruptCh := make(chan os.Signal, 1)
+	configCh := make(chan any, 1)
 	go func() {
 		for {
 			time.Sleep(1 * time.Second)
 			if err := config.Validate(); err == nil {
 				slog.Info("Configuration is valid, shutting down setup wizard")
-				httpServer.Stop(context.Background())
-				ch <- struct{}{}
+				configCh <- struct{}{}
 				return
 			}
 		}
 	}()
 	go func() {
-		<-ch
-		shutdown.Reset()
+		<-configCh
+		signal.Stop(interruptCh)
+		close(interruptCh)
 	}()
 
-	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
-	return nil
+	signal.Notify(interruptCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
+	stop(<-interruptCh)
+	return
 }
 
 // loadConfig loads the configuration from context

@@ -21,24 +21,28 @@ package config
 
 import (
 	"crypto/sha256"
+	"fmt"
+	"os"
+	"path"
 
 	"golang.org/x/crypto/pbkdf2"
+	"gopkg.in/yaml.v2"
 )
 
 // Config stores the application configuration.
 type Config struct {
-	LogLevel     LogLevel `json:"log-level,omitempty" name:"log-level" description:"Logging level for the application. One of debug, info, warn, or error" default:"info"`
+	LogLevel     LogLevel `json:"log-level,omitempty" yaml:"log-level,omitempty" name:"log-level" description:"Logging level for the application. One of debug, info, warn, or error" default:"info"`
 	Redis        Redis    `json:"redis,omitempty" name:"redis" description:"Redis configuration for the application"`
 	Database     Database `json:"database,omitempty" name:"database" description:"Database configuration for the application"`
-	Secret       string   `json:"-" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session"`
-	PasswordSalt string   `json:"-" name:"password-salt" description:"Salt used for hashing user passwords, should be a random string of sufficient length"`
+	Secret       string   `json:"-" yaml:"secret" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session"`
+	PasswordSalt string   `json:"-" yaml:"password-salt" name:"password-salt" description:"Salt used for hashing user passwords, should be a random string of sufficient length"`
 	HTTP         HTTP     `json:"http,omitempty" name:"http" description:"HTTP server configuration for the application"`
 	DMR          DMR      `json:"dmr,omitempty" name:"dmr" description:"DMR server configuration for the application"`
 	SMTP         SMTP     `json:"smtp,omitempty" name:"smtp" description:"SMTP configuration for sending emails"`
-	NetworkName  string   `json:"network-name,omitempty" name:"network-name" description:"Name of the DMR network, used in various places like the network status page" default:"DMRHub"`
+	NetworkName  string   `json:"network-name,omitempty" yaml:"network-name" name:"network-name" description:"Name of the DMR network, used in various places like the network status page" default:"DMRHub"`
 	Metrics      Metrics  `json:"metrics,omitempty" name:"metrics" description:"Metrics configuration for the application"`
 	PProf        PProf    `json:"pprof,omitempty" name:"pprof" description:"PProf configuration for the application, used for profiling and debugging purposes"`
-	HIBPAPIKey   string   `json:"-" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
+	HIBPAPIKey   string   `json:"-" yaml:"hibp-api-key" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
 }
 
 // GetDerivedSecret generates a derived secret key using PBKDF2 with the configured secret and password salt.
@@ -53,15 +57,15 @@ type Metrics struct {
 	Enabled        bool     `json:"enabled,omitempty" name:"enabled" description:"Enable metrics collection and export" default:"false"`
 	Bind           string   `json:"bind,omitempty" name:"bind" description:"Metrics server listen address" default:"[::]"`
 	Port           int      `json:"port,omitempty" name:"port" description:"Metrics server port" default:"9000"`
-	TrustedProxies []string `json:"trusted-proxies,omitempty" name:"trusted-proxies" description:"List of trusted proxy IPs for the metrics server"`
-	OTLPEndpoint   string   `json:"otlp-endpoint,omitempty" name:"otlp-endpoint" description:"OTLP endpoint for exporting telemetry data"`
+	TrustedProxies []string `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the metrics server"`
+	OTLPEndpoint   string   `json:"otlp-endpoint,omitempty" yaml:"otlp-endpoint" name:"otlp-endpoint" description:"OTLP endpoint for exporting telemetry data"`
 }
 
 // PProf holds the PProf configuration.
 type PProf struct {
 	Enabled        bool     `json:"enabled,omitempty" name:"enabled" description:"Enable PProf profiling and debugging support" default:"false"`
 	Bind           string   `json:"bind,omitempty" name:"bind" description:"PProf server listen address" default:"[::]"`
-	TrustedProxies []string `json:"trusted-proxies,omitempty" name:"trusted-proxies" description:"List of trusted proxy IPs for the PProf server"`
+	TrustedProxies []string `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the PProf server"`
 	Port           int      `json:"port,omitempty" name:"port" description:"PProf server port" default:"6060"`
 }
 
@@ -70,7 +74,7 @@ type Redis struct {
 	Enabled  bool   `json:"enabled,omitempty" name:"enabled" description:"Enable Redis support" default:"false"`
 	Host     string `json:"host,omitempty" name:"host" description:"Redis host address"`
 	Port     int    `json:"port,omitempty" name:"port" description:"Redis port" default:"6379"`
-	Password string `json:"-" name:"password" description:"Redis password"`
+	Password string `json:"-" yaml:"password" name:"password" description:"Redis password"`
 }
 
 // Database holds the database configuration.
@@ -80,24 +84,24 @@ type Database struct {
 	Host            string         `json:"host,omitempty" name:"host" description:"Database host address"`
 	Port            int            `json:"port,omitempty" name:"port" description:"Database port"`
 	Username        string         `json:"username,omitempty" name:"username" description:"Database username"`
-	Password        string         `json:"-" name:"password" description:"Database password"`
-	ExtraParameters []string       `json:"extra-parameters,omitempty" name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL)"`
+	Password        string         `json:"-" yaml:"password" name:"password" description:"Database password"`
+	ExtraParameters []string       `json:"extra-parameters,omitempty" yaml:"extra-parameters" name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL)"`
 }
 
 // HTTP holds the HTTP server configuration.
 type HTTP struct {
 	Bind           string    `json:"bind,omitempty" name:"bind" description:"HTTP server listen address" default:"[::]"`
 	Port           int       `json:"port,omitempty" name:"port" description:"HTTP server port" default:"3005"`
-	RobotsTXT      RobotsTXT `json:"robots-txt,omitempty" name:"robots-txt" description:"Robots.txt configuration for the HTTP server"`
+	RobotsTXT      RobotsTXT `json:"robots-txt,omitempty" yaml:"robots-txt" name:"robots-txt" description:"Robots.txt configuration for the HTTP server"`
 	CORS           CORS      `json:"cors,omitempty" name:"cors" description:"CORS configuration for the HTTP server"`
-	TrustedProxies []string  `json:"trusted-proxies,omitempty" name:"trusted-proxies" description:"List of trusted proxy IPs for the HTTP server"`
-	CanonicalHost  string    `json:"canonical-host,omitempty" name:"canonical-host" description:"Canonical host for the HTTP server, used for generating absolute URLs"`
+	TrustedProxies []string  `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the HTTP server"`
+	CanonicalHost  string    `json:"canonical-host,omitempty" yaml:"canonical-host" name:"canonical-host" description:"Canonical host for the HTTP server, used for generating absolute URLs"`
 }
 
 // CORS holds the CORS configuration for the HTTP server.
 type CORS struct {
 	Enabled bool     `json:"enabled,omitempty" name:"enabled" description:"Enable CORS support for the HTTP server" default:"false"`
-	Hosts   []string `json:"extra-hosts,omitempty" name:"extra-hosts" description:"List of allowed CORS hosts"`
+	Hosts   []string `json:"extra-hosts,omitempty" yaml:"extra-hosts" name:"extra-hosts" description:"List of allowed CORS hosts"`
 }
 
 // RobotsTXT holds the configuration for the robots.txt file served by the HTTP server.
@@ -129,10 +133,31 @@ type OpenBridge struct {
 type SMTP struct {
 	Enabled    bool           `json:"enabled,omitempty" name:"enabled" description:"Enable SMTP support for sending emails" default:"false"`
 	Host       string         `json:"host,omitempty" name:"host" description:"SMTP server host address"`
-	Port       int            `json:"port,omitempty" name:"port" description:"SMTP server port"`
+	Port       int            `json:"port,omitempty" name:"port" description:"SMTP server port" default:"25"`
 	TLS        SMTPTLS        `json:"tls,omitempty" name:"tls" description:"SMTP TLS mode" default:"none"`
 	Username   string         `json:"username,omitempty" name:"username" description:"SMTP server username"`
-	Password   string         `json:"-" name:"password" description:"SMTP server password"`
+	Password   string         `json:"-" yaml:"password" name:"password" description:"SMTP server password"`
 	From       string         `json:"from,omitempty" name:"from" description:"Email address to use as the sender"`
-	AuthMethod SMTPAuthMethod `json:"auth-method,omitempty" name:"auth-method" description:"SMTP authentication method. One of none, plain, or login" default:"none"`
+	AuthMethod SMTPAuthMethod `json:"auth-method,omitempty" yaml:"auth-method" name:"auth-method" description:"SMTP authentication method. One of none, plain, or login" default:"none"`
+}
+
+func (c Config) Save() error {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user config directory: %w", err)
+	}
+	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0750); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+	f, err := os.Create(path.Join(configDir, "DMRHub", "config.yaml"))
+	if err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	defer f.Close()
+	enc := yaml.NewEncoder(f)
+	defer enc.Close()
+	if err := enc.Encode(c); err != nil {
+		return fmt.Errorf("failed to encode config to file: %w", err)
+	}
+	return nil
 }

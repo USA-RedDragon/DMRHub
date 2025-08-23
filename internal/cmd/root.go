@@ -82,11 +82,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	setupLogger(cfg)
 
-	scheduler, err := setupScheduler()
-	if err != nil {
-		return err
-	}
-
 	cleanup := setupTracing(cfg)
 	defer func() {
 		if cleanup != nil {
@@ -98,14 +93,29 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	startBackgroundServices(cfg)
 
+	scheduler, err := setupScheduler()
+	if err != nil {
+		return err
+	}
+
+	setupDMRDatabaseJobs(scheduler)
+
+	scheduler.Start()
+
+	if err := cfg.Validate(); err != nil {
+		// Validation failed, we need to still run the server to
+		// allow the user to fix the config
+		slog.Info("Configuration validation failed", "error", err)
+		err = waitForConfig(cfg, cmd.Annotations["version"], cmd.Annotations["commit"])
+		if err != nil {
+			return fmt.Errorf("failed during configuration wait: %w", err)
+		}
+	}
+
 	database, err := db.MakeDB(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-
-	setupDatabaseJobs(scheduler)
-
-	scheduler.Start()
 
 	servers, err := initializeServers(ctx, cfg, database, cmd.Annotations["version"], cmd.Annotations["commit"])
 	if err != nil {
@@ -122,6 +132,46 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// waitForConfig waits for the user to fix the config file
+func waitForConfig(config *config.Config, version, commit string) error {
+	slog.Info("Starting a setup wizard at http://localhost:3005/setup")
+	httpServer := http.MakeSetupWizardServer(config, version, commit)
+	err := httpServer.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start HTTP server: %w", err)
+	}
+
+	stop := func(sig os.Signal) {
+		slog.Error("Shutting down due to signal", "signal", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		httpServer.Stop(ctx)
+		os.Exit(0)
+	}
+
+	shutdown.AddWithParam(stop)
+
+	ch := make(chan any, 1)
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			if err := config.Validate(); err == nil {
+				slog.Info("Configuration is valid, shutting down setup wizard")
+				httpServer.Stop(context.Background())
+				ch <- struct{}{}
+				return
+			}
+		}
+	}()
+	go func() {
+		<-ch
+		shutdown.Reset()
+	}()
+
+	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
+	return nil
+}
+
 // loadConfig loads the configuration from context
 func loadConfig(ctx context.Context) (*config.Config, error) {
 	c, err := configulator.FromContext[config.Config](ctx)
@@ -129,7 +179,7 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 		return nil, fmt.Errorf("failed to get config from context: %w", err)
 	}
 
-	cfg, err := c.Load()
+	cfg, err := c.LoadWithoutValidation()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
@@ -176,8 +226,8 @@ func startBackgroundServices(cfg *config.Config) {
 	go pprof.CreatePProfServer(cfg)
 }
 
-// setupDatabaseJobs configures scheduled jobs for database updates
-func setupDatabaseJobs(scheduler gocron.Scheduler) {
+// setupDMRDatabaseJobs configures scheduled jobs for database updates
+func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
 	// Dummy call to get the data decoded into memory early
 	go func() {
 		err := repeaterdb.Update()

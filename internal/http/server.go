@@ -36,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
+	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
@@ -83,6 +84,30 @@ func MakeServer(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, ver
 	}
 }
 
+func MakeSetupWizardServer(config *configPkg.Config, version, commit string) Server {
+	if config.LogLevel == configPkg.LogLevelDebug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := CreateSetupWizardRouter(config, version, commit)
+
+	slog.Info("HTTP Server listening", "bind", "[::]", "port", "3005")
+	s := &http.Server{
+		Addr:         "[::]:3005",
+		Handler:      r,
+		ReadTimeout:  defTimeout,
+		WriteTimeout: defTimeout,
+	}
+	s.SetKeepAlivesEnabled(false)
+
+	return Server{
+		s,
+		make(chan bool),
+	}
+}
+
 // FS is the embedded frontend files
 //
 //go:generate sh -c "cd ./frontend && npm ci && npm run build"
@@ -116,6 +141,40 @@ func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub 
 
 	// Versioning
 	r.Use(middleware.VersionProvider(version, commit))
+}
+
+func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, version, commit string) {
+	// Tracing
+	if config.Metrics.OTLPEndpoint != "" {
+		r.Use(otelgin.Middleware("setupwizard"))
+		r.Use(middleware.TracingProvider(config))
+	}
+
+	r.Use(middleware.ConfigProvider(config))
+
+	// CORS
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowCredentials = true
+	corsConfig.AllowOrigins = []string{"*"}
+	r.Use(cors.New(corsConfig))
+
+	// Versioning
+	r.Use(middleware.VersionProvider(version, commit))
+}
+
+func CreateSetupWizardRouter(config *configPkg.Config, version, commit string) *gin.Engine {
+	r := gin.New()
+	// Logging middleware replaced or removed; consider using slog for access logs if needed
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+
+	addSetupWizardMiddleware(config, r, version, commit)
+
+	setupwizard.ApplyRoutes(config, r)
+
+	addFrontendRoutes(r)
+
+	return r
 }
 
 func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) *gin.Engine {

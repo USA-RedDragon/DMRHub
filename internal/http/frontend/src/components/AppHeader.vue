@@ -133,7 +133,6 @@
 <script>
 import Menu from 'primevue/menu';
 import API from '@/services/API';
-import features from '@/services/features';
 
 import { mapStores } from 'pinia';
 import { useUserStore } from '@/store';
@@ -167,19 +166,8 @@ export default {
     };
   },
   created() {
-    features.getFeatures().then(() => {
-      if (features.isEnabled(features.OpenBridge)) {
-        this.openBridgeFeature = true;
-        this.adminMenu.concat(
-          {
-            label: '\xa0\xa0OpenBridge Peers',
-            to: '/admin/peers',
-          },
-        );
-      }
-    });
     this.getTitle();
-    this.userHasOpenBridgePeers();
+    // this.userHasOpenBridgePeers();
   },
   mounted() {},
   methods: {

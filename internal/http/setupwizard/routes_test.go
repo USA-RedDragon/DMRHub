@@ -17,28 +17,4 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import API from './API.js';
-
-let features = [];
-
-export default {
-  OpenBridge: 'openbridge',
-  getFeatures() {
-    return new Promise((resolve, reject) => {
-      API.get('/features').then((response) => {
-        if (typeof response.data !== 'object' || !('features' in response.data)) {
-          reject(new Error('Invalid response from server'));
-          return;
-        }
-        features = response.data.features;
-        resolve(this);
-      }).catch((error) => {
-        console.error(error);
-        reject(error);
-      });
-    });
-  },
-  isEnabled(feature) {
-    return features.includes(feature);
-  },
-};
+package setupwizard

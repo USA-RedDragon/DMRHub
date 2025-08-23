@@ -4,6 +4,8 @@ bindata_assetfs.go
 pkg/
 bin/
 *.db
+*.db-shm
+*.db-wal
 commit.txt
 coverage.txt
 coverage.out

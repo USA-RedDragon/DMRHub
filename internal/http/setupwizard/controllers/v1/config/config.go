@@ -17,19 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
-import { routes, setupwizardRoutes } from './routes';
+package config
 
-export default (setupwizard) => {
-  if (setupwizard) {
-    return createRouter({
-      history: createWebHistory(import.meta.env.BASE_URL),
-      routes: setupwizardRoutes(),
-    });
-  }
+import "github.com/gin-gonic/gin"
 
-  return createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
-    routes: routes(),
-  });
-};
+func PUTConfig(c *gin.Context) {
+	// Handler logic to update configuration
+}

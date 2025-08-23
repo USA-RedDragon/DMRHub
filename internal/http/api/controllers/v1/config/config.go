@@ -36,19 +36,24 @@ func PUTConfig(c *gin.Context) {
 		return
 	}
 
-	errs := req.ValidateWithFields()
+	cfg := &config.Config{}
+	req.ToConfig(cfg)
+
+	errs := cfg.ValidateWithFields()
 	if len(errs) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid configuration", "errors": errs})
 		return
 	}
-	config, ok := c.MustGet("Config").(*config.Config)
+
+	var ok bool
+	cfg, ok = c.MustGet("Config").(*config.Config)
 	if !ok {
 		slog.Error("Unable to get Config from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	req.ToConfig(config)
+	req.ToConfig(cfg)
 	c.JSON(http.StatusOK, gin.H{"message": "Configuration updated successfully"})
 }
 
@@ -73,40 +78,7 @@ func GETConfigValidate(c *gin.Context) {
 
 	errs := config.ValidateWithFields()
 
-	resp := gin.H{"valid": len(errs) == 0}
-	errors := make(map[string]any)
-
-	for _, e := range errs {
-		// Field is a string, but may contain dots for nested fields
-		// e.g. "smtp.password"
-		// We need to split by the dot and create sub-maps as needed
-		parts := strings.Split(e.Field, ".")
-		currentMap := errors
-		for i, part := range parts {
-			if i == len(parts)-1 {
-				// Last part, set the error message
-				currentMap[part] = e.Error
-			} else {
-				// Not last part, create a new map if it doesn't exist
-				if _, ok := currentMap[part]; !ok {
-					currentMap[part] = make(map[string]any)
-				}
-				// Move to the next map
-				nextMap, ok := currentMap[part].(map[string]any)
-				if !ok {
-					// This should never happen, but just in case
-					break
-				}
-				currentMap = nextMap
-			}
-		}
-
-		// Set the error message for the last part
-		currentMap[parts[len(parts)-1]] = e.Error
-	}
-	resp["errors"] = errors
-
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, "errors": formatErrors(errs)})
 }
 
 func POSTConfigValidate(c *gin.Context) {
@@ -121,7 +93,10 @@ func POSTConfigValidate(c *gin.Context) {
 
 	errs := config.ValidateWithFields()
 
-	resp := gin.H{"valid": len(errs) == 0}
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, "errors": formatErrors(errs)})
+}
+
+func formatErrors(errs []config.ValidationError) map[string]any {
 	errors := make(map[string]any)
 
 	for _, e := range errs {
@@ -152,7 +127,6 @@ func POSTConfigValidate(c *gin.Context) {
 		// Set the error message for the last part
 		currentMap[parts[len(parts)-1]] = e.Error
 	}
-	resp["errors"] = errors
 
-	c.JSON(http.StatusOK, resp)
+	return errors
 }

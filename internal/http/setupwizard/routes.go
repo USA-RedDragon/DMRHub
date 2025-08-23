@@ -22,7 +22,7 @@ package setupwizard
 import (
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	v1APIControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
-	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/config"
+	v1APIConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +34,11 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
 }
 
 func v1(group *gin.RouterGroup) {
-	group.PUT("/config", v1ConfigControllers.PUTConfig)
+	group.PUT("/config", v1APIConfigControllers.PUTConfig)
+	group.GET("/config", v1APIConfigControllers.GETConfig)
+	group.GET("/config/validate", v1APIConfigControllers.GETConfigValidate)
+	group.POST("/config/validate", v1APIConfigControllers.POSTConfigValidate)
+
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
 	group.GET("/network/name", v1APIControllers.GETNetworkName)
 	group.GET("/version", v1APIControllers.GETVersion)

@@ -41,29 +41,32 @@
         <br v-if="enabled" />
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="bind" type="text" v-model="bind" />
+          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
           <label for="bind">Bind</label>
         </span>
         <p v-if="enabled">
           The address to bind the pprof server to
         </p>
+        <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="port" type="number" v-model="port" />
+          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">
           The port number to bind the pprof server to
         </p>
+        <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" />
+          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }" />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
         <p v-if="enabled">
           A list of trusted proxy IP addresses. If set, the pprof server will only accept
           requests from these IP addresses. One per line.
         </p>
+        <span v-if="enabled && errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
       </template>
     </Card>
   </div>
@@ -84,6 +87,10 @@ export default {
   },
   props: {
     modelValue: {
+      type: Object,
+      required: true,
+    },
+    errors: {
       type: Object,
       required: true,
     },

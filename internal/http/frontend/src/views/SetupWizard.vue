@@ -22,38 +22,38 @@
 <template>
   <div>
     <PVToast />
-    <Card>
-      <template #title>Setup</template>
-      <template #content>
-        <form @submit.prevent="submit()">
-          <GeneralSettings v-model="config" />
-          <br />
-          <RedisSettings v-model="config.redis" />
-          <br />
-          <DatabaseSettings v-model="config.database" />
-          <br />
-          <HTTPSettings v-model="config.http" />
-          <br />
-          <DMRSettings v-model="config.dmr" />
-          <br />
-          <SMTPSettings v-model="config.smtp" />
-          <br />
-          <MetricsSettings v-model="config.metrics" />
-          <br />
-          <PProfSettings v-model="config.pprof" />
-        </form>
-      </template>
-      <template #footer>
-        <div class="card-footer">
-          <PVButton
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-check"
-            label="&nbsp;Save"
-            type="submit"
-          />
-        </div>
-      </template>
-    </Card>
+    <form @submit.prevent="submit()">
+      <Card>
+        <template #title>Setup</template>
+        <template #content>
+            <GeneralSettings v-model="config" :errors="errors" />
+            <br />
+            <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
+            <br />
+            <HTTPSettings v-model="config.http" :errors="errors.http" />
+            <br />
+            <DatabaseSettings v-model="config.database" :errors="errors.database" />
+            <br />
+            <SMTPSettings v-model="config.smtp" :errors="errors.smtp" />
+            <br />
+            <RedisSettings v-model="config.redis" :errors="errors.redis" />
+            <br />
+            <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
+            <br />
+            <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
+        </template>
+        <template #footer>
+          <div class="card-footer">
+            <PVButton
+              class="p-button-raised p-button-rounded"
+              icon="pi pi-check"
+              label="&nbsp;Save"
+              type="submit"
+            />
+          </div>
+        </template>
+      </Card>
+    </form>
   </div>
 </template>
 
@@ -98,7 +98,7 @@ export default {
   data: function() {
     return {
       config: {},
-      submitted: false,
+      errors: [],
     };
   },
   methods: {
@@ -106,23 +106,49 @@ export default {
       API.get('/config')
         .then((response) => {
           this.config = response.data;
-          this.checkConfig(response.data);
+          this.checkConfig(this.config);
         })
         .catch((error) => {
           console.log(error);
         });
     },
-    checkConfig(config) {
-      API.post('/config/validate', config)
-        .then((response) => {
-          console.log(response.data);
-        })
-        .catch((error) => {
-          console.log(error);
+    async checkConfig(config) {
+      const response = await API.post('/config/validate', config);
+      if (response.data.valid) {
+        return true;
+      } else {
+        this.errors = response.data.errors;
+        this.$toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Configuration is invalid. Please correct the errors and try again.',
+          life: 3000,
         });
+        return false;
+      }
     },
-    submit() {
-      this.submitted = true;
+    async submit() {
+      console.error('submit');
+      if (!await this.checkConfig(this.config)) {
+        return;
+      }
+      try {
+        await API.put('/config', this.config);
+        this.$toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'Configuration saved successfully',
+          life: 3000,
+        });
+      } catch (error) {
+        console.log(error);
+        this.$toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to save configuration',
+          life: 3000,
+        });
+      }
     },
   },
 };

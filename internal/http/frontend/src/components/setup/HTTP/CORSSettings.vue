@@ -41,13 +41,14 @@
         <br v-if="enabled" />
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <TextArea rows="5" id="hosts" v-model="hosts" />
+          <TextArea rows="5" id="hosts" v-model="hosts" :class="{ 'p-invalid': (errors && errors.hosts) || false }" />
           <label for="hosts">Hosts</label>
         </span>
         <p v-if="enabled">
           A list of hosts that are allowed to access the DMRHub API.
           Use <code>*</code> to allow all hosts (not recommended for production). One per line.
         </p>
+        <span v-if="enabled && errors && errors.hosts" class="p-error">{{ errors.hosts }}</span>
       </template>
     </Card>
   </div>
@@ -68,6 +69,9 @@ export default {
     modelValue: {
       type: Object,
       required: true,
+    },
+    errors: {
+      type: Object,
     },
   },
   emits: ['update:modelValue'],

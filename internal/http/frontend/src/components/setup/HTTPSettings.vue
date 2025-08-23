@@ -28,41 +28,45 @@
           A canonical host is required by DMRHub to allow it to generate absolute URLs.</p>
         <br />
         <span class="p-float-label">
-          <InputText id="bind" type="text" v-model="bind" />
+          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
           <label for="bind">Bind</label>
         </span>
         <p>
           The address to bind the HTTP server to
         </p>
+        <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="port" type="number" v-model="port" />
+          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p>
           The port number to bind the HTTP server to
         </p>
+        <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
         <span class="p-float-label">
-          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" />
+          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }" />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
         <p>
           A list of trusted proxy IP addresses. If set, the HTTP server will only accept
           requests from these IP addresses. One per line.
         </p>
+        <span v-if="errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="canonicalHost" type="text" v-model="canonicalHost" />
+          <InputText id="canonicalHost" type="text" v-model="canonicalHost" :class="{ 'p-invalid': (errors && errors['canonical-host']) || false }" />
           <label for="canonicalHost">Canonical Host</label>
         </span>
         <p>
           The canonical host name for the DMRHub instance. This is used to generate absolute URLs.
         </p>
+        <span v-if="errors && errors['canonical-host']" class="p-error">{{ errors['canonical-host'] }}</span>
         <br />
-        <RobotsTXTSettings v-model="robotsTXT" />
+        <RobotsTXTSettings v-model="robotsTXT" :errors="errors['robots-txt']" />
         <br />
-        <CORSSettings v-model="cors" />
+        <CORSSettings v-model="cors" :errors="errors.cors" />
       </template>
     </Card>
   </div>
@@ -88,6 +92,11 @@ export default {
     modelValue: {
       type: Object,
       required: true,
+    },
+    errors: {
+      type: Object,
+      required: true,
+      default: () => ({}),
     },
   },
   emits: ['update:modelValue'],

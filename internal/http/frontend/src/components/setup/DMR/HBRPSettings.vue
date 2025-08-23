@@ -28,20 +28,23 @@
           software such as DMRGateway.</p>
         <br />
         <span class="p-float-label">
-          <InputText id="bind" type="text" v-model="bind" />
+          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
           <label for="bind">Bind</label>
         </span>
         <p>
           The address to bind the HBRP server to
         </p>
+        <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
+        <br />
         <br />
         <span class="p-float-label">
-          <InputText id="port" type="number" v-model="port" />
+          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p>
           The port number to bind the HBRP server to
         </p>
+        <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
       </template>
     </Card>
   </div>
@@ -60,6 +63,9 @@ export default {
     modelValue: {
       type: Object,
       required: true,
+    },
+    errors: {
+      type: Object,
     },
   },
   emits: ['update:modelValue'],

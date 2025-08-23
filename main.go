@@ -47,10 +47,6 @@ func main() {
 		slog.Error("Failed to get user config directory.", "error", err.Error())
 		os.Exit(1)
 	}
-	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0750); err != nil {
-		slog.Error("Failed to create config directory.", "error", err.Error())
-		os.Exit(1)
-	}
 
 	c := configulator.New[config.Config]().
 		WithEnvironmentVariables(&configulator.EnvironmentVariableOptions{

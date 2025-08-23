@@ -54,6 +54,13 @@ func PUTConfig(c *gin.Context) {
 	}
 
 	req.ToConfig(cfg)
+
+	if err := cfg.Save(); err != nil {
+		slog.Error("Failed to save config", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config: " + err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Configuration updated successfully"})
 }
 

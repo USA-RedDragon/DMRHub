@@ -132,6 +132,11 @@ export function routes() {
       name: 'AdminUsersApproval',
       component: () => import('../views/admin/UsersApprovalPage.vue'),
     },
+    {
+      path: '/admin/setup',
+      name: 'SetupWizard',
+      component: () => import('../views/SetupWizard.vue'),
+    },
   ];
 
   // if (features.isEnabled(features.OpenBridge)) {

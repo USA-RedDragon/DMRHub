@@ -21,10 +21,37 @@
 
 <template>
   <div>
+    <PVToast />
     <Card>
-      <template #title>Welcome to DMRHub</template>
+      <template #title>Setup</template>
       <template #content>
-        <h2>Setup</h2>
+        <form @submit.prevent="submit()">
+          <GeneralSettings v-model="config" />
+          <br />
+          <RedisSettings v-model="config.redis" />
+          <br />
+          <DatabaseSettings v-model="config.database" />
+          <br />
+          <HTTPSettings v-model="config.http" />
+          <br />
+          <DMRSettings v-model="config.dmr" />
+          <br />
+          <SMTPSettings v-model="config.smtp" />
+          <br />
+          <MetricsSettings v-model="config.metrics" />
+          <br />
+          <PProfSettings v-model="config.pprof" />
+        </form>
+      </template>
+      <template #footer>
+        <div class="card-footer">
+          <PVButton
+            class="p-button-raised p-button-rounded"
+            icon="pi pi-check"
+            label="&nbsp;Save"
+            type="submit"
+          />
+        </div>
       </template>
     </Card>
   </div>
@@ -32,22 +59,72 @@
 
 <script>
 import Card from 'primevue/card';
+import GeneralSettings from '@/components/setup/GeneralSettings.vue';
+import RedisSettings from '@/components/setup/RedisSettings.vue';
+import DatabaseSettings from '@/components/setup/DatabaseSettings.vue';
+import HTTPSettings from '@/components/setup/HTTPSettings.vue';
+import DMRSettings from '@/components/setup/DMRSettings.vue';
+import SMTPSettings from '@/components/setup/SMTPSettings.vue';
+import MetricsSettings from '@/components/setup/MetricsSettings.vue';
+import PProfSettings from '@/components/setup/PProfSettings.vue';
+
+import Toast from 'primevue/toast';
+import Button from 'primevue/button';
+
+import API from '@/services/API';
 
 export default {
   components: {
     Card,
+    PVToast: Toast,
+    PVButton: Button,
+    DatabaseSettings,
+    HTTPSettings,
+    DMRSettings,
+    SMTPSettings,
+    MetricsSettings,
+    PProfSettings,
+    GeneralSettings,
+    RedisSettings,
   },
   head: {
-    title: 'Home',
+    title: 'Setup',
   },
-  created() {},
+  created() {
+    this.getConfig();
+  },
   mounted() {},
   unmounted() {},
   data: function() {
-    return {};
+    return {
+      config: {},
+      submitted: false,
+    };
   },
-  methods: {},
-  computed: {},
+  methods: {
+    getConfig() {
+      API.get('/config')
+        .then((response) => {
+          this.config = response.data;
+          this.checkConfig(response.data);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
+    checkConfig(config) {
+      API.post('/config/validate', config)
+        .then((response) => {
+          console.log(response.data);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
+    submit() {
+      this.submitted = true;
+    },
+  },
 };
 </script>
 

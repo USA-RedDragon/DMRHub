@@ -25,6 +25,7 @@ import (
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
+	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
@@ -129,6 +130,11 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardTalkgroup)
+
+	group.PUT("/config", v1ConfigControllers.PUTConfig)
+	group.GET("/config", v1ConfigControllers.GETConfig)
+	group.GET("/config/validate", v1ConfigControllers.GETConfigValidate)
+	group.POST("/config/validate", v1ConfigControllers.POSTConfigValidate)
 
 	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/version", v1Controllers.GETVersion)

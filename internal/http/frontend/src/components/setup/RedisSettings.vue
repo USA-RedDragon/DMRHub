@@ -39,28 +39,31 @@
         <br v-if="enabled" />
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="host" type="text" v-model="host" />
+          <InputText id="host" type="text" v-model="host" :class="{ 'p-invalid': (errors && errors.host) || false }" />
           <label for="host">Host</label>
         </span>
         <p v-if="enabled">
           The hostname or IP address of the Redis server to connect to.
         </p>
+        <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="port" type="number" v-model="port" />
+          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">
           The port number of the Redis server to connect to.
         </p>
+        <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="password" type="password" v-model="password" />
+          <InputText id="password" type="password" v-model="password" :class="{ 'p-invalid': (errors && errors.password) || false }" />
           <label for="password">Password</label>
         </span>
         <p v-if="enabled">
           The password to use when connecting to the Redis server.
         </p>
+        <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
       </template>
     </Card>
   </div>
@@ -79,6 +82,10 @@ export default {
   },
   props: {
     modelValue: {
+      type: Object,
+      required: true,
+    },
+    errors: {
       type: Object,
       required: true,
     },

@@ -98,6 +98,27 @@ func (r Redis) Validate() error {
 	return nil
 }
 
+func (r Redis) ValidateWithFields() (errs []ValidationError) {
+	if !r.Enabled {
+		return nil
+	}
+
+	if r.Host == "" {
+		errs = append(errs, ValidationError{
+			Field: "redis.host",
+			Error: ErrInvalidRedisHost.Error(),
+		})
+	}
+	if r.Port <= 0 || r.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "redis.port",
+			Error: ErrInvalidRedisPort.Error(),
+		})
+	}
+
+	return
+}
+
 // Validate validates the Database configuration.
 func (d Database) Validate() error {
 	if d.Driver != DatabaseDriverSQLite &&
@@ -121,6 +142,40 @@ func (d Database) Validate() error {
 	return nil
 }
 
+func (d Database) ValidateWithFields() (errs []ValidationError) {
+	if d.Driver != DatabaseDriverSQLite &&
+		d.Driver != DatabaseDriverPostgres &&
+		d.Driver != DatabaseDriverMySQL {
+		errs = append(errs, ValidationError{
+			Field: "database.driver",
+			Error: ErrInvalidDatabaseDriver.Error(),
+		})
+	}
+
+	if d.Driver != DatabaseDriverSQLite && d.Host == "" {
+		errs = append(errs, ValidationError{
+			Field: "database.host",
+			Error: ErrInvalidDatabaseHost.Error(),
+		})
+	}
+
+	if d.Driver != DatabaseDriverSQLite && (d.Port <= 0 || d.Port > 65535) {
+		errs = append(errs, ValidationError{
+			Field: "database.port",
+			Error: ErrInvalidDatabasePort.Error(),
+		})
+	}
+
+	if d.Database == "" {
+		errs = append(errs, ValidationError{
+			Field: "database.name",
+			Error: ErrInvalidDatabaseName.Error(),
+		})
+	}
+
+	return
+}
+
 // Validate validates the RobotsTXT configuration.
 func (r RobotsTXT) Validate() error {
 	if r.Mode != RobotsTXTModeAllow &&
@@ -134,6 +189,26 @@ func (r RobotsTXT) Validate() error {
 	}
 
 	return nil
+}
+
+func (r RobotsTXT) ValidateWithFields() (errs []ValidationError) {
+	if r.Mode != RobotsTXTModeAllow &&
+		r.Mode != RobotsTXTModeDisabled &&
+		r.Mode != RobotsTXTModeCustom {
+		errs = append(errs, ValidationError{
+			Field: "http.robots-txt.mode",
+			Error: ErrHTTPRobotsTXTModeInvalid.Error(),
+		})
+	}
+
+	if r.Mode == RobotsTXTModeCustom && r.Content == "" {
+		errs = append(errs, ValidationError{
+			Field: "http.robots-txt.content",
+			Error: ErrInvalidHTTPRobotsTXTContent.Error(),
+		})
+	}
+
+	return
 }
 
 // Validate validates the HTTP configuration.
@@ -157,6 +232,35 @@ func (h HTTP) Validate() error {
 	return nil
 }
 
+func (h HTTP) ValidateWithFields() (errs []ValidationError) {
+	if h.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "http.bind",
+			Error: ErrInvalidHTTPHost.Error(),
+		})
+	}
+
+	if h.Port <= 0 || h.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "http.port",
+			Error: ErrInvalidHTTPPort.Error(),
+		})
+	}
+
+	if h.CanonicalHost == "" {
+		errs = append(errs, ValidationError{
+			Field: "http.canonical-host",
+			Error: ErrHTTPCanonicalHostRequired.Error(),
+		})
+	}
+
+	if robotsTXTErrs := h.RobotsTXT.ValidateWithFields(); len(robotsTXTErrs) > 0 {
+		errs = append(errs, robotsTXTErrs...)
+	}
+
+	return
+}
+
 // Validate validates the HBRP configuration.
 func (h HBRP) Validate() error {
 	if h.Bind == "" {
@@ -168,6 +272,24 @@ func (h HBRP) Validate() error {
 	}
 
 	return nil
+}
+
+func (h HBRP) ValidateWithFields() (errs []ValidationError) {
+	if h.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "dmr.hbrp.bind",
+			Error: ErrInvalidDMRHBRPHost.Error(),
+		})
+	}
+
+	if h.Port <= 0 || h.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "dmr.hbrp.port",
+			Error: ErrInvalidDMRHBRPPort.Error(),
+		})
+	}
+
+	return
 }
 
 // Validate validates the OpenBridge configuration.
@@ -186,6 +308,27 @@ func (o OpenBridge) Validate() error {
 	return nil
 }
 
+func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
+	if !o.Enabled {
+		return nil
+	}
+
+	if o.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "dmr.openbridge.bind",
+			Error: ErrInvalidDMROpenBridgeHost.Error(),
+		})
+	}
+	if o.Port <= 0 || o.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "dmr.openbridge.port",
+			Error: ErrInvalidDMROpenBridgePort.Error(),
+		})
+	}
+
+	return
+}
+
 // Validate validates the DMR configuration.
 func (d DMR) Validate() error {
 	if err := d.HBRP.Validate(); err != nil {
@@ -197,6 +340,18 @@ func (d DMR) Validate() error {
 	}
 
 	return nil
+}
+
+func (d DMR) ValidateWithFields() (errs []ValidationError) {
+	if hbrpErrs := d.HBRP.ValidateWithFields(); len(hbrpErrs) > 0 {
+		errs = append(errs, hbrpErrs...)
+	}
+
+	if openBridgeErrs := d.OpenBridge.ValidateWithFields(); len(openBridgeErrs) > 0 {
+		errs = append(errs, openBridgeErrs...)
+	}
+
+	return
 }
 
 // Validate validates the SMTP configuration.
@@ -234,6 +389,69 @@ func (s SMTP) Validate() error {
 	return nil
 }
 
+func (s SMTP) ValidateWithFields() (errs []ValidationError) {
+	if !s.Enabled {
+		return nil
+	}
+
+	if s.Host == "" {
+		errs = append(errs, ValidationError{
+			Field: "smtp.host",
+			Error: ErrInvalidSMTPHost.Error(),
+		})
+	}
+	if s.Port <= 0 || s.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "smtp.port",
+			Error: ErrInvalidSMTPPort.Error(),
+		})
+	}
+	if s.AuthMethod != SMTPAuthMethodPlain &&
+		s.AuthMethod != SMTPAuthMethodLogin &&
+		s.AuthMethod != SMTPAuthMethodNone {
+		errs = append(errs, ValidationError{
+			Field: "smtp.auth-method",
+			Error: ErrInvalidSMTPAuthMethod.Error(),
+		})
+	}
+	if s.TLS != SMTPTLSNone &&
+		s.TLS != SMTPTLSStartTLS &&
+		s.TLS != SMTPTLSImplicit {
+		errs = append(errs, ValidationError{
+			Field: "smtp.tls",
+			Error: ErrInvalidSMTPTLS.Error(),
+		})
+	}
+	if s.TLS != SMTPTLSNone &&
+		s.TLS != SMTPTLSStartTLS &&
+		s.TLS != SMTPTLSImplicit {
+		errs = append(errs, ValidationError{
+			Field: "smtp.tls",
+			Error: ErrInvalidSMTPTLS.Error(),
+		})
+	}
+	if s.From == "" {
+		errs = append(errs, ValidationError{
+			Field: "smtp.from",
+			Error: ErrSMTPFromRequired.Error(),
+		})
+	}
+	if s.Username == "" && s.AuthMethod != SMTPAuthMethodNone {
+		errs = append(errs, ValidationError{
+			Field: "smtp.username",
+			Error: ErrInvalidSMTPUsername.Error(),
+		})
+	}
+	if s.Password == "" && s.AuthMethod != SMTPAuthMethodNone {
+		errs = append(errs, ValidationError{
+			Field: "smtp.password",
+			Error: ErrInvalidSMTPPassword.Error(),
+		})
+	}
+
+	return
+}
+
 // Validate validates the Metrics configuration.
 func (m Metrics) Validate() error {
 	if !m.Enabled {
@@ -245,6 +463,27 @@ func (m Metrics) Validate() error {
 	}
 	if m.Port <= 0 || m.Port > 65535 {
 		return ErrInvalidMetricsPort
+	}
+
+	return nil
+}
+
+func (m Metrics) ValidateWithFields() (errs []ValidationError) {
+	if !m.Enabled {
+		return nil
+	}
+
+	if m.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "metrics.bind",
+			Error: ErrInvalidMetricsBindAddress.Error(),
+		})
+	}
+	if m.Port <= 0 || m.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "metrics.port",
+			Error: ErrInvalidMetricsPort.Error(),
+		})
 	}
 
 	return nil
@@ -264,6 +503,27 @@ func (p PProf) Validate() error {
 	}
 
 	return nil
+}
+
+func (p PProf) ValidateWithFields() (errs []ValidationError) {
+	if !p.Enabled {
+		return nil
+	}
+
+	if p.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "pprof.bind",
+			Error: ErrInvalidPProfBindAddress.Error(),
+		})
+	}
+	if p.Port <= 0 || p.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "pprof.port",
+			Error: ErrInvalidPProfPort.Error(),
+		})
+	}
+
+	return
 }
 
 func (c Config) Validate() error {
@@ -311,4 +571,65 @@ func (c Config) Validate() error {
 	}
 
 	return nil
+}
+
+type ValidationError struct {
+	Field string
+	Error string
+}
+
+func (c Config) ValidateWithFields() (errs []ValidationError) {
+	if c.LogLevel != LogLevelDebug &&
+		c.LogLevel != LogLevelInfo &&
+		c.LogLevel != LogLevelWarn &&
+		c.LogLevel != LogLevelError {
+		errs = append(errs, ValidationError{
+			Field: "log-level",
+			Error: ErrInvalidLogLevel.Error(),
+		})
+	}
+
+	if c.Secret == "" {
+		errs = append(errs, ValidationError{
+			Field: "secret",
+			Error: ErrSecretRequired.Error(),
+		})
+	}
+
+	if c.PasswordSalt == "" {
+		errs = append(errs, ValidationError{
+			Field: "password-salt",
+			Error: ErrPasswordSaltRequired.Error(),
+		})
+	}
+
+	if redisErrs := c.Redis.ValidateWithFields(); len(redisErrs) > 0 {
+		errs = append(errs, redisErrs...)
+	}
+
+	if dbErrs := c.Database.ValidateWithFields(); len(dbErrs) > 0 {
+		errs = append(errs, dbErrs...)
+	}
+
+	if httpErrs := c.HTTP.ValidateWithFields(); len(httpErrs) > 0 {
+		errs = append(errs, httpErrs...)
+	}
+
+	if dmrErrs := c.DMR.ValidateWithFields(); len(dmrErrs) > 0 {
+		errs = append(errs, dmrErrs...)
+	}
+
+	if smtpErrs := c.SMTP.ValidateWithFields(); len(smtpErrs) > 0 {
+		errs = append(errs, smtpErrs...)
+	}
+
+	if metricsErrs := c.Metrics.ValidateWithFields(); len(metricsErrs) > 0 {
+		errs = append(errs, metricsErrs...)
+	}
+
+	if pprofErrs := c.PProf.ValidateWithFields(); len(pprofErrs) > 0 {
+		errs = append(errs, pprofErrs...)
+	}
+
+	return
 }

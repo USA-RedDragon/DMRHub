@@ -32,60 +32,67 @@
             { label: 'SQLite', value: 'sqlite' },
             { label: 'PostgreSQL', value: 'postgres' },
             { label: 'MySQL', value: 'mysql' },
-          ]" />
+          ]" :class="{ 'p-invalid': (errors && errors.driver) || false }" />
           <label for="driver">Driver</label>
         </span>
         <p>
           The database driver to use. One of <code>sqlite</code>, <code>postgres</code>, or <code>mysql</code>.
         </p>
+        <span v-if="errors && errors.driver" class="p-error">{{ errors.driver }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="database" type="text" v-model="database" />
+          <InputText id="database" type="text" v-model="database" :class="{ 'p-invalid': (errors && errors.database) || false }" />
           <label for="database">Database</label>
         </span>
         <p>
           The database name or path to the SQLite file.
         </p>
+        <span v-if="errors && errors.database" class="p-error">{{ errors.database }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="host" type="text" v-model="host" />
+          <InputText id="host" type="text" v-model="host" :class="{ 'p-invalid': (errors && errors.host) || false }" />
           <label for="host">Host</label>
         </span>
         <p v-if="driver !== 'sqlite'">
           The hostname or IP address of the database server.
         </p>
+        <span v-if="driver !== 'sqlite' && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="port" type="number" v-model="port" />
+          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p v-if="driver !== 'sqlite'">
           The port number of the database server.
         </p>
+        <span v-if="driver !== 'sqlite' && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="username" type="text" v-model="username" />
+          <InputText id="username" type="text" v-model="username" :class="{ 'p-invalid': (errors && errors.username) || false }" />
           <label for="username">Username</label>
         </span>
         <p v-if="driver !== 'sqlite'">
           The username to use when connecting to the database server.
         </p>
+        <span v-if="driver !== 'sqlite' && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="password" type="password" v-model="password" />
+          <InputText id="password" type="password" v-model="password" :class="{ 'p-invalid': (errors && errors.password) || false }" />
           <label for="password">Password</label>
         </span>
         <p v-if="driver !== 'sqlite'">
           The password to use when connecting to the database server.
         </p>
+        <span v-if="driver !== 'sqlite' && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br />
         <span class="p-float-label">
-          <TextArea rows="5" id="extraParameters" v-model="extraParameters" />
+          <TextArea rows="5" id="extraParameters" v-model="extraParameters" :class="{ 'p-invalid': (errors && errors['extra-parameters']) || false }" />
           <label for="extraParameters">Extra Parameters</label>
         </span>
         <p>
           Extra connection parameters to pass to the database driver. One per line.
         </p>
+        <span v-if="errors && errors['extra-parameters']" class="p-error">{{ errors['extra-parameters'] }}</span>
       </template>
     </Card>
   </div>
@@ -106,6 +113,10 @@ export default {
   },
   props: {
     modelValue: {
+      type: Object,
+      required: true,
+    },
+    errors: {
       type: Object,
       required: true,
     },

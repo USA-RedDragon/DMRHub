@@ -26,9 +26,9 @@
       <template #content>
         <p>These settings configure DMR related features in DMRHub.</p>
         <br />
-        <HBRPSettings v-model="hbrp" />
+        <HBRPSettings v-model="hbrp" :errors="errors.hbrp" />
         <br v-if="false" />
-        <OpenBridgeSettings v-model="openbridge" v-if="false"/>
+        <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
       </template>
     </Card>
   </div>
@@ -50,6 +50,11 @@ export default {
     modelValue: {
       type: Object,
       required: true,
+    },
+    errors: {
+      type: Object,
+      required: true,
+      default: () => ({}),
     },
   },
   emits: ['update:modelValue'],

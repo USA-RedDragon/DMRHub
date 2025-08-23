@@ -31,7 +31,7 @@
             { label: 'Disabled', value: 'disabled' },
             { label: 'Allow', value: 'allow' },
             { label: 'Custom', value: 'custom' },
-          ]" />
+          ]" :class="{ 'p-invalid': (errors && errors.mode) || false }" />
           <label for="mode">Mode</label>
         </span>
         <p>
@@ -41,14 +41,16 @@
           If <code>allow</code> is selected, a robots.txt file will be served that allows all web crawlers.
           If <code>custom</code> is selected, the content of the robots.txt file can be customized.
         </p>
+        <span v-if="errors && errors.mode" class="p-error">{{ errors.mode }}</span>
         <br v-if="mode === 'custom'" />
         <span class="p-float-label" v-if="mode === 'custom'">
-          <TextArea rows="5" id="content" v-model="content" />
+          <TextArea rows="5" id="content" v-model="content" :class="{ 'p-invalid': (errors && errors.content) || false }" />
           <label for="content">Content</label>
         </span>
         <p v-if="mode === 'custom'">
           The content of the robots.txt file when the mode is set to <code>custom</code>.
         </p>
+        <span v-if="mode === 'custom' && errors && errors.content" class="p-error">{{ errors.content }}</span>
       </template>
     </Card>
   </div>
@@ -69,6 +71,9 @@ export default {
     modelValue: {
       type: Object,
       required: true,
+    },
+    errors: {
+      type: Object,
     },
   },
   emits: ['update:modelValue'],

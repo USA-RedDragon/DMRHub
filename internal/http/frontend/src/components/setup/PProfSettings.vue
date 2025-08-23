@@ -24,7 +24,10 @@
     <Card>
       <template #title>PProf Settings</template>
       <template #content>
-        <p>PProf settings</p>
+        <p>PProf is a tool for analyzing the performance of Go applications. This setting enables a separate
+          HTTP server that serves the pprof endpoints. It is recommended to only enable this in development or
+          debugging scenarios as it can expose sensitive information about the application.
+        </p>
         <br />
         <span>
           <Checkbox
@@ -41,16 +44,26 @@
           <InputText id="bind" type="text" v-model="bind" />
           <label for="bind">Bind</label>
         </span>
+        <p v-if="enabled">
+          The address to bind the pprof server to
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p v-if="enabled">
+          The port number to bind the pprof server to
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="trustedProxies" type="text" v-model="trustedProxies" />
+          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
+        <p v-if="enabled">
+          A list of trusted proxy IP addresses. If set, the pprof server will only accept
+          requests from these IP addresses. One per line.
+        </p>
       </template>
     </Card>
   </div>
@@ -60,12 +73,14 @@
 import Card from 'primevue/card';
 import Checkbox from 'primevue/checkbox';
 import InputText from 'primevue/inputtext';
+import TextArea from 'primevue/textarea';
 
 export default {
   components: {
     Card,
     Checkbox,
     InputText,
+    TextArea,
   },
   props: {
     modelValue: {
@@ -110,12 +125,15 @@ export default {
     },
     trustedProxies: {
       get() {
-        return (this.modelValue && this.modelValue['trusted-proxies']) || [];
+        return (
+          this.modelValue &&
+          this.modelValue['trusted-proxies'] &&
+          this.modelValue['trusted-proxies'].join('\n')) || [];
       },
       set(value) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'trusted-proxies': value,
+          'trusted-proxies': value.split('\n'),
         });
       },
     },

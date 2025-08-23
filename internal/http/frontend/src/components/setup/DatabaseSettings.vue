@@ -24,42 +24,68 @@
     <Card>
       <template #title>Database Settings</template>
       <template #content>
-        <p>Database settings</p>
+        <p>DMRHub supports multiple database backends. For small deployments or testing, SQLite is recommended.
+          For larger deployments or when high availability is required, PostgreSQL or MySQL/MariaDB is required.</p>
         <br />
         <span class="p-float-label">
-          <InputText id="driver" type="text" v-model="driver" />
+          <Dropdown id="driver" v-model="driver"  optionValue="value" optionLabel="label" :options="[
+            { label: 'SQLite', value: 'sqlite' },
+            { label: 'PostgreSQL', value: 'postgres' },
+            { label: 'MySQL', value: 'mysql' },
+          ]" />
           <label for="driver">Driver</label>
         </span>
+        <p>
+          The database driver to use. One of <code>sqlite</code>, <code>postgres</code>, or <code>mysql</code>.
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="database" type="text" v-model="database" />
           <label for="database">Database</label>
         </span>
+        <p>
+          The database name or path to the SQLite file.
+        </p>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
           <InputText id="host" type="text" v-model="host" />
           <label for="host">Host</label>
         </span>
+        <p v-if="driver !== 'sqlite'">
+          The hostname or IP address of the database server.
+        </p>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p v-if="driver !== 'sqlite'">
+          The port number of the database server.
+        </p>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
           <InputText id="username" type="text" v-model="username" />
           <label for="username">Username</label>
         </span>
+        <p v-if="driver !== 'sqlite'">
+          The username to use when connecting to the database server.
+        </p>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
           <InputText id="password" type="password" v-model="password" />
           <label for="password">Password</label>
         </span>
+        <p v-if="driver !== 'sqlite'">
+          The password to use when connecting to the database server.
+        </p>
         <br />
         <span class="p-float-label">
-          <InputText id="extraParameters" type="text" v-model="extraParameters" />
+          <TextArea rows="5" id="extraParameters" v-model="extraParameters" />
           <label for="extraParameters">Extra Parameters</label>
         </span>
+        <p>
+          Extra connection parameters to pass to the database driver. One per line.
+        </p>
       </template>
     </Card>
   </div>
@@ -68,11 +94,15 @@
 <script>
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
+import TextArea from 'primevue/textarea';
+import Dropdown from 'primevue/dropdown';
 
 export default {
   components: {
     Card,
     InputText,
+    TextArea,
+    Dropdown,
   },
   props: {
     modelValue: {
@@ -150,12 +180,12 @@ export default {
     },
     extraParameters: {
       get() {
-        return (this.modelValue && this.modelValue['extra-parameters']) || [];
+        return (this.modelValue && this.modelValue['extra-parameters'].join('\n')) || [];
       },
       set(value) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'extra-parameters': value,
+          'extra-parameters': value.split('\n'),
         });
       },
     },

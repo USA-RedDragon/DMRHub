@@ -27,14 +27,28 @@
         <p>robots.txt settings</p>
         <br />
         <span class="p-float-label">
-          <InputText id="mode" type="text" v-model="mode" />
+          <Dropdown id="mode" v-model="mode" optionValue="value" optionLabel="label" :options="[
+            { label: 'Disabled', value: 'disabled' },
+            { label: 'Allow', value: 'allow' },
+            { label: 'Custom', value: 'custom' },
+          ]" />
           <label for="mode">Mode</label>
         </span>
+        <p>
+          The mode to use for the robots.txt file.
+          One of <code>disabled</code>, <code>allow</code>, or <code>custom</code>.
+          If <code>disabled</code> is selected, a robots.txt file will be served that disallows all web crawlers.
+          If <code>allow</code> is selected, a robots.txt file will be served that allows all web crawlers.
+          If <code>custom</code> is selected, the content of the robots.txt file can be customized.
+        </p>
         <br v-if="mode === 'custom'" />
         <span class="p-float-label" v-if="mode === 'custom'">
-          <InputText id="content" type="text" v-model="content" />
+          <TextArea rows="5" id="content" v-model="content" />
           <label for="content">Content</label>
         </span>
+        <p v-if="mode === 'custom'">
+          The content of the robots.txt file when the mode is set to <code>custom</code>.
+        </p>
       </template>
     </Card>
   </div>
@@ -42,12 +56,14 @@
 
 <script>
 import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
+import TextArea from 'primevue/textarea';
+import Dropdown from 'primevue/dropdown';
 
 export default {
   components: {
     Card,
-    InputText,
+    TextArea,
+    Dropdown,
   },
   props: {
     modelValue: {

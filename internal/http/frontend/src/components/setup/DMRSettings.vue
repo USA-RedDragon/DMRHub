@@ -24,7 +24,7 @@
     <Card>
       <template #title>DMR Settings</template>
       <template #content>
-        <p>DMR settings</p>
+        <p>These settings configure DMR related features in DMRHub.</p>
         <br />
         <HBRPSettings v-model="hbrp" />
         <br v-if="false" />

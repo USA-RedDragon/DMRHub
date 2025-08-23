@@ -24,17 +24,24 @@
     <Card>
       <template #title>Homebrew Repeater Protocol Settings</template>
       <template #content>
-        <p>Homebrew Repeater Protocol settings</p>
+        <p>DMRHub can run an HBRP server to allow connections from DMR radios and
+          software such as DMRGateway.</p>
         <br />
         <span class="p-float-label">
           <InputText id="bind" type="text" v-model="bind" />
           <label for="bind">Bind</label>
         </span>
+        <p>
+          The address to bind the HBRP server to
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p>
+          The port number to bind the HBRP server to
+        </p>
       </template>
     </Card>
   </div>

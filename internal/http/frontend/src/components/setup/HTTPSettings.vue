@@ -24,27 +24,41 @@
     <Card>
       <template #title>HTTP Settings</template>
       <template #content>
-        <p>HTTP settings</p>
+        <p>These settings control the main HTTP server that serves the web interface and API.
+          A canonical host is required by DMRHub to allow it to generate absolute URLs.</p>
         <br />
         <span class="p-float-label">
           <InputText id="bind" type="text" v-model="bind" />
           <label for="bind">Bind</label>
         </span>
+        <p>
+          The address to bind the HTTP server to
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p>
+          The port number to bind the HTTP server to
+        </p>
         <br />
         <span class="p-float-label">
-          <InputText id="trustedProxies" type="text" v-model="trustedProxies" />
+          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
+        <p>
+          A list of trusted proxy IP addresses. If set, the HTTP server will only accept
+          requests from these IP addresses. One per line.
+        </p>
         <br />
         <span class="p-float-label">
           <InputText id="canonicalHost" type="text" v-model="canonicalHost" />
           <label for="canonicalHost">Canonical Host</label>
         </span>
+        <p>
+          The canonical host name for the DMRHub instance. This is used to generate absolute URLs.
+        </p>
         <br />
         <RobotsTXTSettings v-model="robotsTXT" />
         <br />
@@ -60,6 +74,7 @@ import CORSSettings from './HTTP/CORSSettings.vue';
 
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
+import TextArea from 'primevue/textarea';
 
 export default {
   components: {
@@ -67,6 +82,7 @@ export default {
     CORSSettings,
     Card,
     InputText,
+    TextArea,
   },
   props: {
     modelValue: {
@@ -122,12 +138,15 @@ export default {
     },
     trustedProxies: {
       get() {
-        return (this.modelValue && this.modelValue['trusted-proxies']) || [];
+        return (
+          this.modelValue &&
+          this.modelValue['trusted-proxies'] &&
+          this.modelValue['trusted-proxies'].join('\n')) || [];
       },
       set(value) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'trusted-proxies': value,
+          'trusted-proxies': value.split('\n'),
         });
       },
     },

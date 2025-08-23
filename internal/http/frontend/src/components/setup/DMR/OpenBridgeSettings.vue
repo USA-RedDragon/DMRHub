@@ -24,7 +24,8 @@
     <Card>
       <template #title>OpenBridge Settings</template>
       <template #content>
-        <p>OpenBridge settings</p>
+        <p>DMRHub can run an OpenBridge server to allow connections from DMR radios and software.
+          This is useful for connecting to other DMR networks.</p>
         <br />
         <span>
           <Checkbox
@@ -41,11 +42,17 @@
           <InputText id="bind" type="text" v-model="bind" />
           <label for="bind">Bind</label>
         </span>
+        <p v-if="enabled">
+          The address to bind the OpenBridge server to
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p v-if="enabled">
+          The port number to bind the OpenBridge server to
+        </p>
       </template>
     </Card>
   </div>

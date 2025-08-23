@@ -24,7 +24,8 @@
     <Card>
       <template #title>Redis Settings</template>
       <template #content>
-        <p>Redis settings</p>
+        <p>Redis should be used in cases where DMRHub needs to be scaled horizontally.
+          Without Redis, DMRHub can only run on a single instance.</p>
         <br />
         <span>
           <Checkbox
@@ -41,16 +42,25 @@
           <InputText id="host" type="text" v-model="host" />
           <label for="host">Host</label>
         </span>
+        <p v-if="enabled">
+          The hostname or IP address of the Redis server to connect to.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="port" type="number" v-model="port" />
           <label for="port">Port</label>
         </span>
+        <p v-if="enabled">
+          The port number of the Redis server to connect to.
+        </p>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
           <InputText id="password" type="password" v-model="password" />
           <label for="password">Password</label>
         </span>
+        <p v-if="enabled">
+          The password to use when connecting to the Redis server.
+        </p>
       </template>
     </Card>
   </div>

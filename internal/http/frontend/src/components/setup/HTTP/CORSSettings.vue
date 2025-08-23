@@ -24,7 +24,10 @@
     <Card>
       <template #title>CORS Settings</template>
       <template #content>
-        <p>CORS settings</p>
+        <p>CORS (Cross-Origin Resource Sharing) settings control which external domains
+          are allowed to access the DMRHub API. This is important for web applications
+          that run in the browser and need to make requests to the DMRHub server.
+        </p>
         <br />
         <span>
           <Checkbox
@@ -38,9 +41,13 @@
         <br v-if="enabled" />
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="hosts" type="text" v-model="hosts" />
+          <TextArea rows="5" id="hosts" v-model="hosts" />
           <label for="hosts">Hosts</label>
         </span>
+        <p v-if="enabled">
+          A list of hosts that are allowed to access the DMRHub API.
+          Use <code>*</code> to allow all hosts (not recommended for production). One per line.
+        </p>
       </template>
     </Card>
   </div>
@@ -48,13 +55,13 @@
 
 <script>
 import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
+import TextArea from 'primevue/textarea';
 import Checkbox from 'primevue/checkbox';
 
 export default {
   components: {
     Card,
-    InputText,
+    TextArea,
     Checkbox,
   },
   props: {
@@ -78,12 +85,15 @@ export default {
     },
     hosts: {
       get() {
-        return (this.modelValue && this.modelValue['hosts']) || [];
+        return (
+          this.modelValue &&
+          this.modelValue['extra-hosts'] &&
+          this.modelValue['extra-hosts'].join('\n')) || [];
       },
       set(value) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'hosts': value,
+          'extra-hosts': value.split('\n'),
         });
       },
     },

@@ -46,6 +46,7 @@ import (
 	"github.com/USA-RedDragon/configulator"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lmittmann/tint"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/ztrue/shutdown"
 	"go.opentelemetry.io/otel"
@@ -138,7 +139,9 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 // waitForConfig waits for the user to fix the config file
 func waitForConfig(config *config.Config, version, commit string) (exit bool) {
-	slog.Info("Starting a setup wizard at http://localhost:3005/setup")
+	slog.Info("Setup can be completed in a web browser")
+	url := "http://localhost:3005/setup"
+	slog.Info("Open setup wizard at " + url)
 	httpServer := http.MakeSetupWizardServer(config, version, commit)
 	go func() {
 		err := httpServer.Start()
@@ -148,6 +151,11 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 			}
 		}
 	}()
+
+	err := browser.OpenURL(url)
+	if err != nil {
+		slog.Error("Failed to open browser, please open "+url+" manually", "error", err)
+	}
 
 	stop := func(sig os.Signal) {
 		slog.Error("Shutting down due to signal", "signal", sig)

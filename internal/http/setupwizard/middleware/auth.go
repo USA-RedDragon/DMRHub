@@ -43,9 +43,9 @@ func RequireSetupWizardToken() gin.HandlerFunc {
 			}
 		}()
 
-		providedToken := c.GetHeader("Authorization")
+		providedToken := c.GetHeader("X-SetupWizard-Token")
 		if providedToken == "" {
-			slog.Debug("RequireSetupWizardToken: No Authorization header found")
+			slog.Debug("RequireSetupWizardToken: No X-SetupWizard-Token header found")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 			return
 		}

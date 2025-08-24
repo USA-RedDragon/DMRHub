@@ -21,6 +21,7 @@ require (
 	github.com/mavjs/goPwned v0.0.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/ory/dockertest/v3 v3.12.0
+	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/prometheus/client_golang v1.22.0
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/redis/go-redis/extra/redisotel/v9 v9.12.1
@@ -39,6 +40,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	golang.org/x/crypto v0.37.0
 	golang.org/x/sync v0.13.0
+	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/driver/mysql v1.4.0
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12
@@ -135,7 +137,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a // indirect
 	google.golang.org/grpc v1.71.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect

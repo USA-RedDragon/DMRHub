@@ -25,6 +25,11 @@ export function setupwizardRoutes() {
       component: () => import('../views/SetupWizard.vue'),
     },
     {
+      path: '/setup/user',
+      name: 'SetupUser',
+      component: () => import('../views/setup/InitialUserPage.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: (_) => {
         return { path: '/setup' };

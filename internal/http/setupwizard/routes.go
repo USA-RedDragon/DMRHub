@@ -23,6 +23,7 @@ import (
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	v1APIControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1APIConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
+	v1APIUsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
 	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/middleware"
 	"github.com/gin-gonic/gin"
@@ -36,10 +37,12 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
 
 func v1(group *gin.RouterGroup) {
 	group.PUT("/config", middleware.RequireSetupWizardToken(), v1APIConfigControllers.PUTConfig)
+	group.POST("/setupwizard/complete", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.POSTSetupWizardComplete)
 	group.GET("/config", middleware.RequireSetupWizardToken(), v1APIConfigControllers.GETConfig)
 	group.GET("/config/validate", middleware.RequireSetupWizardToken(), v1APIConfigControllers.GETConfigValidate)
 	group.POST("/config/validate", middleware.RequireSetupWizardToken(), v1APIConfigControllers.POSTConfigValidate)
 
+	group.POST("/users", middleware.RequireSetupWizardToken(), middleware.MakeDB(), v1APIUsersControllers.POSTUser, v1SetupWizardControllers.ApproveAndPromoteAdminUser)
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
 	group.GET("/network/name", v1APIControllers.GETNetworkName)
 	group.GET("/version", v1APIControllers.GETVersion)

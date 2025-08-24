@@ -144,6 +144,9 @@ export default {
           detail: 'Configuration saved successfully',
           life: 3000,
         });
+        setTimeout(() => {
+          this.$router.push({ path: '/setup/user', query: { token: this.$route.query.token } });
+        }, 500);
       } catch (error) {
         console.log(error);
         this.$toast.add({

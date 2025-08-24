@@ -23,6 +23,7 @@
   <div>
     <PVToast />
     <UserRegistrationCard
+      title="Create Initial Admin User"
       @register="handleRegister"
     />
   </div>
@@ -37,17 +38,16 @@ export default {
     UserRegistrationCard,
   },
   head: {
-    title: 'Register',
+    title: 'Initial User Setup',
   },
   created() {},
   mounted() {},
   data: function() {
-    return {
-    };
+    return {};
   },
   methods: {
     handleRegister(data) {
-      API.post('/users', data)
+      API.post('/users', data, { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
         .then((res) => {
           this.$toast.add({
             severity: 'success',
@@ -55,9 +55,27 @@ export default {
             detail: res.data.message,
             life: 3000,
           });
-          setTimeout(() => {
-            this.$router.push('/');
-          }, 3000);
+          API.post('/setupwizard/complete', {}, { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
+            .then(() => {
+              this.$toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Setup wizard completed successfully',
+                life: 3000,
+              });
+              setTimeout(() => {
+                window.location.href = '/login';
+              }, 1000);
+            })
+            .catch((err) => {
+              console.error(err);
+              this.$toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Failed to complete setup wizard',
+                life: 3000,
+              });
+            });
         })
         .catch((err) => {
           console.error(err);

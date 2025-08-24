@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
@@ -140,9 +141,14 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 // waitForConfig waits for the user to fix the config file
 func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	slog.Info("Setup can be completed in a web browser")
-	url := "http://localhost:3005/setup"
-	slog.Info("Open setup wizard at " + url)
-	httpServer := http.MakeSetupWizardServer(config, version, commit)
+	token, err := utils.RandomPassword(12, 0, 0)
+	if err != nil {
+		slog.Error("Failed to generate token", "error", err)
+		return
+	}
+	url := "http://localhost:3005/setup?token=" + token
+	slog.Info("Opening setup wizard at " + url)
+	httpServer := http.MakeSetupWizardServer(config, token, version, commit)
 	go func() {
 		err := httpServer.Start()
 		if err != nil {
@@ -152,7 +158,7 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 		}
 	}()
 
-	err := browser.OpenURL(url)
+	err = browser.OpenURL(url)
 	if err != nil {
 		slog.Error("Failed to open browser, please open "+url+" manually", "error", err)
 	}

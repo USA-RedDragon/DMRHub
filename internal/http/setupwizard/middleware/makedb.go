@@ -20,19 +20,24 @@
 package middleware
 
 import (
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/gin-gonic/gin"
 )
 
-func SetupWizardProvider(token string) gin.HandlerFunc {
+func MakeDB() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("SetupWizard", token)
-		c.Next()
-	}
-}
-
-func SetupWizardConfigCompleteChanProvider(ch chan any) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("SetupWizardConfigCompleteChan", ch)
+		config, ok := c.MustGet("Config").(*config.Config)
+		if !ok {
+			c.AbortWithStatusJSON(500, gin.H{"error": "Unable to get DB config from context"})
+			return
+		}
+		db, err := db.MakeDB(config)
+		if err != nil {
+			c.AbortWithStatusJSON(500, gin.H{"error": "Unable to connect to database: " + err.Error()})
+			return
+		}
+		c.Set("DB", db)
 		c.Next()
 	}
 }

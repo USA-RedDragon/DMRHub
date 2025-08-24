@@ -206,6 +206,7 @@ func POSTUser(c *gin.Context) {
 				slog.Error("Error sending email", "function", "POSTUser", "error", err)
 			}
 		}
+		c.Set("new_user_id", user.ID)
 	}
 }
 

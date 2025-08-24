@@ -148,7 +148,8 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	}
 	url := "http://localhost:3005/setup?token=" + token
 	slog.Info("Opening setup wizard at " + url)
-	httpServer := http.MakeSetupWizardServer(config, token, version, commit)
+	configCh := make(chan any, 1)
+	httpServer := http.MakeSetupWizardServer(config, token, configCh, version, commit)
 	go func() {
 		err := httpServer.Start()
 		if err != nil {
@@ -174,19 +175,9 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	}
 
 	interruptCh := make(chan os.Signal, 1)
-	configCh := make(chan any, 1)
-	go func() {
-		for {
-			time.Sleep(1 * time.Second)
-			if err := config.Validate(); err == nil {
-				slog.Info("Configuration is valid, shutting down setup wizard")
-				configCh <- struct{}{}
-				return
-			}
-		}
-	}()
 	go func() {
 		<-configCh
+		slog.Info("Setup complete, shutting down setup wizard")
 		signal.Stop(interruptCh)
 		close(interruptCh)
 	}()

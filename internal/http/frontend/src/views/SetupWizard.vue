@@ -103,7 +103,7 @@ export default {
   },
   methods: {
     getConfig() {
-      API.get('/config')
+      API.get('/config', { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
         .then((response) => {
           this.config = response.data;
           this.checkConfig(this.config);
@@ -113,7 +113,11 @@ export default {
         });
     },
     async checkConfig(config) {
-      const response = await API.post('/config/validate', config);
+      const response = await API.post(
+        '/config/validate',
+        config,
+        { headers: { 'X-SetupWizard-Token': this.$route.query.token } },
+      );
       if (response.data.valid) {
         return true;
       } else {
@@ -133,7 +137,7 @@ export default {
         return;
       }
       try {
-        await API.put('/config', this.config);
+        await API.put('/config', this.config, { headers: { 'X-SetupWizard-Token': this.$route.query.token } });
         this.$toast.add({
           severity: 'success',
           summary: 'Success',

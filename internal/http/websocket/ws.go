@@ -60,6 +60,10 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 				if origin == "" {
 					return false
 				}
+				// If CORS is disabled, allow all origins
+				if !config.HTTP.CORS.Enabled {
+					return true
+				}
 				for _, host := range config.HTTP.CORS.Hosts {
 					if strings.HasSuffix(host, ":443") && strings.HasPrefix(origin, "https://") {
 						host = strings.TrimSuffix(host, ":443")

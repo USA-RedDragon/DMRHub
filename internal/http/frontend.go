@@ -111,12 +111,11 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 func addFrontendRoutes(r *gin.Engine) {
 	staticGroup := r.Group("/")
 
-	files, err := getAllFilenames(&FS, "frontend/dist")
+	files, depth, err := getAllFilenames(&FS, "frontend/dist")
 	if err != nil {
 		slog.Error("Failed to read directory", "error", err)
 	}
-	const wildcardDepth = 4
-	addFrontendWildcards(staticGroup, wildcardDepth)
+	addFrontendWildcards(staticGroup, depth)
 	for _, entry := range files {
 		staticName := strings.Replace(entry, "frontend/dist", "", 1)
 		if staticName == "" {
@@ -191,30 +190,43 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 	}
 }
 
-func getAllFilenames(fs *embed.FS, dir string) ([]string, error) {
+// getAllFilenames gets all filenames in a directory and its subdirectories
+// It returns a slice of filenames, the maximum depth of the directory tree, and an error if any
+// getAllFilenames gets all filenames in a directory and its subdirectories
+// It returns a slice of filenames, the maximum depth of the directory tree, and an error if any
+func getAllFilenames(fs *embed.FS, dir string) ([]string, int, error) {
+	return getAllFilenamesDepth(fs, dir, 0)
+}
+
+// getAllFilenamesDepth is a helper that tracks the current depth
+func getAllFilenamesDepth(fs *embed.FS, dir string, curDepth int) ([]string, int, error) {
 	if len(dir) == 0 {
 		dir = "."
 	}
 
 	entries, err := fs.ReadDir(dir)
 	if err != nil {
-		return nil, ErrReadDir
+		return nil, 0, ErrReadDir
 	}
 
-	out := make([]string, len(entries))
+	out := []string{}
+	maxDepth := curDepth
 
 	for _, entry := range entries {
 		fp := path.Join(dir, entry.Name())
 		if entry.IsDir() {
-			res, err := getAllFilenames(fs, fp)
+			res, depth, err := getAllFilenamesDepth(fs, fp, curDepth+1)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			out = append(out, res...)
+			if depth > maxDepth {
+				maxDepth = depth
+			}
 			continue
 		}
 		out = append(out, fp)
 	}
 
-	return out, nil
+	return out, maxDepth, nil
 }

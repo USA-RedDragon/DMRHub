@@ -214,7 +214,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.Server = server
 	s.Started = true
 
-	slog.Info("HBRP Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
+	slog.Info("HBRP Server listening", "address", s.SocketAddress.String())
 
 	go s.listen(ctx)
 	go s.subscribePackets()

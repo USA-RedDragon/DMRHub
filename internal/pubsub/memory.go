@@ -73,7 +73,6 @@ type inMemorySubscription struct {
 }
 
 func (s inMemorySubscription) Close() error {
-	close(s.ch)
 	return nil
 }
 

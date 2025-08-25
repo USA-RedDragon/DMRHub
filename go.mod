@@ -28,7 +28,7 @@ require (
 	github.com/redis/go-redis/v9 v9.12.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	github.com/tinylib/msgp v1.2.5
+	github.com/tinylib/msgp v1.3.0
 	github.com/ulikunitz/xz v0.5.12
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2
 	github.com/ztrue/shutdown v0.1.1

@@ -14,6 +14,8 @@ github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEV
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
 github.com/USA-RedDragon/configulator v0.0.0-20250825003855-9e126f5edbe5 h1:7gCkZsElSeq2hIQLDCH6aTaXBwu5A1h3EvtxiriSu0s=
 github.com/USA-RedDragon/configulator v0.0.0-20250825003855-9e126f5edbe5/go.mod h1:X/OR36V04+2h2uALY+c8WyqaAp/wSdcqARbJnyZc2Q4=
+github.com/USA-RedDragon/configulator v0.0.1 h1:iD93ZpNTOjvNLRRkDsE+c7TJ0PbNsUbUM78iq/IFw0Y=
+github.com/USA-RedDragon/configulator v0.0.1/go.mod h1:X/OR36V04+2h2uALY+c8WyqaAp/wSdcqARbJnyZc2Q4=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

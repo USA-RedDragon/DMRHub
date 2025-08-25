@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.4
-	github.com/USA-RedDragon/configulator v0.0.0-20250825003855-9e126f5edbe5
+	github.com/USA-RedDragon/configulator v0.0.1
 	github.com/emersion/go-sasl v0.0.0-20231106173351-e73c9f7bad43
 	github.com/emersion/go-smtp v0.21.3
 	github.com/gin-contrib/cors v1.7.5

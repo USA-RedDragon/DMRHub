@@ -215,6 +215,10 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pub
 			slog.Debug("Websocket context done", "userID", userID)
 			return
 		case msg := <-pubsubChannel:
+			if msg == nil {
+				continue
+			}
+			slog.Info("Received call message for websocket", "userID", userID, "message", string(msg))
 			var call models.Call
 			err := json.Unmarshal(msg, &call)
 			if err != nil {

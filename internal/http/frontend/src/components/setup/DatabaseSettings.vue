@@ -41,7 +41,12 @@
         <span v-if="errors && errors.driver" class="p-error">{{ errors.driver }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="database" type="text" v-model="database" :class="{ 'p-invalid': (errors && errors.database) || false }" />
+          <InputText
+            id="database"
+            type="text"
+            v-model="database"
+            :class="{ 'p-invalid': (errors && errors.database) || false }"
+          />
           <label for="database">Database</label>
         </span>
         <p>
@@ -59,7 +64,12 @@
         <span v-if="driver !== 'sqlite' && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p v-if="driver !== 'sqlite'">
@@ -68,7 +78,12 @@
         <span v-if="driver !== 'sqlite' && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="username" type="text" v-model="username" :class="{ 'p-invalid': (errors && errors.username) || false }" />
+          <InputText
+            id="username"
+            type="text"
+            v-model="username"
+            :class="{ 'p-invalid': (errors && errors.username) || false }"
+          />
           <label for="username">Username</label>
         </span>
         <p v-if="driver !== 'sqlite'">
@@ -77,7 +92,12 @@
         <span v-if="driver !== 'sqlite' && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="driver !== 'sqlite'" />
         <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="password" type="password" v-model="password" :class="{ 'p-invalid': (errors && errors.password) || false }" />
+          <InputText
+            id="password"
+            type="password"
+            v-model="password"
+            :class="{ 'p-invalid': (errors && errors.password) || false }"
+          />
           <label for="password">Password</label>
         </span>
         <p v-if="driver !== 'sqlite'">
@@ -86,7 +106,12 @@
         <span v-if="driver !== 'sqlite' && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br />
         <span class="p-float-label">
-          <TextArea rows="5" id="extraParameters" v-model="extraParameters" :class="{ 'p-invalid': (errors && errors['extra-parameters']) || false }" />
+          <TextArea
+            rows="5"
+            id="extraParameters"
+            v-model="extraParameters"
+            :class="{ 'p-invalid': (errors && errors['extra-parameters']) || false }"
+          />
           <label for="extraParameters">Extra Parameters</label>
         </span>
         <p>

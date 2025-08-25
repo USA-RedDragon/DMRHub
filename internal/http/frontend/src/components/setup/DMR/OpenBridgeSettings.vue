@@ -48,7 +48,12 @@
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">

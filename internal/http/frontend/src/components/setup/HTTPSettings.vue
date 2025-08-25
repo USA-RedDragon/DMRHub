@@ -37,7 +37,12 @@
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p>
@@ -46,7 +51,12 @@
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
         <span class="p-float-label">
-          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }" />
+          <TextArea
+            rows="5"
+            id="trustedProxies"
+            v-model="trustedProxies"
+            :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }"
+          />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
         <p>
@@ -56,7 +66,12 @@
         <span v-if="errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
         <br />
         <span class="p-float-label">
-          <InputText id="canonicalHost" type="text" v-model="canonicalHost" :class="{ 'p-invalid': (errors && errors['canonical-host']) || false }" />
+          <InputText
+            id="canonicalHost"
+            type="text"
+            v-model="canonicalHost"
+            :class="{ 'p-invalid': (errors && errors['canonical-host']) || false }"
+          />
           <label for="canonicalHost">Canonical Host</label>
         </span>
         <p>

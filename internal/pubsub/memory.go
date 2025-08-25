@@ -23,7 +23,7 @@ import (
 	"log/slog"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {

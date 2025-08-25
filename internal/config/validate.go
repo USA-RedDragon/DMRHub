@@ -486,7 +486,7 @@ func (m Metrics) ValidateWithFields() (errs []ValidationError) {
 		})
 	}
 
-	return nil
+	return
 }
 
 // Validate validates the PProf configuration.

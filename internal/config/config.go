@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 
 	"golang.org/x/crypto/pbkdf2"
 	"gopkg.in/yaml.v2"
@@ -149,13 +150,21 @@ func (c Config) Save() error {
 	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0750); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	f, err := os.Create(path.Join(configDir, "DMRHub", "config.yaml"))
+	f, err := os.Create(filepath.Clean(path.Join(configDir, "DMRHub", "config.yaml")))
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Printf("failed to close config file: %v\n", err)
+		}
+	}()
 	enc := yaml.NewEncoder(f)
-	defer enc.Close()
+	defer func() {
+		if err := enc.Close(); err != nil {
+			fmt.Printf("failed to close config encoder: %v\n", err)
+		}
+	}()
 	if err := enc.Encode(c); err != nil {
 		return fmt.Errorf("failed to encode config to file: %w", err)
 	}

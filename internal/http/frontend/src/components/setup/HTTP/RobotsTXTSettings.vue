@@ -44,7 +44,12 @@
         <span v-if="errors && errors.mode" class="p-error">{{ errors.mode }}</span>
         <br v-if="mode === 'custom'" />
         <span class="p-float-label" v-if="mode === 'custom'">
-          <TextArea rows="5" id="content" v-model="content" :class="{ 'p-invalid': (errors && errors.content) || false }" />
+          <TextArea
+            rows="5"
+            id="content"
+            v-model="content"
+            :class="{ 'p-invalid': (errors && errors.content) || false }"
+          />
           <label for="content">Content</label>
         </span>
         <p v-if="mode === 'custom'">

@@ -48,7 +48,12 @@
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">
@@ -57,7 +62,12 @@
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="password" type="password" v-model="password" :class="{ 'p-invalid': (errors && errors.password) || false }" />
+          <InputText
+            id="password"
+            type="password"
+            v-model="password"
+            :class="{ 'p-invalid': (errors && errors.password) || false }"
+          />
           <label for="password">Password</label>
         </span>
         <p v-if="enabled">

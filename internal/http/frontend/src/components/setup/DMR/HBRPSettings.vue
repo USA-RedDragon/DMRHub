@@ -38,7 +38,12 @@
         <br />
         <br />
         <span class="p-float-label">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p>

@@ -29,7 +29,12 @@
         </p>
         <br />
         <span class="p-float-label">
-          <InputText id="otlpEndpoint" type="text" v-model="otlpEndpoint" :class="{ 'p-invalid': (errors && errors['otlp-endpoint']) || false }" />
+          <InputText
+            id="otlpEndpoint"
+            type="text"
+            v-model="otlpEndpoint"
+            :class="{ 'p-invalid': (errors && errors['otlp-endpoint']) || false }"
+          />
           <label for="otlpEndpoint">OTLP Endpoint</label>
         </span>
         <p>
@@ -59,7 +64,12 @@
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText id="port" type="number" v-model="port" :class="{ 'p-invalid': (errors && errors.port) || false }" />
+          <InputText
+            id="port"
+            type="number"
+            v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }"
+          />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">
@@ -68,14 +78,21 @@
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <TextArea rows="5" id="trustedProxies" v-model="trustedProxies" :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }" />
+          <TextArea
+            rows="5"
+            id="trustedProxies"
+            v-model="trustedProxies"
+            :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }"
+          />
           <label for="trustedProxies">Trusted Proxies</label>
         </span>
         <p v-if="enabled">
           A list of trusted proxy IP addresses. If set, the metrics server will only accept
           requests from these IP addresses. One per line.
         </p>
-        <span v-if="enabled && errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
+        <span v-if="enabled && errors && errors['trusted-proxies']" class="p-error">
+          {{ errors['trusted-proxies'] }}
+        </span>
       </template>
     </Card>
   </div>

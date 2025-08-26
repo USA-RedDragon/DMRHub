@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/crypto/pbkdf2"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Config stores the application configuration.

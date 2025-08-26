@@ -38,7 +38,7 @@
     "@vue/eslint-config-prettier": "^10.2.0",
     "axios": "^1.11.0",
     "cypress": "^15.0.0",
-    "cypress-mochawesome-reporter": "^3.8.4",
+    "cypress-mochawesome-reporter": "^4.0.2",
     "cypress-multi-reporters": "^2.0.5",
     "cypress-wait-for-stable-dom": "^0.1.0",
     "eslint": "^8.57.1",

@@ -33,7 +33,6 @@ func TestSysadminLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	resp, w, _ := testutils.LoginAdmin(t, router)
@@ -50,7 +49,6 @@ func TestLogout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	resp, w, adminJar := testutils.LoginAdmin(t, router)

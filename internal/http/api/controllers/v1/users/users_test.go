@@ -43,7 +43,6 @@ func TestRegisterBadUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	// Test invalid user
@@ -71,7 +70,6 @@ func TestRegisterBadData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
@@ -99,7 +97,6 @@ func TestRegisterBadDMRId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -123,7 +120,6 @@ func TestRegisterBadCallsign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -147,7 +143,6 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -171,7 +166,6 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -195,7 +189,6 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -232,7 +225,6 @@ func TestRegisterDuplicateDMRID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -269,7 +261,6 @@ func TestGetUsers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	resp, w, jar := testutils.LoginAdmin(t, router)
@@ -309,7 +300,6 @@ func TestDeleteUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -345,7 +335,6 @@ func TestDeleteInvalidUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -381,7 +370,6 @@ func TestApproveUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -405,7 +393,6 @@ func TestSuspendUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -452,7 +439,6 @@ func TestUnsuspendUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -512,7 +498,6 @@ func TestGetUserByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -549,7 +534,6 @@ func TestGetUserMe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -580,7 +564,6 @@ func TestPromoteUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
@@ -624,7 +607,6 @@ func TestDemoteUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{

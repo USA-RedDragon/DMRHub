@@ -23,6 +23,3 @@ type APIResponse struct {
 	Message string `json:"message"`
 	Error   string `json:"error"`
 }
-
-const RedisImageName = "redis"
-const RedisTag = "7-alpine"

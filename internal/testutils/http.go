@@ -31,26 +31,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
 	"github.com/gin-gonic/gin"
-	"github.com/ory/dockertest/v3"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type TestDB struct {
-	client         *redis.Client
-	database       *gorm.DB
-	redisContainer *dockertest.Resource
-}
-
-func (t *TestDB) CloseRedis() {
-	if t.client != nil {
-		_ = t.client.Close()
-	}
-	if t.redisContainer != nil {
-		_ = t.redisContainer.Close()
-	}
-	t.redisContainer = nil
-	t.client = nil
+	database *gorm.DB
 }
 
 func (t *TestDB) CloseDB() {

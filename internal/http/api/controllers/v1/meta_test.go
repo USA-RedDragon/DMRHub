@@ -40,7 +40,6 @@ func TestPingRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()
@@ -88,7 +87,6 @@ func TestVersionRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
-	defer tdb.CloseRedis()
 	defer tdb.CloseDB()
 
 	w := httptest.NewRecorder()

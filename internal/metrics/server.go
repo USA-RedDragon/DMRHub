@@ -58,6 +58,7 @@ func CreateMetricsServer(config *config.Config) {
 			Handler:           r,
 			ReadHeaderTimeout: readTimeout,
 		}
+		slog.Info("Metrics Server listening", "address", server.Addr)
 		err = server.ListenAndServe()
 		if err != nil {
 			panic(err)

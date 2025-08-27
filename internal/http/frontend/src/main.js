@@ -19,7 +19,8 @@
 
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import { VueHeadMixin, createHead } from '@unhead/vue';
+import { VueHeadMixin } from '@unhead/vue';
+import { createHead } from '@unhead/vue/client';
 
 import PrimeVue from 'primevue/config';
 import ToastService from 'primevue/toastservice';

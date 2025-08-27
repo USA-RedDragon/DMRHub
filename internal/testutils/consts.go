@@ -25,4 +25,4 @@ type APIResponse struct {
 }
 
 const RedisImageName = "redis"
-const RedisTag = "7-alpine"
+const RedisTag = "8-alpine"

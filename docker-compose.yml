@@ -2,7 +2,7 @@ version: '3'
 
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     command: '--requirepass password --io-threads 2'
     ports:

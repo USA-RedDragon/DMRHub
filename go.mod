@@ -25,7 +25,7 @@ require (
 	github.com/puzpuzpuz/xsync/v4 v4.1.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.12.1
 	github.com/redis/go-redis/v9 v9.12.1
-	github.com/spf13/cobra v1.10.0
+	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.4.0
 	github.com/ulikunitz/xz v0.5.15
@@ -95,7 +95,7 @@ require (
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.12.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	github.com/spf13/pflag v1.0.8 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect

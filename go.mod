@@ -12,7 +12,7 @@ require (
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.10.1
 	github.com/glebarez/sqlite v1.11.0
-	github.com/go-co-op/gocron/v2 v2.16.4
+	github.com/go-co-op/gocron/v2 v2.16.5
 	github.com/go-gormigrate/gormigrate/v2 v2.1.4
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3

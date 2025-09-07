@@ -52,7 +52,7 @@
     "mochawesome-report-generator": "^6.2.0",
     "path-parser": "^6.1.0",
     "prettier": "^3.6.2",
-    "sass": "^1.92.0",
+    "sass": "^1.92.1",
     "sitemap": "^8.0.0",
     "start-server-and-test": "^2.1.0",
     "vite": "^7.1.4",

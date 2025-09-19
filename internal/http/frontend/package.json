@@ -54,7 +54,7 @@
     "prettier": "^3.6.2",
     "sass": "^1.92.1",
     "sitemap": "^8.0.0",
-    "start-server-and-test": "^2.1.1",
+    "start-server-and-test": "^2.1.2",
     "vite": "^7.1.6",
     "vitest": "^3.2.4"
   }

@@ -55,7 +55,7 @@
     "sass": "^1.93.2",
     "sitemap": "^8.0.0",
     "start-server-and-test": "^2.1.2",
-    "vite": "^7.1.10",
+    "vite": "^7.1.12",
     "vitest": "^3.2.4"
   }
 }

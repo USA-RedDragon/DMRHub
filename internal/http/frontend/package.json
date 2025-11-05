@@ -49,7 +49,7 @@
     "mocha-junit-reporter": "^2.2.1",
     "mochawesome": "^7.1.4",
     "mochawesome-merge": "^5.0.0",
-    "mochawesome-report-generator": "^6.3.0",
+    "mochawesome-report-generator": "^6.3.1",
     "path-parser": "^6.1.0",
     "prettier": "^3.6.2",
     "sass": "^1.93.3",

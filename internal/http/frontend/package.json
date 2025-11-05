@@ -37,7 +37,7 @@
     "@vitest/eslint-plugin": "1.4.0",
     "@vitest/ui": "^3.2.4",
     "@vue/eslint-config-prettier": "^10.2.0",
-    "axios": "^1.13.1",
+    "axios": "^1.13.2",
     "cypress": "^15.6.0",
     "cypress-mochawesome-reporter": "^4.0.2",
     "cypress-multi-reporters": "^2.0.5",

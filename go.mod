@@ -25,7 +25,7 @@ require (
 	github.com/puzpuzpuz/xsync/v4 v4.2.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.2
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.5.0
 	github.com/ulikunitz/xz v0.5.15

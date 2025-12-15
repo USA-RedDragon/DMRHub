@@ -4,10 +4,11 @@
         "local>USA-RedDragon/renovate-configs",
         "local>USA-RedDragon/renovate-configs:golang"
     ],
-    "regexManagers": [
+    "customManagers": [
         {
-            "fileMatch": [
-                "(^|/)internal\\/testutils\\/consts\\.go$"
+            "customType": "regex",
+            "managerFilePatterns": [
+                "/(^|/)internal\\/testutils\\/consts\\.go$/"
             ],
             "matchStrings": [
                 "const RedisTag = \"(?<currentValue>.*?)\""

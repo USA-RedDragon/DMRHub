@@ -35,7 +35,7 @@
     "@unhead/vue": "2.1.1",
     "@vitejs/plugin-vue": "6.0.3",
     "@vitest/eslint-plugin": "1.6.5",
-    "@vitest/ui": "3.2.4",
+    "@vitest/ui": "4.0.16",
     "@vue/eslint-config-prettier": "10.2.0",
     "axios": "1.13.2",
     "cypress": "15.8.1",
@@ -56,6 +56,6 @@
     "sitemap": "8.0.2",
     "start-server-and-test": "2.1.3",
     "vite": "7.3.0",
-    "vitest": "3.2.4"
+    "vitest": "4.0.16"
   }
 }

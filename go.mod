@@ -1,6 +1,6 @@
 module github.com/USA-RedDragon/DMRHub
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.6

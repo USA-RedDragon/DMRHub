@@ -48,7 +48,7 @@
     "globals": "16.5.0",
     "mocha-junit-reporter": "2.2.1",
     "mochawesome": "7.1.4",
-    "mochawesome-merge": "5.1.0",
+    "mochawesome-merge": "5.1.1",
     "mochawesome-report-generator": "6.3.2",
     "path-parser": "6.1.0",
     "prettier": "3.8.1",

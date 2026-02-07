@@ -651,6 +651,10 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		if kvErr == nil && kvRepeater.Connection == "CHALLENGE_SENT" && kvRepeater.IP == remoteAddr.IP.String() {
 			// Reuse the existing salt to allow either challenge to succeed.
+			if time.Since(kvRepeater.Connected) < 2*time.Second {
+				slog.Info("Ignoring duplicate login packet to prevent race condition", "repeaterID", repeaterID)
+				return
+			}
 			reuseSalt = true
 			existingSalt = kvRepeater.Salt
 			slog.Info("Reusing existing salt for duplicate login", "repeaterID", repeaterID)
@@ -786,8 +790,8 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCLPacket")
 	defer span.End()
 
-	// RPTCL packets are 8 bytes long
-	const rptclLen = 8
+	// RPTCL packets are 9 bytes long (RPTCL + 4 byte ID)
+	const rptclLen = 9
 	if len(data) != rptclLen {
 		slog.Error("Invalid RPTCL packet length", "length", len(data))
 		return

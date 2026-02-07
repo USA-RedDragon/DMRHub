@@ -270,8 +270,8 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
-	if err := s.pubsub.Publish("hbrp:outgoing:noaddr", packetBytes); err != nil {
-		slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
+	if err := s.pubsub.Publish("hbrp:outgoing", packetBytes); err != nil {
+		slog.Error("Error publishing packet to hbrp:outgoing", "error", err)
 	}
 }
 

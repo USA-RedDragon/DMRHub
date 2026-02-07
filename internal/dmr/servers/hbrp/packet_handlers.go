@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -600,15 +601,31 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTLPacket")
 	defer span.End()
 
-	// RPTL packets are 8 bytes long
+	// RPTL packets are 8 bytes long (standard) or 12 bytes long (legacy)
 	const rptlLen = 8
+	const rptlLenLegacy = 12
 	const rptlRepeaterIDOffset = 4
-	if len(data) != rptlLen {
+	const legacyRepeaterIDLength = 8
+
+	var repeaterID uint
+	var repeaterIDBytes []byte
+
+	if len(data) == rptlLen {
+		repeaterIDBytes = data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
+		repeaterID = uint(binary.BigEndian.Uint32(repeaterIDBytes))
+	} else if len(data) == rptlLenLegacy {
+		repeaterIDBytes = data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+legacyRepeaterIDLength]
+		idStr := string(repeaterIDBytes)
+		parsedID, err := strconv.ParseUint(idStr, 16, 32)
+		if err != nil {
+			slog.Error("Invalid legacy repeater ID", "id", idStr, "error", err)
+			return
+		}
+		repeaterID = uint(parsedID)
+	} else {
 		slog.Error("Invalid RPTL packet length", "length", len(data))
 		return
 	}
-	repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
-	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Login from Repeater ID", "repeaterID", repeaterID)
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
 	if err != nil {

@@ -228,19 +228,32 @@ func (s *Server) Start(ctx context.Context) error {
 				continue
 			}
 			slog.Debug("Read message from UDP socket", "remoteaddr", remoteaddr, "length", length)
-			p := models.RawDMRPacket{
-				Data:       s.Buffer[:length],
-				RemoteIP:   remoteaddr.IP.String(),
-				RemotePort: remoteaddr.Port,
-			}
-			packedBytes, err := p.MarshalMsg(nil)
-			if err != nil {
-				slog.Error("Error marshalling packet", "error", err)
-				return
-			}
-			if err := s.pubsub.Publish("hbrp:incoming", packedBytes); err != nil {
-				slog.Error("Error publishing packet to hbrp:incoming", "error", err)
-				return
+			// Make a copy of the data to avoid buffer reuse issues
+			data := make([]byte, length)
+			copy(data, s.Buffer[:length])
+
+			// Check if this is a DMRD or DMRA data packet that needs cross-pod distribution.
+			// All handshake/control packets (RPTL, RPTK, RPTC, RPTCL, RPTPING, RPTO) are
+			// handled locally to prevent multi-replica race conditions.
+			const sigLen = 4
+			if length >= sigLen && (dmrconst.Command(data[:sigLen]) == dmrconst.CommandDMRD || dmrconst.Command(data[:sigLen]) == dmrconst.CommandDMRA) {
+				p := models.RawDMRPacket{
+					Data:       data,
+					RemoteIP:   remoteaddr.IP.String(),
+					RemotePort: remoteaddr.Port,
+				}
+				packedBytes, err := p.MarshalMsg(nil)
+				if err != nil {
+					slog.Error("Error marshalling packet", "error", err)
+					continue
+				}
+				if err := s.pubsub.Publish("hbrp:incoming", packedBytes); err != nil {
+					slog.Error("Error publishing packet to hbrp:incoming", "error", err)
+					continue
+				}
+			} else {
+				// Handle handshake/control packets locally on this pod only
+				s.handlePacket(ctx, *remoteaddr, data)
 			}
 		}
 	}()
@@ -260,18 +273,12 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		slog.Error("Error getting repeater from KV", "error", err)
 		return
 	}
-	p := models.RawDMRPacket{
-		Data:       commandPrefixedData,
-		RemoteIP:   repeater.IP,
-		RemotePort: repeater.Port,
-	}
-	packetBytes, err := p.MarshalMsg(nil)
+	_, err = s.Server.WriteToUDP(commandPrefixedData, &net.UDPAddr{
+		IP:   net.ParseIP(repeater.IP),
+		Port: repeater.Port,
+	})
 	if err != nil {
-		slog.Error("Error marshalling packet", "error", err)
-		return
-	}
-	if err := s.pubsub.Publish("hbrp:outgoing", packetBytes); err != nil {
-		slog.Error("Error publishing packet to hbrp:outgoing", "error", err)
+		slog.Error("Error sending command", "error", err)
 	}
 }
 

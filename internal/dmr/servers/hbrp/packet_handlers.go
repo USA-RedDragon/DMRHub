@@ -644,39 +644,60 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 		slog.Debug("Repeater ID is not valid, sending NAK", "repeaterID", repeaterID)
 	} else {
+		// Check KV for existing session to handle duplicate/dual-stack logins
+		kvRepeater, kvErr := s.kvClient.GetRepeater(ctx, repeaterID)
+		reuseSalt := false
+		var existingSalt uint32
+
+		if kvErr == nil && kvRepeater.Connection == "CHALLENGE_SENT" && kvRepeater.IP == remoteAddr.IP.String() {
+			// Reuse the existing salt to allow either challenge to succeed.
+			reuseSalt = true
+			existingSalt = kvRepeater.Salt
+			slog.Info("Reusing existing salt for duplicate login", "repeaterID", repeaterID)
+		}
+
 		repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			slog.Error("Error finding repeater", "error", err)
 			return
 		}
 
-		bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
-		if err != nil {
-			slog.Error("Error generating random salt", "error", err)
-		}
-		// Since we're generating from [0, max32Bit), this conversion is safe
-		// but we'll add explicit bounds checking to satisfy gosec
-		saltUint64 := bigSalt.Uint64()
-		if saltUint64 <= 0xFFFFFFFF {
-			repeater.Salt = uint32(saltUint64)
+		var saltBytes [4]byte
+
+		if reuseSalt {
+			repeater.Salt = existingSalt
+			binary.BigEndian.PutUint32(saltBytes[:], existingSalt)
 		} else {
-			// This should never happen given our max32Bit constant, but handle it just in case
-			slog.Error("Generated salt value exceeds uint32 range", "saltValue", saltUint64)
-			repeater.Salt = 0xFFFFFFFF
+			bigSalt, err := rand.Int(rand.Reader, big.NewInt(max32Bit))
+			if err != nil {
+				slog.Error("Error generating random salt", "error", err)
+			}
+			// Since we're generating from [0, max32Bit), this conversion is safe
+			// but we'll add explicit bounds checking to satisfy gosec
+			saltUint64 := bigSalt.Uint64()
+			if saltUint64 <= 0xFFFFFFFF {
+				repeater.Salt = uint32(saltUint64)
+			} else {
+				// This should never happen given our max32Bit constant, but handle it just in case
+				slog.Error("Generated salt value exceeds uint32 range", "saltValue", saltUint64)
+				repeater.Salt = 0xFFFFFFFF
+			}
+
+			// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
+			if len(bigSalt.Bytes()) < len(saltBytes) {
+				copy(saltBytes[len(saltBytes)-len(bigSalt.Bytes()):], bigSalt.Bytes())
+			} else {
+				copy(saltBytes[:], bigSalt.Bytes())
+			}
 		}
+
 		repeater.IP = remoteAddr.IP.String()
 		repeater.Port = remoteAddr.Port
 		repeater.Connection = "RPTL-RECEIVED"
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
-		// bigSalt.Bytes() can be less than 4 bytes, so we need make sure we prefix 0s
-		var saltBytes [4]byte
-		if len(bigSalt.Bytes()) < len(saltBytes) {
-			copy(saltBytes[len(saltBytes)-len(bigSalt.Bytes()):], bigSalt.Bytes())
-		} else {
-			copy(saltBytes[:], bigSalt.Bytes())
-		}
+
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, saltBytes[:])
 		s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, "CHALLENGE_SENT")
 	}

@@ -4,8 +4,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/JGLTechnologies/gin-rate-limit v1.5.6 h1:BrL2wXrF7SSqmB88YTGFVKMGVcjURMUeKqwQrlmzweI=
 github.com/JGLTechnologies/gin-rate-limit v1.5.6/go.mod h1:fwUuBegxLKm8+/4ST0zDFssRFTFaVZ7bH3ApK7iNZww=
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
-github.com/USA-RedDragon/configulator v0.0.3 h1:g3+mWTexdDh6Sqesm2uR9UN4nfMHZf5MnwxICgVoNx8=
-github.com/USA-RedDragon/configulator v0.0.3/go.mod h1:X/OR36V04+2h2uALY+c8WyqaAp/wSdcqARbJnyZc2Q4=
+github.com/USA-RedDragon/configulator v0.0.4 h1:ljuWc3MYZyEMcBDRhxrAaKt5yciUZONaraIhVJHAq6M=
+github.com/USA-RedDragon/configulator v0.0.4/go.mod h1:X/OR36V04+2h2uALY+c8WyqaAp/wSdcqARbJnyZc2Q4=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

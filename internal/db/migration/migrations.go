@@ -92,7 +92,7 @@ func Migrate(db *gorm.DB) error {
 		{
 			ID: "202602100457",
 			Migrate: func(tx *gorm.DB) error {
-				switch tx.Dialector.Name() {
+				switch tx.Name() {
 				case "postgres":
 					if err := tx.Exec("ALTER TABLE calls DROP COLUMN IF EXISTS call_data").Error; err != nil {
 						return fmt.Errorf("could not drop call_data column: %w", err)

@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type GORMStore struct {
@@ -89,7 +90,10 @@ func (s *GORMStore) Limit(key string, c *gin.Context) (ret ratelimit.Info) {
 		}
 	}
 
-	err = s.db.Save(rl).Error
+	err = s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"hits", "timestamp"}),
+	}).Create(rl).Error
 	if err != nil {
 		slog.Error("Failed to save ratelimit entry", "error", err)
 	}

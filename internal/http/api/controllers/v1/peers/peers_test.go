@@ -20,10 +20,124 @@
 package peers_test
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+const testTimeout = 1 * time.Minute
+
+func TestGETPeersRequiresAdmin(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGETPeersAsAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGETMyPeersRequiresLogin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers/my", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGETMyPeersAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers/my", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPOSTPeerRequiresAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/peers", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

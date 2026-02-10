@@ -21,9 +21,47 @@ package pagination_test
 
 import (
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/pagination"
 )
 
-func TestNoop(t *testing.T) {
+func TestNewPaginate(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+	p := pagination.NewPaginate(10, 1)
+	if p == nil {
+		t.Fatal("Expected non-nil Paginate")
+	}
+}
+
+func TestPaginateFirstPage(t *testing.T) {
+	t.Parallel()
+	p := pagination.NewPaginate(10, 1)
+	if p == nil {
+		t.Fatal("Expected non-nil Paginate")
+	}
+	// Cannot easily test the GORM scope directly without a DB, but we verify the struct creates properly
+}
+
+func TestPaginateSecondPage(t *testing.T) {
+	t.Parallel()
+	p := pagination.NewPaginate(10, 2)
+	if p == nil {
+		t.Fatal("Expected non-nil Paginate")
+	}
+}
+
+func TestPaginateZeroLimit(t *testing.T) {
+	t.Parallel()
+	p := pagination.NewPaginate(0, 1)
+	if p == nil {
+		t.Fatal("Expected non-nil Paginate")
+	}
+}
+
+func TestPaginateLargePageNumber(t *testing.T) {
+	t.Parallel()
+	p := pagination.NewPaginate(25, 100)
+	if p == nil {
+		t.Fatal("Expected non-nil Paginate")
+	}
 }

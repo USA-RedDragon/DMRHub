@@ -20,10 +20,81 @@
 package openbridge_test
 
 import (
+	"context"
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/configulator"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+func TestMakeServer(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	assert.NoError(t, err)
+
+	defConfig.Database.Database = ""
+	defConfig.Database.ExtraParameters = []string{}
+
+	database, err := db.MakeDB(&defConfig)
+	assert.NoError(t, err)
+	defer func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+	}()
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	assert.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	assert.NoError(t, err)
+	defer func() { _ = kvStore.Close() }()
+
+	ct := calltracker.NewCallTracker(database, ps)
+
+	server := openbridge.MakeServer(&defConfig, database, ps, kvStore, ct)
+
+	assert.NotNil(t, server.Buffer)
+	assert.Len(t, server.Buffer, 73) // largestMessageSize
+	assert.NotNil(t, server.DB)
+	assert.NotNil(t, server.CallTracker)
+}
+
+func TestMakeServerDefaultBindAddress(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	assert.NoError(t, err)
+
+	defConfig.Database.Database = ""
+	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.OpenBridge.Bind = "0.0.0.0"
+	defConfig.DMR.OpenBridge.Port = 62035
+
+	database, err := db.MakeDB(&defConfig)
+	assert.NoError(t, err)
+	defer func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+	}()
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	assert.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	assert.NoError(t, err)
+	defer func() { _ = kvStore.Close() }()
+
+	ct := calltracker.NewCallTracker(database, ps)
+
+	server := openbridge.MakeServer(&defConfig, database, ps, kvStore, ct)
+
+	assert.Equal(t, 62035, server.SocketAddress.Port)
+	assert.Equal(t, "0.0.0.0", server.SocketAddress.IP.String())
 }

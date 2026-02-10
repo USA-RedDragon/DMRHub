@@ -21,9 +21,39 @@ package websocket_test
 
 import (
 	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+func TestMessageStruct(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+	msg := websocket.Message{
+		Type: 1,
+		Data: []byte("hello"),
+	}
+	assert.Equal(t, 1, msg.Type)
+	assert.Equal(t, []byte("hello"), msg.Data)
+}
+
+func TestMessageEmptyData(t *testing.T) {
+	t.Parallel()
+	msg := websocket.Message{
+		Type: 2,
+		Data: nil,
+	}
+	assert.Equal(t, 2, msg.Type)
+	assert.Nil(t, msg.Data)
+}
+
+func TestMessageBinaryData(t *testing.T) {
+	t.Parallel()
+	data := []byte{0x00, 0x01, 0x02, 0xFF}
+	msg := websocket.Message{
+		Type: 2,
+		Data: data,
+	}
+	assert.Equal(t, 2, msg.Type)
+	assert.Equal(t, data, msg.Data)
+	assert.Len(t, msg.Data, 4)
 }

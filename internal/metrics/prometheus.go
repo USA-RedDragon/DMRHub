@@ -20,6 +20,8 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -32,33 +34,43 @@ type Metrics struct {
 	KVCleanupDuration   prometheus.Histogram
 }
 
+var (
+	metricsOnce     sync.Once //nolint:gochecknoglobals
+	metricsInstance *Metrics  //nolint:gochecknoglobals
+)
+
+// NewMetrics returns a singleton Metrics instance. Prometheus collectors
+// are registered on the default registry exactly once, so it is safe to
+// call NewMetrics from multiple goroutines or test cases.
 func NewMetrics() *Metrics {
-	metrics := &Metrics{
-		KVOperationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kv_operations_total",
-			Help: "The total number of KV operations performed",
-		}, []string{"operation", "status"}),
-		KVOperationDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "kv_operation_duration_seconds",
-			Help:    "Duration of KV operations",
-			Buckets: prometheus.DefBuckets,
-		}, []string{"operation"}),
-		KVKeysTotal: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "kv_keys_total",
-			Help: "The current number of keys in the KV store",
-		}),
-		KVExpiredKeysTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "kv_expired_keys_total",
-			Help: "The total number of expired keys cleaned up",
-		}),
-		KVCleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "kv_cleanup_duration_seconds",
-			Help:    "Duration of KV cleanup operations",
-			Buckets: prometheus.DefBuckets,
-		}),
-	}
-	metrics.register()
-	return metrics
+	metricsOnce.Do(func() {
+		metricsInstance = &Metrics{
+			KVOperationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "kv_operations_total",
+				Help: "The total number of KV operations performed",
+			}, []string{"operation", "status"}),
+			KVOperationDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+				Name:    "kv_operation_duration_seconds",
+				Help:    "Duration of KV operations",
+				Buckets: prometheus.DefBuckets,
+			}, []string{"operation"}),
+			KVKeysTotal: prometheus.NewGauge(prometheus.GaugeOpts{
+				Name: "kv_keys_total",
+				Help: "The current number of keys in the KV store",
+			}),
+			KVExpiredKeysTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "kv_expired_keys_total",
+				Help: "The total number of expired keys cleaned up",
+			}),
+			KVCleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+				Name:    "kv_cleanup_duration_seconds",
+				Help:    "Duration of KV cleanup operations",
+				Buckets: prometheus.DefBuckets,
+			}),
+		}
+		metricsInstance.register()
+	})
+	return metricsInstance
 }
 
 func (m *Metrics) register() {

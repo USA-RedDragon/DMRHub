@@ -20,10 +20,155 @@
 package lastheard_test
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+const testTimeout = 1 * time.Minute
+
+func TestGETLastheardUnauthenticated(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard", nil)
+	router.ServeHTTP(w, req)
+
+	// Lastheard is accessible without login (returns public calls)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGETLastheardAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGETLastheardTalkgroupRequiresLogin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/talkgroup/9990", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGETLastheardTalkgroupAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/talkgroup/9990", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGETLastheardUserInvalidID(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/user/notanumber", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGETLastheardRepeaterInvalidID(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/repeater/notanumber", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

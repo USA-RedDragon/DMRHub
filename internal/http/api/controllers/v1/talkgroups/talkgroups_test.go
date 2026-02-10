@@ -20,10 +20,152 @@
 package talkgroups_test
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestNoop(t *testing.T) {
+const testTimeout = 1 * time.Minute
+
+func TestGETTalkgroupsRequiresLogin(t *testing.T) {
 	t.Parallel()
-	t.Log("Noop")
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestGETTalkgroupsAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result struct {
+		Total      int                `json:"total"`
+		Talkgroups []models.Talkgroup `json:"talkgroups"`
+	}
+	err = json.Unmarshal(w.Body.Bytes(), &result)
+	assert.NoError(t, err)
+	// Should have at least the parrot talkgroup (seeded)
+	assert.GreaterOrEqual(t, result.Total, 1)
+}
+
+func TestGETTalkgroupByID(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	// Talkgroup 9990 is the parrot talkgroup (seeded)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/9990", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var tg models.Talkgroup
+	err = json.Unmarshal(w.Body.Bytes(), &tg)
+	assert.NoError(t, err)
+	assert.Equal(t, uint(9990), tg.ID)
+	assert.Equal(t, "DMRHub Parrot", tg.Name)
+}
+
+func TestGETTalkgroupInvalidID(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/notanumber", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGETMyTalkgroupsAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/my", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }

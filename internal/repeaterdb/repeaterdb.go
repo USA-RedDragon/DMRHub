@@ -63,8 +63,8 @@ const waitTime = 100 * time.Millisecond
 type RepeaterDB struct {
 	uncompressedJSON       []byte
 	dmrRepeaters           atomic.Value
-	dmrRepeaterMap         *xsync.MapOf[uint, DMRRepeater]
-	dmrRepeaterMapUpdating *xsync.MapOf[uint, DMRRepeater]
+	dmrRepeaterMap         *xsync.Map[uint, DMRRepeater]
+	dmrRepeaterMapUpdating *xsync.Map[uint, DMRRepeater]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -134,8 +134,8 @@ func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
 func UnpackDB() error {
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
-		repeaterDB.dmrRepeaterMap = xsync.NewMapOf[uint, DMRRepeater]()
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMap = xsync.NewMap[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -161,7 +161,7 @@ func UnpackDB() error {
 		}
 
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 		repeaterDB.isDone.Store(true)
 	}
 
@@ -259,13 +259,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	repeaterDB.dmrRepeaters.Store(tmpDB)
 
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 	for i := range tmpDB.Repeaters {
 		repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
 	}
 
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMapOf[uint, DMRRepeater]()
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 
 	slog.Info("Update complete", "loadedRepeaters", Len())
 

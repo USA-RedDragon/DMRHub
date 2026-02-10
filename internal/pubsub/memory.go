@@ -28,12 +28,12 @@ import (
 
 func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {
 	return inMemoryPubSub{
-		data: xsync.NewMapOf[string, inMemorySubscription](),
+		data: xsync.NewMap[string, inMemorySubscription](),
 	}, nil
 }
 
 type inMemoryPubSub struct {
-	data *xsync.MapOf[string, inMemorySubscription]
+	data *xsync.Map[string, inMemorySubscription]
 }
 
 func (ps inMemoryPubSub) Publish(topic string, message []byte) error {

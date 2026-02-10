@@ -92,8 +92,8 @@ func getCallHash(call models.Call) (uint64, error) {
 type CallTracker struct {
 	db            *gorm.DB
 	pubsub        pubsub.PubSub
-	callEndTimers *xsync.MapOf[uint64, *time.Timer]
-	inFlightCalls *xsync.MapOf[uint64, *models.Call]
+	callEndTimers *xsync.Map[uint64, *time.Timer]
+	inFlightCalls *xsync.Map[uint64, *models.Call]
 }
 
 // NewCallTracker creates a new CallTracker.
@@ -101,8 +101,8 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 	return &CallTracker{
 		db:            db,
 		pubsub:        pubsub,
-		callEndTimers: xsync.NewMapOf[uint64, *time.Timer](),
-		inFlightCalls: xsync.NewMapOf[uint64, *models.Call](),
+		callEndTimers: xsync.NewMap[uint64, *time.Timer](),
+		inFlightCalls: xsync.NewMap[uint64, *models.Call](),
 	}
 }
 

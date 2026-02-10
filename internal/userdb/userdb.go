@@ -63,8 +63,8 @@ const waitTime = 100 * time.Millisecond
 type UserDB struct {
 	uncompressedJSON   []byte
 	dmrUsers           atomic.Value
-	dmrUserMap         *xsync.MapOf[uint, DMRUser]
-	dmrUserMapUpdating *xsync.MapOf[uint, DMRUser]
+	dmrUserMap         *xsync.Map[uint, DMRUser]
+	dmrUserMapUpdating *xsync.Map[uint, DMRUser]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
@@ -131,8 +131,8 @@ func (e *dmrUserDB) Unmarshal(b []byte) error {
 func UnpackDB() error {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMap = xsync.NewMapOf[uint, DMRUser]()
-		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
+		userDB.dmrUserMap = xsync.NewMap[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
@@ -158,7 +158,7 @@ func UnpackDB() error {
 		}
 
 		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 		userDB.isDone.Store(true)
 	}
 
@@ -258,13 +258,13 @@ func Update() error {
 	tmpDB.Date = time.Now()
 	userDB.dmrUsers.Store(tmpDB)
 
-	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
+	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 	for i := range tmpDB.Users {
 		userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
 	}
 
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdating = xsync.NewMapOf[uint, DMRUser]()
+	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 
 	slog.Info("Update complete", "loadedUsers", Len())
 

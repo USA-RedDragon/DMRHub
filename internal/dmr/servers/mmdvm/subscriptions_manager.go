@@ -38,7 +38,7 @@ var subscriptionManager *SubscriptionManager //nolint:gochecknoglobals
 
 type SubscriptionManager struct {
 	// stores map[uint]context.CancelFunc indexed by strconv.Itoa(int(radioID))
-	subscriptions   *xsync.MapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]]
+	subscriptions   *xsync.Map[uint, *xsync.Map[uint, *context.CancelFunc]]
 	db              *gorm.DB
 	rawOutgoingChan chan<- []byte
 }
@@ -46,7 +46,7 @@ type SubscriptionManager struct {
 func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
 	if subscriptionManager == nil {
 		subscriptionManager = &SubscriptionManager{
-			subscriptions: xsync.NewMapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]](),
+			subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *context.CancelFunc]](),
 			db:            db,
 		}
 	}
@@ -105,7 +105,7 @@ func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID ui
 
 func (m *SubscriptionManager) CancelAllSubscriptions() {
 	slog.Debug("Cancelling all subscriptions")
-	m.subscriptions.Range(func(radioID uint, value *xsync.MapOf[uint, *context.CancelFunc]) bool {
+	m.subscriptions.Range(func(radioID uint, value *xsync.Map[uint, *context.CancelFunc]) bool {
 		m.CancelAllRepeaterSubscriptions(radioID)
 		return true
 	})
@@ -149,7 +149,7 @@ func (m *SubscriptionManager) ListenForCalls(pubsub pubsub.PubSub, repeaterID ui
 
 	_, ok := m.subscriptions.Load(repeaterID)
 	if !ok {
-		m.subscriptions.Store(repeaterID, xsync.NewMapOf[uint, *context.CancelFunc]())
+		m.subscriptions.Store(repeaterID, xsync.NewMap[uint, *context.CancelFunc]())
 	}
 
 	radioSubs, ok := m.subscriptions.Load(repeaterID)

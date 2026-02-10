@@ -33,7 +33,7 @@ import (
 func makeInMemoryKV(ctx context.Context, _ *config.Config) (KV, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	kv := inMemoryKV{
-		kv:      xsync.NewMapOf[string, kvValue](),
+		kv:      xsync.NewMap[string, kvValue](),
 		cancel:  cancel,
 		metrics: metrics.NewMetrics(),
 	}
@@ -50,7 +50,7 @@ type kvValue struct {
 }
 
 type inMemoryKV struct {
-	kv      *xsync.MapOf[string, kvValue]
+	kv      *xsync.Map[string, kvValue]
 	cancel  context.CancelFunc
 	metrics *metrics.Metrics
 }

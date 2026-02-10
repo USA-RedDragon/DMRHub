@@ -200,9 +200,9 @@ func (s *Server) doParrot(ctx context.Context, packet models.Packet, repeaterID 
 	}
 	s.Parrot.RecordPacket(ctx, packet.StreamID, packet)
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+		packets := s.Parrot.GetStream(ctx, packet.StreamID)
 		s.Parrot.StopStream(ctx, packet.StreamID)
 		go func() {
-			packets := s.Parrot.GetStream(ctx, packet.StreamID)
 			time.Sleep(parrotDelay)
 			// Track the duration of the call to ensure that we send out packets right on the 60ms boundary
 			// This is to ensure that the DMR repeater doesn't drop the packet

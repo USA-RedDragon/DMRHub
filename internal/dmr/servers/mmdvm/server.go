@@ -38,20 +38,25 @@ import (
 	"gorm.io/gorm"
 )
 
+const channelBufferSize = 100
+
 // Server is the DMR server.
 type Server struct {
-	Buffer        []byte
-	config        *config.Config
-	SocketAddress net.UDPAddr
-	Server        *net.UDPConn
-	Started       bool
-	Parrot        *parrot.Parrot
-	DB            *gorm.DB
-	kvClient      *servers.KVClient
-	pubsub        pubsub.PubSub
-	CallTracker   *calltracker.CallTracker
-	Version       string
-	Commit        string
+	Buffer          []byte
+	config          *config.Config
+	SocketAddress   net.UDPAddr
+	Server          *net.UDPConn
+	Started         bool
+	Parrot          *parrot.Parrot
+	DB              *gorm.DB
+	kvClient        *servers.KVClient
+	pubsub          pubsub.PubSub
+	CallTracker     *calltracker.CallTracker
+	Version         string
+	Commit          string
+	incomingChan    chan models.RawDMRPacket
+	outgoingChan    chan models.RawDMRPacket
+	RawOutgoingChan chan []byte
 }
 
 var (
@@ -72,14 +77,17 @@ func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.
 			IP:   net.ParseIP(config.DMR.MMDVM.Bind),
 			Port: config.DMR.MMDVM.Port,
 		},
-		Started:     false,
-		Parrot:      parrot.NewParrot(kv),
-		DB:          db,
-		pubsub:      pubsub,
-		kvClient:    servers.MakeKVClient(kv),
-		CallTracker: callTracker,
-		Version:     version,
-		Commit:      commit,
+		Started:         false,
+		Parrot:          parrot.NewParrot(kv),
+		DB:              db,
+		pubsub:          pubsub,
+		kvClient:        servers.MakeKVClient(kv),
+		CallTracker:     callTracker,
+		Version:         version,
+		Commit:          commit,
+		incomingChan:    make(chan models.RawDMRPacket, channelBufferSize),
+		outgoingChan:    make(chan models.RawDMRPacket, channelBufferSize),
+		RawOutgoingChan: make(chan []byte, channelBufferSize),
 	}
 }
 
@@ -108,26 +116,12 @@ func (s *Server) Stop(ctx context.Context) {
 }
 
 func (s *Server) listen(ctx context.Context) {
-	pubsub := s.pubsub.Subscribe("mmdvm:incoming")
-	defer func() {
-		err := pubsub.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub", "error", err)
-		}
-	}()
-	pubsubChannel := pubsub.Channel()
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("Stopping MMDVM server")
 			return
-		case msg := <-pubsubChannel:
-			var packet models.RawDMRPacket
-			_, err := packet.UnmarshalMsg(msg)
-			if err != nil {
-				slog.Error("Error unmarshalling packet", "error", err)
-				continue
-			}
+		case packet := <-s.incomingChan:
 			s.handlePacket(ctx, net.UDPAddr{
 				IP:   net.ParseIP(packet.RemoteIP),
 				Port: packet.RemotePort,
@@ -136,56 +130,46 @@ func (s *Server) listen(ctx context.Context) {
 	}
 }
 
-func (s *Server) subscribePackets() {
-	pubsub := s.pubsub.Subscribe("mmdvm:outgoing")
-	defer func() {
-		err := pubsub.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub", "error", err)
-		}
-	}()
-	for msg := range pubsub.Channel() {
-		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg(msg)
-		if err != nil {
-			slog.Error("Error unmarshalling packet", "error", err)
-			continue
-		}
-		_, err = s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
-			IP:   net.ParseIP(packet.RemoteIP),
-			Port: packet.RemotePort,
-		})
-		if err != nil {
-			slog.Error("Error sending packet", "error", err)
+func (s *Server) subscribePackets(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case packet := <-s.outgoingChan:
+			_, err := s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
+				IP:   net.ParseIP(packet.RemoteIP),
+				Port: packet.RemotePort,
+			})
+			if err != nil {
+				slog.Error("Error sending packet", "error", err)
+			}
 		}
 	}
 }
 
 func (s *Server) subscribeRawPackets(ctx context.Context) {
-	pubsub := s.pubsub.Subscribe("mmdvm:outgoing:noaddr")
-	defer func() {
-		err := pubsub.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub", "error", err)
-		}
-	}()
-	for msg := range pubsub.Channel() {
-		packet, ok := models.UnpackPacket(msg)
-		if !ok {
-			slog.Error("Error unpacking packet")
-			continue
-		}
-		repeater, err := s.kvClient.GetRepeater(ctx, packet.Repeater)
-		if err != nil {
-			slog.Error("Error getting repeater from KV", "repeaterID", packet.Repeater, "error", err)
-			continue
-		}
-		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
-			IP:   net.ParseIP(repeater.IP),
-			Port: repeater.Port,
-		})
-		if err != nil {
-			slog.Error("Error sending packet", "error", err)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-s.RawOutgoingChan:
+			packet, ok := models.UnpackPacket(msg)
+			if !ok {
+				slog.Error("Error unpacking packet")
+				continue
+			}
+			repeater, err := s.kvClient.GetRepeater(ctx, packet.Repeater)
+			if err != nil {
+				slog.Error("Error getting repeater from KV", "repeaterID", packet.Repeater, "error", err)
+				continue
+			}
+			_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+				IP:   net.ParseIP(repeater.IP),
+				Port: repeater.Port,
+			})
+			if err != nil {
+				slog.Error("Error sending packet", "error", err)
+			}
 		}
 	}
 }
@@ -214,10 +198,13 @@ func (s *Server) Start(ctx context.Context) error {
 	s.Server = server
 	s.Started = true
 
+	// Wire up the raw outgoing channel to the subscription manager
+	GetSubscriptionManager(s.DB).SetRawOutgoingChan(s.RawOutgoingChan)
+
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 
 	go s.listen(ctx)
-	go s.subscribePackets()
+	go s.subscribePackets(ctx)
 	go s.subscribeRawPackets(ctx)
 
 	go func() {
@@ -228,20 +215,15 @@ func (s *Server) Start(ctx context.Context) error {
 				continue
 			}
 			slog.Debug("Read message from UDP socket", "remoteaddr", remoteaddr, "length", length)
+			// Copy the buffer data since s.Buffer will be reused for the next read
+			data := make([]byte, length)
+			copy(data, s.Buffer[:length])
 			p := models.RawDMRPacket{
-				Data:       s.Buffer[:length],
+				Data:       data,
 				RemoteIP:   remoteaddr.IP.String(),
 				RemotePort: remoteaddr.Port,
 			}
-			packedBytes, err := p.MarshalMsg(nil)
-			if err != nil {
-				slog.Error("Error marshalling packet", "error", err)
-				return
-			}
-			if err := s.pubsub.Publish("mmdvm:incoming", packedBytes); err != nil {
-				slog.Error("Error publishing packet to mmdvm:incoming", "error", err)
-				return
-			}
+			s.incomingChan <- p
 		}
 	}()
 
@@ -265,14 +247,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		RemoteIP:   repeater.IP,
 		RemotePort: repeater.Port,
 	}
-	packetBytes, err := p.MarshalMsg(nil)
-	if err != nil {
-		slog.Error("Error marshalling packet", "error", err)
-		return
-	}
-	if err := s.pubsub.Publish("mmdvm:outgoing:noaddr", packetBytes); err != nil {
-		slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
-	}
+	s.outgoingChan <- p
 }
 
 func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
@@ -319,15 +294,7 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		RemoteIP:   repeater.IP,
 		RemotePort: repeater.Port,
 	}
-	packedBytes, err := p.MarshalMsg(nil)
-	if err != nil {
-		slog.Error("Error marshalling packet", "error", err)
-		return
-	}
-	if err := s.pubsub.Publish("mmdvm:outgoing", packedBytes); err != nil {
-		slog.Error("Error publishing packet to mmdvm:outgoing", "error", err)
-		return
-	}
+	s.outgoingChan <- p
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {

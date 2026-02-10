@@ -38,8 +38,9 @@ var subscriptionManager *SubscriptionManager //nolint:gochecknoglobals
 
 type SubscriptionManager struct {
 	// stores map[uint]context.CancelFunc indexed by strconv.Itoa(int(radioID))
-	subscriptions *xsync.MapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]]
-	db            *gorm.DB
+	subscriptions   *xsync.MapOf[uint, *xsync.MapOf[uint, *context.CancelFunc]]
+	db              *gorm.DB
+	rawOutgoingChan chan<- []byte
 }
 
 func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
@@ -50,6 +51,12 @@ func GetSubscriptionManager(db *gorm.DB) *SubscriptionManager {
 		}
 	}
 	return subscriptionManager
+}
+
+// SetRawOutgoingChan sets the channel used for sending raw outgoing packets.
+// This must be called before any ListenForCalls or ListenForCallsOn calls.
+func (m *SubscriptionManager) SetRawOutgoingChan(ch chan<- []byte) {
+	m.rawOutgoingChan = ch
 }
 
 func (m *SubscriptionManager) CancelSubscription(repeaterID uint, talkgroupID uint, slot dmrconst.Timeslot) {
@@ -326,9 +333,10 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 				continue
 			}
 			packet.Repeater = repeaterID
-			if err := pubsub.Publish("mmdvm:outgoing:noaddr", packet.Encode()); err != nil {
-				slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
-				continue
+			select {
+			case m.rawOutgoingChan <- packet.Encode():
+			default:
+				slog.Error("Raw outgoing channel full, dropping packet")
 			}
 		}
 	}
@@ -385,9 +393,10 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 				// We need to send it to the repeater
 				packet.Repeater = p.ID
 				packet.Slot = slot
-				if err := pubsub.Publish("mmdvm:outgoing:noaddr", packet.Encode()); err != nil {
-					slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
-					continue
+				select {
+				case m.rawOutgoingChan <- packet.Encode():
+				default:
+					slog.Error("Raw outgoing channel full, dropping packet")
 				}
 			} else {
 				// We're subscribed but don't want this packet? With a talkgroup that can only mean we're unlinked, so we should unsubscribe

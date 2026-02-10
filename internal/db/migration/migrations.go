@@ -72,6 +72,48 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
+		// Fix call_data column type from bigint to bytea
+		{
+			ID: "202602100435",
+			Migrate: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable(&models.Call{}) && db.Migrator().HasColumn(&models.Call{}, "call_data") {
+					err := tx.Migrator().DropColumn(&models.Call{}, "call_data")
+					if err != nil {
+						return fmt.Errorf("could not drop column: %w", err)
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
+		// Fix call_data column type using raw SQL (previous migration may not have worked)
+		{
+			ID: "202602100457",
+			Migrate: func(tx *gorm.DB) error {
+				switch tx.Dialector.Name() {
+				case "postgres":
+					if err := tx.Exec("ALTER TABLE calls DROP COLUMN IF EXISTS call_data").Error; err != nil {
+						return fmt.Errorf("could not drop call_data column: %w", err)
+					}
+					if err := tx.Exec("ALTER TABLE calls ADD COLUMN call_data bytea DEFAULT NULL").Error; err != nil {
+						return fmt.Errorf("could not add call_data column: %w", err)
+					}
+				case "mysql":
+					// MySQL uses LONGBLOB for []byte
+					if db.Migrator().HasTable(&models.Call{}) && db.Migrator().HasColumn(&models.Call{}, "call_data") {
+						if err := tx.Exec("ALTER TABLE calls MODIFY COLUMN call_data LONGBLOB").Error; err != nil {
+							return fmt.Errorf("could not modify call_data column: %w", err)
+						}
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

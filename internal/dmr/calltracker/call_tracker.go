@@ -34,6 +34,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Assuming +/-7ms of jitter, we'll wait 2 seconds before we consider a call to be over
@@ -215,9 +216,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		StreamID:       packet.StreamID,
 		StartTime:      time.Now(),
 		Active:         true,
-		User:           sourceUser,
 		UserID:         sourceUser.ID,
-		Repeater:       sourceRepeater,
 		RepeaterID:     sourceRepeater.ID,
 		TimeSlot:       packet.Slot,
 		GroupCall:      packet.GroupCall,
@@ -234,11 +233,32 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		TotalBits:      0,
 		HasHeader:      false,
 		HasTerm:        false,
+		IsToRepeater:   isToRepeater,
+		IsToUser:       isToUser,
+		IsToTalkgroup:  isToTalkgroup,
 	}
 
-	call.IsToRepeater = isToRepeater
-	call.IsToUser = isToUser
-	call.IsToTalkgroup = isToTalkgroup
+	switch {
+	case isToRepeater:
+		call.ToRepeaterID = &destRepeater.ID
+	case isToUser:
+		call.ToUserID = &destUser.ID
+	case isToTalkgroup:
+		call.ToTalkgroupID = &destTalkgroup.ID
+	}
+
+	// Create the call in the database.
+	// Omit associations to prevent GORM from cascade-saving related records.
+	// Omit CallData — it's always empty at creation time.
+	err = c.db.Omit(clause.Associations, "CallData").Create(&call).Error
+	if err != nil {
+		slog.Error("Error creating call", "error", err)
+		return
+	}
+
+	// Set association objects for in-memory use (logging, publishing, etc.)
+	call.User = sourceUser
+	call.Repeater = sourceRepeater
 	switch {
 	case isToRepeater:
 		call.ToRepeater = destRepeater
@@ -246,13 +266,6 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		call.ToUser = destUser
 	case isToTalkgroup:
 		call.ToTalkgroup = destTalkgroup
-	}
-
-	// Create the call in the database
-	err = c.db.Create(&call).Error
-	if err != nil {
-		slog.Error("Error creating call", "error", err)
-		return
 	}
 
 	callHash, err := getCallHash(call)
@@ -537,7 +550,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	call.Duration = time.Since(call.StartTime)
 	call.Active = false
 
-	err = c.db.Save(call).Error
+	err = c.db.Omit(clause.Associations).Save(call).Error
 	if err != nil {
 		slog.Error("Error saving call", "error", err)
 		return

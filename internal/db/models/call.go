@@ -27,7 +27,7 @@ import (
 
 type Call struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
-	CallData       []byte         `json:"-"`
+	CallData       []byte         `json:"-" gorm:"type:bytea"`
 	StreamID       uint           `json:"-"`
 	StartTime      time.Time      `json:"start_time"`
 	Duration       time.Duration  `json:"duration"`

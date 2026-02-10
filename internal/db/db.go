@@ -98,8 +98,7 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 			}
 		}
 		dialector = postgres.New(postgres.Config{
-			DSN:                  dsn,
-			PreferSimpleProtocol: true,
+			DSN: dsn,
 		})
 	}
 	return dialector

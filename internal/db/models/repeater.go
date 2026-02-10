@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Repeater is the model for a DMR repeater
@@ -110,7 +109,7 @@ func RepeaterIDExists(db *gorm.DB, id uint) (bool, error) {
 func DeleteRepeater(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{})
-		tx.Unscoped().Where("id = ?", id).Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(&Repeater{})
+		tx.Unscoped().Where("id = ?", id).Select("TS1StaticTalkgroups", "TS2StaticTalkgroups").Delete(&Repeater{})
 		return nil
 	})
 	if err != nil {

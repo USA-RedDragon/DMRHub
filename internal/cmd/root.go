@@ -34,7 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
@@ -291,7 +291,7 @@ func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
 
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
-	hbrpServer       hbrp.Server
+	mmdvmServer      mmdvm.Server
 	openbridgeServer *openbridge.Server
 	httpServer       http.Server
 	kv               kv.KV
@@ -302,7 +302,7 @@ type serverManager struct {
 
 // shutdown gracefully stops all servers
 func (sm *serverManager) shutdown(ctx context.Context) {
-	sm.hbrpServer.Stop(ctx)
+	sm.mmdvmServer.Stop(ctx)
 	if sm.openbridgeServer != nil {
 		sm.openbridgeServer.Stop(ctx)
 	}
@@ -329,7 +329,7 @@ func (sm *serverManager) startRepeaterListeners(database *gorm.DB) error {
 			return fmt.Errorf("failed to list repeaters: %w", err)
 		}
 		for _, repeater := range repeaters {
-			go hbrp.GetSubscriptionManager(database).ListenForCalls(sm.pubsub, repeater.ID)
+			go mmdvm.GetSubscriptionManager(database).ListenForCalls(sm.pubsub, repeater.ID)
 		}
 		return nil
 	})
@@ -372,12 +372,12 @@ func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.D
 		cfg:      cfg,
 	}
 
-	hbrpServer := hbrp.MakeServer(cfg, database, pubsubClient, kvStore, callTracker, version, commit)
-	err = hbrpServer.Start(ctx)
+	mmdvmServer := mmdvm.MakeServer(cfg, database, pubsubClient, kvStore, callTracker, version, commit)
+	err = mmdvmServer.Start(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start hbrp server: %w", err)
+		return nil, fmt.Errorf("failed to start mmdvm server: %w", err)
 	}
-	sm.hbrpServer = hbrpServer
+	sm.mmdvmServer = mmdvmServer
 
 	if cfg.DMR.OpenBridge.Enabled {
 		openbridgeServer := openbridge.MakeServer(cfg, database, pubsubClient, kvStore, callTracker)
@@ -420,7 +420,7 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, serv
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			hbrp.GetSubscriptionManager(servers.database).CancelAllSubscriptions()
+			mmdvm.GetSubscriptionManager(servers.database).CancelAllSubscriptions()
 			servers.shutdown(ctx)
 		}(wg)
 

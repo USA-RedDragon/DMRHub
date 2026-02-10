@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package hbrp
+package mmdvm
 
 import (
 	"context"
@@ -69,8 +69,8 @@ func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.
 		Buffer: make([]byte, largestMessageSize),
 		config: config,
 		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(config.DMR.HBRP.Bind),
-			Port: config.DMR.HBRP.Port,
+			IP:   net.ParseIP(config.DMR.MMDVM.Bind),
+			Port: config.DMR.MMDVM.Port,
 		},
 		Started:     false,
 		Parrot:      parrot.NewParrot(kv),
@@ -108,7 +108,7 @@ func (s *Server) Stop(ctx context.Context) {
 }
 
 func (s *Server) listen(ctx context.Context) {
-	pubsub := s.pubsub.Subscribe("hbrp:incoming")
+	pubsub := s.pubsub.Subscribe("mmdvm:incoming")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -119,7 +119,7 @@ func (s *Server) listen(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("Stopping HBRP server")
+			slog.Info("Stopping MMDVM server")
 			return
 		case msg := <-pubsubChannel:
 			var packet models.RawDMRPacket
@@ -137,7 +137,7 @@ func (s *Server) listen(ctx context.Context) {
 }
 
 func (s *Server) subscribePackets() {
-	pubsub := s.pubsub.Subscribe("hbrp:outgoing")
+	pubsub := s.pubsub.Subscribe("mmdvm:outgoing")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -162,7 +162,7 @@ func (s *Server) subscribePackets() {
 }
 
 func (s *Server) subscribeRawPackets(ctx context.Context) {
-	pubsub := s.pubsub.Subscribe("hbrp:outgoing:noaddr")
+	pubsub := s.pubsub.Subscribe("mmdvm:outgoing:noaddr")
 	defer func() {
 		err := pubsub.Close()
 		if err != nil {
@@ -214,7 +214,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.Server = server
 	s.Started = true
 
-	slog.Info("HBRP Server listening", "address", s.SocketAddress.String())
+	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 
 	go s.listen(ctx)
 	go s.subscribePackets()
@@ -238,8 +238,8 @@ func (s *Server) Start(ctx context.Context) error {
 				slog.Error("Error marshalling packet", "error", err)
 				return
 			}
-			if err := s.pubsub.Publish("hbrp:incoming", packedBytes); err != nil {
-				slog.Error("Error publishing packet to hbrp:incoming", "error", err)
+			if err := s.pubsub.Publish("mmdvm:incoming", packedBytes); err != nil {
+				slog.Error("Error publishing packet to mmdvm:incoming", "error", err)
 				return
 			}
 		}
@@ -270,8 +270,8 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
-	if err := s.pubsub.Publish("hbrp:outgoing:noaddr", packetBytes); err != nil {
-		slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
+	if err := s.pubsub.Publish("mmdvm:outgoing:noaddr", packetBytes); err != nil {
+		slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
 	}
 }
 
@@ -324,8 +324,8 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 		slog.Error("Error marshalling packet", "error", err)
 		return
 	}
-	if err := s.pubsub.Publish("hbrp:outgoing", packedBytes); err != nil {
-		slog.Error("Error publishing packet to hbrp:outgoing", "error", err)
+	if err := s.pubsub.Publish("mmdvm:outgoing", packedBytes); err != nil {
+		slog.Error("Error publishing packet to mmdvm:outgoing", "error", err)
 		return
 	}
 }
@@ -346,7 +346,9 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 	case dmrconst.CommandDMRD:
 		s.handleDMRDPacket(ctx, remoteAddr, data)
 	case dmrconst.CommandRPTO:
-		s.handleRPTOPacket(ctx, remoteAddr, data)
+		// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
+		// Options are not yet supported
+		slog.Error("TODO: RPTO")
 	case dmrconst.CommandRPTL:
 		s.handleRPTLPacket(ctx, remoteAddr, data)
 	case dmrconst.CommandRPTK:

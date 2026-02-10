@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package hbrp
+package mmdvm
 
 import (
 	"context"
@@ -291,7 +291,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 	} else if lastCall.ID != 0 && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 		// If the last call exists and that repeater is online
 		// Send the packet to the last user call's repeater
-		if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", lastCall.RepeaterID), packedBytes); err != nil {
+		if err := s.pubsub.Publish(fmt.Sprintf("mmdvm:packets:repeater:%d", lastCall.RepeaterID), packedBytes); err != nil {
 			slog.Error("Error publishing packet to repeater", "repeaterID", lastCall.RepeaterID, "error", err)
 		}
 	}
@@ -301,7 +301,7 @@ func (s *Server) doUser(ctx context.Context, packet models.Packet, packedBytes [
 		// If the repeater is online and the last user call was not to this repeater
 		if repeater.ID != lastCall.RepeaterID && s.kvClient.RepeaterExists(ctx, lastCall.RepeaterID) {
 			// Send the packet to the repeater
-			if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeater.ID), packedBytes); err != nil {
+			if err := s.pubsub.Publish(fmt.Sprintf("mmdvm:packets:repeater:%d", repeater.ID), packedBytes); err != nil {
 				slog.Error("Error publishing packet to repeater", "repeaterID", repeater.ID, "error", err)
 			}
 		}
@@ -464,7 +464,7 @@ func (s *Server) handleGroupCallVoice(ctx context.Context, packet models.Packet,
 		return
 	}
 
-	if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
+	if err := s.pubsub.Publish(fmt.Sprintf("mmdvm:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
 		slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
 	}
 }
@@ -522,7 +522,7 @@ func (s *Server) routeToRepeater(repeaterID uint, packedBytes []byte) {
 		return
 	}
 
-	if err := s.pubsub.Publish(fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID), packedBytes); err != nil {
+	if err := s.pubsub.Publish(fmt.Sprintf("mmdvm:packets:repeater:%d", repeaterID), packedBytes); err != nil {
 		slog.Error("Error publishing packet to repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
@@ -541,61 +541,6 @@ func (s *Server) routeToUser(ctx context.Context, packet models.Packet, packedBy
 	s.doUser(ctx, packet, packedBytes)
 }
 
-func (s *Server) handleRPTOPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTOPacket")
-	defer span.End()
-
-	const rptoMin = 8
-	const rptoMax = 300
-	const rptoRepeaterIDOffset = 4
-
-	if len(data) < rptoMin {
-		slog.Error("RPTO packet too short")
-		return
-	}
-	if len(data) > rptoMax {
-		slog.Error("RPTO packet too long")
-		return
-	}
-
-	repeaterIDBytes := data[rptoRepeaterIDOffset : rptoRepeaterIDOffset+repeaterIDLength]
-	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
-
-	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
-
-		repeaterExists, err := models.RepeaterIDExists(s.DB, repeaterID)
-		if err != nil {
-			slog.Error("Error finding repeater", "error", err)
-			return
-		}
-
-		if !repeaterExists {
-			slog.Error("Repeater does not exist")
-			return
-		}
-
-		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
-		if err != nil {
-			slog.Error("Error finding repeater", "error", err)
-			return
-		}
-		dbRepeater.LastPing = time.Now()
-		err = s.DB.Save(&dbRepeater).Error
-		if err != nil {
-			slog.Error("Error saving repeater", "error", err)
-			return
-		}
-
-		// Options is a string from data[8:]
-		options := string(data[8:])
-		slog.Debug("Received Options from repeater", "repeaterID", repeaterID, "options", options)
-
-		// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
-		// Options are not yet supported
-	}
-}
-
 func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTLPacket")
 	defer span.End()
@@ -607,7 +552,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		slog.Error("Invalid RPTL packet length", "length", len(data))
 		return
 	}
-	repeaterIDBytes := data[rptlRepeaterIDOffset : rptlRepeaterIDOffset+repeaterIDLength]
+	repeaterIDBytes := data[4:]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Login from Repeater ID", "repeaterID", repeaterID)
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
@@ -749,12 +694,12 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	defer span.End()
 
 	// RPTCL packets are 8 bytes long
-	const rptclLen = 8
+	const rptclLen = 9
 	if len(data) != rptclLen {
 		slog.Error("Invalid RPTCL packet length", "length", len(data))
 		return
 	}
-	repeaterIDBytes := data[5:9]
+	repeaterIDBytes := data[5:]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Disconnect from Repeater ID", "repeaterID", repeaterID)
 	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
@@ -829,7 +774,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 		slog.Error("Invalid RPTP packet length", "length", len(data))
 		return
 	}
-	repeaterIDBytes := data[7:11]
+	repeaterIDBytes := data[7:]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Ping from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 

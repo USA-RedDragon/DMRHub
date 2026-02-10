@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package hbrp
+package mmdvm
 
 import (
 	"context"
@@ -295,7 +295,7 @@ func (m *SubscriptionManager) ListenForWebsocket(ctx context.Context, pubsub pub
 
 func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubsub.PubSub, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
-	subscription := pubsub.Subscribe(fmt.Sprintf("hbrp:packets:repeater:%d", repeaterID))
+	subscription := pubsub.Subscribe(fmt.Sprintf("mmdvm:packets:repeater:%d", repeaterID))
 	defer func() {
 		err := subscription.Close()
 		if err != nil {
@@ -306,7 +306,7 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Debug("Context canceled, stopping subscription to hbrp:packets:repeater", "repeaterID", repeaterID)
+			slog.Debug("Context canceled, stopping subscription to mmdvm:packets:repeater", "repeaterID", repeaterID)
 			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
 				radioSubs.Delete(repeaterID)
@@ -326,8 +326,8 @@ func (m *SubscriptionManager) subscribeRepeater(ctx context.Context, pubsub pubs
 				continue
 			}
 			packet.Repeater = repeaterID
-			if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
-				slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
+			if err := pubsub.Publish("mmdvm:outgoing:noaddr", packet.Encode()); err != nil {
+				slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
 				continue
 			}
 		}
@@ -339,7 +339,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 		return
 	}
 	slog.Debug("Listening for calls on talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
-	subscription := pubsub.Subscribe(fmt.Sprintf("hbrp:packets:talkgroup:%d", tg))
+	subscription := pubsub.Subscribe(fmt.Sprintf("mmdvm:packets:talkgroup:%d", tg))
 	defer func() {
 		err := subscription.Close()
 		if err != nil {
@@ -351,7 +351,7 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Debug("Context canceled, stopping subscription to hbrp:packets:talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
+			slog.Debug("Context canceled, stopping subscription to mmdvm:packets:talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
 			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
 				radioSubs.Delete(tg)
@@ -385,8 +385,8 @@ func (m *SubscriptionManager) subscribeTG(ctx context.Context, pubsub pubsub.Pub
 				// We need to send it to the repeater
 				packet.Repeater = p.ID
 				packet.Slot = slot
-				if err := pubsub.Publish("hbrp:outgoing:noaddr", packet.Encode()); err != nil {
-					slog.Error("Error publishing packet to hbrp:outgoing:noaddr", "error", err)
+				if err := pubsub.Publish("mmdvm:outgoing:noaddr", packet.Encode()); err != nil {
+					slog.Error("Error publishing packet to mmdvm:outgoing:noaddr", "error", err)
 					continue
 				}
 			} else {

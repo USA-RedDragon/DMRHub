@@ -113,14 +113,14 @@ type RobotsTXT struct {
 
 // DMR holds the DMR server configuration.
 type DMR struct {
-	HBRP       HBRP       `json:"hbrp,omitempty" name:"hbrp" description:"HBRP server configuration for DMR"`
+	MMDVM      MMDVM      `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
 	OpenBridge OpenBridge `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
 }
 
-// HBRP holds the configuration for the HBRP server.
-type HBRP struct {
-	Bind string `json:"bind,omitempty" name:"bind" description:"HBRP server listen address" default:"[::]"`
-	Port int    `json:"port,omitempty" name:"port" description:"HBRP server port" default:"62031"`
+// MMDVM holds the configuration for the MMDVM server.
+type MMDVM struct {
+	Bind string `json:"bind,omitempty" name:"bind" description:"MMDVM server listen address" default:"[::]"`
+	Port int    `json:"port,omitempty" name:"port" description:"MMDVM server port" default:"62031"`
 }
 
 // OpenBridge holds the configuration for the OpenBridge server.

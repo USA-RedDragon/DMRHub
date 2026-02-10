@@ -110,8 +110,8 @@ const (
 	VoiceF
 )
 
-const HBRPPacketLength = 53
-const HBRPMaxPacketLength = 55
+const MMDVMPacketLength = 53
+const MMDVMMaxPacketLength = 55
 
 type Timeslot uint8
 

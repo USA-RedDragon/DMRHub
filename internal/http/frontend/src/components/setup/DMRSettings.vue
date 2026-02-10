@@ -26,7 +26,7 @@
       <template #content>
         <p>These settings configure DMR related features in DMRHub.</p>
         <br />
-        <HBRPSettings v-model="hbrp" :errors="errors.hbrp" />
+        <MMDVMSettings v-model="mmdvm" :errors="errors.mmdvm" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
       </template>
@@ -35,14 +35,14 @@
 </template>
 
 <script>
-import HBRPSettings from './DMR/HBRPSettings.vue';
+import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 
 import Card from 'primevue/card';
 
 export default {
   components: {
-    HBRPSettings,
+    MMDVMSettings,
     OpenBridgeSettings,
     Card,
   },
@@ -59,14 +59,14 @@ export default {
   },
   emits: ['update:modelValue'],
   computed: {
-    hbrp: {
+    mmdvm: {
       get() {
-        return (this.modelValue && this.modelValue['hbrp']) || {};
+        return (this.modelValue && this.modelValue['mmdvm']) || {};
       },
       set(value) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'hbrp': value,
+          'mmdvm': value,
         });
       },
     },

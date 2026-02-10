@@ -44,10 +44,10 @@ var (
 	ErrInvalidHTTPHost = errors.New("invalid HTTP host provided")
 	// ErrInvalidHTTPPort indicates that the provided HTTP port is not valid.
 	ErrInvalidHTTPPort = errors.New("invalid HTTP port provided")
-	// ErrInvalidDMRHBRPHost indicates that the provided DMR HBRP host is not valid.
-	ErrInvalidDMRHBRPHost = errors.New("invalid DMR HBRP host provided")
-	// ErrInvalidDMRHBRPPort indicates that the provided DMR HBRP port is not valid.
-	ErrInvalidDMRHBRPPort = errors.New("invalid DMR HBRP port provided")
+	// ErrInvalidDMRMMDVMHost indicates that the provided DMR MMDVM host is not valid.
+	ErrInvalidDMRMMDVMHost = errors.New("invalid DMR MMDVM host provided")
+	// ErrInvalidDMRMMDVMPort indicates that the provided DMR MMDVM port is not valid.
+	ErrInvalidDMRMMDVMPort = errors.New("invalid DMR MMDVM port provided")
 	// ErrInvalidDMROpenBridgeHost indicates that the provided DMR OpenBridge host is not valid.
 	ErrInvalidDMROpenBridgeHost = errors.New("invalid DMR OpenBridge host provided")
 	// ErrInvalidDMROpenBridgePort indicates that the provided DMR OpenBridge port is not valid.
@@ -261,31 +261,31 @@ func (h HTTP) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
-// Validate validates the HBRP configuration.
-func (h HBRP) Validate() error {
+// Validate validates the MMDVM configuration.
+func (h MMDVM) Validate() error {
 	if h.Bind == "" {
-		return ErrInvalidDMRHBRPHost
+		return ErrInvalidDMRMMDVMHost
 	}
 
 	if h.Port <= 0 || h.Port > 65535 {
-		return ErrInvalidDMRHBRPPort
+		return ErrInvalidDMRMMDVMPort
 	}
 
 	return nil
 }
 
-func (h HBRP) ValidateWithFields() (errs []ValidationError) {
+func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 	if h.Bind == "" {
 		errs = append(errs, ValidationError{
-			Field: "dmr.hbrp.bind",
-			Error: ErrInvalidDMRHBRPHost.Error(),
+			Field: "dmr.mmdvm.bind",
+			Error: ErrInvalidDMRMMDVMHost.Error(),
 		})
 	}
 
 	if h.Port <= 0 || h.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "dmr.hbrp.port",
-			Error: ErrInvalidDMRHBRPPort.Error(),
+			Field: "dmr.mmdvm.port",
+			Error: ErrInvalidDMRMMDVMPort.Error(),
 		})
 	}
 
@@ -331,7 +331,7 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the DMR configuration.
 func (d DMR) Validate() error {
-	if err := d.HBRP.Validate(); err != nil {
+	if err := d.MMDVM.Validate(); err != nil {
 		return err
 	}
 
@@ -343,8 +343,8 @@ func (d DMR) Validate() error {
 }
 
 func (d DMR) ValidateWithFields() (errs []ValidationError) {
-	if hbrpErrs := d.HBRP.ValidateWithFields(); len(hbrpErrs) > 0 {
-		errs = append(errs, hbrpErrs...)
+	if mmdvmErrs := d.MMDVM.ValidateWithFields(); len(mmdvmErrs) > 0 {
+		errs = append(errs, mmdvmErrs...)
 	}
 
 	if openBridgeErrs := d.OpenBridge.ValidateWithFields(); len(openBridgeErrs) > 0 {

@@ -91,10 +91,10 @@ func (p Packet) Equal(other Packet) bool {
 
 func UnpackPacket(data []byte) (Packet, bool) {
 	var packet Packet
-	if len(data) < dmrconst.HBRPPacketLength {
+	if len(data) < dmrconst.MMDVMPacketLength {
 		return packet, false
 	}
-	if len(data) > dmrconst.HBRPMaxPacketLength {
+	if len(data) > dmrconst.MMDVMMaxPacketLength {
 		return packet, false
 	}
 	packet.Signature = string(data[:4])
@@ -117,13 +117,13 @@ func UnpackPacket(data []byte) (Packet, bool) {
 	copy(packet.DMRData[:], data[20:53])
 	// Bytes 53-54 are BER and RSSI, respectively
 	// But they are optional, so don't error if they don't exist
-	if len(data) > dmrconst.HBRPPacketLength {
-		packet.BER = int(data[dmrconst.HBRPPacketLength])
+	if len(data) > dmrconst.MMDVMPacketLength {
+		packet.BER = int(data[dmrconst.MMDVMPacketLength])
 	} else {
 		packet.BER = -1
 	}
-	if len(data) > dmrconst.HBRPPacketLength+1 {
-		packet.RSSI = int(data[dmrconst.HBRPPacketLength+1])
+	if len(data) > dmrconst.MMDVMPacketLength+1 {
+		packet.RSSI = int(data[dmrconst.MMDVMPacketLength+1])
 	} else {
 		packet.RSSI = -1
 	}
@@ -139,7 +139,7 @@ func (p *Packet) String() string {
 
 func (p *Packet) Encode() []byte {
 	// Encode the packet as we decoded
-	data := make([]byte, dmrconst.HBRPPacketLength)
+	data := make([]byte, dmrconst.MMDVMPacketLength)
 	copy(data[:4], []byte(p.Signature))
 	data[4] = byte(p.Seq)
 	data[5] = byte(p.Src >> 16)

@@ -97,7 +97,7 @@ func FuzzEncode(f *testing.F) {
 			DMRData:     dmrByteData,
 		}
 		packetBytes := packet.Encode()
-		if len(packetBytes) != dmrconst.HBRPPacketLength && len(packetBytes) != dmrconst.HBRPMaxPacketLength {
+		if len(packetBytes) != dmrconst.MMDVMPacketLength && len(packetBytes) != dmrconst.MMDVMMaxPacketLength {
 			t.Errorf("Packet did not encode properly. Length was %d", len(packetBytes))
 		}
 	})

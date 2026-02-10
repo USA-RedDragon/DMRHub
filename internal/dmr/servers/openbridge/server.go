@@ -252,8 +252,8 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 		return
 	}
 
-	packetBytes := data[:dmrconst.HBRPPacketLength]
-	hmacBytes := data[dmrconst.HBRPPacketLength:packetLength]
+	packetBytes := data[:dmrconst.MMDVMPacketLength]
+	hmacBytes := data[dmrconst.MMDVMPacketLength:packetLength]
 
 	packet, ok := models.UnpackPacket(packetBytes)
 	if !ok {

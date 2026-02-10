@@ -64,7 +64,7 @@ func (s *KVClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 	}
 	repeater.LastPing = time.Now()
 	s.StoreRepeater(ctx, repeaterID, repeater)
-	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
+	if err := s.kv.Expire(fmt.Sprintf("mmdvm:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
 		slog.Error("Error expiring repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
@@ -86,7 +86,7 @@ func (s *KVClient) DeleteRepeater(ctx context.Context, repeaterID uint) bool {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.deleteRepeater")
 	defer span.End()
 
-	return s.kv.Delete(fmt.Sprintf("hbrp:repeater:%d", repeaterID)) == nil
+	return s.kv.Delete(fmt.Sprintf("mmdvm:repeater:%d", repeaterID)) == nil
 }
 
 func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater models.Repeater) {
@@ -99,11 +99,11 @@ func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater 
 		return
 	}
 	// Expire repeaters after 5 minutes, this function called often enough to keep them alive
-	if err := s.kv.Set(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterBytes); err != nil {
+	if err := s.kv.Set(fmt.Sprintf("mmdvm:repeater:%d", repeaterID), repeaterBytes); err != nil {
 		slog.Error("Error setting repeater in KV", "repeaterID", repeaterID, "error", err)
 		return
 	}
-	if err := s.kv.Expire(fmt.Sprintf("hbrp:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
+	if err := s.kv.Expire(fmt.Sprintf("mmdvm:repeater:%d", repeaterID), repeaterExpireTime); err != nil {
 		slog.Error("Error expiring repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
@@ -112,7 +112,7 @@ func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Rep
 	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getRepeater")
 	defer span.End()
 
-	repeaterBits, err := s.kv.Get(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
+	repeaterBits, err := s.kv.Get(fmt.Sprintf("mmdvm:repeater:%d", repeaterID))
 	if err != nil {
 		slog.Error("Error getting repeater from KV", "repeaterID", repeaterID, "error", err)
 		return models.Repeater{}, ErrNoSuchRepeater
@@ -130,7 +130,7 @@ func (s *KVClient) RepeaterExists(ctx context.Context, repeaterID uint) bool {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.repeaterExists")
 	defer span.End()
 
-	has, err := s.kv.Has(fmt.Sprintf("hbrp:repeater:%d", repeaterID))
+	has, err := s.kv.Has(fmt.Sprintf("mmdvm:repeater:%d", repeaterID))
 	if err != nil {
 		slog.Error("Error checking if repeater exists in KV", "repeaterID", repeaterID, "error", err)
 		return false
@@ -145,12 +145,12 @@ func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 	var cursor uint64
 	var repeaters []uint
 	for {
-		keys, _, err := s.kv.Scan(cursor, "hbrp:repeater:*", 0)
+		keys, _, err := s.kv.Scan(cursor, "mmdvm:repeater:*", 0)
 		if err != nil {
 			return nil, ErrNoSuchRepeater
 		}
 		for _, key := range keys {
-			repeaterNum, err := strconv.Atoi(strings.Replace(key, "hbrp:repeater:", "", 1))
+			repeaterNum, err := strconv.Atoi(strings.Replace(key, "mmdvm:repeater:", "", 1))
 			if err != nil {
 				return nil, ErrCastRepeater
 			}

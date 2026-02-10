@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package hbrp_test
+package mmdvm_test
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/hbrp"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
@@ -62,7 +62,7 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create pubsub: %v", err)
 	}
 
-	server := hbrp.MakeServer(&defConfig, db, pubsub, kv, callTracker, version, commit)
+	server := mmdvm.MakeServer(&defConfig, db, pubsub, kv, callTracker, version, commit)
 
 	if server.DB != db {
 		t.Errorf("Expected DB to be %v, got %v", db, server.DB)

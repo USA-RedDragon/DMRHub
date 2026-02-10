@@ -22,9 +22,9 @@
 <template>
   <div>
     <Card>
-      <template #title>Homebrew Repeater Protocol Settings</template>
+      <template #title>MMDVM Protocol Settings</template>
       <template #content>
-        <p>DMRHub can run an HBRP server to allow connections from DMR radios and
+        <p>DMRHub can run an MMDVM server to allow connections from DMR radios and
           software such as DMRGateway.</p>
         <br />
         <span class="p-float-label">
@@ -32,7 +32,7 @@
           <label for="bind">Bind</label>
         </span>
         <p>
-          The address to bind the HBRP server to
+          The address to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
@@ -47,7 +47,7 @@
           <label for="port">Port</label>
         </span>
         <p>
-          The port number to bind the HBRP server to
+          The port number to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
       </template>

@@ -547,7 +547,6 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 	// RPTL packets are 8 bytes long
 	const rptlLen = 8
-	const rptlRepeaterIDOffset = 4
 	if len(data) != rptlLen {
 		slog.Error("Invalid RPTL packet length", "length", len(data))
 		return

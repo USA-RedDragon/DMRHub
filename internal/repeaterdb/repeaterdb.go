@@ -22,6 +22,7 @@ package repeaterdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -209,7 +210,7 @@ func Get(id uint) (DMRRepeater, bool) {
 	return repeater, true
 }
 
-func Update() error {
+func Update(url string) error {
 	if !repeaterDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
@@ -220,8 +221,7 @@ func Update() error {
 	const updateTimeout = 10 * time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/rptrs.json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(url), nil)
 	if err != nil {
 		return ErrUpdateFailed
 	}

@@ -27,6 +27,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 )
 
+const defaultRepeaterDBURL = "https://www.radioid.net/static/rptrs.json"
+
 func TestRepeaterdb(t *testing.T) {
 	t.Parallel()
 	if Len() == 0 {
@@ -95,7 +97,7 @@ func TestRepeaterdbInvalidRepeater(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	t.Parallel()
 	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
-		err := Update()
+		err := Update(defaultRepeaterDBURL)
 		if err != nil {
 			r.Errorf("Update failed: %v", err)
 		}

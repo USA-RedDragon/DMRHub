@@ -27,6 +27,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 )
 
+const defaultUserDBURL = "https://www.radioid.net/static/users.json"
+
 func TestUserdb(t *testing.T) {
 	t.Parallel()
 	if Len() == 0 {
@@ -98,7 +100,7 @@ func TestUserdbInvalidUser(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	t.Parallel()
 	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
-		err := Update()
+		err := Update(defaultUserDBURL)
 		if err != nil {
 			r.Errorf("Update failed: %v", err)
 		}

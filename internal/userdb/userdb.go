@@ -22,6 +22,7 @@ package userdb
 import (
 	"bytes"
 	"context"
+
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
@@ -208,7 +209,7 @@ func Get(dmrID uint) (DMRUser, bool) {
 	return user, true
 }
 
-func Update() error {
+func Update(url string) error {
 	if !userDB.isDone.Load() {
 		err := UnpackDB()
 		if err != nil {
@@ -219,7 +220,7 @@ func Update() error {
 	const updateTimeout = 10 * time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.radioid.net/static/users.json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(url), nil)
 	if err != nil {
 		return ErrUpdateFailed
 	}

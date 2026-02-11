@@ -8,7 +8,7 @@ DMRHub is a DMR master system that can be deployed with minimal fuss. It is an o
 
 ### What systems is it compatible with?
 
-DMRHub supports DMR layer 2 packets sent over UDP using the MMDVM protocol. This is the method that MMDVM hotspots typically use with networks like BrandMeister or TGIF. It supports private and group calls, a Parrot (TG 9990), and experimental OpenBridge peering. I have another project for IPSC repeaters to convert the packets to MMDVM format <https://github.com/USA-RedDragon/ipsc2mmdvm>. This requires a spare NIC attached to the repeater directly, which may not be possible in all deployments.
+DMRHub supports DMR layer 2 packets sent over UDP using the MMDVM protocol. This is the method that MMDVM hotspots typically use with networks like BrandMeister or TGIF. It supports private and group calls, a Parrot (TG 9990), and experimental OpenBridge peering. I have another project for IPSC repeaters to convert the packets to MMDVM format <https://github.com/USA-RedDragon/ipsc2mmdvm>. This requires a spare NIC attached to the repeater directly, which may not be possible in all deployments. DroidStar also works with DMRHub.
 
 ### Can you make it work with my repeater technology?
 

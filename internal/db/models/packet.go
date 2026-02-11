@@ -168,8 +168,10 @@ func (p *Packet) Encode() []byte {
 	data[19] = byte(p.StreamID)
 	copy(data[20:53], p.DMRData[:])
 
-	if p.BER != -1 && p.RSSI != -1 {
+	if p.BER == -1 {
 		p.BER = 0
+	}
+	if p.RSSI == -1 {
 		p.RSSI = 0
 	}
 	data = append(data, byte(p.BER))

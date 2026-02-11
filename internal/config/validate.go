@@ -342,11 +342,11 @@ func (d DMR) Validate() error {
 		return err
 	}
 
-	if _, err := url.ParseRequestURI(d.RadioIDURL); err != nil {
+	if _, err := url.Parse(d.RadioIDURL); err != nil {
 		return errors.New("invalid DMR radio ID URL provided")
 	}
 
-	if _, err := url.ParseRequestURI(d.RepeaterIDURL); err != nil {
+	if _, err := url.Parse(d.RepeaterIDURL); err != nil {
 		return errors.New("invalid DMR repeater ID URL provided")
 	}
 

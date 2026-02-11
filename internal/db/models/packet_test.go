@@ -152,7 +152,7 @@ func TestPacketPrivateDecode(t *testing.T) {
 func TestPacketPrivateEncode(t *testing.T) {
 	t.Parallel()
 	if !cmp.Equal(knownGoodPrivatePacket.Encode(), knownGoodPacketPrivate) {
-		t.Errorf("Packet did not encode properly")
+		t.Errorf("Packet did not encode properly. Expected %v, got %v", knownGoodPacketPrivate, knownGoodPrivatePacket.Encode())
 	}
 }
 

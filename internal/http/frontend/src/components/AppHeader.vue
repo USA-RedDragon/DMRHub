@@ -162,6 +162,10 @@ export default {
           label: '\xa0\xa0User Approvals',
           to: '/admin/users/approval',
         },
+        {
+          label: '\xa0\xa0Setup',
+          to: '/admin/setup',
+        },
       ],
     };
   },

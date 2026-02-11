@@ -87,8 +87,10 @@ export default {
     GeneralSettings,
     RedisSettings,
   },
-  head: {
-    title: 'Setup',
+  head() {
+    return {
+      title: this.isAdminSetup ? 'Admin Setup' : 'Setup',
+    };
   },
   created() {
     this.getConfig();
@@ -101,9 +103,20 @@ export default {
       errors: [],
     };
   },
+  computed: {
+    isAdminSetup() {
+      return this.$route.path.startsWith('/admin/setup');
+    },
+  },
   methods: {
+    setupWizardHeaders() {
+      if (this.$route.query.token) {
+        return { 'X-SetupWizard-Token': this.$route.query.token };
+      }
+      return {};
+    },
     getConfig() {
-      API.get('/config', { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
+      API.get('/config', { headers: this.setupWizardHeaders() })
         .then((response) => {
           this.config = response.data;
           this.checkConfig(this.config);
@@ -116,7 +129,7 @@ export default {
       const response = await API.post(
         '/config/validate',
         config,
-        { headers: { 'X-SetupWizard-Token': this.$route.query.token } },
+        { headers: this.setupWizardHeaders() },
       );
       if (response.data.valid) {
         return true;
@@ -137,16 +150,18 @@ export default {
         return;
       }
       try {
-        await API.put('/config', this.config, { headers: { 'X-SetupWizard-Token': this.$route.query.token } });
+        await API.put('/config', this.config, { headers: this.setupWizardHeaders() });
         this.$toast.add({
           severity: 'success',
           summary: 'Success',
           detail: 'Configuration saved successfully',
           life: 3000,
         });
-        setTimeout(() => {
-          this.$router.push({ path: '/setup/user', query: { token: this.$route.query.token } });
-        }, 500);
+        if (!this.isAdminSetup) {
+          setTimeout(() => {
+            this.$router.push({ path: '/setup/user', query: { token: this.$route.query.token } });
+          }, 500);
+        }
       } catch (error) {
         console.log(error);
         this.$toast.add({

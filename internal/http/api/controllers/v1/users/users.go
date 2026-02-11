@@ -90,14 +90,17 @@ func POSTUser(c *gin.Context) {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
-		if !userdb.IsValidUserID(json.DMRId) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not valid"})
-			return
+		if !config.DMR.DisableRadioIDValidation {
+			if !userdb.IsValidUserID(json.DMRId) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not valid"})
+				return
+			}
+			if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
+				return
+			}
 		}
-		if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
-			return
-		}
+
 		isValid, errString := json.IsValidUsername()
 		if !isValid {
 			c.JSON(http.StatusBadRequest, gin.H{"error": errString})

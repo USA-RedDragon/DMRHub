@@ -27,29 +27,24 @@
         <template #title>Setup</template>
         <template #content>
           <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
-            <br />
-            <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
-            <br />
-            <HTTPSettings v-model="config.http" :errors="errors.http" />
-            <br />
-            <DatabaseSettings v-model="config.database" :errors="errors.database" />
-            <br />
+          <br />
+          <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
+          <br />
+          <HTTPSettings v-model="config.http" :errors="errors.http" />
+          <br />
+          <DatabaseSettings v-model="config.database" :errors="errors.database" />
+          <br />
           <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
-            <br />
-            <RedisSettings v-model="config.redis" :errors="errors.redis" />
-            <br />
-            <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
-            <br />
-            <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
+          <br />
+          <RedisSettings v-model="config.redis" :errors="errors.redis" />
+          <br />
+          <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
+          <br />
+          <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
         </template>
         <template #footer>
           <div class="card-footer">
-            <PVButton
-              class="p-button-raised p-button-rounded"
-              icon="pi pi-check"
-              label="&nbsp;Save"
-              type="submit"
-            />
+            <PVButton class="p-button-raised p-button-rounded" icon="pi pi-check" label="&nbsp;Save" type="submit" />
           </div>
         </template>
       </Card>
@@ -95,9 +90,9 @@ export default {
   created() {
     this.getConfig();
   },
-  mounted() {},
-  unmounted() {},
-  data: function() {
+  mounted() { },
+  unmounted() { },
+  data: function () {
     return {
       config: {},
       errors: {},

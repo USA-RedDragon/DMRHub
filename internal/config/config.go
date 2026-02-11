@@ -113,8 +113,9 @@ type RobotsTXT struct {
 
 // DMR holds the DMR server configuration.
 type DMR struct {
-	MMDVM      MMDVM      `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
-	OpenBridge OpenBridge `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
+	MMDVM                    MMDVM      `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
+	OpenBridge               OpenBridge `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
+	DisableRadioIDValidation bool       `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
 }
 
 // MMDVM holds the configuration for the MMDVM server.

@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
@@ -299,6 +300,12 @@ func POSTRepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
+	config, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Config cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
 	if !ok {
 		slog.Error("PubSub cast failed")
@@ -329,13 +336,15 @@ func POSTRepeater(c *gin.Context) {
 		switch {
 		case repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			repeater.Hotspot = false
-			if !repeaterdb.IsValidRepeaterID(json.RadioID) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
-				return
-			}
-			if !repeaterdb.ValidRepeaterCallsign(json.RadioID, user.Callsign) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
-				return
+			if !config.DMR.DisableRadioIDValidation {
+				if !repeaterdb.IsValidRepeaterID(json.RadioID) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
+					return
+				}
+				if !repeaterdb.ValidRepeaterCallsign(json.RadioID, user.Callsign) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
+					return
+				}
 			}
 			r, ok := repeaterdb.Get(json.RadioID)
 			if !ok {

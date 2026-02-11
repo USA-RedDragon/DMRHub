@@ -116,6 +116,8 @@ type DMR struct {
 	MMDVM                    MMDVM      `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
 	OpenBridge               OpenBridge `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
 	DisableRadioIDValidation bool       `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
+	RadioIDURL               string     `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
+	RepeaterIDURL            string     `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
 }
 
 // MMDVM holds the configuration for the MMDVM server.

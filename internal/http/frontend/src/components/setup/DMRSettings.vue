@@ -26,6 +26,52 @@
       <template #content>
         <p>These settings configure DMR related features in DMRHub.</p>
         <br />
+        <span>
+          <Checkbox
+            id="disable-radio-id-validation"
+            inputId="disable-radio-id-validation"
+            v-model="disableRadioIDValidation"
+            :binary="true"
+          />
+          <label for="disable-radio-id-validation">&nbsp;&nbsp;Disable Radio ID validation</label>
+        </span>
+        <p>
+          When enabled, DMRHub allows any 7- to 9-digit radio ID without checking the Radio ID database.
+        </p>
+        <span v-if="errors && errors['disable-radio-id-validation']" class="p-error">
+          {{ errors['disable-radio-id-validation'] }}
+        </span>
+        <br />
+        <span class="p-float-label">
+          <InputText
+            id="radio-id-url"
+            type="text"
+            v-model="radioIDURL"
+            :class="{ 'p-invalid': (errors && errors['radio-id-url']) || false }"
+          />
+          <label for="radio-id-url">Radio ID URL</label>
+        </span>
+        <p>
+          URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same
+          as RadioID.net.
+        </p>
+        <span v-if="errors && errors['radio-id-url']" class="p-error">{{ errors['radio-id-url'] }}</span>
+        <br />
+        <span class="p-float-label">
+          <InputText
+            id="repeater-id-url"
+            type="text"
+            v-model="repeaterIDURL"
+            :class="{ 'p-invalid': (errors && errors['repeater-id-url']) || false }"
+          />
+          <label for="repeater-id-url">Repeater ID URL</label>
+        </span>
+        <p>
+          URL to fetch repeater information for validation and display purposes. Expected JSON format is the same
+          as RadioID.net.
+        </p>
+        <span v-if="errors && errors['repeater-id-url']" class="p-error">{{ errors['repeater-id-url'] }}</span>
+        <br />
         <MMDVMSettings v-model="mmdvm" :errors="errors.mmdvm" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
@@ -39,12 +85,16 @@ import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 
 import Card from 'primevue/card';
+import Checkbox from 'primevue/checkbox';
+import InputText from 'primevue/inputtext';
 
 export default {
   components: {
     MMDVMSettings,
     OpenBridgeSettings,
     Card,
+    Checkbox,
+    InputText,
   },
   props: {
     modelValue: {
@@ -78,6 +128,39 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'openbridge': value,
+        });
+      },
+    },
+    disableRadioIDValidation: {
+      get() {
+        return (this.modelValue && this.modelValue['disable-radio-id-validation']) || false;
+      },
+      set(value) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'disable-radio-id-validation': value,
+        });
+      },
+    },
+    radioIDURL: {
+      get() {
+        return (this.modelValue && this.modelValue['radio-id-url']) || '';
+      },
+      set(value) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'radio-id-url': value,
+        });
+      },
+    },
+    repeaterIDURL: {
+      get() {
+        return (this.modelValue && this.modelValue['repeater-id-url']) || '';
+      },
+      set(value) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'repeater-id-url': value,
         });
       },
     },

@@ -91,7 +91,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	setupDMRDatabaseJobs(scheduler)
+	setupDMRDatabaseJobs(cfg, scheduler)
 
 	scheduler.Start()
 
@@ -242,10 +242,10 @@ func startBackgroundServices(cfg *config.Config) {
 }
 
 // setupDMRDatabaseJobs configures scheduled jobs for database updates
-func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
+func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 	// Dummy call to get the data decoded into memory early
 	go func() {
-		err := repeaterdb.Update()
+		err := repeaterdb.Update(cfg.DMR.RepeaterIDURL)
 		if err != nil {
 			slog.Error("Failed to update repeater database, using built in one", "error", err)
 		}
@@ -256,7 +256,7 @@ func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
 			gocron.NewAtTime(0, 0, 0),
 		)),
 		gocron.NewTask(func() {
-			err := repeaterdb.Update()
+			err := repeaterdb.Update(cfg.DMR.RepeaterIDURL)
 			if err != nil {
 				slog.Error("Failed to update repeater database", "error", err)
 			}
@@ -267,7 +267,7 @@ func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
 	}
 
 	go func() {
-		err := userdb.Update()
+		err := userdb.Update(cfg.DMR.RadioIDURL)
 		if err != nil {
 			slog.Error("Failed to update user database", "error", err)
 		}
@@ -278,7 +278,7 @@ func setupDMRDatabaseJobs(scheduler gocron.Scheduler) {
 			gocron.NewAtTime(0, 0, 0),
 		)),
 		gocron.NewTask(func() {
-			err := userdb.Update()
+			err := userdb.Update(cfg.DMR.RadioIDURL)
 			if err != nil {
 				slog.Error("Failed to update user database", "error", err)
 			}

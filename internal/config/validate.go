@@ -19,7 +19,10 @@
 
 package config
 
-import "errors"
+import (
+	"errors"
+	"net/url"
+)
 
 var (
 	// ErrInvalidLogLevel indicates that the provided log level is not valid.
@@ -337,6 +340,14 @@ func (d DMR) Validate() error {
 
 	if err := d.OpenBridge.Validate(); err != nil {
 		return err
+	}
+
+	if _, err := url.ParseRequestURI(d.RadioIDURL); err != nil {
+		return errors.New("invalid DMR radio ID URL provided")
+	}
+
+	if _, err := url.ParseRequestURI(d.RepeaterIDURL); err != nil {
+		return errors.New("invalid DMR repeater ID URL provided")
 	}
 
 	return nil

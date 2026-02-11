@@ -25,20 +25,15 @@
       <template #title>Email Settings</template>
       <template #content>
         <p>DMRHub can send email notifications to admins when:
-          <ul>
-            <li>A new user registers</li>
-            <li>A user is promoted to admin</li>
-            <li>A user is demoted from admin</li>
-          </ul>
+        <ul>
+          <li>A new user registers</li>
+          <li>A user is promoted to admin</li>
+          <li>A user is demoted from admin</li>
+        </ul>
         </p>
         <br />
         <span>
-          <Checkbox
-            id="enabled"
-            inputId="enabled"
-            v-model="enabled"
-            :binary="true"
-          />
+          <Checkbox id="enabled" inputId="enabled" v-model="enabled" :binary="true" />
           <label for="enabled">&nbsp;&nbsp;Enabled</label>
         </span>
         <br v-if="enabled" />
@@ -74,12 +69,8 @@
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
+          <InputText id="port" type="number" v-model="port"
+            :class="{ 'p-invalid': (errors && errors.port) || false }" />
           <label for="port">Port</label>
         </span>
         <p v-if="enabled">
@@ -88,12 +79,8 @@
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="username"
-            type="text"
-            v-model="username"
-            :class="{ 'p-invalid': (errors && errors.username) || false }"
-          />
+          <InputText id="username" type="text" v-model="username"
+            :class="{ 'p-invalid': (errors && errors.username) || false }" />
           <label for="username">Username</label>
         </span>
         <p v-if="enabled">
@@ -102,17 +89,14 @@
         <span v-if="enabled && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="password"
-            type="password"
-            v-model="password"
-            :class="{ 'p-invalid': (errors && errors.password) || false }"
-          />
+          <InputText id="password" type="password" v-model="password"
+            :class="{ 'p-invalid': (errors && errors.password) || false }" />
           <label for="password">Password</label>
         </span>
         <p v-if="enabled">
           The password to use when connecting to the SMTP server.
         </p>
+        <small v-if="enabled" class="p-text-secondary">{{ passwordStatusMessage }}</small>
         <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br v-if="enabled" />
         <span class="p-float-label" v-if="enabled">
@@ -154,6 +138,13 @@ export default {
     errors: {
       type: Object,
       required: true,
+    },
+    secretStatus: {
+      type: Object,
+      required: false,
+      default: () => ({
+        smtpPasswordSet: false,
+      }),
     },
   },
   emits: ['update:modelValue'],
@@ -246,10 +237,20 @@ export default {
         });
       },
     },
+    passwordStatusMessage() {
+      if (this.password !== '') {
+        return this.secretStatus.smtpPasswordSet
+          ? 'Will replace the stored value when you save.'
+          : 'Will be saved when you submit.';
+      }
+      return this.secretStatus.smtpPasswordSet
+        ? 'Stored. Leave blank to keep the existing value.'
+        : 'Not set.';
+    },
   },
-  data: function() {
+  data: function () {
     return {};
   },
-  mounted() {},
+  mounted() { },
 };
 </script>

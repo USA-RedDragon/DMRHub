@@ -27,12 +27,8 @@
         <p>General application settings</p>
         <br />
         <span class="p-float-label">
-          <InputText
-            id="network-name"
-            type="text"
-            v-model="networkName"
-            :class="{ 'p-invalid': (errors && errors['network-name']) || false }"
-          />
+          <InputText id="network-name" type="text" v-model="networkName"
+            :class="{ 'p-invalid': (errors && errors['network-name']) || false }" />
           <label for="network-name">Network Name</label>
         </span>
         <p>
@@ -56,40 +52,30 @@
         <span v-if="errors && errors['log-level']" class="p-error">{{ errors['log-level'] }}</span>
         <br />
         <span class="p-float-label">
-          <InputText
-            id="secret"
-            type="password"
-            v-model="secret"
-            :class="{ 'p-invalid': (errors && errors.secret) || false }"
-          />
+          <InputText id="secret" type="password" v-model="secret"
+            :class="{ 'p-invalid': (errors && errors.secret) || false }" />
           <label for="secret">Secret</label>
         </span>
         <p>
           The secret used to sign session cookies. This should be a long, random string.
         </p>
+        <small class="p-text-secondary">{{ secretStatusMessage }}</small>
         <span v-if="errors && errors.secret" class="p-error">{{ errors.secret }}</span>
         <br />
         <span class="p-float-label">
-          <InputText
-            id="password-salt"
-            type="password"
-            v-model="passwordSalt"
-            :class="{ 'p-invalid': (errors && errors['password-salt']) || false }"
-          />
+          <InputText id="password-salt" type="password" v-model="passwordSalt"
+            :class="{ 'p-invalid': (errors && errors['password-salt']) || false }" />
           <label for="password-salt">Password Salt</label>
         </span>
         <p>
           The salt used to hash user passwords in the database. This should be a long, random string.
         </p>
+        <small class="p-text-secondary">{{ passwordSaltStatusMessage }}</small>
         <span v-if="errors && errors['password-salt']" class="p-error">{{ errors['password-salt'] }}</span>
         <br />
         <span class="p-float-label">
-          <InputText
-            id="hibp-api-key"
-            type="password"
-            v-model="hibpApiKey"
-            :class="{ 'p-invalid': (errors && errors['hibp-api-key']) || false }"
-          />
+          <InputText id="hibp-api-key" type="password" v-model="hibpApiKey"
+            :class="{ 'p-invalid': (errors && errors['hibp-api-key']) || false }" />
           <label for="hibp-api-key">HaveIBeenPwned API Key</label>
         </span>
         <p>
@@ -121,6 +107,14 @@ export default {
     errors: {
       type: Object,
       required: true,
+    },
+    secretStatus: {
+      type: Object,
+      required: false,
+      default: () => ({
+        secretSet: false,
+        passwordSaltSet: false,
+      }),
     },
   },
   emits: ['update:modelValue'],
@@ -180,10 +174,30 @@ export default {
         });
       },
     },
+    secretStatusMessage() {
+      if (this.secret !== '') {
+        return this.secretStatus.secretSet
+          ? 'Will replace the stored value when you save.'
+          : 'Will be saved when you submit.';
+      }
+      return this.secretStatus.secretSet
+        ? 'Stored. Leave blank to keep the existing value.'
+        : 'Not set. Required.';
+    },
+    passwordSaltStatusMessage() {
+      if (this.passwordSalt !== '') {
+        return this.secretStatus.passwordSaltSet
+          ? 'Will replace the stored value when you save.'
+          : 'Will be saved when you submit.';
+      }
+      return this.secretStatus.passwordSaltSet
+        ? 'Stored. Leave blank to keep the existing value.'
+        : 'Not set. Required.';
+    },
   },
-  data: function() {
+  data: function () {
     return {};
   },
-  mounted() {},
+  mounted() { },
 };
 </script>

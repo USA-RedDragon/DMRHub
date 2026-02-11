@@ -24,29 +24,60 @@ import (
 
 type POSTConfig struct {
 	config.Config
-	Secret       string `json:"secret,omitempty"`
-	PasswordSalt string `json:"password-salt,omitempty"`
-	HIBPAPIKey   string `json:"hibp-api-key,omitempty"`
+	Secret       *string `json:"secret,omitempty"`
+	PasswordSalt *string `json:"password-salt,omitempty"`
+	HIBPAPIKey   *string `json:"hibp-api-key,omitempty"`
 	SMTP         struct {
 		config.SMTP
-		Password string `json:"password,omitempty"`
+		Password *string `json:"password,omitempty"`
 	}
 	Database struct {
 		config.Database
-		Password string `json:"password,omitempty"`
+		Password *string `json:"password,omitempty"`
 	}
 	Redis struct {
 		config.Redis
-		Password string `json:"password,omitempty"`
+		Password *string `json:"password,omitempty"`
 	}
 }
 
-func (p POSTConfig) ToConfig(c *config.Config) {
+type SecretStatus struct {
+	SecretSet       bool `json:"secretSet"`
+	PasswordSaltSet bool `json:"passwordSaltSet"`
+	SMTPPasswordSet bool `json:"smtpPasswordSet"`
+}
+
+type ConfigResponse struct {
+	config.Config
+	Secrets SecretStatus `json:"secrets"`
+}
+
+func (p POSTConfig) ToConfig(c *config.Config, fallback *config.Config) {
 	*c = p.Config
-	c.Secret = p.Secret
-	c.PasswordSalt = p.PasswordSalt
-	c.HIBPAPIKey = p.HIBPAPIKey
-	c.SMTP.Password = p.SMTP.Password
-	c.Database.Password = p.Database.Password
-	c.Redis.Password = p.Redis.Password
+	if fallback != nil {
+		c.Secret = fallback.Secret
+		c.PasswordSalt = fallback.PasswordSalt
+		c.HIBPAPIKey = fallback.HIBPAPIKey
+		c.SMTP.Password = fallback.SMTP.Password
+		c.Database.Password = fallback.Database.Password
+		c.Redis.Password = fallback.Redis.Password
+	}
+	if p.Secret != nil {
+		c.Secret = *p.Secret
+	}
+	if p.PasswordSalt != nil {
+		c.PasswordSalt = *p.PasswordSalt
+	}
+	if p.HIBPAPIKey != nil {
+		c.HIBPAPIKey = *p.HIBPAPIKey
+	}
+	if p.SMTP.Password != nil {
+		c.SMTP.Password = *p.SMTP.Password
+	}
+	if p.Database.Password != nil {
+		c.Database.Password = *p.Database.Password
+	}
+	if p.Redis.Password != nil {
+		c.Redis.Password = *p.Redis.Password
+	}
 }

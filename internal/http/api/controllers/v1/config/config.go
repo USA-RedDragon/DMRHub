@@ -36,26 +36,23 @@ func PUTConfig(c *gin.Context) {
 		return
 	}
 
-	cfg := &config.Config{}
-	req.ToConfig(cfg)
-
-	errs := cfg.ValidateWithFields()
-	if len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid configuration", "errors": errs})
-		return
-	}
-
-	var ok bool
-	cfg, ok = c.MustGet("Config").(*config.Config)
+	currentCfg, ok := c.MustGet("Config").(*config.Config)
 	if !ok {
 		slog.Error("Unable to get Config from context")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	req.ToConfig(cfg)
+	nextCfg := &config.Config{}
+	req.ToConfig(nextCfg, currentCfg)
 
-	if err := cfg.Save(); err != nil {
+	errs := nextCfg.ValidateWithFields()
+	if len(errs) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid configuration", "errors": errs})
+		return
+	}
+	*currentCfg = *nextCfg
+	if err := currentCfg.Save(); err != nil {
 		slog.Error("Failed to save config", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config: " + err.Error()})
 		return
@@ -72,7 +69,16 @@ func GETConfig(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, config)
+	response := apimodels.ConfigResponse{
+		Config: *config,
+		Secrets: apimodels.SecretStatus{
+			SecretSet:       config.Secret != "",
+			PasswordSaltSet: config.PasswordSalt != "",
+			SMTPPasswordSet: config.SMTP.Password != "",
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func GETConfigValidate(c *gin.Context) {
@@ -94,11 +100,17 @@ func POSTConfigValidate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	currentCfg, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 
-	config := &config.Config{}
-	req.ToConfig(config)
+	nextCfg := &config.Config{}
+	req.ToConfig(nextCfg, currentCfg)
 
-	errs := config.ValidateWithFields()
+	errs := nextCfg.ValidateWithFields()
 
 	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, "errors": formatErrors(errs)})
 }

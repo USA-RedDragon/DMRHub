@@ -26,7 +26,7 @@
       <Card>
         <template #title>Setup</template>
         <template #content>
-            <GeneralSettings v-model="config" :errors="errors" />
+          <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
             <br />
             <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
             <br />
@@ -34,7 +34,7 @@
             <br />
             <DatabaseSettings v-model="config.database" :errors="errors.database" />
             <br />
-            <SMTPSettings v-model="config.smtp" :errors="errors.smtp" />
+          <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
             <br />
             <RedisSettings v-model="config.redis" :errors="errors.redis" />
             <br />
@@ -100,7 +100,12 @@ export default {
   data: function() {
     return {
       config: {},
-      errors: [],
+      errors: {},
+      secretStatus: {
+        secretSet: false,
+        passwordSaltSet: false,
+        smtpPasswordSet: false,
+      },
     };
   },
   computed: {
@@ -118,39 +123,66 @@ export default {
     getConfig() {
       API.get('/config', { headers: this.setupWizardHeaders() })
         .then((response) => {
-          this.config = response.data;
-          this.checkConfig(this.config);
+          const payload = response.data && response.data.config ? response.data.config : response.data;
+          this.secretStatus = response.data && response.data.secrets ? response.data.secrets : this.secretStatus;
+          if (payload && payload.secrets) {
+            delete payload.secrets;
+          }
+          this.config = payload || {};
         })
         .catch((error) => {
           console.log(error);
         });
     },
-    async checkConfig(config) {
+    buildConfigPayload() {
+      const payload = JSON.parse(JSON.stringify(this.config || {}));
+      if (payload.secret === '') {
+        delete payload.secret;
+      }
+      if (payload['password-salt'] === '') {
+        delete payload['password-salt'];
+      }
+      if (payload.smtp && payload.smtp.password === '') {
+        delete payload.smtp.password;
+      }
+      if (payload.database && payload.database.password === '') {
+        delete payload.database.password;
+      }
+      if (payload.redis && payload.redis.password === '') {
+        delete payload.redis.password;
+      }
+      return payload;
+    },
+    async checkConfig(config, showToast) {
       const response = await API.post(
         '/config/validate',
         config,
         { headers: this.setupWizardHeaders() },
       );
       if (response.data.valid) {
+        this.errors = {};
         return true;
       } else {
         this.errors = response.data.errors;
-        this.$toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Configuration is invalid. Please correct the errors and try again.',
-          life: 3000,
-        });
+        if (showToast) {
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Configuration is invalid. Please correct the errors and try again.',
+            life: 3000,
+          });
+        }
         return false;
       }
     },
     async submit() {
       console.error('submit');
-      if (!await this.checkConfig(this.config)) {
+      const payload = this.buildConfigPayload();
+      if (!await this.checkConfig(payload, true)) {
         return;
       }
       try {
-        await API.put('/config', this.config, { headers: this.setupWizardHeaders() });
+        await API.put('/config', payload, { headers: this.setupWizardHeaders() });
         this.$toast.add({
           severity: 'success',
           summary: 'Success',

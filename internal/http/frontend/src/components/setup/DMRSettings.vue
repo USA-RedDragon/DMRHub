@@ -73,6 +73,7 @@
         <span v-if="errors && errors['repeater-id-url']" class="p-error">{{ errors['repeater-id-url'] }}</span>
         <br />
         <MMDVMSettings v-model="mmdvm" :errors="errors.mmdvm" />
+        <IPSCSettings v-model="ipsc" :errors="errors.ipsc" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
       </template>
@@ -83,7 +84,7 @@
 <script>
 import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
-
+import IPSCSettings from './DMR/IPSCSettings.vue';
 import Card from 'primevue/card';
 import Checkbox from 'primevue/checkbox';
 import InputText from 'primevue/inputtext';
@@ -92,6 +93,7 @@ export default {
   components: {
     MMDVMSettings,
     OpenBridgeSettings,
+    IPSCSettings,
     Card,
     Checkbox,
     InputText,
@@ -128,6 +130,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'openbridge': value,
+        });
+      },
+    },
+    ipsc: {
+      get() {
+        return (this.modelValue && this.modelValue['ipsc']) || {};
+      },
+      set(value) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'ipsc': value,
         });
       },
     },

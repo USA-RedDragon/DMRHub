@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
@@ -292,6 +293,7 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
 	mmdvmServer      mmdvm.Server
+	ipscServer       *ipsc.IPSCServer
 	openbridgeServer *openbridge.Server
 	httpServer       http.Server
 	kv               kv.KV
@@ -303,6 +305,9 @@ type serverManager struct {
 // shutdown gracefully stops all servers
 func (sm *serverManager) shutdown(ctx context.Context) {
 	sm.mmdvmServer.Stop(ctx)
+	if sm.ipscServer != nil {
+		sm.ipscServer.Stop()
+	}
 	if sm.openbridgeServer != nil {
 		sm.openbridgeServer.Stop(ctx)
 	}
@@ -386,6 +391,15 @@ func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.D
 			return nil, fmt.Errorf("failed to start OpenBridge server: %w", err)
 		}
 		sm.openbridgeServer = &openbridgeServer
+	}
+
+	if cfg.DMR.IPSC.Enabled {
+		ipscServer := ipsc.NewIPSCServer(cfg, database)
+		err := ipscServer.Start()
+		if err != nil {
+			return nil, fmt.Errorf("failed to start IPSC server: %w", err)
+		}
+		sm.ipscServer = ipscServer
 	}
 
 	httpServer := http.MakeServer(cfg, database, pubsubClient, version, commit)

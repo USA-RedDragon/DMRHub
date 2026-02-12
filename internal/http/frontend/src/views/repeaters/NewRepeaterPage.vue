@@ -24,7 +24,7 @@
     <PVToast />
     <ConfirmDialog>
       <template #message="slotProps">
-        <div class="flex p-4">
+        <div class="flex p-4" v-if="repeaterType === 'mmdvm'">
           <p>
             You will need to use this DMRGateway configuration to connect to the
             network.
@@ -47,12 +47,38 @@ Debug=0
 </pre
           >
         </div>
+        <div class="flex p-4" v-else>
+          <p>
+            Your Motorola IPSC repeater has been created.
+            <span style="color: red"
+              >Save this auth key now, as you will not be able to retrieve it
+              again.</span
+            >
+            <br /><br />
+            Configure your Motorola repeater to connect to:<br />
+            <strong>Master IP:</strong> {{ this.hostname }}<br />
+            <strong>Port:</strong> 50000<br />
+            <strong>Auth Key:</strong> {{ slotProps.message.message }}
+          </p>
+        </div>
       </template>
     </ConfirmDialog>
     <form @submit.prevent="handleRepeater(!v$.$invalid)">
       <Card>
         <template #title>New Repeater</template>
         <template #content>
+          <div class="field">
+            <label for="repeaterType">Repeater Type</label>
+            <br />
+            <SelectButton
+              id="repeaterType"
+              v-model="repeaterType"
+              :options="repeaterTypes"
+              optionLabel="label"
+              optionValue="value"
+            />
+          </div>
+          <br />
           <span class="p-float-label">
             <InputText
               id="radioID"
@@ -106,6 +132,7 @@ Debug=0
 import Card from 'primevue/card';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
+import SelectButton from 'primevue/selectbutton';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';
@@ -116,6 +143,7 @@ export default {
     Card,
     PVButton: Button,
     InputText,
+    SelectButton,
   },
   head: {
     title: 'New Repeater',
@@ -126,6 +154,11 @@ export default {
   data: function() {
     return {
       radioID: '',
+      repeaterType: 'mmdvm',
+      repeaterTypes: [
+        { label: 'MMDVM', value: 'mmdvm' },
+        { label: 'Motorola IPSC', value: 'ipsc' },
+      ],
       submitted: false,
       hostname: window.location.hostname,
     };
@@ -151,6 +184,7 @@ export default {
       }
       API.post('/repeaters', {
         id: numericID,
+        type: this.repeaterType,
       })
         .then((res) => {
           if (!res.data) {

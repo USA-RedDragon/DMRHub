@@ -150,6 +150,7 @@ journalctl -f -u dmrhub.service
 | Port  | Protocol |               Purpose                |
 | ----- | -------- | ------------------------------------ |
 | 3005  | TCP      | HTTP server (web UI, API, WebSocket) |
+| 50000 | UDP      | IPSC server (if enabled)             |
 | 62031 | UDP      | MMDVM DMR server                     |
 | 62035 | UDP      | OpenBridge server (if enabled)       |
 | 9000  | TCP      | Metrics server (if enabled)          |

@@ -81,8 +81,14 @@ var (
 	ErrHTTPRobotsTXTModeInvalid = errors.New("invalid robots.txt mode provided, must be one of allow, disabled, or custom")
 	// ErrInvalidHTTPRobotsTXTContent indicates that the robots.txt content is required when the mode is custom.
 	ErrInvalidHTTPRobotsTXTContent = errors.New("invalid robots.txt content provided, must be non-empty when mode is custom")
-	// ErrInvalidMetricsBindAddress indicates that the provided metrics server bind address is not valid.
+	// ErrHTTPCanonicalHostRequired indicates that the canonical host is required for the HTTP server.
 	ErrHTTPCanonicalHostRequired = errors.New("canonical host is required for generating absolute URLs in the HTTP server")
+	// ErrInvalidIPSCBindAddress indicates that the provided IPSC server bind address is not valid.
+	ErrInvalidIPSCBindAddress = errors.New("invalid IPSC server bind address provided")
+	// ErrInvalidIPSCPort indicates that the provided IPSC server port is not valid.
+	ErrInvalidIPSCPort = errors.New("invalid IPSC server port provided")
+	// ErrInvalidIPSCNetworkID indicates that the IPSC network ID is required when IPSC is enabled.
+	ErrInvalidIPSCNetworkID = errors.New("IPSC network ID is required when IPSC is enabled")
 )
 
 // Validate validates the Redis configuration.
@@ -332,6 +338,51 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+func (o IPSC) Validate() error {
+	if !o.Enabled {
+		return nil
+	}
+
+	if o.Bind == "" {
+		return ErrInvalidIPSCBindAddress
+	}
+	if o.Port <= 0 || o.Port > 65535 {
+		return ErrInvalidIPSCPort
+	}
+	if o.NetworkID == 0 {
+		return ErrInvalidIPSCNetworkID
+	}
+
+	return nil
+}
+
+func (o IPSC) ValidateWithFields() (errs []ValidationError) {
+	if !o.Enabled {
+		return nil
+	}
+
+	if o.Bind == "" {
+		errs = append(errs, ValidationError{
+			Field: "dmr.ipsc.bind",
+			Error: ErrInvalidIPSCBindAddress.Error(),
+		})
+	}
+	if o.Port <= 0 || o.Port > 65535 {
+		errs = append(errs, ValidationError{
+			Field: "dmr.ipsc.port",
+			Error: ErrInvalidIPSCPort.Error(),
+		})
+	}
+	if o.NetworkID == 0 {
+		errs = append(errs, ValidationError{
+			Field: "dmr.ipsc.network-id",
+			Error: ErrInvalidIPSCNetworkID.Error(),
+		})
+	}
+
+	return
+}
+
 // Validate validates the DMR configuration.
 func (d DMR) Validate() error {
 	if err := d.MMDVM.Validate(); err != nil {
@@ -339,6 +390,10 @@ func (d DMR) Validate() error {
 	}
 
 	if err := d.OpenBridge.Validate(); err != nil {
+		return err
+	}
+
+	if err := d.IPSC.Validate(); err != nil {
 		return err
 	}
 
@@ -358,8 +413,26 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, mmdvmErrs...)
 	}
 
+	if ipscErrs := d.IPSC.ValidateWithFields(); len(ipscErrs) > 0 {
+		errs = append(errs, ipscErrs...)
+	}
+
 	if openBridgeErrs := d.OpenBridge.ValidateWithFields(); len(openBridgeErrs) > 0 {
 		errs = append(errs, openBridgeErrs...)
+	}
+
+	if _, err := url.Parse(d.RadioIDURL); err != nil {
+		errs = append(errs, ValidationError{
+			Field: "dmr.radio-id-url",
+			Error: "invalid DMR radio ID URL provided",
+		})
+	}
+
+	if _, err := url.Parse(d.RepeaterIDURL); err != nil {
+		errs = append(errs, ValidationError{
+			Field: "dmr.repeater-id-url",
+			Error: "invalid DMR repeater ID URL provided",
+		})
 	}
 
 	return

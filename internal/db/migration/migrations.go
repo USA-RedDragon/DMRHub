@@ -114,6 +114,32 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
+		// Add type column to repeaters for MMDVM vs IPSC differentiation
+		{
+			ID: "202506150100",
+			Migrate: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable(&models.Repeater{}) && !db.Migrator().HasColumn(&models.Repeater{}, "type") {
+					err := tx.Migrator().AddColumn(&models.Repeater{}, "Type")
+					if err != nil {
+						return fmt.Errorf("could not add type column: %w", err)
+					}
+					// Set existing repeaters to mmdvm type
+					if err := tx.Exec("UPDATE repeaters SET type = 'mmdvm' WHERE type IS NULL OR type = ''").Error; err != nil {
+						return fmt.Errorf("could not update existing repeaters: %w", err)
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "type") {
+					err := tx.Migrator().DropColumn(&models.Repeater{}, "Type")
+					if err != nil {
+						return fmt.Errorf("could not drop type column: %w", err)
+					}
+				}
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

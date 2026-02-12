@@ -85,6 +85,14 @@ dmr:
     enabled: false       # Enable experimental OpenBridge support
     bind: "[::]"
     port: 62035
+  # IPSC server configuration for Motorola DMR repeaters
+  ipsc:
+    enabled: false         # Enable IPSC server for Motorola repeater connections
+    ip: "[::]"             # IPSC server listen address
+    port: 50000            # IPSC server port
+    network-id: 0          # DMR peer ID for this IPSC master (required when enabled)
+    auth:
+      enabled: false       # Enable HMAC-SHA1 authentication on IPSC packets
   disable-radio-id-validation: false
   radio-id-url: "https://www.radioid.net/static/users.json"
   repeater-id-url: "https://www.radioid.net/static/rptrs.json"
@@ -181,6 +189,9 @@ Configuration can also be provided via environment variables. The variable names
 | `database.host`         | `DATABASE_HOST`         |
 | `redis.enabled`         | `REDIS_ENABLED`         |
 | `dmr.mmdvm.port`        | `DMR_MMDVM_PORT`        |
+| `dmr.ipsc.enabled`      | `DMR_IPSC_ENABLED`      |
+| `dmr.ipsc.port`         | `DMR_IPSC_PORT`         |
+| `dmr.ipsc.network-id`   | `DMR_IPSC_NETWORK_ID`   |
 | `smtp.enabled`          | `SMTP_ENABLED`          |
 | `secret`                | `SECRET`                |
 | `password-salt`         | `PASSWORD_SALT`         |

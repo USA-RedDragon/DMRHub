@@ -23,6 +23,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -175,4 +176,16 @@ func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 		b[randInt.Int64()] = allowedSpecial[rollInt.Int64()]
 	}
 	return string(b), nil
+}
+
+// RandomHexString generates a cryptographically random hex string of the given length.
+// The length is the number of hex characters (each character is 4 bits).
+func RandomHexString(hexLen int) (string, error) {
+	byteLen := (hexLen + 1) / 2
+	b := make([]byte, byteLen)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", ErrNoRandom
+	}
+	return hex.EncodeToString(b)[:hexLen], nil
 }

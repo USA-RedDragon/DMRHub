@@ -6,6 +6,8 @@ github.com/JGLTechnologies/gin-rate-limit v1.5.6/go.mod h1:fwUuBegxLKm8+/4ST0zDF
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/USA-RedDragon/configulator v0.0.4 h1:ljuWc3MYZyEMcBDRhxrAaKt5yciUZONaraIhVJHAq6M=
 github.com/USA-RedDragon/configulator v0.0.4/go.mod h1:X/OR36V04+2h2uALY+c8WyqaAp/wSdcqARbJnyZc2Q4=
+github.com/USA-RedDragon/dmrgo v0.0.1 h1:SaUppB+nDdWEAtJwkaXobkDbgzGSfzpt7jZUHM3SqvE=
+github.com/USA-RedDragon/dmrgo v0.0.1/go.mod h1:+ySk1tyAYWlC7jr+SW2b7qI3vJ20yPNxkwwjafptj7U=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

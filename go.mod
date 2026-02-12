@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.6
 	github.com/USA-RedDragon/configulator v0.0.4
+	github.com/USA-RedDragon/dmrgo v0.0.1
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.24.0
 	github.com/gin-contrib/cors v1.7.6

@@ -22,7 +22,8 @@ package apimodels
 import "github.com/USA-RedDragon/DMRHub/internal/db/models"
 
 type RepeaterPost struct {
-	RadioID uint `json:"id" binding:"required"`
+	RadioID uint   `json:"id" binding:"required"`
+	Type    string `json:"type"`
 }
 
 type RepeaterTalkgroupsPost struct {

@@ -326,7 +326,58 @@ func POSTRepeater(c *gin.Context) {
 		slog.Error("JSON data is invalid", "function", "POSTRepeater", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
+		// Default type to MMDVM if not specified
+		if json.Type == "" {
+			json.Type = models.RepeaterTypeMMDVM
+		}
+		if json.Type != models.RepeaterTypeMMDVM && json.Type != models.RepeaterTypeIPSC {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater type"})
+			return
+		}
+
 		var repeater models.Repeater
+		repeater.Type = json.Type
+
+		if json.Type == models.RepeaterTypeIPSC {
+			// IPSC repeaters: validate RadioID as 6-digit or hotspot
+			hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
+			repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
+
+			switch {
+			case repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
+				repeater.Hotspot = false
+			case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
+				repeater.Hotspot = true
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
+				return
+			}
+
+			repeater.ID = json.RadioID
+
+			// Generate a random hex auth key (20 bytes = 40 hex chars) for IPSC HMAC-SHA1
+			const ipscKeyLen = 40
+			repeater.Password, err = utils.RandomHexString(ipscKeyLen)
+			if err != nil {
+				slog.Error("Failed to generate an IPSC auth key", "error", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate an IPSC auth key"})
+				return
+			}
+
+			repeater.Owner = user
+			repeater.OwnerID = user.ID
+			err := db.Preload("Owner").Create(&repeater).Error
+			if err != nil {
+				slog.Error("Error creating repeater", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
+				return
+			}
+			go mmdvm.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
+			c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
+			return
+		}
+
+		// MMDVM repeater creation (existing logic)
 
 		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userID
 		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)

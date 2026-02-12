@@ -28,6 +28,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	// RepeaterTypeMMDVM is the type for MMDVM repeaters.
+	RepeaterTypeMMDVM = "mmdvm"
+	// RepeaterTypeIPSC is the type for Motorola IPSC repeaters.
+	RepeaterTypeIPSC = "ipsc"
+)
+
 // Repeater is the model for a DMR repeater
 //
 //go:generate go run github.com/tinylib/msgp
@@ -40,6 +47,7 @@ type Repeater struct {
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
 	Password              string         `json:"-" msg:"-"`
+	Type                  string         `json:"type" gorm:"default:'mmdvm'" msg:"-"`
 	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
 	TS2StaticTalkgroups   []Talkgroup    `json:"ts2_static_talkgroups" gorm:"many2many:repeater_ts2_static_talkgroups;" msg:"-"`
 	TS1DynamicTalkgroupID *uint          `json:"-" msg:"-"`

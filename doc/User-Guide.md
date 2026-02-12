@@ -53,10 +53,27 @@ DMRHub treats hotspots and repeaters identically. Supported repeater IDs:
 To register a repeater:
 
 1. Navigate to `<siteurl>/repeaters/new`
-2. Enter your repeater ID
-3. You'll be shown an example configuration for connecting [DMRGateway](https://github.com/g4klx/DMRGateway) to DMRHub
+2. Select the repeater type: **MMDVM** or **Motorola IPSC**
+3. Enter your repeater ID
+4. You'll be shown connection configuration details for your repeater type
 
-> **Important:** The generated password is shown only once. Make sure to save it.
+> **Important:** The generated password/auth key is shown only once. Make sure to save it.
+
+### MMDVM Repeaters
+
+For MMDVM-based repeaters, you'll receive a [DMRGateway](https://github.com/g4klx/DMRGateway) configuration snippet with the address, port, and password needed to connect.
+
+### Motorola IPSC Repeaters
+
+For Motorola DMR repeaters (DR3000, SLR5500, etc.), you'll receive an IPSC HMAC-SHA1 auth key. Configure your repeater's IPSC network settings:
+
+- **Master IP:** The IP of your DMRHub instance
+- **Master Port:** 50000 (default)
+- **Auth Key:** The hex key shown after repeater creation
+
+For detailed Motorola CPS configuration, see the [BrandMeister IPSC wiki](https://wiki.brandmeister.network/index.php/IPSC).
+
+> **Note:** IPSC connections require the DMRHub instance to have a static IP address. The official DMRHub instance uses a dynamic IP and cannot reliably support IPSC connections.
 
 ## Repeaters Page
 

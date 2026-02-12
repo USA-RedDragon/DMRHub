@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,7 +59,10 @@ func (m *subscriptionManager) ownsRepeaterDelivery(repeaterID uint) bool {
 	leaseKey := fmt.Sprintf("hub:lease:repeater:%d", repeaterID)
 	claimed, err := m.hub.kv.ClaimLease(leaseKey, m.hub.instanceID, repeaterLeaseTTL)
 	if err != nil {
-		slog.Error("Failed to claim repeater delivery lease", "repeaterID", repeaterID, "error", err)
+		// During shutdown the KV client may already be closed; avoid noisy logs on close errors.
+		if !strings.Contains(err.Error(), "closed") {
+			slog.Error("Failed to claim repeater delivery lease", "repeaterID", repeaterID, "error", err)
+		}
 		return false
 	}
 
@@ -302,7 +306,7 @@ func (m *subscriptionManager) cancelSubscription(repeaterID uint, talkgroupID ui
 
 	// If the other slot is linked to this talkgroup, don't cancel the subscription
 	if dynamicSlot != nil && *dynamicSlot == talkgroupID {
-		slog.Error("Not cancelling subscription because the other slot is linked to this talkgroup",
+		slog.Debug("Not cancelling subscription because the other slot is linked to this talkgroup",
 			"repeaterID", p.ID, "talkgroupID", talkgroupID, "slot", slot)
 		return
 	}
@@ -347,6 +351,9 @@ func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID 
 			}
 			return
 		case msg := <-pubsubChannel:
+			if msg == nil {
+				return
+			}
 			if !m.ownsRepeaterDelivery(repeaterID) {
 				continue
 			}
@@ -400,6 +407,9 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 			}
 			return
 		case msg := <-pubsubChannel:
+			if msg == nil {
+				return
+			}
 			if !m.ownsRepeaterDelivery(repeaterID) {
 				continue
 			}

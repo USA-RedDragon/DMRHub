@@ -191,13 +191,7 @@ func (h *Hub) routeToUser(packet models.Packet) {
 		h.publishToRepeater(lastCall.RepeaterID, packet)
 	}
 
-	// Also send to all of user's owned repeaters
-	for _, repeater := range user.Repeaters {
-		if repeater.ID == lastCall.RepeaterID {
-			continue
-		}
-		h.publishToRepeater(repeater.ID, packet)
-	}
+	// If we don't know which repeater to send to, we have to drop the call.
 }
 
 // isRepeaterID checks if an ID looks like a repeater (6-digit or 9-digit)

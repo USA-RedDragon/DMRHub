@@ -108,6 +108,29 @@ func (kv inMemoryKV) Set(key string, value []byte) error {
 	return nil
 }
 
+func (kv inMemoryKV) ClaimLease(key string, owner string, ttl time.Duration) (bool, error) {
+	if ttl <= 0 {
+		return false, fmt.Errorf("ttl must be positive")
+	}
+
+	now := time.Now()
+	leaseUntil := now.Add(ttl)
+
+	obj, ok := kv.kv.Load(key)
+	if !ok || (!obj.ttl.IsZero() && obj.ttl.Before(now)) {
+		kv.kv.Store(key, kvValue{value: []byte(owner), ttl: leaseUntil})
+		return true, nil
+	}
+
+	if string(obj.value) != owner {
+		return false, nil
+	}
+
+	obj.ttl = leaseUntil
+	kv.kv.Store(key, obj)
+	return true, nil
+}
+
 func (kv inMemoryKV) Delete(key string) error {
 	start := time.Now()
 	defer func() {

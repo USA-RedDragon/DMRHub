@@ -21,6 +21,7 @@ package kv
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -30,6 +31,7 @@ type KV interface {
 	Has(key string) (bool, error)
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
+	ClaimLease(key string, owner string, ttl time.Duration) (bool, error)
 	Delete(key string) error
 	Expire(key string, ttl time.Duration) error
 	Scan(cursor uint64, match string, count int64) ([]string, uint64, error)
@@ -38,5 +40,13 @@ type KV interface {
 
 // MakeKV creates a new key-value store client.
 func MakeKV(ctx context.Context, config *config.Config) (KV, error) {
+	if config.Redis.Enabled {
+		redisKV, err := makeRedisKV(ctx, config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create redis kv: %w", err)
+		}
+		return redisKV, nil
+	}
+
 	return makeInMemoryKV(ctx, config)
 }

@@ -171,7 +171,7 @@ export default {
 
       return copyData;
     },
-    onWebsocketMessage() {
+    onWebsocketMessage(event) {
       const call = JSON.parse(event.data);
       // We need to check that the call is not already in the table
       // If it is, we need to update it

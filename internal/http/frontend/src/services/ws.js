@@ -23,7 +23,7 @@ export default {
     ws.connect();
     return {
       close() {
-        ws.socket.close();
+        ws.close();
       },
     };
   },
@@ -40,9 +40,14 @@ class Websocket {
     this.socket = null;
     this.onMessage = onMessage;
     this.currentReconnectDelay = initialReconnectDelay;
+    this.shouldReconnect = true;
+    this.reconnectTimer = null;
   }
 
   connect() {
+    if (!this.shouldReconnect) {
+      return;
+    }
     this.socket = new WebSocket(this.url);
     this.mapSocketEvents();
   }
@@ -59,11 +64,35 @@ class Websocket {
     this.reconnectToWebsocket();
   }
 
+  onWebsocketClose() {
+    console.log('Websocket connection closed');
+    this.socket = null;
+    this.reconnectToWebsocket();
+  }
+
+  close() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.socket) {
+      this.socket.close();
+    }
+  }
+
   reconnectToWebsocket() {
-    setTimeout(() => {
+    if (!this.shouldReconnect) {
+      return;
+    }
+    if (this.reconnectTimer) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
       if (this.currentReconnectDelay < maxReconnectDelay) {
         this.currentReconnectDelay *= 2;
       }
+      this.reconnectTimer = null;
       this.connect();
     }, this.currentReconnectDelay + Math.floor(Math.random() * 1000));
   }
@@ -71,6 +100,7 @@ class Websocket {
   mapSocketEvents() {
     this.socket.addEventListener('open', this.onWebsocketOpen.bind(this));
     this.socket.addEventListener('error', this.onWebsocketError.bind(this));
+    this.socket.addEventListener('close', this.onWebsocketClose.bind(this));
 
     this.socket.addEventListener('message', (event) => {
       if (event.data == 'PONG') {

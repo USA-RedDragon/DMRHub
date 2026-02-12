@@ -211,7 +211,7 @@ func (h *Hub) Start() {
 
 // Stop cancels all subscriptions (used at shutdown).
 func (h *Hub) Stop() {
-	slog.Debug("Stopping all repeater subscriptions")
+	slog.Info("Stopping all repeater subscriptions")
 	h.stopAllRepeaters()
 }
 

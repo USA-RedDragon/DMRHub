@@ -325,13 +325,20 @@ func (sm *serverManager) start(ctx context.Context) error {
 	return nil
 }
 
-// shutdown gracefully stops all servers
-func (sm *serverManager) shutdown(ctx context.Context) {
+// stopDMRServers sends disconnect messages (MSTCL, deregistration) and
+// closes protocol sockets. This must run before hub.Stop() so that
+// connected repeaters/peers receive a clean disconnect.
+func (sm *serverManager) stopDMRServers(ctx context.Context) {
 	for _, server := range sm.servers {
 		if err := server.Stop(ctx); err != nil {
 			slog.Error("Failed to stop server", "error", err)
 		}
 	}
+}
+
+// closeResources tears down the HTTP server, pubsub, and KV connections.
+// Call this after hub.Stop() has cancelled all subscriptions.
+func (sm *serverManager) closeResources(ctx context.Context) {
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
 		if err := sm.pubsub.Close(); err != nil {
@@ -343,6 +350,12 @@ func (sm *serverManager) shutdown(ctx context.Context) {
 			slog.Error("Failed to close kv", "error", err)
 		}
 	}
+}
+
+// shutdown gracefully stops all servers
+func (sm *serverManager) shutdown(ctx context.Context) {
+	sm.stopDMRServers(ctx)
+	sm.closeResources(ctx)
 }
 
 // initializeServers creates and starts all server instances
@@ -408,8 +421,12 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
+			// Send disconnect messages (MSTCL, deregistration) to repeaters/peers
+			// BEFORE cancelling hub subscriptions — otherwise hub.Stop() may consume
+			// the entire shutdown budget and os.Exit fires before MSTCL is sent.
+			servers.stopDMRServers(ctx)
 			hub.Stop()
-			servers.shutdown(ctx)
+			servers.closeResources(ctx)
 		}(wg)
 
 		wg.Add(1)

@@ -113,8 +113,15 @@ func (s *Server) Stop(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
 
+	var count int
+	s.connected.Range(func(_ uint, _ struct{}) bool {
+		count++
+		return true
+	})
+	slog.Info("Stopping MMDVM server, sending MSTCL to connected repeaters", "count", count)
+
 	s.connected.Range(func(repeater uint, _ struct{}) bool {
-		slog.Debug("Repeater found", "repeater", repeater)
+		slog.Info("Sending MSTCL to repeater", "repeater", repeater)
 		repeaterInfo, err := s.kvClient.GetRepeater(ctx, repeater)
 		if err != nil {
 			slog.Error("Error getting repeater from KV", "repeater", repeater, "error", err)
@@ -135,10 +142,16 @@ func (s *Server) Stop(ctx context.Context) error {
 			slog.Error("Error sending MSTCL command", "repeater", repeater, "error", err)
 			return true
 		}
+		slog.Info("Sent MSTCL to repeater", "repeater", repeater, "ip", repeaterInfo.IP, "port", repeaterInfo.Port)
 		repeaterInfo.Connection = "DISCONNECTED"
 		s.kvClient.StoreRepeater(ctx, repeater, repeaterInfo)
 		return true
 	})
+
+	if err := s.Server.Close(); err != nil {
+		slog.Error("Error closing MMDVM UDP socket", "error", err)
+	}
+
 	return nil
 }
 

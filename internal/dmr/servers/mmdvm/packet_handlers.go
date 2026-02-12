@@ -50,10 +50,6 @@ func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection 
 		slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
 		valid = false
 	}
-	if repeater.IP != remoteAddr.IP.String() {
-		slog.Error("Repeater IP does not match remote", "repeaterID", repeaterID, "repeaterIP", repeater.IP, "remoteIP", remoteAddr.IP.String())
-		valid = false
-	}
 	if repeater.Connection != connection {
 		slog.Error("Repeater state does not match expected", "repeaterID", repeaterID, "repeaterState", repeater.Connection, "expectedState", connection)
 		valid = false

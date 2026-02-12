@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -41,6 +42,7 @@ type subscriptionManager struct {
 	// subscriptions stores per-repeater maps of talkgroup/repeater → cancel func
 	subscriptions *xsync.Map[uint, *xsync.Map[uint, *context.CancelFunc]]
 	hub           *Hub
+	mu            sync.Mutex
 }
 
 const repeaterLeaseTTL = 15 * time.Second
@@ -68,6 +70,8 @@ func (m *subscriptionManager) ownsRepeaterDelivery(repeaterID uint) bool {
 func (h *Hub) activateRepeater(repeaterID uint) {
 	_, span := otel.Tracer("DMRHub").Start(context.Background(), "Hub.ActivateRepeater")
 	defer span.End()
+	h.subscriptionMgr.mu.Lock()
+	defer h.subscriptionMgr.mu.Unlock()
 
 	_, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
@@ -133,6 +137,9 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 
 // deactivateRepeater cancels all subscriptions for a specific repeater.
 func (h *Hub) deactivateRepeater(repeaterID uint) {
+	h.subscriptionMgr.mu.Lock()
+	defer h.subscriptionMgr.mu.Unlock()
+
 	slog.Debug("Deactivating repeater subscriptions", "repeaterID", repeaterID)
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
@@ -158,6 +165,9 @@ func (h *Hub) stopAllRepeaters() {
 func (h *Hub) subscribeTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.SubscribeTalkgroup")
 	defer span.End()
+	h.subscriptionMgr.mu.Lock()
+	defer h.subscriptionMgr.mu.Unlock()
+
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
 		return

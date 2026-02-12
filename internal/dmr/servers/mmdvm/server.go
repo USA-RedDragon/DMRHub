@@ -220,7 +220,11 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 	commandPrefixedData := append([]byte(command), data...)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		slog.Error("Error getting repeater from KV", "error", err)
+		if errors.Is(err, servers.ErrNoSuchRepeater) {
+			slog.Debug("Skipping command for repeater without active local session", "command", command, "repeaterID", repeaterIDBytes)
+			return
+		}
+		slog.Error("Error getting repeater from KV", "repeaterID", repeaterIDBytes, "error", err)
 		return
 	}
 	p := models.RawDMRPacket{
@@ -235,7 +239,11 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
-		slog.Error("Error getting repeater from KV", "error", err)
+		if errors.Is(err, servers.ErrNoSuchRepeater) {
+			slog.Debug("Skipping packet for repeater without active local session", "repeaterID", repeaterIDBytes)
+			return
+		}
+		slog.Error("Error getting repeater from KV", "repeaterID", repeaterIDBytes, "error", err)
 		return
 	}
 	p := models.RawDMRPacket{

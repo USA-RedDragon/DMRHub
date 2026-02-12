@@ -116,8 +116,22 @@ func RepeaterIDExists(db *gorm.DB, id uint) (bool, error) {
 
 func DeleteRepeater(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
-		tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{})
-		tx.Unscoped().Where("id = ?", id).Select("TS1StaticTalkgroups", "TS2StaticTalkgroups").Delete(&Repeater{})
+		if err := tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{}).Error; err != nil {
+			return fmt.Errorf("delete calls: %w", err)
+		}
+
+		repeater := Repeater{RepeaterConfiguration: RepeaterConfiguration{ID: id}}
+		if err := tx.Model(&repeater).Association("TS1StaticTalkgroups").Clear(); err != nil {
+			return fmt.Errorf("clear ts1 static talkgroups: %w", err)
+		}
+		if err := tx.Model(&repeater).Association("TS2StaticTalkgroups").Clear(); err != nil {
+			return fmt.Errorf("clear ts2 static talkgroups: %w", err)
+		}
+
+		if err := tx.Unscoped().Where("id = ?", id).Delete(&Repeater{}).Error; err != nil {
+			return fmt.Errorf("delete repeater: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {

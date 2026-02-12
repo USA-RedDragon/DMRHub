@@ -20,6 +20,7 @@
 package ipsc
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1" //nolint:gosec
 	"encoding/binary"
@@ -33,7 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 )
 
-func testConfig(authEnabled bool) *config.Config {
+func testConfig() *config.Config {
 	return &config.Config{
 		DMR: config.DMR{
 			IPSC: config.IPSC{
@@ -202,10 +203,19 @@ func mustDecodeHex(t *testing.T, hexStr string) []byte {
 	return b
 }
 
+func newTestServer(t *testing.T, cfg *config.Config) *IPSCServer {
+	t.Helper()
+	s := NewIPSCServer(cfg, nil, nil)
+	if s == nil {
+		t.Fatal("NewIPSCServer returned nil")
+	}
+	return s
+}
+
 func TestNewIPSCServerNoAuth(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	if s == nil {
 		t.Fatal("expected non-nil server")
 	}
@@ -216,8 +226,8 @@ func TestNewIPSCServerNoAuth(t *testing.T) {
 
 func TestNewIPSCServerWithAuth(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(true)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	if s == nil {
 		t.Fatal("expected non-nil server")
 	}
@@ -236,8 +246,8 @@ func TestDecodeAuthKey(t *testing.T) {
 
 func TestDefaultModeByte(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	mode := s.defaultModeByte()
 	// Should have operational, digital, ts1, ts2 bits
 	if mode&0b01000000 == 0 {
@@ -256,8 +266,8 @@ func TestDefaultModeByte(t *testing.T) {
 
 func TestDefaultFlagsBytes(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	flags := s.defaultFlagsBytes()
 	if flags[3]&0x10 == 0 {
 		t.Fatal("expected auth flag always set")
@@ -269,8 +279,8 @@ func TestDefaultFlagsBytes(t *testing.T) {
 
 func TestDefaultFlagsBytesWithAuth(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(true)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	flags := s.defaultFlagsBytes()
 	if flags[3]&0x10 == 0 {
 		t.Fatal("expected auth flag set when auth enabled")
@@ -279,8 +289,8 @@ func TestDefaultFlagsBytesWithAuth(t *testing.T) {
 
 func TestBuildMasterRegisterReply(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	reply := s.buildMasterRegisterReply()
 
 	if reply[0] != byte(PacketType_MasterRegisterReply) {
@@ -295,8 +305,8 @@ func TestBuildMasterRegisterReply(t *testing.T) {
 
 func TestBuildMasterAliveReply(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	reply := s.buildMasterAliveReply()
 
 	if reply[0] != byte(PacketType_MasterAliveReply) {
@@ -306,8 +316,8 @@ func TestBuildMasterAliveReply(t *testing.T) {
 
 func TestBuildPeerListReplyEmpty(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	reply := s.buildPeerListReply()
 
 	if reply[0] != byte(PacketType_PeerListReply) {
@@ -323,8 +333,8 @@ func TestBuildPeerListReplyEmpty(t *testing.T) {
 
 func TestBuildPeerListReplyWithPeers(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 100), Port: 50000}
 	s.upsertPeer(42, addr, 0x6A, [4]byte{0, 0, 0, 0x0D})
@@ -342,8 +352,8 @@ func TestBuildPeerListReplyWithPeers(t *testing.T) {
 
 func TestUpsertPeerAndCount(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	if s.peerCount() != 0 {
 		t.Fatalf("expected 0 peers initially, got %d", s.peerCount())
@@ -372,8 +382,8 @@ func TestUpsertPeerAndCount(t *testing.T) {
 
 func TestMarkPeerAlive(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	s.markPeerAlive(100, addr)
@@ -396,8 +406,8 @@ func TestMarkPeerAlive(t *testing.T) {
 
 func TestHandlePacketTooShort(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	_, err := s.handlePacket([]byte{}, addr)
@@ -408,8 +418,8 @@ func TestHandlePacketTooShort(t *testing.T) {
 
 func TestHandlePacketUnknownType(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	data := []byte{0xFF, 0, 0, 0, 1}
@@ -421,8 +431,8 @@ func TestHandlePacketUnknownType(t *testing.T) {
 
 func TestHandlePacketReplyTypesIgnored(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	peerID := uint32(12345)
@@ -470,8 +480,8 @@ func TestPacketTypeValues(t *testing.T) {
 
 func TestUpsertPeerRegistrationStatus(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	s.upsertPeer(100, addr, 0x6A, [4]byte{})
@@ -492,10 +502,10 @@ func TestUpsertPeerRegistrationStatus(t *testing.T) {
 
 // --- Helper: create a server with a real loopback UDP socket ---
 
-func newTestServerWithUDP(t *testing.T, authEnabled bool) (*IPSCServer, *net.UDPAddr) {
+func newTestServerWithUDP(t *testing.T) (*IPSCServer, *net.UDPAddr) {
 	t.Helper()
-	cfg := testConfig(authEnabled)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	// Bind to loopback on a random port
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
@@ -505,7 +515,7 @@ func newTestServerWithUDP(t *testing.T, authEnabled bool) (*IPSCServer, *net.UDP
 	s.udp = conn
 	t.Cleanup(func() {
 		s.stopped.Store(true)
-		conn.Close()
+		_ = conn.Close()
 	})
 
 	addr, ok := conn.LocalAddr().(*net.UDPAddr)
@@ -585,14 +595,14 @@ func signTestPacket(t *testing.T, data []byte) []byte {
 
 func TestSendPacketNoAuth(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	// Create a client UDP socket to receive the packet
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
@@ -615,13 +625,13 @@ func TestSendPacketNoAuth(t *testing.T) {
 func TestSendPacketWithAuth(t *testing.T) {
 	t.Parallel()
 	hexKey := "0000000000000000000000000000000000001234"
-	s, _ := newTestServerWithUDP(t, true)
+	s, _ := newTestServerWithUDP(t)
 
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
@@ -653,13 +663,13 @@ func TestSendPacketWithAuth(t *testing.T) {
 
 func TestHandleMasterRegisterRequestFlow(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Build a register request with mode and flags
 	peerID := uint32(55555)
@@ -697,13 +707,13 @@ func TestHandleMasterRegisterRequestFlow(t *testing.T) {
 
 func TestHandleMasterRegisterRequestShortPacket(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Short register request (no mode/flags) — should still work using defaults
 	preRegisterTestPeer(s, 77777)
@@ -731,13 +741,13 @@ func TestHandleMasterRegisterRequestShortPacket(t *testing.T) {
 
 func TestHandleMasterAliveRequestFlow(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	peerID := uint32(66666)
 	preRegisterTestPeer(s, peerID)
@@ -771,13 +781,13 @@ func TestHandleMasterAliveRequestFlow(t *testing.T) {
 
 func TestHandlePeerListRequestFlow(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	preRegisterTestPeer(s, 88888)
 	reqData := signTestPacket(t, makeControlPacket(PacketType_PeerListRequest, 88888))
@@ -798,13 +808,13 @@ func TestHandlePeerListRequestFlow(t *testing.T) {
 
 func TestHandlePeerListRequestTooShort(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Packet type + only 2 bytes (too short for peer ID)
 	data := []byte{byte(PacketType_PeerListRequest), 0x00, 0x01}
@@ -820,8 +830,8 @@ func TestHandlePeerListRequestTooShort(t *testing.T) {
 
 func TestHandleRepeaterWakeUp(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 3000}
 	peerID := uint32(11111)
@@ -846,8 +856,8 @@ func TestHandleRepeaterWakeUp(t *testing.T) {
 
 func TestHandleRepeaterWakeUpTooShort(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 3000}
 	data := []byte{byte(PacketType_RepeaterWakeUp), 0x00}
@@ -861,8 +871,8 @@ func TestHandleRepeaterWakeUpTooShort(t *testing.T) {
 
 func TestHandleUserPacketCallsBurstHandler(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	var received atomic.Bool
 	var gotType atomic.Uint32
@@ -906,8 +916,8 @@ func TestHandleUserPacketCallsBurstHandler(t *testing.T) {
 
 func TestHandleUserPacketNoBurstHandler(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	// No burst handler set
 
 	peerID := uint32(43)
@@ -934,8 +944,8 @@ func TestHandleUserPacketAllTypes(t *testing.T) {
 	}
 
 	for _, pt := range types {
-		cfg := testConfig(false)
-		s := NewIPSCServer(cfg, nil)
+		cfg := testConfig()
+		s := newTestServer(t, cfg)
 
 		peerID := uint32(50)
 		preRegisterTestPeer(s, peerID)
@@ -953,8 +963,8 @@ func TestHandleUserPacketAllTypes(t *testing.T) {
 
 func TestHandleUserPacketTooShortForPeerID(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	data := []byte{byte(PacketType_GroupVoice), 0x00, 0x01}
@@ -967,8 +977,8 @@ func TestHandleUserPacketTooShortForPeerID(t *testing.T) {
 
 func TestHandleUserPacketBurstHandlerReceivesDataCopy(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	var receivedData []byte
 	var wg sync.WaitGroup
@@ -1006,8 +1016,8 @@ func TestHandleUserPacketBurstHandlerReceivesDataCopy(t *testing.T) {
 
 func TestHandlePacketAuthEnabledTooShort(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(true)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	// A packet with auth enabled but only 10 bytes (not enough for payload + hash)
@@ -1021,8 +1031,8 @@ func TestHandlePacketAuthEnabledTooShort(t *testing.T) {
 
 func TestHandlePacketAuthEnabledBadHash(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(true)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	// Pre-register peer with auth key so we can test bad hash path
 	s.mu.Lock()
 	s.peers[12345] = &Peer{ID: 12345, AuthKey: decodeAuthKey("1234")}
@@ -1042,13 +1052,13 @@ func TestHandlePacketAuthEnabledBadHash(t *testing.T) {
 func TestHandlePacketAuthEnabledSuccess(t *testing.T) {
 	t.Parallel()
 	hexKey := "0000000000000000000000000000000000001234"
-	s, srvAddr := newTestServerWithUDP(t, true)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	peerID := uint32(99999)
 	// Pre-register peer with auth key for per-peer auth
@@ -1077,24 +1087,24 @@ func TestHandlePacketAuthEnabledSuccess(t *testing.T) {
 	}
 }
 
-// --- SendUserPacket tests ---
+// --- sendPacketInternal tests ---
 
 func TestSendUserPacketToMultiplePeers(t *testing.T) {
 	t.Parallel()
-	s, _ := newTestServerWithUDP(t, false)
+	s, _ := newTestServerWithUDP(t)
 
 	// Create two client sockets to receive
 	client1, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client1 listen: %v", err)
 	}
-	defer client1.Close()
+	defer func() { _ = client1.Close() }()
 
 	client2, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client2 listen: %v", err)
 	}
-	defer client2.Close()
+	defer func() { _ = client2.Close() }()
 
 	// Register two peers
 	client1Addr, ok := client1.LocalAddr().(*net.UDPAddr)
@@ -1109,7 +1119,7 @@ func TestSendUserPacketToMultiplePeers(t *testing.T) {
 	s.upsertPeer(2, client2Addr, 0x6A, [4]byte{})
 
 	payload := []byte("broadcast")
-	s.SendUserPacket(payload)
+	s.sendPacketInternal(payload)
 
 	got1 := readUDP(t, client1)
 	got2 := readUDP(t, client2)
@@ -1124,13 +1134,13 @@ func TestSendUserPacketToMultiplePeers(t *testing.T) {
 
 func TestSendUserPacketWhenStopped(t *testing.T) {
 	t.Parallel()
-	s, _ := newTestServerWithUDP(t, false)
+	s, _ := newTestServerWithUDP(t)
 
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	stoppedAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
@@ -1139,7 +1149,7 @@ func TestSendUserPacketWhenStopped(t *testing.T) {
 	s.upsertPeer(1, stoppedAddr, 0x6A, [4]byte{})
 	s.stopped.Store(true)
 
-	s.SendUserPacket([]byte("should not arrive"))
+	s.sendPacketInternal([]byte("should not arrive"))
 
 	// Try reading with a short timeout — should get nothing
 	if err := client.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
@@ -1154,21 +1164,21 @@ func TestSendUserPacketWhenStopped(t *testing.T) {
 
 func TestSendUserPacketNoPeers(t *testing.T) {
 	t.Parallel()
-	s, _ := newTestServerWithUDP(t, false)
+	s, _ := newTestServerWithUDP(t)
 
 	// Should not panic with no peers
-	s.SendUserPacket([]byte("no peers"))
+	s.sendPacketInternal([]byte("no peers"))
 }
 
 func TestSendUserPacketSkipsNilAddrPeers(t *testing.T) {
 	t.Parallel()
-	s, _ := newTestServerWithUDP(t, false)
+	s, _ := newTestServerWithUDP(t)
 
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Add a peer with nil addr
 	s.mu.Lock()
@@ -1182,7 +1192,7 @@ func TestSendUserPacketSkipsNilAddrPeers(t *testing.T) {
 	}
 	s.upsertPeer(1, clientAddrSelective, 0x6A, [4]byte{})
 
-	s.SendUserPacket([]byte("selective"))
+	s.sendPacketInternal([]byte("selective"))
 
 	got := readUDP(t, client)
 	if string(got) != "selective" {
@@ -1193,13 +1203,13 @@ func TestSendUserPacketSkipsNilAddrPeers(t *testing.T) {
 func TestSendUserPacketWithAuth(t *testing.T) {
 	t.Parallel()
 	hexKey := "0000000000000000000000000000000000005678"
-	s, _ := newTestServerWithUDP(t, true)
+	s, _ := newTestServerWithUDP(t)
 
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	clientAddrAuth, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
@@ -1212,7 +1222,7 @@ func TestSendUserPacketWithAuth(t *testing.T) {
 	s.mu.Unlock()
 
 	payload := []byte("authenticated-broadcast")
-	s.SendUserPacket(payload)
+	s.sendPacketInternal(payload)
 
 	got := readUDP(t, client)
 	if len(got) != len(payload)+10 {
@@ -1230,13 +1240,13 @@ func TestSendUserPacketWithAuth(t *testing.T) {
 
 func TestSendUserPacketDataIsCopied(t *testing.T) {
 	t.Parallel()
-	s, _ := newTestServerWithUDP(t, false)
+	s, _ := newTestServerWithUDP(t)
 
 	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
 		t.Fatalf("client listen: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	copyAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
@@ -1245,14 +1255,14 @@ func TestSendUserPacketDataIsCopied(t *testing.T) {
 	s.upsertPeer(1, copyAddr, 0x6A, [4]byte{})
 
 	payload := []byte("original")
-	s.SendUserPacket(payload)
+	s.sendPacketInternal(payload)
 
 	// Mutate original after sending — should not affect what was sent
 	payload[0] = 'X'
 
 	got := readUDP(t, client)
 	if got[0] != 'o' {
-		t.Fatal("SendUserPacket should copy data, not use original slice")
+		t.Fatal("sendPacketInternal should copy data, not use original slice")
 	}
 }
 
@@ -1260,8 +1270,8 @@ func TestSendUserPacketDataIsCopied(t *testing.T) {
 
 func TestPacePeerFirstCallNoDelay(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	start := time.Now()
 	s.pacePeer(1)
@@ -1275,8 +1285,8 @@ func TestPacePeerFirstCallNoDelay(t *testing.T) {
 
 func TestPacePeerEnforcesInterval(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	// First call establishes the timestamp
 	s.pacePeer(1)
@@ -1293,8 +1303,8 @@ func TestPacePeerEnforcesInterval(t *testing.T) {
 
 func TestPacePeerSeparatePeersIndependent(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	// Pace peer 1
 	s.pacePeer(1)
@@ -1311,8 +1321,8 @@ func TestPacePeerSeparatePeersIndependent(t *testing.T) {
 
 func TestPacePeerAfterInterval(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	s.pacePeer(1)
 	// Wait longer than the burst interval (30ms)
@@ -1332,8 +1342,8 @@ func TestPacePeerAfterInterval(t *testing.T) {
 
 func TestHandlerLoopProcessesPackets(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	// Bind to loopback
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
@@ -1355,7 +1365,7 @@ func TestHandlerLoopProcessesPackets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	peerID := uint32(22222)
 	preRegisterTestPeer(s, peerID)
@@ -1385,14 +1395,14 @@ func TestHandlerLoopProcessesPackets(t *testing.T) {
 
 	// Stop cleanly
 	s.stopped.Store(true)
-	conn.Close()
+	_ = conn.Close()
 	s.wg.Wait()
 }
 
 func TestStopIdempotent(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
@@ -1404,23 +1414,23 @@ func TestStopIdempotent(t *testing.T) {
 	go s.handler()
 
 	// Calling Stop multiple times should not panic
-	s.Stop()
-	s.Stop()
-	s.Stop()
+	_ = s.Stop(context.Background())
+	_ = s.Stop(context.Background())
+	_ = s.Stop(context.Background())
 }
 
 func TestStopWithNilConn(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	// udp is nil — Stop should not panic
-	s.Stop()
+	_ = s.Stop(context.Background())
 }
 
 func TestHandlerLoopWithBurstHandler(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	if err != nil {
@@ -1447,7 +1457,7 @@ func TestHandlerLoopWithBurstHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	peerID := uint32(33333)
 	preRegisterTestPeer(s, peerID)
@@ -1465,7 +1475,7 @@ func TestHandlerLoopWithBurstHandler(t *testing.T) {
 	}
 
 	s.stopped.Store(true)
-	conn.Close()
+	_ = conn.Close()
 	s.wg.Wait()
 }
 
@@ -1473,8 +1483,8 @@ func TestHandlerLoopWithBurstHandler(t *testing.T) {
 
 func TestBuildPeerListSkipsNilAddr(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	s.mu.Lock()
 	s.peers[1] = &Peer{ID: 1, Addr: nil, Mode: 0x6A}
@@ -1490,8 +1500,8 @@ func TestBuildPeerListSkipsNilAddr(t *testing.T) {
 
 func TestBuildPeerListMultiplePeers(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	s.upsertPeer(1, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 5000}, 0x6A, [4]byte{})
 	s.upsertPeer(2, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 6000}, 0x6B, [4]byte{})
@@ -1507,8 +1517,8 @@ func TestBuildPeerListMultiplePeers(t *testing.T) {
 
 func TestSetBurstHandler(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	if s.burstHandler != nil {
 		t.Fatal("expected nil burst handler initially")
@@ -1526,13 +1536,13 @@ func TestSetBurstHandler(t *testing.T) {
 
 func TestFullRegistrationFlow(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
@@ -1597,13 +1607,13 @@ func TestFullRegistrationFlow(t *testing.T) {
 
 func TestHandleMasterAliveRequestTooShort(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	data := []byte{byte(PacketType_MasterAliveRequest), 0x00, 0x01}
 	aliveShortAddr, ok := client.LocalAddr().(*net.UDPAddr)
@@ -1620,13 +1630,13 @@ func TestHandleMasterAliveRequestTooShort(t *testing.T) {
 
 func TestHandleMasterRegisterRequestTooShort(t *testing.T) {
 	t.Parallel()
-	s, srvAddr := newTestServerWithUDP(t, false)
+	s, srvAddr := newTestServerWithUDP(t)
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	data := []byte{byte(PacketType_MasterRegisterRequest), 0x00}
 	regShortAddr, ok := client.LocalAddr().(*net.UDPAddr)
@@ -1643,8 +1653,8 @@ func TestHandleMasterRegisterRequestTooShort(t *testing.T) {
 
 func TestHandlePacketReturnsPacket(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 
 	peerID := uint32(12345)
 	preRegisterTestPeer(s, peerID)
@@ -1668,8 +1678,8 @@ func TestHandlePacketReturnsPacket(t *testing.T) {
 func TestHandlePacketStripsAuthHash(t *testing.T) {
 	t.Parallel()
 	hexKey := "0000000000000000000000000000000000001234"
-	cfg := testConfig(true)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	// Pre-register peer with auth key
 	s.mu.Lock()
 	s.peers[12345] = &Peer{ID: 12345, AuthKey: decodeAuthKey("1234")}
@@ -1693,8 +1703,8 @@ func TestHandlePacketStripsAuthHash(t *testing.T) {
 
 func TestErrPacketIgnoredIsSentinel(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig(false)
-	s := NewIPSCServer(cfg, nil)
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	peerID := uint32(12345)

@@ -33,20 +33,12 @@ import (
 
 func newTestTranslator(t *testing.T) *IPSCTranslator {
 	t.Helper()
-	tr, err := NewIPSCTranslator()
-	if err != nil {
-		t.Fatalf("NewIPSCTranslator() error: %v", err)
-	}
-	tr.SetPeerID(12345)
-	return tr
+	return NewIPSCTranslator(12345)
 }
 
 func TestNewIPSCTranslator(t *testing.T) {
 	t.Parallel()
-	tr, err := NewIPSCTranslator()
-	if err != nil {
-		t.Fatalf("NewIPSCTranslator() error: %v", err)
-	}
+	tr := NewIPSCTranslator(12345)
 	if tr == nil {
 		t.Fatal("expected non-nil translator")
 	}

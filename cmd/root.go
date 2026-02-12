@@ -32,8 +32,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
@@ -57,7 +58,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -124,17 +124,28 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	servers, err := initializeServers(ctx, cfg, database, cmd.Annotations["version"], cmd.Annotations["commit"])
+	kvStore, err := kv.MakeKV(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to key-value store: %w", err)
+	}
+
+	pubsubClient, err := pubsub.MakePubSub(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to pubsub: %w", err)
+	}
+
+	callTracker := calltracker.NewCallTracker(database, pubsubClient)
+
+	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
+	dmrHub.Start()
+
+	servers, err := initializeServers(ctx, cfg, dmrHub, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
 	if err != nil {
 		return err
 	}
 	defer servers.shutdown(ctx)
 
-	if err := servers.startRepeaterListeners(database); err != nil {
-		return err
-	}
-
-	setupShutdownHandlers(ctx, scheduler, servers, cleanup)
+	setupShutdownHandlers(ctx, scheduler, dmrHub, servers, cleanup)
 
 	return nil
 }
@@ -292,24 +303,34 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
-	mmdvmServer      mmdvm.Server
-	ipscServer       *ipsc.IPSCServer
-	openbridgeServer *openbridge.Server
-	httpServer       http.Server
-	kv               kv.KV
-	pubsub           pubsub.PubSub
-	database         *gorm.DB
-	cfg              *config.Config
+	servers    []servers.DMRServer
+	httpServer http.Server
+	kv         kv.KV
+	pubsub     pubsub.PubSub
+	database   *gorm.DB
+	cfg        *config.Config
+}
+
+func (sm *serverManager) addServer(server servers.DMRServer) {
+	sm.servers = append(sm.servers, server)
+}
+
+func (sm *serverManager) start(ctx context.Context) error {
+	for _, server := range sm.servers {
+		err := server.Start(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to start server: %w", err)
+		}
+	}
+	return nil
 }
 
 // shutdown gracefully stops all servers
 func (sm *serverManager) shutdown(ctx context.Context) {
-	sm.mmdvmServer.Stop(ctx)
-	if sm.ipscServer != nil {
-		sm.ipscServer.Stop()
-	}
-	if sm.openbridgeServer != nil {
-		sm.openbridgeServer.Stop(ctx)
+	for _, server := range sm.servers {
+		if err := server.Stop(ctx); err != nil {
+			slog.Error("Failed to stop server", "error", err)
+		}
 	}
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
@@ -324,52 +345,8 @@ func (sm *serverManager) shutdown(ctx context.Context) {
 	}
 }
 
-// startRepeaterListeners starts listeners for all repeaters and peers
-func (sm *serverManager) startRepeaterListeners(database *gorm.DB) error {
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		// For each repeater in the DB, start a gofunc to listen for calls
-		repeaters, err := models.ListRepeaters(database)
-		if err != nil {
-			return fmt.Errorf("failed to list repeaters: %w", err)
-		}
-		for _, repeater := range repeaters {
-			go mmdvm.GetSubscriptionManager(database).ListenForCalls(sm.pubsub, repeater.ID)
-		}
-		return nil
-	})
-
-	if sm.cfg.DMR.OpenBridge.Enabled {
-		go func() {
-			// For each peer in the DB, start a gofunc to listen for calls
-			peers := models.ListPeers(database)
-			for _, peer := range peers {
-				go openbridge.GetSubscriptionManager().Subscribe(context.Background(), sm.pubsub, peer)
-			}
-		}()
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("failed to start repeater listeners: %w", err)
-	}
-
-	return nil
-}
-
 // initializeServers creates and starts all server instances
-func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.DB, version, commit string) (*serverManager, error) {
-	kvStore, err := kv.MakeKV(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to key-value store: %w", err)
-	}
-
-	pubsubClient, err := pubsub.MakePubSub(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to pubsub: %w", err)
-	}
-
-	callTracker := calltracker.NewCallTracker(database, pubsubClient)
-
+func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
 	sm := &serverManager{
 		kv:       kvStore,
 		pubsub:   pubsubClient,
@@ -377,32 +354,29 @@ func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.D
 		cfg:      cfg,
 	}
 
-	mmdvmServer := mmdvm.MakeServer(cfg, database, pubsubClient, kvStore, callTracker, version, commit)
-	err = mmdvmServer.Start(ctx)
+	mmdvmServer, err := mmdvm.MakeServer(cfg, hub, database, pubsubClient, kvStore, version, commit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start mmdvm server: %w", err)
+		return nil, fmt.Errorf("failed to create MMDVM server: %w", err)
 	}
-	sm.mmdvmServer = mmdvmServer
+	sm.addServer(&mmdvmServer)
 
 	if cfg.DMR.OpenBridge.Enabled {
-		openbridgeServer := openbridge.MakeServer(cfg, database, pubsubClient, kvStore, callTracker)
-		err := openbridgeServer.Start(ctx)
+		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient, kvStore)
 		if err != nil {
-			return nil, fmt.Errorf("failed to start OpenBridge server: %w", err)
+			return nil, fmt.Errorf("failed to create OpenBridge server: %w", err)
 		}
-		sm.openbridgeServer = &openbridgeServer
+		sm.addServer(&openbridgeServer)
 	}
 
 	if cfg.DMR.IPSC.Enabled {
-		ipscServer := ipsc.NewIPSCServer(cfg, database)
-		err := ipscServer.Start()
-		if err != nil {
-			return nil, fmt.Errorf("failed to start IPSC server: %w", err)
-		}
-		sm.ipscServer = ipscServer
+		sm.addServer(ipsc.NewIPSCServer(cfg, hub, database))
 	}
 
-	httpServer := http.MakeServer(cfg, database, pubsubClient, version, commit)
+	if err := sm.start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start servers: %w", err)
+	}
+
+	httpServer := http.MakeServer(cfg, hub, database, pubsubClient, version, commit)
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
@@ -413,7 +387,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, database *gorm.D
 }
 
 // setupShutdownHandlers configures graceful shutdown handlers
-func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, servers *serverManager, cleanup func(context.Context) error) {
+func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub *hub.Hub, servers *serverManager, cleanup func(context.Context) error) {
 	stop := func(sig os.Signal) {
 		slog.Error("Shutting down due to signal", "signal", sig)
 		wg := new(sync.WaitGroup)
@@ -434,7 +408,7 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, serv
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			mmdvm.GetSubscriptionManager(servers.database).CancelAllSubscriptions()
+			hub.Stop()
 			servers.shutdown(ctx)
 		}(wg)
 

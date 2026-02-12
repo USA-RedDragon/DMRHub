@@ -20,6 +20,7 @@
 package ipsc
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1" //nolint:gosec
 	"encoding/binary"
@@ -35,14 +36,18 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"gorm.io/gorm"
 )
 
 type IPSCServer struct {
-	cfg *config.Config
-	db  *gorm.DB
-	udp *net.UDPConn
-	mu  sync.RWMutex
+	cfg        *config.Config
+	db         *gorm.DB
+	hub        *hub.Hub
+	udp        *net.UDPConn
+	mu         sync.RWMutex
+	translator *IPSCTranslator
+	hubHandle  *hub.ServerHandle
 
 	localID  uint32
 	peers    map[uint32]*Peer
@@ -93,13 +98,15 @@ var (
 
 var ErrPacketIgnored = errors.New("packet ignored")
 
-func NewIPSCServer(cfg *config.Config, db *gorm.DB) *IPSCServer {
+func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 	return &IPSCServer{
-		cfg:      cfg,
-		db:       db,
-		localID:  cfg.DMR.IPSC.NetworkID,
-		peers:    map[uint32]*Peer{},
-		lastSend: map[uint32]time.Time{},
+		cfg:        cfg,
+		db:         db,
+		hub:        hub,
+		localID:    cfg.DMR.IPSC.NetworkID,
+		peers:      map[uint32]*Peer{},
+		lastSend:   map[uint32]time.Time{},
+		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 	}
 }
 
@@ -133,24 +140,45 @@ func (s *IPSCServer) lookupPeerAuthKey(peerID uint32) ([]byte, error) {
 	return decodeAuthKey(repeater.Password), nil
 }
 
-func (s *IPSCServer) Start() error {
+func (s *IPSCServer) Start(ctx context.Context) error {
 	var err error
 	s.udp, err = net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP(s.cfg.DMR.IPSC.Bind),
-		Port: int(s.cfg.DMR.IPSC.Port),
+		Port: s.cfg.DMR.IPSC.Port,
 	})
 
 	if err != nil {
 		return fmt.Errorf("error starting UDP listener: %w", err)
 	}
 
+	// Register with the hub as a broadcast repeater server
+	s.hubHandle = s.hub.RegisterServer(hub.ServerConfig{
+		Name:      models.RepeaterTypeIPSC,
+		Role:      hub.RoleRepeater,
+		Broadcast: true,
+	})
+
+	// Wire up the burst handler: translate IPSC→MMDVM and route via Hub.
+	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
+		for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
+			if s.hub != nil {
+				s.hub.RoutePacket(ctx, pkt, models.RepeaterTypeIPSC)
+			}
+		}
+	})
+
 	s.wg.Add(1)
 	go s.handler()
+
+	// Consume routed packets from the hub
+	go s.consumeHubPackets()
+
+	slog.Info("IPSC Server listening", "address", s.cfg.DMR.IPSC.Bind, "port", s.cfg.DMR.IPSC.Port)
 
 	return nil
 }
 
-func (s *IPSCServer) Stop() {
+func (s *IPSCServer) Stop(_ context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping IPSC server")
 		s.stopped.Store(true)
@@ -161,6 +189,7 @@ func (s *IPSCServer) Stop() {
 		}
 	})
 	s.wg.Wait()
+	return nil
 }
 
 func (s *IPSCServer) handler() {
@@ -364,6 +393,10 @@ func (s *IPSCServer) upsertPeer(peerID uint32, addr *net.UDPAddr, mode byte, fla
 	peer.Flags = flags
 	peer.LastSeen = time.Now()
 	peer.RegistrationStatus = true
+
+	// Update DB with connected time and last ping
+	s.updateRepeaterDBTimes(uint(peerID), true)
+
 	return peer.AuthKey
 }
 
@@ -379,7 +412,31 @@ func (s *IPSCServer) markPeerAlive(peerID uint32, addr *net.UDPAddr) []byte {
 	peer.Addr = cloneUDPAddr(addr)
 	peer.LastSeen = time.Now()
 	peer.KeepAliveReceived++
+
+	// Update DB with last ping time
+	s.updateRepeaterDBTimes(uint(peerID), false)
+
 	return peer.AuthKey
+}
+
+// updateRepeaterDBTimes updates the repeater's DB record with connection/ping times.
+func (s *IPSCServer) updateRepeaterDBTimes(repeaterID uint, isConnect bool) {
+	if s.db == nil {
+		return
+	}
+	dbRepeater, err := models.FindRepeaterByID(s.db, repeaterID)
+	if err != nil {
+		slog.Debug("IPSC: repeater not found in DB for time update", "repeaterID", repeaterID)
+		return
+	}
+	now := time.Now()
+	dbRepeater.LastPing = now
+	if isConnect {
+		dbRepeater.Connected = now
+	}
+	if err := s.db.Save(&dbRepeater).Error; err != nil {
+		slog.Error("IPSC: error saving repeater times", "repeaterID", repeaterID, "error", err)
+	}
 }
 
 func (s *IPSCServer) buildMasterRegisterReply() []byte {
@@ -529,6 +586,13 @@ func authWithKey(data []byte, key []byte) bool {
 	return hmac.Equal(hash, expectedHashSum)
 }
 
+// consumeHubPackets reads routed packets from the hub and sends them to all IPSC peers.
+func (s *IPSCServer) consumeHubPackets() {
+	for rp := range s.hubHandle.Packets {
+		s.SendPacket(rp.Packet)
+	}
+}
+
 func (s *IPSCServer) sendPacket(packet *Packet, addr *net.UDPAddr, authKey []byte) error {
 	if authKey != nil {
 		hash := hmac.New(sha1.New, authKey)
@@ -547,7 +611,14 @@ func (s *IPSCServer) sendPacket(packet *Packet, addr *net.UDPAddr, authKey []byt
 	return nil
 }
 
-func (s *IPSCServer) SendUserPacket(data []byte) {
+func (s *IPSCServer) SendPacket(pkt models.Packet) {
+	ipscFrames := s.translator.TranslateToIPSC(pkt)
+	for _, frame := range ipscFrames {
+		s.sendPacketInternal(frame)
+	}
+}
+
+func (s *IPSCServer) sendPacketInternal(data []byte) {
 	if s.stopped.Load() {
 		return
 	}

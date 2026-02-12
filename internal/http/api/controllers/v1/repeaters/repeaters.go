@@ -20,7 +20,6 @@
 package repeaters
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,11 +29,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -184,12 +181,6 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
-	if !ok {
-		slog.Error("Unable to get PubSub from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
 
 	// Validate repeater ID
 	repeaterID, err := validateRepeaterID(c.Param("id"))
@@ -277,8 +268,13 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
-	mmdvm.GetSubscriptionManager(db).CancelAllRepeaterSubscriptions(repeater.ID)
-	go mmdvm.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
+	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+	if !ok {
+		slog.Error("Hub cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	go dmrHub.ReloadRepeater(repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
@@ -303,12 +299,6 @@ func POSTRepeater(c *gin.Context) {
 	config, ok := c.MustGet("Config").(*config.Config)
 	if !ok {
 		slog.Error("Config cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
-	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
-	if !ok {
-		slog.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -372,7 +362,12 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 				return
 			}
-			go mmdvm.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
+			go func() {
+				dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+				if ok {
+					dmrHub.ReloadRepeater(repeater.ID)
+				}
+			}()
 			c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 			return
 		}
@@ -475,7 +470,12 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
-		go mmdvm.GetSubscriptionManager(db).ListenForCalls(pubsub, repeater.ID)
+		go func() {
+			dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+			if ok {
+				dmrHub.ReloadRepeater(repeater.ID)
+			}
+		}()
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -484,12 +484,6 @@ func POSTRepeaterLink(c *gin.Context) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
-	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
-	if !ok {
-		slog.Error("PubSub cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
@@ -577,7 +571,12 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go mmdvm.GetSubscriptionManager(db).ListenForCallsOn(context.Background(), pubsub, repeater.ID, talkgroup.ID)
+	go func() {
+		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+		if ok {
+			dmrHub.ReloadRepeater(repeater.ID)
+		}
+	}()
 	err = db.Save(repeater).Error
 	if err != nil {
 		slog.Error("Error saving repeater", "error", err)
@@ -706,18 +705,14 @@ func unlinkDynamicTalkgroup(db *gorm.DB, repeater *models.Repeater, talkgroup *m
 		if repeater.TS1DynamicTalkgroupID == nil || *repeater.TS1DynamicTalkgroupID != talkgroup.ID {
 			return fmt.Errorf("talkgroup is not linked to repeater")
 		}
-		oldTGID := *repeater.TS1DynamicTalkgroupID
 		repeater.TS1DynamicTalkgroup = models.Talkgroup{}
 		repeater.TS1DynamicTalkgroupID = nil
-		mmdvm.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, dmrconst.TimeslotOne)
 	case "2":
 		if repeater.TS2DynamicTalkgroupID == nil || *repeater.TS2DynamicTalkgroupID != talkgroup.ID {
 			return fmt.Errorf("talkgroup is not linked to repeater")
 		}
-		oldTGID := *repeater.TS2DynamicTalkgroupID
 		repeater.TS2DynamicTalkgroup = models.Talkgroup{}
 		repeater.TS2DynamicTalkgroupID = nil
-		mmdvm.GetSubscriptionManager(db).CancelSubscription(repeater.ID, oldTGID, dmrconst.TimeslotTwo)
 	}
 
 	return db.Save(repeater).Error
@@ -734,7 +729,6 @@ func unlinkStaticTalkgroup(db *gorm.DB, repeater *models.Repeater, talkgroup *mo
 		if err != nil {
 			return fmt.Errorf("error deleting TS1StaticTalkgroups: %w", err)
 		}
-		mmdvm.GetSubscriptionManager(db).CancelSubscription(repeater.ID, talkgroup.ID, dmrconst.TimeslotOne)
 	case "2":
 		if !isStaticTalkgroupLinked(repeater.TS2StaticTalkgroups, talkgroup.ID) {
 			return fmt.Errorf("talkgroup is not linked to repeater")
@@ -743,7 +737,6 @@ func unlinkStaticTalkgroup(db *gorm.DB, repeater *models.Repeater, talkgroup *mo
 		if err != nil {
 			return fmt.Errorf("error deleting TS2StaticTalkgroups: %w", err)
 		}
-		mmdvm.GetSubscriptionManager(db).CancelSubscription(repeater.ID, talkgroup.ID, dmrconst.TimeslotTwo)
 	}
 
 	return db.Save(repeater).Error
@@ -787,6 +780,12 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	}
 
 	// Perform unlink operation
+	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+	if !ok {
+		slog.Error("Hub cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	switch params.linkType {
 	case LinkTypeDynamic:
 		err = unlinkDynamicTalkgroup(db, repeater, talkgroup, params.slot)
@@ -804,5 +803,6 @@ func POSTRepeaterUnlink(c *gin.Context) {
 		return
 	}
 
+	go dmrHub.ReloadRepeater(repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Timeslot unlinked"})
 }

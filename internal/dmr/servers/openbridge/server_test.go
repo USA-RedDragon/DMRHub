@@ -25,7 +25,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -56,14 +55,15 @@ func TestMakeServer(t *testing.T) {
 	assert.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
-	ct := calltracker.NewCallTracker(database, ps)
+	defConfig.DMR.OpenBridge.Port = 0
 
-	server := openbridge.MakeServer(&defConfig, database, ps, kvStore, ct)
+	server, err := openbridge.MakeServer(&defConfig, nil, database, ps, kvStore)
+	assert.NoError(t, err)
+	defer func() { _ = server.Server.Close() }()
 
 	assert.NotNil(t, server.Buffer)
 	assert.Len(t, server.Buffer, 73) // largestMessageSize
 	assert.NotNil(t, server.DB)
-	assert.NotNil(t, server.CallTracker)
 }
 
 func TestMakeServerDefaultBindAddress(t *testing.T) {
@@ -91,9 +91,9 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	assert.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
-	ct := calltracker.NewCallTracker(database, ps)
-
-	server := openbridge.MakeServer(&defConfig, database, ps, kvStore, ct)
+	server, err := openbridge.MakeServer(&defConfig, nil, database, ps, kvStore)
+	assert.NoError(t, err)
+	defer func() { _ = server.Server.Close() }()
 
 	assert.Equal(t, 62035, server.SocketAddress.Port)
 	assert.Equal(t, "0.0.0.0", server.SocketAddress.IP.String())

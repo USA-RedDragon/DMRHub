@@ -91,7 +91,7 @@ func LoginUser(t *testing.T, router *gin.Engine, user apimodels.AuthLogin) (APIR
 
 	ckies := w.Result().Cookies()
 
-	cookies := make([]http.Cookie, len(ckies))
+	cookies := make([]http.Cookie, 0, len(ckies))
 	for _, cookie := range ckies {
 		cookies = append(cookies, *cookie)
 	}

@@ -85,5 +85,5 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	return http.CreateRouter(&defConfig, t.database, pubsub, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(&defConfig, nil, t.database, pubsub, "test", "deadbeef"), &t, nil
 }

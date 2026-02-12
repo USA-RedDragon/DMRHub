@@ -21,12 +21,9 @@ package servers
 
 import (
 	"context"
-
-	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
 
 type DMRServer interface {
-	Start(ctx context.Context)
-	Stop(ctx context.Context)
-	TrackCall(ctx context.Context, packet models.Packet, isVoice bool)
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 }

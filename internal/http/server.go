@@ -30,6 +30,7 @@ import (
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
@@ -58,14 +59,14 @@ const defTimeout = 10 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 10
 
-func MakeServer(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) Server {
+func MakeServer(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) Server {
 	if config.LogLevel == configPkg.LogLevelDebug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := CreateRouter(config, db, pubsub, version, commit)
+	r := CreateRouter(config, dmrHub, db, pubsub, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
@@ -112,7 +113,7 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) {
+func addMiddleware(config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))
@@ -124,6 +125,10 @@ func addMiddleware(config *configPkg.Config, r *gin.Engine, db *gorm.DB, pubsub 
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 	r.Use(middleware.PubSubProvider(pubsub))
 	r.Use(middleware.ConfigProvider(config))
+	r.Use(func(c *gin.Context) {
+		c.Set("Hub", dmrHub)
+		c.Next()
+	})
 
 	// CORS
 	if config.HTTP.CORS.Enabled {
@@ -177,7 +182,7 @@ func CreateSetupWizardRouter(config *configPkg.Config, token string, configCompl
 	return r
 }
 
-func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) *gin.Engine {
+func CreateRouter(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) *gin.Engine {
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
@@ -188,7 +193,7 @@ func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, v
 		slog.Error("Failed setting trusted proxies", "error", err)
 	}
 
-	addMiddleware(config, r, db, pubsub, version, commit)
+	addMiddleware(config, dmrHub, r, db, pubsub, version, commit)
 
 	ratelimitStore := gormRateLimit.NewGORMStore(&gormRateLimit.GORMOptions{
 		DB:    db,
@@ -206,7 +211,7 @@ func CreateRouter(config *configPkg.Config, db *gorm.DB, pubsub pubsub.PubSub, v
 
 	userLockoutMiddleware := middleware.SuspendedUserLockout()
 
-	api.ApplyRoutes(config, r, db, pubsub, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(config, r, dmrHub, db, pubsub, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 

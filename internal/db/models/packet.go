@@ -139,7 +139,7 @@ func (p *Packet) String() string {
 
 func (p *Packet) Encode() []byte {
 	// Encode the packet as we decoded
-	data := make([]byte, dmrconst.MMDVMPacketLength)
+	data := make([]byte, dmrconst.MMDVMMaxPacketLength)
 	copy(data[:4], []byte(p.Signature))
 	data[4] = byte(p.Seq)
 	data[5] = byte(p.Src >> 16)
@@ -174,7 +174,7 @@ func (p *Packet) Encode() []byte {
 	if p.RSSI == -1 {
 		p.RSSI = 0
 	}
-	data = append(data, byte(p.BER))
-	data = append(data, byte(p.RSSI))
+	data[53] = byte(p.BER)  //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
+	data[54] = byte(p.RSSI) //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
 	return data
 }

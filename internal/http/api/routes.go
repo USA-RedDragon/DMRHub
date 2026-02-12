@@ -23,6 +23,7 @@ import (
 	"net/http"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	v1Controllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1"
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
@@ -40,7 +41,7 @@ import (
 )
 
 // ApplyRoutes to the HTTP Mux.
-func ApplyRoutes(config *configPkg.Config, router *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
 	router.GET("/robots.txt", func(c *gin.Context) {
 		switch config.HTTP.RobotsTXT.Mode {
 		case configPkg.RobotsTXTModeDisabled:
@@ -59,7 +60,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, db *gorm.DB, pubs
 	ws := router.Group("/ws")
 	ws.Use(ratelimit)
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
-	ws.GET("/calls", websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(db, pubsub)))
+	ws.GET("/calls", websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
 	ws.GET("/peers", websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
 }
 

@@ -28,7 +28,23 @@ import (
 )
 
 func Migrate(db *gorm.DB) error {
-	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
+	m := gormigrate.New(db, gormigrate.DefaultOptions, migrations(db))
+
+	if err := m.Migrate(); err != nil {
+		return fmt.Errorf("could not migrate: %w", err)
+	}
+
+	return nil
+}
+
+func migrations(db *gorm.DB) []*gormigrate.Migration {
+	m := schemaMigrations(db)
+	m = append(m, dataMigrations(db)...)
+	return m
+}
+
+func schemaMigrations(db *gorm.DB) []*gormigrate.Migration {
+	return []*gormigrate.Migration{
 		// convert models.Repeater radio_id to id
 		{
 			ID: "202302242025",
@@ -88,6 +104,11 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
+	}
+}
+
+func dataMigrations(db *gorm.DB) []*gormigrate.Migration {
+	return []*gormigrate.Migration{
 		// Fix call_data column type using raw SQL (previous migration may not have worked)
 		{
 			ID: "202602100457",
@@ -140,11 +161,5 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
-	})
-
-	if err := m.Migrate(); err != nil {
-		return fmt.Errorf("could not migrate: %w", err)
 	}
-
-	return nil
 }

@@ -78,17 +78,13 @@ const (
 // RTP timestamp increment per burst (~60ms spacing in 16.16 format)
 const rtpTimestampIncrement = 480
 
-func NewIPSCTranslator() (*IPSCTranslator, error) {
+func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
 		streams:        make(map[uint32]*streamState),
 		reverseStreams: make(map[uint32]*reverseStreamState),
-	}, nil
-}
-
-// SetPeerID sets the local peer ID used in outgoing IPSC packets.
-func (t *IPSCTranslator) SetPeerID(peerID uint32) {
-	t.peerID = peerID
-	t.repeaterID = peerID
+		peerID:         peerID,
+		repeaterID:     peerID,
+	}
 }
 
 // TranslateToIPSC converts an MMDVM DMRD Packet into one or more IPSC

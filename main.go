@@ -25,7 +25,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/USA-RedDragon/DMRHub/internal/cmd"
+	"github.com/USA-RedDragon/DMRHub/cmd"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/configulator"
 	_ "github.com/tinylib/msgp/printer"

@@ -30,8 +30,8 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -55,24 +55,41 @@ type Server struct {
 	DB       *gorm.DB
 	kvClient *servers.KVClient
 	pubsub   pubsub.PubSub
+	hub      *hub.Hub
 
-	CallTracker *calltracker.CallTracker
+	hubHandle *hub.ServerHandle
 }
 
 // MakeServer creates a new DMR server.
-func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, callTracker *calltracker.CallTracker) Server {
-	return Server{
-		Buffer: make([]byte, largestMessageSize),
-		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
-			Port: config.DMR.OpenBridge.Port,
-		},
-		DB:          db,
-		pubsub:      pubsub,
-		kvClient:    servers.MakeKVClient(kv),
-		CallTracker: callTracker,
-		Tracer:      otel.Tracer("dmr-openbridge-server"),
+func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) (Server, error) {
+	socketAddress := net.UDPAddr{
+		IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
+		Port: config.DMR.OpenBridge.Port,
 	}
+	server, err := net.ListenUDP("udp", &socketAddress)
+	if err != nil {
+		return Server{}, fmt.Errorf("error opening UDP Socket: %w", err)
+	}
+
+	err = server.SetReadBuffer(bufferSize)
+	if err != nil {
+		return Server{}, fmt.Errorf("error setting UDP Socket read buffer: %w", err)
+	}
+	err = server.SetWriteBuffer(bufferSize)
+	if err != nil {
+		return Server{}, fmt.Errorf("error setting UDP Socket write buffer: %w", err)
+	}
+
+	return Server{
+		Buffer:        make([]byte, largestMessageSize),
+		SocketAddress: socketAddress,
+		hub:           hub,
+		Server:        server,
+		DB:            db,
+		pubsub:        pubsub,
+		kvClient:      servers.MakeKVClient(kv),
+		Tracer:        otel.Tracer("dmr-openbridge-server"),
+	}, nil
 }
 
 // Start starts the DMR server.
@@ -80,26 +97,16 @@ func (s *Server) Start(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Start")
 	defer span.End()
 
-	server, err := net.ListenUDP("udp", &s.SocketAddress)
-	if err != nil {
-		return fmt.Errorf("error opening UDP Socket: %w", err)
-	}
-
-	err = server.SetReadBuffer(bufferSize)
-	if err != nil {
-		return fmt.Errorf("error setting UDP Socket read buffer: %w", err)
-	}
-	err = server.SetWriteBuffer(bufferSize)
-	if err != nil {
-		return fmt.Errorf("error setting UDP Socket write buffer: %w", err)
-	}
-
-	s.Server = server
+	// Register with the hub as a peer server
+	s.hubHandle = s.hub.RegisterServer(hub.ServerConfig{
+		Name: "openbridge",
+		Role: hub.RolePeer,
+	})
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
 	go s.listen(ctx)
-	go s.subcribeOutgoing(ctx)
+	go s.consumeHubPackets(ctx)
 
 	go func() {
 		for {
@@ -132,7 +139,8 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // Stop stops the DMR server.
-func (s *Server) Stop(_ context.Context) {
+func (s *Server) Stop(_ context.Context) error {
+	return nil
 }
 
 func (s *Server) listen(ctx context.Context) {
@@ -160,62 +168,43 @@ func (s *Server) listen(ctx context.Context) {
 	}
 }
 
-func (s *Server) subcribeOutgoing(ctx context.Context) {
-	subscription := s.pubsub.Subscribe("openbridge:outgoing")
-	defer func() {
-		err := subscription.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub", "error", err)
-		}
-	}()
-	for msg := range subscription.Channel() {
-		packet, ok := models.UnpackPacket(msg)
-		if !ok {
-			slog.Error("Error unpacking packet")
-			continue
-		}
-		peer, err := s.kvClient.GetPeer(ctx, packet.Repeater)
-		if err != nil {
-			slog.Error("Error getting peer from kv", "peerID", packet.Repeater, "error", err)
-			continue
-		}
-		// OpenBridge is always TS1
-		packet.Slot = false
-		_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
-			IP:   net.ParseIP(peer.IP),
-			Port: peer.Port,
-		})
-		if err != nil {
-			slog.Error("Error sending packet", "error", err)
+// consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.
+func (s *Server) consumeHubPackets(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case rp, ok := <-s.hubHandle.Packets:
+			if !ok {
+				return
+			}
+			// rp.RepeaterID is the peer ID for peer-role servers
+			s.sendPacketToPeer(ctx, rp.RepeaterID, rp.Packet)
 		}
 	}
 }
 
-func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
+// sendPacketToPeer sends a packet to a specific OpenBridge peer.
+func (s *Server) sendPacketToPeer(ctx context.Context, peerID uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
 
-	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
-	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
+	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
+	peer, err := s.kvClient.GetPeer(ctx, peerID)
 	if err != nil {
-		slog.Error("Error getting repeater from kv", "repeaterID", repeaterIDBytes, "error", err)
+		slog.Error("Error getting peer from kv", "peerID", peerID, "error", err)
 		return
 	}
-	p := models.RawDMRPacket{
-		Data:       packet.Encode(),
-		RemoteIP:   repeater.IP,
-		RemotePort: repeater.Port,
-	}
-	packedBytes, err := p.MarshalMsg(nil)
+	// OpenBridge is always TS1
+	packet.Slot = false
+	_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+		IP:   net.ParseIP(peer.IP),
+		Port: peer.Port,
+	})
 	if err != nil {
-		slog.Error("Error marshalling packet", "error", err)
-		return
-	}
-	if err := s.pubsub.Publish("openbridge:outgoing", packedBytes); err != nil {
-		slog.Error("Error publishing packet to openbridge:outgoing", "error", err)
-		return
+		slog.Error("Error sending packet", "error", err)
 	}
 }
 
@@ -296,28 +285,10 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 			continue
 		}
 		if rules.PeerShouldEgress(s.DB, p, &packet) {
-			s.sendPacket(ctx, p.ID, packet)
+			s.sendPacketToPeer(ctx, p.ID, packet)
 		}
 	}
 
-	// s.TrackCall(ctx, pkt, true)
-	// TODO: And if this packet goes to a destination we are aware of, send it there too
-}
-
-func (s *Server) TrackCall(ctx context.Context, packet models.Packet, isVoice bool) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.TrackCall")
-	defer span.End()
-
-	// Don't call track unlink
-	if packet.Dst != 4000 && isVoice {
-		if !s.CallTracker.IsCallActive(ctx, packet) {
-			s.CallTracker.StartCall(ctx, packet)
-		}
-		if s.CallTracker.IsCallActive(ctx, packet) {
-			s.CallTracker.ProcessCallPacket(ctx, packet)
-			if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-				s.CallTracker.EndCall(ctx, packet)
-			}
-		}
-	}
+	// Route to local repeaters via Hub
+	s.hub.RoutePacket(ctx, packet, "openbridge")
 }

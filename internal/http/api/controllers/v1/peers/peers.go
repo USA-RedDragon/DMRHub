@@ -26,10 +26,8 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -167,13 +165,6 @@ func POSTPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	pubsub, ok := c.MustGet("PubSub").(pubsub.PubSub)
-	if !ok {
-		slog.Error("PubSub cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
-
 	var json apimodels.PeerPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
@@ -228,7 +219,6 @@ func POSTPeer(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Peer created", "password": peer.Password})
-		go openbridge.GetSubscriptionManager().Subscribe(c.Request.Context(), pubsub, peer)
 
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(

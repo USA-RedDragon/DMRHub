@@ -25,7 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
@@ -35,14 +35,16 @@ import (
 
 type CallsWebsocket struct {
 	websocket.Websocket
+	hub          *hub.Hub
 	pubsub       pubsub.PubSub
 	db           *gorm.DB
 	subscription pubsub.Subscription
 	cancel       context.CancelFunc
 }
 
-func CreateCallsWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *CallsWebsocket {
+func CreateCallsWebsocket(dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub) *CallsWebsocket {
 	return &CallsWebsocket{
+		hub:    dmrHub,
 		pubsub: pubsub,
 		db:     db,
 	}
@@ -65,7 +67,7 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 			slog.Error("Failed to convert user ID to uint", "userIDIface", userIDIface)
 			return
 		}
-		go mmdvm.GetSubscriptionManager(c.db).ListenForWebsocket(newCtx, c.pubsub, userID)
+		go c.hub.ListenForWebsocket(newCtx, userID)
 		c.subscription = c.pubsub.Subscribe(fmt.Sprintf("calls:%d", userID))
 	}
 

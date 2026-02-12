@@ -46,6 +46,11 @@
     </template>
     <Column :expander="true" />
     <Column field="id" header="DMR Radio ID"></Column>
+    <Column field="type" header="Type">
+      <template #body="slotProps">
+        <span>{{ (slotProps.data.type || 'mmdvm').toUpperCase() }}</span>
+      </template>
+    </Column>
     <Column field="connected_time" header="Last Connected">
       <template #body="slotProps">
         <span v-if="slotProps.data.connected_time.year() != 0">

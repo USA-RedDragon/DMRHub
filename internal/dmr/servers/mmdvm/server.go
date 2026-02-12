@@ -28,9 +28,8 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -42,21 +41,19 @@ const channelBufferSize = 100
 
 // Server is the DMR server.
 type Server struct {
-	Buffer          []byte
-	config          *config.Config
-	SocketAddress   net.UDPAddr
-	Server          *net.UDPConn
-	Started         bool
-	Parrot          *parrot.Parrot
-	DB              *gorm.DB
-	kvClient        *servers.KVClient
-	pubsub          pubsub.PubSub
-	CallTracker     *calltracker.CallTracker
-	Version         string
-	Commit          string
-	incomingChan    chan models.RawDMRPacket
-	outgoingChan    chan models.RawDMRPacket
-	RawOutgoingChan chan []byte
+	Buffer        []byte
+	config        *config.Config
+	SocketAddress net.UDPAddr
+	Server        *net.UDPConn
+	DB            *gorm.DB
+	kvClient      *servers.KVClient
+	pubsub        pubsub.PubSub
+	hub           *hub.Hub
+	Version       string
+	Commit        string
+	incomingChan  chan models.RawDMRPacket
+	outgoingChan  chan models.RawDMRPacket
+	hubHandle     *hub.ServerHandle
 }
 
 var (
@@ -69,30 +66,46 @@ const repeaterIDLength = 4
 const bufferSize = 1000000 // 1MB
 
 // MakeServer creates a new DMR server.
-func MakeServer(config *config.Config, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, callTracker *calltracker.CallTracker, version, commit string) Server {
-	return Server{
-		Buffer: make([]byte, largestMessageSize),
-		config: config,
-		SocketAddress: net.UDPAddr{
-			IP:   net.ParseIP(config.DMR.MMDVM.Bind),
-			Port: config.DMR.MMDVM.Port,
-		},
-		Started:         false,
-		Parrot:          parrot.NewParrot(kv),
-		DB:              db,
-		pubsub:          pubsub,
-		kvClient:        servers.MakeKVClient(kv),
-		CallTracker:     callTracker,
-		Version:         version,
-		Commit:          commit,
-		incomingChan:    make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan:    make(chan models.RawDMRPacket, channelBufferSize),
-		RawOutgoingChan: make(chan []byte, channelBufferSize),
+func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, version, commit string) (Server, error) {
+	socketAddr := net.UDPAddr{
+		IP:   net.ParseIP(config.DMR.MMDVM.Bind),
+		Port: config.DMR.MMDVM.Port,
 	}
+	server, err := net.ListenUDP("udp", &socketAddr)
+	if err != nil {
+		slog.Error("Error opening UDP Socket", "error", err)
+		return Server{}, ErrOpenSocket
+	}
+
+	err = server.SetReadBuffer(bufferSize)
+	if err != nil {
+		slog.Error("Error setting read buffer on UDP Socket", "error", err)
+		return Server{}, ErrSocketBuffer
+	}
+	err = server.SetWriteBuffer(bufferSize)
+	if err != nil {
+		slog.Error("Error setting write buffer on UDP Socket", "error", err)
+		return Server{}, ErrSocketBuffer
+	}
+
+	return Server{
+		Buffer:        make([]byte, largestMessageSize),
+		config:        config,
+		SocketAddress: socketAddr,
+		Server:        server,
+		DB:            db,
+		pubsub:        pubsub,
+		kvClient:      servers.MakeKVClient(kv),
+		hub:           hub,
+		Version:       version,
+		Commit:        commit,
+		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
+		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
+	}, nil
 }
 
 // Stop stops the DMR server.
-func (s *Server) Stop(ctx context.Context) {
+func (s *Server) Stop(ctx context.Context) error {
 	// Send a MSTCL command to each repeater.
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
@@ -112,7 +125,7 @@ func (s *Server) Stop(ctx context.Context) {
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
 		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
 	}
-	s.Started = false
+	return nil
 }
 
 func (s *Server) listen(ctx context.Context) {
@@ -147,29 +160,17 @@ func (s *Server) subscribePackets(ctx context.Context) {
 	}
 }
 
-func (s *Server) subscribeRawPackets(ctx context.Context) {
+// consumeHubPackets reads routed packets from the hub and sends them to repeaters.
+func (s *Server) consumeHubPackets(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-s.RawOutgoingChan:
-			packet, ok := models.UnpackPacket(msg)
+		case rp, ok := <-s.hubHandle.Packets:
 			if !ok {
-				slog.Error("Error unpacking packet")
-				continue
+				return
 			}
-			repeater, err := s.kvClient.GetRepeater(ctx, packet.Repeater)
-			if err != nil {
-				slog.Error("Error getting repeater from KV", "repeaterID", packet.Repeater, "error", err)
-				continue
-			}
-			_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
-				IP:   net.ParseIP(repeater.IP),
-				Port: repeater.Port,
-			})
-			if err != nil {
-				slog.Error("Error sending packet", "error", err)
-			}
+			s.sendPacket(ctx, rp.RepeaterID, rp.Packet)
 		}
 	}
 }
@@ -178,34 +179,18 @@ func (s *Server) subscribeRawPackets(ctx context.Context) {
 func (s *Server) Start(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Start")
 	defer span.End()
-	server, err := net.ListenUDP("udp", &s.SocketAddress)
-	if err != nil {
-		slog.Error("Error opening UDP Socket", "error", err)
-		return ErrOpenSocket
-	}
 
-	err = server.SetReadBuffer(bufferSize)
-	if err != nil {
-		slog.Error("Error setting read buffer on UDP Socket", "error", err)
-		return ErrSocketBuffer
-	}
-	err = server.SetWriteBuffer(bufferSize)
-	if err != nil {
-		slog.Error("Error setting write buffer on UDP Socket", "error", err)
-		return ErrSocketBuffer
-	}
-
-	s.Server = server
-	s.Started = true
-
-	// Wire up the raw outgoing channel to the subscription manager
-	GetSubscriptionManager(s.DB).SetRawOutgoingChan(s.RawOutgoingChan)
+	// Register with the hub to receive routed packets
+	s.hubHandle = s.hub.RegisterServer(hub.ServerConfig{
+		Name: models.RepeaterTypeMMDVM,
+		Role: hub.RoleRepeater,
+	})
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 
 	go s.listen(ctx)
 	go s.subscribePackets(ctx)
-	go s.subscribeRawPackets(ctx)
+	go s.consumeHubPackets(ctx)
 
 	go func() {
 		for {
@@ -231,10 +216,6 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
-	if !s.Started && command != dmrconst.CommandMSTCL {
-		slog.Error("Server not started, not sending command")
-		return
-	}
 	slog.Debug("Sending command", "command", command, "repeaterID", repeaterIDBytes)
 	commandPrefixedData := append([]byte(command), data...)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
@@ -250,39 +231,7 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 	s.outgoingChan <- p
 }
 
-func (s *Server) sendOpenBridgePacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
-	if packet.Signature != string(dmrconst.CommandDMRD) {
-		slog.Error("Invalid packet type", "signature", packet.Signature)
-		return
-	}
-
-	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
-	repeater, err := s.kvClient.GetPeer(ctx, repeaterIDBytes)
-	if err != nil {
-		slog.Error("Error getting repeater from KV", "error", err)
-		return
-	}
-	p := models.RawDMRPacket{
-		Data:       packet.Encode(),
-		RemoteIP:   repeater.IP,
-		RemotePort: repeater.Port,
-	}
-	packedBytes, err := p.MarshalMsg(nil)
-	if err != nil {
-		slog.Error("Error marshalling packet", "error", err)
-		return
-	}
-	if err := s.pubsub.Publish("openbridge:outgoing", packedBytes); err != nil {
-		slog.Error("Error publishing packet to openbridge:outgoing", "error", err)
-		return
-	}
-}
-
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
-	if !s.Started {
-		slog.Error("Server not started, not sending command")
-		return
-	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {

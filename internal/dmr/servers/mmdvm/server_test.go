@@ -25,7 +25,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -35,7 +34,6 @@ import (
 func TestMakeServerInitialization(t *testing.T) {
 	t.Parallel()
 
-	callTracker := &calltracker.CallTracker{}
 	version := "1.0.0"
 	commit := "abc123"
 
@@ -62,21 +60,18 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create pubsub: %v", err)
 	}
 
-	server := mmdvm.MakeServer(&defConfig, db, pubsub, kv, callTracker, version, commit)
+	server, err := mmdvm.MakeServer(&defConfig, nil, db, pubsub, kv, version, commit)
+	if err != nil {
+		t.Fatalf("Failed to create MMDVM server: %v", err)
+	}
 
 	if server.DB != db {
 		t.Errorf("Expected DB to be %v, got %v", db, server.DB)
-	}
-	if server.CallTracker != callTracker {
-		t.Errorf("Expected CallTracker to be %v, got %v", callTracker, server.CallTracker)
 	}
 	if server.Version != version {
 		t.Errorf("Expected Version to be %s, got %s", version, server.Version)
 	}
 	if server.Commit != commit {
 		t.Errorf("Expected Commit to be %s, got %s", commit, server.Commit)
-	}
-	if server.Started {
-		t.Error("Expected Started to be false")
 	}
 }

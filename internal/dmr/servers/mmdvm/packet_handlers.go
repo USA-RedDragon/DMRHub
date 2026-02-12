@@ -333,6 +333,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	if !s.kvClient.DeleteRepeater(ctx, repeaterID) {
 		slog.Error("Repeater ID not deleted", "repeaterID", repeaterID)
 	}
+	s.connected.Delete(repeaterID)
 }
 
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
@@ -369,6 +370,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.Connection = "YES"
 
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+		s.connected.Store(repeaterID, struct{}{})
 		slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)

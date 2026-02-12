@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -54,6 +55,7 @@ type Server struct {
 	incomingChan  chan models.RawDMRPacket
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
+	connected     *xsync.Map[uint, struct{}]
 }
 
 var (
@@ -101,6 +103,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Commit:        commit,
 		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
+		connected:     xsync.NewMap[uint, struct{}](),
 	}, nil
 }
 
@@ -110,21 +113,32 @@ func (s *Server) Stop(ctx context.Context) error {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
 
-	repeaters, err := s.kvClient.ListRepeaters(ctx)
-	if err != nil {
-		slog.Error("Error scanning KV for repeaters", "error", err)
-	}
-	for _, repeater := range repeaters {
+	s.connected.Range(func(repeater uint, _ struct{}) bool {
 		slog.Debug("Repeater found", "repeater", repeater)
-		s.kvClient.UpdateRepeaterConnection(ctx, repeater, "DISCONNECTED")
+		repeaterInfo, err := s.kvClient.GetRepeater(ctx, repeater)
+		if err != nil {
+			slog.Error("Error getting repeater from KV", "repeater", repeater, "error", err)
+			return true
+		}
 		repeaterBinary := make([]byte, repeaterIDLength)
 		if repeater > 0xFFFFFFFF {
 			slog.Error("Repeater ID too large for uint32", "repeater", repeater)
-			continue
+			return true
 		}
 		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-		s.sendCommand(ctx, repeater, dmrconst.CommandMSTCL, repeaterBinary)
-	}
+		mstclPayload := append([]byte(dmrconst.CommandMSTCL), repeaterBinary...)
+		_, err = s.Server.WriteToUDP(mstclPayload, &net.UDPAddr{
+			IP:   net.ParseIP(repeaterInfo.IP),
+			Port: repeaterInfo.Port,
+		})
+		if err != nil {
+			slog.Error("Error sending MSTCL command", "repeater", repeater, "error", err)
+			return true
+		}
+		repeaterInfo.Connection = "DISCONNECTED"
+		s.kvClient.StoreRepeater(ctx, repeater, repeaterInfo)
+		return true
+	})
 	return nil
 }
 

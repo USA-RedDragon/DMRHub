@@ -89,6 +89,8 @@ const (
 	PacketType_PeerListReply         PacketType = 0x93
 	PacketType_MasterAliveRequest    PacketType = 0x96
 	PacketType_MasterAliveReply      PacketType = 0x97
+	PacketType_DeregistrationRequest PacketType = 0x9A
+	PacketType_DeregistrationReply   PacketType = 0x9B
 )
 
 var (
@@ -180,6 +182,30 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 
 func (s *IPSCServer) Stop(_ context.Context) error {
 	s.stopOnce.Do(func() {
+		packet := s.buildDeregistrationRequest()
+		s.mu.RLock()
+		peers := make([]*Peer, 0, len(s.peers))
+		for _, peer := range s.peers {
+			if peer.Addr != nil {
+				peers = append(peers, peer)
+			}
+		}
+		s.mu.RUnlock()
+		for _, peer := range peers {
+			authKey := peer.AuthKey
+			if authKey == nil {
+				var err error
+				authKey, err = s.lookupAndCachePeerAuthKey(peer.ID)
+				if err != nil {
+					slog.Warn("failed to look up auth key for peer during stop", "peerID", peer.ID, "error", err)
+				}
+			}
+			packetData := make([]byte, len(packet))
+			copy(packetData, packet)
+			if err := s.sendPacket(&Packet{data: packetData}, peer.Addr, authKey); err != nil {
+				slog.Warn("failed sending IPSC deregistration", "peer", peer.Addr, "peerID", peer.ID, "error", err)
+			}
+		}
 		slog.Info("Stopping IPSC server")
 		s.stopped.Store(true)
 		if s.udp != nil {
@@ -466,6 +492,17 @@ func (s *IPSCServer) buildMasterRegisterReply() []byte {
 func (s *IPSCServer) buildMasterAliveReply() []byte {
 	packet := make([]byte, 0, 1+4+5+4)
 	packet = append(packet, byte(PacketType_MasterAliveReply))
+	packet = append(packet, s.localIDBytes()...)
+	packet = append(packet, s.defaultModeByte())
+	flags := s.defaultFlagsBytes()
+	packet = append(packet, flags[:]...)
+	packet = append(packet, ipscVersion...)
+	return packet
+}
+
+func (s *IPSCServer) buildDeregistrationRequest() []byte {
+	packet := make([]byte, 0, 1+4+5+4)
+	packet = append(packet, byte(PacketType_DeregistrationRequest))
 	packet = append(packet, s.localIDBytes()...)
 	packet = append(packet, s.defaultModeByte())
 	flags := s.defaultFlagsBytes()

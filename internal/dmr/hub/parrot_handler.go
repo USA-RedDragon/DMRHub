@@ -60,7 +60,6 @@ func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []mod
 	startedTime := time.Now()
 	for _, pkt := range packets {
 		h.publishToRepeater(repeaterID, pkt)
-		h.publishForBroadcastServers(pkt, "")
 		h.trackCall(ctx, pkt, true)
 
 		elapsed := time.Since(startedTime)

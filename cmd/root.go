@@ -51,7 +51,6 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
-	"github.com/ztrue/shutdown"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -399,72 +398,73 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	return sm, nil
 }
 
-// setupShutdownHandlers configures graceful shutdown handlers
+// setupShutdownHandlers configures graceful shutdown handlers.
+// It blocks until SIGINT/SIGTERM/SIGQUIT/SIGHUP is received, then
+// performs an orderly shutdown: disconnect repeaters/peers first,
+// cancel hub subscriptions, tear down resources.
 func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub *hub.Hub, servers *serverManager, cleanup func(context.Context) error) {
-	stop := func(sig os.Signal) {
-		slog.Error("Shutting down due to signal", "signal", sig)
-		wg := new(sync.WaitGroup)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			err := scheduler.StopJobs()
-			if err != nil {
-				slog.Error("Failed to stop scheduler jobs", "error", err)
-			}
-			err = scheduler.Shutdown()
-			if err != nil {
-				slog.Error("Failed to stop scheduler", "error", err)
-			}
-		}(wg)
+	sig := <-sigCh
+	slog.Error("Shutting down due to signal", "signal", sig)
 
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			// Send disconnect messages (MSTCL, deregistration) to repeaters/peers
-			// BEFORE cancelling hub subscriptions — otherwise hub.Stop() may consume
-			// the entire shutdown budget and os.Exit fires before MSTCL is sent.
-			servers.stopDMRServers(ctx)
-			hub.Stop()
-			servers.closeResources(ctx)
-		}(wg)
+	wg := new(sync.WaitGroup)
 
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			if cleanup != nil {
-				const timeout = 5 * time.Second
-				shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
-				defer cancel()
-				err := cleanup(shutdownCtx)
-				if err != nil {
-					slog.Error("Failed to shutdown tracer", "error", err)
-				}
-			}
-		}(wg)
-
-		// Wait for all the servers to stop
-		const timeout = 10 * time.Second
-
-		c := make(chan struct{})
-		go func() {
-			defer close(c)
-			wg.Wait()
-		}()
-		select {
-		case <-c:
-			slog.Info("All servers stopped, shutting down gracefully")
-			os.Exit(0)
-		case <-time.After(timeout):
-			slog.Error("Shutdown timed out, forcing exit")
-			os.Exit(1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := scheduler.StopJobs()
+		if err != nil {
+			slog.Error("Failed to stop scheduler jobs", "error", err)
 		}
+		err = scheduler.Shutdown()
+		if err != nil {
+			slog.Error("Failed to stop scheduler", "error", err)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Send disconnect messages (MSTCL, deregistration) to repeaters/peers
+		// BEFORE cancelling hub subscriptions — otherwise hub.Stop() may consume
+		// the entire shutdown budget and os.Exit fires before MSTCL is sent.
+		servers.stopDMRServers(ctx)
+		hub.Stop()
+		servers.closeResources(ctx)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if cleanup != nil {
+			const timeout = 5 * time.Second
+			shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			err := cleanup(shutdownCtx)
+			if err != nil {
+				slog.Error("Failed to shutdown tracer", "error", err)
+			}
+		}
+	}()
+
+	// Wait for all the servers to stop
+	const timeout = 10 * time.Second
+
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+	select {
+	case <-c:
+		slog.Info("All servers stopped, shutting down gracefully")
+		os.Exit(0)
+	case <-time.After(timeout):
+		slog.Error("Shutdown timed out, forcing exit")
+		os.Exit(1)
 	}
-	defer stop(syscall.SIGINT)
-
-	shutdown.AddWithParam(stop)
-
-	shutdown.Listen(syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 }
 
 func initTracer(config *config.Config) func(context.Context) error {

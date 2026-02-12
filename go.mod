@@ -31,7 +31,6 @@ require (
 	github.com/tinylib/msgp v1.6.3
 	github.com/ulikunitz/xz v0.5.15
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2
-	github.com/ztrue/shutdown v0.1.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.65.0
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.40.0

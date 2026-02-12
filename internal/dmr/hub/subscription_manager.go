@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -42,11 +43,24 @@ type subscriptionManager struct {
 	hub           *Hub
 }
 
+const repeaterLeaseTTL = 15 * time.Second
+
 func newSubscriptionManager(h *Hub) *subscriptionManager {
 	return &subscriptionManager{
 		subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *context.CancelFunc]](),
 		hub:           h,
 	}
+}
+
+func (m *subscriptionManager) ownsRepeaterDelivery(repeaterID uint) bool {
+	leaseKey := fmt.Sprintf("hub:lease:repeater:%d", repeaterID)
+	claimed, err := m.hub.kv.ClaimLease(leaseKey, m.hub.instanceID, repeaterLeaseTTL)
+	if err != nil {
+		slog.Error("Failed to claim repeater delivery lease", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+
+	return claimed
 }
 
 // activateRepeater sets up all pubsub subscriptions for a repeater
@@ -323,6 +337,10 @@ func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID 
 			}
 			return
 		case msg := <-pubsubChannel:
+			if !m.ownsRepeaterDelivery(repeaterID) {
+				continue
+			}
+
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {
@@ -372,6 +390,10 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 			}
 			return
 		case msg := <-pubsubChannel:
+			if !m.ownsRepeaterDelivery(repeaterID) {
+				continue
+			}
+
 			rawPacket := models.RawDMRPacket{}
 			_, err := rawPacket.UnmarshalMsg(msg)
 			if err != nil {

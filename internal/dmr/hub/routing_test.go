@@ -117,12 +117,57 @@ func TestRoutePacketPrivateCallToUser(t *testing.T) {
 	pkt := makeVoicePacket(1000002, 55557, false, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	// Should be delivered to user's owned repeater 100002
+	// No last-call repeater exists yet, so the call should be dropped
 	select {
 	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100002), rp.RepeaterID)
+		t.Fatalf("expected call to be dropped, but got packet for repeater %d", rp.RepeaterID)
+	case <-time.After(500 * time.Millisecond):
+		// success: nothing delivered
+	}
+}
+
+func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "CALLER")
+	seedUser(t, database, 1000002, "TARGET")
+	seedRepeater(t, database, 100002, 1000002)
+	seedRepeater(t, database, 100003, 1000002)
+
+	// Record a last call for the target user on repeater 100003
+	lastCall := models.Call{
+		UserID:     1000002,
+		RepeaterID: 100003,
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, database.Create(&lastCall).Error)
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.Start()
+
+	// Allow subscription goroutines to fully start
+	time.Sleep(100 * time.Millisecond)
+
+	// Private call to user 1000002 should go to repeater 100003 (last heard)
+	pkt := makeVoicePacket(1000002, 55558, false, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100003), rp.RepeaterID)
 	case <-time.After(2 * time.Second):
-		t.Fatal("Timed out waiting for private call to user")
+		t.Fatal("Timed out waiting for private call to last-heard repeater")
+	}
+
+	// Ensure nothing else was delivered
+	select {
+	case rp := <-srvHandle.Packets:
+		t.Fatalf("unexpected extra packet delivered to repeater %d", rp.RepeaterID)
+	case <-time.After(200 * time.Millisecond):
+		// success: only one packet
 	}
 }
 

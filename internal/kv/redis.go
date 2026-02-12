@@ -31,7 +31,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var claimLeaseScript = redis.NewScript(`
+const claimLeaseScriptSource = `
 local owner = ARGV[1]
 local ttlMs = tonumber(ARGV[2])
 
@@ -47,7 +47,7 @@ if current == owner then
 end
 
 return 0
-`)
+`
 
 func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 	client := redis.NewClient(&redis.Options{
@@ -72,17 +72,18 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 		}
 	}
 
-	return &redisKV{client: client}, nil
+	return &redisKV{client: client, claimLeaseScript: redis.NewScript(claimLeaseScriptSource)}, nil
 }
 
 type redisKV struct {
-	client *redis.Client
+	client           *redis.Client
+	claimLeaseScript *redis.Script
 }
 
 func (kv *redisKV) Has(key string) (bool, error) {
 	result, err := kv.client.Exists(context.Background(), key).Result()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("redis exists %s: %w", key, err)
 	}
 	return result > 0, nil
 }
@@ -90,13 +91,16 @@ func (kv *redisKV) Has(key string) (bool, error) {
 func (kv *redisKV) Get(key string) ([]byte, error) {
 	value, err := kv.client.Get(context.Background(), key).Bytes()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis get %s: %w", key, err)
 	}
 	return value, nil
 }
 
 func (kv *redisKV) Set(key string, value []byte) error {
-	return kv.client.Set(context.Background(), key, value, 0).Err()
+	if err := kv.client.Set(context.Background(), key, value, 0).Err(); err != nil {
+		return fmt.Errorf("redis set %s: %w", key, err)
+	}
+	return nil
 }
 
 func (kv *redisKV) ClaimLease(key string, owner string, ttl time.Duration) (bool, error) {
@@ -104,22 +108,25 @@ func (kv *redisKV) ClaimLease(key string, owner string, ttl time.Duration) (bool
 		return false, fmt.Errorf("ttl must be positive")
 	}
 
-	claim, err := claimLeaseScript.Run(context.Background(), kv.client, []string{key}, owner, ttl.Milliseconds()).Int()
+	claim, err := kv.claimLeaseScript.Run(context.Background(), kv.client, []string{key}, owner, ttl.Milliseconds()).Int()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("redis claim lease %s: %w", key, err)
 	}
 
 	return claim == 1, nil
 }
 
 func (kv *redisKV) Delete(key string) error {
-	return kv.client.Del(context.Background(), key).Err()
+	if err := kv.client.Del(context.Background(), key).Err(); err != nil {
+		return fmt.Errorf("redis delete %s: %w", key, err)
+	}
+	return nil
 }
 
 func (kv *redisKV) Expire(key string, ttl time.Duration) error {
 	result, err := kv.client.Expire(context.Background(), key, ttl).Result()
 	if err != nil {
-		return err
+		return fmt.Errorf("redis expire %s: %w", key, err)
 	}
 	if !result {
 		return fmt.Errorf("key %s not found", key)
@@ -128,9 +135,16 @@ func (kv *redisKV) Expire(key string, ttl time.Duration) error {
 }
 
 func (kv *redisKV) Scan(cursor uint64, match string, count int64) ([]string, uint64, error) {
-	return kv.client.Scan(context.Background(), cursor, match, count).Result()
+	keys, next, err := kv.client.Scan(context.Background(), cursor, match, count).Result()
+	if err != nil {
+		return nil, 0, fmt.Errorf("redis scan match %s: %w", match, err)
+	}
+	return keys, next, nil
 }
 
 func (kv *redisKV) Close() error {
-	return kv.client.Close()
+	if err := kv.client.Close(); err != nil {
+		return fmt.Errorf("redis close: %w", err)
+	}
+	return nil
 }

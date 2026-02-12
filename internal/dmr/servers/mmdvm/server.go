@@ -280,7 +280,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 
 	switch dmrconst.Command(data[:4]) { //nolint:exhaustive
 	case dmrconst.CommandDMRA:
-		s.handleDMRAPacket(ctx, remoteAddr, data)
+		s.handleDMRAPacket(ctx, data)
 	case dmrconst.CommandDMRD:
 		s.handleDMRDPacket(ctx, remoteAddr, data)
 	case dmrconst.CommandRPTO:
@@ -293,7 +293,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 		s.handleRPTKPacket(ctx, remoteAddr, data)
 	case dmrconst.CommandRPTC:
 		if dmrconst.Command(data[:5]) == dmrconst.CommandRPTCL {
-			s.handleRPTCLPacket(ctx, remoteAddr, data)
+			s.handleRPTCLPacket(ctx, data)
 		} else {
 			s.handleRPTCPacket(ctx, remoteAddr, data)
 		}

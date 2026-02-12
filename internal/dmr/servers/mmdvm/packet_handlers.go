@@ -37,7 +37,7 @@ import (
 
 const max32Bit = 0xFFFFFFFF
 
-func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string, remoteAddr net.UDPAddr) bool {
+func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string) bool {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.validRepeater")
 	defer span.End()
 	valid := true
@@ -57,7 +57,7 @@ func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection 
 	return valid
 }
 
-func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
+func (s *Server) handleDMRAPacket(ctx context.Context, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleDMRAPacket")
 	defer span.End()
 
@@ -70,7 +70,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("DMR talk alias from Repeater ID", "repeaterIDBytes", repeaterIDBytes)
-	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES") {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
@@ -110,7 +110,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := s.extractRepeaterID(data)
 	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
 
-	if !s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
+	if !s.validRepeater(ctx, repeaterID, "YES") {
 		return
 	}
 
@@ -248,7 +248,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Challenge Response from Repeater ID", "repeaterID", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT", remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT") {
 		var password string
 		var dbRepeater models.Repeater
 
@@ -314,7 +314,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	}
 }
 
-func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
+func (s *Server) handleRPTCLPacket(ctx context.Context, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handleRPTCLPacket")
 	defer span.End()
 
@@ -327,7 +327,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, remoteAddr net.UDPAddr, 
 	repeaterIDBytes := data[5:]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Disconnect from Repeater ID", "repeaterID", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES") {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
 	if !s.kvClient.DeleteRepeater(ctx, repeaterID) {
@@ -350,7 +350,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Config from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
-	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG", remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG") {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
@@ -405,7 +405,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Ping from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
-	if s.validRepeater(ctx, repeaterID, "YES", remoteAddr) {
+	if s.validRepeater(ctx, repeaterID, "YES") {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {

@@ -297,7 +297,10 @@ func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, erro
 		if err := s.handlePeerListRequest(data, addr); err != nil {
 			return nil, err
 		}
-	case PacketType_MasterRegisterReply, PacketType_PeerListReply, PacketType_MasterAliveReply:
+	case PacketType_DeregistrationRequest:
+		s.handleDeregistrationRequest(peerID)
+		return nil, ErrPacketIgnored
+	case PacketType_MasterRegisterReply, PacketType_PeerListReply, PacketType_MasterAliveReply, PacketType_DeregistrationReply:
 		// These are reply packets, we shouldn't receive them as a server, keeping quiet.
 		return nil, ErrPacketIgnored
 	default:
@@ -363,6 +366,14 @@ func (s *IPSCServer) handlePeerListRequest(data []byte, addr *net.UDPAddr) error
 	}
 
 	return nil
+}
+
+func (s *IPSCServer) handleDeregistrationRequest(peerID uint32) {
+	s.mu.Lock()
+	delete(s.peers, peerID)
+	delete(s.lastSend, peerID)
+	s.mu.Unlock()
+	slog.Info("IPSC peer deregistered", "peerID", peerID)
 }
 
 func (s *IPSCServer) handleRepeaterWakeUp(data []byte, addr *net.UDPAddr) error {

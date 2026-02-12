@@ -223,6 +223,10 @@ func (s *Server) Start(ctx context.Context) error {
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if err != nil {
+				// When the socket is closed during shutdown, stop the loop quietly.
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				slog.Error("Error reading from UDP Socket, Swallowing Error", "error", err)
 				continue
 			}

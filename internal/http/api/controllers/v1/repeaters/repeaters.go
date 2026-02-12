@@ -450,10 +450,10 @@ func POSTRepeater(c *gin.Context) {
 
 		repeater.ID = json.RadioID
 
-		// Generate a random password of 8 characters
-		const randLen = 8
-		const randNum = 1
-		const randSpecial = 2
+		// Generate a random password
+		const randLen = 12
+		const randNum = 4
+		const randSpecial = 0
 		repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
 			slog.Error("Failed to generate a repeater password", "error", err)

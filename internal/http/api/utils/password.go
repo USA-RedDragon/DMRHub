@@ -134,8 +134,8 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	return false, nil
 }
 
-const allowedChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-const allowedNumbers = "0123456789"
+const allowedChars = "bcdefghjkmnopqrstuvwxyzBCDEFGHJKMNPQRSTUVWXYZ"
+const allowedNumbers = "2356789"
 const allowedSpecial = "!@#$%^&*-_"
 
 func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {

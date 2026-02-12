@@ -407,6 +407,11 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 
 	if s.validRepeater(ctx, repeaterID, "YES") {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
+		// Track this repeater as locally connected. In multi-replica Kubernetes
+		// deployments, repeaters may be routed to a new pod without re-doing the
+		// full RPTL/RPTK/RPTC handshake. By tracking on every ping we ensure
+		// Stop() can send MSTCL to all repeaters we're actually serving.
+		s.connected.Store(repeaterID, struct{}{})
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
 			// No repeater found, drop
@@ -425,6 +430,11 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 			return
 		}
 		repeater.PingsReceived++
+		// Update the repeater's address in KV so that if this pod took over
+		// from another (e.g. rolling deploy), MSTCL is sent to the current
+		// address, not the stale one from the original RPTC handshake.
+		repeater.IP = remoteAddr.IP.String()
+		repeater.Port = remoteAddr.Port
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTPONG, repeaterIDBytes)
 	} else {

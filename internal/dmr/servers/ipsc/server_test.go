@@ -32,6 +32,9 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 func testConfig() *config.Config {
@@ -522,6 +525,29 @@ func newTestServerWithUDP(t *testing.T) (*IPSCServer, *net.UDPAddr) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
+	return s, addr
+}
+
+func newTestServerWithUDPAndDB(t *testing.T) (*IPSCServer, *net.UDPAddr) {
+	t.Helper()
+	dbConn, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	if err := dbConn.AutoMigrate(&models.Repeater{}); err != nil {
+		t.Fatalf("failed to migrate repeater model: %v", err)
+	}
+
+	s, addr := newTestServerWithUDP(t)
+	s.db = dbConn
+
+	sqlDB, err := dbConn.DB()
+	if err == nil {
+		t.Cleanup(func() {
+			_ = sqlDB.Close()
+		})
+	}
+
 	return s, addr
 }
 
@@ -1600,6 +1626,55 @@ func TestFullRegistrationFlow(t *testing.T) {
 	}
 	if peer.Mode != 0x6A {
 		t.Fatalf("expected mode 0x6A, got 0x%02X", peer.Mode)
+	}
+}
+
+func TestHandleMasterRegisterRequestFlowExistingPeerLoadsAuthKeyFromDB(t *testing.T) {
+	t.Parallel()
+	s, srvAddr := newTestServerWithUDPAndDB(t)
+
+	client, err := net.DialUDP("udp", nil, srvAddr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	peerID := uint32(33333)
+	if err := s.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(peerID)}, Type: models.RepeaterTypeIPSC, Password: "1234"}).Error; err != nil {
+		t.Fatalf("failed to create test repeater: %v", err)
+	}
+
+	// Simulate a peer known to memory without an auth key.
+	s.mu.Lock()
+	s.peers[peerID] = &Peer{ID: peerID}
+	s.mu.Unlock()
+
+	reqData := signTestPacket(t, makeControlPacketWithModeFlags(PacketType_MasterRegisterRequest, peerID, 0x6A, [4]byte{0, 0, 0, 0x0D}))
+	clientUDPAddr, ok := client.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("expected *net.UDPAddr from LocalAddr")
+	}
+
+	_, err = s.handlePacket(reqData, clientUDPAddr)
+	if err != nil {
+		t.Fatalf("handlePacket error: %v", err)
+	}
+
+	reply := readUDP(t, client)
+	replyPayloadLen := len(s.buildMasterRegisterReply())
+	if len(reply) != replyPayloadLen+10 {
+		t.Fatalf("expected signed reply length %d, got %d", replyPayloadLen+10, len(reply))
+	}
+
+	if !authWithKey(reply, decodeAuthKey("1234")) {
+		t.Fatal("expected signed register reply with peer auth key")
+	}
+
+	s.mu.RLock()
+	peer := s.peers[peerID]
+	s.mu.RUnlock()
+	if peer == nil || peer.AuthKey == nil {
+		t.Fatal("expected peer auth key to be cached")
 	}
 }
 

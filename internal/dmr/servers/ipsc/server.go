@@ -241,13 +241,9 @@ func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, erro
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse peer ID for auth: %w", err)
 	}
-	authKey := s.getPeerAuthKey(peerID)
-	if authKey == nil {
-		// Try looking up from DB for new peers
-		authKey, err = s.lookupPeerAuthKey(peerID)
-		if err != nil {
-			return nil, fmt.Errorf("unknown peer %d: %w", peerID, err)
-		}
+	authKey, err := s.lookupAndCachePeerAuthKey(peerID)
+	if err != nil {
+		return nil, fmt.Errorf("unknown peer %d: %w", peerID, err)
 	}
 	if authKey != nil && !authWithKey(data, authKey) {
 		return nil, fmt.Errorf("authentication failed")
@@ -330,7 +326,10 @@ func (s *IPSCServer) handlePeerListRequest(data []byte, addr *net.UDPAddr) error
 		return err
 	}
 
-	authKey := s.getPeerAuthKey(peerID)
+	authKey, err := s.lookupAndCachePeerAuthKey(peerID)
+	if err != nil {
+		return err
+	}
 
 	packet := &Packet{data: s.buildPeerListReply()}
 	if err := s.sendPacket(packet, addr, authKey); err != nil {
@@ -378,15 +377,15 @@ func (s *IPSCServer) upsertPeer(peerID uint32, addr *net.UDPAddr, mode byte, fla
 	peer, ok := s.peers[peerID]
 	if !ok {
 		peer = &Peer{ID: peerID}
-		// Look up auth key from DB for new peers
-		if s.db != nil {
-			key, err := s.lookupPeerAuthKey(peerID)
-			if err != nil {
-				slog.Warn("failed to look up auth key for peer", "peerID", peerID, "error", err)
-			}
+		s.peers[peerID] = peer
+	}
+	if peer.AuthKey == nil && s.db != nil {
+		key, err := s.lookupPeerAuthKey(peerID)
+		if err != nil {
+			slog.Warn("failed to look up auth key for peer", "peerID", peerID, "error", err)
+		} else {
 			peer.AuthKey = key
 		}
-		s.peers[peerID] = peer
 	}
 	peer.Addr = cloneUDPAddr(addr)
 	peer.Mode = mode
@@ -408,6 +407,14 @@ func (s *IPSCServer) markPeerAlive(peerID uint32, addr *net.UDPAddr) []byte {
 	if !ok {
 		peer = &Peer{ID: peerID}
 		s.peers[peerID] = peer
+	}
+	if peer.AuthKey == nil && s.db != nil {
+		key, err := s.lookupPeerAuthKey(peerID)
+		if err != nil {
+			slog.Warn("failed to look up auth key for peer", "peerID", peerID, "error", err)
+		} else {
+			peer.AuthKey = key
+		}
 	}
 	peer.Addr = cloneUDPAddr(addr)
 	peer.LastSeen = time.Now()
@@ -573,6 +580,29 @@ func (s *IPSCServer) getPeerAuthKey(peerID uint32) []byte {
 		return nil
 	}
 	return peer.AuthKey
+}
+
+func (s *IPSCServer) lookupAndCachePeerAuthKey(peerID uint32) ([]byte, error) {
+	authKey := s.getPeerAuthKey(peerID)
+	if authKey != nil {
+		return authKey, nil
+	}
+
+	authKey, err := s.lookupPeerAuthKey(peerID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	peer, ok := s.peers[peerID]
+	if !ok {
+		peer = &Peer{ID: peerID}
+		s.peers[peerID] = peer
+	}
+	peer.AuthKey = authKey
+	s.mu.Unlock()
+
+	return authKey, nil
 }
 
 func authWithKey(data []byte, key []byte) bool {

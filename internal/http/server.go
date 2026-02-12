@@ -42,7 +42,6 @@ import (
 	gormSessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -232,23 +231,16 @@ var ErrClosed = errors.New("server closed")
 var ErrFailed = errors.New("failed to start server")
 
 func (s *Server) Start() error {
-	g := new(errgroup.Group)
-	g.Go(func() error {
+	go func() {
 		err := s.ListenAndServe()
 		if err != nil {
 			switch {
 			case errors.Is(err, http.ErrServerClosed):
 				s.shutdownChannel <- true
-				return ErrClosed
 			default:
 				slog.Error("Failed to start HTTP server", "error", err)
-				return ErrFailed
 			}
 		}
-		return nil
-	})
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("failed to start HTTP server: %w", err)
-	}
+	}()
 	return nil
 }

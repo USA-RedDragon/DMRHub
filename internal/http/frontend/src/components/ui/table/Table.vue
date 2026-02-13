@@ -1,6 +1,4 @@
 <script setup lang="ts">
-defineOptions({ name: "ShadTable" })
-
 import type { HTMLAttributes } from "vue"
 import { cn } from "@/lib/utils"
 

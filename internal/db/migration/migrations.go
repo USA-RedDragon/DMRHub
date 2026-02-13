@@ -161,5 +161,27 @@ func dataMigrations(db *gorm.DB) []*gormigrate.Migration {
 				return nil
 			},
 		},
+		// Add simplex_repeater column to repeaters for cross-timeslot echo mode
+		{
+			ID: "202602130100",
+			Migrate: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable(&models.Repeater{}) && !db.Migrator().HasColumn(&models.Repeater{}, "simplex_repeater") {
+					err := tx.Migrator().AddColumn(&models.Repeater{}, "SimplexRepeater")
+					if err != nil {
+						return fmt.Errorf("could not add simplex_repeater column: %w", err)
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "simplex_repeater") {
+					err := tx.Migrator().DropColumn(&models.Repeater{}, "SimplexRepeater")
+					if err != nil {
+						return fmt.Errorf("could not drop simplex_repeater column: %w", err)
+					}
+				}
+				return nil
+			},
+		},
 	}
 }

@@ -63,6 +63,18 @@
               }}</small
             >
           </span>
+          <br />
+          <br />
+          <div class="field">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                v-model="simplexRepeater"
+              />
+              Simplex Repeater
+            </label>
+            <small class="field-help">When enabled, transmissions on one timeslot are echoed back on the opposite timeslot.</small>
+          </div>
         </CardContent>
         <CardFooter>
           <div class="card-footer">
@@ -109,6 +121,7 @@ export default {
     return {
       radioID: '',
       repeaterType: 'mmdvm',
+      simplexRepeater: false,
       repeaterTypes: [
         { label: 'MMDVM', value: 'mmdvm' },
         { label: 'Motorola IPSC', value: 'ipsc' },
@@ -139,6 +152,7 @@ export default {
       API.post('/repeaters', {
         id: numericID,
         type: this.repeaterType,
+        simplex_repeater: this.simplexRepeater,
       })
         .then((res) => {
           if (!res.data) {
@@ -218,5 +232,19 @@ export default {
 .ui-select:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.field-help {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
 }
 </style>

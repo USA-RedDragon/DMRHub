@@ -327,6 +327,7 @@ func POSTRepeater(c *gin.Context) {
 
 		var repeater models.Repeater
 		repeater.Type = json.Type
+		repeater.SimplexRepeater = json.SimplexRepeater
 
 		if json.Type == models.RepeaterTypeIPSC {
 			// IPSC repeaters: validate RadioID as 6-digit or hotspot
@@ -805,4 +806,58 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 	go dmrHub.ReloadRepeater(repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Timeslot unlinked"})
+}
+
+func PATCHRepeater(c *gin.Context) {
+	db, ok := c.MustGet("DB").(*gorm.DB)
+	if !ok {
+		slog.Error("Unable to get DB from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	repeaterID, err := validateRepeaterID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var json apimodels.RepeaterPatch
+	err = c.ShouldBindJSON(&json)
+	if err != nil {
+		slog.Error("JSON data is invalid", "function", "PATCHRepeater", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		return
+	}
+
+	repeater, err := validateAndFetchRepeater(db, repeaterID)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			slog.Error("Error validating repeater", "function", "PATCHRepeater", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
+		}
+		return
+	}
+
+	if json.SimplexRepeater != nil {
+		repeater.SimplexRepeater = *json.SimplexRepeater
+	}
+
+	err = db.Save(repeater).Error
+	if err != nil {
+		slog.Error("Error saving repeater", "function", "PATCHRepeater", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
+		return
+	}
+
+	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+	if !ok {
+		slog.Error("Hub cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	go dmrHub.ReloadRepeater(repeater.ID)
+	c.JSON(http.StatusOK, gin.H{"message": "Repeater updated"})
 }

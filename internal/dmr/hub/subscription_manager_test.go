@@ -202,6 +202,110 @@ func TestSubscribeTGIgnoresEchoFromSameRepeater(t *testing.T) {
 	}
 }
 
+// TestSimplexRepeaterCrossTimeslotEcho verifies that a simplex repeater
+// receives its own talkgroup traffic back on the opposite timeslot.
+func TestSimplexRepeaterCrossTimeslotEcho(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 31, "TG31")
+
+	// Enable simplex mode and assign TG31 to TS1
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100001).Error)
+	require.NoError(t, database.Model(&rpt).Update("simplex_repeater", true).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 31}))
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.Start()
+	time.Sleep(100 * time.Millisecond)
+
+	// Repeater 100001 sends on TS1 (slot=false) to TG31 — simplex should echo back on TS2 (slot=true)
+	pkt := makeVoicePacket(31, 70020, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100001), rp.RepeaterID)
+		assert.Equal(t, uint(31), rp.Packet.Dst)
+		assert.True(t, rp.Packet.Slot, "Simplex echo should deliver on opposite timeslot (TS2)")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for simplex cross-timeslot echo")
+	}
+}
+
+// TestSimplexRepeaterTS2ToTS1 verifies that a simplex repeater echoes
+// traffic sent on TS2 back on TS1.
+func TestSimplexRepeaterTS2ToTS1(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 32, "TG32")
+
+	// Enable simplex mode and assign TG32 to TS2
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100001).Error)
+	require.NoError(t, database.Model(&rpt).Update("simplex_repeater", true).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 32}))
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.Start()
+	time.Sleep(100 * time.Millisecond)
+
+	// Repeater 100001 sends on TS2 (slot=true) to TG32 — simplex should echo back on TS1 (slot=false)
+	pkt := makeVoicePacket(32, 70021, true, true)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100001), rp.RepeaterID)
+		assert.Equal(t, uint(32), rp.Packet.Dst)
+		assert.False(t, rp.Packet.Slot, "Simplex echo should deliver on opposite timeslot (TS1)")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for simplex TS2→TS1 echo")
+	}
+}
+
+// TestNonSimplexRepeaterDoesNotEcho verifies that a repeater without
+// simplex mode enabled does NOT echo its own packets.
+func TestNonSimplexRepeaterDoesNotEcho(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 33, "TG33")
+
+	// SimplexRepeater is false (default), assign TG33 to TS1
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100001).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 33}))
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.Start()
+	time.Sleep(100 * time.Millisecond)
+
+	pkt := makeVoicePacket(33, 70022, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case <-srvHandle.Packets:
+		t.Fatal("Non-simplex repeater should not echo packets back to itself")
+	case <-time.After(500 * time.Millisecond):
+		// Expected: no delivery back to self
+	}
+}
+
 // TestReloadRepeaterPicksUpNewStaticTG verifies that reloading a repeater after
 // adding a new static talkgroup subscribes to the new TG.
 func TestReloadRepeaterPicksUpNewStaticTG(t *testing.T) {

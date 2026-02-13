@@ -22,8 +22,10 @@
 <template>
   <div>
     <Card>
-      <template #title>Welcome to DMRHub</template>
-      <template #content>
+      <CardHeader>
+        <h1>Welcome to DMRHub</h1>
+      </CardHeader>
+      <CardContent>
         <h2>What is DMRHub?</h2>
         <p>
           DMRHub is an <a href="https://github.com/USA-RedDragon/DMRHub" target="_blank">open-source</a> DMR
@@ -52,17 +54,19 @@
               DMRHub Admin's Guide</a>
           </li>
         </ul>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
+<script lang="ts">
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export default {
   components: {
     Card,
+    CardContent,
+    CardHeader,
   },
   head: {
     title: 'Home',
@@ -78,4 +82,13 @@ export default {
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+li {
+  margin-bottom: 0.25rem;
+}
+</style>

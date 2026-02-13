@@ -22,18 +22,20 @@
 <template>
   <div>
     <Card>
-      <template #title>robots.txt Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>robots.txt Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>robots.txt settings</p>
         <br />
-        <span class="p-float-label">
-          <Dropdown id="mode" v-model="mode" optionValue="value" optionLabel="label" :options="[
+        <label class="field-label" for="mode">Mode</label>
+        <select id="mode" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
+          <option v-for="option in [
             { label: 'Disabled', value: 'disabled' },
             { label: 'Allow', value: 'allow' },
             { label: 'Custom', value: 'custom' },
-          ]" :class="{ 'p-invalid': (errors && errors.mode) || false }" />
-          <label for="mode">Mode</label>
-        </span>
+          ]" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
         <p>
           The mode to use for the robots.txt file.
           One of <code>disabled</code>, <code>allow</code>, or <code>custom</code>.
@@ -43,34 +45,38 @@
         </p>
         <span v-if="errors && errors.mode" class="p-error">{{ errors.mode }}</span>
         <br v-if="mode === 'custom'" />
-        <span class="p-float-label" v-if="mode === 'custom'">
-          <TextArea
-            rows="5"
-            id="content"
-            v-model="content"
-            :class="{ 'p-invalid': (errors && errors.content) || false }"
-          />
-          <label for="content">Content</label>
-        </span>
+        <label class="field-label" for="content" v-if="mode === 'custom'">Content</label>
+        <textarea
+          rows="5"
+          id="content"
+          v-model="content"
+          v-if="mode === 'custom'"
+          class="ui-textarea"
+          :class="{ 'ui-textarea-invalid': (errors && errors.content) || false }"
+        />
         <p v-if="mode === 'custom'">
           The content of the robots.txt file when the mode is set to <code>custom</code>.
         </p>
         <span v-if="mode === 'custom' && errors && errors.content" class="p-error">{{ errors.content }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import TextArea from 'primevue/textarea';
-import Dropdown from 'primevue/dropdown';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 
 export default {
   components: {
     Card,
-    TextArea,
-    Dropdown,
+    CardContent,
+    CardHeader,
+    CardTitle,
   },
   props: {
     modelValue: {
@@ -87,7 +93,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['mode']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'mode': value,
@@ -98,7 +104,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['content']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'content': value,
@@ -109,7 +115,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['robots-txt']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'robots-txt': value,
@@ -120,7 +126,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['cors']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'cors': value,
@@ -131,7 +137,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['trusted-proxies']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'trusted-proxies': value,
@@ -142,7 +148,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['canonical-host']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'canonical-host': value,
@@ -156,3 +162,25 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-select-invalid,
+.ui-textarea-invalid {
+  border-color: var(--primary);
+}
+</style>

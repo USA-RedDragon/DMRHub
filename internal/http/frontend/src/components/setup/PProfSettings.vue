@@ -22,56 +22,54 @@
 <template>
   <div>
     <Card>
-      <template #title>PProf Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>PProf Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>PProf is a tool for analyzing the performance of Go applications. This setting enables a separate
           HTTP server that serves the pprof endpoints. It is recommended to only enable this in development or
           debugging scenarios as it can expose sensitive information about the application.
         </p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="enabled"
-            inputId="enabled"
+            type="checkbox"
             v-model="enabled"
-            :binary="true"
           />
-          <label for="enabled">&nbsp;&nbsp;Enabled</label>
-        </span>
+          <label for="enabled">Enabled</label>
+        </div>
         <br v-if="enabled" />
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
-          <label for="bind">Bind</label>
-        </span>
+        <label class="field-label" for="bind" v-if="enabled">Bind</label>
+        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the pprof server to
         </p>
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p v-if="enabled">
           The port number to bind the pprof server to
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <TextArea
-            rows="5"
-            id="trustedProxies"
-            v-model="trustedProxies"
-            :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }"
-          />
-          <label for="trustedProxies">Trusted Proxies</label>
-        </span>
+        <label class="field-label" for="trustedProxies" v-if="enabled">Trusted Proxies</label>
+        <textarea
+          rows="5"
+          id="trustedProxies"
+          v-model="trustedProxies"
+          v-if="enabled"
+          class="ui-textarea"
+          :class="{ 'ui-textarea-invalid': (errors && errors['trusted-proxies']) || false }"
+        />
         <p v-if="enabled">
           A list of trusted proxy IP addresses. If set, the pprof server will only accept
           requests from these IP addresses. One per line.
@@ -79,23 +77,27 @@
         <span v-if="enabled && errors && errors['trusted-proxies']" class="p-error">
           {{ errors['trusted-proxies'] }}
         </span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import Checkbox from 'primevue/checkbox';
-import InputText from 'primevue/inputtext';
-import TextArea from 'primevue/textarea';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    Checkbox,
-    InputText,
-    TextArea,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -113,7 +115,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.enabled) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'enabled': value,
@@ -124,7 +126,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
@@ -135,7 +137,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['port']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -144,12 +146,10 @@ export default {
     },
     trustedProxies: {
       get() {
-        return (
-          this.modelValue &&
-          this.modelValue['trusted-proxies'] &&
-          this.modelValue['trusted-proxies'].join('\n')) || [];
+        const trustedProxies = this.modelValue && this.modelValue['trusted-proxies'];
+        return Array.isArray(trustedProxies) ? trustedProxies.join('\n') : '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'trusted-proxies': value.split('\n'),
@@ -163,3 +163,29 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ui-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-textarea-invalid {
+  border-color: var(--primary);
+}
+</style>

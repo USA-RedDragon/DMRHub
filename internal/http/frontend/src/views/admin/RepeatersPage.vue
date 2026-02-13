@@ -21,25 +21,16 @@
 
 <template>
   <div>
-    <PVToast />
-    <ConfirmDialog></ConfirmDialog>
-    <Card>
-      <template #title>Repeaters</template>
-      <template #content>
-        <RepeaterTable admin />
-      </template>
-    </Card>
+    <h1>Repeaters</h1>
+    <RepeaterTable admin />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-
+<script lang="ts">
 import RepeaterTable from '@/components/RepeaterTable.vue';
 
 export default {
   components: {
-    Card,
     RepeaterTable,
   },
   head: {

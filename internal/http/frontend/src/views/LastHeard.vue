@@ -21,22 +21,16 @@
 
 <template>
   <div>
-    <Card>
-      <template #title>Last Heard</template>
-      <template #content>
-        <LastHeardTable />
-      </template>
-    </Card>
+    <h1>Last Heard</h1>
+    <LastHeardTable />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
+<script lang="ts">
 import LastHeardTable from '@/components/LastHeardTable.vue';
 
 export default {
   components: {
-    Card,
     LastHeardTable,
   },
   head: {

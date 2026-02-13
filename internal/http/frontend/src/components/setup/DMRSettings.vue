@@ -22,19 +22,20 @@
 <template>
   <div>
     <Card>
-      <template #title>DMR Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>DMR Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>These settings configure DMR related features in DMRHub.</p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="disable-radio-id-validation"
-            inputId="disable-radio-id-validation"
+            type="checkbox"
             v-model="disableRadioIDValidation"
-            :binary="true"
           />
-          <label for="disable-radio-id-validation">&nbsp;&nbsp;Disable Radio ID validation</label>
-        </span>
+          <label for="disable-radio-id-validation">Disable Radio ID validation</label>
+        </div>
         <p>
           When enabled, DMRHub allows any 7- to 9-digit radio ID without checking the Radio ID database.
         </p>
@@ -42,30 +43,26 @@
           {{ errors['disable-radio-id-validation'] }}
         </span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="radio-id-url"
-            type="text"
-            v-model="radioIDURL"
-            :class="{ 'p-invalid': (errors && errors['radio-id-url']) || false }"
-          />
-          <label for="radio-id-url">Radio ID URL</label>
-        </span>
+        <label class="field-label" for="radio-id-url">Radio ID URL</label>
+        <ShadInput
+          id="radio-id-url"
+          type="text"
+          v-model="radioIDURL"
+          :aria-invalid="(errors && errors['radio-id-url']) || false"
+        />
         <p>
           URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same
           as RadioID.net.
         </p>
         <span v-if="errors && errors['radio-id-url']" class="p-error">{{ errors['radio-id-url'] }}</span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="repeater-id-url"
-            type="text"
-            v-model="repeaterIDURL"
-            :class="{ 'p-invalid': (errors && errors['repeater-id-url']) || false }"
-          />
-          <label for="repeater-id-url">Repeater ID URL</label>
-        </span>
+        <label class="field-label" for="repeater-id-url">Repeater ID URL</label>
+        <ShadInput
+          id="repeater-id-url"
+          type="text"
+          v-model="repeaterIDURL"
+          :aria-invalid="(errors && errors['repeater-id-url']) || false"
+        />
         <p>
           URL to fetch repeater information for validation and display purposes. Expected JSON format is the same
           as RadioID.net.
@@ -76,18 +73,22 @@
         <IPSCSettings v-model="ipsc" :errors="errors.ipsc" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 import IPSCSettings from './DMR/IPSCSettings.vue';
-import Card from 'primevue/card';
-import Checkbox from 'primevue/checkbox';
-import InputText from 'primevue/inputtext';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
@@ -95,8 +96,10 @@ export default {
     OpenBridgeSettings,
     IPSCSettings,
     Card,
-    Checkbox,
-    InputText,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -115,7 +118,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['mmdvm']) || {};
       },
-      set(value) {
+      set(value: Record<string, unknown>) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'mmdvm': value,
@@ -126,7 +129,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['openbridge']) || {};
       },
-      set(value) {
+      set(value: Record<string, unknown>) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'openbridge': value,
@@ -137,7 +140,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['ipsc']) || {};
       },
-      set(value) {
+      set(value: Record<string, unknown>) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'ipsc': value,
@@ -148,7 +151,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['disable-radio-id-validation']) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'disable-radio-id-validation': value,
@@ -159,7 +162,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['radio-id-url']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'radio-id-url': value,
@@ -170,7 +173,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['repeater-id-url']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'repeater-id-url': value,
@@ -181,7 +184,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['robots-txt']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'robots-txt': value,
@@ -192,7 +195,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['cors']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'cors': value,
@@ -203,7 +206,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['trusted-proxies']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'trusted-proxies': value,
@@ -214,7 +217,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['canonical-host']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'canonical-host': value,
@@ -228,3 +231,16 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+</style>

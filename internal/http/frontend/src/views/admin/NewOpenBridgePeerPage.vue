@@ -21,73 +21,43 @@
 
 <template>
   <div>
-    <Toast />
-    <ConfirmDialog>
-      <template #message="slotProps">
-        <div class="flex p-4">
-          <p>
-            You will need to use this password configuration to connect to the
-            network.
-            <br /><span style="color: red"
-              >Save this now, as you will not be able to retrieve it
-              again.</span
-            >
-            <br />Your Peer password is:
-            <code style="color: orange">{{ slotProps.message.message }}</code>
-          </p>
-        </div>
-      </template>
-    </ConfirmDialog>
     <form @submit.prevent="handlePeer(!v$.$invalid)">
       <Card>
-        <template #title>New Peer</template>
-        <template #content>
-          <span class="p-float-label">
-            <PVDropdown
-              id="owner"
-              v-model="owner"
-              :options="allUsers"
-              :filter="true"
-              optionLabel="display"
-              display="chip"
-              style="width: 100%"
-            >
-              <template #chip="slotProps">
-                {{ slotProps.value.display }}
-              </template>
-              <template #option="slotProps">
-                {{ slotProps.option.display }}
-              </template>
-            </PVDropdown>
-            <label for="owner">Owner</label>
-          </span>
-          <span v-if="v$.owner.$error && submitted">
-            <span v-for="(error, index) of v$.owner.$errors" :key="index">
+        <CardHeader>
+          <CardTitle>New Peer</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <label class="field-label" for="owner">Owner</label>
+          <select
+            id="owner"
+            v-model="v$.owner_id.$model"
+            class="ui-select"
+            :class="{ 'ui-select-invalid': v$.owner_id.$invalid && submitted }"
+          >
+            <option value="" disabled>Select owner</option>
+            <option v-for="user in allUsers" :key="user.id" :value="user.id">{{ user.display }}</option>
+          </select>
+          <span v-if="v$.owner_id.$error && submitted">
+            <span v-for="(error, index) of v$.owner_id.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "Owner") }}</small>
             </span>
             <br />
           </span>
           <span v-else>
             <small
-              v-if="(v$.owner.$invalid && submitted) || v$.owner.$pending.$response"
+              v-if="(v$.owner_id.$invalid && submitted) || v$.owner_id.$pending.$response"
               class="p-error"
-              >{{ v$.owner.required.$message.replace("Value", "Owner") }}</small
+              >{{ v$.owner_id.required.$message.replace("Value", "Owner") }}</small
             >
           </span>
           <br />
-          <span class="p-float-label">
-            <InputText
-              id="id"
-              type="text"
-              v-model="v$.id.$model"
-              :class="{
-                'p-invalid': v$.id.$invalid && submitted,
-              }"
-            />
-            <label for="id" :class="{ 'p-error': v$.id.$invalid && submitted }"
-              >Peer ID</label
-            >
-          </span>
+          <label class="field-label" for="id">Peer ID</label>
+          <ShadInput
+            id="id"
+            type="text"
+            v-model="v$.id.$model"
+            :aria-invalid="v$.id.$invalid && submitted"
+          />
           <span v-if="v$.id.$error && submitted">
             <span v-for="(error, index) of v$.id.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "Peer ID") }}</small>
@@ -102,52 +72,37 @@
             >
           </span>
           <br />
-          <span>
-            <Checkbox
-              id="ingress"
-              inputId="ingress"
-              v-model="ingress"
-              :binary="true"
-            />
-            <label for="ingress"
-              >&nbsp;&nbsp;Receive DMR traffic from this peer</label
-            >
-          </span>
-          <br />
-          <br />
-          <span>
-            <Checkbox
-              id="egress"
-              inputId="egress"
-              v-model="egress"
-              :binary="true"
-            />
-            <label for="egress"
-              >&nbsp;&nbsp;Transmit DMR traffic to this peer</label
-            >
-          </span>
-        </template>
-        <template #footer>
-          <div class="card-footer">
-            <PVButton
-              class="p-button-raised p-button-rounded"
-              icon="pi pi-save"
-              label="Save"
-              type="submit"
-            />
+          <div class="checkbox-row">
+            <input id="ingress" type="checkbox" v-model="ingress" />
+            <label for="ingress">Receive DMR traffic from this peer</label>
           </div>
-        </template>
+          <br />
+          <br />
+          <div class="checkbox-row">
+            <input id="egress" type="checkbox" v-model="egress" />
+            <label for="egress">Transmit DMR traffic to this peer</label>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <div class="card-footer">
+            <ShadButton type="submit">Save</ShadButton>
+          </div>
+        </CardFooter>
       </Card>
     </form>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import Checkbox from 'primevue/checkbox';
-import Button from 'primevue/button';
-import Dropdown from 'primevue/dropdown';
-import InputText from 'primevue/inputtext';
+<script lang="ts">
+import { Button as ShadButton } from '@/components/ui/button';
+import { Input as ShadInput } from '@/components/ui/input';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';
@@ -155,11 +110,13 @@ import { required, numeric } from '@vuelidate/validators';
 
 export default {
   components: {
+    ShadButton,
     Card,
-    Checkbox,
-    PVButton: Button,
-    PVDropdown: Dropdown,
-    InputText,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   head: {
     title: 'New OpenBridge Peer',
@@ -176,8 +133,8 @@ export default {
       egress: false,
       submitted: false,
       hostname: window.location.hostname,
-      allUsers: [],
-      owner: null,
+      allUsers: [] as Array<{ id: number; callsign: string; display?: string }>,
+      owner_id: '',
     };
   },
   validations() {
@@ -186,8 +143,9 @@ export default {
         required,
         numeric,
       },
-      owner: {
+      owner_id: {
         required,
+        numeric,
       },
     };
   },
@@ -198,11 +156,11 @@ export default {
           this.allUsers = res.data.users;
           let parrotIndex = -1;
           for (let i = 0; i < this.allUsers.length; i++) {
-            this.allUsers[
-              i
-            ].display = `${this.allUsers[i].id} - ${this.allUsers[i].callsign}`;
+            const user = this.allUsers[i];
+            if (!user) continue;
+            user.display = `${user.id} - ${user.callsign}`;
             // Remove user with id 9990 (parrot)
-            if (this.allUsers[i].id === 9990) {
+            if (user.id === 9990) {
               parrotIndex = i;
             }
           }
@@ -214,7 +172,7 @@ export default {
           console.error(err);
         });
     },
-    handlePeer(isFormValid) {
+    handlePeer(isFormValid: boolean) {
       this.submitted = true;
       if (!isFormValid) {
         return;
@@ -226,7 +184,7 @@ export default {
       }
       API.post('/peers', {
         id: numericID,
-        owner: this.owner.id,
+        owner: parseInt(this.owner_id),
         ingress: this.ingress,
         egress: this.egress,
       })
@@ -239,16 +197,13 @@ export default {
               life: 3000,
             });
           } else {
-            this.$confirm.require({
-              message: res.data.password,
-              header: 'Peer Created',
-              acceptClass: 'p-button-success',
-              rejectClass: 'remove-reject-button',
-              acceptLabel: 'OK',
-              accept: () => {
-                this.$router.push('/admin/peers');
-              },
-            });
+            window.alert(
+              'Peer Created\n\n'
+              + 'You will need to use this password configuration to connect to the network. '
+              + 'Save this now, as you will not be able to retrieve it again.\n\n'
+              + `Peer password: ${res.data.password}`,
+            );
+            this.$router.push('/admin/peers');
           }
         })
         .catch((err) => {
@@ -274,11 +229,33 @@ export default {
 };
 </script>
 
-<style>
-.remove-reject-button,
-.p-dialog-header-close {
-  display: none !important;
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.ui-select-invalid {
+  border-color: var(--primary);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>
-
-<style scoped></style>

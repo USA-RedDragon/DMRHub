@@ -21,7 +21,6 @@
 
 <template>
   <div>
-    <PVToast />
     <UserRegistrationCard
       title="Create Initial Admin User"
       @register="handleRegister"
@@ -29,7 +28,7 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import UserRegistrationCard from '@/components/UserRegistrationCard.vue';
 import API from '@/services/API';
 
@@ -46,8 +45,8 @@ export default {
     return {};
   },
   methods: {
-    handleRegister(data) {
-      API.post('/users', data, { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
+    handleRegister(data: Record<string, unknown>) {
+      API.post('/users', data, { headers: { 'X-SetupWizard-Token': String(this.$route.query.token ?? '') } })
         .then((res) => {
           this.$toast.add({
             severity: 'success',
@@ -55,7 +54,7 @@ export default {
             detail: res.data.message,
             life: 3000,
           });
-          API.post('/setupwizard/complete', {}, { headers: { 'X-SetupWizard-Token': this.$route.query.token } })
+          API.post('/setupwizard/complete', {}, { headers: { 'X-SetupWizard-Token': String(this.$route.query.token ?? '') } })
             .then(() => {
               this.$toast.add({
                 severity: 'success',

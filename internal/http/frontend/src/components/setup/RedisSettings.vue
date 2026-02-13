@@ -22,73 +22,76 @@
 <template>
   <div>
     <Card>
-      <template #title>Redis Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>Redis Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>Redis should be used in cases where DMRHub needs to be scaled horizontally.
           Without Redis, DMRHub can only run on a single instance.</p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="enabled"
-            inputId="enabled"
+            type="checkbox"
             v-model="enabled"
-            :binary="true"
           />
-          <label for="enabled">&nbsp;&nbsp;Enabled</label>
-        </span>
+          <label for="enabled">Enabled</label>
+        </div>
         <br v-if="enabled" />
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText id="host" type="text" v-model="host" :class="{ 'p-invalid': (errors && errors.host) || false }" />
-          <label for="host">Host</label>
-        </span>
+        <label class="field-label" for="host" v-if="enabled">Host</label>
+        <ShadInput id="host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">
           The hostname or IP address of the Redis server to connect to.
         </p>
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p v-if="enabled">
           The port number of the Redis server to connect to.
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="password"
-            type="password"
-            v-model="password"
-            :class="{ 'p-invalid': (errors && errors.password) || false }"
-          />
-          <label for="password">Password</label>
-        </span>
+        <label class="field-label" for="password" v-if="enabled">Password</label>
+        <ShadInput
+          id="password"
+          type="password"
+          v-model="password"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.password) || false"
+        />
         <p v-if="enabled">
           The password to use when connecting to the Redis server.
         </p>
         <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import Checkbox from 'primevue/checkbox';
-import InputText from 'primevue/inputtext';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    Checkbox,
-    InputText,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -106,7 +109,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.enabled) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'enabled': value,
@@ -117,7 +120,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.host) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'host': value,
@@ -128,7 +131,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.port) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -139,7 +142,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.password) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'password': value,
@@ -153,3 +156,16 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+</style>

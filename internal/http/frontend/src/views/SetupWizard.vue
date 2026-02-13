@@ -21,39 +21,36 @@
 
 <template>
   <div>
-    <PVToast />
+    <h1>Setup</h1>
     <form @submit.prevent="submit()">
-      <Card>
-        <template #title>Setup</template>
-        <template #content>
-          <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
-          <br />
-          <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
-          <br />
-          <HTTPSettings v-model="config.http" :errors="errors.http" />
-          <br />
-          <DatabaseSettings v-model="config.database" :errors="errors.database" />
-          <br />
-          <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
-          <br />
-          <RedisSettings v-model="config.redis" :errors="errors.redis" />
-          <br />
-          <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
-          <br />
-          <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
-        </template>
-        <template #footer>
-          <div class="card-footer">
-            <PVButton class="p-button-raised p-button-rounded" icon="pi pi-check" label="&nbsp;Save" type="submit" />
-          </div>
-        </template>
-      </Card>
+      <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
+      <br />
+      <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
+      <br />
+      <HTTPSettings v-model="config.http" :errors="errors.http" />
+      <br />
+      <DatabaseSettings v-model="config.database" :errors="errors.database" />
+      <br />
+      <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
+      <br />
+      <RedisSettings v-model="config.redis" :errors="errors.redis" />
+      <br />
+      <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
+      <br />
+      <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
+      <div class="card-footer">
+        <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
+      </div>
     </form>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
+<script lang="ts">
+import type { AxiosResponse } from 'axios';
+import { defineComponent } from 'vue';
+
+import { Button as ShadButton } from '@/components/ui/button';
+
 import GeneralSettings from '@/components/setup/GeneralSettings.vue';
 import RedisSettings from '@/components/setup/RedisSettings.vue';
 import DatabaseSettings from '@/components/setup/DatabaseSettings.vue';
@@ -63,16 +60,69 @@ import SMTPSettings from '@/components/setup/SMTPSettings.vue';
 import MetricsSettings from '@/components/setup/MetricsSettings.vue';
 import PProfSettings from '@/components/setup/PProfSettings.vue';
 
-import Toast from 'primevue/toast';
-import Button from 'primevue/button';
-
 import API from '@/services/API';
 
-export default {
+type SetupSection = Record<string, unknown>;
+
+type SetupConfig = {
+  dmr: SetupSection;
+  http: SetupSection;
+  database: SetupSection;
+  smtp: SetupSection;
+  redis: SetupSection;
+  metrics: SetupSection;
+  pprof: SetupSection;
+  [key: string]: unknown;
+};
+
+type SetupErrors = {
+  dmr: SetupSection;
+  http: SetupSection;
+  database: SetupSection;
+  smtp: SetupSection;
+  redis: SetupSection;
+  metrics: SetupSection;
+  pprof: SetupSection;
+  [key: string]: unknown;
+};
+
+type SecretStatus = {
+  secretSet: boolean;
+  passwordSaltSet: boolean;
+  smtpPasswordSet: boolean;
+};
+
+const createInitialConfig = (): SetupConfig => ({
+  dmr: {},
+  http: {},
+  database: {},
+  smtp: {},
+  redis: {},
+  metrics: {},
+  pprof: {},
+});
+
+const createInitialErrors = (): SetupErrors => ({
+  dmr: {},
+  http: {},
+  database: {},
+  smtp: {},
+  redis: {},
+  metrics: {},
+  pprof: {},
+});
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+  if (typeof value === 'object' && value !== null) {
+    return value as Record<string, unknown>;
+  }
+
+  return undefined;
+};
+
+export default defineComponent({
   components: {
-    Card,
-    PVToast: Toast,
-    PVButton: Button,
+    ShadButton,
     DatabaseSettings,
     HTTPSettings,
     DMRSettings,
@@ -94,13 +144,13 @@ export default {
   unmounted() { },
   data: function () {
     return {
-      config: {},
-      errors: {},
+      config: createInitialConfig() as SetupConfig,
+      errors: createInitialErrors() as SetupErrors,
       secretStatus: {
         secretSet: false,
         passwordSaltSet: false,
         smtpPasswordSet: false,
-      },
+      } as SecretStatus,
     };
   },
   computed: {
@@ -109,27 +159,36 @@ export default {
     },
   },
   methods: {
-    setupWizardHeaders() {
-      if (this.$route.query.token) {
-        return { 'X-SetupWizard-Token': this.$route.query.token };
+    setupWizardHeaders(): Record<string, string> {
+      const token = this.$route.query.token;
+      if (typeof token === 'string' && token.length > 0) {
+        return { 'X-SetupWizard-Token': token };
       }
+
+      if (Array.isArray(token) && token.length > 0 && token[0]) {
+        return { 'X-SetupWizard-Token': token[0] };
+      }
+
       return {};
     },
     getConfig() {
       API.get('/config', { headers: this.setupWizardHeaders() })
-        .then((response) => {
+        .then((response: AxiosResponse) => {
           const payload = response.data && response.data.config ? response.data.config : response.data;
           this.secretStatus = response.data && response.data.secrets ? response.data.secrets : this.secretStatus;
           if (payload && payload.secrets) {
             delete payload.secrets;
           }
-          this.config = payload || {};
+          this.config = {
+            ...createInitialConfig(),
+            ...(asRecord(payload) || {}),
+          };
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.log(error);
         });
     },
-    buildConfigPayload() {
+    buildConfigPayload(): Record<string, unknown> {
       const payload = JSON.parse(JSON.stringify(this.config || {}));
       if (payload.secret === '') {
         delete payload.secret;
@@ -137,25 +196,28 @@ export default {
       if (payload['password-salt'] === '') {
         delete payload['password-salt'];
       }
-      if (payload.smtp && payload.smtp.password === '') {
-        delete payload.smtp.password;
+      const smtp = asRecord(payload.smtp);
+      if (smtp && smtp.password === '') {
+        delete smtp.password;
       }
-      if (payload.database && payload.database.password === '') {
-        delete payload.database.password;
+      const database = asRecord(payload.database);
+      if (database && database.password === '') {
+        delete database.password;
       }
-      if (payload.redis && payload.redis.password === '') {
-        delete payload.redis.password;
+      const redis = asRecord(payload.redis);
+      if (redis && redis.password === '') {
+        delete redis.password;
       }
       return payload;
     },
-    async checkConfig(config, showToast) {
+    async checkConfig(config: Record<string, unknown>, showToast: boolean): Promise<boolean> {
       const response = await API.post(
         '/config/validate',
         config,
         { headers: this.setupWizardHeaders() },
       );
       if (response.data.valid) {
-        this.errors = {};
+        this.errors = createInitialErrors();
         return true;
       } else {
         this.errors = response.data.errors;
@@ -185,11 +247,17 @@ export default {
           life: 3000,
         });
         if (!this.isAdminSetup) {
+          const queryToken = this.$route.query.token;
           setTimeout(() => {
-            this.$router.push({ path: '/setup/user', query: { token: this.$route.query.token } });
+            this.$router.push({
+              path: '/setup/user',
+              query: {
+                token: typeof queryToken === 'string' ? queryToken : undefined,
+              },
+            });
           }, 500);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.log(error);
         this.$toast.add({
           severity: 'error',
@@ -200,7 +268,7 @@ export default {
       }
     },
   },
-};
+});
 </script>
 
 <style scoped></style>

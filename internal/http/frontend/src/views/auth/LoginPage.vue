@@ -21,51 +21,36 @@
 
 <template>
   <div>
-    <PVToast />
     <form @submit.prevent="handleLogin(!v$.$invalid)">
       <Card>
-        <template #title>Login</template>
-        <template #content>
-          <span class="p-float-label">
-            <InputText
-              id="username"
-              type="text"
-              v-model="v$.username.$model"
-              :class="{
-                'p-invalid': v$.username.$invalid && submitted,
-              }"
-            />
-            <label
-              for="username"
-              :class="{ 'p-error': v$.username.$invalid && submitted }"
-              >Username</label
-            >
-          </span>
+        <CardHeader>
+          <CardTitle>Login</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <label class="field-label" for="username">Username</label>
+          <ShadInput
+            id="username"
+            type="text"
+            v-model="v$.username.$model"
+            :aria-invalid="v$.username.$invalid && submitted"
+          />
           <span v-if="v$.username.$error && submitted">
             <span v-for="(error, index) of v$.username.$errors" :key="index">
-              <small class="p-error">{{ error.$message.replace("Value", "Username") }}</small>
+              <small class="field-error">{{ error.$message.replace("Value", "Username") }}</small>
             </span>
             <br />
           </span>
           <br />
-          <span class="p-float-label">
-            <InputText
-              id="password"
-              type="password"
-              v-model="v$.password.$model"
-              :class="{
-                'p-invalid': v$.password.$invalid && submitted,
-              }"
-            />
-            <label
-              for="password"
-              :class="{ 'p-error': v$.password.$invalid && submitted }"
-              >Password</label
-            >
-          </span>
+          <label class="field-label" for="password">Password</label>
+          <ShadInput
+            id="password"
+            type="password"
+            v-model="v$.password.$model"
+            :aria-invalid="v$.password.$invalid && submitted"
+          />
           <span v-if="v$.password.$error && submitted">
             <span v-for="(error, index) of v$.password.$errors" :key="index">
-              <small class="p-error">{{ error.$message.replace("Value", "Password") }}</small>
+              <small class="field-error">{{ error.$message.replace("Value", "Password") }}</small>
             </span>
             <br />
           </span>
@@ -74,27 +59,28 @@
             If you don't have an account,
             <router-link to="/register">Register here</router-link>
           </p>
-        </template>
-        <template #footer>
+        </CardContent>
+        <CardFooter>
           <div class="card-footer">
-            <PVButton
-              class="p-button-raised p-button-rounded"
-              icon="pi pi-lock"
-              label="Login"
-              type="submit"
-            />
+            <ShadButton type="submit" variant="outline" size="sm">Login</ShadButton>
           </div>
-        </template>
+        </CardFooter>
       </Card>
     </form>
   </div>
 </template>
 
-<script>
-import InputText from 'primevue/inputtext';
-import Button from 'primevue/button';
-import Card from 'primevue/card';
+<script lang="ts">
 import API from '@/services/API';
+import { Button as ShadButton } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 import { useVuelidate } from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
@@ -104,9 +90,13 @@ import { useUserStore } from '@/store';
 
 export default {
   components: {
-    InputText,
-    PVButton: Button,
+    ShadButton,
     Card,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   head: {
     title: 'Login',
@@ -132,7 +122,7 @@ export default {
     };
   },
   methods: {
-    handleLogin(isFormValid) {
+    handleLogin(isFormValid: boolean) {
       this.submitted = true;
       if (!isFormValid) {
         return;
@@ -142,7 +132,7 @@ export default {
         username: this.username.trim(),
         password: this.password.trim(),
       })
-        .then((_res) => {
+        .then(() => {
           API.get('/users/me').then((res) => {
             this.userStore.id = res.data.id;
             this.userStore.callsign = res.data.callsign;
@@ -180,4 +170,13 @@ export default {
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.field-error {
+  color: var(--primary);
+}
+</style>

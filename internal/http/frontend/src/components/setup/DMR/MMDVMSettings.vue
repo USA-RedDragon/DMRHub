@@ -22,47 +22,52 @@
 <template>
   <div>
     <Card>
-      <template #title>MMDVM Protocol Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>MMDVM Protocol Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>DMRHub can run an MMDVM server to allow connections from DMR radios and
           software such as DMRGateway.</p>
         <br />
-        <span class="p-float-label">
-          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
-          <label for="bind">Bind</label>
-        </span>
+        <label class="field-label" for="bind">Bind</label>
+        <ShadInput id="bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <br />
-        <span class="p-float-label">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p>
           The port number to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    InputText,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -79,7 +84,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
@@ -90,7 +95,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['port']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -104,3 +109,10 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+</style>

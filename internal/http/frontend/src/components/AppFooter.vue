@@ -29,29 +29,27 @@
     </p>
     <p>Copyright &copy; 2023-{{ year }} Jacob McSwain</p>
     <p id="version">Version {{ version }}</p>
+    <ModeToggle compact />
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
 import API from '@/services/API';
-export default {
-  data: function() {
-    return {
-      year: new Date().getFullYear(),
-      version: '',
-    };
-  },
-  // Get version from API onMounted
-  mounted() {
-    API.get('/version')
-      .then((response) => {
-        this.version = response.data;
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  },
-};
+import ModeToggle from './ModeToggle.vue';
+
+const year = new Date().getFullYear();
+const version = ref('');
+
+onMounted(() => {
+  API.get('/version')
+    .then((response) => {
+      version.value = response.data;
+    })
+    .catch((error) => {
+      console.log(error);
+    });
+});
 </script>
 
 <style scoped>

@@ -22,58 +22,53 @@
 <template>
   <div>
     <Card>
-      <template #title>HTTP Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>HTTP Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>These settings control the main HTTP server that serves the web interface and API.
           A canonical host is required by DMRHub to allow it to generate absolute URLs.</p>
         <br />
-        <span class="p-float-label">
-          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
-          <label for="bind">Bind</label>
-        </span>
+        <label class="field-label" for="bind">Bind</label>
+        <ShadInput id="bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the HTTP server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p>
           The port number to bind the HTTP server to
         </p>
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
-        <span class="p-float-label">
-          <TextArea
-            rows="5"
-            id="trustedProxies"
-            v-model="trustedProxies"
-            :class="{ 'p-invalid': (errors && errors['trusted-proxies']) || false }"
-          />
-          <label for="trustedProxies">Trusted Proxies</label>
-        </span>
+        <label class="field-label" for="trustedProxies">Trusted Proxies</label>
+        <textarea
+          rows="5"
+          id="trustedProxies"
+          v-model="trustedProxies"
+          class="ui-textarea"
+          :class="{ 'ui-textarea-invalid': (errors && errors['trusted-proxies']) || false }"
+        />
         <p>
           A list of trusted proxy IP addresses. If set, the HTTP server will only accept
           requests from these IP addresses. One per line.
         </p>
         <span v-if="errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="canonicalHost"
-            type="text"
-            v-model="canonicalHost"
-            :class="{ 'p-invalid': (errors && errors['canonical-host']) || false }"
-          />
-          <label for="canonicalHost">Canonical Host</label>
-        </span>
+        <label class="field-label" for="canonicalHost">Canonical Host</label>
+        <ShadInput
+          id="canonicalHost"
+          type="text"
+          v-model="canonicalHost"
+          :aria-invalid="(errors && errors['canonical-host']) || false"
+        />
         <p>
           The canonical host name for the DMRHub instance. This is used to generate absolute URLs.
         </p>
@@ -82,26 +77,32 @@
         <RobotsTXTSettings v-model="robotsTXT" :errors="errors['robots-txt']" />
         <br />
         <CORSSettings v-model="cors" :errors="errors.cors" />
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import RobotsTXTSettings from './HTTP/RobotsTXTSettings.vue';
 import CORSSettings from './HTTP/CORSSettings.vue';
 
-import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
-import TextArea from 'primevue/textarea';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     RobotsTXTSettings,
     CORSSettings,
     Card,
-    InputText,
-    TextArea,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -120,7 +121,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
@@ -131,7 +132,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['port']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -142,7 +143,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['robots-txt']) || {};
       },
-      set(value) {
+      set(value: Record<string, unknown>) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'robots-txt': value,
@@ -153,7 +154,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['cors']) || {};
       },
-      set(value) {
+      set(value: Record<string, unknown>) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'cors': value,
@@ -162,12 +163,10 @@ export default {
     },
     trustedProxies: {
       get() {
-        return (
-          this.modelValue &&
-          this.modelValue['trusted-proxies'] &&
-          this.modelValue['trusted-proxies'].join('\n')) || [];
+        const trustedProxies = this.modelValue && this.modelValue['trusted-proxies'];
+        return Array.isArray(trustedProxies) ? trustedProxies.join('\n') : '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'trusted-proxies': value.split('\n'),
@@ -178,7 +177,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['canonical-host']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'canonical-host': value,
@@ -192,3 +191,23 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-textarea-invalid {
+  border-color: var(--primary);
+}
+</style>

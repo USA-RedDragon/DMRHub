@@ -20,86 +20,63 @@
 -->
 
 <template>
-  <AppHeader />
-  <RouterView />
-  <AppFooter />
-  <ThemeConfig />
+  <div>
+    <AppHeader />
+    <RouterView />
+    <AppFooter />
+    <Toaster rich-colors close-button />
+  </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
-import AppFooter from './components/AppFooter.vue';
-import AppHeader from './components/AppHeader.vue';
-import ThemeConfig from './components/ThemeConfig.vue';
+import { useHead } from '@unhead/vue';
+import { Toaster } from 'vue-sonner';
+import AppFooter from '@/components/AppFooter.vue';
+import AppHeader from '@/components/AppHeader.vue';
 import API from '@/services/API';
+import { useUserStore } from '@/store';
 
-import { mapStores } from 'pinia';
-import { useUserStore, useSettingsStore } from '@/store';
+const userStore = useUserStore();
+let refresh = 0;
 
-export default {
-  name: 'App',
-  components: {
-    RouterView,
-    AppHeader,
-    AppFooter,
-    ThemeConfig,
-  },
-  head: {
-    titleTemplate: '%s | ' + (localStorage.getItem('title') || 'DMRHub'),
-    meta: [
-      {
-        name: 'description',
-        content: 'DMRHub is a DMR network server like TGIF or BrandMeister ran in a single binary.',
-      },
-    ],
-  },
-  data() {
-    return {
-      // localStorage in Firefox is string-only
-      dark: localStorage.dark === 'true' ? true : false,
-      refresh: null,
-      socket: null,
-    };
-  },
-  watch: {
-    dark(_newValue) {
-      // localStorage in Firefox is string-only
-      localStorage.dark = this.dark ? 'true' : 'false';
+useHead({
+  titleTemplate: `%s | ${localStorage.getItem('title') || 'DMRHub'}`,
+  meta: [
+    {
+      name: 'description',
+      content: 'DMRHub is a DMR network server like TGIF or BrandMeister ran in a single binary.',
     },
-  },
-  created() {},
-  mounted() {
-    this.fetchData();
-    this.refresh = setInterval(
-      this.fetchData,
-      5000,
-    );
-  },
-  unmounted() {
-    clearInterval(this.refresh);
-  },
-  methods: {
-    fetchData() {
-      // GET /users/me
-      API.get('/users/me')
-        .then((res) => {
-          this.userStore.id = res.data.id;
-          this.userStore.callsign = res.data.callsign;
-          this.userStore.username = res.data.username;
-          this.userStore.admin = res.data.admin;
-          this.userStore.superAdmin = res.data.superAdmin;
-          this.userStore.created_at = res.data.created_at;
-          this.userStore.loggedIn = true;
-        })
-        .catch((_err) => {
-          this.userStore.loggedIn = false;
-        });
-    },
-  },
-  computed: {
-    ...mapStores(useUserStore, useSettingsStore),
-  },
+  ],
+});
+
+const fetchData = () => {
+  API.get('/users/me')
+    .then((res) => {
+      userStore.id = res.data.id;
+      userStore.callsign = res.data.callsign;
+      userStore.username = res.data.username;
+      userStore.admin = res.data.admin;
+      userStore.superAdmin = res.data.superAdmin;
+      userStore.created_at = res.data.created_at;
+      userStore.loggedIn = true;
+    })
+    .catch(() => {
+      userStore.loggedIn = false;
+    });
 };
+
+onMounted(() => {
+  fetchData();
+  refresh = window.setInterval(fetchData, 5000);
+});
+
+onUnmounted(() => {
+  if (refresh !== 0) {
+    clearInterval(refresh);
+  }
+});
 </script>
 
 <style scoped></style>

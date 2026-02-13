@@ -28,100 +28,76 @@
       <nav>
         <router-link to="/">Home</router-link>
         <router-link to="/lastheard">Last Heard</router-link>
-        <router-link v-if="this.userStore.loggedIn" to="/repeaters">Repeaters</router-link>
-        <router-link v-if="this.userStore.loggedIn" to="#" custom>
-          <a
-            href="#"
-            @click="toggleTalkgroupsMenu"
-            :class="{
-              adminNavLink: true,
-              'router-link-active': this.$route.path.startsWith('/talkgroups'),
-            }"
-            >Talkgroups</a
-          >
-        </router-link>
-        <PVMenu
-          v-if="this.userStore.loggedIn"
-          ref="talkgroupsMenu"
-          :popup="true"
-          :model="[
-            {
-              label: '&nbsp;&nbsp;List',
-              to: '/talkgroups',
-            },
-            {
-              label: '&nbsp;&nbsp;Owned',
-              to: '/talkgroups/owned',
-            },
-          ]"
+        <router-link v-if="userStore.loggedIn" to="/repeaters">Repeaters</router-link>
+        <div
+          v-if="userStore.loggedIn"
+          class="nav-dropdown"
+          :class="{
+            activeDropdown: route.path.startsWith('/talkgroups'),
+          }"
+          @mouseenter="setMenuOpen('talkgroups', true)"
+          @mouseleave="scheduleCloseMenus"
         >
-          <template #item="{ item }">
-            <router-link
-              :to="item.to"
-              custom
-              v-slot="{ href, navigate, isActive, isExactActive }"
-            >
-              <a
-                :href="href"
-                @click="navigate"
-                :class="{
-                  adminNavLink: true,
-                  'router-link-active': isActive,
-                  'router-link-active-exact': isExactActive,
-                }"
-              >
-                <div>{{ item.label }}</div>
-              </a>
-            </router-link>
-          </template>
-        </PVMenu>
+          <DropdownMenuRoot
+            :open="openTalkgroupsMenu"
+            :modal="false"
+            @update:open="setMenuOpen('talkgroups', $event)"
+          >
+            <DropdownMenuTrigger as-child>
+              <button class="nav-trigger" type="button">Talkgroups</button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent class="dropdown-content" :side-offset="0" align="start">
+              <DropdownMenuItem as-child>
+                <router-link to="/talkgroups" @click="closeMenus">List</router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link to="/talkgroups/owned" @click="closeMenus">Owned</router-link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuRoot>
+        </div>
 
-        <router-link v-if="this.openBridgeFeature" to="/peers">OpenBridge Peers</router-link>
-        <router-link
-          v-if="this.userStore.loggedIn && this.userStore.admin"
-          to="#"
-          custom
+        <router-link v-if="openBridgeFeature" to="/peers">OpenBridge Peers</router-link>
+        <div
+          v-if="userStore.loggedIn && userStore.admin"
+          class="nav-dropdown"
+          :class="{
+            activeDropdown: route.path.startsWith('/admin'),
+          }"
+          @mouseenter="setMenuOpen('admin', true)"
+          @mouseleave="scheduleCloseMenus"
         >
-          <a
-            href="#"
-            @click="toggleAdminMenu"
-            :class="{
-              adminNavLink: true,
-              'router-link-active': this.$route.path.startsWith('/admin'),
-            }"
-            >Admin</a
+          <DropdownMenuRoot
+            :open="openAdminMenu"
+            :modal="false"
+            @update:open="setMenuOpen('admin', $event)"
           >
-        </router-link>
-        <PVMenu
-          v-if="this.userStore.loggedIn && this.userStore.admin"
-          ref="adminMenu"
-          :popup="true"
-          :model="this.adminMenu"
-        >
-          <template #item="{ item }">
-            <router-link
-              :to="item.to"
-              custom
-              v-slot="{ href, navigate, isActive, isExactActive }"
-            >
-              <a
-                :href="href"
-                @click="navigate"
-                :class="{
-                  adminNavLink: true,
-                  'router-link-active': isActive,
-                  'router-link-active-exact': isExactActive,
-                }"
-              >
-                <div>{{ item.label }}</div>
-              </a>
-            </router-link>
-          </template>
-        </PVMenu>
-        <router-link v-if="!this.userStore.loggedIn" to="/register"
+            <DropdownMenuTrigger as-child>
+              <button class="nav-trigger" type="button">Admin</button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent class="dropdown-content" :side-offset="0" align="start">
+              <DropdownMenuItem as-child>
+                <router-link to="/admin/talkgroups" @click="closeMenus">Talkgroups</router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link to="/admin/repeaters" @click="closeMenus">Repeaters</router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link to="/admin/users" @click="closeMenus">Users</router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link to="/admin/users/approval" @click="closeMenus">User Approvals</router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link to="/admin/setup" @click="closeMenus">Setup</router-link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuRoot>
+        </div>
+        <router-link v-if="!userStore.loggedIn" to="/register"
           >Register</router-link
         >
-        <router-link v-if="!this.userStore.loggedIn" to="/login"
+        <router-link v-if="!userStore.loggedIn" to="/login"
           >Login</router-link
         >
         <a v-else href="#" @click="logout()">Logout</a>
@@ -130,113 +106,117 @@
   </header>
 </template>
 
-<script>
-import Menu from 'primevue/menu';
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui';
 import API from '@/services/API';
-
-import { mapStores } from 'pinia';
 import { useUserStore } from '@/store';
 
-export default {
-  components: {
-    PVMenu: Menu,
-  },
-  data: function() {
-    return {
-      title: localStorage.getItem('title') || 'DMRHub',
-      openBridgeFeature: false,
-      adminMenu: [
-        {
-          label: '\xa0\xa0Talkgroups',
-          to: '/admin/talkgroups',
-        },
-        {
-          label: '\xa0\xa0Repeaters',
-          to: '/admin/repeaters',
-        },
-        {
-          label: '\xa0\xa0Users',
-          to: '/admin/users',
-        },
-        {
-          label: '\xa0\xa0User Approvals',
-          to: '/admin/users/approval',
-        },
-        {
-          label: '\xa0\xa0Setup',
-          to: '/admin/setup',
-        },
-      ],
-    };
-  },
-  created() {
-    this.getTitle();
-    // this.userHasOpenBridgePeers();
-  },
-  mounted() {},
-  methods: {
-    setTitle(title) {
-      localStorage.setItem('title', title);
-      this.title = title;
-    },
-    getTitle() {
-      API.get('/network/name')
-        .then((response) => {
-          this.setTitle(response.data);
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-    },
-    userHasOpenBridgePeers() {
-      if (!this.openBridgeFeature) {
-        this.userStore.hasOpenBridgePeers = false;
-        return;
-      }
-      API.get('/peers/my')
-        .then((response) => {
-          if ('total' in response.data && response.data.total > 0) {
-            this.userStore.hasOpenBridgePeers = true;
-          } else {
-            this.userStore.hasOpenBridgePeers = false;
-          }
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-    },
-    logout() {
-      API.get('/auth/logout')
-        .then((_res) => {
-          this.userStore.loggedIn = false;
-          this.$router.push('/login');
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    },
-    toggleAdminMenu(event) {
-      this.$refs.adminMenu.toggle(event);
-    },
-    toggleTalkgroupsMenu(event) {
-      this.$refs.talkgroupsMenu.toggle(event);
-    },
-  },
-  computed: {
-    ...mapStores(useUserStore),
-  },
+const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
+
+const title = ref(localStorage.getItem('title') || 'DMRHub');
+const openBridgeFeature = ref(false);
+const openTalkgroupsMenu = ref(false);
+const openAdminMenu = ref(false);
+let closeMenuTimer = 0;
+
+const setTitle = (newTitle: string) => {
+  localStorage.setItem('title', newTitle);
+  title.value = newTitle;
 };
+
+const getTitle = () => {
+  API.get('/network/name')
+    .then((response) => {
+      setTitle(response.data);
+    })
+    .catch((error) => {
+      console.log(error);
+    });
+};
+
+const clearCloseMenuTimer = () => {
+  if (closeMenuTimer !== 0) {
+    clearTimeout(closeMenuTimer);
+    closeMenuTimer = 0;
+  }
+};
+
+const closeMenus = () => {
+  clearCloseMenuTimer();
+  openTalkgroupsMenu.value = false;
+  openAdminMenu.value = false;
+};
+
+const setMenuOpen = (menu: 'talkgroups' | 'admin', isOpen: boolean) => {
+  clearCloseMenuTimer();
+
+  if (menu === 'talkgroups') {
+    openTalkgroupsMenu.value = isOpen;
+    if (isOpen) {
+      openAdminMenu.value = false;
+    }
+  } else {
+    openAdminMenu.value = isOpen;
+    if (isOpen) {
+      openTalkgroupsMenu.value = false;
+    }
+  }
+};
+
+const scheduleCloseMenus = () => {
+  clearCloseMenuTimer();
+  closeMenuTimer = window.setTimeout(() => {
+    closeMenus();
+  }, 150);
+};
+
+const handleOutsideClick = (event: MouseEvent) => {
+  const path = event.composedPath();
+  const clickedInHeader = path.some((node: EventTarget) => {
+    return node instanceof HTMLElement && node.tagName === 'HEADER';
+  });
+
+  if (!clickedInHeader) {
+    closeMenus();
+  }
+};
+
+const logout = () => {
+  API.get('/auth/logout')
+    .then(() => {
+      closeMenus();
+      userStore.loggedIn = false;
+      router.push('/login');
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+};
+
+onMounted(() => {
+  getTitle();
+  document.addEventListener('click', handleOutsideClick);
+});
+
+onUnmounted(() => {
+  clearCloseMenuTimer();
+  document.removeEventListener('click', handleOutsideClick);
+});
 </script>
 
 <style scoped>
 header {
   text-align: center;
   max-height: 100vh;
-}
-
-header a,
-.adminNavLink {
-  text-decoration: none;
 }
 
 header a,
@@ -247,9 +227,25 @@ header a:link,
   color: var(--primary-text-color);
 }
 
+header nav a,
+.adminNavLink {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.25rem;
+  font-weight: 600;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+header nav a:hover,
+.adminNavLink:hover {
+  color: var(--cyan-300) !important;
+  text-decoration-color: currentColor;
+}
+
 header nav .router-link-active,
 .adminNavLink.router-link-active {
   color: var(--cyan-300) !important;
+  text-decoration-color: currentColor;
 }
 
 header nav a:active,
@@ -270,6 +266,10 @@ nav {
   text-align: center;
   margin-top: 0.5rem;
   margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 nav a {
@@ -280,5 +280,54 @@ nav a {
 
 nav a:first-of-type {
   border: 0;
+}
+
+.nav-dropdown {
+  display: inline-block;
+  padding: 0 1rem;
+  border-left: 2px solid #444;
+  position: relative;
+}
+
+.nav-trigger {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  color: var(--primary-text-color);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.25rem;
+  font-weight: 600;
+}
+
+.nav-dropdown:hover .nav-trigger,
+.activeDropdown .nav-trigger {
+  color: var(--cyan-300);
+  text-decoration-color: currentColor;
+}
+
+:deep(.dropdown-content) {
+  min-width: 11rem !important;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  z-index: 10;
+  padding: 0.25rem 0;
+}
+
+:deep(.dropdown-content a) {
+  display: block;
+  border-left: 0;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  text-decoration: none;
+  color: var(--foreground);
+}
+
+:deep(.dropdown-content a:hover) {
+  background: var(--border);
 }
 </style>

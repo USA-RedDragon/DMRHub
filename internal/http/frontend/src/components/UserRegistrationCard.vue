@@ -22,26 +22,20 @@
 <template>
   <form @submit.prevent="handleRegister(!v$.$invalid)">
     <Card>
-      <template #title>{{ title }}</template>
-      <template #content>
-        <span class="p-float-label">
-          <InputText
-            id="dmr_id"
-            type="text"
-            v-model="v$.dmr_id.$model"
-            :class="{
-              'p-invalid': v$.dmr_id.$invalid && submitted,
-            }"
-          />
-          <label
-            for="dmr_id"
-            :class="{ 'p-error': v$.dmr_id.$invalid && submitted }"
-            >DMR ID</label
-          >
-        </span>
+      <CardHeader>
+        <CardTitle>{{ title }}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <label class="field-label" for="dmr_id">DMR ID</label>
+        <ShadInput
+          id="dmr_id"
+          type="text"
+          v-model="v$.dmr_id.$model"
+          :aria-invalid="v$.dmr_id.$invalid && submitted"
+        />
         <span v-if="v$.dmr_id.$error && submitted">
           <span v-for="(error, index) of v$.dmr_id.$errors" :key="index">
-            <small class="p-error">{{ error.$message.replace("Value", "DMR ID") }}</small>
+            <small class="field-error">{{ error.$message.replace("Value", "DMR ID") }}</small>
             <br />
           </span>
         </span>
@@ -51,30 +45,22 @@
               (v$.dmr_id.$invalid && submitted) ||
               v$.dmr_id.$pending.$response
             "
-            class="p-error"
+            class="field-error"
             >{{ v$.dmr_id.required.$message.replace("Value", "DMR ID") }}
             <br />
           </small>
         </span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="username"
-            type="text"
-            v-model="v$.username.$model"
-            :class="{
-              'p-invalid': v$.username.$invalid && submitted,
-            }"
-          />
-          <label
-            for="username"
-            :class="{ 'p-error': v$.username.$invalid && submitted }"
-            >Username</label
-          >
-        </span>
+        <label class="field-label" for="username">Username</label>
+        <ShadInput
+          id="username"
+          type="text"
+          v-model="v$.username.$model"
+          :aria-invalid="v$.username.$invalid && submitted"
+        />
         <span v-if="v$.username.$error && submitted">
           <span v-for="(error, index) of v$.username.$errors" :key="index">
-            <small class="p-error">{{ error.$message.replace("Value", "Username") }}</small>
+            <small class="field-error">{{ error.$message.replace("Value", "Username") }}</small>
             <br />
           </span>
         </span>
@@ -84,28 +70,22 @@
               (v$.username.$invalid && submitted) ||
               v$.username.$pending.$response
             "
-            class="p-error"
+            class="field-error"
             >{{ v$.username.required.$message.replace("Value", "Username") }}
             <br />
           </small>
         </span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="callsign"
-            type="text"
-            v-model="v$.callsign.$model"
-            :class="{ 'p-invalid': v$.callsign.$invalid && submitted }"
-          />
-          <label
-            for="callsign"
-            :class="{ 'p-error': v$.callsign.$invalid && submitted }"
-            >Callsign</label
-          >
-        </span>
+        <label class="field-label" for="callsign">Callsign</label>
+        <ShadInput
+          id="callsign"
+          type="text"
+          v-model="v$.callsign.$model"
+          :aria-invalid="v$.callsign.$invalid && submitted"
+        />
         <span v-if="v$.callsign.$error && submitted">
           <span v-for="(error, index) of v$.callsign.$errors" :key="index">
-            <small class="p-error">{{ error.$message.replace("Value", "Callsign") }}</small>
+            <small class="field-error">{{ error.$message.replace("Value", "Callsign") }}</small>
             <br />
           </span>
         </span>
@@ -115,30 +95,22 @@
               (v$.callsign.$invalid && submitted) ||
               v$.callsign.$pending.$response
             "
-            class="p-error"
+            class="field-error"
             >{{ v$.callsign.required.$message.replace("Value", "Callsign") }}
             <br />
           </small>
         </span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="password"
-            type="password"
-            v-model="v$.password.$model"
-            :class="{
-              'p-invalid': v$.password.$invalid && submitted,
-            }"
-          />
-          <label
-            for="password"
-            :class="{ 'p-error': v$.password.$invalid && submitted }"
-            >Password</label
-          >
-        </span>
+        <label class="field-label" for="password">Password</label>
+        <ShadInput
+          id="password"
+          type="password"
+          v-model="v$.password.$model"
+          :aria-invalid="v$.password.$invalid && submitted"
+        />
         <span v-if="v$.password.$error && submitted">
           <span v-for="(error, index) of v$.password.$errors" :key="index">
-            <small class="p-error">{{ error.$message.replace("Value", "Password") }}</small>
+            <small class="field-error">{{ error.$message.replace("Value", "Password") }}</small>
             <br />
           </span>
         </span>
@@ -148,33 +120,25 @@
               (v$.password.$invalid && submitted) ||
               v$.password.$pending.$response
             "
-            class="p-error"
+            class="field-error"
             >{{ v$.password.required.$message.replace("Value", "Password") }}
             <br />
           </small>
         </span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="confirmPassword"
-            type="password"
-            v-model="v$.confirmPassword.$model"
-            :class="{
-              'p-invalid': v$.confirmPassword.$invalid && submitted,
-            }"
-          />
-          <label
-            for="confirmPassword"
-            :class="{ 'p-error': v$.confirmPassword.$invalid && submitted }"
-            >Confirm Password</label
-          >
-        </span>
+        <label class="field-label" for="confirmPassword">Confirm Password</label>
+        <ShadInput
+          id="confirmPassword"
+          type="password"
+          v-model="v$.confirmPassword.$model"
+          :aria-invalid="v$.confirmPassword.$invalid && submitted"
+        />
         <span v-if="v$.confirmPassword.$error && submitted">
           <span
             v-for="(error, index) of v$.confirmPassword.$errors"
             :key="index"
           >
-            <small class="p-error">{{ error.$message.replace("Value", "Confirm Password") }}</small>
+            <small class="field-error">{{ error.$message.replace("Value", "Confirm Password") }}</small>
             <br />
           </span>
         </span>
@@ -184,39 +148,44 @@
               (v$.confirmPassword.$invalid && submitted) ||
               v$.confirmPassword.$pending.$response
             "
-            class="p-error"
+            class="field-error"
             >{{ v$.confirmPassword.required.$message.replace("Value", "Confirm Password") }}
             <br />
           </small>
         </span>
-      </template>
-      <template #footer>
+      </CardContent>
+      <CardFooter>
         <div class="card-footer">
-          <PVButton
-            class="p-button-raised p-button-rounded"
-            icon="pi pi-user"
-            type="submit"
-            label="Create User"
-          />
+          <ShadButton type="submit" variant="outline" size="sm">Create User</ShadButton>
         </div>
-      </template>
+      </CardFooter>
     </Card>
   </form>
 </template>
 
-<script>
-import InputText from 'primevue/inputtext';
-import Button from 'primevue/button';
-import Card from 'primevue/card';
+<script lang="ts">
+import { Button as ShadButton } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 import { useVuelidate } from '@vuelidate/core';
 import { required, sameAs, numeric } from '@vuelidate/validators';
 
 export default {
   components: {
-    InputText,
-    PVButton: Button,
+    ShadButton,
     Card,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   setup: () => ({ v$: useVuelidate() }),
   props: {
@@ -258,7 +227,7 @@ export default {
     };
   },
   methods: {
-    handleRegister(isFormValid) {
+    handleRegister(isFormValid: boolean) {
       this.submitted = true;
       if (!isFormValid) {
         return;
@@ -295,4 +264,13 @@ export default {
 </script>
 
 <style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.field-error {
+  color: var(--primary);
+}
+
 </style>

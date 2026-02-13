@@ -21,79 +21,31 @@
 
 <template>
   <div>
-    <PVToast />
-    <ConfirmDialog>
-      <template #message="slotProps">
-        <div class="flex p-4" v-if="repeaterType === 'mmdvm'">
-          <p>
-            You will need to use this DMRGateway configuration to connect to the
-            network.
-            <span style="color: red"
-              >Save this now, as you will not be able to retrieve it
-              again.</span
-            >
-            <br /><br />
-          </p>
-          <pre style="background-color: #444; padding: 1em; font-size: 12px">
-[DMR Network 2]
-Name=AREDN
-Enabled=1
-Address={{ this.hostname }}
-Port=62031
-Password="{{ slotProps.message.message }}"
-Id={{ this.radioID }}
-Location=1
-Debug=0
-</pre
-          >
-        </div>
-        <div class="flex p-4" v-else>
-          <p>
-            Your Motorola IPSC repeater has been created.
-            <span style="color: red"
-              >Save this auth key now, as you will not be able to retrieve it
-              again.</span
-            >
-            <br /><br />
-            Configure your Motorola repeater to connect to:<br />
-            <strong>Master IP:</strong> {{ this.hostname }}<br />
-            <strong>Port:</strong> 50000<br />
-            <strong>Auth Key:</strong> {{ slotProps.message.message }}
-          </p>
-        </div>
-      </template>
-    </ConfirmDialog>
     <form @submit.prevent="handleRepeater(!v$.$invalid)">
       <Card>
-        <template #title>New Repeater</template>
-        <template #content>
+        <CardHeader>
+          <CardTitle>New Repeater</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div class="field">
-            <label for="repeaterType">Repeater Type</label>
+            <label class="field-label" for="repeaterType">Repeater Type</label>
             <br />
-            <SelectButton
+            <select
               id="repeaterType"
               v-model="repeaterType"
-              :options="repeaterTypes"
-              optionLabel="label"
-              optionValue="value"
-            />
+              class="ui-select"
+            >
+              <option v-for="type in repeaterTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
+            </select>
           </div>
           <br />
-          <span class="p-float-label">
-            <InputText
-              id="radioID"
-              type="text"
-              v-model="v$.radioID.$model"
-              :class="{
-                'p-invalid': v$.radioID.$invalid && submitted,
-              }"
-            />
-            <label
-              for="radioID"
-              :class="{ 'p-error': v$.radioID.$invalid && submitted }"
-              >DMR Radio ID</label
-            >
-          </span>
+          <label class="field-label" for="radioID">DMR Radio ID</label>
+          <ShadInput
+            id="radioID"
+            type="text"
+            v-model="v$.radioID.$model"
+            :aria-invalid="v$.radioID.$invalid && submitted"
+          />
           <span v-if="v$.radioID.$error && submitted">
             <span v-for="(error, index) of v$.radioID.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "Radio ID") }}</small>
@@ -112,27 +64,27 @@ Debug=0
               }}</small
             >
           </span>
-        </template>
-        <template #footer>
+        </CardContent>
+        <CardFooter>
           <div class="card-footer">
-            <PVButton
-              class="p-button-raised p-button-rounded"
-              icon="pi pi-save"
-              label="Save"
-              type="submit"
-            />
+            <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
           </div>
-        </template>
+        </CardFooter>
       </Card>
     </form>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import SelectButton from 'primevue/selectbutton';
+<script lang="ts">
+import { Button as ShadButton } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';
@@ -140,10 +92,13 @@ import { required, numeric } from '@vuelidate/validators';
 
 export default {
   components: {
+    ShadButton,
     Card,
-    PVButton: Button,
-    InputText,
-    SelectButton,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   head: {
     title: 'New Repeater',
@@ -172,7 +127,7 @@ export default {
     };
   },
   methods: {
-    handleRepeater(isFormValid) {
+    handleRepeater(isFormValid: boolean) {
       this.submitted = true;
       if (!isFormValid) {
         return;
@@ -195,16 +150,32 @@ export default {
               life: 3000,
             });
           } else {
-            this.$confirm.require({
-              message: res.data.password,
-              header: 'Repeater Created',
-              acceptClass: 'p-button-success',
-              rejectClass: 'remove-reject-button',
-              acceptLabel: 'OK',
-              accept: () => {
-                this.$router.push('/repeaters');
-              },
-            });
+            if (this.repeaterType === 'mmdvm') {
+              window.alert(
+                'Repeater Created\n\n'
+                + 'You will need to use this DMRGateway configuration to connect to the network. '
+                + 'Save this now, as you will not be able to retrieve it again.\n\n'
+                + '[DMR Network 2]\n'
+                + 'Name=AREDN\n'
+                + 'Enabled=1\n'
+                + `Address=${this.hostname}\n`
+                + 'Port=62031\n'
+                + `Password="${res.data.password}"\n`
+                + `Id=${this.radioID}\n`
+                + 'Location=1\n'
+                + 'Debug=0',
+              );
+            } else {
+              window.alert(
+                'Peer Created\n\n'
+                + 'Your Motorola IPSC repeater has been created. '
+                + 'Save this auth key now, as you will not be able to retrieve it again.\n\n'
+                + `Master IP: ${this.hostname}\n`
+                + 'Port: 50000\n'
+                + `Auth Key: ${res.data.password}`,
+              );
+            }
+            this.$router.push('/repeaters');
           }
         })
         .catch((err) => {
@@ -230,11 +201,23 @@ export default {
 };
 </script>
 
-<style>
-.remove-reject-button,
-.p-dialog-header-close {
-  display: none !important;
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 </style>
-
-<style scoped></style>

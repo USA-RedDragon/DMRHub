@@ -17,13 +17,21 @@
   <meta name="msapplication-TileColor" content="#2d89ef">
   <meta name="msapplication-TileImage" content="/mstile-144x144.png?v=1696654997">
   <meta name="theme-color" content="#ffffff">
-
-  <link id="theme-css" rel="stylesheet" type="text/css" href="/themes/mdc-dark-indigo/theme.css">
 </head>
 
 <body>
   <div id="app"></div>
-  <script type="module" src="/src/main.js"></script>
+  <script>
+    (() => {
+      const colorMode = localStorage.getItem('color-mode') || 'system';
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = colorMode === 'dark' || (colorMode === 'system' && prefersDark);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 
 </html>

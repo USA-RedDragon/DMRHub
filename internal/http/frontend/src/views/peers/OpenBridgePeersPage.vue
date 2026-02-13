@@ -21,25 +21,16 @@
 
 <template>
   <div>
-    <Toast />
-    <ConfirmDialog></ConfirmDialog>
-    <Card>
-      <template #title>OpenBridge Peers</template>
-      <template #content>
-        <PeerTable />
-      </template>
-    </Card>
+    <h1>OpenBridge Peers</h1>
+    <PeerTable />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-
+<script lang="ts">
 import PeerTable from '@/components/PeerTable.vue';
 
 export default {
   components: {
-    Card,
     PeerTable,
   },
   head: {

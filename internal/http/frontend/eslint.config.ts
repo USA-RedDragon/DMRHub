@@ -25,13 +25,13 @@ export default defineConfigWithVueTs(
   
   {
     ...pluginVitest.configs.recommended,
-    files: ['src/**/__tests__/*'],
+    files: ['tests/unit/**/*.{test,spec}.{js,ts,jsx,tsx}'],
   },
   
   {
     ...pluginCypress.configs.recommended,
     files: [
-      'cypress/e2e/**/*.{cy,spec}.{js,ts,jsx,tsx}',
+      'tests/e2e/**/*.{cy,spec}.{js,ts,jsx,tsx}',
       'cypress/support/**/*.{js,ts,jsx,tsx}'
     ],
   },

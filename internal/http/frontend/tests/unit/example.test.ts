@@ -17,8 +17,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { test } from 'vitest';
+import { expect, test } from 'vitest';
 
 test('name', async () => {
-  /* ... */
+  expect(true).toBe(true);
 }, 1000);

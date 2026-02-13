@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { toast } from 'vue-sonner';
+import { toast } from '@/components/ui/toast';
 
 const defaultDuration = 4000;
 type ToastText = string | undefined;

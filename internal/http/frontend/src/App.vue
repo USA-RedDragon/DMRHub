@@ -24,7 +24,7 @@
     <AppHeader />
     <RouterView />
     <AppFooter />
-    <Toaster rich-colors close-button />
+    <Toaster />
   </div>
 </template>
 
@@ -32,7 +32,7 @@
 import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
 import { useHead } from '@unhead/vue';
-import { Toaster } from 'vue-sonner';
+import { Toaster } from '@/components/ui/toast';
 import AppFooter from '@/components/AppFooter.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import API from '@/services/API';

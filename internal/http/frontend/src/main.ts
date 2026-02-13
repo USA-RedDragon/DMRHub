@@ -29,8 +29,6 @@ import App from './App.vue';
 import router from './router';
 import API from './services/API';
 
-import 'vue-sonner/style.css';
-
 import './assets/main.css';
 
 const pinia = createPinia();

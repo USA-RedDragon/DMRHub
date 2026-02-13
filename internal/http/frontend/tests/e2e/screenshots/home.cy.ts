@@ -191,12 +191,12 @@ describe('Screenshotter', () => {
       statusCode: 401,
     });
     cy.visit('/');
-    cy.wait(1000);
+    cy.get('body').should('be.visible');
     cy.screenshot();
   });
   it('visits the app root url while signed in', () => {
     cy.visit('/');
-    cy.wait(1000);
+    cy.get('body').should('be.visible');
     cy.screenshot();
   });
 });

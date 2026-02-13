@@ -26,8 +26,6 @@
         <CardTitle>robots.txt Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <p>robots.txt settings</p>
-        <br />
         <label class="field-label" for="mode">Mode</label>
         <select id="mode" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
           <option v-for="option in [

@@ -60,6 +60,7 @@
         <small class="p-text-secondary">{{ secretStatusMessage }}</small>
         <span v-if="errors && errors.secret" class="p-error">{{ errors.secret }}</span>
         <br />
+        <br />
         <label class="field-label" for="password-salt">Password Salt</label>
         <ShadInput id="password-salt" type="password" v-model="passwordSalt"
           :aria-invalid="(errors && errors['password-salt']) || false" />
@@ -68,6 +69,7 @@
         </p>
         <small class="p-text-secondary">{{ passwordSaltStatusMessage }}</small>
         <span v-if="errors && errors['password-salt']" class="p-error">{{ errors['password-salt'] }}</span>
+        <br />
         <br />
         <label class="field-label" for="hibp-api-key">HaveIBeenPwned API Key</label>
         <ShadInput id="hibp-api-key" type="password" v-model="hibpApiKey"

@@ -22,9 +22,9 @@
 <template>
   <div class="space-y-4">
     <div class="table-header-container" v-if="!admin">
-      <RouterLink to="/repeaters/new">
-        <ShadButton variant="outline" size="sm">Enroll New Repeater</ShadButton>
-      </RouterLink>
+      <ShadButton as-child variant="outline" size="sm" class="no-underline">
+        <RouterLink to="/repeaters/new">Enroll New Repeater</RouterLink>
+      </ShadButton>
     </div>
 
     <DataTable
@@ -46,7 +46,7 @@
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 
@@ -128,12 +128,8 @@ export default {
             }
 
             const actions: Array<ReturnType<typeof h>> = [
-              actionButton('Save Talkgroups', () => this.saveTalkgroups(repeater)),
+              actionButton('Save', () => this.saveTalkgroups(repeater)),
             ];
-            if (repeater.slots !== 1) {
-              actions.push(actionButton('Unlink Dynamic TS1', () => this.unlink(1, repeater)));
-            }
-            actions.push(actionButton('Unlink Dynamic TS2', () => this.unlink(2, repeater)));
             actions.push(actionButton('Cancel', () => this.cancelEdit(repeater)));
             actions.push(actionButton('Delete', () => this.deleteRepeater(repeater)));
 
@@ -155,12 +151,7 @@ export default {
           header: 'Last Connected',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
-            const parts: string[] = [];
-            if (this.hasTimestamp(repeater.connected_time)) {
-              parts.push(this.relativeTime(repeater.connected_time));
-            }
-            parts.push(this.relativeTime(repeater.created_at));
-            return parts.join(' ');
+            return this.hasTimestamp(repeater.connected_time) ? this.relativeTime(repeater.connected_time) : 'Never';
           },
         },
         {
@@ -479,7 +470,7 @@ export default {
       if (Number.isNaN(date.getTime())) {
         return '-';
       }
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNowStrict(date, { addSuffix: true });
     },
     absoluteTime(dateValue: string | Date) {
       const date = new Date(dateValue);

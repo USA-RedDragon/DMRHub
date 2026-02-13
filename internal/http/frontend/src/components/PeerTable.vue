@@ -46,7 +46,7 @@
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -235,7 +235,7 @@ export default {
       if (Number.isNaN(date.getTime())) {
         return '-';
       }
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNowStrict(date, { addSuffix: true });
     },
     absoluteTime(dateValue: string | Date) {
       const date = new Date(dateValue);

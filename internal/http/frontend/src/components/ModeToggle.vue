@@ -85,8 +85,8 @@ const { mode, modeLabel, setMode } = useColorMode();
   align-items: center;
   gap: 0.4rem;
   background-color: transparent;
-  color: var(--primary-text-color);
-  border: 1px solid #555;
+  color: var(--foreground);
+  border: 1px solid var(--border);
   border-radius: 0.35rem;
   padding: 0.25rem 0.5rem;
   cursor: pointer;
@@ -96,11 +96,14 @@ const { mode, modeLabel, setMode } = useColorMode();
   font-size: 0.9em;
   font-weight: 600;
 }
+</style>
 
+<style>
 .mode-menu {
   min-width: 9rem !important;
-  background: #1d1f26;
-  border: 1px solid #444;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
   border-radius: 0.35rem;
   padding: 0.25rem;
   z-index: 50;
@@ -111,12 +114,12 @@ const { mode, modeLabel, setMode } = useColorMode();
   align-items: center;
   gap: 0.45rem;
   cursor: pointer;
-  color: var(--primary-text-color);
+  color: var(--popover-foreground);
   border-radius: 0.3rem;
   padding: 0.35rem 0.45rem;
 }
 
 .mode-menu-item:hover {
-  background: #2a2d36;
+  background: var(--accent);
 }
 </style>

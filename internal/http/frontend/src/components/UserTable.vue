@@ -37,11 +37,11 @@
 
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
-import { h } from 'vue';
+import { h, type RendererElement } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 
 import { mapStores } from 'pinia';
 import { useUserStore, useSettingsStore } from '@/store';
@@ -173,7 +173,7 @@ export default {
       if (Number.isNaN(date.getTime())) {
         return '-';
       }
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNowStrict(date, { addSuffix: true });
     },
     absoluteTime(dateValue: string | Date) {
       const date = new Date(dateValue);
@@ -347,8 +347,32 @@ export default {
   },
   computed: {
     columns() {
-      const columns: ColumnDef<UserRow, unknown>[] = [
-        {
+      const columns: ColumnDef<UserRow, RendererElement>[] = []
+      if (!this.approval) {
+        columns.push({
+          accessorKey: 'actions',
+          header: '',
+          cell: ({ row }: { row: { original: UserRow } }) => {
+            const user = row.original;
+            const actionButton = (label: string, onClick: () => void) => {
+              return h('button', {
+                class: buttonVariants({ variant: 'outline', size: 'sm' }),
+                onClick,
+              }, label);
+            };
+            return h('div', { class: 'flex gap-2' }, [
+              !user.editing
+                ? actionButton('Edit', () => this.editUser(user.id))
+                : actionButton('Save Changes', () => this.finishEditingUser(user)),
+              user.editing
+                ? actionButton('Cancel', () => this.cancelEditingUser(user))
+                : actionButton('Delete', () => this.deleteUser(user)),
+            ]);
+          },
+        });
+      }
+
+      columns.push({
           accessorKey: 'id',
           header: 'DMR ID',
           cell: ({ row }: { row: { original: UserRow } }) => `${row.original.id}`,
@@ -401,7 +425,7 @@ export default {
             return user.approved ? 'Yes' : 'No';
           },
         },
-      ];
+      );
 
       if (!this.approval) {
         columns.push(
@@ -453,30 +477,6 @@ export default {
           return h('span', { title: this.absoluteTime(user.created_at) }, this.relativeTime(user.created_at));
         },
       });
-
-      if (!this.approval) {
-        columns.push({
-          accessorKey: 'actions',
-          header: 'Actions',
-          cell: ({ row }: { row: { original: UserRow } }) => {
-            const user = row.original;
-            const actionButton = (label: string, onClick: () => void) => {
-              return h('button', {
-                class: buttonVariants({ variant: 'outline', size: 'sm' }),
-                onClick,
-              }, label);
-            };
-            return h('div', { class: 'flex gap-2' }, [
-              !user.editing
-                ? actionButton('Edit', () => this.editUser(user.id))
-                : actionButton('Save Changes', () => this.finishEditingUser(user)),
-              user.editing
-                ? actionButton('Cancel', () => this.cancelEditingUser(user))
-                : actionButton('Delete', () => this.deleteUser(user)),
-            ]);
-          },
-        });
-      }
 
       return columns;
     },

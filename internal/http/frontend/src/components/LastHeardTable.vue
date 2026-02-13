@@ -40,7 +40,7 @@ import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
 
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 
 import { getWebsocketURI } from '@/services/util';
 import API from '@/services/API';
@@ -235,7 +235,7 @@ export default {
       if (Number.isNaN(date.getTime())) {
         return '-';
       }
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNowStrict(date, { addSuffix: true });
     },
     absoluteTime(dateValue: string | Date) {
       const date = new Date(dateValue);

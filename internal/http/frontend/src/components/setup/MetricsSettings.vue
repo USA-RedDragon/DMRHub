@@ -52,7 +52,6 @@
           <label for="enabled">Enable Prometheus Metrics</label>
         </div>
         <br v-if="enabled" />
-        <br v-if="enabled" />
         <label class="field-label" for="bind" v-if="enabled">Bind</label>
         <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">

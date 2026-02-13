@@ -18,7 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 import type { App } from 'vue';
-import { toast } from 'vue-sonner';
+import { toast } from '@/components/ui/toast';
 
 type ToastOptions = {
   severity?: string;
@@ -55,7 +55,7 @@ const showToast = (options: ToastOptions = {}) => {
     toast.info(title, { description, duration });
     return;
   default:
-    toast(title, { description, duration });
+    toast.info(title, { description, duration });
   }
 };
 

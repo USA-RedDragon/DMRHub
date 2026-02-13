@@ -100,7 +100,3 @@ body {
 .p-dropdown {
   width: 100%;
 }
-
-.p-toast {
-  max-width: calc(100vw - 40px);
-}

@@ -21,129 +21,45 @@
 
 <template>
   <DataTable
-    :value="users"
-    v-model:expandedRows="expandedRows"
-    dataKey="id"
-    :lazy="true"
-    :paginator="true"
-    :first="first"
-    :rows="10"
-    :totalRecords="totalRecords"
+    :columns="columns"
+    :data="users"
     :loading="loading"
-    :scrollable="true"
-    @page="onPage($event)"
-  >
-    <Column :expander="true" v-if="!this.$props.approval" />
-    <Column field="id" header="DMR ID"></Column>
-    <Column field="callsign" header="Callsign">
-      <template #body="slotProps">
-        <span v-if="slotProps.data.editing">
-          <span class="p-float-label">
-            <InputText
-              type="text"
-              v-model="slotProps.data.callsign"
-            />
-          </span>
-        </span>
-        <span v-else>{{slotProps.data.callsign}}</span>
-      </template>
-    </Column>
-    <Column field="username" header="Username">
-      <template #body="slotProps">
-        <span v-if="slotProps.data.editing">
-          <span class="p-float-label">
-            <InputText
-              type="text"
-              v-model="slotProps.data.username"
-            />
-          </span>
-        </span>
-        <span v-else>{{slotProps.data.username}}</span>
-      </template>
-    </Column>
-    <Column
-      field="approved"
-      :header="this.$props.approval ? 'Approve?' : 'Approved'"
-    >
-      <template #body="slotProps" v-if="this.$props.approval">
-        <PVButton
-          label="Approve"
-          class="p-button-raised p-button-rounded"
-          @click="handleApprovePage(slotProps.data)"
-        />
-      </template>
-      <template #body="slotProps" v-else>
-        <span v-if="slotProps.data.approved">Yes</span>
-        <span v-else>No</span>
-      </template>
-    </Column>
-    <Column field="suspended" header="Suspend?" v-if="!this.$props.approval">
-      <template #body="slotProps">
-        <PVCheckbox
-          v-model="slotProps.data.suspended"
-          :binary="true"
-          @change="handleSuspend($event, slotProps.data)"
-        />
-      </template>
-    </Column>
-    <Column field="admin" header="Admin?" v-if="!this.$props.approval">
-      <template #body="slotProps">
-        <PVCheckbox
-          v-model="slotProps.data.admin"
-          :binary="true"
-          @change="handleAdmin($event, slotProps.data)"
-        />
-      </template>
-    </Column>
-    <Column
-      field="repeaters"
-      header="Repeater Count"
-      v-if="!this.$props.approval"
-    ></Column>
-    <Column field="created_at" header="Created">
-      <template #body="slotProps"><span v-tooltip="slotProps.data.created_at.toString()">{{
-        slotProps.data.created_at.fromNow()
-      }}</span></template>
-    </Column>
-    <template #expansion="slotProps">
-      <PVButton
-        class="p-button-raised p-button-rounded p-button-primary"
-        icon="pi pi-pencil"
-        label="Edit"
-        v-if="!slotProps.data.editing"
-        @click="editUser(slotProps.data.id)"
-      ></PVButton>
-      <PVButton
-        class="p-button-raised p-button-rounded p-button-primary"
-        icon="pi pi-pencil"
-        label="Save Changes"
-        v-else
-        @click="finishEditingUser(slotProps.data)"
-      ></PVButton>
-      <PVButton
-        class="p-button-raised p-button-rounded p-button-danger"
-        icon="pi pi-trash"
-        label="Delete"
-        style="margin-left: 0.5em"
-        @click="deleteUser(slotProps.data)"
-      ></PVButton>
-    </template>
-  </DataTable>
+    :loading-text="'Loading...'"
+    :empty-text="'No users found'"
+    :manual-pagination="true"
+    :page-index="page - 1"
+    :page-size="rows"
+    :page-count="totalPages"
+    @update:page-index="handlePageIndexUpdate"
+    @update:page-size="handlePageSizeUpdate"
+  />
 </template>
 
-<script>
-import Button from 'primevue/button';
-import Checkbox from 'primevue/checkbox';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
+<script lang="ts">
+import type { ColumnDef } from '@tanstack/vue-table';
+import { h } from 'vue';
+import { DataTable } from '@/components/ui/data-table';
+import { Input } from '@/components/ui/input';
 
-import moment from 'moment';
+import { format, formatDistanceToNow } from 'date-fns';
 
 import { mapStores } from 'pinia';
 import { useUserStore, useSettingsStore } from '@/store';
 
 import API from '@/services/API';
-import InputText from 'primevue/inputtext';
+import { buttonVariants } from '@/components/ui/button';
+
+type UserRow = {
+  id: number;
+  callsign: string;
+  username: string;
+  approved: boolean;
+  suspended: boolean;
+  admin: boolean;
+  repeaters: number;
+  created_at: string | Date;
+  editing: boolean;
+};
 
 export default {
   name: 'UserTable',
@@ -151,19 +67,15 @@ export default {
     approval: Boolean,
   },
   components: {
-    PVButton: Button,
-    PVCheckbox: Checkbox,
     DataTable,
-    Column,
-    InputText,
   },
   data: function() {
     return {
-      users: [],
-      expandedRows: [],
+      users: [] as UserRow[],
       loading: false,
       totalRecords: 0,
-      first: 0,
+      page: 1,
+      rows: 30,
     };
   },
   mounted() {
@@ -172,21 +84,31 @@ export default {
   unmounted() {
   },
   methods: {
-    onPage(event) {
-      this.loading = true;
-      this.first = event.page * event.rows;
-      this.fetchData(event.page + 1, event.rows);
+    handlePageIndexUpdate(pageIndex: number) {
+      const nextPage = pageIndex + 1;
+      if (nextPage === this.page || nextPage < 1) {
+        return;
+      }
+      this.page = nextPage;
+      this.fetchData(this.page, this.rows);
     },
-    fetchData(page = 1, limit = 10) {
+    handlePageSizeUpdate(pageSize: number) {
+      if (pageSize === this.rows || pageSize <= 0) {
+        return;
+      }
+      this.rows = pageSize;
+      this.page = 1;
+      this.fetchData(this.page, this.rows);
+    },
+    fetchData(page = 1, limit = 30) {
+      this.loading = true;
       if (this.$props.approval) {
         API.get(`/users/unapproved?page=${page}&limit=${limit}`)
           .then((res) => {
             for (let i = 0; i < res.data.users.length; i++) {
               res.data.users[i].repeaters = res.data.users[i].repeaters.length;
 
-              res.data.users[i].created_at = moment(
-                res.data.users[i].created_at,
-              );
+              res.data.users[i].created_at = new Date(res.data.users[i].created_at);
             }
             this.users = res.data.users;
             this.totalRecords = res.data.total;
@@ -194,6 +116,7 @@ export default {
           })
           .catch((err) => {
             console.error(err);
+            this.loading = false;
           });
       } else {
         API.get(`/users?page=${page}&limit=${limit}`)
@@ -203,9 +126,7 @@ export default {
 
               res.data.users[i].editing = false;
 
-              res.data.users[i].created_at = moment(
-                res.data.users[i].created_at,
-              );
+              res.data.users[i].created_at = new Date(res.data.users[i].created_at);
             }
             this.users = res.data.users;
             this.totalRecords = res.data.total;
@@ -213,10 +134,11 @@ export default {
           })
           .catch((err) => {
             console.error(err);
+            this.loading = false;
           });
       }
     },
-    handleApprovePage(user) {
+    handleApprovePage(user: UserRow) {
       this.$confirm.require({
         message: 'Are you sure you want to approve this user?',
         header: 'Approve User',
@@ -224,8 +146,7 @@ export default {
         acceptClass: 'p-button-danger',
         accept: () => {
           API.post('/users/approve/' + user.id, {})
-            .then((_res) => {
-              // Refresh user data
+            .then(() => {
               this.fetchData();
               this.$toast.add({
                 summary: 'Confirmed',
@@ -247,7 +168,21 @@ export default {
         reject: () => {},
       });
     },
-    handleSuspend(event, user) {
+    relativeTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    },
+    absoluteTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return format(date, 'yyyy-MM-dd HH:mm:ss');
+    },
+    handleSuspend(_event: Event, user: UserRow) {
       const action = user.suspended ? 'suspend' : 'unsuspend';
       const actionVerb = user.suspended ? 'suspended' : 'unsuspended';
       // Don't allow the user to uncheck the admin box
@@ -281,7 +216,7 @@ export default {
           this.fetchData();
         });
     },
-    handleAdmin(event, user) {
+    handleAdmin(_event: Event, user: UserRow) {
       const action = user.admin ? 'promote' : 'demote';
       const actionVerb = user.admin ? 'promoted' : 'demoted';
       // Don't allow the user to uncheck the admin box
@@ -325,24 +260,26 @@ export default {
         this.fetchData();
       }
     },
-    editUser(userID) {
+    editUser(userID: number) {
       for (let i = 0; i < this.users.length; i++) {
-        if (this.users[i].id === userID) {
-          this.users[i].editing = true;
+        const u = this.users[i];
+        if (u && u.id === userID) {
+          u.editing = true;
           return;
         }
       }
     },
-    finishEditingUser(user) {
+    finishEditingUser(user: UserRow) {
       // Send PATCH
       API.patch(`/users/${user.id}`, {
         callsign: user.callsign,
         username: user.username,
       })
-        .then((_res) => {
+        .then(() => {
           for (let i = 0; i < this.users.length; i++) {
-            if (this.users[i].id === user.id) {
-              this.users[i].editing = false;
+            const u = this.users[i];
+            if (u && u.id === user.id) {
+              u.editing = false;
               break;
             }
           }
@@ -364,7 +301,11 @@ export default {
           });
         });
     },
-    deleteUser(user) {
+    cancelEditingUser(user: UserRow) {
+      user.editing = false;
+      this.fetchData(this.page, this.rows);
+    },
+    deleteUser(user: UserRow) {
       if (this.userStore.superAdmin) {
         this.$confirm.require({
           message: 'Are you sure you want to delete this user?',
@@ -373,7 +314,7 @@ export default {
           acceptClass: 'p-button-danger',
           accept: () => {
             API.delete('/users/' + user.id)
-              .then((_res) => {
+              .then(() => {
                 this.$toast.add({
                   summary: 'Confirmed',
                   severity: 'success',
@@ -405,6 +346,146 @@ export default {
     },
   },
   computed: {
+    columns() {
+      const columns: ColumnDef<UserRow, unknown>[] = [
+        {
+          accessorKey: 'id',
+          header: 'DMR ID',
+          cell: ({ row }: { row: { original: UserRow } }) => `${row.original.id}`,
+        },
+        {
+          accessorKey: 'callsign',
+          header: 'Callsign',
+          cell: ({ row }: { row: { original: UserRow } }) => {
+            const user = row.original;
+            if (!user.editing) {
+              return user.callsign;
+            }
+            return h(Input, {
+              type: 'text',
+              modelValue: user.callsign,
+              'onUpdate:modelValue': (value: string | number) => {
+                user.callsign = String(value);
+              },
+            });
+          },
+        },
+        {
+          accessorKey: 'username',
+          header: 'Username',
+          cell: ({ row }: { row: { original: UserRow } }) => {
+            const user = row.original;
+            if (!user.editing) {
+              return user.username;
+            }
+            return h(Input, {
+              type: 'text',
+              modelValue: user.username,
+              'onUpdate:modelValue': (value: string | number) => {
+                user.username = String(value);
+              },
+            });
+          },
+        },
+        {
+          accessorKey: 'approved',
+          header: this.approval ? 'Approve?' : 'Approved',
+          cell: ({ row }: { row: { original: UserRow } }) => {
+            const user = row.original;
+            if (this.approval) {
+              return h('button', {
+                class: buttonVariants({ variant: 'outline', size: 'sm' }),
+                onClick: () => this.handleApprovePage(user),
+              }, 'Approve');
+            }
+            return user.approved ? 'Yes' : 'No';
+          },
+        },
+      ];
+
+      if (!this.approval) {
+        columns.push(
+          {
+            accessorKey: 'suspended',
+            header: 'Suspend?',
+            cell: ({ row }: { row: { original: UserRow } }) => {
+              const user = row.original;
+              return h('input', {
+                type: 'checkbox',
+                checked: user.suspended,
+                onChange: (event: Event) => {
+                  const target = event.target as HTMLInputElement;
+                  user.suspended = target.checked;
+                  this.handleSuspend(event, user);
+                },
+              });
+            },
+          },
+          {
+            accessorKey: 'admin',
+            header: 'Admin?',
+            cell: ({ row }: { row: { original: UserRow } }) => {
+              const user = row.original;
+              return h('input', {
+                type: 'checkbox',
+                checked: user.admin,
+                onChange: (event: Event) => {
+                  const target = event.target as HTMLInputElement;
+                  user.admin = target.checked;
+                  this.handleAdmin(event, user);
+                },
+              });
+            },
+          },
+          {
+            accessorKey: 'repeaters',
+            header: 'Repeater Count',
+            cell: ({ row }: { row: { original: UserRow } }) => `${row.original.repeaters}`,
+          },
+        );
+      }
+
+      columns.push({
+        accessorKey: 'created_at',
+        header: 'Created',
+        cell: ({ row }: { row: { original: UserRow } }) => {
+          const user = row.original;
+          return h('span', { title: this.absoluteTime(user.created_at) }, this.relativeTime(user.created_at));
+        },
+      });
+
+      if (!this.approval) {
+        columns.push({
+          accessorKey: 'actions',
+          header: 'Actions',
+          cell: ({ row }: { row: { original: UserRow } }) => {
+            const user = row.original;
+            const actionButton = (label: string, onClick: () => void) => {
+              return h('button', {
+                class: buttonVariants({ variant: 'outline', size: 'sm' }),
+                onClick,
+              }, label);
+            };
+            return h('div', { class: 'flex gap-2' }, [
+              !user.editing
+                ? actionButton('Edit', () => this.editUser(user.id))
+                : actionButton('Save Changes', () => this.finishEditingUser(user)),
+              user.editing
+                ? actionButton('Cancel', () => this.cancelEditingUser(user))
+                : actionButton('Delete', () => this.deleteUser(user)),
+            ]);
+          },
+        });
+      }
+
+      return columns;
+    },
+    totalPages() {
+      if (!this.totalRecords || this.totalRecords <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.ceil(this.totalRecords / this.rows));
+    },
     ...mapStores(useUserStore, useSettingsStore),
   },
 };

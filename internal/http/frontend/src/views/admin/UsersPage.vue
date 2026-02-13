@@ -21,24 +21,16 @@
 
 <template>
   <div>
-    <PVToast />
-    <ConfirmDialog></ConfirmDialog>
-    <Card>
-      <template #title>Users</template>
-      <template #content>
-        <UserTable />
-      </template>
-    </Card>
+    <h1>Users</h1>
+    <UserTable />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
+<script lang="ts">
 import UserTable from '@/components/UserTable.vue';
 
 export default {
   components: {
-    Card,
     UserTable,
   },
   head: {

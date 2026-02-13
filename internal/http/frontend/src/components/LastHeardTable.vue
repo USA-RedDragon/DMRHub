@@ -21,97 +21,63 @@
 
 <template>
   <DataTable
-    :value="lastheard"
-    :lazy="true"
-    :first="first"
-    :paginator="true"
-    :rows="10"
-    :totalRecords="totalRecords"
+    :columns="columns"
+    :data="lastheard"
     :loading="loading"
-    :scrollable="true"
-    @page="onPage($event)"
-  >
-    <Column field="start_time" header="Time">
-      <template #body="slotProps">
-        <span v-if="!slotProps.data.active" v-tooltip="slotProps.data.start_time.toString()">{{
-          slotProps.data.start_time.fromNow()
-        }}</span>
-        <span v-else>Active</span>
-      </template>
-    </Column>
-    <Column field="time_slot" header="TS">
-      <template #body="slotProps">
-        <span v-if="slotProps.data.time_slot">2</span>
-        <span v-else>1</span>
-      </template>
-    </Column>
-    <Column field="user" header="User">
-      <template #body="slotProps">
-        {{ slotProps.data.user.callsign }} |
-        {{ slotProps.data.user.id }}
-      </template>
-    </Column>
-    <Column field="destination_id" header="Destination">
-      <template #body="slotProps">
-        <span v-if="slotProps.data.is_to_talkgroup">
-          TG {{ slotProps.data.to_talkgroup.id }}
-        </span>
-        <span v-if="slotProps.data.is_to_repeater">
-          {{ slotProps.data.to_repeater.callsign }} |
-          {{ slotProps.data.to_repeater.id }}
-        </span>
-        <span v-if="slotProps.data.is_to_user">
-          {{ slotProps.data.to_user.callsign }} |
-          {{ slotProps.data.to_user.id }}
-        </span>
-      </template>
-    </Column>
-    <Column field="duration" header="Duration">
-      <template #body="slotProps">{{ slotProps.data.duration }}s</template>
-    </Column>
-    <Column field="ber" header="BER">
-      <template #body="slotProps">{{ slotProps.data.ber }}%</template>
-    </Column>
-    <Column field="loss" header="Loss">
-      <template #body="slotProps">{{ slotProps.data.loss }}%</template>
-    </Column>
-    <Column field="jitter" header="Jitter">
-      <template #body="slotProps">{{ slotProps.data.jitter }}ms</template>
-    </Column>
-    <Column field="rssi" header="RSSI">
-      <template #body="slotProps">
-        <span v-if="slotProps.data.rssi != 0"
-          >-{{ slotProps.data.rssi }}dBm</span
-        >
-        <span v-else>-</span>
-      </template>
-    </Column>
-  </DataTable>
+    :loading-text="'Loading...'"
+    :empty-text="'No calls found'"
+    :manual-pagination="true"
+    :page-index="page - 1"
+    :page-size="rows"
+    :page-count="totalPages"
+    @update:page-index="handlePageIndexUpdate"
+    @update:page-size="handlePageSizeUpdate"
+  />
 </template>
 
-<script>
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
+<script lang="ts">
+import type { ColumnDef } from '@tanstack/vue-table';
+import { h } from 'vue';
+import { DataTable } from '@/components/ui/data-table';
 
-import moment from 'moment';
+import { format, formatDistanceToNow } from 'date-fns';
 
 import { getWebsocketURI } from '@/services/util';
 import API from '@/services/API';
 import ws from '@/services/ws';
+
+type LastHeardRow = {
+  id: number;
+  active: boolean;
+  start_time: string | Date;
+  time_slot: boolean;
+  user: { id: number; callsign: string };
+  is_to_talkgroup: boolean;
+  to_talkgroup: { id: number };
+  is_to_repeater: boolean;
+  to_repeater: { id: number; callsign: string };
+  is_to_user: boolean;
+  to_user: { id: number; callsign: string };
+  duration: string | number;
+  ber: string | number;
+  loss: string | number;
+  jitter: string | number;
+  rssi: number;
+};
 
 export default {
   name: 'LastHeardTable',
   props: {},
   components: {
     DataTable,
-    Column,
   },
   data: function() {
     return {
-      lastheard: [],
+      lastheard: [] as LastHeardRow[],
       totalRecords: 0,
-      first: 0,
-      socket: null,
+      page: 1,
+      rows: 30,
+      socket: null as { close(): void } | null,
       loading: false,
     };
   },
@@ -124,14 +90,106 @@ export default {
       this.socket.close();
     }
   },
-  computed: {},
-  methods: {
-    onPage(event) {
-      this.loading = true;
-      this.first = event.page * event.rows;
-      this.fetchData(event.page + 1, event.rows);
+  computed: {
+    columns() {
+      return [
+        {
+          accessorKey: 'time',
+          header: 'Time',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => {
+            const call = row.original;
+            if (call.active) {
+              return 'Active';
+            }
+            return h('span', { title: this.absoluteTime(call.start_time) }, this.relativeTime(call.start_time));
+          },
+        },
+        {
+          accessorKey: 'time_slot',
+          header: 'TS',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => (row.original.time_slot ? '2' : '1'),
+        },
+        {
+          accessorKey: 'user',
+          header: 'User',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => {
+            const call = row.original;
+            return `${call.user.callsign} | ${call.user.id}`;
+          },
+        },
+        {
+          accessorKey: 'destination',
+          header: 'Destination',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => {
+            const call = row.original;
+            if (call.is_to_talkgroup) {
+              return `TG ${call.to_talkgroup.id}`;
+            }
+            if (call.is_to_repeater) {
+              return `${call.to_repeater.callsign} | ${call.to_repeater.id}`;
+            }
+            if (call.is_to_user) {
+              return `${call.to_user.callsign} | ${call.to_user.id}`;
+            }
+            return '-';
+          },
+        },
+        {
+          accessorKey: 'duration',
+          header: 'Duration',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.duration}s`,
+        },
+        {
+          accessorKey: 'ber',
+          header: 'BER',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.ber}%`,
+        },
+        {
+          accessorKey: 'loss',
+          header: 'Loss',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.loss}%`,
+        },
+        {
+          accessorKey: 'jitter',
+          header: 'Jitter',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.jitter}ms`,
+        },
+        {
+          accessorKey: 'rssi',
+          header: 'RSSI',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => {
+            const rssi = Number(row.original.rssi);
+            return rssi !== 0 ? `-${rssi}dBm` : '-';
+          },
+        },
+      ] as ColumnDef<LastHeardRow, unknown>[];
     },
-    fetchData(page = 1, limit = 10) {
+    totalPages() {
+      if (!this.totalRecords || this.totalRecords <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.ceil(this.totalRecords / this.rows));
+    },
+  },
+  methods: {
+    handlePageIndexUpdate(pageIndex: number) {
+      const nextPage = pageIndex + 1;
+      if (nextPage === this.page || nextPage < 1) {
+        return;
+      }
+      this.page = nextPage;
+      this.fetchData(this.page, this.rows);
+    },
+    handlePageSizeUpdate(pageSize: number) {
+      if (pageSize === this.rows || pageSize <= 0) {
+        return;
+      }
+      this.rows = pageSize;
+      this.page = 1;
+      this.fetchData(this.page, this.rows);
+    },
+    fetchData(page = 1, limit = 30) {
+      this.loading = true;
       API.get(`/lastheard?page=${page}&limit=${limit}`)
         .then((res) => {
           this.totalRecords = res.data.total;
@@ -140,12 +198,13 @@ export default {
         })
         .catch((err) => {
           console.error(err);
+          this.loading = false;
         });
     },
-    cleanData(data) {
+    cleanData(data: Record<string, unknown>[]) {
       const copyData = JSON.parse(JSON.stringify(data));
       for (let i = 0; i < copyData.length; i++) {
-        copyData[i].start_time = moment(copyData[i].start_time);
+        copyData[i].start_time = new Date(copyData[i].start_time);
 
         if (typeof copyData[i].duration == 'number') {
           copyData[i].duration = (copyData[i].duration / 1000000000).toFixed(1);
@@ -171,7 +230,21 @@ export default {
 
       return copyData;
     },
-    onWebsocketMessage(event) {
+    relativeTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    },
+    absoluteTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return format(date, 'yyyy-MM-dd HH:mm:ss');
+    },
+    onWebsocketMessage(event: MessageEvent) {
       const call = JSON.parse(event.data);
       // We need to check that the call is not already in the table
       // If it is, we need to update it
@@ -187,11 +260,11 @@ export default {
         }
       }
 
-      if (!found && copyLastheard.length == 10) {
+      if (!found && copyLastheard.length === this.rows) {
         copyLastheard.pop();
       }
 
-      if (!found && copyLastheard.length < 10) {
+      if (!found && copyLastheard.length < this.rows) {
         copyLastheard.unshift(call);
       }
 

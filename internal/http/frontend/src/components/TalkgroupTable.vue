@@ -20,169 +20,54 @@
 -->
 
 <template>
-  <DataTable
-    v-model:expandedRows="expandedRows"
-    :value="talkgroups"
-    :lazy="true"
-    :first="first"
-    :paginator="true"
-    :rows="10"
-    :totalRecords="totalRecords"
-    :loading="loading"
-    :scrollable="true"
-    @page="onPage($event)"
-  >
-    <template v-if="this.$props.admin" #header>
-      <div class="table-header-container">
-        <RouterLink to="/admin/talkgroups/new">
-          <PVButton
-            class="p-button-raised p-button-rounded p-button-success"
-            icon="pi pi-plus"
-            label="Add New Talkgroup"
-          />
-        </RouterLink>
-      </div>
-    </template>
-    <Column :expander="true" v-if="this.$props.admin || this.$props.owner" />
-    <Column field="id" header="Channel"></Column>
-    <Column field="name" header="Name">
-      <template #body="slotProps">
-        <span v-if="!slotProps.data.editable">{{ slotProps.data.name }}</span>
-        <InputText
-          v-if="slotProps.data.editable"
-          v-model="slotProps.data.name"
-        />
-      </template>
-    </Column>
-    <Column field="description" header="Description">
-      <template #body="slotProps">
-        <span v-if="!slotProps.data.editable">{{
-          slotProps.data.description
-        }}</span>
-        <InputText
-          v-if="slotProps.data.editable"
-          v-model="slotProps.data.description"
-        />
-      </template>
-    </Column>
-    <Column v-if="!this.$props.owner" field="admins" header="Admins">
-      <template #body="slotProps">
-        <span v-if="!slotProps.data.editable">
-          <span v-if="slotProps.data.admins.length == 0">None</span>
-          <span
-            v-else
-            v-bind:key="admin.id"
-            v-for="admin in slotProps.data.admins"
-          >
-            {{ admin.display }}&nbsp;
-          </span>
-        </span>
-        <span class="p-float-label" v-else>
-          <MultiSelect
-            id="admins"
-            v-model="slotProps.data.admins"
-            :options="allUsers"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-          >
-            <template #chip="slotProps">
-              {{ slotProps.value.display }}
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </MultiSelect>
-          <label for="admins">Admins</label>
-        </span>
-      </template>
-    </Column>
-    <Column field="ncos" header="Net Control Operators">
-      <template #body="slotProps">
-        <span v-if="!slotProps.data.editable">
-          <span v-if="!slotProps.data.ncos || slotProps.data.ncos.length == 0"
-            >None</span
-          >
-          <span v-else v-bind:key="nco.id" v-for="nco in slotProps.data.ncos">
-            {{ nco.display }}&nbsp;
-          </span>
-        </span>
-        <span class="p-float-label" v-else>
-          <MultiSelect
-            id="ncos"
-            v-model="slotProps.data.ncos"
-            :options="allUsers"
-            :filter="true"
-            optionLabel="display"
-            display="chip"
-          >
-            <template #chip="slotProps">
-              {{ slotProps.value.display }}
-            </template>
-            <template #option="slotProps">
-              {{ slotProps.option.display }}
-            </template>
-          </MultiSelect>
-          <label for="ncos">Net Control Operators</label>
-        </span>
-      </template>
-    </Column>
-    <Column field="created_at" header="Created">
-      <template #body="slotProps"><span v-tooltip="slotProps.data.created_at.toString()">{{
-        slotProps.data.created_at.fromNow()
-      }}</span></template>
-    </Column>
-    <template
-      v-if="this.$props.admin || this.$props.owner"
-      #expansion="slotProps"
-    >
-      <PVButton
-        v-if="!slotProps.data.editable"
-        class="p-button-raised p-button-rounded p-button-primary"
-        icon="pi pi-pencil"
-        label="Edit"
-        @click="startEdit(slotProps.data)"
-      ></PVButton>
-      <PVButton
-        v-if="slotProps.data.editable"
-        class="p-button-raised p-button-rounded p-button-success"
-        icon="pi pi-check"
-        label="Save"
-        @click="saveTalkgroup(slotProps.data)"
-      ></PVButton>
-      <PVButton
-        v-if="slotProps.data.editable"
-        class="p-button-raised p-button-rounded p-button-primary"
-        icon="pi pi-ban"
-        label="Cancel"
-        style="margin-left: 0.5em"
-        @click="cancelEdit(slotProps.data)"
-      ></PVButton>
-      <PVButton
-        v-if="this.$props.admin && !slotProps.data.editable"
-        class="p-button-raised p-button-rounded p-button-danger"
-        icon="pi pi-trash"
-        label="Delete"
-        style="margin-left: 0.5em"
-        @click="deleteTalkgroup(slotProps.data)"
-      ></PVButton>
-    </template>
-  </DataTable>
+  <div class="space-y-4">
+    <div class="table-header-container" v-if="admin">
+      <ShadButton as-child variant="outline" size="sm" class="no-underline">
+        <RouterLink to="/admin/talkgroups/new">Add New Talkgroup</RouterLink>
+      </ShadButton>
+    </div>
+
+    <DataTable
+      :columns="columns"
+      :data="talkgroups"
+      :loading="loading"
+      :loading-text="'Loading...'"
+      :empty-text="'No talkgroups found'"
+      :manual-pagination="true"
+      :page-index="page - 1"
+      :page-size="rows"
+      :page-count="totalPages"
+      @update:page-index="handlePageIndexUpdate"
+      @update:page-size="handlePageSizeUpdate"
+    />
+  </div>
 </template>
 
-<script>
-import Button from 'primevue/button';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import InputText from 'primevue/inputtext';
-import MultiSelect from 'primevue/multiselect';
+<script lang="ts">
+import type { ColumnDef } from '@tanstack/vue-table';
+import { h } from 'vue';
+import { Button as ShadButton } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
+import { Input as Input } from '@/components/ui/input';
+import { DataTable } from '@/components/ui/data-table';
 
-import moment from 'moment';
+import { format, formatDistanceToNow } from 'date-fns';
 
 import { mapStores } from 'pinia';
 import { useSettingsStore } from '@/store';
 
 import API from '@/services/API';
+
+type TalkgroupUser = { id: number; callsign: string; display?: string };
+type TalkgroupRow = {
+  id: number;
+  name: string;
+  description: string;
+  admins: TalkgroupUser[];
+  ncos: TalkgroupUser[];
+  created_at: string | Date;
+  editable: boolean;
+};
 
 export default {
   name: 'TalkgroupTable',
@@ -191,38 +76,44 @@ export default {
     owner: Boolean,
   },
   components: {
-    PVButton: Button,
+    ShadButton,
     DataTable,
-    Column,
-    InputText,
-    MultiSelect,
   },
   data: function() {
     return {
-      talkgroups: [],
-      expandedRows: [],
+      talkgroups: [] as TalkgroupRow[],
       editableTalkgroups: 0,
       totalRecords: 0,
-      first: 0,
+      page: 1,
+      rows: 30,
       loading: false,
-      allUsers: [],
+      allUsers: [] as TalkgroupUser[],
     };
   },
   mounted() {
     this.fetchData();
   },
   unmounted() {
-    if (this.socket) {
-      this.socket.close();
-    }
   },
   methods: {
-    onPage(event) {
-      this.loading = true;
-      this.first = event.page * event.rows;
-      this.fetchData(event.page + 1, event.rows);
+    handlePageIndexUpdate(pageIndex: number) {
+      const nextPage = pageIndex + 1;
+      if (nextPage === this.page || nextPage < 1) {
+        return;
+      }
+      this.page = nextPage;
+      this.fetchData(this.page, this.rows);
     },
-    fetchData(page = 1, limit = 10) {
+    handlePageSizeUpdate(pageSize: number) {
+      if (pageSize === this.rows || pageSize <= 0) {
+        return;
+      }
+      this.rows = pageSize;
+      this.page = 1;
+      this.fetchData(this.page, this.rows);
+    },
+    fetchData(page = 1, limit = 30) {
+      this.loading = true;
       if (this.editableTalkgroups > 0) {
         return;
       }
@@ -246,6 +137,7 @@ export default {
           })
           .catch((err) => {
             console.error(err);
+            this.loading = false;
           });
       }
       if (this.$props.owner) {
@@ -257,6 +149,7 @@ export default {
           })
           .catch((err) => {
             console.error(err);
+            this.loading = false;
           });
       } else {
         API.get(`/talkgroups?limit=${limit}&page=${page}`)
@@ -267,46 +160,53 @@ export default {
           })
           .catch((err) => {
             console.error(err);
+            this.loading = false;
           });
       }
     },
-    cleanData(data) {
-      const copyData = JSON.parse(JSON.stringify(data));
+    cleanData(data: TalkgroupRow[]) {
+      const copyData: TalkgroupRow[] = JSON.parse(JSON.stringify(data));
 
-      for (let i = 0; i < copyData.length; i++) {
-        copyData[i].created_at = moment(copyData[i].created_at);
-        copyData[i].editable = false;
+      for (const talkgroup of copyData) {
+        talkgroup.created_at = new Date(talkgroup.created_at);
+        talkgroup.editable = false;
 
-        if (copyData[i].admins) {
-          for (let j = 0; j < copyData[i].admins.length; j++) {
-            copyData[i].admins[
-              j
-            ].display = `${copyData[i].admins[j].id} - ${copyData[i].admins[j].callsign}`;
-          }
+        for (const adminUser of talkgroup.admins) {
+          adminUser.display = `${adminUser.id} - ${adminUser.callsign}`;
         }
 
-        if (copyData[i].ncos) {
-          for (let j = 0; j < copyData[i].ncos.length; j++) {
-            copyData[i].ncos[
-              j
-            ].display = `${copyData[i].ncos[j].id} - ${copyData[i].ncos[j].callsign}`;
-          }
+        for (const nco of talkgroup.ncos) {
+          nco.display = `${nco.id} - ${nco.callsign}`;
         }
       }
       return copyData;
     },
-    startEdit(talkgroup) {
+    relativeTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    },
+    absoluteTime(dateValue: string | Date) {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) {
+        return '-';
+      }
+      return format(date, 'yyyy-MM-dd HH:mm:ss');
+    },
+    startEdit(talkgroup: TalkgroupRow) {
       this.editableTalkgroups++;
       talkgroup.editable = true;
     },
-    cancelEdit(talkgroup) {
+    cancelEdit(talkgroup: TalkgroupRow) {
       talkgroup.editable = false;
       this.editableTalkgroups--;
       if (this.editableTalkgroups == 0) {
         this.fetchData();
       }
     },
-    deleteTalkgroup(talkgroup) {
+    deleteTalkgroup(talkgroup: TalkgroupRow) {
       // First, show a confirmation dialog
       this.$confirm.require({
         message: 'Are you sure you want to delete this talkgroup?',
@@ -315,7 +215,7 @@ export default {
         acceptClass: 'p-button-danger',
         accept: () => {
           API.delete('/talkgroups/' + talkgroup.id)
-            .then((_res) => {
+            .then(() => {
               this.$toast.add({
                 summary: 'Confirmed',
                 severity: 'success',
@@ -337,12 +237,14 @@ export default {
         reject: () => {},
       });
     },
-    saveTalkgroup(talkgroup) {
+    saveTalkgroup(talkgroup: TalkgroupRow) {
+      const admins = talkgroup.admins;
+      const ncos = talkgroup.ncos;
       API.patch('/talkgroups/' + talkgroup.id, {
         name: talkgroup.name,
         description: talkgroup.description,
       })
-        .then((_res) => {
+        .then(() => {
           this.$toast.add({
             severity: 'success',
             summary: 'Success',
@@ -350,13 +252,13 @@ export default {
             life: 3000,
           });
           API.post(`/talkgroups/${talkgroup.id}/admins`, {
-            user_ids: talkgroup.admins.map((admin) => admin.id),
+            user_ids: admins ? admins.map((admin) => admin.id) : [],
           })
-            .then((_res) => {
+            .then(() => {
               API.post(`/talkgroups/${talkgroup.id}/ncos`, {
-                user_ids: talkgroup.ncos.map((nco) => nco.id),
+                user_ids: ncos ? ncos.map((nco) => nco.id) : [],
               })
-                .then((_res) => {
+                .then(() => {
                   talkgroup.editable = false;
                   this.editableTalkgroups--;
                   if (this.editableTalkgroups == 0) {
@@ -437,6 +339,175 @@ export default {
     },
   },
   computed: {
+    columns() {
+      const columns: ColumnDef<TalkgroupRow, unknown>[] = [
+        {
+          accessorKey: 'id',
+          header: 'Channel',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => `${row.original.id}`,
+        },
+        {
+          accessorKey: 'name',
+          header: 'Name',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            if (!talkgroup.editable) {
+              return talkgroup.name;
+            }
+            return h(Input, {
+              modelValue: talkgroup.name,
+              'onUpdate:modelValue': (value: string | number) => {
+                talkgroup.name = String(value);
+              },
+            });
+          },
+        },
+        {
+          accessorKey: 'description',
+          header: 'Description',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            if (!talkgroup.editable) {
+              return talkgroup.description;
+            }
+            return h(Input, {
+              modelValue: talkgroup.description,
+              'onUpdate:modelValue': (value: string | number) => {
+                talkgroup.description = String(value);
+              },
+            });
+          },
+        },
+      ];
+
+      if (!this.owner) {
+        columns.push({
+          accessorKey: 'admins',
+          header: 'Admins',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            if (!talkgroup.editable) {
+              if (talkgroup.admins.length === 0) {
+                return 'None';
+              }
+              return talkgroup.admins.map((adminUser) => adminUser.display).join(' ');
+            }
+
+            return h(
+              'select',
+              {
+                id: 'admins',
+                class: 'ui-select-multiple',
+                multiple: true,
+                onChange: (event: Event) => {
+                  const target = event.target as HTMLSelectElement;
+                  const selected = Array.from(target.selectedOptions).map((option) => Number(option.value));
+                  talkgroup.admins = this.allUsers.filter((user) => selected.includes(user.id));
+                },
+              },
+              this.allUsers.map((user) =>
+                h(
+                  'option',
+                  {
+                    value: user.id,
+                    selected: talkgroup.admins.some((adminUser) => adminUser.id === user.id),
+                  },
+                  user.display,
+                ),
+              ),
+            );
+          },
+        });
+      }
+
+      columns.push(
+        {
+          accessorKey: 'ncos',
+          header: 'Net Control Operators',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            if (!talkgroup.editable) {
+              if (!talkgroup.ncos || talkgroup.ncos.length === 0) {
+                return 'None';
+              }
+              return talkgroup.ncos.map((nco) => nco.display).join(' ');
+            }
+
+            return h(
+              'select',
+              {
+                id: 'ncos',
+                class: 'ui-select-multiple',
+                multiple: true,
+                onChange: (event: Event) => {
+                  const target = event.target as HTMLSelectElement;
+                  const selected = Array.from(target.selectedOptions).map((option) => Number(option.value));
+                  talkgroup.ncos = this.allUsers.filter((user) => selected.includes(user.id));
+                },
+              },
+              this.allUsers.map((user) =>
+                h(
+                  'option',
+                  {
+                    value: user.id,
+                    selected: talkgroup.ncos.some((nco) => nco.id === user.id),
+                  },
+                  user.display,
+                ),
+              ),
+            );
+          },
+        },
+        {
+          accessorKey: 'created_at',
+          header: 'Created',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            return h(
+              'span',
+              { title: this.absoluteTime(talkgroup.created_at) },
+              this.relativeTime(talkgroup.created_at),
+            );
+          },
+        },
+      );
+
+      if (this.admin || this.owner) {
+        columns.push({
+          accessorKey: 'actions',
+          header: 'Actions',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            const actions: Array<ReturnType<typeof h>> = [];
+            const actionButton = (label: string, onClick: () => void) => {
+              return h('button', {
+                class: buttonVariants({ variant: 'outline', size: 'sm' }),
+                onClick,
+              }, label);
+            };
+            if (!talkgroup.editable) {
+              actions.push(actionButton('Edit', () => this.startEdit(talkgroup)));
+            }
+            if (talkgroup.editable) {
+              actions.push(actionButton('Save', () => this.saveTalkgroup(talkgroup)));
+              actions.push(actionButton('Cancel', () => this.cancelEdit(talkgroup)));
+            }
+            if (this.admin && !talkgroup.editable) {
+              actions.push(actionButton('Delete', () => this.deleteTalkgroup(talkgroup)));
+            }
+            return h('div', { class: 'flex gap-2' }, actions);
+          },
+        });
+      }
+
+      return columns;
+    },
+    totalPages() {
+      if (!this.totalRecords || this.totalRecords <= 0) {
+        return 1;
+      }
+      return Math.max(1, Math.ceil(this.totalRecords / this.rows));
+    },
     ...mapStores(useSettingsStore),
   },
 };
@@ -446,5 +517,15 @@ export default {
 .table-header-container {
   display: flex;
   justify-content: flex-end;
+}
+
+.ui-select-multiple {
+  width: 100%;
+  min-height: 6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
 }
 </style>

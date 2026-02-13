@@ -22,72 +22,74 @@
 <template>
   <div>
     <Card>
-      <template #title>IPSC Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>IPSC Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>DMRHub can run an IPSC server to allow connections from Motorola DMR radios</p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="enabled"
-            inputId="enabled"
+            type="checkbox"
             v-model="enabled"
-            :binary="true"
           />
-          <label for="enabled">&nbsp;&nbsp;Enabled</label>
-        </span>
+          <label for="enabled">Enabled</label>
+        </div>
         <br v-if="enabled" />
-        <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
-          <label for="bind">Bind Address</label>
-        </span>
+        <label class="field-label" for="bind" v-if="enabled">Bind Address</label>
+        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the IPSC server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p v-if="enabled">
           The port number to bind the IPSC server to
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="network-id"
-            type="number"
-            v-model="networkId"
-            :class="{ 'p-invalid': (errors && errors['network-id']) || false }"
-          />
-          <label for="network-id">Network ID</label>
-        </span>
+        <label class="field-label" for="network-id" v-if="enabled">Network ID</label>
+        <ShadInput
+          id="network-id"
+          type="number"
+          v-model="networkId"
+          v-if="enabled"
+          :aria-invalid="(errors && errors['network-id']) || false"
+        />
         <p v-if="enabled">
           DMR peer ID for this IPSC master server (e.g., your repeater's radio ID)
         </p>
         <span v-if="enabled && errors && errors['network-id']" class="p-error">{{ errors['network-id'] }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
-import Checkbox from 'primevue/checkbox';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    InputText,
-    Checkbox,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -104,7 +106,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['enabled']) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'enabled': value,
@@ -115,7 +117,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
@@ -126,7 +128,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['port']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -137,7 +139,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['network-id']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'network-id': value,
@@ -151,3 +153,16 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+</style>

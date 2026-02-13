@@ -22,48 +22,50 @@
 <template>
   <div>
     <Card>
-      <template #title>CORS Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>CORS Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>CORS (Cross-Origin Resource Sharing) settings control which external domains
           are allowed to access the DMRHub API. This is important for web applications
           that run in the browser and need to make requests to the DMRHub server.
         </p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="enabled"
-            inputId="enabled"
+            type="checkbox"
             v-model="enabled"
-            :binary="true"
           />
-          <label for="enabled">&nbsp;&nbsp;Enabled</label>
-        </span>
+          <label for="enabled">Enabled</label>
+        </div>
         <br v-if="enabled" />
-        <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <TextArea rows="5" id="hosts" v-model="hosts" :class="{ 'p-invalid': (errors && errors.hosts) || false }" />
-          <label for="hosts">Hosts</label>
-        </span>
+        <label class="field-label" for="hosts" v-if="enabled">Hosts</label>
+        <textarea rows="5" id="hosts" v-model="hosts" v-if="enabled" class="ui-textarea" :class="{ 'ui-textarea-invalid': (errors && errors.hosts) || false }" />
         <p v-if="enabled">
           A list of hosts that are allowed to access the DMRHub API.
           Use <code>*</code> to allow all hosts (not recommended for production). One per line.
         </p>
         <span v-if="enabled && errors && errors.hosts" class="p-error">{{ errors.hosts }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import TextArea from 'primevue/textarea';
-import Checkbox from 'primevue/checkbox';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 
 export default {
   components: {
     Card,
-    TextArea,
-    Checkbox,
+    CardContent,
+    CardHeader,
+    CardTitle,
   },
   props: {
     modelValue: {
@@ -80,7 +82,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['enabled']) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'enabled': value,
@@ -89,12 +91,10 @@ export default {
     },
     hosts: {
       get() {
-        return (
-          this.modelValue &&
-          this.modelValue['extra-hosts'] &&
-          this.modelValue['extra-hosts'].join('\n')) || [];
+        const extraHosts = this.modelValue && this.modelValue['extra-hosts'];
+        return Array.isArray(extraHosts) ? extraHosts.join('\n') : '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'extra-hosts': value.split('\n'),
@@ -108,3 +108,29 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ui-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-textarea-invalid {
+  border-color: var(--primary);
+}
+</style>

@@ -21,24 +21,16 @@
 
 <template>
   <div>
-    <PVToast />
-    <ConfirmDialog></ConfirmDialog>
-    <Card>
-      <template #title>User Approvals</template>
-      <template #content>
-        <UserTable approval />
-      </template>
-    </Card>
+    <h1>User Approvals</h1>
+    <UserTable approval />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
+<script lang="ts">
 import UserTable from '@/components/UserTable.vue';
 
 export default {
   components: {
-    Card,
     UserTable,
   },
   head: {

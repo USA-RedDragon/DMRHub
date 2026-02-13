@@ -22,119 +22,117 @@
 <template>
   <div>
     <Card>
-      <template #title>Database Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>Database Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>DMRHub supports multiple database backends. For small deployments or testing, SQLite is recommended.
           For larger deployments or when high availability is required, PostgreSQL or MySQL/MariaDB is required.</p>
         <br />
-        <span class="p-float-label">
-          <Dropdown id="driver" v-model="driver"  optionValue="value" optionLabel="label" :options="[
+        <label class="field-label" for="driver">Driver</label>
+        <select id="driver" v-model="driver" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.driver) || false }">
+          <option v-for="option in [
             { label: 'SQLite', value: 'sqlite' },
             { label: 'PostgreSQL', value: 'postgres' },
             { label: 'MySQL', value: 'mysql' },
-          ]" :class="{ 'p-invalid': (errors && errors.driver) || false }" />
-          <label for="driver">Driver</label>
-        </span>
+          ]" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
         <p>
           The database driver to use. One of <code>sqlite</code>, <code>postgres</code>, or <code>mysql</code>.
         </p>
         <span v-if="errors && errors.driver" class="p-error">{{ errors.driver }}</span>
         <br />
-        <span class="p-float-label">
-          <InputText
-            id="database"
-            type="text"
-            v-model="database"
-            :class="{ 'p-invalid': (errors && errors.database) || false }"
-          />
-          <label for="database">Database</label>
-        </span>
+        <label class="field-label" for="database">Database</label>
+        <ShadInput
+          id="database"
+          type="text"
+          v-model="database"
+          :aria-invalid="(errors && errors.database) || false"
+        />
         <p>
           The database name or path to the SQLite file.
         </p>
         <span v-if="errors && errors.database" class="p-error">{{ errors.database }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText id="host" type="text" v-model="host" :class="{ 'p-invalid': (errors && errors.host) || false }" />
-          <label for="host">Host</label>
-        </span>
+        <label class="field-label" for="host" v-if="driver !== 'sqlite'">Host</label>
+        <ShadInput id="host" type="text" v-model="host" v-if="driver !== 'sqlite'" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="driver !== 'sqlite'">
           The hostname or IP address of the database server.
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port" v-if="driver !== 'sqlite'">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          v-if="driver !== 'sqlite'"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p v-if="driver !== 'sqlite'">
           The port number of the database server.
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText
-            id="username"
-            type="text"
-            v-model="username"
-            :class="{ 'p-invalid': (errors && errors.username) || false }"
-          />
-          <label for="username">Username</label>
-        </span>
+        <label class="field-label" for="username" v-if="driver !== 'sqlite'">Username</label>
+        <ShadInput
+          id="username"
+          type="text"
+          v-model="username"
+          v-if="driver !== 'sqlite'"
+          :aria-invalid="(errors && errors.username) || false"
+        />
         <p v-if="driver !== 'sqlite'">
           The username to use when connecting to the database server.
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <span class="p-float-label" v-if="driver !== 'sqlite'">
-          <InputText
-            id="password"
-            type="password"
-            v-model="password"
-            :class="{ 'p-invalid': (errors && errors.password) || false }"
-          />
-          <label for="password">Password</label>
-        </span>
+        <label class="field-label" for="password" v-if="driver !== 'sqlite'">Password</label>
+        <ShadInput
+          id="password"
+          type="password"
+          v-model="password"
+          v-if="driver !== 'sqlite'"
+          :aria-invalid="(errors && errors.password) || false"
+        />
         <p v-if="driver !== 'sqlite'">
           The password to use when connecting to the database server.
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br />
-        <span class="p-float-label">
-          <TextArea
-            rows="5"
-            id="extraParameters"
-            v-model="extraParameters"
-            :class="{ 'p-invalid': (errors && errors['extra-parameters']) || false }"
-          />
-          <label for="extraParameters">Extra Parameters</label>
-        </span>
+        <label class="field-label" for="extraParameters">Extra Parameters</label>
+        <textarea
+          rows="5"
+          id="extraParameters"
+          v-model="extraParameters"
+          class="ui-textarea"
+          :class="{ 'ui-textarea-invalid': (errors && errors['extra-parameters']) || false }"
+        />
         <p>
           Extra connection parameters to pass to the database driver. One per line.
         </p>
         <span v-if="errors && errors['extra-parameters']" class="p-error">{{ errors['extra-parameters'] }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
-import TextArea from 'primevue/textarea';
-import Dropdown from 'primevue/dropdown';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    InputText,
-    TextArea,
-    Dropdown,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -152,7 +150,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.driver) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'driver': value,
@@ -163,7 +161,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.database) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'database': value,
@@ -174,7 +172,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.host) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'host': value,
@@ -185,7 +183,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.port) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -196,7 +194,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.username) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'username': value,
@@ -207,7 +205,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue.password) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'password': value,
@@ -216,9 +214,10 @@ export default {
     },
     extraParameters: {
       get() {
-        return (this.modelValue && this.modelValue['extra-parameters'].join('\n')) || [];
+        const extraParameters = this.modelValue && this.modelValue['extra-parameters'];
+        return Array.isArray(extraParameters) ? extraParameters.join('\n') : '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'extra-parameters': value.split('\n'),
@@ -232,3 +231,25 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+
+.ui-select-invalid,
+.ui-textarea-invalid {
+  border-color: var(--primary);
+}
+</style>

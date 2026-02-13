@@ -21,25 +21,16 @@
 
 <template>
   <div>
-    <PVToast />
-    <ConfirmDialog></ConfirmDialog>
-    <Card>
-      <template #title>Talkgroups</template>
-      <template #content>
-        <TalkgroupTable />
-      </template>
-    </Card>
+    <h1>Talkgroups</h1>
+    <TalkgroupTable />
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-
+<script lang="ts">
 import TalkgroupTable from '@/components/TalkgroupTable.vue';
 
 export default {
   components: {
-    Card,
     TalkgroupTable,
   },
   head: {

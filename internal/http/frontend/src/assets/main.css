@@ -19,6 +19,9 @@
   The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 */
 
+@import "tailwindcss";
+@import "tw-animate-css";
+
 *,
 *::before,
 *::after {
@@ -37,10 +40,27 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+a,
+a:visited,
+a:link {
+  color: var(--cyan-300);
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 0.2rem;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--cyan-500);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--cyan-300);
+  outline-offset: 2px;
+}
+
 #app {
-  margin: 0 auto;
-  padding: 1rem 2rem 0.4rem;
-  max-width: 90rem;
+  margin: 0 5em;
 }
 
 html {
@@ -49,6 +69,21 @@ html {
 
 :root {
   --border-radius: 20px;
+  --background: #f8fafc;
+  --border: #cbd5e1;
+  --primary-text-color: var(--foreground);
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #e2e8f0;
+  --border: #334155;
+  --primary-text-color: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .p-card-footer {

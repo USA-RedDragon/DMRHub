@@ -21,24 +21,19 @@
 
 <template>
   <div>
-    <PVToast />
     <form @submit.prevent="handleTalkgroup(!v$.$invalid)">
       <Card>
-        <template #title>New Talkgroup</template>
-        <template #content>
-          <span class="p-float-label">
-            <InputText
-              id="id"
-              type="text"
-              v-model="v$.id.$model"
-              :class="{
-                'p-invalid': v$.id.$invalid && submitted,
-              }"
-            />
-            <label for="id" :class="{ 'p-error': v$.id.$invalid && submitted }"
-              >Talkgroup ID</label
-            >
-          </span>
+        <CardHeader>
+          <CardTitle>New Talkgroup</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <label class="field-label" for="id">Talkgroup ID</label>
+          <ShadInput
+            id="id"
+            type="text"
+            v-model="v$.id.$model"
+            :aria-invalid="v$.id.$invalid && submitted"
+          />
           <span v-if="v$.id.$error && submitted">
             <span v-for="(error, index) of v$.id.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "ID") }}</small>
@@ -53,21 +48,13 @@
             </small>
           </span>
           <br />
-          <span class="p-float-label">
-            <InputText
-              id="name"
-              type="text"
-              v-model="v$.name.$model"
-              :class="{
-                'p-invalid': v$.name.$invalid && submitted,
-              }"
-            />
-            <label
-              for="name"
-              :class="{ 'p-error': v$.name.$invalid && submitted }"
-              >Name</label
-            >
-          </span>
+          <label class="field-label" for="name">Name</label>
+          <ShadInput
+            id="name"
+            type="text"
+            v-model="v$.name.$model"
+            :aria-invalid="v$.name.$invalid && submitted"
+          />
           <span v-if="v$.name.$error && submitted">
             <span v-for="(error, index) of v$.name.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "Name") }}</small>
@@ -85,21 +72,13 @@
             </small>
           </span>
           <br />
-          <span class="p-float-label">
-            <InputText
-              id="description"
-              type="text"
-              v-model="v$.description.$model"
-              :class="{
-                'p-invalid': v$.description.$invalid && submitted,
-              }"
-            />
-            <label
-              for="description"
-              :class="{ 'p-error': v$.description.$invalid && submitted }"
-              >Description</label
-            >
-          </span>
+          <label class="field-label" for="description">Description</label>
+          <ShadInput
+            id="description"
+            type="text"
+            v-model="v$.description.$model"
+            :aria-invalid="v$.description.$invalid && submitted"
+          />
           <span v-if="v$.description.$error && submitted">
             <span v-for="(error, index) of v$.description.$errors" :key="index">
               <small class="p-error">{{ error.$message.replace("Value", "Description") }}</small>
@@ -120,76 +99,63 @@
             </small>
           </span>
           <br />
-          <span class="p-float-label">
-            <MultiSelect
+          <label class="field-label" for="admins">Admins</label>
+          <span>
+            <select
               id="admins"
               v-model="admins"
-              :options="allUsers"
-              :filter="true"
-              optionLabel="display"
-              display="chip"
-              style="width: 100%"
+              class="ui-select-multiple"
+              multiple
             >
-              <template #chip="slotProps">
-                {{ slotProps.value.display }}
-              </template>
-              <template #option="slotProps">
-                {{ slotProps.option.display }}
-              </template>
-            </MultiSelect>
-            <label for="admins">Admins</label>
+              <option v-for="user in allUsers" :key="user.id" :value="user.id">{{ user.display }}</option>
+            </select>
           </span>
           <br />
-          <span class="p-float-label">
-            <MultiSelect
+          <label class="field-label" for="ncos">Net Control Operators</label>
+          <span>
+            <select
               id="ncos"
               v-model="ncos"
-              :options="allUsers"
-              :filter="true"
-              optionLabel="display"
-              display="chip"
-              style="width: 100%"
+              class="ui-select-multiple"
+              multiple
             >
-              <template #chip="slotProps">
-                {{ slotProps.value.display }}
-              </template>
-              <template #option="slotProps">
-                {{ slotProps.option.display }}
-              </template>
-            </MultiSelect>
-            <label for="ncos">Net Control Operators</label>
+              <option v-for="user in allUsers" :key="user.id" :value="user.id">{{ user.display }}</option>
+            </select>
           </span>
-        </template>
-        <template #footer>
+        </CardContent>
+        <CardFooter>
           <div class="card-footer">
-            <PVButton
-              class="p-button-raised p-button-rounded"
-              icon="pi pi-save"
-              label="Save"
-              type="submit"
-            />
+            <ShadButton type="submit">Save</ShadButton>
           </div>
-        </template>
+        </CardFooter>
       </Card>
     </form>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import MultiSelect from 'primevue/multiselect';
+<script lang="ts">
+import { Button as ShadButton } from '@/components/ui/button';
+import { Input as ShadInput } from '@/components/ui/input';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import API from '@/services/API';
 import { useVuelidate } from '@vuelidate/core';
 import { required, numeric, maxLength } from '@vuelidate/validators';
 
 export default {
   components: {
+    ShadButton,
     Card,
-    PVButton: Button,
-    InputText,
-    MultiSelect,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   head: {
     title: 'New Talkgroup',
@@ -205,9 +171,9 @@ export default {
       id: '',
       name: '',
       description: '',
-      admins: [],
-      ncos: [],
-      allUsers: [],
+      admins: [] as number[],
+      ncos: [] as number[],
+      allUsers: [] as Array<{ id: number; callsign: string; display?: string }>,
       submitted: false,
     };
   },
@@ -236,11 +202,11 @@ export default {
           this.allUsers = res.data.users;
           let parrotIndex = -1;
           for (let i = 0; i < this.allUsers.length; i++) {
-            this.allUsers[
-              i
-            ].display = `${this.allUsers[i].id} - ${this.allUsers[i].callsign}`;
+            const user = this.allUsers[i];
+            if (!user) continue;
+            user.display = `${user.id} - ${user.callsign}`;
             // Remove user with id 9990 (parrot)
-            if (this.allUsers[i].id === 9990) {
+            if (user.id === 9990) {
               parrotIndex = i;
             }
           }
@@ -252,7 +218,7 @@ export default {
           console.error(err);
         });
     },
-    handleTalkgroup(isFormValid) {
+    handleTalkgroup(isFormValid: boolean) {
       this.submitted = true;
 
       if (!isFormValid) {
@@ -268,13 +234,13 @@ export default {
         name: this.name.trim(),
         description: this.description.trim(),
       })
-        .then((_res) => {
+        .then(() => {
           API.post(`/talkgroups/${numericID}/admins`, {
-            user_ids: this.admins.map((admin) => admin.id),
+            user_ids: this.admins,
           })
             .then(() => {
               API.post(`/talkgroups/${numericID}/ncos`, {
-                user_ids: this.ncos.map((nco) => nco.id),
+                user_ids: this.ncos,
               })
                 .then(() => {
                   // Now show a toast for a few seconds before redirecting to /admin/talkgroups
@@ -357,4 +323,19 @@ export default {
 };
 </script>
 
-<style scoped></style>
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ui-select-multiple {
+  width: 100%;
+  min-height: 8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+}
+</style>

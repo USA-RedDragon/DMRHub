@@ -22,59 +22,62 @@
 <template>
   <div>
     <Card>
-      <template #title>OpenBridge Settings</template>
-      <template #content>
+      <CardHeader>
+        <CardTitle>OpenBridge Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
         <p>DMRHub can run an OpenBridge server to allow connections from DMR radios and software.
           This is useful for connecting to other DMR networks.</p>
         <br />
-        <span>
-          <Checkbox
+        <div class="checkbox-row">
+          <input
             id="enabled"
-            inputId="enabled"
+            type="checkbox"
             v-model="enabled"
-            :binary="true"
           />
-          <label for="enabled">&nbsp;&nbsp;Enabled</label>
-        </span>
+          <label for="enabled">Enabled</label>
+        </div>
         <br v-if="enabled" />
-        <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText id="bind" type="text" v-model="bind" :class="{ 'p-invalid': (errors && errors.bind) || false }" />
-          <label for="bind">Bind</label>
-        </span>
+        <label class="field-label" for="bind" v-if="enabled">Bind</label>
+        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the OpenBridge server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <span class="p-float-label" v-if="enabled">
-          <InputText
-            id="port"
-            type="number"
-            v-model="port"
-            :class="{ 'p-invalid': (errors && errors.port) || false }"
-          />
-          <label for="port">Port</label>
-        </span>
+        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <ShadInput
+          id="port"
+          type="number"
+          v-model="port"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.port) || false"
+        />
         <p v-if="enabled">
           The port number to bind the OpenBridge server to
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
-      </template>
+      </CardContent>
     </Card>
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
-import Checkbox from 'primevue/checkbox';
+<script lang="ts">
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input as ShadInput } from '@/components/ui/input';
 
 export default {
   components: {
     Card,
-    InputText,
-    Checkbox,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    ShadInput,
   },
   props: {
     modelValue: {
@@ -91,7 +94,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['enabled']) || false;
       },
-      set(value) {
+      set(value: boolean) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'enabled': value,
@@ -102,7 +105,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
@@ -113,7 +116,7 @@ export default {
       get() {
         return (this.modelValue && this.modelValue['port']) || undefined;
       },
-      set(value) {
+      set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'port': value,
@@ -127,3 +130,16 @@ export default {
   mounted() {},
 };
 </script>
+
+<style scoped>
+.field-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+</style>

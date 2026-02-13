@@ -21,14 +21,13 @@
 
 <template>
   <div>
-    <PVToast />
     <UserRegistrationCard
       @register="handleRegister"
     />
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import UserRegistrationCard from '@/components/UserRegistrationCard.vue';
 import API from '@/services/API';
 
@@ -46,7 +45,7 @@ export default {
     };
   },
   methods: {
-    handleRegister(data) {
+    handleRegister(data: Record<string, unknown>) {
       API.post('/users', data)
         .then((res) => {
           this.$toast.add({

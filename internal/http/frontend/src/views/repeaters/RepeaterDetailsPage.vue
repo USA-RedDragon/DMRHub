@@ -21,22 +21,15 @@
 
 <template>
   <div>
-    <Card>
-      <template #title>Repeater Details</template>
-      <template #content>
-        Repeater details coming soon :)<br />
-        This site is a work in progress. Please report any issues to KI5VMF.
-      </template>
-    </Card>
+    <h1>Repeater Details</h1>
+    Repeater details coming soon :)<br />
+    This site is a work in progress. Please report any issues to KI5VMF.
   </div>
 </template>
 
-<script>
-import Card from 'primevue/card';
-
+<script lang="ts">
 export default {
   components: {
-    Card,
   },
   head: {
     title: 'Repeater Details',

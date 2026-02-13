@@ -310,9 +310,9 @@ nav a:first-of-type {
 
 :deep(.dropdown-content) {
   min-width: 11rem !important;
-  background: var(--background);
-  color: var(--foreground);
-  border: 1px solid var(--border);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
   border-radius: 0.35rem;
   z-index: 10;
   padding: 0.25rem 0;
@@ -324,10 +324,10 @@ nav a:first-of-type {
   padding: 0.4rem 0.75rem;
   text-align: left;
   text-decoration: none;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
 }
 
 :deep(.dropdown-content a:hover) {
-  background: var(--border);
+  background: hsl(var(--border));
 }
 </style>

@@ -270,7 +270,7 @@ export default {
 }
 
 .field-error {
-  color: var(--primary);
+  color: hsl(var(--primary));
 }
 
 </style>

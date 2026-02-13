@@ -209,15 +209,15 @@ export default {
 
 .ui-select {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
-  background: var(--background);
-  color: var(--foreground);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   padding: 0.5rem 0.75rem;
 }
 
 .ui-select:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid hsl(var(--primary));
   outline-offset: 2px;
 }
 </style>

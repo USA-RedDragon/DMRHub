@@ -426,15 +426,24 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 				continue
 			}
 
-			if packet.Repeater == repeaterID {
-				continue
-			}
-
 			p, err := models.FindRepeaterByID(m.hub.db, repeaterID)
 			if err != nil {
 				slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 				continue
 			}
+
+			if packet.Repeater == repeaterID {
+				// Simplex repeaters echo their own packets back on the opposite timeslot
+				if !p.SimplexRepeater {
+					continue
+				}
+				packet.Repeater = p.ID
+				packet.Slot = !packet.Slot
+
+				m.hub.deliverToServer(p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+				continue
+			}
+
 			want, slot := p.WantRX(packet)
 			if want {
 				packet.Repeater = p.ID

@@ -72,6 +72,7 @@ type RepeaterRow = {
   ts1_dynamic_talkgroup: Talkgroup;
   ts2_dynamic_talkgroup: Talkgroup;
   hotspot: boolean;
+  simplex_repeater: boolean;
   editable: boolean;
 };
 
@@ -352,6 +353,23 @@ export default {
           cell: ({ row }: { row: { original: RepeaterRow } }) => `${row.original.hotspot}`,
         },
         {
+          accessorKey: 'simplex_repeater',
+          header: 'Simplex',
+          cell: ({ row }: { row: { original: RepeaterRow } }) => {
+            const repeater = row.original;
+            if (!repeater.editable) {
+              return `${repeater.simplex_repeater}`;
+            }
+            return h('input', {
+              type: 'checkbox',
+              checked: repeater.simplex_repeater,
+              onChange: (e: Event) => {
+                repeater.simplex_repeater = (e.target as HTMLInputElement).checked;
+              },
+            });
+          },
+        },
+        {
           accessorKey: 'created_at',
           header: 'Created',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
@@ -491,17 +509,21 @@ export default {
       }
     },
     saveTalkgroups(repeater: RepeaterRow) {
-      API.post(`/repeaters/${repeater.id}/talkgroups`, {
+      const talkgroupsPromise = API.post(`/repeaters/${repeater.id}/talkgroups`, {
         ts1_dynamic_talkgroup: repeater.ts1_dynamic_talkgroup,
         ts2_dynamic_talkgroup: repeater.ts2_dynamic_talkgroup,
         ts1_static_talkgroups: repeater.ts1_static_talkgroups,
         ts2_static_talkgroups: repeater.ts2_static_talkgroups,
-      })
+      });
+      const settingsPromise = API.patch(`/repeaters/${repeater.id}`, {
+        simplex_repeater: repeater.simplex_repeater,
+      });
+      Promise.all([talkgroupsPromise, settingsPromise])
         .then(() => {
           this.$toast.add({
             severity: 'success',
             summary: 'Success',
-            detail: `Talkgroups updated for repeater ${repeater.id}`,
+            detail: `Repeater ${repeater.id} updated`,
             life: 3000,
           });
           repeater.editable = false;
@@ -523,7 +545,7 @@ export default {
             this.$toast.add({
               severity: 'error',
               summary: 'Error',
-              detail: `Error updating talkgroups for repeater ${repeater.id}`,
+              detail: `Error updating repeater ${repeater.id}`,
               life: 3000,
             });
           }

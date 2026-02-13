@@ -22,8 +22,9 @@ package apimodels
 import "github.com/USA-RedDragon/DMRHub/internal/db/models"
 
 type RepeaterPost struct {
-	RadioID uint   `json:"id" binding:"required"`
-	Type    string `json:"type"`
+	RadioID         uint   `json:"id" binding:"required"`
+	Type            string `json:"type"`
+	SimplexRepeater bool   `json:"simplex_repeater"`
 }
 
 type RepeaterTalkgroupsPost struct {
@@ -31,4 +32,8 @@ type RepeaterTalkgroupsPost struct {
 	TS2StaticTalkgroups []models.Talkgroup `json:"ts2_static_talkgroups"`
 	TS1DynamicTalkgroup models.Talkgroup   `json:"ts1_dynamic_talkgroup"`
 	TS2DynamicTalkgroup models.Talkgroup   `json:"ts2_dynamic_talkgroup"`
+}
+
+type RepeaterPatch struct {
+	SimplexRepeater *bool `json:"simplex_repeater"`
 }

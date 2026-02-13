@@ -57,6 +57,7 @@ type Repeater struct {
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID               uint           `json:"-" msg:"-"`
 	Hotspot               bool           `json:"hotspot" msg:"hotspot"`
+	SimplexRepeater       bool           `json:"simplex_repeater" msg:"simplex_repeater"`
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`

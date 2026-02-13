@@ -44,13 +44,10 @@
         <h2>Useful Links</h2>
         <ul>
           <li>
-            <a href="https://github.com/USA-RedDragon/DMRHub/wiki/User's-Guide" target="_blank">DMRHub User's Guide</a>
+            <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/User-Guide.md" target="_blank">DMRHub User's Guide</a>
           </li>
           <li>
-            <a href="https://github.com/USA-RedDragon/DMRHub/wiki" target="_blank">DMRHub Wiki</a>
-          </li>
-          <li>
-            <a href="https://github.com/USA-RedDragon/DMRHub/wiki/Admin's-Guide" target="_blank">
+            <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/Admin-Guide.md" target="_blank">
               DMRHub Admin's Guide</a>
           </li>
         </ul>

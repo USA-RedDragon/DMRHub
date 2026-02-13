@@ -57,7 +57,7 @@ onMounted(() => {
   text-align: center;
   display: block;
   padding: 1em;
-  padding-bottom: 0;
+  padding-bottom: 1.5em;
   margin-bottom: 0;
   font-size: 0.8em;
 }

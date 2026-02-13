@@ -125,7 +125,7 @@
         </CardContent>
         <CardFooter>
           <div class="card-footer">
-            <ShadButton type="submit">Save</ShadButton>
+            <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
           </div>
         </CardFooter>
       </Card>

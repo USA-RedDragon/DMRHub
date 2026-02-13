@@ -25,10 +25,6 @@
     (() => {
       const colorMode = localStorage.getItem('color-mode') || 'system';
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const isDark = colorMode === 'dark' || (colorMode === 'system' && prefersDark);
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      }
     })();
   </script>
   <script type="module" src="/src/main.ts"></script>

@@ -38,7 +38,6 @@
           <label for="enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <br v-if="enabled" />
         <label class="field-label" for="host" v-if="enabled">Host</label>
         <ShadInput id="host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">

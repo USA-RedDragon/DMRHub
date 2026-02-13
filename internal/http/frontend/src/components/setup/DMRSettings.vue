@@ -70,6 +70,7 @@
         <span v-if="errors && errors['repeater-id-url']" class="p-error">{{ errors['repeater-id-url'] }}</span>
         <br />
         <MMDVMSettings v-model="mmdvm" :errors="errors.mmdvm" />
+        <br />
         <IPSCSettings v-model="ipsc" :errors="errors.ipsc" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>

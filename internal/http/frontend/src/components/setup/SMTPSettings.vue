@@ -26,19 +26,17 @@
         <CardTitle>Email Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <p>DMRHub can send email notifications to admins when:
+        <p>DMRHub can send email notifications to admins when:</p>
         <ul>
           <li>A new user registers</li>
           <li>A user is promoted to admin</li>
           <li>A user is demoted from admin</li>
         </ul>
-        </p>
         <br />
         <div class="checkbox-row">
           <input id="enabled" type="checkbox" v-model="enabled" />
           <label for="enabled">Enabled</label>
         </div>
-        <br v-if="enabled" />
         <br v-if="enabled" />
         <label class="field-label" for="from" v-if="enabled">From Address</label>
         <ShadInput id="from" type="text" v-model="from" v-if="enabled" :aria-invalid="(errors && errors.from) || false" />
@@ -90,6 +88,7 @@
         </p>
         <small v-if="enabled" class="p-text-secondary">{{ passwordStatusMessage }}</small>
         <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
+        <br v-if="enabled" />
         <br v-if="enabled" />
         <label class="field-label" for="tls" v-if="enabled">TLS Mode</label>
         <select id="tls" v-model="tls" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.tls) || false }">

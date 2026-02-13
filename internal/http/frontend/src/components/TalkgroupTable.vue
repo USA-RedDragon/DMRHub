@@ -45,13 +45,13 @@
 
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
-import { h } from 'vue';
+import { h, type RendererElement } from 'vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
 import { Input as Input } from '@/components/ui/input';
 import { DataTable } from '@/components/ui/data-table';
 
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 
 import { mapStores } from 'pinia';
 import { useSettingsStore } from '@/store';
@@ -170,6 +170,8 @@ export default {
       for (const talkgroup of copyData) {
         talkgroup.created_at = new Date(talkgroup.created_at);
         talkgroup.editable = false;
+        talkgroup.admins = talkgroup.admins || [];
+        talkgroup.ncos = talkgroup.ncos || [];
 
         for (const adminUser of talkgroup.admins) {
           adminUser.display = `${adminUser.id} - ${adminUser.callsign}`;
@@ -186,7 +188,7 @@ export default {
       if (Number.isNaN(date.getTime())) {
         return '-';
       }
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNowStrict(date, { addSuffix: true });
     },
     absoluteTime(dateValue: string | Date) {
       const date = new Date(dateValue);
@@ -340,7 +342,37 @@ export default {
   },
   computed: {
     columns() {
-      const columns: ColumnDef<TalkgroupRow, unknown>[] = [
+      const columns: ColumnDef<TalkgroupRow, RendererElement>[] = [];
+
+      if (this.admin || this.owner) {
+        columns.push({
+          accessorKey: 'actions',
+          header: '',
+          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
+            const talkgroup = row.original;
+            const actions: Array<ReturnType<typeof h>> = [];
+            const actionButton = (label: string, onClick: () => void) => {
+              return h('button', {
+                class: buttonVariants({ variant: 'outline', size: 'sm' }),
+                onClick,
+              }, label);
+            };
+            if (!talkgroup.editable) {
+              actions.push(actionButton('Edit', () => this.startEdit(talkgroup)));
+            }
+            if (talkgroup.editable) {
+              actions.push(actionButton('Save', () => this.saveTalkgroup(talkgroup)));
+              actions.push(actionButton('Cancel', () => this.cancelEdit(talkgroup)));
+            }
+            if (this.admin && !talkgroup.editable) {
+              actions.push(actionButton('Delete', () => this.deleteTalkgroup(talkgroup)));
+            }
+            return h('div', { class: 'flex gap-2' }, actions);
+          },
+        });
+      }
+
+      columns.push(
         {
           accessorKey: 'id',
           header: 'Channel',
@@ -378,7 +410,7 @@ export default {
             });
           },
         },
-      ];
+      );
 
       if (!this.owner) {
         columns.push({
@@ -471,34 +503,6 @@ export default {
           },
         },
       );
-
-      if (this.admin || this.owner) {
-        columns.push({
-          accessorKey: 'actions',
-          header: 'Actions',
-          cell: ({ row }: { row: { original: TalkgroupRow } }) => {
-            const talkgroup = row.original;
-            const actions: Array<ReturnType<typeof h>> = [];
-            const actionButton = (label: string, onClick: () => void) => {
-              return h('button', {
-                class: buttonVariants({ variant: 'outline', size: 'sm' }),
-                onClick,
-              }, label);
-            };
-            if (!talkgroup.editable) {
-              actions.push(actionButton('Edit', () => this.startEdit(talkgroup)));
-            }
-            if (talkgroup.editable) {
-              actions.push(actionButton('Save', () => this.saveTalkgroup(talkgroup)));
-              actions.push(actionButton('Cancel', () => this.cancelEdit(talkgroup)));
-            }
-            if (this.admin && !talkgroup.editable) {
-              actions.push(actionButton('Delete', () => this.deleteTalkgroup(talkgroup)));
-            }
-            return h('div', { class: 'flex gap-2' }, actions);
-          },
-        });
-      }
 
       return columns;
     },

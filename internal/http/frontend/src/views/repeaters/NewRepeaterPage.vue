@@ -29,7 +29,6 @@
         <CardContent>
           <div class="field">
             <label class="field-label" for="repeaterType">Repeater Type</label>
-            <br />
             <select
               id="repeaterType"
               v-model="repeaterType"

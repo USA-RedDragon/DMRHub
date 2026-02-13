@@ -69,15 +69,86 @@ html {
 
 :root {
   --border-radius: 20px;
-  --background: #f8fafc;
+  --radius: var(--border-radius);
+
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0f172a;
+  --primary-foreground: #f8fafc;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --destructive-foreground: #f8fafc;
   --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #94a3b8;
+
+  --chart-1: #f97316;
+  --chart-2: #06b6d4;
+  --chart-3: #2563eb;
+  --chart-4: #8b5cf6;
+  --chart-5: #ec4899;
+
+  --sidebar: #f8fafc;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0f172a;
+  --sidebar-primary-foreground: #f8fafc;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #cbd5e1;
+  --sidebar-ring: #94a3b8;
+
+  --cyan-300: #67e8f9;
+  --cyan-500: #06b6d4;
   --primary-text-color: var(--foreground);
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #e2e8f0;
+  --background: #020817;
+  --foreground: #f8fafc;
+  --card: #020817;
+  --card-foreground: #f8fafc;
+  --popover: #020817;
+  --popover-foreground: #f8fafc;
+  --primary: #e2e8f0;
+  --primary-foreground: #0f172a;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #1e293b;
+  --accent-foreground: #f8fafc;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #f8fafc;
   --border: #334155;
+  --input: #334155;
+  --ring: #64748b;
+
+  --chart-1: #fb923c;
+  --chart-2: #22d3ee;
+  --chart-3: #60a5fa;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+
+  --sidebar: #020817;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #e2e8f0;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #334155;
+  --sidebar-ring: #64748b;
+
+  --cyan-300: #67e8f9;
+  --cyan-500: #06b6d4;
   --primary-text-color: var(--foreground);
 }
 

@@ -43,7 +43,7 @@
     "@types/jsdom": "27.0.0",
     "@unhead/vue": "2.1.4",
     "@vitejs/plugin-vue": "6.0.4",
-    "@vitest/eslint-plugin": "1.6.7",
+    "@vitest/eslint-plugin": "1.6.9",
     "@vitest/ui": "4.0.18",
     "@vue/eslint-config-prettier": "10.2.0",
     "@vue/eslint-config-typescript": "14.6.0",

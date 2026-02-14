@@ -490,7 +490,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if len(data) < 30 {
+	if len(data) < 31 {
 		slog.Debug("IPSCTranslator: IPSC packet too short", "length", len(data))
 		return nil
 	}

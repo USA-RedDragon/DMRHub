@@ -20,6 +20,7 @@
 package dmrconst
 
 import (
+	"fmt"
 	"regexp"
 )
 
@@ -62,6 +63,9 @@ func (r *FrameType) MarshalBinaryTo(b []byte) error {
 
 // UnmarshalBinary reads the frame from the byte slice.
 func (r *FrameType) UnmarshalBinary(b []byte) error {
+	if len(b) < 1 {
+		return fmt.Errorf("FrameType.UnmarshalBinary: buffer too short (len=%d)", len(b))
+	}
 	*r = FrameType(b[0])
 	return nil
 }

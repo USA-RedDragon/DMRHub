@@ -1790,3 +1790,25 @@ func TestErrPacketIgnoredIsSentinel(t *testing.T) {
 		t.Fatalf("expected ErrPacketIgnored, got %v", err)
 	}
 }
+
+func FuzzParsePeerID(f *testing.F) {
+	// Valid 5-byte packet with peer ID 311860 (0x0004C234)
+	f.Add([]byte{0x90, 0x00, 0x04, 0xC2, 0x34})
+	// Too short
+	f.Add([]byte{0x90, 0x00})
+	// Exactly 5 bytes, all zeros
+	f.Add([]byte{0x00, 0x00, 0x00, 0x00, 0x00})
+	// Max uint32
+	f.Add([]byte{0x80, 0xFF, 0xFF, 0xFF, 0xFF})
+	// Empty
+	f.Add([]byte{})
+	// Longer packet (realistic IPSC size)
+	long := make([]byte, 100)
+	long[0] = 0x80
+	binary.BigEndian.PutUint32(long[1:5], 12345)
+	f.Add(long)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		t.Parallel()
+		_, _ = parsePeerID(data)
+	})
+}

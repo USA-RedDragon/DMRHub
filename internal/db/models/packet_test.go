@@ -156,6 +156,42 @@ func TestPacketPrivateEncode(t *testing.T) {
 	}
 }
 
+func FuzzPacketUnmarshalMsg(f *testing.F) {
+	// Seed with a valid msgp-encoded Packet
+	goodPkt := knownGoodPacket
+	encoded, err := goodPkt.MarshalMsg(nil)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(encoded)
+	f.Add([]byte{}) // empty
+	f.Add([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		t.Parallel()
+		var p models.Packet
+		_, _ = p.UnmarshalMsg(data)
+	})
+}
+
+func FuzzRawDMRPacketUnmarshalMsg(f *testing.F) {
+	good := models.RawDMRPacket{
+		Data:       []byte{1, 2, 3},
+		RemoteIP:   "127.0.0.1",
+		RemotePort: 62031,
+	}
+	encoded, err := good.MarshalMsg(nil)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(encoded)
+	f.Add([]byte{})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		t.Parallel()
+		var p models.RawDMRPacket
+		_, _ = p.UnmarshalMsg(data)
+	})
+}
+
 func BenchmarkEncodeHomebrewPacket(b *testing.B) {
 	b.StopTimer()
 	p := models.Packet{}

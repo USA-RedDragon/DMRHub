@@ -60,3 +60,22 @@ func TestFrameTypeStringVoice(t *testing.T) {
 		t.Errorf("Expected %s, got %s", expected, result)
 	}
 }
+
+func FuzzFrameTypeUnmarshalBinary(f *testing.F) {
+	f.Add([]byte{0x00})
+	f.Add([]byte{0x01})
+	f.Add([]byte{0x02})
+	f.Add([]byte{0xFF})
+	f.Add([]byte{}) // empty
+	f.Fuzz(func(t *testing.T, data []byte) {
+		t.Parallel()
+		var ft dmrconst.FrameType
+		_ = ft.UnmarshalBinary(data)
+		// Also exercise MarshalBinaryTo if data was valid
+		if len(data) >= 1 {
+			out := make([]byte, 1)
+			_ = ft.MarshalBinaryTo(out)
+		}
+		_ = ft.String()
+	})
+}

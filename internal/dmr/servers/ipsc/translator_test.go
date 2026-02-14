@@ -1062,3 +1062,125 @@ func TestPopulateEmbeddedSignallingNoEmbeddedData(t *testing.T) {
 		}
 	}
 }
+
+// --- Fuzz tests ---
+
+func FuzzTranslateToIPSC(f *testing.F) {
+	// Seed with a voice LC header packet
+	f.Add("DMRD", uint(1), uint(1000001), uint(1), uint(307201), true, true,
+		uint(dmrconst.FrameDataSync), uint(elements.DataTypeVoiceLCHeader), uint(5001),
+		byte(1), byte(2), byte(3))
+	// Voice burst
+	f.Add("DMRD", uint(2), uint(1000001), uint(1), uint(307201), false, true,
+		uint(dmrconst.FrameVoice), uint(0), uint(5001),
+		byte(0xAA), byte(0xBB), byte(0xCC))
+	// Terminator
+	f.Add("DMRD", uint(3), uint(1000001), uint(1), uint(307201), false, true,
+		uint(dmrconst.FrameDataSync), uint(elements.DataTypeTerminatorWithLC), uint(5001),
+		byte(0), byte(0), byte(0))
+
+	f.Fuzz(func(t *testing.T, sig string, seq, src, dst, repeater uint, slot, groupCall bool,
+		frameType, dtypeOrVSeq, streamID uint, d0, d1, d2 byte) {
+		t.Parallel()
+		tr := NewIPSCTranslator(311860)
+		var dmrData [33]byte
+		dmrData[0] = d0
+		dmrData[1] = d1
+		dmrData[2] = d2
+		pkt := models.Packet{
+			Signature:   sig,
+			Seq:         seq,
+			Src:         src,
+			Dst:         dst,
+			Repeater:    repeater,
+			Slot:        slot,
+			GroupCall:   groupCall,
+			FrameType:   dmrconst.FrameType(frameType),
+			DTypeOrVSeq: dtypeOrVSeq,
+			StreamID:    streamID,
+			DMRData:     dmrData,
+		}
+		_ = tr.TranslateToIPSC(pkt)
+	})
+}
+
+func FuzzTranslateToMMDVM(f *testing.F) {
+	// Build a seed IPSC voice header packet (54 bytes)
+	seed := make([]byte, 54)
+	seed[0] = 0x80 // GROUP_VOICE
+	binary.BigEndian.PutUint32(seed[1:5], 311860)
+	// src (bytes 6-8)
+	seed[6] = 0x0F
+	seed[7] = 0x42
+	seed[8] = 0x41
+	// dst (bytes 9-11)
+	seed[9] = 0x00
+	seed[10] = 0x00
+	seed[11] = 0x01
+	// call control (bytes 13-16)
+	binary.BigEndian.PutUint32(seed[13:17], 1)
+	// call info (byte 17)
+	seed[17] = 0x00
+	// burst type: voice header
+	seed[30] = 0x01
+	f.Add(byte(0x80), seed)
+
+	// Voice burst (57 bytes)
+	burst := make([]byte, 57)
+	burst[0] = 0x80
+	binary.BigEndian.PutUint32(burst[1:5], 311860)
+	burst[6] = 0x0F
+	burst[7] = 0x42
+	burst[8] = 0x41
+	burst[9] = 0x00
+	burst[10] = 0x00
+	burst[11] = 0x01
+	binary.BigEndian.PutUint32(burst[13:17], 1)
+	burst[30] = 0x0A // ipscBurstSlot1
+	f.Add(byte(0x80), burst)
+
+	// Short packet
+	f.Add(byte(0x80), make([]byte, 10))
+	// Empty
+	f.Add(byte(0x80), []byte{})
+	// Unsupported type
+	f.Add(byte(0xFF), make([]byte, 60))
+
+	f.Fuzz(func(t *testing.T, packetType byte, data []byte) {
+		t.Parallel()
+		tr := NewIPSCTranslator(311860)
+		_ = tr.TranslateToMMDVM(packetType, data)
+	})
+}
+
+func FuzzTranslatorRoundTrip(f *testing.F) {
+	// Seed with a voice LC header packet
+	f.Add(uint(1), uint(1000001), uint(1), uint(307201), true, true,
+		uint(dmrconst.FrameDataSync), uint(elements.DataTypeVoiceLCHeader), uint(5001))
+
+	f.Fuzz(func(t *testing.T, seq, src, dst, repeater uint,
+		slot, groupCall bool, frameType, dtypeOrVSeq, streamID uint) {
+		t.Parallel()
+		tr := NewIPSCTranslator(311860)
+		pkt := models.Packet{
+			Signature:   "DMRD",
+			Seq:         seq,
+			Src:         src,
+			Dst:         dst,
+			Repeater:    repeater,
+			Slot:        slot,
+			GroupCall:   groupCall,
+			FrameType:   dmrconst.FrameType(frameType),
+			DTypeOrVSeq: dtypeOrVSeq,
+			StreamID:    streamID,
+		}
+		ipscPackets := tr.TranslateToIPSC(pkt)
+		// Now translate each IPSC packet back — must not panic
+		for _, ipscPkt := range ipscPackets {
+			if len(ipscPkt) < 1 {
+				continue
+			}
+			_ = tr.TranslateToMMDVM(ipscPkt[0], ipscPkt)
+		}
+	})
+}

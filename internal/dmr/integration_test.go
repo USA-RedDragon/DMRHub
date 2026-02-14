@@ -947,3 +947,67 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		c2.Drain(500 * time.Millisecond)
 	})
 }
+
+// TestMultiReplicaDelivery verifies that when two replicas of the app share the
+// same pubsub/KV/DB, a group call is delivered ONLY by the replica that holds
+// the repeater's UDP session — not by the other replica.
+//
+// This catches the production bug where replica B won a lease and sent packets
+// from a different UDP socket, causing the destination repeater to ignore them.
+func TestMultiReplicaDelivery(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
+
+		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.AssignTS1StaticTG(t, 100002, 1)
+
+		// Spawn a second replica (separate Hub + MMDVM server) sharing the same
+		// DB, pubsub, and KV. This simulates a second pod in a multi-replica deploy.
+		// The second replica also subscribes to all pubsub topics via Hub.Start().
+		_ = stack.SpawnSecondReplica(t)
+
+		stack.StartServers(t)
+
+		// Connect both repeaters ONLY to the primary replica's MMDVM server.
+		// This mirrors production where all repeaters happen to connect to one pod.
+		c1 := testutils.NewMMDVMClient(100001, "", testPassword)
+		c2 := testutils.NewMMDVMClient(100002, "", testPassword)
+		require.NoError(t, c1.Connect(stack.MMDVMAddr))
+		require.NoError(t, c2.Connect(stack.MMDVMAddr))
+		defer c1.Close()
+		defer c2.Close()
+		require.NoError(t, c1.WaitReady(handshakeWait))
+		require.NoError(t, c2.WaitReady(handshakeWait))
+
+		time.Sleep(settleDuration)
+
+		// C1 sends group voice to TG1
+		voicePkt := makeGroupVoicePacket(1000001, 1, 5001, false)
+		require.NoError(t, c1.SendDMRD(voicePkt))
+		time.Sleep(50 * time.Millisecond)
+		termPkt := makeGroupVoiceTermPacket(1000001, 1, 5001, false)
+		require.NoError(t, c1.SendDMRD(termPkt))
+
+		// C2 should still receive the call despite a second replica also consuming
+		// pubsub messages. Before the fix, the second replica could win a lease and
+		// send from the wrong socket, leaving C2 with no data.
+		pkts := c2.Drain(drainWait)
+		assert.NotEmpty(t, pkts, "C2 should receive TG1 call even with a second replica running")
+		for _, p := range pkts {
+			assert.Equal(t, uint(1), p.Dst, "packet should target TG1")
+			assert.Equal(t, uint(1000001), p.Src, "packet Src should be preserved")
+			assert.Equal(t, uint(100002), p.Repeater, "packet Repeater should be destination repeater ID")
+			assert.True(t, p.GroupCall, "packet should be a group call")
+		}
+
+		// C1 should NOT echo its own call
+		pkts1 := c1.Drain(drainWait)
+		for _, p := range pkts1 {
+			assert.NotEqual(t, uint(1), p.Dst, "source repeater should not echo its own call")
+		}
+	})
+}

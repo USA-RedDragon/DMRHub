@@ -267,6 +267,12 @@ func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command 
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet models.Packet) {
+	// Only send to repeaters with active local sessions on this replica.
+	// In multi-replica deployments, all replicas receive pubsub messages but
+	// only the replica holding the UDP session should transmit.
+	if _, ok := s.connected.Load(repeaterIDBytes); !ok {
+		return
+	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterIDBytes)
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {

@@ -124,6 +124,35 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	return stack
 }
 
+// SpawnSecondReplica creates a second Hub + MMDVM server that shares the same
+// DB, pubsub, and KV as the original stack — simulating two replicas of the app.
+// The second replica's Hub also calls Start() so it sets up its own pubsub
+// subscriptions. Returns the second MMDVM server's listen address.
+func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) string {
+	t.Helper()
+
+	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub)
+	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
+
+	// Use a separate config with port=0 for the second server
+	cfg2 := *s.Config
+	cfg2.DMR.MMDVM.Port = 0
+
+	mmdvm2, err := mmdvm.MakeServer(&cfg2, hub2, s.DB, s.PubSub, s.KV, "test", "test")
+	require.NoError(t, err)
+
+	hub2.Start()
+	err = mmdvm2.Start(context.Background())
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = mmdvm2.Stop(context.Background())
+		hub2.Stop()
+	})
+
+	return mmdvm2.Server.LocalAddr().String()
+}
+
 // StartServers activates repeater subscriptions in the Hub and starts
 // the MMDVM and IPSC servers. Call this after seeding DB with repeaters
 // and talkgroups so that Hub.Start() picks them up.

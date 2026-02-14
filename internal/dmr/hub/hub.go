@@ -20,11 +20,8 @@
 package hub
 
 import (
-	"fmt"
 	"log/slog"
-	"os"
 	"sync"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
@@ -94,17 +91,10 @@ type Hub struct {
 	servers map[string]*serverEntry
 
 	subscriptionMgr *subscriptionManager
-	instanceID      string
 }
 
 // NewHub creates a new Hub.
 func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTracker) *Hub {
-	hostname, err := os.Hostname()
-	if err != nil || hostname == "" {
-		hostname = "unknown"
-	}
-	instanceID := fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano())
-
 	h := &Hub{
 		db:          db,
 		kv:          kvStore,
@@ -112,7 +102,6 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		callTracker: ct,
 		parrot:      parrot.NewParrot(kvStore),
 		servers:     make(map[string]*serverEntry),
-		instanceID:  instanceID,
 	}
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h

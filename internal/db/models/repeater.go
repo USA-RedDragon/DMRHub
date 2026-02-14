@@ -35,11 +35,20 @@ const (
 	RepeaterTypeIPSC = "ipsc"
 )
 
+type RepeaterState string
+
+const (
+	RepeaterStateConnected     RepeaterState = "CONNECTED"
+	RepeaterStateChallengeSent RepeaterState = "CHALLENGE_SENT"
+	RepeaterStateWaitingConfig RepeaterState = "WAITING_CONFIG"
+	RepeaterStateLoginReceived RepeaterState = "LOGIN_RECEIVED"
+)
+
 // Repeater is the model for a DMR repeater
 //
 //go:generate go run github.com/tinylib/msgp
 type Repeater struct {
-	Connection            string         `json:"-" gorm:"-" msg:"connection"`
+	Connection            RepeaterState  `json:"-" gorm:"-" msg:"connection"`
 	Connected             time.Time      `json:"connected_time" msg:"connected"`
 	PingsReceived         uint           `json:"-" gorm:"-" msg:"pings_received"`
 	LastPing              time.Time      `json:"last_ping_time" msg:"last_ping"`

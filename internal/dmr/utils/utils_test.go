@@ -96,3 +96,16 @@ func TestCheckPacketTypeUnknownFrame(t *testing.T) {
 	assert.False(t, isVoice, "unknown frame should not be voice")
 	assert.False(t, isData, "unknown frame should not be data")
 }
+
+func BenchmarkCheckPacketType(b *testing.B) {
+	packet := models.Packet{
+		Src:         1000001,
+		FrameType:   dmrconst.FrameDataSync,
+		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		utils.CheckPacketType(packet)
+	}
+}

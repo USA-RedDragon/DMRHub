@@ -1812,3 +1812,36 @@ func FuzzParsePeerID(f *testing.F) {
 		_, _ = parsePeerID(data)
 	})
 }
+
+// --- Benchmarks ---
+
+func BenchmarkAuthWithKey(b *testing.B) {
+	key := []byte("secret-key-1234")
+	// Build a signed IPSC packet
+	payload := make([]byte, 54)
+	payload[0] = 0x80
+	binary.BigEndian.PutUint32(payload[1:5], 12345)
+	hash := hmac.New(sha1.New, key)
+	hash.Write(payload)
+	hashSum := hash.Sum(nil)[:10]
+	data := make([]byte, 0, len(payload)+len(hashSum))
+	data = append(data, payload...)
+	data = append(data, hashSum...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		authWithKey(data, key)
+	}
+}
+
+func BenchmarkParsePeerID(b *testing.B) {
+	data := make([]byte, 54)
+	data[0] = 0x80
+	binary.BigEndian.PutUint32(data[1:5], 311860)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = parsePeerID(data)
+	}
+}

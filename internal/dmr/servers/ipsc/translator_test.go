@@ -1184,3 +1184,78 @@ func FuzzTranslatorRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// --- Benchmarks ---
+
+func BenchmarkTranslateToIPSCVoiceHeader(b *testing.B) {
+	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr := NewIPSCTranslator(12345)
+		tr.TranslateToIPSC(pkt)
+	}
+}
+
+func BenchmarkTranslateToIPSCVoiceBurst(b *testing.B) {
+	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameVoice, 0)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Send a header first to establish stream state, then benchmark burst
+		tr := NewIPSCTranslator(12345)
+		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+		header.StreamID = pkt.StreamID
+		tr.TranslateToIPSC(header)
+		tr.TranslateToIPSC(pkt)
+	}
+}
+
+func BenchmarkTranslateToIPSCTerminator(b *testing.B) {
+	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeTerminatorWithLC))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr := NewIPSCTranslator(12345)
+		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+		header.StreamID = pkt.StreamID
+		tr.TranslateToIPSC(header)
+		tr.TranslateToIPSC(pkt)
+	}
+}
+
+func BenchmarkTranslateToMMDVMVoiceHeader(b *testing.B) {
+	data := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr := NewIPSCTranslator(12345)
+		tr.TranslateToMMDVM(0x80, data)
+	}
+}
+
+func BenchmarkTranslateToMMDVMVoiceBurst(b *testing.B) {
+	header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	burst := make([]byte, 57)
+	copy(burst, header)
+	burst[30] = ipscBurstSlot1
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr := NewIPSCTranslator(12345)
+		tr.TranslateToMMDVM(0x80, header)
+		tr.TranslateToMMDVM(0x80, burst)
+	}
+}
+
+func BenchmarkTranslateToMMDVMTerminator(b *testing.B) {
+	header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	term := makeTestIPSCPacket(0x80, ipscBurstVoiceTerm, true, false)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tr := NewIPSCTranslator(12345)
+		tr.TranslateToMMDVM(0x80, header)
+		tr.TranslateToMMDVM(0x80, term)
+	}
+}

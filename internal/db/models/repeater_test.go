@@ -25,15 +25,18 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
 
+const goodCallsign = "N0CALL"
+const localhost = "127.0.0.1"
+
 func FuzzRepeaterUnmarshalMsg(f *testing.F) {
 	good := models.Repeater{}
-	good.Connection = "YES"
-	good.IP = "127.0.0.1"
+	good.Connection = models.RepeaterStateConnected
+	good.IP = localhost
 	good.Port = 62031
 	good.Salt = 0xDEADBEEF
 	good.PingsReceived = 42
 	good.Hotspot = true
-	good.Callsign = "N0CALL"
+	good.Callsign = goodCallsign
 	good.ID = 307201
 	encoded, err := good.MarshalMsg(nil)
 	if err != nil {
@@ -47,4 +50,43 @@ func FuzzRepeaterUnmarshalMsg(f *testing.F) {
 		var r models.Repeater
 		_, _ = r.UnmarshalMsg(data)
 	})
+}
+
+func BenchmarkRepeaterMarshalMsg(b *testing.B) {
+	r := models.Repeater{}
+	r.Connection = models.RepeaterStateConnected
+	r.IP = localhost
+	r.Port = 62031
+	r.Salt = 0xDEADBEEF
+	r.PingsReceived = 42
+	r.Hotspot = true
+	r.Callsign = goodCallsign
+	r.ID = 307201
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = r.MarshalMsg(nil)
+	}
+}
+
+func BenchmarkRepeaterUnmarshalMsg(b *testing.B) {
+	r := models.Repeater{}
+	r.Connection = models.RepeaterStateConnected
+	r.IP = localhost
+	r.Port = 62031
+	r.Salt = 0xDEADBEEF
+	r.PingsReceived = 42
+	r.Hotspot = true
+	r.Callsign = goodCallsign
+	r.ID = 307201
+	encoded, err := r.MarshalMsg(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var dec models.Repeater
+		_, _ = dec.UnmarshalMsg(encoded)
+	}
 }

@@ -21,11 +21,16 @@ package hub_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/configulator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -119,5 +124,87 @@ func TestPeerServerDoesNotForwardToSelf(t *testing.T) {
 		t.Fatal("Peer server should not receive packets it originates")
 	case <-time.After(500 * time.Millisecond):
 		// Expected
+	}
+}
+
+// --- Benchmarks ---
+// These benchmark the end-to-end publish pipeline: Packet.Encode → RawDMRPacket.MarshalMsg → pubsub.Publish
+// which is what publishToRepeater and publishForBroadcastServers do internally.
+
+func makeTestPubSubB(b *testing.B) pubsub.PubSub {
+	b.Helper()
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		b.Fatalf("Failed to create default config: %v", err)
+	}
+	ps, err := pubsub.MakePubSub(context.Background(), &defConfig)
+	if err != nil {
+		b.Fatalf("Failed to create pubsub: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = ps.Close()
+	})
+	return ps
+}
+
+func BenchmarkPublishToRepeater(b *testing.B) {
+	ps := makeTestPubSubB(b)
+	sub := ps.Subscribe(fmt.Sprintf("hub:packets:repeater:%d", 307201))
+	defer func() { _ = sub.Close() }()
+
+	pkt := models.Packet{
+		Signature:   "DMRD",
+		Seq:         1,
+		Src:         1000001,
+		Dst:         1,
+		Repeater:    307201,
+		Slot:        false,
+		GroupCall:   true,
+		FrameType:   dmrconst.FrameDataSync,
+		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
+		StreamID:    42,
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var rawPacket models.RawDMRPacket
+		rawPacket.Data = pkt.Encode()
+		packedBytes, _ := rawPacket.MarshalMsg(nil)
+		_ = ps.Publish(fmt.Sprintf("hub:packets:repeater:%d", 307201), packedBytes)
+		<-sub.Channel()
+	}
+}
+
+func BenchmarkPublishForBroadcastServers(b *testing.B) {
+	ps := makeTestPubSubB(b)
+	sub := ps.Subscribe("hub:packets:broadcast")
+	defer func() { _ = sub.Close() }()
+
+	pkt := models.Packet{
+		Signature:   "DMRD",
+		Seq:         1,
+		Src:         1000001,
+		Dst:         1,
+		Repeater:    307201,
+		Slot:        false,
+		GroupCall:   true,
+		FrameType:   dmrconst.FrameDataSync,
+		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
+		StreamID:    42,
+	}
+	sourceName := "mmdvm"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		encodedPacket := pkt.Encode()
+		nameBytes := []byte(sourceName)
+		msg := make([]byte, 0, 1+len(nameBytes)+len(encodedPacket))
+		msg = append(msg, byte(len(nameBytes)))
+		msg = append(msg, nameBytes...)
+		msg = append(msg, encodedPacket...)
+		_ = ps.Publish("hub:packets:broadcast", msg)
+		<-sub.Channel()
 	}
 }

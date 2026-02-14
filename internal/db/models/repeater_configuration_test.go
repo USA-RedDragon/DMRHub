@@ -44,7 +44,7 @@ func buildValidRPTCPacket() []byte {
 	// bytes 34-35: TX power (2 chars)
 	copy(data[34:36], "50")
 	// bytes 36-37: color code (2 chars)
-	copy(data[36:38], " 1")
+	copy(data[36:38], "01")
 	// bytes 38-45: latitude (8 chars)
 	copy(data[38:46], "35.0000 ")
 	// bytes 46-54: longitude (9 chars)
@@ -131,4 +131,63 @@ func FuzzRepeaterConfigurationUnmarshalMsg(f *testing.F) {
 		var c models.RepeaterConfiguration
 		_, _ = c.UnmarshalMsg(data)
 	})
+}
+
+func BenchmarkParseConfig(b *testing.B) {
+	data := buildValidRPTCPacket()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var c models.RepeaterConfiguration
+		_ = c.ParseConfig(data, "test", "abc123")
+	}
+}
+
+func BenchmarkRepeaterConfigurationMarshalMsg(b *testing.B) {
+	c := models.RepeaterConfiguration{
+		Callsign:    "N0CALL",
+		ID:          307201,
+		RXFrequency: 145000000,
+		TXFrequency: 145600000,
+		TXPower:     50,
+		ColorCode:   1,
+		Latitude:    35.0,
+		Longitude:   -97.0,
+		Height:      100,
+		Location:    "Oklahoma City",
+		Description: "Test",
+		Slots:       4,
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = c.MarshalMsg(nil)
+	}
+}
+
+func BenchmarkRepeaterConfigurationUnmarshalMsg(b *testing.B) {
+	c := models.RepeaterConfiguration{
+		Callsign:    "N0CALL",
+		ID:          307201,
+		RXFrequency: 145000000,
+		TXFrequency: 145600000,
+		TXPower:     50,
+		ColorCode:   1,
+		Latitude:    35.0,
+		Longitude:   -97.0,
+		Height:      100,
+		Location:    "Oklahoma City",
+		Description: "Test",
+		Slots:       4,
+	}
+	encoded, err := c.MarshalMsg(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var dec models.RepeaterConfiguration
+		_, _ = dec.UnmarshalMsg(encoded)
+	}
 }

@@ -79,3 +79,23 @@ func FuzzFrameTypeUnmarshalBinary(f *testing.F) {
 		_ = ft.String()
 	})
 }
+
+func BenchmarkFrameTypeMarshalBinaryTo(b *testing.B) {
+	ft := dmrconst.FrameDataSync
+	buf := make([]byte, 1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ft.MarshalBinaryTo(buf)
+	}
+}
+
+func BenchmarkFrameTypeUnmarshalBinary(b *testing.B) {
+	data := []byte{0x02}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var ft dmrconst.FrameType
+		_ = ft.UnmarshalBinary(data)
+	}
+}

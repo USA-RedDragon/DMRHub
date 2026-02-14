@@ -69,7 +69,7 @@ func (s *KVClient) UpdateRepeaterPing(ctx context.Context, repeaterID uint) {
 	}
 }
 
-func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection string) {
+func (s *KVClient) UpdateRepeaterConnection(ctx context.Context, repeaterID uint, connection models.RepeaterState) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.updateRepeaterConnection")
 	defer span.End()
 

@@ -216,3 +216,57 @@ func TestPubSubBinaryData(t *testing.T) {
 		t.Fatal("Timed out")
 	}
 }
+
+// --- Benchmarks ---
+
+func makeTestPubSubB(b *testing.B) pubsub.PubSub {
+	b.Helper()
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		b.Fatalf("Failed to create default config: %v", err)
+	}
+	ps, err := pubsub.MakePubSub(context.Background(), &defConfig)
+	if err != nil {
+		b.Fatalf("Failed to create pubsub: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = ps.Close()
+	})
+	return ps
+}
+
+func BenchmarkPubSubPublish(b *testing.B) {
+	ps := makeTestPubSubB(b)
+	sub := ps.Subscribe("bench-topic")
+	defer func() { _ = sub.Close() }()
+	msg := make([]byte, 55) // typical MMDVM packet size
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ps.Publish("bench-topic", msg)
+		<-sub.Channel()
+	}
+}
+
+func BenchmarkPubSubPublishFanOut(b *testing.B) {
+	ps := makeTestPubSubB(b)
+	const numSubs = 10
+	subs := make([]pubsub.Subscription, numSubs)
+	for i := 0; i < numSubs; i++ {
+		subs[i] = ps.Subscribe("fanout-bench")
+	}
+	defer func() {
+		for _, s := range subs {
+			_ = s.Close()
+		}
+	}()
+	msg := make([]byte, 55)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ps.Publish("fanout-bench", msg)
+		for _, s := range subs {
+			<-s.Channel()
+		}
+	}
+}

@@ -37,7 +37,7 @@ import (
 
 const max32Bit = 0xFFFFFFFF
 
-func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection string) bool {
+func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection models.RepeaterState) bool {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.validRepeater")
 	defer span.End()
 	valid := true
@@ -70,7 +70,7 @@ func (s *Server) handleDMRAPacket(ctx context.Context, data []byte) {
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("DMR talk alias from Repeater ID", "repeaterIDBytes", repeaterIDBytes)
-	if s.validRepeater(ctx, repeaterID, "YES") {
+	if s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 		if err != nil {
@@ -110,7 +110,7 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := s.extractRepeaterID(data)
 	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
 
-	if !s.validRepeater(ctx, repeaterID, "YES") {
+	if !s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
 		return
 	}
 
@@ -190,7 +190,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		repeater.ID = repeaterID
 		repeater.IP = remoteAddr.IP.String()
 		repeater.Port = remoteAddr.Port
-		repeater.Connection = "RPTL-RECEIVED"
+		repeater.Connection = models.RepeaterStateLoginReceived
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
@@ -219,7 +219,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		}
 		repeater.IP = remoteAddr.IP.String()
 		repeater.Port = remoteAddr.Port
-		repeater.Connection = "RPTL-RECEIVED"
+		repeater.Connection = models.RepeaterStateLoginReceived
 		repeater.LastPing = time.Now()
 		repeater.Connected = time.Now()
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
@@ -231,7 +231,7 @@ func (s *Server) handleRPTLPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			copy(saltBytes[:], bigSalt.Bytes())
 		}
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, saltBytes[:])
-		s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, "CHALLENGE_SENT")
+		s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, models.RepeaterStateChallengeSent)
 	}
 }
 
@@ -248,7 +248,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterIDBytes := data[4:8]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Challenge Response from Repeater ID", "repeaterID", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "CHALLENGE_SENT") {
+	if s.validRepeater(ctx, repeaterID, models.RepeaterStateChallengeSent) {
 		var password string
 		var dbRepeater models.Repeater
 
@@ -300,7 +300,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		calcedSalt := binary.BigEndian.Uint32(hash[:])
 		if calcedSalt == rxSalt {
 			slog.Info("Repeater ID authed, sending ACK", "repeaterID", repeaterID)
-			s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, "WAITING_CONFIG")
+			s.kvClient.UpdateRepeaterConnection(ctx, repeaterID, models.RepeaterStateWaitingConfig)
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandRPTACK, repeaterIDBytes)
 			go func() {
 				time.Sleep(1 * time.Second)
@@ -327,7 +327,7 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, data []byte) {
 	repeaterIDBytes := data[5:]
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Disconnect from Repeater ID", "repeaterID", repeaterID)
-	if s.validRepeater(ctx, repeaterID, "YES") {
+	if s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}
 	if !s.kvClient.DeleteRepeater(ctx, repeaterID) {
@@ -350,7 +350,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Config from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
-	if s.validRepeater(ctx, repeaterID, "WAITING_CONFIG") {
+	if s.validRepeater(ctx, repeaterID, models.RepeaterStateWaitingConfig) {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
@@ -367,7 +367,7 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 
 		repeater.Connected = time.Now()
 		repeater.LastPing = time.Now()
-		repeater.Connection = "YES"
+		repeater.Connection = models.RepeaterStateConnected
 
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 		s.connected.Store(repeaterID, struct{}{})
@@ -405,7 +405,7 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("Ping from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
-	if s.validRepeater(ctx, repeaterID, "YES") {
+	if s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
 		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		// Track this repeater as locally connected. In multi-replica Kubernetes
 		// deployments, repeaters may be routed to a new pod without re-doing the

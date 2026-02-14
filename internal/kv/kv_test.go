@@ -224,3 +224,51 @@ func TestKVClaimLeaseRenewalAndFailover(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, claimed)
 }
+
+// --- Benchmarks ---
+
+func makeTestKVB(b *testing.B) kv.KV {
+	b.Helper()
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		b.Fatalf("Failed to create default config: %v", err)
+	}
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	if err != nil {
+		b.Fatalf("Failed to create kv: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = kvStore.Close()
+	})
+	return kvStore
+}
+
+func BenchmarkKVSet(b *testing.B) {
+	store := makeTestKVB(b)
+	val := []byte("benchmark-value-data")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = store.Set("bench-key", val)
+	}
+}
+
+func BenchmarkKVGet(b *testing.B) {
+	store := makeTestKVB(b)
+	_ = store.Set("bench-key", []byte("benchmark-value-data"))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = store.Get("bench-key")
+	}
+}
+
+func BenchmarkKVHas(b *testing.B) {
+	store := makeTestKVB(b)
+	_ = store.Set("bench-key", []byte("benchmark-value-data"))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = store.Has("bench-key")
+	}
+}

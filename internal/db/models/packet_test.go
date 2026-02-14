@@ -211,6 +211,60 @@ func BenchmarkDecodeHomebrewPacket(b *testing.B) {
 	}
 }
 
+func BenchmarkPacketMarshalMsg(b *testing.B) {
+	p := knownGoodPacket
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.MarshalMsg(nil)
+	}
+}
+
+func BenchmarkPacketUnmarshalMsg(b *testing.B) {
+	p := knownGoodPacket
+	encoded, err := p.MarshalMsg(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var dec models.Packet
+		_, _ = dec.UnmarshalMsg(encoded)
+	}
+}
+
+func BenchmarkRawDMRPacketMarshalMsg(b *testing.B) {
+	p := models.RawDMRPacket{
+		Data:       knownGoodPacketBytes,
+		RemoteIP:   "127.0.0.1",
+		RemotePort: 62031,
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.MarshalMsg(nil)
+	}
+}
+
+func BenchmarkRawDMRPacketUnmarshalMsg(b *testing.B) {
+	p := models.RawDMRPacket{
+		Data:       knownGoodPacketBytes,
+		RemoteIP:   "127.0.0.1",
+		RemotePort: 62031,
+	}
+	encoded, err := p.MarshalMsg(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var dec models.RawDMRPacket
+		_, _ = dec.UnmarshalMsg(encoded)
+	}
+}
+
 func TestEqualDifferentSignature(t *testing.T) {
 	t.Parallel()
 	packet1 := models.Packet{

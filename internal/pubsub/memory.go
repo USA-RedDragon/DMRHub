@@ -21,61 +21,88 @@ package pubsub
 
 import (
 	"log/slog"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/puzpuzpuz/xsync/v4"
 )
 
 func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {
-	return inMemoryPubSub{
-		data: xsync.NewMap[string, inMemorySubscription](),
+	return &inMemoryPubSub{
+		topics: make(map[string][]*inMemorySubscription),
 	}, nil
 }
 
 type inMemoryPubSub struct {
-	data *xsync.Map[string, inMemorySubscription]
+	mu     sync.RWMutex
+	topics map[string][]*inMemorySubscription
 }
 
-func (ps inMemoryPubSub) Publish(topic string, message []byte) error {
-	ps.makeChannelIfNotExists(topic)
-	sub, _ := ps.data.Load(topic)
-	sub.ch <- message
+func (ps *inMemoryPubSub) Publish(topic string, message []byte) error {
+	ps.mu.RLock()
+	subs := make([]*inMemorySubscription, len(ps.topics[topic]))
+	copy(subs, ps.topics[topic])
+	ps.mu.RUnlock()
+
+	for _, sub := range subs {
+		// Copy the message so each subscriber gets independent data
+		msg := make([]byte, len(message))
+		copy(msg, message)
+		select {
+		case sub.ch <- msg:
+		default:
+			slog.Warn("Dropping message for slow in-memory subscriber", "topic", topic)
+		}
+	}
 	return nil
 }
 
-func (ps inMemoryPubSub) makeChannelIfNotExists(topic string) {
-	if _, ok := ps.data.Load(topic); !ok {
-		ch := make(chan []byte, 100)
-		ps.data.Store(topic, inMemorySubscription{ch: ch})
+func (ps *inMemoryPubSub) Subscribe(topic string) Subscription {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	sub := &inMemorySubscription{
+		ch:    make(chan []byte, 100),
+		ps:    ps,
+		topic: topic,
 	}
-}
-
-func (ps inMemoryPubSub) Subscribe(topic string) Subscription {
-	ps.makeChannelIfNotExists(topic)
-	sub, _ := ps.data.Load(topic)
+	ps.topics[topic] = append(ps.topics[topic], sub)
 	return sub
 }
 
-func (ps inMemoryPubSub) Close() error {
-	ps.data.Range(func(key string, value inMemorySubscription) bool {
-		err := value.Close()
-		if err != nil {
-			slog.Error("Error closing in-memory subscription", "topic", key, "error", err)
+func (ps *inMemoryPubSub) removeSub(topic string, target *inMemorySubscription) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	subs := ps.topics[topic]
+	for i, s := range subs {
+		if s == target {
+			ps.topics[topic] = append(subs[:i], subs[i+1:]...)
+			return
 		}
-		ps.data.Delete(key)
-		return true
-	})
+	}
+}
+
+func (ps *inMemoryPubSub) Close() error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	for topic, subs := range ps.topics {
+		for _, sub := range subs {
+			close(sub.ch)
+		}
+		delete(ps.topics, topic)
+	}
 	return nil
 }
 
 type inMemorySubscription struct {
-	ch chan []byte
+	ch    chan []byte
+	ps    *inMemoryPubSub
+	topic string
 }
 
-func (s inMemorySubscription) Close() error {
+func (s *inMemorySubscription) Close() error {
+	s.ps.removeSub(s.topic, s)
 	return nil
 }
 
-func (s inMemorySubscription) Channel() <-chan []byte {
+func (s *inMemorySubscription) Channel() <-chan []byte {
 	return s.ch
 }

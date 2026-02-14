@@ -46,8 +46,8 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 	defConfig, err := configulator.New[config.Config]().Default()
 	require.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	defConfig.Database.Database = fmt.Sprintf("file:memdb_%p", t)
+	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)

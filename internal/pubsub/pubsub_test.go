@@ -162,6 +162,36 @@ func TestPubSubSubscribeBeforePublish(t *testing.T) {
 	}
 }
 
+func TestPubSubMultipleSubscribers(t *testing.T) {
+	t.Parallel()
+	ps := makeTestPubSub(t)
+
+	// Three subscribers on the same topic
+	sub1 := ps.Subscribe("fanout")
+	defer func() { _ = sub1.Close() }()
+	sub2 := ps.Subscribe("fanout")
+	defer func() { _ = sub2.Close() }()
+	sub3 := ps.Subscribe("fanout")
+	defer func() { _ = sub3.Close() }()
+
+	msg := []byte("broadcast-data")
+	if err := ps.Publish("fanout", msg); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+
+	// All three subscribers should receive the message
+	for i, sub := range []pubsub.Subscription{sub1, sub2, sub3} {
+		select {
+		case received := <-sub.Channel():
+			if string(received) != string(msg) {
+				t.Errorf("sub%d: expected '%s', got '%s'", i+1, string(msg), string(received))
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("sub%d: timed out waiting for message", i+1)
+		}
+	}
+}
+
 func TestPubSubBinaryData(t *testing.T) {
 	t.Parallel()
 	ps := makeTestPubSub(t)

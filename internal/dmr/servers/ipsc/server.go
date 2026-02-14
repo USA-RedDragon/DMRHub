@@ -180,6 +180,12 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	return nil
 }
 
+// Addr returns the server's listening address. This is useful in tests where
+// the server is started on an ephemeral port (port 0).
+func (s *IPSCServer) Addr() net.Addr {
+	return s.udp.LocalAddr()
+}
+
 func (s *IPSCServer) Stop(_ context.Context) error {
 	s.stopOnce.Do(func() {
 		packet := s.buildDeregistrationRequest()

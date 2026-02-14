@@ -115,11 +115,13 @@ func dataMigrations(db *gorm.DB) []*gormigrate.Migration {
 			Migrate: func(tx *gorm.DB) error {
 				switch tx.Name() {
 				case "postgres":
-					if err := tx.Exec("ALTER TABLE calls DROP COLUMN IF EXISTS call_data").Error; err != nil {
-						return fmt.Errorf("could not drop call_data column: %w", err)
-					}
-					if err := tx.Exec("ALTER TABLE calls ADD COLUMN call_data bytea DEFAULT NULL").Error; err != nil {
-						return fmt.Errorf("could not add call_data column: %w", err)
+					if db.Migrator().HasTable(&models.Call{}) {
+						if err := tx.Exec("ALTER TABLE calls DROP COLUMN IF EXISTS call_data").Error; err != nil {
+							return fmt.Errorf("could not drop call_data column: %w", err)
+						}
+						if err := tx.Exec("ALTER TABLE calls ADD COLUMN call_data bytea DEFAULT NULL").Error; err != nil {
+							return fmt.Errorf("could not add call_data column: %w", err)
+						}
 					}
 				case "mysql":
 					// MySQL uses LONGBLOB for []byte

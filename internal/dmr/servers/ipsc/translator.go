@@ -499,7 +499,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 // from the packet fields, using the dmrgo library's encoder.
 func extractFullLCBytes(pkt models.Packet) [12]byte {
 	flco := enums.FLCOUnitToUnitVoiceChannelUser
-	if pkt.Dst > math.MaxInt || pkt.Src > math.MaxInt {
+	if pkt.Dst > dmrconst.MaxDMRAddress || pkt.Src > dmrconst.MaxDMRAddress {
 		slog.Error("Full LC address out of range")
 		return [12]byte{}
 	}

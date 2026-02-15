@@ -105,6 +105,9 @@ const (
 	ParrotUser = uint(9990)
 )
 
+// MaxDMRAddress is the maximum value for a 24-bit DMR address.
+const MaxDMRAddress = 0xFFFFFF
+
 const (
 	VoiceA = iota
 	VoiceB

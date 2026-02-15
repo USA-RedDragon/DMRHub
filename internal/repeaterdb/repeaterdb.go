@@ -20,21 +20,15 @@
 package repeaterdb
 
 import (
-	"bytes"
-	"context"
 	// Embed the repeaters.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmrdb"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/ulikunitz/xz"
 )
 
 //go:embed repeaterdb-date.txt
@@ -45,35 +39,15 @@ var builtInDateStr string
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
-var repeaterDB RepeaterDB //nolint:gochecknoglobals
+var repeaterDB = dmrdb.NewDB[DMRRepeater](dmrdb.Config[DMRRepeater]{ //nolint:gochecknoglobals
+	CompressedData: comressedDMRRepeatersDB,
+	BuiltInDateStr: builtInDateStr,
+	Presize:        10000,
+	EntityName:     "repeaters",
+	Decode:         streamDecodeRepeaters,
+})
 
-var (
-	ErrUpdateFailed = errors.New("update failed")
-	ErrUnmarshal    = errors.New("unmarshal failed")
-	ErrLoading      = errors.New("error loading DMR users database")
-	ErrNoRepeaters  = errors.New("no DMR repeaters found in database")
-	ErrParsingDate  = errors.New("error parsing built-in date")
-	ErrXZReader     = errors.New("error creating xz reader")
-	ErrReadDB       = errors.New("error reading database")
-	ErrDecodingDB   = errors.New("error decoding DMR repeaters database")
-)
-
-const waitTime = 100 * time.Millisecond
-
-type dbMetadata struct {
-	Count int
-	Date  time.Time
-}
-
-type RepeaterDB struct {
-	metadata               atomic.Value // stores dbMetadata
-	dmrRepeaterMap         *xsync.Map[uint, DMRRepeater]
-	dmrRepeaterMapUpdating *xsync.Map[uint, DMRRepeater]
-
-	builtInDate time.Time
-	isInited    atomic.Bool
-	isDone      atomic.Bool
-}
+var ErrDecodingDB = dmrdb.ErrDecodingDB
 
 type DMRRepeater struct {
 	Locator     uint   `json:"locator"`
@@ -102,15 +76,7 @@ func IsValidRepeaterID(dmrID uint) bool {
 }
 
 func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
-	if !repeaterDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return false
-		}
-	}
-
-	repeater, ok := repeaterDB.dmrRepeaterMap.Load(dmrID)
+	repeater, ok := repeaterDB.Get(dmrID)
 	if !ok {
 		return false
 	}
@@ -285,142 +251,31 @@ func decodeRepeater(dec *json.Decoder) (DMRRepeater, error) {
 }
 
 func UnpackDB() error {
-	lastInit := repeaterDB.isInited.Swap(true)
-	if !lastInit {
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater](xsync.WithPresize(10000), xsync.WithGrowOnly())
-		var err error
-		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
-		if err != nil {
-			return ErrParsingDate
-		}
-		dbReader, err := xz.NewReader(bytes.NewReader(comressedDMRRepeatersDB))
-		if err != nil {
-			return ErrXZReader
-		}
-
-		count, err := streamDecodeRepeaters(json.NewDecoder(dbReader), repeaterDB.dmrRepeaterMapUpdating)
-		if err != nil {
-			return err
-		}
-		if count == 0 {
-			return ErrNoRepeaters
-		}
-
-		repeaterDB.metadata.Store(dbMetadata{Count: count, Date: repeaterDB.builtInDate})
-		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
-		repeaterDB.isDone.Store(true)
-	}
-
-	for !repeaterDB.isDone.Load() {
-		time.Sleep(waitTime)
-	}
-
-	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
-	if !ok {
-		return ErrLoading
-	}
-	if meta.Count == 0 {
-		return ErrNoRepeaters
+	if err := repeaterDB.UnpackDB(); err != nil {
+		return fmt.Errorf("repeaterdb: %w", err)
 	}
 	return nil
 }
 
 func Len() int {
-	if !repeaterDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return 0
-		}
-	}
-	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading DMR repeaters database")
-		return 0
-	}
-	return meta.Count
+	return repeaterDB.Len()
 }
 
 func Get(id uint) (DMRRepeater, bool) {
-	if !repeaterDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return DMRRepeater{}, false
-		}
-	}
-	repeater, ok := repeaterDB.dmrRepeaterMap.Load(id)
-	if !ok {
-		return DMRRepeater{}, false
-	}
-	return repeater, true
+	return repeaterDB.Get(id)
 }
 
 func Update(url string) error {
-	if !repeaterDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return ErrUpdateFailed
-		}
+	if err := repeaterDB.Update(url); err != nil {
+		return fmt.Errorf("repeaterdb: %w", err)
 	}
-	const updateTimeout = 10 * time.Minute
-	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(url), nil)
-	if err != nil {
-		return ErrUpdateFailed
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return ErrUpdateFailed
-	}
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			slog.Error("Error closing response body", "error", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return ErrUpdateFailed
-	}
-
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater](xsync.WithPresize(Len()), xsync.WithGrowOnly())
-	count, err := streamDecodeRepeaters(json.NewDecoder(resp.Body), repeaterDB.dmrRepeaterMapUpdating)
-	if err != nil {
-		slog.Error("Error decoding DMR repeaters database", "error", err)
-		return ErrUpdateFailed
-	}
-
-	if count == 0 {
-		slog.Error("No DMR repeaters found in database")
-		return ErrUpdateFailed
-	}
-
-	repeaterDB.metadata.Store(dbMetadata{Count: count, Date: time.Now()})
-	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
-
-	slog.Info("Update complete", "loadedRepeaters", Len())
-
 	return nil
 }
 
 func GetDate() (time.Time, error) {
-	if !repeaterDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return time.Time{}, err
-		}
+	t, err := repeaterDB.GetDate()
+	if err != nil {
+		return t, fmt.Errorf("repeaterdb: %w", err)
 	}
-	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading DMR repeaters database")
-		return time.Time{}, ErrLoading
-	}
-	return meta.Date, nil
+	return t, nil
 }

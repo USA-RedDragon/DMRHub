@@ -105,7 +105,7 @@ func TestUpdate(t *testing.T) {
 		if err != nil {
 			r.Errorf("GetDate failed: %v", err)
 		}
-		if time.Time.Equal(repeaterDB.builtInDate, dbDate) {
+		if time.Time.Equal(repeaterDB.GetBuiltInDate(), dbDate) {
 			r.Errorf("Update did not update the database")
 		}
 	})
@@ -118,9 +118,7 @@ func BenchmarkRepeaterDB(b *testing.B) {
 			b.Errorf("UnpackDB failed: %v", err)
 			b.Fail()
 		}
-		repeaterDB.isInited.Store(false)
-		repeaterDB.isDone.Store(false)
-		repeaterDB.metadata.Store(dbMetadata{})
+		repeaterDB.ResetForBenchmark()
 	}
 }
 

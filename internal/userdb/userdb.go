@@ -20,21 +20,15 @@
 package userdb
 
 import (
-	"bytes"
-	"context"
 	// Embed the users.json.xz file into the binary.
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmrdb"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/ulikunitz/xz"
 )
 
 //go:embed userdb-date.txt
@@ -45,35 +39,15 @@ var builtInDateStr string
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var userDB UserDB //nolint:gochecknoglobals
+var userDB = dmrdb.NewDB[DMRUser](dmrdb.Config[DMRUser]{ //nolint:gochecknoglobals
+	CompressedData: compressedDMRUsersDB,
+	BuiltInDateStr: builtInDateStr,
+	Presize:        250000,
+	EntityName:     "users",
+	Decode:         streamDecodeUsers,
+})
 
-var (
-	ErrUpdateFailed = errors.New("update failed")
-	ErrUnmarshal    = errors.New("unmarshal failed")
-	ErrLoading      = errors.New("error loading DMR users database")
-	ErrNoUsers      = errors.New("no DMR users found in database")
-	ErrParsingDate  = errors.New("error parsing built-in date")
-	ErrXZReader     = errors.New("error creating xz reader")
-	ErrReadDB       = errors.New("error reading database")
-	ErrDecodingDB   = errors.New("error decoding DMR users database")
-)
-
-const waitTime = 100 * time.Millisecond
-
-type dbMetadata struct {
-	Count int
-	Date  time.Time
-}
-
-type UserDB struct {
-	metadata           atomic.Value // stores dbMetadata
-	dmrUserMap         *xsync.Map[uint, DMRUser]
-	dmrUserMapUpdating *xsync.Map[uint, DMRUser]
-
-	builtInDate time.Time
-	isInited    atomic.Bool
-	isDone      atomic.Bool
-}
+var ErrDecodingDB = dmrdb.ErrDecodingDB
 
 type DMRUser struct {
 	ID       uint   `json:"id"`
@@ -96,14 +70,7 @@ func IsValidUserID(dmrID uint) bool {
 }
 
 func ValidUserCallsign(dmrID uint, callsign string) bool {
-	if !userDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return false
-		}
-	}
-	user, ok := userDB.dmrUserMap.Load(dmrID)
+	user, ok := userDB.Get(dmrID)
 	if !ok {
 		return false
 	}
@@ -253,145 +220,31 @@ func decodeUser(dec *json.Decoder) (DMRUser, error) {
 }
 
 func UnpackDB() error {
-	lastInit := userDB.isInited.Swap(true)
-	if !lastInit {
-		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser](xsync.WithPresize(250000), xsync.WithGrowOnly())
-
-		var err error
-		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
-		if err != nil {
-			return ErrParsingDate
-		}
-		dbReader, err := xz.NewReader(bytes.NewReader(compressedDMRUsersDB))
-		if err != nil {
-			return ErrXZReader
-		}
-
-		count, err := streamDecodeUsers(json.NewDecoder(dbReader), userDB.dmrUserMapUpdating)
-		if err != nil {
-			return err
-		}
-		if count == 0 {
-			slog.Error("No DMR users found in database")
-			return ErrNoUsers
-		}
-
-		userDB.metadata.Store(dbMetadata{Count: count, Date: userDB.builtInDate})
-		userDB.dmrUserMap = userDB.dmrUserMapUpdating
-		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
-		userDB.isDone.Store(true)
-	}
-
-	for !userDB.isDone.Load() {
-		time.Sleep(waitTime)
-	}
-
-	meta, ok := userDB.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading DMR users database")
-		return ErrLoading
-	}
-	if meta.Count == 0 {
-		slog.Error("No DMR users found in database")
-		return ErrNoUsers
+	if err := userDB.UnpackDB(); err != nil {
+		return fmt.Errorf("userdb: %w", err)
 	}
 	return nil
 }
 
 func Len() int {
-	if !userDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return 0
-		}
-	}
-	meta, ok := userDB.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading DMR users database")
-		return 0
-	}
-	return meta.Count
+	return userDB.Len()
 }
 
 func Get(dmrID uint) (DMRUser, bool) {
-	if !userDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return DMRUser{}, false
-		}
-	}
-	user, ok := userDB.dmrUserMap.Load(dmrID)
-	if !ok {
-		return DMRUser{}, false
-	}
-	return user, true
+	return userDB.Get(dmrID)
 }
 
 func Update(url string) error {
-	if !userDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			slog.Error("Error unpacking database", "error", err)
-			return ErrUpdateFailed
-		}
+	if err := userDB.Update(url); err != nil {
+		return fmt.Errorf("userdb: %w", err)
 	}
-	const updateTimeout = 10 * time.Minute
-	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(url), nil)
-	if err != nil {
-		return ErrUpdateFailed
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return ErrUpdateFailed
-	}
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			slog.Error("Error closing response body", "error", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return ErrUpdateFailed
-	}
-
-	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser](xsync.WithPresize(Len()), xsync.WithGrowOnly())
-	count, err := streamDecodeUsers(json.NewDecoder(resp.Body), userDB.dmrUserMapUpdating)
-	if err != nil {
-		slog.Error("Error decoding DMR users database", "error", err)
-		return ErrUpdateFailed
-	}
-
-	if count == 0 {
-		slog.Error("No DMR users found in database")
-		return ErrUpdateFailed
-	}
-
-	userDB.metadata.Store(dbMetadata{Count: count, Date: time.Now()})
-	userDB.dmrUserMap = userDB.dmrUserMapUpdating
-	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
-
-	slog.Info("Update complete", "loadedUsers", Len())
-
 	return nil
 }
 
 func GetDate() (time.Time, error) {
-	if !userDB.isDone.Load() {
-		err := UnpackDB()
-		if err != nil {
-			return time.Time{}, err
-		}
+	t, err := userDB.GetDate()
+	if err != nil {
+		return t, fmt.Errorf("userdb: %w", err)
 	}
-	meta, ok := userDB.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading DMR users database")
-		return time.Time{}, ErrLoading
-	}
-	return meta.Date, nil
+	return t, nil
 }

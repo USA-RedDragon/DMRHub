@@ -108,7 +108,7 @@ func TestUpdate(t *testing.T) {
 		if err != nil {
 			r.Errorf("GetDate failed: %v", err)
 		}
-		if time.Time.Equal(userDB.builtInDate, date) {
+		if time.Time.Equal(userDB.GetBuiltInDate(), date) {
 			r.Errorf("Update did not update the database")
 		}
 	})
@@ -121,9 +121,7 @@ func BenchmarkUserDB(b *testing.B) {
 			b.Errorf("Error unpacking database: %v", err)
 			b.Fail()
 		}
-		userDB.isInited.Store(false)
-		userDB.isDone.Store(false)
-		userDB.metadata.Store(dbMetadata{})
+		userDB.ResetForBenchmark()
 	}
 }
 

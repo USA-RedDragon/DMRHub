@@ -149,24 +149,35 @@ func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 	if !ok {
 		return
 	}
-	// Force-cancel every subscription goroutine (TG + repeater-direct).
-	radioSubs.Range(func(key uint, cancelPtr *context.CancelFunc) bool {
-		if cancelPtr != nil {
-			(*cancelPtr)()
-		}
-		radioSubs.Delete(key)
+	// Collect all keys first to avoid modifying the map during Range,
+	// which can cause entries to be skipped.
+	var keys []uint
+	radioSubs.Range(func(key uint, _ *context.CancelFunc) bool {
+		keys = append(keys, key)
 		return true
 	})
+	for _, key := range keys {
+		cancelPtr, ok := radioSubs.LoadAndDelete(key)
+		if ok && cancelPtr != nil {
+			(*cancelPtr)()
+		}
+	}
 	h.subscriptionMgr.subscriptions.Delete(repeaterID)
 }
 
-// StopAllRepeaters cancels all subscriptions for all repeaters (used at shutdown).
+// stopAllRepeaters cancels all subscriptions for all repeaters (used at shutdown).
 func (h *Hub) stopAllRepeaters(ctx context.Context) {
 	slog.Debug("Cancelling all subscriptions")
+	// Collect all repeater IDs first to avoid modifying the map during
+	// Range iteration, which can cause entries to be skipped.
+	var ids []uint
 	h.subscriptionMgr.subscriptions.Range(func(radioID uint, _ *xsync.Map[uint, *context.CancelFunc]) bool {
-		h.deactivateRepeater(ctx, radioID)
+		ids = append(ids, radioID)
 		return true
 	})
+	for _, radioID := range ids {
+		h.deactivateRepeater(ctx, radioID)
+	}
 }
 
 // subscribeTalkgroup subscribes a repeater to a specific talkgroup.
@@ -287,6 +298,23 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	}
 }
 
+// unmarshalRawPacket decodes a pubsub message containing a serialized
+// RawDMRPacket into a models.Packet. Returns the packet and true on success.
+func unmarshalRawPacket(msg []byte) (models.Packet, bool) {
+	var rawPacket models.RawDMRPacket
+	_, err := rawPacket.UnmarshalMsg(msg)
+	if err != nil {
+		slog.Error("Failed to unmarshal raw packet", "error", err)
+		return models.Packet{}, false
+	}
+	packet, ok := models.UnpackPacket(rawPacket.Data)
+	if !ok {
+		slog.Error("Failed to unpack packet")
+		return models.Packet{}, false
+	}
+	return packet, true
+}
+
 // cancelSubscription cancels a single talkgroup subscription, checking that no other
 // slot or static link still needs it before actually cancelling.
 func (m *subscriptionManager) cancelSubscription(repeaterID uint, talkgroupID uint, slot dmrconst.Timeslot) {
@@ -359,15 +387,8 @@ func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID 
 				return
 			}
 
-			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg(msg)
-			if err != nil {
-				slog.Error("Failed to unmarshal raw packet", "error", err)
-				continue
-			}
-			packet, ok := models.UnpackPacket(rawPacket.Data)
+			packet, ok := unmarshalRawPacket(msg)
 			if !ok {
-				slog.Error("Failed to unpack packet")
 				continue
 			}
 			packet.Repeater = repeaterID
@@ -412,15 +433,8 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 				return
 			}
 
-			rawPacket := models.RawDMRPacket{}
-			_, err := rawPacket.UnmarshalMsg(msg)
-			if err != nil {
-				slog.Error("Failed to unmarshal raw packet", "error", err)
-				continue
-			}
-			packet, ok := models.UnpackPacket(rawPacket.Data)
+			packet, ok := unmarshalRawPacket(msg)
 			if !ok {
-				slog.Error("Failed to unpack packet")
 				continue
 			}
 
@@ -519,15 +533,8 @@ func (m *subscriptionManager) subscribePeers(serverName string) {
 	}()
 	pubsubChannel := subscription.Channel()
 	for msg := range pubsubChannel {
-		rawPacket := models.RawDMRPacket{}
-		_, err := rawPacket.UnmarshalMsg(msg)
-		if err != nil {
-			slog.Error("Failed to unmarshal peer packet", "error", err)
-			continue
-		}
-		packet, ok := models.UnpackPacket(rawPacket.Data)
+		packet, ok := unmarshalRawPacket(msg)
 		if !ok {
-			slog.Error("Failed to unpack peer packet")
 			continue
 		}
 

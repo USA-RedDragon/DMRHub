@@ -698,3 +698,65 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 		t.Fatal("Timed out waiting for TG50 delivery after re-subscription — stale map entry was not cleaned up")
 	}
 }
+
+// TestStopAllRepeatersDeactivatesEveryRepeater is a regression test for a bug
+// where stopAllRepeaters (called by Hub.Stop) modified the subscriptions map
+// during Range iteration, which could cause entries to be skipped. After Stop,
+// no repeater should receive packets.
+func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedTalkgroup(t, database, 200, "TG200")
+
+	// Create and activate many repeaters to increase the likelihood of
+	// exposing skipped entries during map iteration.
+	const numRepeaters = 20
+	for i := uint(0); i < numRepeaters; i++ {
+		id := 200001 + i
+		seedRepeater(t, database, id, 1000001)
+		var rpt models.Repeater
+		require.NoError(t, database.First(&rpt, id).Error)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 200}))
+	}
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	for i := uint(0); i < numRepeaters; i++ {
+		h.ActivateRepeater(context.Background(), 200001+i)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify at least one repeater receives packets before Stop
+	pkt := makeVoicePacket(200, 90000, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	received := false
+	for {
+		select {
+		case <-srvHandle.Packets:
+			received = true
+			continue
+		case <-time.After(500 * time.Millisecond):
+		}
+		break
+	}
+	require.True(t, received, "At least one repeater should receive packets before Stop")
+
+	// Stop should cancel ALL subscriptions — none should be skipped.
+	h.Stop(context.Background())
+	time.Sleep(200 * time.Millisecond)
+
+	// Send another packet — no repeater should receive it.
+	pkt2 := makeVoicePacket(200, 90001, true, false)
+	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		t.Fatalf("After Stop, no repeater should receive packets, but repeater %d did", rp.RepeaterID)
+	case <-time.After(500 * time.Millisecond):
+		// Expected: all subscriptions were canceled
+	}
+}

@@ -44,6 +44,10 @@ const (
 	LinkTypeStatic  = "static"
 )
 
+// repeaterIDRegex validates that a radio ID is a 6-digit repeater ID.
+// Compiled once at package level to avoid re-compilation on every request.
+var repeaterIDRegex = regexp.MustCompile(`^[0-9]{6}$`)
+
 func GETRepeaters(c *gin.Context) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
@@ -335,10 +339,9 @@ func POSTRepeater(c *gin.Context) {
 		if json.Type == models.RepeaterTypeIPSC {
 			// IPSC repeaters: validate RadioID as 6-digit or hotspot
 			hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
-			repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
 
 			switch {
-			case repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
+			case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 				repeater.Hotspot = false
 			case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 				repeater.Hotspot = true
@@ -380,11 +383,9 @@ func POSTRepeater(c *gin.Context) {
 
 		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userID
 		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
-		// if json.RadioID is a repeater, then it must be 6 digits long
-		repeaterRegex := regexp.MustCompile(`^[0-9]{6}$`)
 
 		switch {
-		case repeaterRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
+		case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			repeater.Hotspot = false
 			if !config.DMR.DisableRadioIDValidation {
 				if !repeaterdb.IsValidRepeaterID(json.RadioID) {

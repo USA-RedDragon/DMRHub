@@ -116,114 +116,109 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 	}
 }
 
-// StartCall starts tracking a new call.
-func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
-	defer span.End()
+// callDestination holds the resolved destination for a call.
+type callDestination struct {
+	isToRepeater  bool
+	isToTalkgroup bool
+	isToUser      bool
+	talkgroup     models.Talkgroup
+	repeater      models.Repeater
+	user          models.User
+}
 
-	var sourceUser models.User
-	var sourceRepeater models.Repeater
-
-	userExists, err := models.UserIDExists(c.db, packet.Src)
+// lookupSourceUser checks that the source user exists and returns it.
+func (c *CallTracker) lookupSourceUser(srcID uint) (models.User, error) {
+	exists, err := models.UserIDExists(c.db, srcID)
 	if err != nil {
-		slog.Error("Error checking if user exists", "userID", packet.Src, "error", err)
-		return
+		return models.User{}, fmt.Errorf("error checking if user %d exists: %w", srcID, err)
 	}
-
-	if !userExists {
-		slog.Debug("User does not exist", "userID", packet.Src)
-		return
+	if !exists {
+		return models.User{}, fmt.Errorf("user %d does not exist", srcID)
 	}
-
-	sourceUser, err = models.FindUserByID(c.db, packet.Src)
+	user, err := models.FindUserByID(c.db, srcID)
 	if err != nil {
-		slog.Error("Error finding user", "userID", packet.Src, "error", err)
-		return
+		return models.User{}, fmt.Errorf("error finding user %d: %w", srcID, err)
 	}
+	return user, nil
+}
 
-	repeaterExists, err := models.RepeaterIDExists(c.db, packet.Repeater)
+// lookupSourceRepeater checks that the source repeater exists and returns it.
+func (c *CallTracker) lookupSourceRepeater(repeaterID uint) (models.Repeater, error) {
+	exists, err := models.RepeaterIDExists(c.db, repeaterID)
 	if err != nil {
-		slog.Error("Error checking if repeater exists", "repeaterID", packet.Repeater, "error", err)
-		return
+		return models.Repeater{}, fmt.Errorf("error checking if repeater %d exists: %w", repeaterID, err)
 	}
-
-	if !repeaterExists {
-		slog.Debug("Repeater does not exist", "repeaterID", packet.Repeater)
-		return
+	if !exists {
+		return models.Repeater{}, fmt.Errorf("repeater %d does not exist", repeaterID)
 	}
-
-	sourceRepeater, err = models.FindRepeaterByID(c.db, packet.Repeater)
+	repeater, err := models.FindRepeaterByID(c.db, repeaterID)
 	if err != nil {
-		slog.Error("Error finding repeater", "repeaterID", packet.Repeater, "error", err)
-		return
+		return models.Repeater{}, fmt.Errorf("error finding repeater %d: %w", repeaterID, err)
 	}
+	return repeater, nil
+}
 
-	isToRepeater, isToTalkgroup, isToUser := false, false, false
-	var destUser models.User
-	var destRepeater models.Repeater
-	var destTalkgroup models.Talkgroup
+// resolveDestination determines the target of a call (talkgroup, repeater, or user).
+func (c *CallTracker) resolveDestination(packet models.Packet) (*callDestination, error) {
+	dest := &callDestination{}
 
-	// Try the different targets for the given call destination
-	// if packet.GroupCall is true, then packet.Dst is either a talkgroup or a repeater
-	// if packet.GroupCall is false, then packet.Dst is a user
 	if packet.GroupCall {
-		talkgroupExists, err := models.TalkgroupIDExists(c.db, packet.Dst)
-		if err != nil {
-			slog.Error("Error checking if talkgroup exists", "talkgroupID", packet.Dst, "error", err)
-			return
-		}
-
-		repeaterExists, err := models.RepeaterIDExists(c.db, packet.Dst)
-		if err != nil {
-			slog.Error("Error checking if repeater exists", "repeaterID", packet.Dst, "error", err)
-			return
-		}
-
-		switch {
-		case talkgroupExists:
-			isToTalkgroup = true
-			destTalkgroup, err = models.FindTalkgroupByID(c.db, packet.Dst)
-			if err != nil {
-				slog.Error("Error finding talkgroup", "talkgroupID", packet.Dst, "error", err)
-				return
-			}
-		case repeaterExists:
-			isToRepeater = true
-			destRepeater, err = models.FindRepeaterByID(c.db, packet.Dst)
-			if err != nil {
-				slog.Error("Error finding repeater", "repeaterID", packet.Dst, "error", err)
-				return
-			}
-		default:
-			slog.Error("Cannot find packet destination", "destinationID", packet.Dst)
-			return
-		}
-	} else {
-		// Find the user
-		userExists, err = models.UserIDExists(c.db, packet.Dst)
-		if err != nil {
-			slog.Error("Error checking if user exists", "userID", packet.Dst, "error", err)
-			return
-		}
-
-		if !userExists {
-			slog.Error("Cannot find packet destination", "destinationID", packet.Dst)
-			return
-		}
-
-		isToUser = true
-		destUser, err = models.FindUserByID(c.db, packet.Dst)
-		if err != nil {
-			slog.Error("Error finding user", "userID", packet.Dst, "error", err)
-			return
-		}
+		return c.resolveGroupCallDestination(packet.Dst, dest)
 	}
 
-	slog.Debug("Starting call", "src", packet.Src, "dst", packet.Dst)
+	// Private call — destination is a user.
+	exists, err := models.UserIDExists(c.db, packet.Dst)
+	if err != nil {
+		return nil, fmt.Errorf("error checking if destination user %d exists: %w", packet.Dst, err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("cannot find packet destination %d", packet.Dst)
+	}
+	dest.isToUser = true
+	dest.user, err = models.FindUserByID(c.db, packet.Dst)
+	if err != nil {
+		return nil, fmt.Errorf("error finding destination user %d: %w", packet.Dst, err)
+	}
+	return dest, nil
+}
 
+// resolveGroupCallDestination resolves the destination for a group call (talkgroup or repeater).
+func (c *CallTracker) resolveGroupCallDestination(dstID uint, dest *callDestination) (*callDestination, error) {
+	talkgroupExists, err := models.TalkgroupIDExists(c.db, dstID)
+	if err != nil {
+		return nil, fmt.Errorf("error checking if talkgroup %d exists: %w", dstID, err)
+	}
+
+	repeaterExists, err := models.RepeaterIDExists(c.db, dstID)
+	if err != nil {
+		return nil, fmt.Errorf("error checking if repeater %d exists: %w", dstID, err)
+	}
+
+	switch {
+	case talkgroupExists:
+		dest.isToTalkgroup = true
+		dest.talkgroup, err = models.FindTalkgroupByID(c.db, dstID)
+		if err != nil {
+			return nil, fmt.Errorf("error finding talkgroup %d: %w", dstID, err)
+		}
+	case repeaterExists:
+		dest.isToRepeater = true
+		dest.repeater, err = models.FindRepeaterByID(c.db, dstID)
+		if err != nil {
+			return nil, fmt.Errorf("error finding repeater %d: %w", dstID, err)
+		}
+	default:
+		return nil, fmt.Errorf("cannot find packet destination %d", dstID)
+	}
+	return dest, nil
+}
+
+// newCallFromPacket builds a models.Call from the packet, source entities, and resolved destination.
+func newCallFromPacket(packet models.Packet, sourceUser models.User, sourceRepeater models.Repeater, dest *callDestination) models.Call {
+	now := time.Now()
 	call := models.Call{
 		StreamID:       packet.StreamID,
-		StartTime:      time.Now(),
+		StartTime:      now,
 		Active:         true,
 		UserID:         sourceUser.ID,
 		RepeaterID:     sourceRepeater.ID,
@@ -232,7 +227,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		DestinationID:  packet.Dst,
 		TotalPackets:   0,
 		LostSequences:  0,
-		LastPacketTime: time.Now(),
+		LastPacketTime: now,
 		Loss:           0.0,
 		Jitter:         0.0,
 		LastFrameNum:   dmrconst.VoiceA,
@@ -242,53 +237,97 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 		TotalBits:      0,
 		HasHeader:      false,
 		HasTerm:        false,
-		IsToRepeater:   isToRepeater,
-		IsToUser:       isToUser,
-		IsToTalkgroup:  isToTalkgroup,
+		IsToRepeater:   dest.isToRepeater,
+		IsToUser:       dest.isToUser,
+		IsToTalkgroup:  dest.isToTalkgroup,
 	}
 
 	switch {
-	case isToRepeater:
-		call.ToRepeaterID = &destRepeater.ID
-	case isToUser:
-		call.ToUserID = &destUser.ID
-	case isToTalkgroup:
-		call.ToTalkgroupID = &destTalkgroup.ID
+	case dest.isToRepeater:
+		call.ToRepeaterID = &dest.repeater.ID
+	case dest.isToUser:
+		call.ToUserID = &dest.user.ID
+	case dest.isToTalkgroup:
+		call.ToTalkgroupID = &dest.talkgroup.ID
 	}
 
-	// Create the call in the database.
-	// Omit associations to prevent GORM from cascade-saving related records.
-	// Omit CallData — it's always empty at creation time.
-	err = c.db.Omit(clause.Associations, "CallData").Create(&call).Error
-	if err != nil {
-		slog.Error("Error creating call", "error", err)
-		return
-	}
+	return call
+}
 
-	// Set association objects for in-memory use (logging, publishing, etc.)
+// setCallAssociations populates the in-memory association fields on a call
+// (used for logging, publishing, etc.) without persisting back to the DB.
+func setCallAssociations(call *models.Call, sourceUser models.User, sourceRepeater models.Repeater, dest *callDestination) {
 	call.User = sourceUser
 	call.Repeater = sourceRepeater
 	switch {
-	case isToRepeater:
-		call.ToRepeater = destRepeater
-	case isToUser:
-		call.ToUser = destUser
-	case isToTalkgroup:
-		call.ToTalkgroup = destTalkgroup
+	case dest.isToRepeater:
+		call.ToRepeater = dest.repeater
+	case dest.isToUser:
+		call.ToUser = dest.user
+	case dest.isToTalkgroup:
+		call.ToTalkgroup = dest.talkgroup
+	}
+}
+
+// persistAndTrackCall saves the call to the database, stores it in the
+// in-flight map, and starts the call-end timer.
+func (c *CallTracker) persistAndTrackCall(_ context.Context, call *models.Call, packet models.Packet) error {
+	// Create the call in the database.
+	// Omit associations to prevent GORM from cascade-saving related records.
+	// Omit CallData — it's always empty at creation time.
+	if err := c.db.Omit(clause.Associations, "CallData").Create(call).Error; err != nil {
+		return fmt.Errorf("error creating call: %w", err)
 	}
 
-	callHash, err := getCallHash(call)
+	callHash, err := getCallHash(*call)
 	if err != nil {
-		return
+		return err
 	}
 
 	// Add the call to the active calls map
-	c.inFlightCalls.Store(callHash, &inFlightCall{call: &call})
+	c.inFlightCalls.Store(callHash, &inFlightCall{call: call})
+
+	// Add a timer that will end the call if we haven't seen a packet in 2 seconds.
+	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(c, packet))) //nolint:contextcheck // Timer fires after request context is done; intentionally uses background context
+
+	return nil
+}
+
+// StartCall starts tracking a new call.
+func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
+	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
+	defer span.End()
+
+	sourceUser, err := c.lookupSourceUser(packet.Src)
+	if err != nil {
+		slog.Error("StartCall: source user lookup failed", "error", err)
+		return
+	}
+
+	sourceRepeater, err := c.lookupSourceRepeater(packet.Repeater)
+	if err != nil {
+		slog.Error("StartCall: source repeater lookup failed", "error", err)
+		return
+	}
+
+	dest, err := c.resolveDestination(packet)
+	if err != nil {
+		slog.Error("StartCall: destination resolution failed", "error", err)
+		return
+	}
+
+	slog.Debug("Starting call", "src", packet.Src, "dst", packet.Dst)
+
+	call := newCallFromPacket(packet, sourceUser, sourceRepeater, dest)
+
+	if err := c.persistAndTrackCall(ctx, &call, packet); err != nil {
+		slog.Error("StartCall: persist failed", "error", err)
+		return
+	}
+
+	setCallAssociations(&call, sourceUser, sourceRepeater, dest)
 
 	slog.Debug("Started call", "streamID", call.StreamID, "src", call.User.Callsign, "dst", call.DestinationID, "repeater", call.Repeater.Callsign)
-
-	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(c, packet))) //nolint:contextcheck // Timer fires after request context is done; intentionally uses background context
 }
 
 // IsCallActive checks if a call is active.

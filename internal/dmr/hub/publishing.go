@@ -36,7 +36,11 @@ func (h *Hub) publishForPeers(packet models.Packet) {
 	}
 
 	go func() {
-		peers := models.ListPeers(h.db)
+		peers, err := models.ListPeers(h.db)
+		if err != nil {
+			slog.Error("Failed to list peers for publishing", "error", err)
+			return
+		}
 		for _, p := range peers {
 			if rules.PeerShouldEgress(h.db, p, &packet) {
 				h.publishToPeer(p.ID, packet)

@@ -265,12 +265,21 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 	peerID := uint(binary.BigEndian.Uint32(peerIDBytes))
 	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)
 
-	if !models.PeerIDExists(s.DB, peerID) {
+	exists, err := models.PeerIDExists(s.DB, peerID)
+	if err != nil {
+		slog.Error("Failed to check peer existence", "peerID", peerID, "error", err)
+		return
+	}
+	if !exists {
 		slog.Error("Unknown peer ID", "peerID", peerID)
 		return
 	}
 
-	peer := models.FindPeerByID(s.DB, peerID)
+	peer, err := models.FindPeerByID(s.DB, peerID)
+	if err != nil {
+		slog.Error("Failed to find peer", "peerID", peerID, "error", err)
+		return
+	}
 
 	if !s.validateHMAC(ctx, packetBytes, hmacBytes, peer) {
 		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
@@ -282,7 +291,11 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 	}
 
 	// We need to send this packet to all peers except the one that sent it
-	peers := models.ListPeers(s.DB)
+	peers, err := models.ListPeers(s.DB)
+	if err != nil {
+		slog.Error("Failed to list peers", "error", err)
+		return
+	}
 	for _, p := range peers {
 		if p.ID == peerID {
 			continue

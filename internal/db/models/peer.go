@@ -21,6 +21,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -54,51 +55,42 @@ func (p *Peer) String() string {
 	return string(jsn)
 }
 
-func ListPeers(db *gorm.DB) []Peer {
+func ListPeers(db *gorm.DB) ([]Peer, error) {
 	var peers []Peer
-	db.Preload("Owner").Order("id asc").Find(&peers)
-	return peers
+	err := db.Preload("Owner").Order("id asc").Find(&peers).Error
+	return peers, err
 }
 
-func CountPeers(db *gorm.DB) int {
+func CountPeers(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&Peer{}).Count(&count)
-	return int(count)
+	err := db.Model(&Peer{}).Count(&count).Error
+	return int(count), err
 }
 
-func GetUserPeers(db *gorm.DB, id uint) []Peer {
+func GetUserPeers(db *gorm.DB, id uint) ([]Peer, error) {
 	var peers []Peer
-	db.Preload("Owner").Where("owner_id = ?", id).Order("id asc").Find(&peers)
-	return peers
+	err := db.Preload("Owner").Where("owner_id = ?", id).Order("id asc").Find(&peers).Error
+	return peers, err
 }
 
-func CountUserPeers(db *gorm.DB, id uint) int {
+func CountUserPeers(db *gorm.DB, id uint) (int, error) {
 	var count int64
-	db.Model(&Peer{}).Where("owner_id = ?", id).Count(&count)
-	return int(count)
+	err := db.Model(&Peer{}).Where("owner_id = ?", id).Count(&count).Error
+	return int(count), err
 }
 
-func FindPeerByID(db *gorm.DB, id uint) Peer {
+func FindPeerByID(db *gorm.DB, id uint) (Peer, error) {
 	var peer Peer
-	db.Preload("Owner").First(&peer, id)
-	return peer
+	err := db.Preload("Owner").First(&peer, id).Error
+	return peer, err
 }
 
-func PeerExists(db *gorm.DB, peer Peer) bool {
+func PeerIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
-	db.Model(&Peer{}).Where("id = ?", peer.ID).Limit(1).Count(&count)
-	return count > 0
+	err := db.Model(&Peer{}).Where("id = ?", id).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
-func PeerIDExists(db *gorm.DB, id uint) bool {
-	var count int64
-	db.Model(&Peer{}).Where("id = ?", id).Limit(1).Count(&count)
-	return count > 0
-}
-
-func DeletePeer(db *gorm.DB, id uint) {
-	tx := db.Unscoped().Delete(&Peer{ID: id})
-	if tx.Error != nil {
-		slog.Error("Error deleting repeater", "error", tx.Error)
-	}
+func DeletePeer(db *gorm.DB, id uint) error {
+	return fmt.Errorf("delete peer: %w", db.Unscoped().Delete(&Peer{ID: id}).Error)
 }

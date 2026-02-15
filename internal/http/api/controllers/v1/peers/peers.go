@@ -52,8 +52,18 @@ func GETPeers(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	peers := models.ListPeers(db)
-	count := models.CountPeers(cDb)
+	peers, err := models.ListPeers(db)
+	if err != nil {
+		slog.Error("Error listing peers", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	count, err := models.CountPeers(cDb)
+	if err != nil {
+		slog.Error("Error counting peers", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"total": count, "peers": peers})
 }
 
@@ -87,14 +97,19 @@ func GETMyPeers(c *gin.Context) {
 	}
 
 	// Get all peers owned by user
-	peers := models.GetUserPeers(db, uid)
-	if db.Error != nil {
-		slog.Error("Error getting peers owned by user", "userID", userID, "error", db.Error)
+	peers, err := models.GetUserPeers(db, uid)
+	if err != nil {
+		slog.Error("Error getting peers owned by user", "userID", userID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting peers owned by user"})
 		return
 	}
 
-	count := models.CountUserPeers(cDb, uid)
+	count, err := models.CountUserPeers(cDb, uid)
+	if err != nil {
+		slog.Error("Error counting user peers", "userID", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"total": count, "peers": peers})
 }
@@ -113,12 +128,23 @@ func GETPeer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
 		return
 	}
-	if models.PeerIDExists(db, uint(peerID)) {
-		peer := models.FindPeerByID(db, uint(peerID))
-		c.JSON(http.StatusOK, peer)
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Peer does not exist"})
+	exists, err := models.PeerIDExists(db, uint(peerID))
+	if err != nil {
+		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
 	}
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Peer does not exist"})
+		return
+	}
+	peer, err := models.FindPeerByID(db, uint(peerID))
+	if err != nil {
+		slog.Error("Error finding peer", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	c.JSON(http.StatusOK, peer)
 }
 
 func DELETEPeer(c *gin.Context) {
@@ -133,9 +159,8 @@ func DELETEPeer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
 		return
 	}
-	models.DeletePeer(db, uint(idUint64))
-	if db.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+	if err = models.DeletePeer(db, uint(idUint64)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Peer deleted"})
@@ -173,7 +198,13 @@ func POSTPeer(c *gin.Context) {
 		slog.Error("JSON data is invalid", "function", "POSTPeer", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
 	} else {
-		if models.PeerIDExists(db, json.ID) {
+		exists, existsErr := models.PeerIDExists(db, json.ID)
+		if existsErr != nil {
+			slog.Error("Error checking peer ID existence", "function", "POSTPeer", "peerID", json.ID, "error", existsErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
+		if exists {
 			slog.Error("Peer ID already exists", "function", "POSTPeer", "peerID", json.ID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID already exists"})
 			return

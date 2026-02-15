@@ -506,14 +506,6 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 			Error: ErrInvalidSMTPTLS.Error(),
 		})
 	}
-	if s.TLS != SMTPTLSNone &&
-		s.TLS != SMTPTLSStartTLS &&
-		s.TLS != SMTPTLSImplicit {
-		errs = append(errs, ValidationError{
-			Field: "smtp.tls",
-			Error: ErrInvalidSMTPTLS.Error(),
-		})
-	}
 	if s.From == "" {
 		errs = append(errs, ValidationError{
 			Field: "smtp.from",

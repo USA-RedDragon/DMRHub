@@ -40,21 +40,20 @@ const max32Bit = 0xFFFFFFFF
 func (s *Server) validRepeater(ctx context.Context, repeaterID uint, connection models.RepeaterState) bool {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.validRepeater")
 	defer span.End()
-	valid := true
 	if !s.kvClient.RepeaterExists(ctx, repeaterID) {
 		slog.Error("Repeater does not exist", "repeaterID", repeaterID)
-		valid = false
+		return false
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 	if err != nil {
 		slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
-		valid = false
+		return false
 	}
 	if repeater.Connection != connection {
 		slog.Error("Repeater state does not match expected", "repeaterID", repeaterID, "repeaterState", repeater.Connection, "expectedState", connection)
-		valid = false
+		return false
 	}
-	return valid
+	return true
 }
 
 func (s *Server) handleDMRAPacket(ctx context.Context, data []byte) {

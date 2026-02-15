@@ -107,12 +107,13 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	setupLogger(cfg)
 
-	cleanup := setupTracing(cfg)
+	cleanup, err := setupTracing(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to setup tracing: %w", err)
+	}
 	defer func() {
-		if cleanup != nil {
-			if err := cleanup(ctx); err != nil {
-				slog.Error("Failed to shutdown tracer", "error", err)
-			}
+		if err := cleanup(ctx); err != nil {
+			slog.Error("Failed to shutdown tracer", "error", err)
 		}
 	}()
 
@@ -240,10 +241,11 @@ func setupScheduler() (gocron.Scheduler, error) {
 	return scheduler, nil
 }
 
-// setupTracing initializes OpenTelemetry tracing if configured
-func setupTracing(cfg *config.Config) func(context.Context) error {
+// setupTracing initializes OpenTelemetry tracing if configured.
+// When tracing is not configured it returns a no-op cleanup function.
+func setupTracing(cfg *config.Config) (func(context.Context) error, error) {
 	if cfg.Metrics.OTLPEndpoint == "" {
-		return nil
+		return func(context.Context) error { return nil }, nil
 	}
 	return initTracer(cfg)
 }
@@ -259,13 +261,12 @@ func startBackgroundServices(cfg *config.Config) {
 	go pprof.CreatePProfServer(cfg)
 }
 
-// setupDMRDatabaseJobs configures scheduled jobs for database updates
-func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
-	// Dummy call to get the data decoded into memory early
+// scheduleDailyUpdate starts an immediate background update and schedules a daily job for the given update function.
+func scheduleDailyUpdate(scheduler gocron.Scheduler, name string, url string, updateFn func(string) error) {
 	go func() {
-		err := repeaterdb.Update(cfg.DMR.RepeaterIDURL)
+		err := updateFn(url)
 		if err != nil {
-			slog.Error("Failed to update repeater database, using built in one", "error", err)
+			slog.Error(fmt.Sprintf("Failed to update %s database, using built in one", name), "error", err)
 		}
 	}()
 
@@ -274,37 +275,21 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 			gocron.NewAtTime(0, 0, 0),
 		)),
 		gocron.NewTask(func() {
-			err := repeaterdb.Update(cfg.DMR.RepeaterIDURL)
+			err := updateFn(url)
 			if err != nil {
-				slog.Error("Failed to update repeater database", "error", err)
+				slog.Error(fmt.Sprintf("Failed to update %s database", name), "error", err)
 			}
 		}),
 	)
 	if err != nil {
-		slog.Error("Failed to schedule repeater update", "error", err)
+		slog.Error(fmt.Sprintf("Failed to schedule %s update", name), "error", err)
 	}
+}
 
-	go func() {
-		err := userdb.Update(cfg.DMR.RadioIDURL)
-		if err != nil {
-			slog.Error("Failed to update user database", "error", err)
-		}
-	}()
-
-	_, err = scheduler.NewJob(
-		gocron.DailyJob(1, gocron.NewAtTimes(
-			gocron.NewAtTime(0, 0, 0),
-		)),
-		gocron.NewTask(func() {
-			err := userdb.Update(cfg.DMR.RadioIDURL)
-			if err != nil {
-				slog.Error("Failed to update user database", "error", err)
-			}
-		}),
-	)
-	if err != nil {
-		slog.Error("Failed to schedule user update", "error", err)
-	}
+// setupDMRDatabaseJobs configures scheduled jobs for database updates
+func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
+	scheduleDailyUpdate(scheduler, "repeater", cfg.DMR.RepeaterIDURL, repeaterdb.Update)
+	scheduleDailyUpdate(scheduler, "user", cfg.DMR.RadioIDURL, userdb.Update)
 }
 
 // serverManager holds all the server instances and their dependencies
@@ -474,7 +459,7 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 	}
 }
 
-func initTracer(config *config.Config) func(context.Context) error {
+func initTracer(config *config.Config) (func(context.Context) error, error) {
 	exporter, err := otlptrace.New(
 		context.Background(),
 		otlptracegrpc.NewClient(
@@ -483,7 +468,7 @@ func initTracer(config *config.Config) func(context.Context) error {
 		),
 	)
 	if err != nil {
-		slog.Error("Failed tracing app", "error", err)
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 	resources, err := resource.New(
 		context.Background(),
@@ -493,7 +478,7 @@ func initTracer(config *config.Config) func(context.Context) error {
 		),
 	)
 	if err != nil {
-		slog.Error("Could not set resources", "error", err)
+		return nil, fmt.Errorf("failed to create trace resources: %w", err)
 	}
 
 	otel.SetTracerProvider(
@@ -503,5 +488,5 @@ func initTracer(config *config.Config) func(context.Context) error {
 			sdktrace.WithResource(resources),
 		),
 	)
-	return exporter.Shutdown
+	return exporter.Shutdown, nil
 }

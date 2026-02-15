@@ -26,6 +26,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,10 +37,8 @@ func PUTConfig(c *gin.Context) {
 		return
 	}
 
-	currentCfg, ok := c.MustGet("Config").(*config.Config)
+	currentCfg, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -62,10 +61,8 @@ func PUTConfig(c *gin.Context) {
 }
 
 func GETConfig(c *gin.Context) {
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -82,10 +79,8 @@ func GETConfig(c *gin.Context) {
 }
 
 func GETConfigValidate(c *gin.Context) {
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -100,10 +95,8 @@ func POSTConfigValidate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	currentCfg, ok := c.MustGet("Config").(*config.Config)
+	currentCfg, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 

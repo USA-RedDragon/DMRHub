@@ -24,14 +24,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 const (
@@ -40,16 +38,12 @@ const (
 )
 
 func GETPeers(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	peers, err := models.ListPeers(db)
@@ -68,16 +62,12 @@ func GETPeers(c *gin.Context) {
 }
 
 func GETMyPeers(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	session := sessions.Default(c)
@@ -115,10 +105,8 @@ func GETMyPeers(c *gin.Context) {
 }
 
 func GETPeer(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -148,10 +136,8 @@ func GETPeer(c *gin.Context) {
 }
 
 func DELETEPeer(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -180,16 +166,12 @@ func POSTPeer(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	var json apimodels.PeerPost

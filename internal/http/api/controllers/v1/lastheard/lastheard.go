@@ -25,22 +25,18 @@ import (
 	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func GETLastheard(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	session := sessions.Default(c)
@@ -92,16 +88,12 @@ func GETLastheard(c *gin.Context) {
 }
 
 func GETLastheardUser(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -127,16 +119,12 @@ func GETLastheardUser(c *gin.Context) {
 }
 
 func GETLastheardRepeater(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -162,10 +150,8 @@ func GETLastheardRepeater(c *gin.Context) {
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")

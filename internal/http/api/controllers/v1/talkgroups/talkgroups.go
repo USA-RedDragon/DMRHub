@@ -29,25 +29,21 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 const maxNameLength = 20
 const maxDescriptionLength = 240
 
 func GETTalkgroups(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	talkgroups, err := models.ListTalkgroups(db)
@@ -68,16 +64,12 @@ func GETTalkgroups(c *gin.Context) {
 }
 
 func GETMyTalkgroups(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	session := sessions.Default(c)
@@ -113,10 +105,8 @@ func GETMyTalkgroups(c *gin.Context) {
 }
 
 func GETTalkgroup(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -139,10 +129,8 @@ func GETTalkgroup(c *gin.Context) {
 }
 
 func DELETETalkgroup(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -177,10 +165,8 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 // associationName is the GORM association name ("NCOs" or "Admins").
 // roleName is a human-readable role for success messages.
 func postTalkgroupAssociation(c *gin.Context, associationName string, roleName string) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -252,10 +238,8 @@ func postTalkgroupAssociation(c *gin.Context, associationName string, roleName s
 }
 
 func PATCHTalkgroup(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -321,10 +305,8 @@ func PATCHTalkgroup(c *gin.Context) {
 }
 
 func POSTTalkgroup(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	var json apimodels.TalkgroupPost

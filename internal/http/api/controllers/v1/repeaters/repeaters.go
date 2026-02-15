@@ -28,7 +28,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -49,16 +48,12 @@ const (
 var repeaterIDRegex = regexp.MustCompile(`^[0-9]{6}$`)
 
 func GETRepeaters(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	repeaters, err := models.ListRepeaters(db)
@@ -79,16 +74,12 @@ func GETRepeaters(c *gin.Context) {
 }
 
 func GETMyRepeaters(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	session := sessions.Default(c)
@@ -126,10 +117,8 @@ func GETMyRepeaters(c *gin.Context) {
 }
 
 func GETRepeater(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -156,10 +145,8 @@ func GETRepeater(c *gin.Context) {
 }
 
 func DELETERepeater(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -180,10 +167,8 @@ func DELETERepeater(c *gin.Context) {
 }
 
 func POSTRepeaterTalkgroups(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -297,16 +282,12 @@ func POSTRepeater(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		return
 	}
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Config cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -482,10 +463,8 @@ func POSTRepeater(c *gin.Context) {
 }
 
 func POSTRepeaterLink(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -752,10 +731,8 @@ func isStaticTalkgroupLinked(staticTalkgroups []models.Talkgroup, talkgroupID ui
 }
 
 func POSTRepeaterUnlink(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -807,10 +784,8 @@ func POSTRepeaterUnlink(c *gin.Context) {
 }
 
 func PATCHRepeater(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 

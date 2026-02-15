@@ -25,13 +25,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 // loginMinDuration is the minimum time the login handler will take once
@@ -57,17 +55,13 @@ func calibrateLoginTiming() {
 
 func POSTLogin(c *gin.Context) {
 	session := sessions.Default(c)
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("Unable to get DB from context", "function", "POSTLogin")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 

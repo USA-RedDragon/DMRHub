@@ -27,7 +27,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -37,20 +36,15 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	gopwned "github.com/mavjs/goPwned"
-	"gorm.io/gorm"
 )
 
 func GETUsers(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	users, err := models.ListUsers(db)
@@ -71,17 +65,13 @@ func GETUsers(c *gin.Context) {
 
 // POSTUser is used to register a new user.
 func POSTUser(c *gin.Context) {
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	var json apimodels.UserRegistration
@@ -219,17 +209,13 @@ func POSTUser(c *gin.Context) {
 }
 
 func POSTUserDemote(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -282,17 +268,13 @@ func POSTUserDemote(c *gin.Context) {
 }
 
 func POSTUserPromote(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -347,10 +329,8 @@ func POSTUserPromote(c *gin.Context) {
 }
 
 func POSTUserUnsuspend(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -391,10 +371,8 @@ func POSTUserUnsuspend(c *gin.Context) {
 }
 
 func POSTUserApprove(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -435,10 +413,8 @@ func POSTUserApprove(c *gin.Context) {
 }
 
 func GETUser(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -458,16 +434,12 @@ func GETUser(c *gin.Context) {
 }
 
 func GETUserAdmins(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -489,16 +461,12 @@ func GETUserAdmins(c *gin.Context) {
 }
 
 func GETUserSuspended(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	// Get all users where approved = false
@@ -519,16 +487,12 @@ func GETUserSuspended(c *gin.Context) {
 }
 
 func GETUserUnapproved(c *gin.Context) {
-	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
+	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	cDb, ok := c.MustGet("DB").(*gorm.DB)
+	cDb, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	// Get all users where approved = false
@@ -550,16 +514,12 @@ func GETUserUnapproved(c *gin.Context) {
 }
 
 func PATCHUser(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	config, ok := c.MustGet("Config").(*config.Config)
+	config, ok := utils.GetConfig(c)
 	if !ok {
-		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -627,10 +587,8 @@ func PATCHUser(c *gin.Context) {
 }
 
 func DELETEUser(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -660,10 +618,8 @@ func DELETEUser(c *gin.Context) {
 }
 
 func POSTUserSuspend(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	id := c.Param("id")
@@ -714,10 +670,8 @@ func POSTUserSuspend(c *gin.Context) {
 }
 
 func GETUserSelf(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
+	db, ok := utils.GetDB(c)
 	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	session := sessions.Default(c)

@@ -17,55 +17,49 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package v1
+package utils
 
 import (
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func GETNetworkName(c *gin.Context) {
-	config, ok := utils.GetConfig(c)
+// GetDB extracts the "DB" value from the gin context. On failure it writes
+// an HTTP 500 response and returns nil, false.
+func GetDB(c *gin.Context) (*gorm.DB, bool) {
+	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
-		return
+		slog.Error("DB cast failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return nil, false
 	}
-
-	_, err := io.WriteString(c.Writer, config.NetworkName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting network name"})
-	}
+	return db, true
 }
 
-func GETVersion(c *gin.Context) {
-	version, ok := c.MustGet("Version").(string)
+// GetPaginatedDB extracts the "PaginatedDB" value from the gin context. On
+// failure it writes an HTTP 500 response and returns nil, false.
+func GetPaginatedDB(c *gin.Context) (*gorm.DB, bool) {
+	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
-		slog.Error("Unable to get Version from context", "function", "GETVersion")
+		slog.Error("DB cast failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
+		return nil, false
 	}
-
-	commit, ok := c.MustGet("Commit").(string)
-	if !ok {
-		slog.Error("Unable to get Commit from context", "function", "GETVersion")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
-
-	_, err := io.WriteString(c.Writer, fmt.Sprintf("%s-%s", version, commit))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting version"})
-	}
+	return db, true
 }
 
-func GETPing(c *gin.Context) {
-	_, err := io.WriteString(c.Writer, fmt.Sprintf("%d", time.Now().Unix()))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting ping"})
+// GetConfig extracts the "Config" value from the gin context. On failure it
+// writes an HTTP 500 response and returns nil, false.
+func GetConfig(c *gin.Context) (*config.Config, bool) {
+	cfg, ok := c.MustGet("Config").(*config.Config)
+	if !ok {
+		slog.Error("Unable to get Config from context")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return nil, false
 	}
+	return cfg, true
 }

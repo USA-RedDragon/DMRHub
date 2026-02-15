@@ -92,5 +92,8 @@ func PeerIDExists(db *gorm.DB, id uint) (bool, error) {
 }
 
 func DeletePeer(db *gorm.DB, id uint) error {
-	return fmt.Errorf("delete peer: %w", db.Unscoped().Delete(&Peer{ID: id}).Error)
+	if err := db.Unscoped().Delete(&Peer{ID: id}).Error; err != nil {
+		return fmt.Errorf("delete peer: %w", err)
+	}
+	return nil
 }

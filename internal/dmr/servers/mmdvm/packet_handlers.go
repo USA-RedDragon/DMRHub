@@ -70,20 +70,6 @@ func (s *Server) handleDMRAPacket(ctx context.Context, data []byte) {
 	repeaterID := uint(binary.BigEndian.Uint32(repeaterIDBytes))
 	slog.Debug("DMR talk alias from Repeater ID", "repeaterIDBytes", repeaterIDBytes)
 	if s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
-		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
-		if err != nil {
-			// Repeater not found, drop
-			slog.Error("Repeater not found in DB", "repeaterID", repeaterID)
-			return
-		}
-		dbRepeater.LastPing = time.Now()
-		err = s.DB.Save(&dbRepeater).Error
-		if err != nil {
-			slog.Error("Error saving repeater", "error", err)
-			return
-		}
-
 		typeBytes := data[8:9]
 		// Type can be 0 for a full talk alias, or 1,2,3 for talk alias blocks
 		slog.Debug("Talk alias type", "type", typeBytes[0])
@@ -110,11 +96,6 @@ func (s *Server) handleDMRDPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	slog.Debug("DMR Data from Repeater ID", "repeaterID", repeaterID)
 
 	if !s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
-		return
-	}
-
-	// Update repeater ping and database
-	if err := s.updateRepeaterPing(ctx, repeaterID); err != nil {
 		return
 	}
 
@@ -276,14 +257,6 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			return
 		}
 
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
-		dbRepeater.LastPing = time.Now()
-		err = s.DB.Save(&dbRepeater).Error
-		if err != nil {
-			slog.Error("Error saving repeater to db", "error", err)
-			return
-		}
-
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			slog.Error("Error getting repeater from kv", "error", err)
@@ -352,7 +325,6 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 	slog.Debug("Config from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
 	if s.validRepeater(ctx, repeaterID, models.RepeaterStateWaitingConfig) {
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
 		if err != nil {
 			slog.Error("Error getting repeater from kv", "error", err)
@@ -409,22 +381,14 @@ func (s *Server) handleRPTPINGPacket(ctx context.Context, remoteAddr net.UDPAddr
 	slog.Debug("Ping from repeater", "repeaterID", repeaterID, "remoteAddr", remoteAddr.String())
 
 	if s.validRepeater(ctx, repeaterID, models.RepeaterStateConnected) {
-		s.kvClient.UpdateRepeaterPing(ctx, repeaterID)
 		// Track this repeater as locally connected. In multi-replica Kubernetes
 		// deployments, repeaters may be routed to a new pod without re-doing the
 		// full RPTL/RPTK/RPTC handshake. By tracking on every ping we ensure
 		// Stop() can send MSTCL to all repeaters we're actually serving.
 		s.connected.Store(repeaterID, struct{}{})
-		dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
-		if err != nil {
-			// No repeater found, drop
-			slog.Error("No repeater found for ID", "repeaterID", repeaterID)
+		if err := s.updateRepeaterPing(ctx, repeaterID); err != nil {
+			slog.Error("failed to update repeater ping", "error", err)
 			return
-		}
-		dbRepeater.LastPing = time.Now()
-		err = s.DB.Save(&dbRepeater).Error
-		if err != nil {
-			slog.Error("Error saving repeater to database", "error", err)
 		}
 
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)

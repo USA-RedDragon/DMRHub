@@ -127,7 +127,7 @@ func formatErrors(errs []config.ValidationError) map[string]any {
 		for i, part := range parts {
 			if i == len(parts)-1 {
 				// Last part, set the error message
-				currentMap[part] = e.Error
+				currentMap[part] = e.Err.Error()
 			} else {
 				// Not last part, create a new map if it doesn't exist
 				if _, ok := currentMap[part]; !ok {
@@ -144,7 +144,7 @@ func formatErrors(errs []config.ValidationError) map[string]any {
 		}
 
 		// Set the error message for the last part
-		currentMap[parts[len(parts)-1]] = e.Error
+		currentMap[parts[len(parts)-1]] = e.Err.Error()
 	}
 
 	return errors

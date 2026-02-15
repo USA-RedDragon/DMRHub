@@ -89,22 +89,15 @@ var (
 	ErrInvalidIPSCPort = errors.New("invalid IPSC server port provided")
 	// ErrInvalidIPSCNetworkID indicates that the IPSC network ID is required when IPSC is enabled.
 	ErrInvalidIPSCNetworkID = errors.New("IPSC network ID is required when IPSC is enabled")
+	// ErrInvalidDMRRadioIDURL indicates that the provided DMR radio ID URL is not valid.
+	ErrInvalidDMRRadioIDURL = errors.New("invalid DMR radio ID URL provided")
+	// ErrInvalidDMRRepeaterIDURL indicates that the provided DMR repeater ID URL is not valid.
+	ErrInvalidDMRRepeaterIDURL = errors.New("invalid DMR repeater ID URL provided")
 )
 
 // Validate validates the Redis configuration.
 func (r Redis) Validate() error {
-	if !r.Enabled {
-		return nil
-	}
-
-	if r.Host == "" {
-		return ErrInvalidRedisHost
-	}
-	if r.Port <= 0 || r.Port > 65535 {
-		return ErrInvalidRedisPort
-	}
-
-	return nil
+	return firstValidationError(r.ValidateWithFields())
 }
 
 func (r Redis) ValidateWithFields() (errs []ValidationError) {
@@ -115,13 +108,13 @@ func (r Redis) ValidateWithFields() (errs []ValidationError) {
 	if r.Host == "" {
 		errs = append(errs, ValidationError{
 			Field: "redis.host",
-			Error: ErrInvalidRedisHost.Error(),
+			Err:   ErrInvalidRedisHost,
 		})
 	}
 	if r.Port <= 0 || r.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "redis.port",
-			Error: ErrInvalidRedisPort.Error(),
+			Err:   ErrInvalidRedisPort,
 		})
 	}
 
@@ -130,25 +123,7 @@ func (r Redis) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the Database configuration.
 func (d Database) Validate() error {
-	if d.Driver != DatabaseDriverSQLite &&
-		d.Driver != DatabaseDriverPostgres &&
-		d.Driver != DatabaseDriverMySQL {
-		return ErrInvalidDatabaseDriver
-	}
-
-	if d.Driver != DatabaseDriverSQLite && d.Host == "" {
-		return ErrInvalidDatabaseHost
-	}
-
-	if d.Driver != DatabaseDriverSQLite && (d.Port <= 0 || d.Port > 65535) {
-		return ErrInvalidDatabasePort
-	}
-
-	if d.Database == "" {
-		return ErrInvalidDatabaseName
-	}
-
-	return nil
+	return firstValidationError(d.ValidateWithFields())
 }
 
 func (d Database) ValidateWithFields() (errs []ValidationError) {
@@ -157,28 +132,28 @@ func (d Database) ValidateWithFields() (errs []ValidationError) {
 		d.Driver != DatabaseDriverMySQL {
 		errs = append(errs, ValidationError{
 			Field: "database.driver",
-			Error: ErrInvalidDatabaseDriver.Error(),
+			Err:   ErrInvalidDatabaseDriver,
 		})
 	}
 
 	if d.Driver != DatabaseDriverSQLite && d.Host == "" {
 		errs = append(errs, ValidationError{
 			Field: "database.host",
-			Error: ErrInvalidDatabaseHost.Error(),
+			Err:   ErrInvalidDatabaseHost,
 		})
 	}
 
 	if d.Driver != DatabaseDriverSQLite && (d.Port <= 0 || d.Port > 65535) {
 		errs = append(errs, ValidationError{
 			Field: "database.port",
-			Error: ErrInvalidDatabasePort.Error(),
+			Err:   ErrInvalidDatabasePort,
 		})
 	}
 
 	if d.Database == "" {
 		errs = append(errs, ValidationError{
 			Field: "database.name",
-			Error: ErrInvalidDatabaseName.Error(),
+			Err:   ErrInvalidDatabaseName,
 		})
 	}
 
@@ -187,17 +162,7 @@ func (d Database) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the RobotsTXT configuration.
 func (r RobotsTXT) Validate() error {
-	if r.Mode != RobotsTXTModeAllow &&
-		r.Mode != RobotsTXTModeDisabled &&
-		r.Mode != RobotsTXTModeCustom {
-		return ErrHTTPRobotsTXTModeInvalid
-	}
-
-	if r.Mode == RobotsTXTModeCustom && r.Content == "" {
-		return ErrInvalidHTTPRobotsTXTContent
-	}
-
-	return nil
+	return firstValidationError(r.ValidateWithFields())
 }
 
 func (r RobotsTXT) ValidateWithFields() (errs []ValidationError) {
@@ -206,14 +171,14 @@ func (r RobotsTXT) ValidateWithFields() (errs []ValidationError) {
 		r.Mode != RobotsTXTModeCustom {
 		errs = append(errs, ValidationError{
 			Field: "http.robots-txt.mode",
-			Error: ErrHTTPRobotsTXTModeInvalid.Error(),
+			Err:   ErrHTTPRobotsTXTModeInvalid,
 		})
 	}
 
 	if r.Mode == RobotsTXTModeCustom && r.Content == "" {
 		errs = append(errs, ValidationError{
 			Field: "http.robots-txt.content",
-			Error: ErrInvalidHTTPRobotsTXTContent.Error(),
+			Err:   ErrInvalidHTTPRobotsTXTContent,
 		})
 	}
 
@@ -222,44 +187,28 @@ func (r RobotsTXT) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the HTTP configuration.
 func (h HTTP) Validate() error {
-	if h.Bind == "" {
-		return ErrInvalidHTTPHost
-	}
-
-	if h.Port <= 0 || h.Port > 65535 {
-		return ErrInvalidHTTPPort
-	}
-
-	if h.CanonicalHost == "" {
-		return ErrHTTPCanonicalHostRequired
-	}
-
-	if err := h.RobotsTXT.Validate(); err != nil {
-		return err
-	}
-
-	return nil
+	return firstValidationError(h.ValidateWithFields())
 }
 
 func (h HTTP) ValidateWithFields() (errs []ValidationError) {
 	if h.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "http.bind",
-			Error: ErrInvalidHTTPHost.Error(),
+			Err:   ErrInvalidHTTPHost,
 		})
 	}
 
 	if h.Port <= 0 || h.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "http.port",
-			Error: ErrInvalidHTTPPort.Error(),
+			Err:   ErrInvalidHTTPPort,
 		})
 	}
 
 	if h.CanonicalHost == "" {
 		errs = append(errs, ValidationError{
 			Field: "http.canonical-host",
-			Error: ErrHTTPCanonicalHostRequired.Error(),
+			Err:   ErrHTTPCanonicalHostRequired,
 		})
 	}
 
@@ -272,29 +221,21 @@ func (h HTTP) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the MMDVM configuration.
 func (h MMDVM) Validate() error {
-	if h.Bind == "" {
-		return ErrInvalidDMRMMDVMHost
-	}
-
-	if h.Port <= 0 || h.Port > 65535 {
-		return ErrInvalidDMRMMDVMPort
-	}
-
-	return nil
+	return firstValidationError(h.ValidateWithFields())
 }
 
 func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 	if h.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "dmr.mmdvm.bind",
-			Error: ErrInvalidDMRMMDVMHost.Error(),
+			Err:   ErrInvalidDMRMMDVMHost,
 		})
 	}
 
 	if h.Port <= 0 || h.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "dmr.mmdvm.port",
-			Error: ErrInvalidDMRMMDVMPort.Error(),
+			Err:   ErrInvalidDMRMMDVMPort,
 		})
 	}
 
@@ -303,18 +244,7 @@ func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the OpenBridge configuration.
 func (o OpenBridge) Validate() error {
-	if !o.Enabled {
-		return nil
-	}
-
-	if o.Bind == "" {
-		return ErrInvalidDMROpenBridgeHost
-	}
-	if o.Port <= 0 || o.Port > 65535 {
-		return ErrInvalidDMROpenBridgePort
-	}
-
-	return nil
+	return firstValidationError(o.ValidateWithFields())
 }
 
 func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
@@ -325,13 +255,13 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 	if o.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "dmr.openbridge.bind",
-			Error: ErrInvalidDMROpenBridgeHost.Error(),
+			Err:   ErrInvalidDMROpenBridgeHost,
 		})
 	}
 	if o.Port <= 0 || o.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "dmr.openbridge.port",
-			Error: ErrInvalidDMROpenBridgePort.Error(),
+			Err:   ErrInvalidDMROpenBridgePort,
 		})
 	}
 
@@ -339,21 +269,7 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 }
 
 func (o IPSC) Validate() error {
-	if !o.Enabled {
-		return nil
-	}
-
-	if o.Bind == "" {
-		return ErrInvalidIPSCBindAddress
-	}
-	if o.Port <= 0 || o.Port > 65535 {
-		return ErrInvalidIPSCPort
-	}
-	if o.NetworkID == 0 {
-		return ErrInvalidIPSCNetworkID
-	}
-
-	return nil
+	return firstValidationError(o.ValidateWithFields())
 }
 
 func (o IPSC) ValidateWithFields() (errs []ValidationError) {
@@ -364,19 +280,19 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 	if o.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "dmr.ipsc.bind",
-			Error: ErrInvalidIPSCBindAddress.Error(),
+			Err:   ErrInvalidIPSCBindAddress,
 		})
 	}
 	if o.Port <= 0 || o.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "dmr.ipsc.port",
-			Error: ErrInvalidIPSCPort.Error(),
+			Err:   ErrInvalidIPSCPort,
 		})
 	}
 	if o.NetworkID == 0 {
 		errs = append(errs, ValidationError{
 			Field: "dmr.ipsc.network-id",
-			Error: ErrInvalidIPSCNetworkID.Error(),
+			Err:   ErrInvalidIPSCNetworkID,
 		})
 	}
 
@@ -385,27 +301,7 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the DMR configuration.
 func (d DMR) Validate() error {
-	if err := d.MMDVM.Validate(); err != nil {
-		return err
-	}
-
-	if err := d.OpenBridge.Validate(); err != nil {
-		return err
-	}
-
-	if err := d.IPSC.Validate(); err != nil {
-		return err
-	}
-
-	if _, err := url.Parse(d.RadioIDURL); err != nil {
-		return errors.New("invalid DMR radio ID URL provided")
-	}
-
-	if _, err := url.Parse(d.RepeaterIDURL); err != nil {
-		return errors.New("invalid DMR repeater ID URL provided")
-	}
-
-	return nil
+	return firstValidationError(d.ValidateWithFields())
 }
 
 func (d DMR) ValidateWithFields() (errs []ValidationError) {
@@ -413,25 +309,25 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, mmdvmErrs...)
 	}
 
-	if ipscErrs := d.IPSC.ValidateWithFields(); len(ipscErrs) > 0 {
-		errs = append(errs, ipscErrs...)
-	}
-
 	if openBridgeErrs := d.OpenBridge.ValidateWithFields(); len(openBridgeErrs) > 0 {
 		errs = append(errs, openBridgeErrs...)
+	}
+
+	if ipscErrs := d.IPSC.ValidateWithFields(); len(ipscErrs) > 0 {
+		errs = append(errs, ipscErrs...)
 	}
 
 	if _, err := url.Parse(d.RadioIDURL); err != nil {
 		errs = append(errs, ValidationError{
 			Field: "dmr.radio-id-url",
-			Error: "invalid DMR radio ID URL provided",
+			Err:   ErrInvalidDMRRadioIDURL,
 		})
 	}
 
 	if _, err := url.Parse(d.RepeaterIDURL); err != nil {
 		errs = append(errs, ValidationError{
 			Field: "dmr.repeater-id-url",
-			Error: "invalid DMR repeater ID URL provided",
+			Err:   ErrInvalidDMRRepeaterIDURL,
 		})
 	}
 
@@ -440,37 +336,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the SMTP configuration.
 func (s SMTP) Validate() error {
-	if !s.Enabled {
-		return nil
-	}
-
-	if s.Host == "" {
-		return ErrInvalidSMTPHost
-	}
-	if s.Port <= 0 || s.Port > 65535 {
-		return ErrInvalidSMTPPort
-	}
-	if s.AuthMethod != SMTPAuthMethodPlain &&
-		s.AuthMethod != SMTPAuthMethodLogin &&
-		s.AuthMethod != SMTPAuthMethodNone {
-		return ErrInvalidSMTPAuthMethod
-	}
-	if s.TLS != SMTPTLSNone &&
-		s.TLS != SMTPTLSStartTLS &&
-		s.TLS != SMTPTLSImplicit {
-		return ErrInvalidSMTPTLS
-	}
-	if s.From == "" {
-		return ErrSMTPFromRequired
-	}
-	if s.Username == "" && s.AuthMethod != SMTPAuthMethodNone {
-		return ErrInvalidSMTPUsername
-	}
-	if s.Password == "" && s.AuthMethod != SMTPAuthMethodNone {
-		return ErrInvalidSMTPPassword
-	}
-
-	return nil
+	return firstValidationError(s.ValidateWithFields())
 }
 
 func (s SMTP) ValidateWithFields() (errs []ValidationError) {
@@ -481,13 +347,13 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 	if s.Host == "" {
 		errs = append(errs, ValidationError{
 			Field: "smtp.host",
-			Error: ErrInvalidSMTPHost.Error(),
+			Err:   ErrInvalidSMTPHost,
 		})
 	}
 	if s.Port <= 0 || s.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "smtp.port",
-			Error: ErrInvalidSMTPPort.Error(),
+			Err:   ErrInvalidSMTPPort,
 		})
 	}
 	if s.AuthMethod != SMTPAuthMethodPlain &&
@@ -495,7 +361,7 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 		s.AuthMethod != SMTPAuthMethodNone {
 		errs = append(errs, ValidationError{
 			Field: "smtp.auth-method",
-			Error: ErrInvalidSMTPAuthMethod.Error(),
+			Err:   ErrInvalidSMTPAuthMethod,
 		})
 	}
 	if s.TLS != SMTPTLSNone &&
@@ -503,25 +369,25 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 		s.TLS != SMTPTLSImplicit {
 		errs = append(errs, ValidationError{
 			Field: "smtp.tls",
-			Error: ErrInvalidSMTPTLS.Error(),
+			Err:   ErrInvalidSMTPTLS,
 		})
 	}
 	if s.From == "" {
 		errs = append(errs, ValidationError{
 			Field: "smtp.from",
-			Error: ErrSMTPFromRequired.Error(),
+			Err:   ErrSMTPFromRequired,
 		})
 	}
 	if s.Username == "" && s.AuthMethod != SMTPAuthMethodNone {
 		errs = append(errs, ValidationError{
 			Field: "smtp.username",
-			Error: ErrInvalidSMTPUsername.Error(),
+			Err:   ErrInvalidSMTPUsername,
 		})
 	}
 	if s.Password == "" && s.AuthMethod != SMTPAuthMethodNone {
 		errs = append(errs, ValidationError{
 			Field: "smtp.password",
-			Error: ErrInvalidSMTPPassword.Error(),
+			Err:   ErrInvalidSMTPPassword,
 		})
 	}
 
@@ -530,18 +396,7 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the Metrics configuration.
 func (m Metrics) Validate() error {
-	if !m.Enabled {
-		return nil
-	}
-
-	if m.Bind == "" {
-		return ErrInvalidMetricsBindAddress
-	}
-	if m.Port <= 0 || m.Port > 65535 {
-		return ErrInvalidMetricsPort
-	}
-
-	return nil
+	return firstValidationError(m.ValidateWithFields())
 }
 
 func (m Metrics) ValidateWithFields() (errs []ValidationError) {
@@ -552,13 +407,13 @@ func (m Metrics) ValidateWithFields() (errs []ValidationError) {
 	if m.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "metrics.bind",
-			Error: ErrInvalidMetricsBindAddress.Error(),
+			Err:   ErrInvalidMetricsBindAddress,
 		})
 	}
 	if m.Port <= 0 || m.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "metrics.port",
-			Error: ErrInvalidMetricsPort.Error(),
+			Err:   ErrInvalidMetricsPort,
 		})
 	}
 
@@ -567,18 +422,7 @@ func (m Metrics) ValidateWithFields() (errs []ValidationError) {
 
 // Validate validates the PProf configuration.
 func (p PProf) Validate() error {
-	if !p.Enabled {
-		return nil
-	}
-
-	if p.Bind == "" {
-		return ErrInvalidPProfBindAddress
-	}
-	if p.Port <= 0 || p.Port > 65535 {
-		return ErrInvalidPProfPort
-	}
-
-	return nil
+	return firstValidationError(p.ValidateWithFields())
 }
 
 func (p PProf) ValidateWithFields() (errs []ValidationError) {
@@ -589,13 +433,13 @@ func (p PProf) ValidateWithFields() (errs []ValidationError) {
 	if p.Bind == "" {
 		errs = append(errs, ValidationError{
 			Field: "pprof.bind",
-			Error: ErrInvalidPProfBindAddress.Error(),
+			Err:   ErrInvalidPProfBindAddress,
 		})
 	}
 	if p.Port <= 0 || p.Port > 65535 {
 		errs = append(errs, ValidationError{
 			Field: "pprof.port",
-			Error: ErrInvalidPProfPort.Error(),
+			Err:   ErrInvalidPProfPort,
 		})
 	}
 
@@ -603,55 +447,21 @@ func (p PProf) ValidateWithFields() (errs []ValidationError) {
 }
 
 func (c Config) Validate() error {
-	if c.LogLevel != LogLevelDebug &&
-		c.LogLevel != LogLevelInfo &&
-		c.LogLevel != LogLevelWarn &&
-		c.LogLevel != LogLevelError {
-		return ErrInvalidLogLevel
-	}
-
-	if c.Secret == "" {
-		return ErrSecretRequired
-	}
-
-	if c.PasswordSalt == "" {
-		return ErrPasswordSaltRequired
-	}
-
-	if err := c.Redis.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.Database.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.HTTP.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.DMR.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.SMTP.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.Metrics.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.PProf.Validate(); err != nil {
-		return err
-	}
-
-	return nil
+	return firstValidationError(c.ValidateWithFields())
 }
 
+// ValidationError represents a validation error with the field path and the associated error.
 type ValidationError struct {
 	Field string
-	Error string
+	Err   error
+}
+
+// firstValidationError returns the error from the first ValidationError, or nil if no errors.
+func firstValidationError(errs []ValidationError) error {
+	if len(errs) > 0 {
+		return errs[0].Err
+	}
+	return nil
 }
 
 func (c Config) ValidateWithFields() (errs []ValidationError) {
@@ -661,21 +471,21 @@ func (c Config) ValidateWithFields() (errs []ValidationError) {
 		c.LogLevel != LogLevelError {
 		errs = append(errs, ValidationError{
 			Field: "log-level",
-			Error: ErrInvalidLogLevel.Error(),
+			Err:   ErrInvalidLogLevel,
 		})
 	}
 
 	if c.Secret == "" {
 		errs = append(errs, ValidationError{
 			Field: "secret",
-			Error: ErrSecretRequired.Error(),
+			Err:   ErrSecretRequired,
 		})
 	}
 
 	if c.PasswordSalt == "" {
 		errs = append(errs, ValidationError{
 			Field: "password-salt",
-			Error: ErrPasswordSaltRequired.Error(),
+			Err:   ErrPasswordSaltRequired,
 		})
 	}
 

@@ -408,3 +408,46 @@ func TestRequireSuperAdminBlocksUnapprovedSuperAdmin(t *testing.T) {
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+// TestRequireMiddlewarePanicRecovery verifies that ALL Require* middleware
+// functions recover from panics (e.g. when session middleware is missing)
+// instead of crashing the server. This is a regression test because
+// RequirePeerOwnerOrAdmin was previously missing the panic recovery defer.
+func TestRequireMiddlewarePanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	middlewares := map[string]gin.HandlerFunc{
+		"RequireLogin":                 middleware.RequireLogin(),
+		"RequireAdmin":                 middleware.RequireAdmin(),
+		"RequireSuperAdmin":            middleware.RequireSuperAdmin(),
+		"RequireAdminOrTGOwner":        middleware.RequireAdminOrTGOwner(),
+		"RequireSelfOrAdmin":           middleware.RequireSelfOrAdmin(),
+		"RequirePeerOwnerOrAdmin":      middleware.RequirePeerOwnerOrAdmin(),
+		"RequireRepeaterOwnerOrAdmin":  middleware.RequireRepeaterOwnerOrAdmin(),
+		"RequireTalkgroupOwnerOrAdmin": middleware.RequireTalkgroupOwnerOrAdmin(),
+	}
+
+	for name, mw := range middlewares {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			// Deliberately omit session middleware to trigger a panic
+			router.Use(mw)
+			router.GET("/test/:id", func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"status": "ok"})
+			})
+
+			w := httptest.NewRecorder()
+			ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+			defer cancel()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/test/1", nil)
+			assert.NoError(t, err)
+			router.ServeHTTP(w, req)
+
+			// Should recover from the panic and return 401, not crash
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+		})
+	}
+}

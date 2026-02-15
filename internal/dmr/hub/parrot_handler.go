@@ -21,6 +21,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -63,7 +64,7 @@ func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []mod
 	var serverType string
 	p, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
-		if err != gorm.ErrRecordNotFound {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Failed to find repeater for parrot playback", "repeaterID", repeaterID, "error", err)
 		}
 	} else {

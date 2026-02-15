@@ -48,7 +48,8 @@ func TestRoutePacketGroupVoice(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	// Activate repeaters so subscriptions are created
+	h.ActivateRepeater(context.Background(), 100002)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)
@@ -78,7 +79,8 @@ func TestRoutePacketPrivateCallToRepeater(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	// Activate destination repeater so it has a subscription goroutine
+	h.ActivateRepeater(context.Background(), 100002)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)
@@ -107,8 +109,6 @@ func TestRoutePacketPrivateCallToUser(t *testing.T) {
 
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-
-	h.Start()
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)
@@ -146,7 +146,8 @@ func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	// Activate destination repeater so it has a subscription goroutine
+	h.ActivateRepeater(context.Background(), 100003)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)
@@ -181,8 +182,6 @@ func TestRoutePacketNonexistentTalkgroup(t *testing.T) {
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
-
 	// Group call to non-existent talkgroup
 	pkt := makeVoicePacket(9999, 11111, true, false)
 	assert.NotPanics(t, func() {
@@ -199,8 +198,6 @@ func TestRoutePacketNonexistentRepeaterDst(t *testing.T) {
 
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-
-	h.Start()
 
 	// Private call to non-existent repeater
 	pkt := makeVoicePacket(999999, 22222, false, false)
@@ -219,8 +216,6 @@ func TestRoutePacketNonexistentUserDst(t *testing.T) {
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
-
 	// Private call to non-existent user (7-digit)
 	pkt := makeVoicePacket(9999999, 33333, false, false)
 	assert.NotPanics(t, func() {
@@ -237,8 +232,6 @@ func TestRoutePacketDataPacket(t *testing.T) {
 
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-
-	h.Start()
 
 	// Data packet (FrameDataSync with non-voice dtype)
 	dataPkt := models.Packet{
@@ -279,7 +272,8 @@ func TestMultipleRepeatersReceiveGroupCall(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	// Activate the destination repeater (it subscribes to TG10)
+	h.ActivateRepeater(context.Background(), 100002)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(250 * time.Millisecond)
@@ -308,8 +302,6 @@ func TestVoiceTerminatorEndsCall(t *testing.T) {
 
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-
-	h.Start()
 
 	// Voice header
 	headerPkt := models.Packet{

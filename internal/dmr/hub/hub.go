@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 
@@ -185,29 +186,40 @@ func (h *Hub) hasPeerServers() bool {
 	return false
 }
 
-// Start loads all repeaters from the database and sets up their subscriptions.
-// Call this once after all protocol servers have registered.
-func (h *Hub) Start() {
-	repeaters, err := models.ListRepeaters(h.db)
-	if err != nil {
-		slog.Error("Failed to list repeaters for activation", "error", err)
-		return
-	}
-	for _, repeater := range repeaters {
-		h.activateRepeater(repeater.ID)
-	}
+// Stop cancels all subscriptions (used at shutdown).
+func (h *Hub) Stop(ctx context.Context) {
+	slog.Info("Stopping all repeater subscriptions")
+	h.stopAllRepeaters(ctx)
 }
 
-// Stop cancels all subscriptions (used at shutdown).
-func (h *Hub) Stop() {
-	slog.Info("Stopping all repeater subscriptions")
-	h.stopAllRepeaters()
+// ActivateRepeater sets up pubsub subscriptions for a repeater.
+// Protocol servers should call this when a repeater connects.
+func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
+	h.activateRepeater(ctx, repeaterID)
+}
+
+// DeactivateRepeater cancels all pubsub subscriptions for a repeater.
+// Protocol servers should call this when a repeater disconnects.
+func (h *Hub) DeactivateRepeater(ctx context.Context, repeaterID uint) {
+	h.deactivateRepeater(ctx, repeaterID)
 }
 
 // ReloadRepeater re-reads a repeater's talkgroup assignments from the database
-// and adjusts subscriptions accordingly. Call this after any DB change to a
-// repeater's talkgroup configuration (add/remove static TGs, link/unlink dynamic TGs).
-func (h *Hub) ReloadRepeater(repeaterID uint) {
-	h.deactivateRepeater(repeaterID)
-	h.activateRepeater(repeaterID)
+// and adjusts subscriptions accordingly. Only reloads if the repeater is currently
+// active (connected). Call this after any DB change to a repeater's talkgroup
+// configuration (add/remove static TGs, link/unlink dynamic TGs).
+func (h *Hub) ReloadRepeater(ctx context.Context, repeaterID uint) {
+	h.subscriptionMgr.mu.Lock()
+	defer h.subscriptionMgr.mu.Unlock()
+
+	// Only reload if the repeater is currently active (has been activated by a
+	// protocol server on connect). This prevents leaking subscription goroutines
+	// for offline repeaters when admins edit talkgroup assignments via the API.
+	_, active := h.subscriptionMgr.subscriptions.Load(repeaterID)
+	if !active {
+		return
+	}
+
+	h.deactivateRepeaterLocked(repeaterID)
+	h.activateRepeaterLocked(ctx, repeaterID)
 }

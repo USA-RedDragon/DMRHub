@@ -53,7 +53,7 @@ func TestBroadcastServerReceivesGroupCall(t *testing.T) {
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)
@@ -84,8 +84,6 @@ func TestBroadcastServerSkipsEcho(t *testing.T) {
 	})
 	defer h.UnregisterServer("echo-srv")
 
-	h.Start()
-
 	// Route with sourceName = "echo-srv" — should not be delivered back
 	pkt := makeVoicePacket(1, 44445, true, false)
 	h.RoutePacket(context.Background(), pkt, "echo-srv")
@@ -111,8 +109,6 @@ func TestPeerServerDoesNotForwardToSelf(t *testing.T) {
 
 	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
 	defer h.UnregisterServer("peer-srv")
-
-	h.Start()
 
 	// When a peer sends a packet, it should NOT be forwarded back to peers
 	pkt := makeVoicePacket(1, 55558, true, false)

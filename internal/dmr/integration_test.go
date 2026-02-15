@@ -967,7 +967,7 @@ func TestMultiReplicaDelivery(t *testing.T) {
 
 		// Spawn a second replica (separate Hub + MMDVM server) sharing the same
 		// DB, pubsub, and KV. This simulates a second pod in a multi-replica deploy.
-		// The second replica also subscribes to all pubsub topics via Hub.Start().
+		// Repeater subscriptions are activated when repeaters connect via MMDVM handshake.
 		_ = stack.SpawnSecondReplica(t)
 
 		stack.StartServers(t)

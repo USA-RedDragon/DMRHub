@@ -53,11 +53,17 @@ func newSubscriptionManager(h *Hub) *subscriptionManager {
 
 // activateRepeater sets up all pubsub subscriptions for a repeater
 // (private calls, static TGs, and dynamic TGs). Safe to call multiple times.
-func (h *Hub) activateRepeater(repeaterID uint) {
-	_, span := otel.Tracer("DMRHub").Start(context.Background(), "Hub.ActivateRepeater")
-	defer span.End()
+func (h *Hub) activateRepeater(ctx context.Context, repeaterID uint) {
 	h.subscriptionMgr.mu.Lock()
 	defer h.subscriptionMgr.mu.Unlock()
+	h.activateRepeaterLocked(ctx, repeaterID)
+}
+
+// activateRepeaterLocked is the inner implementation of activateRepeater.
+// Caller MUST hold h.subscriptionMgr.mu.
+func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.ActivateRepeater")
+	defer span.End()
 
 	_, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
@@ -81,6 +87,7 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 	if !ok {
 		newCtx, cancel := context.WithCancel(context.Background())
 		radioSubs.Store(repeaterID, &cancel)
+		//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
 		go h.subscriptionMgr.subscribeRepeater(newCtx, repeaterID)
 	}
 
@@ -90,6 +97,7 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
+			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
 			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, tg.ID)
 		}
 	}
@@ -98,6 +106,7 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(tg.ID, &cancel)
+			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
 			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, tg.ID)
 		}
 	}
@@ -108,6 +117,7 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS1DynamicTalkgroupID, &cancel)
+			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
 			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, *p.TS1DynamicTalkgroupID)
 		}
 	}
@@ -116,33 +126,45 @@ func (h *Hub) activateRepeater(repeaterID uint) {
 		if !ok {
 			newCtx, cancel := context.WithCancel(context.Background())
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, &cancel)
+			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
 			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, *p.TS2DynamicTalkgroupID)
 		}
 	}
 }
 
-// deactivateRepeater cancels all subscriptions for a specific repeater.
-func (h *Hub) deactivateRepeater(repeaterID uint) {
+// deactivateRepeater force-cancels all subscriptions for a specific repeater.
+// Unlike cancelSubscription (which checks whether a TG is still needed),
+// this unconditionally tears down every goroutine for the repeater.
+func (h *Hub) deactivateRepeater(_ context.Context, repeaterID uint) {
 	h.subscriptionMgr.mu.Lock()
 	defer h.subscriptionMgr.mu.Unlock()
+	h.deactivateRepeaterLocked(repeaterID)
+}
 
+// deactivateRepeaterLocked is the inner implementation of deactivateRepeater.
+// Caller MUST hold h.subscriptionMgr.mu.
+func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 	slog.Debug("Deactivating repeater subscriptions", "repeaterID", repeaterID)
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
 		return
 	}
-	radioSubs.Range(func(tgID uint, _ *context.CancelFunc) bool {
-		h.subscriptionMgr.cancelSubscription(repeaterID, tgID, dmrconst.TimeslotOne)
-		h.subscriptionMgr.cancelSubscription(repeaterID, tgID, dmrconst.TimeslotTwo)
+	// Force-cancel every subscription goroutine (TG + repeater-direct).
+	radioSubs.Range(func(key uint, cancelPtr *context.CancelFunc) bool {
+		if cancelPtr != nil {
+			(*cancelPtr)()
+		}
+		radioSubs.Delete(key)
 		return true
 	})
+	h.subscriptionMgr.subscriptions.Delete(repeaterID)
 }
 
 // StopAllRepeaters cancels all subscriptions for all repeaters (used at shutdown).
-func (h *Hub) stopAllRepeaters() {
+func (h *Hub) stopAllRepeaters(ctx context.Context) {
 	slog.Debug("Cancelling all subscriptions")
 	h.subscriptionMgr.subscriptions.Range(func(radioID uint, _ *xsync.Map[uint, *context.CancelFunc]) bool {
-		h.deactivateRepeater(radioID)
+		h.deactivateRepeater(ctx, radioID)
 		return true
 	})
 }

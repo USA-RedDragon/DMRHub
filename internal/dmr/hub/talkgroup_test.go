@@ -46,7 +46,7 @@ func TestRoutePacketUnlink(t *testing.T) {
 		"TS1DynamicTalkgroupID": tgID,
 	}).Error)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Send unlink on TS1 (Slot = false)
 	unlinkPkt := makeVoicePacket(4000, 88888, true, false)
@@ -69,7 +69,7 @@ func TestRoutePacketDynamicTalkgroupLinking(t *testing.T) {
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Group voice call to TG 2 on TS1 (Slot=false) should dynamically link it
 	pkt := makeVoicePacket(2, 99999, true, false)
@@ -95,7 +95,7 @@ func TestRoutePacketDynamicTalkgroupLinkingTS2(t *testing.T) {
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Group voice call to TG 3 on TS2 (Slot=true)
 	pkt := makeVoicePacket(3, 99998, true, true)
@@ -125,7 +125,7 @@ func TestRoutePacketUnlinkTS2(t *testing.T) {
 		"TS2DynamicTalkgroupID": tgID,
 	}).Error)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Send unlink on TS2 (Slot = true)
 	unlinkPkt := makeVoicePacket(4000, 88887, true, true)

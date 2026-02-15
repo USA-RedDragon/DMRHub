@@ -334,6 +334,8 @@ func (s *Server) handleRPTCLPacket(ctx context.Context, data []byte) {
 		slog.Error("Repeater ID not deleted", "repeaterID", repeaterID)
 	}
 	s.connected.Delete(repeaterID)
+	// Cancel hub subscriptions for the disconnected repeater
+	s.hub.DeactivateRepeater(ctx, repeaterID)
 }
 
 func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
@@ -386,6 +388,8 @@ func (s *Server) handleRPTCPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 			s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 			return
 		}
+		// Activate hub subscriptions now that the repeater is connected
+		s.hub.ActivateRepeater(ctx, repeaterID)
 	} else {
 		s.sendCommand(ctx, repeaterID, dmrconst.CommandMSTNAK, repeaterIDBytes)
 	}

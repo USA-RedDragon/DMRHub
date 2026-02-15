@@ -40,7 +40,7 @@ func TestRoutePacketParrot(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Allow subscription goroutines to fully start
 	time.Sleep(100 * time.Millisecond)

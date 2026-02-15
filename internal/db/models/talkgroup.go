@@ -65,16 +65,22 @@ func FindTalkgroupByID(db *gorm.DB, id uint) (Talkgroup, error) {
 	return talkgroup, err
 }
 
-func DeleteTalkgroup(db *gorm.DB, id uint) error {
+func DeleteTalkgroup(db *gorm.DB, id uint) ([]uint, error) {
+	var affectedRepeaterIDs []uint
 	err := db.Transaction(func(tx *gorm.DB) error {
 		// Delete calls where IsToTalkgroup is true and IsToTalkgroupID is id
 		tx.Unscoped().Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, id).Delete(&Call{})
+
+		// Collect all repeater IDs that reference this talkgroup (dynamic or static)
+		affectedSet := make(map[uint]struct{})
+
 		// Find repeaters with TS1DynamicTalkgroup or TS2DynamicTalkgroup set to id
 		var repeaters []Repeater
 		tx.Where("ts1_dynamic_talkgroup_id = ? OR ts2_dynamic_talkgroup_id = ?", id, id).Find(&repeaters)
 		// Set TS1DynamicTalkgroup or TS2DynamicTalkgroup to nil
 		for _, repeater := range repeaters {
 			repeater := repeater
+			affectedSet[repeater.ID] = struct{}{}
 			if repeater.TS1DynamicTalkgroupID != nil && *repeater.TS1DynamicTalkgroupID == id {
 				repeater.TS1DynamicTalkgroup = Talkgroup{}
 				repeater.TS1DynamicTalkgroupID = nil
@@ -90,18 +96,35 @@ func DeleteTalkgroup(db *gorm.DB, id uint) error {
 			}
 		}
 
+		// Find repeaters with static talkgroup assignments
+		var staticTS1RepeaterIDs []uint
+		tx.Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", id).Pluck("repeater_id", &staticTS1RepeaterIDs)
+		for _, rid := range staticTS1RepeaterIDs {
+			affectedSet[rid] = struct{}{}
+		}
+		var staticTS2RepeaterIDs []uint
+		tx.Table("repeater_ts2_static_talkgroups").Where("talkgroup_id = ?", id).Pluck("repeater_id", &staticTS2RepeaterIDs)
+		for _, rid := range staticTS2RepeaterIDs {
+			affectedSet[rid] = struct{}{}
+		}
+
 		tx.Unscoped().Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
 		tx.Unscoped().Table("repeater_ts2_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
 
 		tx.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
 
+		// Collect affected IDs for the caller
+		for rid := range affectedSet {
+			affectedRepeaterIDs = append(affectedRepeaterIDs, rid)
+		}
+
 		return nil
 	})
 	if err != nil {
 		slog.Error("Error deleting talkgroup", "error", err)
-		return fmt.Errorf("failed to delete talkgroup: %w", err)
+		return nil, fmt.Errorf("failed to delete talkgroup: %w", err)
 	}
-	return nil
+	return affectedRepeaterIDs, nil
 }
 
 func FindTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) ([]Talkgroup, error) {

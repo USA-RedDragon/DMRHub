@@ -114,7 +114,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	t.Cleanup(func() {
 		_ = ipscServer.Stop(context.Background())
 		_ = mmdvmServer.Stop(context.Background())
-		h.Stop()
+		h.Stop(context.Background())
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()
@@ -126,8 +126,9 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 
 // SpawnSecondReplica creates a second Hub + MMDVM server that shares the same
 // DB, pubsub, and KV as the original stack — simulating two replicas of the app.
-// The second replica's Hub also calls Start() so it sets up its own pubsub
-// subscriptions. Returns the second MMDVM server's listen address.
+// The second replica's Hub is started; repeater subscriptions are activated
+// when repeaters connect via the MMDVM handshake.
+// Returns the second MMDVM server's listen address.
 func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) string {
 	t.Helper()
 
@@ -141,26 +142,22 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) string {
 	mmdvm2, err := mmdvm.MakeServer(&cfg2, hub2, s.DB, s.PubSub, s.KV, "test", "test")
 	require.NoError(t, err)
 
-	hub2.Start()
 	err = mmdvm2.Start(context.Background())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		_ = mmdvm2.Stop(context.Background())
-		hub2.Stop()
+		hub2.Stop(context.Background())
 	})
 
 	return mmdvm2.Server.LocalAddr().String()
 }
 
-// StartServers activates repeater subscriptions in the Hub and starts
-// the MMDVM and IPSC servers. Call this after seeding DB with repeaters
-// and talkgroups so that Hub.Start() picks them up.
+// StartServers starts the Hub and the MMDVM and IPSC servers.
+// Repeater subscriptions are activated lazily when repeaters connect
+// via the protocol handshake.
 func (s *IntegrationStack) StartServers(t *testing.T) {
 	t.Helper()
-
-	// Hub.Start() reads repeaters from DB and sets up subscriptions
-	s.Hub.Start()
 
 	// Start servers — they register with the hub and begin listening
 	err := s.MMDVMServer.Start(context.Background())

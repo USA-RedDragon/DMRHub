@@ -170,7 +170,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	})
 
 	s.wg.Add(1)
-	go s.handler()
+	go s.handler(ctx)
 
 	// Consume routed packets from the hub
 	go s.consumeHubPackets()
@@ -224,7 +224,7 @@ func (s *IPSCServer) Stop(_ context.Context) error {
 	return nil
 }
 
-func (s *IPSCServer) handler() {
+func (s *IPSCServer) handler(ctx context.Context) {
 	defer s.wg.Done()
 	buf := make([]byte, 1500)
 	for {
@@ -242,7 +242,7 @@ func (s *IPSCServer) handler() {
 		s.wg.Add(1)
 		go func(packetData []byte, packetAddr *net.UDPAddr) {
 			defer s.wg.Done()
-			packet, err := s.handlePacket(packetData, packetAddr)
+			packet, err := s.handlePacket(ctx, packetData, packetAddr)
 			if err != nil {
 				if errors.Is(err, ErrPacketIgnored) {
 					return
@@ -256,7 +256,7 @@ func (s *IPSCServer) handler() {
 	}
 }
 
-func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, error) {
+func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UDPAddr) (*Packet, error) {
 	if len(data) < 1 {
 		return nil, fmt.Errorf("packet too short")
 	}
@@ -292,7 +292,7 @@ func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, erro
 			return nil, err
 		}
 	case PacketType_MasterRegisterRequest:
-		if err := s.handleMasterRegisterRequest(data, addr); err != nil {
+		if err := s.handleMasterRegisterRequest(ctx, data, addr); err != nil {
 			return nil, err
 		}
 	case PacketType_MasterAliveRequest:
@@ -304,7 +304,7 @@ func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, erro
 			return nil, err
 		}
 	case PacketType_DeregistrationRequest:
-		s.handleDeregistrationRequest(peerID)
+		s.handleDeregistrationRequest(ctx, peerID)
 		return nil, ErrPacketIgnored
 	case PacketType_MasterRegisterReply, PacketType_PeerListReply, PacketType_MasterAliveReply, PacketType_DeregistrationReply:
 		// These are reply packets, we shouldn't receive them as a server, keeping quiet.
@@ -316,7 +316,7 @@ func (s *IPSCServer) handlePacket(data []byte, addr *net.UDPAddr) (*Packet, erro
 	return &Packet{data: data}, nil
 }
 
-func (s *IPSCServer) handleMasterRegisterRequest(data []byte, addr *net.UDPAddr) error {
+func (s *IPSCServer) handleMasterRegisterRequest(ctx context.Context, data []byte, addr *net.UDPAddr) error {
 	peerID, err := parsePeerID(data)
 	if err != nil {
 		return err
@@ -329,7 +329,7 @@ func (s *IPSCServer) handleMasterRegisterRequest(data []byte, addr *net.UDPAddr)
 		copy(flags[:], data[6:10])
 	}
 
-	authKey := s.upsertPeer(peerID, addr, mode, flags)
+	authKey := s.upsertPeer(ctx, peerID, addr, mode, flags)
 
 	packet := &Packet{data: s.buildMasterRegisterReply()}
 	if err := s.sendPacket(packet, addr, authKey); err != nil {
@@ -374,12 +374,16 @@ func (s *IPSCServer) handlePeerListRequest(data []byte, addr *net.UDPAddr) error
 	return nil
 }
 
-func (s *IPSCServer) handleDeregistrationRequest(peerID uint32) {
+func (s *IPSCServer) handleDeregistrationRequest(ctx context.Context, peerID uint32) {
 	s.mu.Lock()
 	delete(s.peers, peerID)
 	delete(s.lastSend, peerID)
 	s.mu.Unlock()
 	slog.Info("IPSC peer deregistered", "peerID", peerID)
+	// Cancel hub subscriptions for the disconnected peer
+	if s.hub != nil {
+		s.hub.DeactivateRepeater(ctx, uint(peerID))
+	}
 }
 
 func (s *IPSCServer) handleRepeaterWakeUp(data []byte, addr *net.UDPAddr) error {
@@ -413,7 +417,7 @@ func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, 
 	s.burstHandler = handler
 }
 
-func (s *IPSCServer) upsertPeer(peerID uint32, addr *net.UDPAddr, mode byte, flags [4]byte) []byte {
+func (s *IPSCServer) upsertPeer(ctx context.Context, peerID uint32, addr *net.UDPAddr, mode byte, flags [4]byte) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -438,6 +442,11 @@ func (s *IPSCServer) upsertPeer(peerID uint32, addr *net.UDPAddr, mode byte, fla
 
 	// Update DB with connected time and last ping
 	s.updateRepeaterDBTimes(uint(peerID), true)
+
+	// Activate hub subscriptions for this peer
+	if s.hub != nil {
+		s.hub.ActivateRepeater(ctx, uint(peerID))
+	}
 
 	return peer.AuthKey
 }

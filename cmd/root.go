@@ -136,7 +136,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	callTracker := calltracker.NewCallTracker(database, pubsubClient)
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
-	dmrHub.Start()
 
 	servers, err := initializeServers(ctx, cfg, dmrHub, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
 	if err != nil {
@@ -431,7 +430,7 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 		// BEFORE cancelling hub subscriptions — otherwise hub.Stop() may consume
 		// the entire shutdown budget and os.Exit fires before MSTCL is sent.
 		servers.stopDMRServers(ctx)
-		hub.Stop()
+		hub.Stop(ctx)
 		servers.closeResources(ctx)
 	}()
 

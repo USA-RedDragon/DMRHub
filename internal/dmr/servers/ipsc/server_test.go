@@ -340,7 +340,7 @@ func TestBuildPeerListReplyWithPeers(t *testing.T) {
 	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 100), Port: 50000}
-	s.upsertPeer(42, addr, 0x6A, [4]byte{0, 0, 0, 0x0D})
+	s.upsertPeer(context.Background(), 42, addr, 0x6A, [4]byte{0, 0, 0, 0x0D})
 
 	reply := s.buildPeerListReply()
 	if reply[0] != byte(PacketType_PeerListReply) {
@@ -363,21 +363,21 @@ func TestUpsertPeerAndCount(t *testing.T) {
 	}
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
-	s.upsertPeer(100, addr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 100, addr, 0x6A, [4]byte{})
 
 	if s.peerCount() != 1 {
 		t.Fatalf("expected 1 peer, got %d", s.peerCount())
 	}
 
 	// Upsert same peer should not increase count
-	s.upsertPeer(100, addr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 100, addr, 0x6A, [4]byte{})
 	if s.peerCount() != 1 {
 		t.Fatalf("expected still 1 peer after upsert, got %d", s.peerCount())
 	}
 
 	// Add a different peer
 	addr2 := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 5678}
-	s.upsertPeer(200, addr2, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 200, addr2, 0x6A, [4]byte{})
 	if s.peerCount() != 2 {
 		t.Fatalf("expected 2 peers, got %d", s.peerCount())
 	}
@@ -413,7 +413,7 @@ func TestHandlePacketTooShort(t *testing.T) {
 	s := newTestServer(t, cfg)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
-	_, err := s.handlePacket([]byte{}, addr)
+	_, err := s.handlePacket(context.Background(), []byte{}, addr)
 	if err == nil {
 		t.Fatal("expected error on empty packet")
 	}
@@ -426,7 +426,7 @@ func TestHandlePacketUnknownType(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999}
 
 	data := []byte{0xFF, 0, 0, 0, 1}
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err == nil {
 		t.Fatal("expected error for unknown packet type 0xFF")
 	}
@@ -451,7 +451,7 @@ func TestHandlePacketReplyTypesIgnored(t *testing.T) {
 		data[0] = pt
 		binary.BigEndian.PutUint32(data[1:5], peerID)
 		signed := signTestPacket(t, data)
-		_, err := s.handlePacket(signed, addr)
+		_, err := s.handlePacket(context.Background(), signed, addr)
 		if !errors.Is(err, ErrPacketIgnored) {
 			t.Fatalf("expected ErrPacketIgnored for type 0x%02X, got %v", pt, err)
 		}
@@ -487,7 +487,7 @@ func TestUpsertPeerRegistrationStatus(t *testing.T) {
 	s := newTestServer(t, cfg)
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
-	s.upsertPeer(100, addr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 100, addr, 0x6A, [4]byte{})
 
 	s.mu.RLock()
 	peer := s.peers[100]
@@ -705,7 +705,7 @@ func TestHandleMasterRegisterRequestFlow(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(reqData, clientUDPAddr)
+	_, err = s.handlePacket(context.Background(), reqData, clientUDPAddr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -748,7 +748,7 @@ func TestHandleMasterRegisterRequestShortPacket(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(reqData, clientUDPAddr)
+	_, err = s.handlePacket(context.Background(), reqData, clientUDPAddr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -782,7 +782,7 @@ func TestHandleMasterAliveRequestFlow(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(reqData, aliveAddr)
+	_, err = s.handlePacket(context.Background(), reqData, aliveAddr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -821,7 +821,7 @@ func TestHandlePeerListRequestFlow(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(reqData, peerListAddr)
+	_, err = s.handlePacket(context.Background(), reqData, peerListAddr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -848,7 +848,7 @@ func TestHandlePeerListRequestTooShort(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(data, shortAddr)
+	_, err = s.handlePacket(context.Background(), data, shortAddr)
 	if err == nil {
 		t.Fatal("expected error for too-short peer list request")
 	}
@@ -864,7 +864,7 @@ func TestHandleRepeaterWakeUp(t *testing.T) {
 	preRegisterTestPeer(s, peerID)
 	data := signTestPacket(t, makeControlPacket(PacketType_RepeaterWakeUp, peerID))
 
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -887,7 +887,7 @@ func TestHandleRepeaterWakeUpTooShort(t *testing.T) {
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 3000}
 	data := []byte{byte(PacketType_RepeaterWakeUp), 0x00}
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err == nil {
 		t.Fatal("expected error for too-short wake-up packet")
 	}
@@ -918,7 +918,7 @@ func TestHandleUserPacketCallsBurstHandler(t *testing.T) {
 	data[0] = byte(PacketType_GroupVoice)
 	binary.BigEndian.PutUint32(data[1:5], peerID)
 
-	_, err := s.handlePacket(signTestPacket(t, data), addr)
+	_, err := s.handlePacket(context.Background(), signTestPacket(t, data), addr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -953,7 +953,7 @@ func TestHandleUserPacketNoBurstHandler(t *testing.T) {
 	data[0] = byte(PacketType_PrivateVoice)
 	binary.BigEndian.PutUint32(data[1:5], peerID)
 
-	_, err := s.handlePacket(signTestPacket(t, data), addr)
+	_, err := s.handlePacket(context.Background(), signTestPacket(t, data), addr)
 	if err != nil {
 		t.Fatalf("handlePacket error (no handler): %v", err)
 	}
@@ -980,7 +980,7 @@ func TestHandleUserPacketAllTypes(t *testing.T) {
 		data[0] = byte(pt)
 		binary.BigEndian.PutUint32(data[1:5], peerID)
 
-		_, err := s.handlePacket(signTestPacket(t, data), addr)
+		_, err := s.handlePacket(context.Background(), signTestPacket(t, data), addr)
 		if err != nil {
 			t.Fatalf("handlePacket for type 0x%02X error: %v", byte(pt), err)
 		}
@@ -995,7 +995,7 @@ func TestHandleUserPacketTooShortForPeerID(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	data := []byte{byte(PacketType_GroupVoice), 0x00, 0x01}
 
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err == nil {
 		t.Fatal("expected error for user packet too short for peer ID")
 	}
@@ -1024,7 +1024,7 @@ func TestHandleUserPacketBurstHandlerReceivesDataCopy(t *testing.T) {
 	data[10] = 0xAA // sentinel value
 
 	signedData := signTestPacket(t, data)
-	_, err := s.handlePacket(signedData, addr)
+	_, err := s.handlePacket(context.Background(), signedData, addr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -1049,7 +1049,7 @@ func TestHandlePacketAuthEnabledTooShort(t *testing.T) {
 	// A packet with auth enabled but only 10 bytes (not enough for payload + hash)
 	data := make([]byte, 10)
 	data[0] = byte(PacketType_MasterRegisterRequest)
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err == nil {
 		t.Fatal("expected error for auth-enabled packet too short")
 	}
@@ -1069,7 +1069,7 @@ func TestHandlePacketAuthEnabledBadHash(t *testing.T) {
 	payload := makeControlPacket(PacketType_MasterRegisterRequest, 12345)
 	payload = append(payload, make([]byte, 10)...) // 10 zero bytes as bad hash
 	data := payload
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if err == nil {
 		t.Fatal("expected auth failure error")
 	}
@@ -1099,7 +1099,7 @@ func TestHandlePacketAuthEnabledSuccess(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(data, authAddr)
+	_, err = s.handlePacket(context.Background(), data, authAddr)
 	if err != nil {
 		t.Fatalf("expected auth success, got error: %v", err)
 	}
@@ -1141,8 +1141,8 @@ func TestSendUserPacketToMultiplePeers(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	s.upsertPeer(1, client1Addr, 0x6A, [4]byte{})
-	s.upsertPeer(2, client2Addr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 1, client1Addr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 2, client2Addr, 0x6A, [4]byte{})
 
 	payload := []byte("broadcast")
 	s.sendPacketInternal(payload)
@@ -1172,7 +1172,7 @@ func TestSendUserPacketWhenStopped(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	s.upsertPeer(1, stoppedAddr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 1, stoppedAddr, 0x6A, [4]byte{})
 	s.stopped.Store(true)
 
 	s.sendPacketInternal([]byte("should not arrive"))
@@ -1216,7 +1216,7 @@ func TestSendUserPacketSkipsNilAddrPeers(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	s.upsertPeer(1, clientAddrSelective, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 1, clientAddrSelective, 0x6A, [4]byte{})
 
 	s.sendPacketInternal([]byte("selective"))
 
@@ -1241,7 +1241,7 @@ func TestSendUserPacketWithAuth(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	s.upsertPeer(1, clientAddrAuth, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 1, clientAddrAuth, 0x6A, [4]byte{})
 	// Set auth key for the peer since auth is now per-peer
 	s.mu.Lock()
 	s.peers[1].AuthKey = decodeAuthKey("5678")
@@ -1278,7 +1278,7 @@ func TestSendUserPacketDataIsCopied(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	s.upsertPeer(1, copyAddr, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 1, copyAddr, 0x6A, [4]byte{})
 
 	payload := []byte("original")
 	s.sendPacketInternal(payload)
@@ -1384,7 +1384,7 @@ func TestHandlerLoopProcessesPackets(t *testing.T) {
 
 	// Start the handler goroutine
 	s.wg.Add(1)
-	go s.handler()
+	go s.handler(context.Background())
 
 	// Send a wake-up packet to the server
 	client, err := net.DialUDP("udp", nil, srvAddr)
@@ -1437,7 +1437,7 @@ func TestStopIdempotent(t *testing.T) {
 	s.udp = conn
 
 	s.wg.Add(1)
-	go s.handler()
+	go s.handler(context.Background())
 
 	// Calling Stop multiple times should not panic
 	_ = s.Stop(context.Background())
@@ -1477,7 +1477,7 @@ func TestHandlerLoopWithBurstHandler(t *testing.T) {
 	})
 
 	s.wg.Add(1)
-	go s.handler()
+	go s.handler(context.Background())
 
 	client, err := net.DialUDP("udp", nil, srvAddr)
 	if err != nil {
@@ -1529,8 +1529,8 @@ func TestBuildPeerListMultiplePeers(t *testing.T) {
 	cfg := testConfig()
 	s := newTestServer(t, cfg)
 
-	s.upsertPeer(1, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 5000}, 0x6A, [4]byte{})
-	s.upsertPeer(2, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 6000}, 0x6B, [4]byte{})
+	s.upsertPeer(context.Background(), 1, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 5000}, 0x6A, [4]byte{})
+	s.upsertPeer(context.Background(), 2, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 6000}, 0x6B, [4]byte{})
 
 	peerList := s.buildPeerList()
 	// Each peer entry = 4 (ID) + 4 (IP) + 2 (port) + 1 (mode) = 11 bytes
@@ -1579,7 +1579,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 
 	// Step 1: Register
 	regReq := signTestPacket(t, makeControlPacketWithModeFlags(PacketType_MasterRegisterRequest, peerID, 0x6A, [4]byte{0, 0, 0, 0x0D}))
-	_, err = s.handlePacket(regReq, clientAddr)
+	_, err = s.handlePacket(context.Background(), regReq, clientAddr)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -1590,7 +1590,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 
 	// Step 2: Keep-alive
 	aliveReq := signTestPacket(t, makeControlPacket(PacketType_MasterAliveRequest, peerID))
-	_, err = s.handlePacket(aliveReq, clientAddr)
+	_, err = s.handlePacket(context.Background(), aliveReq, clientAddr)
 	if err != nil {
 		t.Fatalf("alive: %v", err)
 	}
@@ -1601,7 +1601,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 
 	// Step 3: Peer list
 	peerListReq := signTestPacket(t, makeControlPacket(PacketType_PeerListRequest, peerID))
-	_, err = s.handlePacket(peerListReq, clientAddr)
+	_, err = s.handlePacket(context.Background(), peerListReq, clientAddr)
 	if err != nil {
 		t.Fatalf("peer list: %v", err)
 	}
@@ -1655,7 +1655,7 @@ func TestHandleMasterRegisterRequestFlowExistingPeerLoadsAuthKeyFromDB(t *testin
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
 
-	_, err = s.handlePacket(reqData, clientUDPAddr)
+	_, err = s.handlePacket(context.Background(), reqData, clientUDPAddr)
 	if err != nil {
 		t.Fatalf("handlePacket error: %v", err)
 	}
@@ -1695,7 +1695,7 @@ func TestHandleMasterAliveRequestTooShort(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(data, aliveShortAddr)
+	_, err = s.handlePacket(context.Background(), data, aliveShortAddr)
 	if err == nil {
 		t.Fatal("expected error for too-short alive request")
 	}
@@ -1718,7 +1718,7 @@ func TestHandleMasterRegisterRequestTooShort(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
-	_, err = s.handlePacket(data, regShortAddr)
+	_, err = s.handlePacket(context.Background(), data, regShortAddr)
 	if err == nil {
 		t.Fatal("expected error for too-short register request")
 	}
@@ -1736,7 +1736,7 @@ func TestHandlePacketReturnsPacket(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	payload := makeControlPacket(PacketType_RepeaterWakeUp, peerID)
 	data := signTestPacket(t, payload)
-	pkt, err := s.handlePacket(data, addr)
+	pkt, err := s.handlePacket(context.Background(), data, addr)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -1764,7 +1764,7 @@ func TestHandlePacketStripsAuthHash(t *testing.T) {
 	payload := makeControlPacket(PacketType_RepeaterWakeUp, 12345)
 	data := signPacket(t, payload, hexKey)
 
-	pkt, err := s.handlePacket(data, addr)
+	pkt, err := s.handlePacket(context.Background(), data, addr)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -1785,7 +1785,7 @@ func TestErrPacketIgnoredIsSentinel(t *testing.T) {
 	peerID := uint32(12345)
 	preRegisterTestPeer(s, peerID)
 	data := signTestPacket(t, makeControlPacket(PacketType_MasterRegisterReply, peerID))
-	_, err := s.handlePacket(data, addr)
+	_, err := s.handlePacket(context.Background(), data, addr)
 	if !errors.Is(err, ErrPacketIgnored) {
 		t.Fatalf("expected ErrPacketIgnored, got %v", err)
 	}

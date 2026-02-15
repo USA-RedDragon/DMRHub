@@ -20,12 +20,14 @@
 package talkgroups
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -149,11 +151,17 @@ func DELETETalkgroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
 		return
 	}
-	err = models.DeleteTalkgroup(db, uint(idUint64))
+	affectedRepeaterIDs, err := models.DeleteTalkgroup(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting talkgroup", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting talkgroup"})
 		return
+	}
+	// Reload affected repeaters so stale subscriptions are cleaned up
+	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok {
+		for _, rid := range affectedRepeaterIDs {
+			go dmrHub.ReloadRepeater(context.Background(), rid)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Talkgroup deleted"})
 }

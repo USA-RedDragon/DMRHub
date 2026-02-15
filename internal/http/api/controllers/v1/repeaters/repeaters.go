@@ -20,6 +20,7 @@
 package repeaters
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -274,7 +275,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	go dmrHub.ReloadRepeater(repeater.ID)
+	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
@@ -366,7 +367,7 @@ func POSTRepeater(c *gin.Context) {
 			go func() {
 				dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 				if ok {
-					dmrHub.ReloadRepeater(repeater.ID)
+					dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 				}
 			}()
 			c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
@@ -474,7 +475,7 @@ func POSTRepeater(c *gin.Context) {
 		go func() {
 			dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 			if ok {
-				dmrHub.ReloadRepeater(repeater.ID)
+				dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 			}
 		}()
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
@@ -572,18 +573,18 @@ func POSTRepeaterLink(c *gin.Context) {
 			}
 		}
 	}
-	go func() {
-		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
-		if ok {
-			dmrHub.ReloadRepeater(repeater.ID)
-		}
-	}()
 	err = db.Save(repeater).Error
 	if err != nil {
 		slog.Error("Error saving repeater", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
+	go func() {
+		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+		if ok {
+			dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+		}
+	}()
 }
 
 // validateRepeaterID validates and parses a repeater ID from a parameter
@@ -804,7 +805,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 		return
 	}
 
-	go dmrHub.ReloadRepeater(repeater.ID)
+	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Timeslot unlinked"})
 }
 
@@ -858,6 +859,6 @@ func PATCHRepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
-	go dmrHub.ReloadRepeater(repeater.ID)
+	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater updated"})
 }

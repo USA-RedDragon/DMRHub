@@ -63,7 +63,7 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 	h := hub.NewHub(database, kvStore, ps, ct)
 
 	t.Cleanup(func() {
-		h.Stop()
+		h.Stop(context.Background())
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()
@@ -205,12 +205,8 @@ func TestStartAndStop(t *testing.T) {
 	t.Parallel()
 	h, _ := makeTestHub(t)
 
-	// Should not panic with no repeaters in DB
 	assert.NotPanics(t, func() {
-		h.Start()
-	})
-	assert.NotPanics(t, func() {
-		h.Stop()
+		h.Stop(context.Background())
 	})
 }
 
@@ -228,7 +224,7 @@ func TestStartWithRepeaters(t *testing.T) {
 	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
 
 	assert.NotPanics(t, func() {
-		h.Start()
+		h.ActivateRepeater(context.Background(), 100001)
 	})
 }
 
@@ -239,10 +235,10 @@ func TestReloadRepeater(t *testing.T) {
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
 
-	h.Start()
+	h.ActivateRepeater(context.Background(), 100001)
 
 	// Should not panic
 	assert.NotPanics(t, func() {
-		h.ReloadRepeater(100001)
+		h.ReloadRepeater(context.Background(), 100001)
 	})
 }

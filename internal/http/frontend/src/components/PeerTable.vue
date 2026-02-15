@@ -82,6 +82,8 @@ export default {
       page: 1,
       rows: 30,
       loading: false,
+      now: Date.now(),
+      timeInterval: null as ReturnType<typeof setInterval> | null,
     };
   },
   mounted() {
@@ -90,8 +92,12 @@ export default {
       this.socket = new WebSocket(getWebsocketURI() + '/peers');
       this.mapSocketEvents();
     }
+    this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
   },
   unmounted() {
+    if (this.timeInterval !== null) {
+      clearInterval(this.timeInterval);
+    }
     if (this.refresh !== null) {
       clearInterval(this.refresh);
     }
@@ -101,6 +107,8 @@ export default {
   },
   computed: {
     columns() {
+      // Reference this.now to trigger recomputation when the timer updates
+      void this.now;
       return [
         {
           accessorKey: 'id',

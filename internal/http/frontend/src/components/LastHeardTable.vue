@@ -79,19 +79,27 @@ export default {
       rows: 30,
       socket: null as { close(): void } | null,
       loading: false,
+      now: Date.now(),
+      timeInterval: null as ReturnType<typeof setInterval> | null,
     };
   },
   mounted() {
     this.fetchData();
     this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
+    this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
   },
   unmounted() {
+    if (this.timeInterval !== null) {
+      clearInterval(this.timeInterval);
+    }
     if (this.socket) {
       this.socket.close();
     }
   },
   computed: {
     columns() {
+      // Reference this.now to trigger recomputation when the timer updates
+      void this.now;
       return [
         {
           accessorKey: 'time',

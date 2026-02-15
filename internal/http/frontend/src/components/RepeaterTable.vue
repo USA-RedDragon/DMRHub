@@ -95,6 +95,8 @@ export default {
       page: 1,
       rows: 30,
       loading: false,
+      now: Date.now(),
+      timeInterval: null as ReturnType<typeof setInterval> | null,
     };
   },
   mounted() {
@@ -102,14 +104,20 @@ export default {
     if (!this.admin) {
       this.socket = ws.connect(getWebsocketURI() + '/repeaters', this.onWebsocketMessage);
     }
+    this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
   },
   unmounted() {
+    if (this.timeInterval !== null) {
+      clearInterval(this.timeInterval);
+    }
     if (this.socket) {
       this.socket.close();
     }
   },
   computed: {
     columns() {
+      // Reference this.now to trigger recomputation when the timer updates
+      void this.now;
       const columns: ColumnDef<RepeaterRow, unknown>[] = [
         {
           accessorKey: 'row_actions',

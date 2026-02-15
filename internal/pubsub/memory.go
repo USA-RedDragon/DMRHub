@@ -83,7 +83,7 @@ func (ps *inMemoryPubSub) Close() error {
 	defer ps.mu.Unlock()
 	for topic, subs := range ps.topics {
 		for _, sub := range subs {
-			close(sub.ch)
+			sub.closeCh()
 		}
 		delete(ps.topics, topic)
 	}
@@ -91,13 +91,22 @@ func (ps *inMemoryPubSub) Close() error {
 }
 
 type inMemorySubscription struct {
-	ch    chan []byte
-	ps    *inMemoryPubSub
-	topic string
+	ch        chan []byte
+	ps        *inMemoryPubSub
+	topic     string
+	closeOnce sync.Once
+}
+
+// closeCh closes the channel exactly once, safe against double-close.
+func (s *inMemorySubscription) closeCh() {
+	s.closeOnce.Do(func() {
+		close(s.ch)
+	})
 }
 
 func (s *inMemorySubscription) Close() error {
 	s.ps.removeSub(s.topic, s)
+	s.closeCh()
 	return nil
 }
 

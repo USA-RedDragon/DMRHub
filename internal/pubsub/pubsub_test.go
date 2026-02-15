@@ -217,6 +217,82 @@ func TestPubSubBinaryData(t *testing.T) {
 	}
 }
 
+func TestPubSubSubscriptionCloseClosesChannel(t *testing.T) {
+	t.Parallel()
+	ps := makeTestPubSub(t)
+
+	sub := ps.Subscribe("close-test")
+
+	// Publish a message so we know the subscription works
+	_ = ps.Publish("close-test", []byte("before-close"))
+	select {
+	case <-sub.Channel():
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for message before close")
+	}
+
+	// Close the subscription
+	err := sub.Close()
+	if err != nil {
+		t.Fatalf("sub.Close() failed: %v", err)
+	}
+
+	// The channel should be closed — a range loop or receive should
+	// return the zero value immediately instead of blocking forever.
+	select {
+	case _, ok := <-sub.Channel():
+		if ok {
+			t.Fatal("Expected channel to be closed, but received a value")
+		}
+		// ok == false means channel is closed — this is the expected path
+	case <-time.After(time.Second):
+		t.Fatal("Channel was not closed after sub.Close(); consumer would block forever")
+	}
+}
+
+func TestPubSubCloseClosesAllSubscriptionChannels(t *testing.T) {
+	t.Parallel()
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+	ps, err := pubsub.MakePubSub(context.Background(), &defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create pubsub: %v", err)
+	}
+
+	sub1 := ps.Subscribe("ps-close-1")
+	sub2 := ps.Subscribe("ps-close-2")
+
+	// Close the entire pubsub
+	err = ps.Close()
+	if err != nil {
+		t.Fatalf("ps.Close() failed: %v", err)
+	}
+
+	// Both subscription channels should now be closed
+	for i, sub := range []pubsub.Subscription{sub1, sub2} {
+		select {
+		case _, ok := <-sub.Channel():
+			if ok {
+				t.Fatalf("sub%d: expected channel to be closed, but received a value", i+1)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("sub%d: channel not closed after ps.Close()", i+1)
+		}
+	}
+}
+
+func TestPubSubDoubleCloseNoPanic(t *testing.T) {
+	t.Parallel()
+	ps := makeTestPubSub(t)
+
+	sub := ps.Subscribe("double-close")
+	_ = sub.Close()
+	// Calling Close a second time should not panic
+	_ = sub.Close()
+}
+
 // --- Benchmarks ---
 
 func makeTestPubSubB(b *testing.B) pubsub.PubSub {

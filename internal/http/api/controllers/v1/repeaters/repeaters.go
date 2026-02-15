@@ -285,11 +285,13 @@ func POSTRepeater(c *gin.Context) {
 	if usID == nil {
 		slog.Error("userID not found")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		return
 	}
 	userID, ok := usID.(uint)
 	if !ok {
 		slog.Error("userID cast failed")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		return
 	}
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {

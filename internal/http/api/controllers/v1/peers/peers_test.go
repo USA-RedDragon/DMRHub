@@ -20,7 +20,9 @@
 package peers_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -140,4 +142,47 @@ func TestPOSTPeerRequiresAdmin(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestPOSTPeerUnauthenticatedSingleResponse is a regression test ensuring
+// that an unauthenticated POST to /api/v1/peers returns exactly one JSON
+// response. Previously, missing `return` statements after error responses in
+// the auth checks caused the handler to write multiple JSON responses and
+// continue execution with a zero-value user ID.
+func TestPOSTPeerUnauthenticatedSingleResponse(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	// Send a valid-looking JSON body so that if the handler falls through
+	// past the auth check, it would attempt to process the request.
+	body := map[string]interface{}{
+		"id":      999999,
+		"egress":  true,
+		"ingress": true,
+	}
+	jsonBytes, err := json.Marshal(body)
+	assert.NoError(t, err)
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/peers", bytes.NewBuffer(jsonBytes))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// Verify the response body is valid JSON (a single object, not multiple
+	// concatenated objects which would happen with double-writes).
+	var resp map[string]interface{}
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err, "Response body should be a single valid JSON object, got: %s", w.Body.String())
+	assert.Contains(t, resp, "error")
 }

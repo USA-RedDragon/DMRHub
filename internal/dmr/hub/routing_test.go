@@ -223,6 +223,48 @@ func TestRoutePacketNonexistentUserDst(t *testing.T) {
 	})
 }
 
+// TestRoutePacketPrivateCallTo8DigitUserID is a regression test for 8-digit user IDs
+// that previously fell through both isRepeaterID (6/9-digit) and isUserID (7-digit),
+// causing private calls to be silently dropped.
+func TestRoutePacketPrivateCallTo8DigitUserID(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "CALLER")
+	seedUser(t, database, 10000001, "TARGET8") // 8-digit user ID
+	seedRepeater(t, database, 100001, 1000001)
+	seedRepeater(t, database, 100002, 10000001)
+
+	// Record a last call for the 8-digit user on repeater 100002
+	lastCall := models.Call{
+		UserID:     10000001,
+		RepeaterID: 100002,
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, database.Create(&lastCall).Error)
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	// Activate destination repeater so it has a subscription goroutine
+	h.ActivateRepeater(context.Background(), 100002)
+
+	// Allow subscription goroutines to fully start
+	time.Sleep(100 * time.Millisecond)
+
+	// Private call to 8-digit user ID — previously silently dropped
+	pkt := makeVoicePacket(10000001, 77777, false, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+		assert.Equal(t, uint(10000001), rp.Packet.Dst)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for private call to 8-digit user ID — call was silently dropped")
+	}
+}
+
 func TestRoutePacketDataPacket(t *testing.T) {
 	t.Parallel()
 	h, database := makeTestHub(t)

@@ -214,11 +214,11 @@ func isRepeaterID(id uint) bool {
 	return (id >= rptIDMin && id <= rptIDMax) || (id >= hotspotIDMin && id <= hotspotIDMax)
 }
 
-// isUserID checks if an ID looks like a user (7-digit)
+// isUserID checks if an ID looks like a user (7 or 8-digit)
 func isUserID(id uint) bool {
 	const (
 		userIDMin = 1000000
-		userIDMax = 9999999
+		userIDMax = 99999999
 	)
 	return id >= userIDMin && id <= userIDMax
 }

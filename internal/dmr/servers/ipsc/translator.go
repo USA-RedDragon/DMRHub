@@ -88,6 +88,22 @@ var (
 	ipscBuf66Pool = sync.Pool{New: func() any { b := make([]byte, 66); return &b }} //nolint:gochecknoglobals
 )
 
+// ReturnBuffer returns a buffer previously obtained from TranslateToIPSC
+// back to the appropriate sync.Pool for reuse. Callers should invoke this
+// after they are done with each []byte slice returned by TranslateToIPSC.
+func ReturnBuffer(buf []byte) {
+	switch cap(buf) {
+	case 52:
+		ipscBuf52Pool.Put(&buf)
+	case 54:
+		ipscBuf54Pool.Put(&buf)
+	case 57:
+		ipscBuf57Pool.Put(&buf)
+	case 66:
+		ipscBuf66Pool.Put(&buf)
+	}
+}
+
 func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
 		streams:        make(map[uint32]*streamState),

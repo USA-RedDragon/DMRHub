@@ -711,6 +711,7 @@ func (s *IPSCServer) SendPacket(pkt models.Packet) {
 	ipscFrames := s.translator.TranslateToIPSC(pkt)
 	for _, frame := range ipscFrames {
 		s.sendPacketInternal(frame)
+		ReturnBuffer(frame)
 	}
 }
 

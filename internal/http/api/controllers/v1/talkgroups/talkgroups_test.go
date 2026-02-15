@@ -20,6 +20,7 @@
 package talkgroups_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -118,6 +119,94 @@ func TestGETTalkgroupByID(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, uint(9990), tg.ID)
 	assert.Equal(t, "DMRHub Parrot", tg.Name)
+}
+
+// TestGETTalkgroupByIDReturnsAdminsAndNCOs is a regression test ensuring that
+// GETTalkgroup returns the Admins and NCOs associations in the response. A
+// previous bug caused GETTalkgroup to make two redundant DB queries, where the
+// second (which populated the associations) had its error discarded. After the
+// fix, FindTalkgroupByID is called once and already preloads Admins and NCOs.
+func TestGETTalkgroupByIDReturnsAdminsAndNCOs(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Look up the admin user's actual ID from the database
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	assert.NoError(t, err)
+
+	// Create a talkgroup
+	createBody := map[string]interface{}{
+		"id":          uint(12345),
+		"name":        "Test TG",
+		"description": "Test talkgroup",
+	}
+	jsonBytes, err := json.Marshal(createBody)
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/talkgroups", bytes.NewBuffer(jsonBytes))
+	req.Header.Set("Content-Type", "application/json")
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Assign admin user as an admin of the talkgroup
+	adminAction := map[string]interface{}{
+		"user_ids": []uint{adminUser.ID},
+	}
+	jsonBytes, err = json.Marshal(adminAction)
+	assert.NoError(t, err)
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/talkgroups/12345/admins", bytes.NewBuffer(jsonBytes))
+	req.Header.Set("Content-Type", "application/json")
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Also assign as NCO
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/talkgroups/12345/ncos", bytes.NewBuffer(jsonBytes))
+	req.Header.Set("Content-Type", "application/json")
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// GET the talkgroup and verify Admins and NCOs are populated
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/12345", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var tg models.Talkgroup
+	err = json.Unmarshal(w.Body.Bytes(), &tg)
+	assert.NoError(t, err)
+	assert.Equal(t, uint(12345), tg.ID)
+	assert.Equal(t, "Test TG", tg.Name)
+	assert.Len(t, tg.Admins, 1, "Admins should be populated in GET response")
+	assert.Equal(t, "Admin", tg.Admins[0].Username)
+	assert.Len(t, tg.NCOs, 1, "NCOs should be populated in GET response")
+	assert.Equal(t, "Admin", tg.NCOs[0].Username)
 }
 
 func TestGETTalkgroupInvalidID(t *testing.T) {

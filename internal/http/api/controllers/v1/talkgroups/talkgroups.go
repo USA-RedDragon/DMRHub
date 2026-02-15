@@ -130,7 +130,6 @@ func GETTalkgroup(c *gin.Context) {
 		return
 	}
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
-	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", id)
 	if err != nil {
 		slog.Error("Error finding talkgroup", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
@@ -167,85 +166,17 @@ func DELETETalkgroup(c *gin.Context) {
 }
 
 func POSTTalkgroupNCOs(c *gin.Context) {
-	db, ok := c.MustGet("DB").(*gorm.DB)
-	if !ok {
-		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-		return
-	}
-	id := c.Param("id")
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
-		return
-	}
-	if idInt < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
-		return
-	}
-
-	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
-	if err != nil {
-		slog.Error("Error finding talkgroup", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
-		return
-	}
-
-	var json apimodels.TalkgroupAdminAction
-	err = c.ShouldBindJSON(&json)
-	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTTalkgroupNCOs", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		if len(json.UserIDs) == 0 {
-			// remove all NCOs
-			err := db.Model(&talkgroup).Association("NCOs").Clear()
-			if err != nil {
-				slog.Error("Error clearing NCOs", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing NCOs"})
-				return
-			}
-			err = db.Save(&talkgroup).Error
-			if err != nil {
-				slog.Error("Error saving talkgroup", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "Talkgroup admins cleared"})
-			return
-		}
-		// add NCOs
-		err := db.Model(&talkgroup).Association("NCOs").Clear()
-		if err != nil {
-			slog.Error("Error clearing NCOs", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing NCOs"})
-			return
-		}
-		for _, userID := range json.UserIDs {
-			user, err := models.FindUserByID(db, userID)
-			if err != nil {
-				slog.Error("Error finding user", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
-				return
-			}
-			err = db.Model(&talkgroup).Association("NCOs").Append(&user)
-			if err != nil {
-				slog.Error("Error appending NCO", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending NCO"})
-				return
-			}
-		}
-		err = db.Save(&talkgroup).Error
-		if err != nil {
-			slog.Error("Error saving talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "User appointed as net control operator"})
-	}
+	postTalkgroupAssociation(c, "NCOs", "net control operator")
 }
 
 func POSTTalkgroupAdmins(c *gin.Context) {
+	postTalkgroupAssociation(c, "Admins", "admin")
+}
+
+// postTalkgroupAssociation is a shared helper for POSTTalkgroupNCOs and POSTTalkgroupAdmins.
+// associationName is the GORM association name ("NCOs" or "Admins").
+// roleName is a human-readable role for success messages.
+func postTalkgroupAssociation(c *gin.Context, associationName string, roleName string) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		slog.Error("DB cast failed")
@@ -273,55 +204,51 @@ func POSTTalkgroupAdmins(c *gin.Context) {
 	var json apimodels.TalkgroupAdminAction
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTTalkgroupAdmins", "error", err)
+		slog.Error("JSON data is invalid", "function", "postTalkgroupAssociation", "association", associationName, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
-	} else {
-		if len(json.UserIDs) == 0 {
-			// remove all Admins
-			err := db.Model(&talkgroup).Association("Admins").Clear()
-			if err != nil {
-				slog.Error("Error clearing talkgroup admins", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup admins"})
-				return
-			}
-			err = db.Save(&talkgroup).Error
-			if err != nil {
-				slog.Error("Error saving talkgroup", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "Talkgroup admins cleared"})
-			return
-		}
-		// add Admins
-		err := db.Model(&talkgroup).Association("Admins").Clear()
-		if err != nil {
-			slog.Error("Error clearing talkgroup admins", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup admins"})
-			return
-		}
-		for _, userID := range json.UserIDs {
-			user, err := models.FindUserByID(db, userID)
-			if err != nil {
-				slog.Error("Error finding user", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
-				return
-			}
-			err = db.Model(&talkgroup).Association("Admins").Append(&user)
-			if err != nil {
-				slog.Error("Error appending admin", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending admin"})
-				return
-			}
-		}
+		return
+	}
+
+	// Clear existing association
+	err = db.Model(&talkgroup).Association(associationName).Clear()
+	if err != nil {
+		slog.Error("Error clearing talkgroup "+associationName, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup " + associationName})
+		return
+	}
+
+	if len(json.UserIDs) == 0 {
 		err = db.Save(&talkgroup).Error
 		if err != nil {
 			slog.Error("Error saving talkgroup", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "User appointed as admin"})
+		c.JSON(http.StatusOK, gin.H{"message": "Talkgroup " + associationName + " cleared"})
+		return
 	}
+
+	for _, userID := range json.UserIDs {
+		user, err := models.FindUserByID(db, userID)
+		if err != nil {
+			slog.Error("Error finding user", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
+			return
+		}
+		err = db.Model(&talkgroup).Association(associationName).Append(&user)
+		if err != nil {
+			slog.Error("Error appending "+associationName+" member", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending " + associationName + " member"})
+			return
+		}
+	}
+	err = db.Save(&talkgroup).Error
+	if err != nil {
+		slog.Error("Error saving talkgroup", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "User appointed as " + roleName})
 }
 
 func PATCHTalkgroup(c *gin.Context) {

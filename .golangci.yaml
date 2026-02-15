@@ -6,6 +6,10 @@ run:
 linters:
   exclusions:
     generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - dogsled
   settings:
     goheader:
       template-path: .copyright-header

@@ -28,8 +28,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testTimeout = 1 * time.Minute
@@ -185,4 +188,105 @@ func TestPOSTPeerUnauthenticatedSingleResponse(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err, "Response body should be a single valid JSON object, got: %s", w.Body.String())
 	assert.Contains(t, resp, "error")
+}
+
+func TestPOSTPeer(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Look up admin user ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	require.NoError(t, err)
+
+	peer := apimodels.PeerPost{
+		ID:      100001,
+		OwnerID: adminUser.ID,
+		Ingress: true,
+		Egress:  true,
+	}
+
+	resp, w := testutils.CreatePeer(t, router, adminJar, peer)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Peer created", resp.Message)
+	assert.NotEmpty(t, resp.Password)
+	assert.Empty(t, resp.Error)
+
+	// Verify the peer via GET
+	peerResp, w := testutils.GetPeer(t, router, peer.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, peer.ID, peerResp.ID)
+	assert.True(t, peerResp.Ingress)
+	assert.True(t, peerResp.Egress)
+	assert.Equal(t, adminUser.ID, peerResp.Owner.ID)
+}
+
+func TestDELETEPeer(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Look up admin user ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	require.NoError(t, err)
+
+	peer := apimodels.PeerPost{
+		ID:      100002,
+		OwnerID: adminUser.ID,
+		Ingress: true,
+		Egress:  false,
+	}
+
+	_, w := testutils.CreatePeer(t, router, adminJar, peer)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Delete the peer
+	delResp, w := testutils.DeletePeer(t, router, peer.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Peer deleted", delResp.Message)
+
+	// Verify it's gone
+	_, w = testutils.GetPeer(t, router, peer.ID, adminJar)
+	assert.NotEqual(t, http.StatusOK, w.Code)
+}
+
+func TestPOSTPeerDuplicate(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Look up admin user ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	require.NoError(t, err)
+
+	peer := apimodels.PeerPost{
+		ID:      100003,
+		OwnerID: adminUser.ID,
+		Ingress: true,
+		Egress:  true,
+	}
+
+	resp, w := testutils.CreatePeer(t, router, adminJar, peer)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Peer created", resp.Message)
+
+	// Try to create same peer ID again
+	resp2, w := testutils.CreatePeer(t, router, adminJar, peer)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, "Peer ID already exists", resp2.Error)
 }

@@ -27,8 +27,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
 	"github.com/gin-gonic/gin"
@@ -98,4 +101,62 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	ready.Store(true)
 
 	return http.CreateRouter(&defConfig, nil, t.database, pubsub, ready, "test", "deadbeef"), &t, nil
+}
+
+func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
+	var t TestDB
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
+	}
+
+	defConfig.Database.Database = "" // Use in-memory database for tests
+	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.DisableRadioIDValidation = true
+
+	t.database, err = db.MakeDB(&defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	adminCount := int64(0)
+	err = t.database.Model(&models.User{}).Where("username = ?", "Admin").Count(&adminCount).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to count admin users: %w", err)
+	}
+	if adminCount < 1 {
+		hashedPassword, hashErr := utils.HashPassword("password", defConfig.PasswordSalt)
+		if hashErr != nil {
+			return nil, nil, fmt.Errorf("failed to hash password: %w", hashErr)
+		}
+		err = t.database.Create(&models.User{
+			Username:   "Admin",
+			Password:   hashedPassword,
+			Admin:      true,
+			SuperAdmin: true,
+			Callsign:   "XXXXXX",
+			Approved:   true,
+		}).Error
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create admin user: %w", err)
+		}
+	}
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
+	}
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
+	}
+
+	ct := calltracker.NewCallTracker(t.database, ps)
+	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
+
+	ready := &atomic.Bool{}
+	ready.Store(true)
+
+	return http.CreateRouter(&defConfig, dmrHub, t.database, ps, ready, "test", "deadbeef"), &t, nil
 }

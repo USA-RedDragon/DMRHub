@@ -342,6 +342,33 @@ func DemoteUser(t *testing.T, router *gin.Engine, dmrID uint, jar CookieJar) (AP
 	return resp, w
 }
 
+func PatchUser(t *testing.T, router *gin.Engine, dmrID uint, jar CookieJar, patch apimodels.UserPatch) (APIResponse, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	jsonBytes, err := json.Marshal(patch)
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", dmrID), bytes.NewBuffer(jsonBytes))
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	for _, cookie := range jar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+
+	router.ServeHTTP(w, req)
+
+	var resp APIResponse
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.NoError(t, err)
+	return resp, w
+}
+
 func LogoutUser(t *testing.T, router *gin.Engine, jar CookieJar) (APIResponse, *httptest.ResponseRecorder) {
 	w := httptest.NewRecorder()
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)

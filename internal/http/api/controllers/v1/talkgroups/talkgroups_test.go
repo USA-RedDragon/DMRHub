@@ -29,8 +29,10 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testTimeout = 1 * time.Minute
@@ -257,4 +259,223 @@ func TestGETMyTalkgroupsAuthenticated(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPOSTTalkgroup(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10001,
+		Name:        "My Test TG",
+		Description: "A test talkgroup",
+	}
+
+	resp, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, resp.Error)
+
+	// Verify it appears in GET
+	tgResp, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, tg.ID, tgResp.ID)
+	assert.Equal(t, tg.Name, tgResp.Name)
+	assert.Equal(t, tg.Description, tgResp.Description)
+}
+
+func TestPATCHTalkgroupPreservesName(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10002,
+		Name:        "Original Name",
+		Description: "Original description",
+	}
+
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// PATCH only description
+	_, w = testutils.PatchTalkgroup(t, router, tg.ID, adminJar, apimodels.TalkgroupPatch{
+		Description: "Updated description",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify name unchanged
+	tgResp, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Original Name", tgResp.Name, "PATCH description should not change name")
+	assert.Equal(t, "Updated description", tgResp.Description)
+}
+
+func TestPATCHTalkgroupPreservesDescription(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10003,
+		Name:        "Original Name",
+		Description: "Original description",
+	}
+
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// PATCH only name
+	_, w = testutils.PatchTalkgroup(t, router, tg.ID, adminJar, apimodels.TalkgroupPatch{
+		Name: "Updated Name",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify description unchanged
+	tgResp, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Updated Name", tgResp.Name)
+	assert.Equal(t, "Original description", tgResp.Description, "PATCH name should not change description")
+}
+
+func TestPOSTTalkgroupAdminsPreservesFields(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10004,
+		Name:        "Admin Test TG",
+		Description: "A talkgroup for admin tests",
+	}
+
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Look up the admin user's actual ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	require.NoError(t, err)
+
+	// Set admins
+	resp, w := testutils.SetTalkgroupAdmins(t, router, tg.ID, adminJar, apimodels.TalkgroupAdminAction{
+		UserIDs: []uint{adminUser.ID},
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, resp.Error)
+
+	// Verify name and description unchanged
+	tgResp, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Admin Test TG", tgResp.Name, "Setting admins should not change name")
+	assert.Equal(t, "A talkgroup for admin tests", tgResp.Description, "Setting admins should not change description")
+	assert.Len(t, tgResp.Admins, 1)
+}
+
+func TestPOSTTalkgroupNCOsPreservesFields(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10005,
+		Name:        "NCO Test TG",
+		Description: "A talkgroup for NCO tests",
+	}
+
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Look up the admin user's actual ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	require.NoError(t, err)
+
+	// Set NCOs
+	resp, w := testutils.SetTalkgroupNCOs(t, router, tg.ID, adminJar, apimodels.TalkgroupAdminAction{
+		UserIDs: []uint{adminUser.ID},
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, resp.Error)
+
+	// Verify name and description unchanged
+	tgResp, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "NCO Test TG", tgResp.Name, "Setting NCOs should not change name")
+	assert.Equal(t, "A talkgroup for NCO tests", tgResp.Description, "Setting NCOs should not change description")
+	assert.Len(t, tgResp.NCOs, 1)
+}
+
+func TestDELETETalkgroup(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	tg := apimodels.TalkgroupPost{
+		ID:          10006,
+		Name:        "Delete Test TG",
+		Description: "A talkgroup to delete",
+	}
+
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Create a user and repeater, assign the talkgroup
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	repeaterPost := apimodels.RepeaterPost{
+		RadioID: 319186801,
+	}
+	_, w = testutils.CreateRepeater(t, router, userJar, repeaterPost)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Assign the talkgroup to the repeater
+	_, w = testutils.SetRepeaterTalkgroups(t, router, repeaterPost.RadioID, userJar, apimodels.RepeaterTalkgroupsPost{
+		TS1StaticTalkgroups: []models.Talkgroup{{ID: tg.ID}},
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Delete the talkgroup
+	delResp, w := testutils.DeleteTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Talkgroup deleted", delResp.Message)
+
+	// Verify it's gone (controller returns 500 for record not found)
+	_, w = testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	// Verify repeater no longer references the talkgroup
+	rpt, w := testutils.GetRepeater(t, router, repeaterPost.RadioID, userJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, rpt.TS1StaticTalkgroups, "Deleting a talkgroup should remove it from repeater associations")
 }

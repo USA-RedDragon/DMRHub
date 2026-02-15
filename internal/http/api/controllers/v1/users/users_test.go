@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -695,4 +696,322 @@ func TestDemoteUser(t *testing.T) {
 	assert.Equal(t, user.Callsign, userResp.Callsign)
 	assert.Equal(t, user.Username, userResp.Username)
 	assert.Equal(t, false, userResp.Admin)
+}
+
+func TestPATCHUserPreservesAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Promote user to admin
+	resp, w := testutils.PromoteUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User promoted", resp.Message)
+
+	// PATCH the user's username (self-edit)
+	patchResp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{
+		Username: "newusername",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify admin is still true
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, userResp.Admin, "PATCH username should not change admin status")
+}
+
+func TestPATCHUserPreservesSuperAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Look up the admin user's ID
+	var adminUser models.User
+	err = tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error
+	assert.NoError(t, err)
+
+	// The admin user is SuperAdmin. PATCH their username.
+	patchResp, w := testutils.PatchUser(t, router, adminUser.ID, adminJar, apimodels.UserPatch{
+		Username: "AdminRenamed",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify superAdmin is still true via direct DB query (since we renamed the user)
+	var updatedAdmin models.User
+	err = tdb.DB().First(&updatedAdmin, adminUser.ID).Error
+	assert.NoError(t, err)
+	assert.True(t, updatedAdmin.SuperAdmin, "PATCH username should not change superAdmin status")
+	assert.True(t, updatedAdmin.Admin, "PATCH username should not change admin status")
+}
+
+func TestPATCHUserPreservesApproved(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	// User is approved now. PATCH their username.
+	patchResp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{
+		Username: "newusername",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify approved is still true
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, userResp.Approved, "PATCH username should not change approved status")
+}
+
+func TestPATCHUserPreservesSuspended(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, _ = testutils.CreateAndLoginUser(t, router, user)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Suspend the user
+	resp, w := testutils.SuspendUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User suspended", resp.Message)
+
+	// Admin PATCHes the user's username
+	patchResp, w := testutils.PatchUser(t, router, user.DMRId, adminJar, apimodels.UserPatch{
+		Username: "newusername",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify suspended is still true
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, userResp.Suspended, "PATCH username should not change suspended status")
+}
+
+func TestPATCHUserPreservesPassword(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	// PATCH only the username
+	patchResp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{
+		Username: "newusername",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify old password still works
+	loginResp, w, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{
+		Username: "newusername",
+		Password: "password",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Logged in", loginResp.Message)
+}
+
+func TestPATCHUserChangesPassword(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	// PATCH with a new password
+	patchResp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{
+		Password: "newpassword123",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User updated", patchResp.Message)
+
+	// Verify new password works
+	loginResp, w, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{
+		Username: user.Username,
+		Password: "newpassword123",
+	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Logged in", loginResp.Message)
+
+	// Verify old password no longer works
+	_, w, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{
+		Username: user.Username,
+		Password: "password",
+	})
+	assert.NotEqual(t, http.StatusOK, w.Code)
+}
+
+func TestSuspendUserPreservesAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, _ = testutils.CreateAndLoginUser(t, router, user)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Suspend the user first (before promoting)
+	resp, w := testutils.SuspendUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User suspended", resp.Message)
+
+	// Now promote the user (while suspended)
+	resp, w = testutils.PromoteUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User promoted", resp.Message)
+
+	// Verify both admin and suspended are true
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, userResp.Admin, "Promote should preserve admin status")
+	assert.True(t, userResp.Suspended, "Promote should not change suspended status")
+}
+
+func TestApproveUserPreservesCallsign(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	// Register user (not approved yet)
+	regResp, w := testutils.RegisterUser(t, router, user)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User created, please wait for admin approval", regResp.Message)
+
+	// Approve user as admin
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	resp, w := testutils.ApproveUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User approved", resp.Message)
+
+	// Verify callsign is preserved
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, user.Callsign, userResp.Callsign, "Approve should not change callsign")
+	assert.True(t, userResp.Approved)
+}
+
+func TestPromoteUserPreservesSuspended(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, _ = testutils.CreateAndLoginUser(t, router, user)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Suspend the user
+	resp, w := testutils.SuspendUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User suspended", resp.Message)
+
+	// Promote the user
+	resp, w = testutils.PromoteUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "User promoted", resp.Message)
+
+	// Verify suspended is still true
+	userResp, w := testutils.GetUser(t, router, user.DMRId, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, userResp.Suspended, "Promote should not change suspended status")
+	assert.True(t, userResp.Admin)
 }

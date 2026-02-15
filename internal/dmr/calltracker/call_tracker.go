@@ -74,7 +74,7 @@ func getCallHashFromPacket(packet models.Packet) (uint64, error) {
 
 func getCallHash(call models.Call) (uint64, error) {
 	v := callMapStruct{
-		Active:        call.Active,
+		Active:        true, // Always true: calls are only hashed while active
 		StreamID:      call.StreamID,
 		UserID:        call.UserID,
 		DestinationID: call.DestinationID,
@@ -118,7 +118,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 
 // StartCall starts tracking a new call.
 func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
+	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
 	defer span.End()
 
 	var sourceUser models.User
@@ -288,7 +288,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	slog.Debug("Started call", "streamID", call.StreamID, "src", call.User.Callsign, "dst", call.DestinationID, "repeater", call.Repeater.Callsign)
 
 	// Add a timer that will end the call if we haven't seen a packet in 1 second.
-	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(ctx, c, packet)))
+	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(c, packet))) //nolint:contextcheck // Timer fires after request context is done; intentionally uses background context
 }
 
 // IsCallActive checks if a call is active.
@@ -505,11 +505,11 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 	c.updateCall(ctx, ifc, packet)
 }
 
-func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "calltracker.endCallHandler")
-	defer span.End()
-
+func endCallHandler(c *CallTracker, packet models.Packet) func() {
 	return func() {
+		// Use a fresh background context because the original request context
+		// from StartCall is canceled by the time the timer fires.
+		ctx := context.Background()
 		slog.Error("Call timed out", "streamID", packet.StreamID)
 		c.EndCall(ctx, packet)
 	}

@@ -23,14 +23,18 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func makeTestCallTracker(t *testing.T) (*calltracker.CallTracker, func()) {
@@ -192,4 +196,96 @@ func TestCallTrackerIsCallActive(t *testing.T) {
 	active := ct.IsCallActive(context.Background(), packet)
 	// We expect false since no call exists
 	assert.False(t, active, fmt.Sprintf("expected call not to be active, got %v", active))
+}
+
+// makeTestCallTrackerWithDB creates a CallTracker backed by an in-memory
+// SQLite database and returns both the tracker and the raw *gorm.DB so
+// that tests can seed data.
+func makeTestCallTrackerWithDB(t *testing.T) (*calltracker.CallTracker, *gorm.DB) {
+	t.Helper()
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	defConfig.Database.Database = fmt.Sprintf("file:memdb_ct_%p", t)
+	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+
+	database, err := db.MakeDB(&defConfig)
+	require.NoError(t, err)
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	require.NoError(t, err)
+
+	ct := calltracker.NewCallTracker(database, ps)
+
+	t.Cleanup(func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+		_ = ps.Close()
+	})
+
+	return ct, database
+}
+
+// TestEndCallHandlerWithCanceledContext is a regression test for the bug where
+// endCallHandler captured the request context from StartCall. By the time the
+// 2-second timer fired, that context was already canceled, causing the tracing
+// span inside EndCall to be a no-op (and potentially panicking with some
+// tracing backends). The fix makes endCallHandler use context.Background().
+func TestEndCallHandlerWithCanceledContext(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	// Seed a user, repeater, and talkgroup.
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000001,
+		Callsign: "T3ST",
+		Username: "T3ST",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100001,
+			Callsign: "RPT1",
+		},
+		OwnerID: 1000001,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{
+		ID:   1,
+		Name: "TG1",
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         1,
+		Repeater:    100001,
+		GroupCall:   true,
+		StreamID:    44444,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	// Start the call with a context that is immediately canceled,
+	// simulating a short-lived HTTP request context.
+	ctx, cancel := context.WithCancel(context.Background())
+	ct.StartCall(ctx, packet)
+	cancel() // context is now dead
+
+	// The call should be active right after StartCall.
+	require.True(t, ct.IsCallActive(context.Background(), packet),
+		"call should be active immediately after StartCall")
+
+	// Wait for the timer to fire (timerDelay = 2s, give some slack).
+	time.Sleep(3 * time.Second)
+
+	// After the timer fires, endCallHandler should have called EndCall
+	// using a background context (not the canceled one). The call must
+	// no longer be active.
+	assert.False(t, ct.IsCallActive(context.Background(), packet),
+		"call should have been ended by the timer even though the original context was canceled")
 }

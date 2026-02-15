@@ -74,7 +74,7 @@ func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName 
 
 	// Forward to peer servers (skip if source is a peer server — it handles its own peer forwarding)
 	if h.getServerRole(sourceName) != RolePeer {
-		h.publishForPeers(packet)
+		h.publishForPeers(ctx, packet)
 	}
 
 	// Route to repeater servers

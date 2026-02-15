@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -53,18 +54,33 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 
 // publishForPeers forwards a packet to all peer servers via pubsub.
 // Queries the database for peers and checks egress rules.
-func (h *Hub) publishForPeers(packet models.Packet) {
+// The context is used to abort the work early during shutdown.
+func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
 	if !h.hasPeerServers() {
 		return
 	}
 
 	go func() {
+		// Check for cancellation before doing DB work.
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		peers, err := models.ListPeers(h.db)
 		if err != nil {
 			slog.Error("Failed to list peers for publishing", "error", err)
 			return
 		}
 		for _, p := range peers {
+			// Re-check cancellation between iterations to avoid
+			// unnecessary work when the hub is shutting down.
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			if rules.PeerShouldEgress(h.db, p, &packet) {
 				h.publishToPeer(p.ID, packet)
 			}

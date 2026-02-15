@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBroadcastServerReceivesGroupCall(t *testing.T) {
@@ -120,6 +121,45 @@ func TestPeerServerDoesNotForwardToSelf(t *testing.T) {
 		t.Fatal("Peer server should not receive packets it originates")
 	case <-time.After(500 * time.Millisecond):
 		// Expected
+	}
+}
+
+func TestPeerPublishRespectsContextCancellation(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 1, "TG1")
+
+	// Create a peer with egress enabled and a rule that matches our packet source
+	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+	require.NoError(t, database.Create(&owner).Error)
+	peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
+	require.NoError(t, database.Create(&peer).Error)
+	// Egress rule: direction=false (egress), covers source ID 1000001
+	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
+	require.NoError(t, database.Create(&rule).Error)
+
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	defer h.UnregisterServer("peer-srv")
+
+	// Cancel the context BEFORE routing — the peer publish goroutine should bail out
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	pkt := makeVoicePacket(1, 77777, true, false)
+	h.RoutePacket(ctx, pkt, models.RepeaterTypeMMDVM)
+
+	// The peer channel should remain empty because the context was already cancelled
+	select {
+	case <-peerHandle.Packets:
+		t.Fatal("Peer should not receive packet when context is cancelled")
+	case <-time.After(500 * time.Millisecond):
+		// Expected: no delivery because context was cancelled
 	}
 }
 

@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -27,6 +28,28 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 )
+
+// marshalAndPublish encodes a packet, marshals it as a RawDMRPacket, and publishes
+// to the given pubsub topic. This is the shared encode → marshal → publish pipeline
+// used by publishToPeer, publishToRepeater, and handleGroupCallVoice.
+func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
+	encBuf := models.GetEncodeBuffer()
+	var rawPacket models.RawDMRPacket
+	rawPacket.Data = packet.EncodeTo(*encBuf)
+	marshalBuf := h.getMarshalBuffer()
+	packedBytes, err := rawPacket.MarshalMsg((*marshalBuf)[:0])
+	models.PutEncodeBuffer(encBuf)
+	if err != nil {
+		h.putMarshalBuffer(marshalBuf)
+		return fmt.Errorf("marshalling packet: %w", err)
+	}
+	err = h.pubsub.Publish(topic, packedBytes)
+	h.putMarshalBuffer(marshalBuf)
+	if err != nil {
+		return fmt.Errorf("publishing to %s: %w", topic, err)
+	}
+	return nil
+}
 
 // publishForPeers forwards a packet to all peer servers via pubsub.
 // Queries the database for peers and checks egress rules.
@@ -58,21 +81,9 @@ func (h *Hub) publishToPeer(peerID uint, packet models.Packet) {
 
 	// Set the repeater field to the peer ID for routing on the receiving end
 	packet.Repeater = peerID
-	encBuf := models.GetEncodeBuffer()
-	var p models.RawDMRPacket
-	p.Data = packet.EncodeTo(*encBuf)
-	marshalBuf := h.getMarshalBuffer()
-	packedBytes, err := p.MarshalMsg((*marshalBuf)[:0])
-	models.PutEncodeBuffer(encBuf)
-	if err != nil {
-		h.putMarshalBuffer(marshalBuf)
-		slog.Error("Error marshalling peer packet", "error", err)
-		return
-	}
-	if err := h.pubsub.Publish("hub:packets:peers", packedBytes); err != nil {
+	if err := h.marshalAndPublish(packet, "hub:packets:peers"); err != nil {
 		slog.Error("Error publishing packet to peers", "error", err)
 	}
-	h.putMarshalBuffer(marshalBuf)
 }
 
 // repeaterTopicPrefix is the fixed prefix for repeater pubsub topics.
@@ -80,25 +91,13 @@ const repeaterTopicPrefix = "hub:packets:repeater:"
 
 // publishToRepeater publishes a packet to a specific repeater's pubsub topic.
 func (h *Hub) publishToRepeater(repeaterID uint, packet models.Packet) {
-	encBuf := models.GetEncodeBuffer()
-	var rawPacket models.RawDMRPacket
-	rawPacket.Data = packet.EncodeTo(*encBuf)
-	marshalBuf := h.getMarshalBuffer()
-	packedBytes, err := rawPacket.MarshalMsg((*marshalBuf)[:0])
-	models.PutEncodeBuffer(encBuf)
-	if err != nil {
-		h.putMarshalBuffer(marshalBuf)
-		slog.Error("Error marshalling packet for repeater", "error", err)
-		return
-	}
 	// Build topic string without fmt.Sprintf allocation
 	var topicBuf [len(repeaterTopicPrefix) + 20]byte
 	n := copy(topicBuf[:], repeaterTopicPrefix)
 	topic := string(topicBuf[:n]) + strconv.FormatUint(uint64(repeaterID), 10)
-	if err := h.pubsub.Publish(topic, packedBytes); err != nil {
+	if err := h.marshalAndPublish(packet, topic); err != nil {
 		slog.Error("Error publishing packet to repeater", "repeaterID", repeaterID, "error", err)
 	}
-	h.putMarshalBuffer(marshalBuf)
 }
 
 // publishForBroadcastServers publishes a packet to the broadcast pubsub topic.

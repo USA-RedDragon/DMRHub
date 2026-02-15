@@ -127,21 +127,9 @@ func (h *Hub) handleGroupCallVoice(packet models.Packet, sourceName string) {
 	const talkgroupTopicPrefix = "hub:packets:talkgroup:"
 
 	// Publish to talkgroup topic (subscription manager handles per-repeater fan-out)
-	encBuf := models.GetEncodeBuffer()
-	var rawPacket models.RawDMRPacket
-	rawPacket.Data = packet.EncodeTo(*encBuf)
-	marshalBuf := h.getMarshalBuffer()
-	packedBytes, err := rawPacket.MarshalMsg((*marshalBuf)[:0])
-	models.PutEncodeBuffer(encBuf)
-	if err != nil {
-		h.putMarshalBuffer(marshalBuf)
-		slog.Error("Error marshalling raw packet", "error", err)
-	} else {
-		topic := talkgroupTopicPrefix + strconv.FormatUint(uint64(packet.Dst), 10)
-		if err := h.pubsub.Publish(topic, packedBytes); err != nil {
-			slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
-		}
-		h.putMarshalBuffer(marshalBuf)
+	topic := talkgroupTopicPrefix + strconv.FormatUint(uint64(packet.Dst), 10)
+	if err := h.marshalAndPublish(packet, topic); err != nil {
+		slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
 	}
 
 	// Forward to broadcast servers (they handle echo filtering by source name)

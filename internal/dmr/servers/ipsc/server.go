@@ -193,6 +193,9 @@ func (s *IPSCServer) Addr() net.Addr {
 
 func (s *IPSCServer) Stop(_ context.Context) error {
 	s.stopOnce.Do(func() {
+		slog.Info("Stopping IPSC server")
+		s.stopped.Store(true)
+
 		packet := s.buildDeregistrationRequest()
 		s.mu.RLock()
 		peers := make([]*Peer, 0, len(s.peers))
@@ -217,8 +220,6 @@ func (s *IPSCServer) Stop(_ context.Context) error {
 				slog.Warn("failed sending IPSC deregistration", "peer", peer.Addr, "peerID", peer.ID, "error", err)
 			}
 		}
-		slog.Info("Stopping IPSC server")
-		s.stopped.Store(true)
 		if s.udp != nil {
 			if err := s.udp.Close(); err != nil {
 				slog.Error("error closing UDP listener", "error", err)
@@ -262,6 +263,10 @@ func (s *IPSCServer) handler(ctx context.Context) {
 }
 
 func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UDPAddr) (*Packet, error) {
+	if s.stopped.Load() {
+		return nil, ErrPacketIgnored
+	}
+
 	if len(data) < 1 {
 		return nil, fmt.Errorf("packet too short")
 	}

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -56,6 +57,7 @@ type Server struct {
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
 	connected     *xsync.Map[uint, struct{}]
+	stopped       atomic.Bool
 }
 
 var (
@@ -112,6 +114,8 @@ func (s *Server) Stop(ctx context.Context) error {
 	// Send a MSTCL command to each repeater.
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
 	defer span.End()
+
+	s.stopped.Store(true)
 
 	var count int
 	s.connected.Range(func(_ uint, _ struct{}) bool {
@@ -292,6 +296,10 @@ func (s *Server) sendPacket(ctx context.Context, repeaterIDBytes uint, packet mo
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
+	if s.stopped.Load() {
+		return
+	}
+
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 	const signatureLength = 4

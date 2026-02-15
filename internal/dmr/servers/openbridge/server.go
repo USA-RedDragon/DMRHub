@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -59,6 +60,9 @@ type Server struct {
 	hub      *hub.Hub
 
 	hubHandle *hub.ServerHandle
+	wg        sync.WaitGroup
+	done      chan struct{}
+	stopOnce  sync.Once
 }
 
 // MakeServer creates a new DMR server.
@@ -90,6 +94,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		pubsub:        pubsub,
 		kvClient:      servers.MakeKVClient(kv),
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
+		done:          make(chan struct{}),
 	}, nil
 }
 
@@ -106,10 +111,12 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
+	s.wg.Add(3)
 	go s.listen(ctx)
 	go s.consumeHubPackets(ctx)
 
 	go func() {
+		defer s.wg.Done()
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			slog.Debug("Read from UDP", "length", length, "remoteaddr", remoteaddr, "err", err)
@@ -148,18 +155,23 @@ func (s *Server) Start(ctx context.Context) error {
 
 // Stop stops the DMR server.
 func (s *Server) Stop(_ context.Context) error {
-	slog.Info("Stopping OpenBridge server")
+	s.stopOnce.Do(func() {
+		slog.Info("Stopping OpenBridge server")
 
-	s.hub.UnregisterServer("openbridge")
+		close(s.done)
+		s.hub.UnregisterServer("openbridge")
 
-	if err := s.Server.Close(); err != nil {
-		return fmt.Errorf("error closing OpenBridge UDP socket: %w", err)
-	}
+		if err := s.Server.Close(); err != nil {
+			slog.Error("Error closing OpenBridge UDP socket", "error", err)
+		}
+	})
 
+	s.wg.Wait()
 	return nil
 }
 
 func (s *Server) listen(ctx context.Context) {
+	defer s.wg.Done()
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.listen")
 	defer span.End()
 
@@ -170,25 +182,34 @@ func (s *Server) listen(ctx context.Context) {
 			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
-	for msg := range subscription.Channel() {
-		var packet models.RawDMRPacket
-		_, err := packet.UnmarshalMsg(msg)
-		if err != nil {
-			slog.Error("Error unmarshalling packet", "error", err)
-			continue
+	for {
+		select {
+		case <-s.done:
+			return
+		case msg, ok := <-subscription.Channel():
+			if !ok {
+				return
+			}
+			var packet models.RawDMRPacket
+			_, err := packet.UnmarshalMsg(msg)
+			if err != nil {
+				slog.Error("Error unmarshalling packet", "error", err)
+				continue
+			}
+			go s.handlePacket(ctx, &net.UDPAddr{
+				IP:   net.ParseIP(packet.RemoteIP),
+				Port: packet.RemotePort,
+			}, packet.Data)
 		}
-		go s.handlePacket(ctx, &net.UDPAddr{
-			IP:   net.ParseIP(packet.RemoteIP),
-			Port: packet.RemotePort,
-		}, packet.Data)
 	}
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.
 func (s *Server) consumeHubPackets(ctx context.Context) {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.done:
 			return
 		case rp, ok := <-s.hubHandle.Packets:
 			if !ok {

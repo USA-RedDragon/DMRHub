@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -300,6 +301,8 @@ type serverManager struct {
 	pubsub     pubsub.PubSub
 	database   *gorm.DB
 	cfg        *config.Config
+	registry   *servers.InstanceRegistry
+	ready      *atomic.Bool
 }
 
 func (sm *serverManager) addServer(server servers.DMRServer) {
@@ -319,9 +322,24 @@ func (sm *serverManager) start(ctx context.Context) error {
 // stopDMRServers sends disconnect messages (MSTCL, deregistration) and
 // closes protocol sockets. This must run before hub.Stop() so that
 // connected repeaters/peers receive a clean disconnect.
+//
+// When other DMRHub instances are alive (detected via the instance registry),
+// disconnect messages are skipped so peers seamlessly migrate to a surviving
+// instance instead of entering a slow re-registration cycle.
 func (sm *serverManager) stopDMRServers(ctx context.Context) {
+	graceful := false
+	if sm.registry != nil {
+		graceful = sm.registry.OtherInstancesExist(ctx)
+		if graceful {
+			slog.Info("Other DMRHub instances detected, performing graceful handoff (skipping disconnect messages)")
+		} else {
+			slog.Info("No other DMRHub instances detected, sending disconnect messages")
+		}
+		sm.registry.Deregister(ctx)
+	}
+	stopCtx := servers.WithGracefulHandoff(ctx, graceful)
 	for _, server := range sm.servers {
-		if err := server.Stop(ctx); err != nil {
+		if err := server.Stop(stopCtx); err != nil {
 			slog.Error("Failed to stop server", "error", err)
 		}
 	}
@@ -345,17 +363,28 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 
 // shutdown gracefully stops all servers
 func (sm *serverManager) shutdown(ctx context.Context) {
+	sm.ready.Store(false)
 	sm.stopDMRServers(ctx)
 	sm.closeResources(ctx)
 }
 
 // initializeServers creates and starts all server instances
 func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
+	instanceID, err := servers.GenerateInstanceID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate instance ID: %w", err)
+	}
+	registry := servers.NewInstanceRegistry(ctx, kvStore, instanceID)
+
+	ready := &atomic.Bool{}
+
 	sm := &serverManager{
 		kv:       kvStore,
 		pubsub:   pubsubClient,
 		database: database,
 		cfg:      cfg,
+		registry: registry,
+		ready:    ready,
 	}
 
 	mmdvmServer, err := mmdvm.MakeServer(cfg, hub, database, pubsubClient, kvStore, version, commit)
@@ -380,12 +409,15 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 		return nil, fmt.Errorf("failed to start servers: %w", err)
 	}
 
-	httpServer := http.MakeServer(cfg, hub, database, pubsubClient, version, commit)
+	httpServer := http.MakeServer(cfg, hub, database, pubsubClient, ready, version, commit)
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 	sm.httpServer = httpServer
+
+	ready.Store(true)
+	slog.Info("Server ready to accept traffic")
 
 	return sm, nil
 }
@@ -400,6 +432,9 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 
 	sig := <-sigCh
 	slog.Error("Shutting down due to signal", "signal", sig)
+
+	// Mark unhealthy immediately so Kubernetes stops routing traffic
+	servers.ready.Store(false)
 
 	wg := new(sync.WaitGroup)
 

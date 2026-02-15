@@ -141,4 +141,5 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/version", v1Controllers.GETVersion)
 	group.GET("/ping", v1Controllers.GETPing)
+	group.GET("/healthcheck", v1Controllers.GETHealthcheck)
 }

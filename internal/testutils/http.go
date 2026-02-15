@@ -22,6 +22,7 @@ package testutils
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -93,5 +94,8 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	return http.CreateRouter(&defConfig, nil, t.database, pubsub, "test", "deadbeef"), &t, nil
+	ready := &atomic.Bool{}
+	ready.Store(true)
+
+	return http.CreateRouter(&defConfig, nil, t.database, pubsub, ready, "test", "deadbeef"), &t, nil
 }

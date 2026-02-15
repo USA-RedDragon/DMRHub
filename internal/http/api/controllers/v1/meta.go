@@ -69,3 +69,11 @@ func GETPing(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting ping"})
 	}
 }
+
+func GETHealthcheck(c *gin.Context) {
+	if !utils.GetReady(c) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+}

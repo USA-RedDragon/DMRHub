@@ -1073,27 +1073,29 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		// Connect IPSC client WITHOUT registration — skips MasterRegisterRequest.
-		// The peer is in the DB (so HMAC auth passes), but it never registered
-		// so hub subscriptions are not activated.
+		// The peer is in the DB (so HMAC auth passes). With auto-registration,
+		// the server will register the peer on the first authenticated packet,
+		// which enables seamless recovery during rolling restarts.
 		ic := testutils.NewIPSCClient(200001, ipscAuthKey)
 		require.NoError(t, ic.ConnectWithoutRegistration(stack.IPSCAddr))
 		defer ic.Close()
 
 		time.Sleep(settleDuration)
 
-		// Send group voice from the unregistered IPSC peer.
+		// Send group voice from the IPSC peer that was auto-registered.
 		err := ic.SendGroupVoice(1000001, 1, false, 9001)
 		require.NoError(t, err)
 
-		// The server should reject traffic from an unregistered peer, so
-		// the MMDVM client must NOT receive any packets.
+		// Because the server auto-registers authenticated peers, the MMDVM
+		// client SHOULD receive the traffic after auto-registration triggers
+		// hub subscription activation.
 		pkts := mc.Drain(drainWait)
-		assert.Empty(t, pkts,
-			"MMDVM should NOT receive traffic from unregistered IPSC peer")
+		assert.NotEmpty(t, pkts,
+			"MMDVM should receive traffic from auto-registered IPSC peer")
 
-		// Also verify that the unregistered IPSC peer cannot RECEIVE traffic.
-		// Have the MMDVM client send a group call — the IPSC peer should NOT
-		// receive it because hub subscriptions were never activated.
+		// Also verify that the auto-registered IPSC peer can RECEIVE traffic.
+		// Have the MMDVM client send a group call — the IPSC peer should
+		// receive it because hub subscriptions were activated on auto-registration.
 		voicePkt := makeGroupVoicePacket(1000001, 1, 9002, false)
 		require.NoError(t, mc.SendDMRD(voicePkt))
 		time.Sleep(50 * time.Millisecond)
@@ -1101,7 +1103,7 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		require.NoError(t, mc.SendDMRD(termPkt))
 
 		bursts := ic.Drain(drainWait)
-		assert.Empty(t, bursts,
-			"Unregistered IPSC peer should NOT receive traffic (no hub subscriptions)")
+		assert.NotEmpty(t, bursts,
+			"Auto-registered IPSC peer should receive traffic (hub subscriptions activated)")
 	})
 }

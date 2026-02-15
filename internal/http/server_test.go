@@ -21,13 +21,20 @@ package http_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/configulator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -119,4 +126,63 @@ func TestCreateRouterNotNil(t *testing.T) {
 	defer tdb.CloseDB()
 
 	assert.NotNil(t, router)
+}
+
+func TestHealthcheckReady(t *testing.T) {
+	t.Parallel()
+	// CreateTestDBRouter sets ready=true, so healthcheck should return 200
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/healthcheck", nil)
+	assert.NoError(t, err)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]string
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "healthy", body["status"])
+}
+
+func TestHealthcheckNotReady(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	assert.NoError(t, err)
+
+	defConfig.Database.Database = ""
+	defConfig.Database.ExtraParameters = []string{}
+
+	database, err := db.MakeDB(&defConfig)
+	assert.NoError(t, err)
+	defer func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+	}()
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	assert.NoError(t, err)
+
+	ready := &atomic.Bool{} // default false — not ready
+	router := internalhttp.CreateRouter(&defConfig, nil, database, ps, ready, "test", "test")
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/healthcheck", nil)
+	assert.NoError(t, err)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var body map[string]string
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "not ready", body["status"])
 }

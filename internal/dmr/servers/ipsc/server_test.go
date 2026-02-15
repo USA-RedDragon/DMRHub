@@ -574,7 +574,7 @@ func makeControlPacket(packetType PacketType, peerID uint32) []byte {
 }
 
 // makeControlPacketWithModeFlags builds a control packet with mode + flags.
-func makeControlPacketWithModeFlags(packetType PacketType, peerID uint32, mode byte, flags [4]byte) []byte {
+func makeControlPacketWithModeFlags(packetType PacketType, peerID uint32, mode byte, flags [4]byte) []byte { //nolint:unparam
 	data := make([]byte, 10)
 	data[0] = byte(packetType)
 	binary.BigEndian.PutUint32(data[1:5], peerID)
@@ -2033,6 +2033,142 @@ func TestStopSetsStoppedBeforeDeregistration(t *testing.T) {
 	_, err = s.handlePacket(context.Background(), regData, clientAddr)
 	if !errors.Is(err, ErrPacketIgnored) {
 		t.Fatalf("expected ErrPacketIgnored after Stop(), got %v", err)
+	}
+}
+
+// TestAutoRegisterOnKeepaliveFromUnregisteredPeer verifies that when an
+// authenticated but unregistered peer sends a MasterAliveRequest (keepalive),
+// the server auto-registers it and replies with a MasterAliveReply instead of
+// dropping the packet. This is the key scenario during rolling restarts: the
+// peer was connected to another pod that terminated and is now sending
+// keepalives to this pod.
+func TestAutoRegisterOnKeepaliveFromUnregisteredPeer(t *testing.T) {
+	t.Parallel()
+	s, srvAddr := newTestServerWithUDP(t)
+
+	client, err := net.DialUDP("udp", nil, srvAddr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("expected *net.UDPAddr from LocalAddr")
+	}
+
+	// Add the peer's auth key to the server cache WITHOUT registering it.
+	// This simulates a peer that exists in the DB but hasn't registered on
+	// this server instance (e.g. after a rolling restart).
+	peerID := uint32(3191868)
+	s.mu.Lock()
+	s.peers[peerID] = &Peer{
+		ID:                 peerID,
+		AuthKey:            testAuthKey(),
+		RegistrationStatus: false, // explicitly NOT registered
+	}
+	s.mu.Unlock()
+
+	// Send a MasterAliveRequest (keepalive) — the peer thinks it's still connected
+	aliveData := signTestPacket(t, makeControlPacket(PacketType_MasterAliveRequest, peerID))
+	_, err = s.handlePacket(context.Background(), aliveData, clientAddr)
+	if err != nil {
+		t.Fatalf("expected auto-registration to succeed, got error: %v", err)
+	}
+
+	// Verify the peer is now registered
+	s.mu.RLock()
+	peer, exists := s.peers[peerID]
+	s.mu.RUnlock()
+	if !exists {
+		t.Fatal("expected peer to exist after auto-registration")
+	}
+	if !peer.RegistrationStatus {
+		t.Fatal("expected peer to be registered after auto-registration")
+	}
+
+	// Verify a MasterAliveReply was sent back
+	reply := readUDP(t, client)
+	if reply[0] != byte(PacketType_MasterAliveReply) {
+		t.Fatalf("expected MasterAliveReply (0x%02X), got 0x%02X", PacketType_MasterAliveReply, reply[0])
+	}
+}
+
+// TestAutoRegisterOnDataFromUnregisteredPeer verifies that data packets from
+// authenticated but unregistered peers also trigger auto-registration.
+func TestAutoRegisterOnDataFromUnregisteredPeer(t *testing.T) {
+	t.Parallel()
+	s, _ := newTestServerWithUDP(t)
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+
+	peerID := uint32(3191868)
+	s.mu.Lock()
+	s.peers[peerID] = &Peer{
+		ID:                 peerID,
+		AuthKey:            testAuthKey(),
+		RegistrationStatus: false,
+	}
+	s.mu.Unlock()
+
+	// Build a minimal GroupVoice packet (needs to be long enough for the handlers)
+	voiceData := make([]byte, 54)
+	voiceData[0] = byte(PacketType_GroupVoice)
+	binary.BigEndian.PutUint32(voiceData[1:5], peerID)
+	signed := signTestPacket(t, voiceData)
+
+	var burstCalled atomic.Bool
+	s.SetBurstHandler(func(_ byte, _ []byte, _ *net.UDPAddr) {
+		burstCalled.Store(true)
+	})
+
+	_, err := s.handlePacket(context.Background(), signed, addr)
+	if err != nil {
+		t.Fatalf("expected auto-registration + data processing, got error: %v", err)
+	}
+
+	// Peer should now be registered
+	s.mu.RLock()
+	peer := s.peers[peerID]
+	s.mu.RUnlock()
+	if !peer.RegistrationStatus {
+		t.Fatal("expected peer to be registered after auto-registration via data packet")
+	}
+
+	// Give the async burst handler a moment to fire
+	time.Sleep(50 * time.Millisecond)
+	if !burstCalled.Load() {
+		t.Fatal("expected burst handler to be called for auto-registered data packet")
+	}
+}
+
+// TestDeregistrationFromUnregisteredPeerIsIgnored verifies that a
+// DeregistrationRequest from an unregistered peer is silently ignored
+// (not auto-registered).
+func TestDeregistrationFromUnregisteredPeerIsIgnored(t *testing.T) {
+	t.Parallel()
+	s, _ := newTestServerWithUDP(t)
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+
+	peerID := uint32(3191868)
+	s.mu.Lock()
+	s.peers[peerID] = &Peer{
+		ID:                 peerID,
+		AuthKey:            testAuthKey(),
+		RegistrationStatus: false,
+	}
+	s.mu.Unlock()
+
+	deregData := signTestPacket(t, makeControlPacket(PacketType_DeregistrationRequest, peerID))
+	_, err := s.handlePacket(context.Background(), deregData, addr)
+	if !errors.Is(err, ErrPacketIgnored) {
+		t.Fatalf("expected ErrPacketIgnored for dereg from unregistered peer, got %v", err)
+	}
+
+	// Peer should NOT be registered
+	s.mu.RLock()
+	peer := s.peers[peerID]
+	s.mu.RUnlock()
+	if peer.RegistrationStatus {
+		t.Fatal("expected peer to remain unregistered after deregistration request")
 	}
 }
 

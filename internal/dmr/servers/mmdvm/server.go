@@ -25,6 +25,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync"
 	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -58,6 +59,9 @@ type Server struct {
 	hubHandle     *hub.ServerHandle
 	connected     *xsync.Map[uint, struct{}]
 	stopped       atomic.Bool
+	wg            sync.WaitGroup
+	done          chan struct{}
+	stopOnce      sync.Once
 }
 
 var (
@@ -106,64 +110,80 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		connected:     xsync.NewMap[uint, struct{}](),
+		done:          make(chan struct{}),
 	}, nil
 }
 
 // Stop stops the DMR server.
 func (s *Server) Stop(ctx context.Context) error {
-	// Send a MSTCL command to each repeater.
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
-	defer span.End()
+	s.stopOnce.Do(func() {
+		ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.Stop")
+		defer span.End()
 
-	s.stopped.Store(true)
+		s.stopped.Store(true)
+		close(s.done)
 
-	var count int
-	s.connected.Range(func(_ uint, _ struct{}) bool {
-		count++
-		return true
+		if s.hub != nil {
+			s.hub.UnregisterServer(models.RepeaterTypeMMDVM)
+		}
+
+		// When other DMRHub instances are alive, skip sending MSTCL so
+		// repeaters seamlessly migrate to the surviving instance instead of
+		// disconnecting and entering a slow re-registration cycle.
+		if !servers.IsGracefulHandoff(ctx) {
+			var count int
+			s.connected.Range(func(_ uint, _ struct{}) bool {
+				count++
+				return true
+			})
+			slog.Info("Stopping MMDVM server, sending MSTCL to connected repeaters", "count", count)
+
+			s.connected.Range(func(repeater uint, _ struct{}) bool {
+				slog.Info("Sending MSTCL to repeater", "repeater", repeater)
+				repeaterInfo, err := s.kvClient.GetRepeater(ctx, repeater)
+				if err != nil {
+					slog.Error("Error getting repeater from KV", "repeater", repeater, "error", err)
+					return true
+				}
+				repeaterBinary := make([]byte, repeaterIDLength)
+				if repeater > 0xFFFFFFFF {
+					slog.Error("Repeater ID too large for uint32", "repeater", repeater)
+					return true
+				}
+				binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
+				mstclPayload := append([]byte(dmrconst.CommandMSTCL), repeaterBinary...)
+				_, err = s.Server.WriteToUDP(mstclPayload, &net.UDPAddr{
+					IP:   net.ParseIP(repeaterInfo.IP),
+					Port: repeaterInfo.Port,
+				})
+				if err != nil {
+					slog.Error("Error sending MSTCL command", "repeater", repeater, "error", err)
+					return true
+				}
+				slog.Info("Sent MSTCL to repeater", "repeater", repeater, "ip", repeaterInfo.IP, "port", repeaterInfo.Port)
+				repeaterInfo.Connection = "DISCONNECTED"
+				s.kvClient.StoreRepeater(ctx, repeater, repeaterInfo)
+				return true
+			})
+		} else {
+			slog.Info("Graceful handoff: skipping MSTCL messages to connected repeaters")
+		}
+
+		if err := s.Server.Close(); err != nil {
+			slog.Error("Error closing MMDVM UDP socket", "error", err)
+		}
 	})
-	slog.Info("Stopping MMDVM server, sending MSTCL to connected repeaters", "count", count)
 
-	s.connected.Range(func(repeater uint, _ struct{}) bool {
-		slog.Info("Sending MSTCL to repeater", "repeater", repeater)
-		repeaterInfo, err := s.kvClient.GetRepeater(ctx, repeater)
-		if err != nil {
-			slog.Error("Error getting repeater from KV", "repeater", repeater, "error", err)
-			return true
-		}
-		repeaterBinary := make([]byte, repeaterIDLength)
-		if repeater > 0xFFFFFFFF {
-			slog.Error("Repeater ID too large for uint32", "repeater", repeater)
-			return true
-		}
-		binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-		mstclPayload := append([]byte(dmrconst.CommandMSTCL), repeaterBinary...)
-		_, err = s.Server.WriteToUDP(mstclPayload, &net.UDPAddr{
-			IP:   net.ParseIP(repeaterInfo.IP),
-			Port: repeaterInfo.Port,
-		})
-		if err != nil {
-			slog.Error("Error sending MSTCL command", "repeater", repeater, "error", err)
-			return true
-		}
-		slog.Info("Sent MSTCL to repeater", "repeater", repeater, "ip", repeaterInfo.IP, "port", repeaterInfo.Port)
-		repeaterInfo.Connection = "DISCONNECTED"
-		s.kvClient.StoreRepeater(ctx, repeater, repeaterInfo)
-		return true
-	})
-
-	if err := s.Server.Close(); err != nil {
-		slog.Error("Error closing MMDVM UDP socket", "error", err)
-	}
-
+	s.wg.Wait()
 	return nil
 }
 
 func (s *Server) listen(ctx context.Context) {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-ctx.Done():
-			slog.Info("Stopping MMDVM server")
+		case <-s.done:
+			slog.Info("Stopping MMDVM server listener")
 			return
 		case packet := <-s.incomingChan:
 			s.handlePacket(ctx, net.UDPAddr{
@@ -174,10 +194,11 @@ func (s *Server) listen(ctx context.Context) {
 	}
 }
 
-func (s *Server) subscribePackets(ctx context.Context) {
+func (s *Server) subscribePackets() {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.done:
 			return
 		case packet := <-s.outgoingChan:
 			_, err := s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
@@ -193,9 +214,10 @@ func (s *Server) subscribePackets(ctx context.Context) {
 
 // consumeHubPackets reads routed packets from the hub and sends them to repeaters.
 func (s *Server) consumeHubPackets(ctx context.Context) {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.done:
 			return
 		case rp, ok := <-s.hubHandle.Packets:
 			if !ok {
@@ -219,11 +241,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 
+	s.wg.Add(4)
 	go s.listen(ctx)
-	go s.subscribePackets(ctx)
+	go s.subscribePackets()
 	go s.consumeHubPackets(ctx)
 
 	go func() {
+		defer s.wg.Done()
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			if err != nil {

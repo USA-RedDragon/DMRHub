@@ -22,6 +22,7 @@ package utils_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -139,5 +140,38 @@ func TestGetConfig_WrongType(t *testing.T) {
 	}
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestGetReady_True(t *testing.T) {
+	t.Parallel()
+	c, _ := makeTestContext(t)
+	ready := &atomic.Bool{}
+	ready.Store(true)
+	c.Set("Ready", ready)
+
+	if !utils.GetReady(c) {
+		t.Fatal("Expected GetReady to return true")
+	}
+}
+
+func TestGetReady_False(t *testing.T) {
+	t.Parallel()
+	c, _ := makeTestContext(t)
+	ready := &atomic.Bool{}
+	c.Set("Ready", ready)
+
+	if utils.GetReady(c) {
+		t.Fatal("Expected GetReady to return false")
+	}
+}
+
+func TestGetReady_WrongType(t *testing.T) {
+	t.Parallel()
+	c, _ := makeTestContext(t)
+	c.Set("Ready", "not-a-bool")
+
+	if utils.GetReady(c) {
+		t.Fatal("Expected GetReady to return false for wrong type")
 	}
 }

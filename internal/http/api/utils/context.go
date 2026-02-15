@@ -22,6 +22,7 @@ package utils
 import (
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/gin-gonic/gin"
@@ -62,4 +63,15 @@ func GetConfig(c *gin.Context) (*config.Config, bool) {
 		return nil, false
 	}
 	return cfg, true
+}
+
+// GetReady extracts the "Ready" flag from the gin context and returns its
+// current value. On failure (missing or wrong type) it returns false.
+func GetReady(c *gin.Context) bool {
+	ready, ok := c.MustGet("Ready").(*atomic.Bool)
+	if !ok {
+		slog.Error("Unable to get Ready from context")
+		return false
+	}
+	return ready.Load()
 }

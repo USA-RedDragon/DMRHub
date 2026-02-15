@@ -178,6 +178,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	go s.handler(ctx)
 
 	// Consume routed packets from the hub
+	s.wg.Add(1)
 	go s.consumeHubPackets()
 
 	slog.Info("IPSC Server listening", "address", s.cfg.DMR.IPSC.Bind, "port", s.cfg.DMR.IPSC.Port)
@@ -191,35 +192,15 @@ func (s *IPSCServer) Addr() net.Addr {
 	return s.udp.LocalAddr()
 }
 
-func (s *IPSCServer) Stop(_ context.Context) error {
+func (s *IPSCServer) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping IPSC server")
 		s.stopped.Store(true)
 
-		packet := s.buildDeregistrationRequest()
-		s.mu.RLock()
-		peers := make([]*Peer, 0, len(s.peers))
-		for _, peer := range s.peers {
-			if peer.Addr != nil {
-				peers = append(peers, peer)
-			}
+		if s.hub != nil {
+			s.hub.UnregisterServer(models.RepeaterTypeIPSC)
 		}
-		s.mu.RUnlock()
-		for _, peer := range peers {
-			authKey := peer.AuthKey
-			if authKey == nil {
-				var err error
-				authKey, err = s.lookupAndCachePeerAuthKey(peer.ID)
-				if err != nil {
-					slog.Warn("failed to look up auth key for peer during stop", "peerID", peer.ID, "error", err)
-				}
-			}
-			packetData := make([]byte, len(packet))
-			copy(packetData, packet)
-			if err := s.sendPacket(&Packet{data: packetData}, peer.Addr, authKey); err != nil {
-				slog.Warn("failed sending IPSC deregistration", "peer", peer.Addr, "peerID", peer.ID, "error", err)
-			}
-		}
+
 		if s.udp != nil {
 			if err := s.udp.Close(); err != nil {
 				slog.Error("error closing UDP listener", "error", err)
@@ -298,12 +279,21 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	s.mu.RUnlock()
 
 	if !registered && PacketType(packetType) != PacketType_MasterRegisterRequest {
-		slog.Warn("dropping packet from unregistered peer", "peerID", peerID, "peer", addr)
-		deregPkt := &Packet{data: s.buildDeregistrationRequest()}
-		if err := s.sendPacket(deregPkt, addr, authKey); err != nil {
-			slog.Warn("failed sending IPSC deregistration", "peer", addr, "peerID", peerID, "error", err)
+		// The peer passed HMAC authentication but isn't registered on this
+		// server instance.  This commonly happens during rolling restarts:
+		// the peer was connected to another pod that terminated, and is now
+		// sending keepalives/data to this pod.
+		//
+		// Rather than dropping the packet and sending a DeregistrationRequest
+		// (which the peer may interpret as "master is leaving" and enter a
+		// slow retry loop), auto-register the peer so it seamlessly
+		// transitions to this instance.
+		if PacketType(packetType) == PacketType_DeregistrationRequest {
+			// Peer is asking to leave — nothing to auto-register.
+			return nil, ErrPacketIgnored
 		}
-		return nil, ErrPacketIgnored
+		slog.Info("auto-registering authenticated peer", "peerID", peerID, "peer", addr, "packetType", packetType)
+		s.upsertPeer(ctx, peerID, addr, s.defaultModeByte(), s.defaultFlagsBytes())
 	}
 
 	switch PacketType(packetType) {
@@ -561,17 +551,6 @@ func (s *IPSCServer) buildMasterAliveReply() []byte {
 	return packet
 }
 
-func (s *IPSCServer) buildDeregistrationRequest() []byte {
-	packet := make([]byte, 0, 1+4+5+4)
-	packet = append(packet, byte(PacketType_DeregistrationRequest))
-	packet = append(packet, s.localIDBytes()...)
-	packet = append(packet, s.defaultModeByte())
-	flags := s.defaultFlagsBytes()
-	packet = append(packet, flags[:]...)
-	packet = append(packet, ipscVersion...)
-	return packet
-}
-
 func (s *IPSCServer) buildPeerListReply() []byte {
 	peerList := s.buildPeerList()
 	packet := make([]byte, 0, 1+4+2+len(peerList))
@@ -719,6 +698,7 @@ func authWithKey(data []byte, key []byte) bool {
 
 // consumeHubPackets reads routed packets from the hub and sends them to all IPSC peers.
 func (s *IPSCServer) consumeHubPackets() {
+	defer s.wg.Done()
 	for rp := range s.hubHandle.Packets {
 		s.SendPacket(rp.Packet)
 	}

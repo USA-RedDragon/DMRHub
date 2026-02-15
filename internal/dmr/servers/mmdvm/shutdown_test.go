@@ -150,6 +150,7 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 
 	for _, tc := range commands {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			s.handlePacket(context.Background(), remoteAddr, tc.data)
 
 			// Verify nothing was queued

@@ -449,6 +449,15 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 
 				m.hub.deliverToServer(p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 			} else {
+				// Clean up the subscription map entry and cancel the context
+				// to avoid leaking resources.
+				radioSubs, ok := m.subscriptions.Load(repeaterID)
+				if ok {
+					cancelPtr, loaded := radioSubs.LoadAndDelete(tg)
+					if loaded && cancelPtr != nil {
+						(*cancelPtr)()
+					}
+				}
 				err = subscription.Close()
 				if err != nil {
 					slog.Error("Error closing pubsub connection", "error", err)

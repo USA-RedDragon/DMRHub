@@ -614,3 +614,87 @@ func TestReloadRepeaterNoOpForNonConnected(t *testing.T) {
 		// Expected: no delivery for non-connected repeater
 	}
 }
+
+// TestSubscribeTGWantRXFalseCleansUpSubscription verifies that when subscribeTG
+// receives a packet the repeater no longer wants (WantRX returns false), the
+// subscription map entry and context are properly cleaned up. This is a
+// regression test: previously the context was leaked and the stale map entry
+// prevented re-subscription when the talkgroup was reassigned.
+func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001) // source
+	seedRepeater(t, database, 100002, 1000001) // destination
+	seedTalkgroup(t, database, 50, "TG50")
+
+	// Set TG50 as dynamic talkgroup on TS1 for repeater 100002
+	tgID := uint(50)
+	require.NoError(t, database.Model(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002},
+	}).Updates(map[string]interface{}{
+		"TS1DynamicTalkgroupID": tgID,
+	}).Error)
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.ActivateRepeater(context.Background(), 100001)
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify delivery works initially
+	pkt := makeVoicePacket(50, 80001, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+		assert.Equal(t, uint(50), rp.Packet.Dst)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for initial TG50 delivery")
+	}
+
+	// Remove the dynamic talkgroup from the DB so WantRX will return false
+	require.NoError(t, database.Model(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002},
+	}).Updates(map[string]interface{}{
+		"TS1DynamicTalkgroupID": nil,
+	}).Error)
+
+	// Send another packet — subscribeTG will call WantRX, get false, and exit.
+	// Before the fix this leaked the context and left a stale map entry.
+	pkt2 := makeVoicePacket(50, 80002, true, false)
+	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
+
+	// Drain any delivery (shouldn't arrive, but don't let it block)
+	select {
+	case <-srvHandle.Packets:
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	// Re-assign the dynamic talkgroup
+	require.NoError(t, database.Model(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002},
+	}).Updates(map[string]interface{}{
+		"TS1DynamicTalkgroupID": tgID,
+	}).Error)
+
+	// Re-activate the repeater. If the stale map entry was not cleaned up,
+	// activateRepeaterLocked will see it and skip creating a new subscription,
+	// meaning this packet will never be delivered.
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	pkt3 := makeVoicePacket(50, 80003, true, false)
+	h.RoutePacket(context.Background(), pkt3, models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+		assert.Equal(t, uint(50), rp.Packet.Dst)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for TG50 delivery after re-subscription — stale map entry was not cleaned up")
+	}
+}

@@ -116,9 +116,12 @@ func (s *Server) Start(ctx context.Context) error {
 				slog.Error("Error reading from UDP Socket, swallowing error", "error", err)
 				continue
 			}
+			// Copy the buffer data since s.Buffer will be reused for the next read
+			data := make([]byte, length)
+			copy(data, s.Buffer[:length])
 			go func() {
 				p := models.RawDMRPacket{
-					Data:       s.Buffer[:length],
+					Data:       data,
 					RemoteIP:   remoteaddr.IP.String(),
 					RemotePort: remoteaddr.Port,
 				}

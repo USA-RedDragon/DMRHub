@@ -20,6 +20,7 @@
 package metrics_test
 
 import (
+	"context"
 	"net"
 	"strconv"
 	"testing"
@@ -45,7 +46,7 @@ func TestCreateMetricsServer_PortInUseReturnsError(t *testing.T) {
 	t.Parallel()
 
 	// Occupy a port so the metrics server can't bind to it.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}

@@ -224,8 +224,8 @@ func RequireSuperAdmin() gin.HandlerFunc {
 				)
 			}
 		}
-		if !user.SuperAdmin {
-			slog.Error("User is not a super admin")
+		if !user.SuperAdmin || !user.Approved || user.Suspended {
+			slog.Error("User is not a super admin or is not approved/suspended")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 		}
 	}

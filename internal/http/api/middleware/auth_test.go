@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -259,5 +260,89 @@ func TestRequireSuperAdminBlocksRegularAdmin(t *testing.T) {
 	var resp testutils.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRequireSuperAdminBlocksSuspendedSuperAdmin(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	// Login as the super admin (seeded Admin user)
+	_, _, superJar := testutils.LoginAdmin(t, router)
+
+	// Verify access works before suspension
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users/admins", nil)
+	assert.NoError(t, err)
+	for _, cookie := range superJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Directly suspend the super admin via DB
+	db := tdb.DB()
+	assert.NotNil(t, db)
+	err = db.Model(&models.User{}).Where("username = ?", "Admin").Update("suspended", true).Error
+	assert.NoError(t, err)
+
+	// Suspended super admin should now be blocked
+	w = httptest.NewRecorder()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel2()
+
+	req, err = http.NewRequestWithContext(ctx2, http.MethodGet, "/api/v1/users/admins", nil)
+	assert.NoError(t, err)
+	for _, cookie := range superJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRequireSuperAdminBlocksUnapprovedSuperAdmin(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	// Login as the super admin (seeded Admin user)
+	_, _, superJar := testutils.LoginAdmin(t, router)
+
+	// Verify access works before unapproving
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users/admins", nil)
+	assert.NoError(t, err)
+	for _, cookie := range superJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Directly unapprove the super admin via DB
+	db := tdb.DB()
+	assert.NotNil(t, db)
+	err = db.Model(&models.User{}).Where("username = ?", "Admin").Update("approved", false).Error
+	assert.NoError(t, err)
+
+	// Unapproved super admin should now be blocked
+	w = httptest.NewRecorder()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel2()
+
+	req, err = http.NewRequestWithContext(ctx2, http.MethodGet, "/api/v1/users/admins", nil)
+	assert.NoError(t, err)
+	for _, cookie := range superJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

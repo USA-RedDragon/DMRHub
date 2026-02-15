@@ -46,6 +46,10 @@ func (t *TestDB) CloseDB() {
 	t.database = nil
 }
 
+func (t *TestDB) DB() *gorm.DB {
+	return t.database
+}
+
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New[config.Config]().Default()

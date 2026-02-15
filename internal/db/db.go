@@ -70,12 +70,12 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 		}
 		extraParamsStr := ""
 		if len(config.Database.ExtraParameters) > 0 {
-			extraParamsStr = config.Database.ExtraParameters[0]
+			extraParamsStr = "&" + config.Database.ExtraParameters[0]
 			for _, param := range config.Database.ExtraParameters[1:] {
 				extraParamsStr += "&" + param
 			}
 		}
-		dsn := fmt.Sprintf("%stcp(%s%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&%s",
+		dsn := fmt.Sprintf("%stcp(%s%s)/%s?charset=utf8mb4&parseTime=True&loc=Local%s",
 			prefix,
 			config.Database.Host,
 			portStr,

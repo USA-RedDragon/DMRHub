@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -32,6 +33,10 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 )
+
+// userCacheRefreshInterval controls how often ListenForWebsocket refreshes
+// the cached user and repeater list from the database.
+const userCacheRefreshInterval = 30 * time.Second
 
 // subscriptionManager tracks repeater-to-talkgroup subscriptions and manages
 // the pubsub fan-out goroutines that deliver packets to repeaters.
@@ -206,8 +211,18 @@ func (h *Hub) unsubscribeTalkgroup(repeaterID uint, talkgroupID uint, slot dmrco
 }
 
 // ListenForWebsocket relays call events to a WebSocket client for a specific user.
+// It caches the user's repeater list and refreshes it periodically to avoid
+// hitting the database on every pubsub message.
 func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	slog.Debug("Listening for websocket", "userID", userID)
+
+	// Load the user and repeaters once up front.
+	user, err := models.FindUserByID(h.db, userID)
+	if err != nil {
+		slog.Error("User not found for websocket, aborting", "userID", userID, "error", err)
+		return
+	}
+
 	subscription := h.pubsub.Subscribe("calls")
 	defer func() {
 		err := subscription.Close()
@@ -215,12 +230,24 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
+
 	pubsubChannel := subscription.Channel()
+	refreshTicker := time.NewTicker(userCacheRefreshInterval)
+	defer refreshTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Debug("Websocket context done", "userID", userID)
 			return
+		case <-refreshTicker.C:
+			// Periodically refresh the cached user and repeaters.
+			refreshed, err := models.FindUserByID(h.db, userID)
+			if err != nil {
+				slog.Error("Error refreshing user for websocket, keeping stale cache", "userID", userID, "error", err)
+				continue
+			}
+			user = refreshed
 		case msg := <-pubsubChannel:
 			if msg == nil {
 				continue
@@ -230,23 +257,6 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			err := json.Unmarshal(msg, &call)
 			if err != nil {
 				slog.Error("Error unmarshalling call", "error", err)
-				continue
-			}
-
-			userExists, err := models.UserIDExists(h.db, userID)
-			if err != nil {
-				slog.Error("Error checking if user exists", "userID", userID, "error", err)
-				continue
-			}
-
-			if !userExists {
-				slog.Error("User does not exist", "userID", userID)
-				continue
-			}
-
-			user, err := models.FindUserByID(h.db, userID)
-			if err != nil {
-				slog.Error("Error finding user", "userID", userID, "error", err)
 				continue
 			}
 

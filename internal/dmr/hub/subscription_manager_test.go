@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -815,5 +816,134 @@ func TestDeliverToServerUnblocksOnStop(t *testing.T) {
 		// Stop completed — the blocked deliverToServer send was interrupted.
 	case <-time.After(5 * time.Second):
 		t.Fatal("Hub.Stop() did not complete within 5s — deliverToServer is likely blocked on a full channel")
+	}
+}
+
+// TestListenForWebsocketNonExistentUserExitsImmediately verifies that
+// ListenForWebsocket returns immediately when called with a user ID that
+// doesn't exist in the database. Previously it would loop forever, querying
+// the DB on every pubsub message.
+func TestListenForWebsocketNonExistentUserExitsImmediately(t *testing.T) {
+	t.Parallel()
+	h, _ := makeTestHub(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		h.ListenForWebsocket(ctx, 99999) // non-existent user
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Expected: ListenForWebsocket exits immediately for non-existent user.
+	case <-time.After(2 * time.Second):
+		t.Fatal("ListenForWebsocket did not exit for non-existent user — should return immediately")
+		cancel()
+	}
+}
+
+// TestListenForWebsocketForwardsMatchingCalls verifies that
+// ListenForWebsocket correctly forwards call events that match the user's
+// repeater subscriptions using cached user data (no DB query per message).
+func TestListenForWebsocketForwardsMatchingCalls(t *testing.T) {
+	t.Parallel()
+	h, database, ps := makeTestHubWithPubSub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start listening for websocket calls
+	go h.ListenForWebsocket(ctx, 1000001)
+
+	// Subscribe to the user's personal call channel to verify forwarding
+	userSub := ps.Subscribe("calls:1000001")
+	defer func() { _ = userSub.Close() }()
+	userCh := userSub.Channel()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish a call event where DestinationID matches the repeater's OwnerID (1000001).
+	// This triggers the `call.DestinationID == p.OwnerID` branch in ListenForWebsocket.
+	call := models.Call{
+		ID:            1,
+		DestinationID: 1000001,
+		GroupCall:     false,
+		User:          models.User{ID: 2000001},
+	}
+	callJSON, err := json.Marshal(call)
+	require.NoError(t, err)
+	require.NoError(t, ps.Publish("calls", callJSON))
+
+	select {
+	case msg := <-userCh:
+		assert.NotNil(t, msg)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for call to be forwarded to user websocket channel")
+	}
+
+	// Send a second call — verifies caching works across multiple messages
+	call2 := models.Call{
+		ID:            2,
+		DestinationID: 1000001,
+		GroupCall:     false,
+		User:          models.User{ID: 2000002},
+	}
+	callJSON2, err := json.Marshal(call2)
+	require.NoError(t, err)
+	require.NoError(t, ps.Publish("calls", callJSON2))
+
+	select {
+	case msg := <-userCh:
+		assert.NotNil(t, msg)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for second call — cache may not be working")
+	}
+}
+
+// TestListenForWebsocketDoesNotForwardUnrelatedCalls verifies that
+// ListenForWebsocket does NOT forward calls that don't match any of the
+// user's repeater subscriptions.
+func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
+	t.Parallel()
+	h, database, ps := makeTestHubWithPubSub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	// No talkgroups assigned — nothing should match
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go h.ListenForWebsocket(ctx, 1000001)
+
+	userSub := ps.Subscribe("calls:1000001")
+	defer func() { _ = userSub.Close() }()
+	userCh := userSub.Channel()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish a call to an unrelated talkgroup
+	call := models.Call{
+		ID:            1,
+		DestinationID: 999,
+		GroupCall:     true,
+		IsToTalkgroup: true,
+		User:          models.User{ID: 2000001},
+	}
+	callJSON, err := json.Marshal(call)
+	require.NoError(t, err)
+	require.NoError(t, ps.Publish("calls", callJSON))
+
+	select {
+	case <-userCh:
+		t.Fatal("User should not receive calls for unsubscribed talkgroups")
+	case <-time.After(500 * time.Millisecond):
+		// Expected: no forwarding
 	}
 }

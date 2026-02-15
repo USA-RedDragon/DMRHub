@@ -42,6 +42,14 @@ import (
 // in-memory KV store. It returns the hub and database for seeding test data.
 func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 	t.Helper()
+	h, database, _ := makeTestHubWithPubSub(t)
+	return h, database
+}
+
+// makeTestHubWithPubSub is like makeTestHub but also returns the pubsub
+// instance so tests can publish/subscribe to channels directly.
+func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+	t.Helper()
 
 	defConfig, err := configulator.New[config.Config]().Default()
 	require.NoError(t, err)
@@ -70,7 +78,7 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 		_ = kvStore.Close()
 	})
 
-	return h, database
+	return h, database, ps
 }
 
 const testSrcID = uint(1000001)

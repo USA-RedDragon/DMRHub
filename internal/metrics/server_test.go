@@ -49,9 +49,13 @@ func TestCreateMetricsServer_PortInUseReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
-	port := listener.Addr().(*net.TCPAddr).Port
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("failed to get TCP address from listener")
+	}
+	port := addr.Port
 
 	cfg := &config.Config{
 		Metrics: config.Metrics{

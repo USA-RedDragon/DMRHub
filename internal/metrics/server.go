@@ -65,8 +65,7 @@ func CreateMetricsServer(config *config.Config) error {
 	slog.Info("Metrics Server listening", "address", server.Addr)
 	err = server.ListenAndServe()
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("Metrics server failed", "error", err)
-		return err
+		return fmt.Errorf("metrics server failed: %w", err)
 	}
 	return nil
 }

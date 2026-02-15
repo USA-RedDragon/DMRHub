@@ -247,7 +247,12 @@ func setupTracing(cfg *config.Config) func(context.Context) error {
 
 // startBackgroundServices starts metrics and pprof servers
 func startBackgroundServices(cfg *config.Config) {
-	go metrics.CreateMetricsServer(cfg)
+	go func() {
+		err := metrics.CreateMetricsServer(cfg)
+		if err != nil {
+			slog.Error("Failed to start metrics server", "error", err)
+		}
+	}()
 	go pprof.CreatePProfServer(cfg)
 }
 

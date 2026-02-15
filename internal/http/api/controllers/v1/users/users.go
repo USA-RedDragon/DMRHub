@@ -447,6 +447,7 @@ func GETUser(c *gin.Context) {
 	if err != nil {
 		slog.Error("Error finding user", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
 	}
 	c.JSON(http.StatusOK, user)
 }

@@ -527,6 +527,46 @@ func TestGetUserByID(t *testing.T) {
 	assert.Equal(t, user.Username, userResp.Username)
 }
 
+func TestGetUserByIDNotFound(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	resp, w, jar := testutils.LoginAdmin(t, router)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, resp.Error)
+	assert.Equal(t, "Logged in", resp.Message)
+
+	w = httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	// Request a user ID that does not exist
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users/9999999", nil)
+	assert.NoError(t, err)
+
+	for _, cookie := range jar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// The body must be a single valid JSON object with an error field.
+	// Before the fix, two JSON objects were concatenated, so this unmarshal would fail.
+	var errResp testutils.APIResponse
+	err = json.Unmarshal(w.Body.Bytes(), &errResp)
+	assert.NoError(t, err)
+	assert.Equal(t, "User does not exist", errResp.Error)
+	assert.Empty(t, errResp.Message)
+}
+
 func TestGetUserMe(t *testing.T) {
 	t.Parallel()
 

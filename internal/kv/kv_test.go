@@ -186,45 +186,6 @@ func TestKVClose(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestKVClaimLeaseExclusiveOwner(t *testing.T) {
-	t.Parallel()
-	store := makeTestKV(t)
-
-	claimed, err := store.ClaimLease("lease:test", "owner-a", time.Second)
-	assert.NoError(t, err)
-	assert.True(t, claimed)
-
-	claimed, err = store.ClaimLease("lease:test", "owner-b", time.Second)
-	assert.NoError(t, err)
-	assert.False(t, claimed)
-}
-
-func TestKVClaimLeaseRenewalAndFailover(t *testing.T) {
-	t.Parallel()
-	store := makeTestKV(t)
-
-	claimed, err := store.ClaimLease("lease:test-renew", "owner-a", 40*time.Millisecond)
-	assert.NoError(t, err)
-	assert.True(t, claimed)
-
-	// Same owner should be able to renew.
-	claimed, err = store.ClaimLease("lease:test-renew", "owner-a", 40*time.Millisecond)
-	assert.NoError(t, err)
-	assert.True(t, claimed)
-
-	// Different owner should not claim before expiry.
-	claimed, err = store.ClaimLease("lease:test-renew", "owner-b", 40*time.Millisecond)
-	assert.NoError(t, err)
-	assert.False(t, claimed)
-
-	time.Sleep(80 * time.Millisecond)
-
-	// Different owner can claim after expiry.
-	claimed, err = store.ClaimLease("lease:test-renew", "owner-b", time.Second)
-	assert.NoError(t, err)
-	assert.True(t, claimed)
-}
-
 // --- Benchmarks ---
 
 func makeTestKVB(b *testing.B) kv.KV {

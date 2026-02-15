@@ -31,7 +31,6 @@ type KV interface {
 	Has(key string) (bool, error)
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
-	ClaimLease(key string, owner string, ttl time.Duration) (bool, error)
 	Delete(key string) error
 	Expire(key string, ttl time.Duration) error
 	Scan(cursor uint64, match string, count int64) ([]string, uint64, error)

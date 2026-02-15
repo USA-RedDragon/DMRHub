@@ -31,24 +31,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const claimLeaseScriptSource = `
-local owner = ARGV[1]
-local ttlMs = tonumber(ARGV[2])
-
-local current = redis.call('GET', KEYS[1])
-if not current then
-	redis.call('PSETEX', KEYS[1], ttlMs, owner)
-	return 1
-end
-
-if current == owner then
-	redis.call('PEXPIRE', KEYS[1], ttlMs)
-	return 1
-end
-
-return 0
-`
-
 func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:            fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
@@ -72,12 +54,11 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 		}
 	}
 
-	return &redisKV{client: client, claimLeaseScript: redis.NewScript(claimLeaseScriptSource)}, nil
+	return &redisKV{client: client}, nil
 }
 
 type redisKV struct {
-	client           *redis.Client
-	claimLeaseScript *redis.Script
+	client *redis.Client
 }
 
 func (kv *redisKV) Has(key string) (bool, error) {
@@ -101,19 +82,6 @@ func (kv *redisKV) Set(key string, value []byte) error {
 		return fmt.Errorf("redis set %s: %w", key, err)
 	}
 	return nil
-}
-
-func (kv *redisKV) ClaimLease(key string, owner string, ttl time.Duration) (bool, error) {
-	if ttl <= 0 {
-		return false, fmt.Errorf("ttl must be positive")
-	}
-
-	claim, err := kv.claimLeaseScript.Run(context.Background(), kv.client, []string{key}, owner, ttl.Milliseconds()).Int()
-	if err != nil {
-		return false, fmt.Errorf("redis claim lease %s: %w", key, err)
-	}
-
-	return claim == 1, nil
 }
 
 func (kv *redisKV) Delete(key string) error {

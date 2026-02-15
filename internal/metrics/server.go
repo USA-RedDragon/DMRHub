@@ -20,6 +20,7 @@
 package metrics
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,34 +35,38 @@ import (
 
 const readTimeout = 3 * time.Second
 
-func CreateMetricsServer(config *config.Config) {
-	if config.Metrics.Enabled {
-		r := gin.New()
-		r.Use(gin.Logger())
-		r.Use(gin.Recovery())
-
-		// Tracing
-		if config.Metrics.OTLPEndpoint != "" {
-			r.Use(otelgin.Middleware("metrics"))
-			r.Use(middleware.TracingProvider(config))
-		}
-
-		err := r.SetTrustedProxies(config.Metrics.TrustedProxies)
-		if err != nil {
-			slog.Error("Failed setting trusted proxies", "error", err)
-		}
-
-		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-
-		server := &http.Server{
-			Addr:              fmt.Sprintf("%s:%d", config.Metrics.Bind, config.Metrics.Port),
-			Handler:           r,
-			ReadHeaderTimeout: readTimeout,
-		}
-		slog.Info("Metrics Server listening", "address", server.Addr)
-		err = server.ListenAndServe()
-		if err != nil {
-			panic(err)
-		}
+func CreateMetricsServer(config *config.Config) error {
+	if !config.Metrics.Enabled {
+		return nil
 	}
+
+	r := gin.New()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+
+	// Tracing
+	if config.Metrics.OTLPEndpoint != "" {
+		r.Use(otelgin.Middleware("metrics"))
+		r.Use(middleware.TracingProvider(config))
+	}
+
+	err := r.SetTrustedProxies(config.Metrics.TrustedProxies)
+	if err != nil {
+		slog.Error("Failed setting trusted proxies", "error", err)
+	}
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	server := &http.Server{
+		Addr:              fmt.Sprintf("%s:%d", config.Metrics.Bind, config.Metrics.Port),
+		Handler:           r,
+		ReadHeaderTimeout: readTimeout,
+	}
+	slog.Info("Metrics Server listening", "address", server.Addr)
+	err = server.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("Metrics server failed", "error", err)
+		return err
+	}
+	return nil
 }

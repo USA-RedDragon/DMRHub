@@ -948,6 +948,46 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 	})
 }
 
+// TestParrotIPSC verifies that a private call to 9990 (parrot) sent from an
+// IPSC peer records the voice stream and plays it back to the same IPSC peer
+// with source and destination swapped.
+func TestParrotIPSC(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+
+		stack.StartServers(t)
+
+		ic := testutils.NewIPSCClient(200001, ipscAuthKey)
+		require.NoError(t, ic.Connect(stack.IPSCAddr))
+		defer ic.Close()
+		require.NoError(t, ic.WaitReady(handshakeWait))
+
+		time.Sleep(settleDuration)
+
+		const parrotUser = uint(9990)
+		const callerUser = uint(1000001)
+
+		// Send a private voice call to 9990 (parrot) from user 1000001
+		err := ic.SendPrivateVoice(callerUser, parrotUser, false, 9001)
+		require.NoError(t, err)
+
+		// Parrot has a ~3-second delay before playback; wait up to 7 seconds.
+		bursts := ic.Drain(7 * time.Second)
+		assert.NotEmpty(t, bursts, "IPSC peer should receive parrot playback packets")
+		for _, b := range bursts {
+			assert.Equal(t, callerUser, b.Dst,
+				"parrot playback Dst should be the original caller")
+			assert.Equal(t, parrotUser, b.Src,
+				"parrot playback Src should be 9990")
+			assert.False(t, b.GroupCall,
+				"parrot playback should be a private call")
+		}
+	})
+}
+
 // TestMultiReplicaDelivery verifies that when two replicas of the app share the
 // same pubsub/KV/DB, a group call is delivered ONLY by the replica that holds
 // the repeater's UDP session — not by the other replica.

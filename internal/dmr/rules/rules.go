@@ -20,28 +20,38 @@
 package rules
 
 import (
+	"fmt"
+
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"gorm.io/gorm"
 )
 
-func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) bool {
+func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) (bool, error) {
 	if peer.Egress {
-		for _, rule := range models.ListEgressRulesForPeer(db, peer.ID) {
+		egressRules, err := models.ListEgressRulesForPeer(db, peer.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to list egress rules for peer %d: %w", peer.ID, err)
+		}
+		for _, rule := range egressRules {
 			if rule.SubjectIDMin <= packet.Src && rule.SubjectIDMax >= packet.Src {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
-func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) bool {
+func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (bool, error) {
 	if peer.Ingress {
-		for _, rule := range models.ListIngressRulesForPeer(db, peer.ID) {
+		ingressRules, err := models.ListIngressRulesForPeer(db, peer.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to list ingress rules for peer %d: %w", peer.ID, err)
+		}
+		for _, rule := range ingressRules {
 			if rule.SubjectIDMin <= packet.Dst && rule.SubjectIDMax >= packet.Dst {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }

@@ -299,7 +299,12 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 		return
 	}
 
-	if !rules.PeerShouldIngress(s.DB, &peer, &packet) {
+	should, err := rules.PeerShouldIngress(s.DB, &peer, &packet)
+	if err != nil {
+		slog.Error("Failed to check peer ingress rules", "peerID", peerID, "error", err)
+		return
+	}
+	if !should {
 		return
 	}
 
@@ -313,7 +318,12 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 		if p.ID == peerID {
 			continue
 		}
-		if rules.PeerShouldEgress(s.DB, p, &packet) {
+		should, err := rules.PeerShouldEgress(s.DB, p, &packet)
+		if err != nil {
+			slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
+			continue
+		}
+		if should {
 			s.sendPacketToPeer(ctx, p.ID, packet)
 		}
 	}

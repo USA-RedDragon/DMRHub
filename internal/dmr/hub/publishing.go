@@ -81,7 +81,12 @@ func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
 				return
 			default:
 			}
-			if rules.PeerShouldEgress(h.db, p, &packet) {
+			should, err := rules.PeerShouldEgress(h.db, p, &packet)
+			if err != nil {
+				slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
+				continue
+			}
+			if should {
 				h.publishToPeer(p.ID, packet)
 			}
 		}

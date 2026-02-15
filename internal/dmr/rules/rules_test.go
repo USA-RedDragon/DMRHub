@@ -67,7 +67,8 @@ func TestPeerShouldEgressNoEgress(t *testing.T) {
 		Dst: 200,
 	}
 
-	result := rules.PeerShouldEgress(database, peer, packet)
+	result, err := rules.PeerShouldEgress(database, peer, packet)
+	assert.NoError(t, err)
 	assert.False(t, result, "peer with egress disabled should not egress")
 }
 
@@ -96,7 +97,8 @@ func TestPeerShouldEgressWithMatchingRule(t *testing.T) {
 		Dst: 300,
 	}
 
-	result := rules.PeerShouldEgress(database, peer, packet)
+	result, err := rules.PeerShouldEgress(database, peer, packet)
+	assert.NoError(t, err)
 	assert.True(t, result, "peer with matching egress rule should egress")
 }
 
@@ -125,7 +127,8 @@ func TestPeerShouldEgressNoMatchingRule(t *testing.T) {
 		Dst: 300,
 	}
 
-	result := rules.PeerShouldEgress(database, peer, packet)
+	result, err := rules.PeerShouldEgress(database, peer, packet)
+	assert.NoError(t, err)
 	assert.False(t, result, "peer without matching egress rule should not egress")
 }
 
@@ -146,7 +149,8 @@ func TestPeerShouldIngressNoIngress(t *testing.T) {
 		Dst: 200,
 	}
 
-	result := rules.PeerShouldIngress(database, &peer, packet)
+	result, err := rules.PeerShouldIngress(database, &peer, packet)
+	assert.NoError(t, err)
 	assert.False(t, result, "peer with ingress disabled should not ingress")
 }
 
@@ -175,7 +179,8 @@ func TestPeerShouldIngressWithMatchingRule(t *testing.T) {
 		Dst: 200,
 	}
 
-	result := rules.PeerShouldIngress(database, &peer, packet)
+	result, err := rules.PeerShouldIngress(database, &peer, packet)
+	assert.NoError(t, err)
 	assert.True(t, result, "peer with matching ingress rule should ingress")
 }
 
@@ -204,7 +209,8 @@ func TestPeerShouldIngressNoMatchingRule(t *testing.T) {
 		Dst: 500,
 	}
 
-	result := rules.PeerShouldIngress(database, &peer, packet)
+	result, err := rules.PeerShouldIngress(database, &peer, packet)
+	assert.NoError(t, err)
 	assert.False(t, result, "peer without matching ingress rule should not ingress")
 }
 
@@ -228,14 +234,22 @@ func TestPeerShouldEgressBoundaryValues(t *testing.T) {
 	database.Create(&rule)
 
 	packetLow := &models.Packet{Src: 100, Dst: 300}
-	assert.True(t, rules.PeerShouldEgress(database, peer, packetLow), "Src at lower bound should match")
+	resultLow, err := rules.PeerShouldEgress(database, peer, packetLow)
+	assert.NoError(t, err)
+	assert.True(t, resultLow, "Src at lower bound should match")
 
 	packetHigh := &models.Packet{Src: 200, Dst: 300}
-	assert.True(t, rules.PeerShouldEgress(database, peer, packetHigh), "Src at upper bound should match")
+	resultHigh, err := rules.PeerShouldEgress(database, peer, packetHigh)
+	assert.NoError(t, err)
+	assert.True(t, resultHigh, "Src at upper bound should match")
 
 	packetBelow := &models.Packet{Src: 99, Dst: 300}
-	assert.False(t, rules.PeerShouldEgress(database, peer, packetBelow), "Src below range should not match")
+	resultBelow, err := rules.PeerShouldEgress(database, peer, packetBelow)
+	assert.NoError(t, err)
+	assert.False(t, resultBelow, "Src below range should not match")
 
 	packetAbove := &models.Packet{Src: 201, Dst: 300}
-	assert.False(t, rules.PeerShouldEgress(database, peer, packetAbove), "Src above range should not match")
+	resultAbove, err := rules.PeerShouldEgress(database, peer, packetAbove)
+	assert.NoError(t, err)
+	assert.False(t, resultAbove, "Src above range should not match")
 }

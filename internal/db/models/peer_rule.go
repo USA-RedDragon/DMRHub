@@ -53,20 +53,20 @@ func (p *PeerRule) String() string {
 	return string(jsn)
 }
 
-func ListRulesForPeer(db *gorm.DB, peerID uint) []PeerRule {
+func ListRulesForPeer(db *gorm.DB, peerID uint) ([]PeerRule, error) {
 	var peerRules []PeerRule
-	db.Preload("Peer").Order("id asc").Where("peer_id = ?", peerID).Find(&peerRules)
-	return peerRules
+	err := db.Preload("Peer").Order("id asc").Where("peer_id = ?", peerID).Find(&peerRules).Error
+	return peerRules, err
 }
 
-func ListIngressRulesForPeer(db *gorm.DB, peerID uint) []PeerRule {
+func ListIngressRulesForPeer(db *gorm.DB, peerID uint) ([]PeerRule, error) {
 	var peerRules []PeerRule
-	db.Preload("Peer").Order("id asc").Where("peer_id = ? AND direction = true", peerID).Find(&peerRules)
-	return peerRules
+	err := db.Preload("Peer").Order("id asc").Where("peer_id = ? AND direction = true", peerID).Find(&peerRules).Error
+	return peerRules, err
 }
 
-func ListEgressRulesForPeer(db *gorm.DB, peerID uint) []PeerRule {
+func ListEgressRulesForPeer(db *gorm.DB, peerID uint) ([]PeerRule, error) {
 	var peerRules []PeerRule
-	db.Preload("Peer").Order("id asc").Where("peer_id = ? AND direction = false", peerID).Find(&peerRules)
-	return peerRules
+	err := db.Preload("Peer").Order("id asc").Where("peer_id = ? AND direction = false", peerID).Find(&peerRules).Error
+	return peerRules, err
 }

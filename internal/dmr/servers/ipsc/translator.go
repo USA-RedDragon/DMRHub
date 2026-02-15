@@ -620,6 +620,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	}
 
 	// Parse the IPSC header
+	peerID := binary.BigEndian.Uint32(data[1:5])
 	src := uint(data[6])<<16 | uint(data[7])<<8 | uint(data[8])
 	dst := uint(data[9])<<16 | uint(data[10])<<8 | uint(data[11])
 	groupCall := packetType == 0x80 || packetType == 0x83
@@ -659,7 +660,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	case ipscBurstVoiceHead:
 		// Voice LC Header — only process the first one (IPSC sends 3)
 		if !rss.started {
-			pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, rss,
+			pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, peerID, rss,
 				elements.DataTypeVoiceLCHeader, data)
 			results = append(results, pkt)
 			rss.started = true
@@ -669,7 +670,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 
 	case ipscBurstVoiceTerm:
 		// Voice Terminator
-		pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, rss,
+		pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, peerID, rss,
 			elements.DataTypeTerminatorWithLC, data)
 		results = append(results, pkt)
 		// Clean up
@@ -682,13 +683,13 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			return nil
 		}
 
-		if pkt, ok := t.buildMMDVMVoiceBurst(src, dst, groupCall, slot, rss, data); ok {
+		if pkt, ok := t.buildMMDVMVoiceBurst(src, dst, groupCall, slot, peerID, rss, data); ok {
 			results = append(results, pkt)
 		}
 
 	case ipscBurstCSBK:
 		// CSBK or data burst — same 54-byte structure as voice header
-		pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, rss,
+		pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, peerID, rss,
 			elements.DataTypeCSBK, data)
 		results = append(results, pkt)
 
@@ -697,7 +698,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 		// the same structure as a voice header (54 bytes with LC data).
 		// The burst type byte maps directly to the DMR data type.
 		if len(data) >= 50 && burstType <= 10 {
-			pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, rss,
+			pkt := t.buildMMDVMDataPacket(src, dst, groupCall, slot, peerID, rss,
 				elements.DataType(burstType), data)
 			results = append(results, pkt)
 		} else {
@@ -719,6 +720,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 // It constructs the 33-byte DMR burst from the IPSC payload data using BPTC encoding.
 func (t *IPSCTranslator) buildMMDVMDataPacket(
 	src, dst uint, groupCall, slot bool,
+	peerID uint32,
 	rss *reverseStreamState,
 	dataType elements.DataType,
 	ipscData []byte,
@@ -728,7 +730,7 @@ func (t *IPSCTranslator) buildMMDVMDataPacket(
 		Seq:         uint(rss.seq),
 		Src:         src,
 		Dst:         dst,
-		Repeater:    uint(t.repeaterID),
+		Repeater:    uint(peerID),
 		Slot:        slot,
 		GroupCall:   groupCall,
 		FrameType:   dmrconst.FrameDataSync,
@@ -775,6 +777,7 @@ func (t *IPSCTranslator) buildMMDVMDataPacket(
 // and reconstructs the full 33-byte DMR burst with proper sync/EMB.
 func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 	src, dst uint, groupCall, slot bool,
+	peerID uint32,
 	rss *reverseStreamState,
 	ipscData []byte,
 ) (models.Packet, bool) {
@@ -845,7 +848,7 @@ func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 		Seq:         uint(rss.seq),
 		Src:         src,
 		Dst:         dst,
-		Repeater:    uint(t.repeaterID),
+		Repeater:    uint(peerID),
 		Slot:        slot,
 		GroupCall:   groupCall,
 		FrameType:   frameType,

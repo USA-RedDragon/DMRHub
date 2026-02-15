@@ -369,12 +369,10 @@ func POSTRepeater(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 				return
 			}
-			go func() {
-				dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
-				if ok {
-					dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-				}
-			}()
+			dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+			if ok {
+				go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+			}
 			c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 			return
 		}
@@ -475,12 +473,10 @@ func POSTRepeater(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
 			return
 		}
-		go func() {
-			dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
-			if ok {
-				dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-			}
-		}()
+		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+		if ok {
+			go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
 	}
 }
@@ -582,12 +578,10 @@ func POSTRepeaterLink(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
 		return
 	}
-	go func() {
-		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
-		if ok {
-			dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-		}
-	}()
+	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
+	if ok {
+		go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+	}
 }
 
 // validateRepeaterID validates and parses a repeater ID from a parameter

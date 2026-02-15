@@ -138,42 +138,54 @@ const allowedNumbers = "2356789"
 const allowedSpecial = "!@#$%^&*-_"
 
 func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
+	if minNumbers+minSpecial > length {
+		return "", ErrNoRandom
+	}
+
 	b := make([]byte, length)
 
-	for i := 0; i < length; i++ {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedChars))))
+	// Build a list of all indices, then shuffle and pick distinct positions
+	// for number and special characters to avoid overwrites.
+	indices := make([]int, length)
+	for i := range indices {
+		indices[i] = i
+	}
+	// Fisher-Yates shuffle
+	for i := length - 1; i > 0; i-- {
+		jBig, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
 		if err != nil {
 			return "", ErrNoRandom
 		}
-		b[i] = allowedChars[num.Int64()]
+		j := int(jBig.Int64())
+		indices[i], indices[j] = indices[j], indices[i]
 	}
 
+	numberIndices := make(map[int]bool, minNumbers)
+	specialIndices := make(map[int]bool, minSpecial)
 	for i := 0; i < minNumbers; i++ {
-		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
-		if err != nil {
-			return "", ErrNoRandom
-		}
-
-		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedNumbers))))
-		if err != nil {
-			return "", ErrNoRandom
-		}
-
-		b[randInt.Int64()] = allowedNumbers[rollInt.Int64()]
+		numberIndices[indices[i]] = true
 	}
 	for i := 0; i < minSpecial; i++ {
-		randInt, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
-		if err != nil {
-			return "", ErrNoRandom
-		}
-
-		rollInt, err := rand.Int(rand.Reader, big.NewInt(int64(len(allowedSpecial))))
-		if err != nil {
-			return "", ErrNoRandom
-		}
-
-		b[randInt.Int64()] = allowedSpecial[rollInt.Int64()]
+		specialIndices[indices[minNumbers+i]] = true
 	}
+
+	for i := 0; i < length; i++ {
+		var charset string
+		switch {
+		case numberIndices[i]:
+			charset = allowedNumbers
+		case specialIndices[i]:
+			charset = allowedSpecial
+		default:
+			charset = allowedChars
+		}
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", ErrNoRandom
+		}
+		b[i] = charset[idx.Int64()]
+	}
+
 	return string(b), nil
 }
 

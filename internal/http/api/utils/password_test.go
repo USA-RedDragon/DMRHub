@@ -195,3 +195,40 @@ func TestRandomPasswordUniqueness(t *testing.T) {
 		t.Error("Expected different random passwords")
 	}
 }
+
+func TestRandomPasswordGuaranteesMinCounts(t *testing.T) {
+	// Regression test: the old implementation placed numbers and specials at
+	// random indices that could collide, so the resulting password sometimes
+	// had fewer numbers or specials than requested.
+	t.Parallel()
+	specialChars := "!@#$%^&*-_"
+	numberChars := "2356789"
+	const iterations = 200
+	const length = 20
+	const minNumbers = 5
+	const minSpecial = 5
+
+	for i := 0; i < iterations; i++ {
+		pw, err := utils.RandomPassword(length, minNumbers, minSpecial)
+		if err != nil {
+			t.Fatalf("RandomPassword failed: %v", err)
+		}
+
+		numCount := 0
+		specCount := 0
+		for _, c := range pw {
+			if strings.ContainsRune(numberChars, c) {
+				numCount++
+			}
+			if strings.ContainsRune(specialChars, c) {
+				specCount++
+			}
+		}
+		if numCount < minNumbers {
+			t.Errorf("iteration %d: expected at least %d numbers, got %d in %q", i, minNumbers, numCount, pw)
+		}
+		if specCount < minSpecial {
+			t.Errorf("iteration %d: expected at least %d specials, got %d in %q", i, minSpecial, specCount, pw)
+		}
+	}
+}

@@ -49,8 +49,19 @@ func GETLastheard(c *gin.Context) {
 	var count int
 	if userID == nil {
 		// This is okay, we just query the latest public calls
-		calls = models.FindCalls(db)
-		count = models.CountCalls(cDb)
+		var err error
+		calls, err = models.FindCalls(db)
+		if err != nil {
+			slog.Error("Unable to find calls", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
+		count, err = models.CountCalls(cDb)
+		if err != nil {
+			slog.Error("Unable to count calls", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
 	} else {
 		// Get the last calls for the user
 		uid, ok := userID.(uint)
@@ -59,8 +70,19 @@ func GETLastheard(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 			return
 		}
-		calls = models.FindUserCalls(db, uid)
-		count = models.CountUserCalls(cDb, uid)
+		var err error
+		calls, err = models.FindUserCalls(db, uid)
+		if err != nil {
+			slog.Error("Unable to find user calls", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
+		count, err = models.CountUserCalls(cDb, uid)
+		if err != nil {
+			slog.Error("Unable to count user calls", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			return
+		}
 	}
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
@@ -89,8 +111,18 @@ func GETLastheardUser(c *gin.Context) {
 		return
 	}
 	userID := uint(userID64)
-	calls := models.FindUserCalls(db, userID)
-	count := models.CountUserCalls(cDb, userID)
+	calls, err := models.FindUserCalls(db, userID)
+	if err != nil {
+		slog.Error("Unable to find user calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	count, err := models.CountUserCalls(cDb, userID)
+	if err != nil {
+		slog.Error("Unable to count user calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }
 
@@ -114,8 +146,18 @@ func GETLastheardRepeater(c *gin.Context) {
 		return
 	}
 	repeaterID := uint(repeaterID64)
-	calls := models.FindRepeaterCalls(db, repeaterID)
-	count := models.CountRepeaterCalls(cDb, repeaterID)
+	calls, err := models.FindRepeaterCalls(db, repeaterID)
+	if err != nil {
+		slog.Error("Unable to find repeater calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	count, err := models.CountRepeaterCalls(cDb, repeaterID)
+	if err != nil {
+		slog.Error("Unable to count repeater calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }
 
@@ -133,7 +175,17 @@ func GETLastheardTalkgroup(c *gin.Context) {
 		return
 	}
 	talkgroupID := uint(talkgroupID64)
-	calls := models.FindTalkgroupCalls(db, talkgroupID)
-	count := models.CountTalkgroupCalls(db, talkgroupID)
+	calls, err := models.FindTalkgroupCalls(db, talkgroupID)
+	if err != nil {
+		slog.Error("Unable to find talkgroup calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	count, err := models.CountTalkgroupCalls(db, talkgroupID)
+	if err != nil {
+		slog.Error("Unable to count talkgroup calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
 }

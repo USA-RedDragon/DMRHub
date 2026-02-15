@@ -66,59 +66,59 @@ type Call struct {
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-func FindCalls(db *gorm.DB) []Call {
+func FindCalls(db *gorm.DB) ([]Call, error) {
 	var calls []Call
-	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_talkgroup = ?", true).Order("start_time desc").Find(&calls)
-	return calls
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_talkgroup = ?", true).Order("start_time desc").Find(&calls).Error
+	return calls, err
 }
 
-func CountCalls(db *gorm.DB) int {
+func CountCalls(db *gorm.DB) (int, error) {
 	var count int64
-	db.Model(&Call{}).Where("is_to_talkgroup = ?", true).Count(&count)
-	return int(count)
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ?", true).Count(&count).Error
+	return int(count), err
 }
 
-func FindRepeaterCalls(db *gorm.DB, repeaterID uint) []Call {
+func FindRepeaterCalls(db *gorm.DB, repeaterID uint) ([]Call, error) {
 	var calls []Call
-	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
 		Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeaterID, repeaterID).
-		Order("start_time desc").Find(&calls)
-	return calls
+		Order("start_time desc").Find(&calls).Error
+	return calls, err
 }
 
-func CountRepeaterCalls(db *gorm.DB, repeaterID uint) int {
+func CountRepeaterCalls(db *gorm.DB, repeaterID uint) (int, error) {
 	var count int64
-	db.Model(&Call{}).Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeaterID, repeaterID).Count(&count)
-	return int(count)
+	err := db.Model(&Call{}).Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeaterID, repeaterID).Count(&count).Error
+	return int(count), err
 }
 
-func FindUserCalls(db *gorm.DB, userID uint) []Call {
+func FindUserCalls(db *gorm.DB, userID uint) ([]Call, error) {
 	var calls []Call
-	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
 		Where("(is_to_user = ? AND to_user_id = ?) OR user_id = ?", true, userID, userID).
-		Order("start_time desc").Find(&calls)
-	return calls
+		Order("start_time desc").Find(&calls).Error
+	return calls, err
 }
 
-func CountUserCalls(db *gorm.DB, userID uint) int {
+func CountUserCalls(db *gorm.DB, userID uint) (int, error) {
 	var count int64
-	db.Model(&Call{}).Where("(is_to_user = ? AND to_user_id = ?) OR user_id = ?", true, userID, userID).Count(&count)
-	return int(count)
+	err := db.Model(&Call{}).Where("(is_to_user = ? AND to_user_id = ?) OR user_id = ?", true, userID, userID).Count(&count).Error
+	return int(count), err
 }
 
-func FindTalkgroupCalls(db *gorm.DB, talkgroupID uint) []Call {
+func FindTalkgroupCalls(db *gorm.DB, talkgroupID uint) ([]Call, error) {
 	var calls []Call
 	// Find calls where (IsToTalkgroup is true and ToTalkgroupID is talkgroupID)
-	db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
 		Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, talkgroupID).
-		Order("start_time desc").Find(&calls)
-	return calls
+		Order("start_time desc").Find(&calls).Error
+	return calls, err
 }
 
-func CountTalkgroupCalls(db *gorm.DB, talkgroupID uint) int {
+func CountTalkgroupCalls(db *gorm.DB, talkgroupID uint) (int, error) {
 	var count int64
-	db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, talkgroupID).Count(&count)
-	return int(count)
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, talkgroupID).Count(&count).Error
+	return int(count), err
 }
 
 func FindActiveCall(db *gorm.DB, streamID uint, src uint, dst uint, slot bool, groupCall bool) (Call, error) {
@@ -130,8 +130,8 @@ func FindActiveCall(db *gorm.DB, streamID uint, src uint, dst uint, slot bool, g
 	return call, nil
 }
 
-func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool, groupCall bool) bool {
+func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool, groupCall bool) (bool, error) {
 	var count int64
-	db.Model(&Call{}).Where("stream_id = ? AND active = ? AND user_id = ? AND destination_id = ? AND time_slot = ? AND group_call = ?", streamID, true, src, dst, slot, groupCall).Count(&count)
-	return count > 0
+	err := db.Model(&Call{}).Where("stream_id = ? AND active = ? AND user_id = ? AND destination_id = ? AND time_slot = ? AND group_call = ?", streamID, true, src, dst, slot, groupCall).Count(&count).Error
+	return count > 0, err
 }

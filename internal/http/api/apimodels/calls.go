@@ -18,7 +18,11 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 package apimodels
 
-import "time"
+import (
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+)
 
 type WSCallResponseUser struct {
 	ID       uint   `json:"id"`
@@ -54,4 +58,40 @@ type WSCallResponse struct {
 	Jitter        float32                 `json:"jitter"`
 	BER           float32                 `json:"ber"`
 	RSSI          float32                 `json:"rssi"`
+}
+
+// NewWSCallResponseFromCall converts a models.Call into a WSCallResponse suitable
+// for JSON serialisation over WebSocket or pubsub channels.
+func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
+	resp := WSCallResponse{
+		ID:            call.ID,
+		StartTime:     call.StartTime,
+		Duration:      call.Duration,
+		Active:        call.Active,
+		TimeSlot:      call.TimeSlot,
+		GroupCall:     call.GroupCall,
+		IsToTalkgroup: call.IsToTalkgroup,
+		IsToUser:      call.IsToUser,
+		IsToRepeater:  call.IsToRepeater,
+		Loss:          call.Loss,
+		Jitter:        call.Jitter,
+		BER:           call.BER,
+		RSSI:          call.RSSI,
+	}
+	resp.User.ID = call.User.ID
+	resp.User.Callsign = call.User.Callsign
+	if call.IsToTalkgroup {
+		resp.ToTalkgroup.ID = call.ToTalkgroup.ID
+		resp.ToTalkgroup.Name = call.ToTalkgroup.Name
+		resp.ToTalkgroup.Description = call.ToTalkgroup.Description
+	}
+	if call.IsToUser {
+		resp.ToUser.ID = call.ToUser.ID
+		resp.ToUser.Callsign = call.ToUser.Callsign
+	}
+	if call.IsToRepeater {
+		resp.ToRepeater.RadioID = call.ToRepeater.ID
+		resp.ToRepeater.Callsign = call.ToRepeater.Callsign
+	}
+	return resp
 }

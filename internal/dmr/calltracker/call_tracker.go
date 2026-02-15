@@ -315,36 +315,7 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 	defer span.End()
 
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		// copy call into a jsonCallResponse
-		var jsonCall apimodels.WSCallResponse
-		jsonCall.ID = call.ID
-		jsonCall.User.ID = call.User.ID
-		jsonCall.User.Callsign = call.User.Callsign
-		jsonCall.StartTime = call.StartTime
-		jsonCall.Duration = call.Duration
-		jsonCall.Active = call.Active
-		jsonCall.TimeSlot = call.TimeSlot
-		jsonCall.GroupCall = call.GroupCall
-		if call.IsToTalkgroup {
-			jsonCall.ToTalkgroup.ID = call.ToTalkgroup.ID
-			jsonCall.ToTalkgroup.Name = call.ToTalkgroup.Name
-			jsonCall.ToTalkgroup.Description = call.ToTalkgroup.Description
-		}
-		if call.IsToUser {
-			jsonCall.ToUser.ID = call.ToUser.ID
-			jsonCall.ToUser.Callsign = call.ToUser.Callsign
-		}
-		if call.IsToRepeater {
-			jsonCall.ToRepeater.RadioID = call.ToRepeater.ID
-			jsonCall.ToRepeater.Callsign = call.ToRepeater.Callsign
-		}
-		jsonCall.IsToTalkgroup = call.IsToTalkgroup
-		jsonCall.IsToUser = call.IsToUser
-		jsonCall.IsToRepeater = call.IsToRepeater
-		jsonCall.Loss = call.Loss
-		jsonCall.Jitter = call.Jitter
-		jsonCall.BER = call.BER
-		jsonCall.RSSI = call.RSSI
+		jsonCall := apimodels.NewWSCallResponseFromCall(call)
 		// Publish the call JSON to pubsub
 		callJSON, err := json.Marshal(jsonCall)
 		if err != nil {

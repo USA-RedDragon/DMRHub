@@ -20,6 +20,7 @@
 package models_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -131,6 +132,59 @@ func FuzzRepeaterConfigurationUnmarshalMsg(f *testing.F) {
 		var c models.RepeaterConfiguration
 		_, _ = c.UnmarshalMsg(data)
 	})
+}
+
+func TestParseConfigKnownGoodPacket(t *testing.T) {
+	t.Parallel()
+	data := buildValidRPTCPacket()
+	var c models.RepeaterConfiguration
+	err := c.ParseConfig(data, "test", "abc123")
+	if err != nil {
+		t.Fatalf("ParseConfig returned unexpected error: %v", err)
+	}
+
+	if c.Callsign != "N0CALL" {
+		t.Errorf("Callsign = %q, want %q", c.Callsign, "N0CALL")
+	}
+	if c.RXFrequency != 145000000 {
+		t.Errorf("RXFrequency = %d, want %d", c.RXFrequency, 145000000)
+	}
+	if c.TXFrequency != 145600000 {
+		t.Errorf("TXFrequency = %d, want %d", c.TXFrequency, 145600000)
+	}
+	if c.TXPower != 50 {
+		t.Errorf("TXPower = %d, want %d", c.TXPower, 50)
+	}
+	if c.ColorCode != 1 {
+		t.Errorf("ColorCode = %d, want %d", c.ColorCode, 1)
+	}
+	// ParseFloat with bitSize=32 rounds to float32 precision, then stores as float64.
+	if math.Abs(c.Latitude-35.0) > 0.001 {
+		t.Errorf("Latitude = %f, want ~35.0", c.Latitude)
+	}
+	if math.Abs(c.Longitude-(-97.0)) > 0.001 {
+		t.Errorf("Longitude = %f, want ~-97.0", c.Longitude)
+	}
+	if c.Height != 100 {
+		t.Errorf("Height = %d, want %d", c.Height, 100)
+	}
+	if c.Location != "Oklahoma City" {
+		t.Errorf("Location = %q, want %q", c.Location, "Oklahoma City")
+	}
+	if c.Description != "DMRHub Test" {
+		t.Errorf("Description = %q, want %q", c.Description, "DMRHub Test")
+	}
+	if c.Slots != 4 {
+		t.Errorf("Slots = %d, want %d", c.Slots, 4)
+	}
+	if c.URL != "https://example.com" {
+		t.Errorf("URL = %q, want %q", c.URL, "https://example.com")
+	}
+	// SoftwareID and PackageID are empty in the packet, so defaults apply.
+	wantSW := "USA-RedDragon/DMRHub test-abc123"
+	if c.SoftwareID != wantSW {
+		t.Errorf("SoftwareID = %q, want %q", c.SoftwareID, wantSW)
+	}
 }
 
 func BenchmarkParseConfig(b *testing.B) {

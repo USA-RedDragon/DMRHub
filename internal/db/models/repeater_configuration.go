@@ -73,10 +73,45 @@ const (
 	packageIDMaxLen   = 40
 )
 
-func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
-	c.Callsign = strings.ToUpper(strings.TrimRight(string(data[8:16]), " "))
+// Config packet field byte offsets.
+// Layout: [RPTC(4)][ID(4)][Callsign(8)][RXFreq(9)][TXFreq(9)][TXPower(2)]
+//
+//	[ColorCode(2)][Lat(8)][Lon(9)][Height(3)][Location(20)][Desc(19)]
+//	[Slots(1)][URL(124)][SoftwareID(40)][PackageID(40)] = 302 bytes
+const (
+	cfgCallsignStart    = 8
+	cfgCallsignEnd      = 16
+	cfgRXFreqStart      = 16
+	cfgRXFreqEnd        = 25
+	cfgTXFreqStart      = 25
+	cfgTXFreqEnd        = 34
+	cfgTXPowerStart     = 34
+	cfgTXPowerEnd       = 36
+	cfgColorCodeStart   = 36
+	cfgColorCodeEnd     = 38
+	cfgLatitudeStart    = 38
+	cfgLatitudeEnd      = 46
+	cfgLongitudeStart   = 46
+	cfgLongitudeEnd     = 55
+	cfgHeightStart      = 55
+	cfgHeightEnd        = 58
+	cfgLocationStart    = 58
+	cfgLocationEnd      = 78
+	cfgDescriptionStart = 78
+	cfgDescriptionEnd   = 97
+	cfgSlotsOffset      = 97
+	cfgURLStart         = 98
+	cfgURLEnd           = 222
+	cfgSoftwareIDStart  = 222
+	cfgSoftwareIDEnd    = 262
+	cfgPackageIDStart   = 262
+	cfgPackageIDEnd     = 302
+)
 
-	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[16:25]), " "), 0, 32)
+func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
+	c.Callsign = strings.ToUpper(strings.TrimRight(string(data[cfgCallsignStart:cfgCallsignEnd]), " "))
+
+	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[cfgRXFreqStart:cfgRXFreqEnd]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing rx frequency", "error", err)
 		return ErrInvalidInt
@@ -87,7 +122,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.RXFrequency = uint(rxFreq)
 
-	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[25:34]), " "), 0, 32)
+	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[cfgTXFreqStart:cfgTXFreqEnd]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing tx frequency", "error", err)
 		return ErrInvalidInt
@@ -98,7 +133,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.TXFrequency = uint(txFreq)
 
-	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[34:36]), " "), 0, 32)
+	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[cfgTXPowerStart:cfgTXPowerEnd]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing tx power", "error", err)
 		return ErrInvalidInt
@@ -109,7 +144,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.TXPower = uint8(txPower)
 
-	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[36:38]), " "), 0, 32)
+	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[cfgColorCodeStart:cfgColorCodeEnd]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing color code", "error", err)
 		return ErrInvalidInt
@@ -120,21 +155,21 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.ColorCode = uint8(colorCode)
 
-	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[38:46]), " "), 32)
+	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[cfgLatitudeStart:cfgLatitudeEnd]), " "), 32)
 	if err != nil {
 		slog.Error("Error parsing latitude", "error", err)
 		return ErrInvalidFloat
 	}
 	c.Latitude = lat
 
-	long, err := strconv.ParseFloat(strings.TrimRight(string(data[46:55]), " "), 32)
+	long, err := strconv.ParseFloat(strings.TrimRight(string(data[cfgLongitudeStart:cfgLongitudeEnd]), " "), 32)
 	if err != nil {
 		slog.Error("Error parsing longitude", "error", err)
 		return ErrInvalidFloat
 	}
 	c.Longitude = long
 
-	height, err := strconv.ParseInt(strings.TrimRight(string(data[55:58]), " "), 0, 32)
+	height, err := strconv.ParseInt(strings.TrimRight(string(data[cfgHeightStart:cfgHeightEnd]), " "), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing height", "error", err)
 		return ErrInvalidInt
@@ -145,11 +180,11 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.Height = uint16(height)
 
-	c.Location = strings.TrimRight(string(data[58:78]), " ")
+	c.Location = strings.TrimRight(string(data[cfgLocationStart:cfgLocationEnd]), " ")
 
-	c.Description = strings.TrimRight(string(data[78:97]), " ")
+	c.Description = strings.TrimRight(string(data[cfgDescriptionStart:cfgDescriptionEnd]), " ")
 
-	slots, err := strconv.ParseInt(string(data[97]), 0, 32)
+	slots, err := strconv.ParseInt(string(data[cfgSlotsOffset]), 0, 32)
 	if err != nil {
 		slog.Error("Error parsing slots", "error", err)
 		return ErrInvalidInt
@@ -160,14 +195,14 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	}
 	c.Slots = uint(slots)
 
-	c.URL = strings.TrimRight(string(data[98:222]), " ")
+	c.URL = strings.TrimRight(string(data[cfgURLStart:cfgURLEnd]), " ")
 
-	c.SoftwareID = strings.TrimRight(string(data[222:262]), " ")
+	c.SoftwareID = strings.TrimRight(string(data[cfgSoftwareIDStart:cfgSoftwareIDEnd]), " ")
 	if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub " + version + "-" + commit
 	}
 
-	c.PackageID = strings.TrimRight(string(data[262:302]), " ")
+	c.PackageID = strings.TrimRight(string(data[cfgPackageIDStart:cfgPackageIDEnd]), " ")
 	if c.PackageID == "" {
 		c.PackageID = version + "-" + commit
 	}

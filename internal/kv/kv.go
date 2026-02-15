@@ -28,12 +28,12 @@ import (
 )
 
 type KV interface {
-	Has(key string) (bool, error)
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
-	Expire(key string, ttl time.Duration) error
-	Scan(cursor uint64, match string, count int64) ([]string, uint64, error)
+	Has(ctx context.Context, key string) (bool, error)
+	Get(ctx context.Context, key string) ([]byte, error)
+	Set(ctx context.Context, key string, value []byte) error
+	Delete(ctx context.Context, key string) error
+	Expire(ctx context.Context, key string, ttl time.Duration) error
+	Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error)
 	Close() error
 }
 

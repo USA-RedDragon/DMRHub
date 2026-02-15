@@ -55,7 +55,7 @@ type inMemoryKV struct {
 	metrics *metrics.Metrics
 }
 
-func (kv inMemoryKV) Has(key string) (bool, error) {
+func (kv inMemoryKV) Has(_ context.Context, key string) (bool, error) {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
@@ -73,7 +73,7 @@ func (kv inMemoryKV) Has(key string) (bool, error) {
 	return true, nil
 }
 
-func (kv inMemoryKV) Get(key string) ([]byte, error) {
+func (kv inMemoryKV) Get(_ context.Context, key string) ([]byte, error) {
 	start := time.Now()
 	var status string
 	defer func() {
@@ -95,7 +95,7 @@ func (kv inMemoryKV) Get(key string) ([]byte, error) {
 	return value.value, nil // Return the first value
 }
 
-func (kv inMemoryKV) Set(key string, value []byte) error {
+func (kv inMemoryKV) Set(_ context.Context, key string, value []byte) error {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
@@ -108,7 +108,7 @@ func (kv inMemoryKV) Set(key string, value []byte) error {
 	return nil
 }
 
-func (kv inMemoryKV) Delete(key string) error {
+func (kv inMemoryKV) Delete(_ context.Context, key string) error {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
@@ -119,7 +119,7 @@ func (kv inMemoryKV) Delete(key string) error {
 	return nil
 }
 
-func (kv inMemoryKV) Expire(key string, ttl time.Duration) error {
+func (kv inMemoryKV) Expire(_ context.Context, key string, ttl time.Duration) error {
 	start := time.Now()
 	var status string
 	defer func() {
@@ -143,7 +143,7 @@ func (kv inMemoryKV) Expire(key string, ttl time.Duration) error {
 	return nil
 }
 
-func (kv inMemoryKV) Scan(cursor uint64, match string, count int64) ([]string, uint64, error) {
+func (kv inMemoryKV) Scan(_ context.Context, cursor uint64, match string, count int64) ([]string, uint64, error) {
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()

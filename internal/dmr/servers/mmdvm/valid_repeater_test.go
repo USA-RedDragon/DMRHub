@@ -40,12 +40,12 @@ func newMockKV() *mockKV {
 	return &mockKV{data: make(map[string][]byte)}
 }
 
-func (m *mockKV) Has(key string) (bool, error) {
+func (m *mockKV) Has(_ context.Context, key string) (bool, error) {
 	_, ok := m.data[key]
 	return ok, nil
 }
 
-func (m *mockKV) Get(key string) ([]byte, error) {
+func (m *mockKV) Get(_ context.Context, key string) ([]byte, error) {
 	v, ok := m.data[key]
 	if !ok {
 		return nil, fmt.Errorf("key %s not found", key)
@@ -53,21 +53,21 @@ func (m *mockKV) Get(key string) ([]byte, error) {
 	return v, nil
 }
 
-func (m *mockKV) Set(key string, value []byte) error {
+func (m *mockKV) Set(_ context.Context, key string, value []byte) error {
 	m.data[key] = value
 	return nil
 }
 
-func (m *mockKV) Delete(key string) error {
+func (m *mockKV) Delete(_ context.Context, key string) error {
 	delete(m.data, key)
 	return nil
 }
 
-func (m *mockKV) Expire(_ string, _ time.Duration) error {
+func (m *mockKV) Expire(_ context.Context, _ string, _ time.Duration) error {
 	return nil
 }
 
-func (m *mockKV) Scan(_ uint64, _ string, _ int64) ([]string, uint64, error) {
+func (m *mockKV) Scan(_ context.Context, _ uint64, _ string, _ int64) ([]string, uint64, error) {
 	return nil, 0, nil
 }
 

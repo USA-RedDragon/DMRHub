@@ -47,11 +47,12 @@ func makeTestKV(t *testing.T) kv.KV {
 func TestKVSetAndGet(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	err := store.Set("testkey", []byte("testvalue"))
+	err := store.Set(ctx, "testkey", []byte("testvalue"))
 	assert.NoError(t, err)
 
-	val, err := store.Get("testkey")
+	val, err := store.Get(ctx, "testkey")
 	assert.NoError(t, err)
 	assert.Equal(t, "testvalue", string(val))
 }
@@ -60,21 +61,22 @@ func TestKVGetNonexistent(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
 
-	_, err := store.Get("nonexistent")
+	_, err := store.Get(context.Background(), "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestKVHas(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	has, err := store.Has("missing")
+	has, err := store.Has(ctx, "missing")
 	assert.NoError(t, err)
 	assert.False(t, has)
 
-	_ = store.Set("present", []byte("val"))
+	_ = store.Set(ctx, "present", []byte("val"))
 
-	has, err = store.Has("present")
+	has, err = store.Has(ctx, "present")
 	assert.NoError(t, err)
 	assert.True(t, has)
 }
@@ -82,13 +84,14 @@ func TestKVHas(t *testing.T) {
 func TestKVDelete(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("delme", []byte("val"))
+	_ = store.Set(ctx, "delme", []byte("val"))
 
-	err := store.Delete("delme")
+	err := store.Delete(ctx, "delme")
 	assert.NoError(t, err)
 
-	has, err := store.Has("delme")
+	has, err := store.Has(ctx, "delme")
 	assert.NoError(t, err)
 	assert.False(t, has)
 }
@@ -96,23 +99,24 @@ func TestKVDelete(t *testing.T) {
 func TestKVExpire(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("expiring", []byte("val"))
+	_ = store.Set(ctx, "expiring", []byte("val"))
 
-	err := store.Expire("expiring", 50*time.Millisecond)
+	err := store.Expire(ctx, "expiring", 50*time.Millisecond)
 	assert.NoError(t, err)
 
 	// Key should exist immediately
-	has, _ := store.Has("expiring")
+	has, _ := store.Has(ctx, "expiring")
 	assert.True(t, has)
 
 	// Wait for expiry
 	time.Sleep(100 * time.Millisecond)
 
-	has, _ = store.Has("expiring")
+	has, _ = store.Has(ctx, "expiring")
 	assert.False(t, has)
 
-	_, err = store.Get("expiring")
+	_, err = store.Get(ctx, "expiring")
 	assert.Error(t, err)
 }
 
@@ -120,32 +124,34 @@ func TestKVExpireNonexistent(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
 
-	err := store.Expire("nope", time.Second)
+	err := store.Expire(context.Background(), "nope", time.Second)
 	assert.Error(t, err)
 }
 
 func TestKVExpireZeroDeletesKey(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("zerottl", []byte("val"))
+	_ = store.Set(ctx, "zerottl", []byte("val"))
 
-	err := store.Expire("zerottl", 0)
+	err := store.Expire(ctx, "zerottl", 0)
 	assert.NoError(t, err)
 
-	has, _ := store.Has("zerottl")
+	has, _ := store.Has(ctx, "zerottl")
 	assert.False(t, has)
 }
 
 func TestKVScan(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("scan:a", []byte("1"))
-	_ = store.Set("scan:b", []byte("2"))
-	_ = store.Set("other", []byte("3"))
+	_ = store.Set(ctx, "scan:a", []byte("1"))
+	_ = store.Set(ctx, "scan:b", []byte("2"))
+	_ = store.Set(ctx, "other", []byte("3"))
 
-	keys, _, err := store.Scan(0, "scan:*", 100)
+	keys, _, err := store.Scan(ctx, 0, "scan:*", 100)
 	assert.NoError(t, err)
 	assert.Len(t, keys, 2)
 }
@@ -153,11 +159,12 @@ func TestKVScan(t *testing.T) {
 func TestKVScanEmptyPattern(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("a", []byte("1"))
-	_ = store.Set("b", []byte("2"))
+	_ = store.Set(ctx, "a", []byte("1"))
+	_ = store.Set(ctx, "b", []byte("2"))
 
-	keys, _, err := store.Scan(0, "", 100)
+	keys, _, err := store.Scan(ctx, 0, "", 100)
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(keys), 2)
 }
@@ -165,11 +172,12 @@ func TestKVScanEmptyPattern(t *testing.T) {
 func TestKVOverwrite(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
+	ctx := context.Background()
 
-	_ = store.Set("key", []byte("first"))
-	_ = store.Set("key", []byte("second"))
+	_ = store.Set(ctx, "key", []byte("first"))
+	_ = store.Set(ctx, "key", []byte("second"))
 
-	val, err := store.Get("key")
+	val, err := store.Get(ctx, "key")
 	assert.NoError(t, err)
 	assert.Equal(t, "second", string(val))
 }
@@ -207,29 +215,95 @@ func makeTestKVB(b *testing.B) kv.KV {
 func BenchmarkKVSet(b *testing.B) {
 	store := makeTestKVB(b)
 	val := []byte("benchmark-value-data")
+	ctx := context.Background()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = store.Set("bench-key", val)
+		_ = store.Set(ctx, "bench-key", val)
 	}
 }
 
 func BenchmarkKVGet(b *testing.B) {
 	store := makeTestKVB(b)
-	_ = store.Set("bench-key", []byte("benchmark-value-data"))
+	ctx := context.Background()
+	_ = store.Set(ctx, "bench-key", []byte("benchmark-value-data"))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = store.Get("bench-key")
+		_, _ = store.Get(ctx, "bench-key")
 	}
 }
 
 func BenchmarkKVHas(b *testing.B) {
 	store := makeTestKVB(b)
-	_ = store.Set("bench-key", []byte("benchmark-value-data"))
+	ctx := context.Background()
+	_ = store.Set(ctx, "bench-key", []byte("benchmark-value-data"))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = store.Has("bench-key")
+		_, _ = store.Has(ctx, "bench-key")
 	}
+}
+
+// Regression tests: KV interface now accepts context.Context, ensuring
+// callers can propagate cancellation and deadlines into KV operations.
+
+func TestKVContextPassedToAllMethods(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+
+	// Use a non-Background context to confirm the interface accepts it.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// All methods should work with a derived context.
+	err := store.Set(ctx, "ctx-test", []byte("value"))
+	assert.NoError(t, err)
+
+	val, err := store.Get(ctx, "ctx-test")
+	assert.NoError(t, err)
+	assert.Equal(t, "value", string(val))
+
+	has, err := store.Has(ctx, "ctx-test")
+	assert.NoError(t, err)
+	assert.True(t, has)
+
+	err = store.Expire(ctx, "ctx-test", 10*time.Second)
+	assert.NoError(t, err)
+
+	keys, _, err := store.Scan(ctx, 0, "ctx-test*", 100)
+	assert.NoError(t, err)
+	assert.Contains(t, keys, "ctx-test")
+
+	err = store.Delete(ctx, "ctx-test")
+	assert.NoError(t, err)
+
+	has, err = store.Has(ctx, "ctx-test")
+	assert.NoError(t, err)
+	assert.False(t, has)
+}
+
+func TestKVCancelledContextReturnsCleanly(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+
+	// Pre-populate a key so we can test reads against a cancelled context.
+	err := store.Set(context.Background(), "cancel-test", []byte("data"))
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	// For the in-memory backend the context is currently unused, so operations
+	// still succeed. This test documents the contract: passing a cancelled
+	// context must not panic. If a Redis backend is used in the future, these
+	// would return context.Canceled errors instead.
+	_, _ = store.Get(ctx, "cancel-test")
+	_, _ = store.Has(ctx, "cancel-test")
+	_ = store.Set(ctx, "cancel-test2", []byte("x"))
+	_ = store.Delete(ctx, "cancel-test")
+	_ = store.Expire(ctx, "cancel-test2", time.Second)
+	keys, _, scanErr := store.Scan(ctx, 0, "*", 10)
+	_ = keys
+	_ = scanErr
 }

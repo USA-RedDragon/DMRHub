@@ -61,38 +61,38 @@ type redisKV struct {
 	client *redis.Client
 }
 
-func (kv *redisKV) Has(key string) (bool, error) {
-	result, err := kv.client.Exists(context.Background(), key).Result()
+func (kv *redisKV) Has(ctx context.Context, key string) (bool, error) {
+	result, err := kv.client.Exists(ctx, key).Result()
 	if err != nil {
 		return false, fmt.Errorf("redis exists %s: %w", key, err)
 	}
 	return result > 0, nil
 }
 
-func (kv *redisKV) Get(key string) ([]byte, error) {
-	value, err := kv.client.Get(context.Background(), key).Bytes()
+func (kv *redisKV) Get(ctx context.Context, key string) ([]byte, error) {
+	value, err := kv.client.Get(ctx, key).Bytes()
 	if err != nil {
 		return nil, fmt.Errorf("redis get %s: %w", key, err)
 	}
 	return value, nil
 }
 
-func (kv *redisKV) Set(key string, value []byte) error {
-	if err := kv.client.Set(context.Background(), key, value, 0).Err(); err != nil {
+func (kv *redisKV) Set(ctx context.Context, key string, value []byte) error {
+	if err := kv.client.Set(ctx, key, value, 0).Err(); err != nil {
 		return fmt.Errorf("redis set %s: %w", key, err)
 	}
 	return nil
 }
 
-func (kv *redisKV) Delete(key string) error {
-	if err := kv.client.Del(context.Background(), key).Err(); err != nil {
+func (kv *redisKV) Delete(ctx context.Context, key string) error {
+	if err := kv.client.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("redis delete %s: %w", key, err)
 	}
 	return nil
 }
 
-func (kv *redisKV) Expire(key string, ttl time.Duration) error {
-	result, err := kv.client.Expire(context.Background(), key, ttl).Result()
+func (kv *redisKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	result, err := kv.client.Expire(ctx, key, ttl).Result()
 	if err != nil {
 		return fmt.Errorf("redis expire %s: %w", key, err)
 	}
@@ -102,8 +102,8 @@ func (kv *redisKV) Expire(key string, ttl time.Duration) error {
 	return nil
 }
 
-func (kv *redisKV) Scan(cursor uint64, match string, count int64) ([]string, uint64, error) {
-	keys, next, err := kv.client.Scan(context.Background(), cursor, match, count).Result()
+func (kv *redisKV) Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error) {
+	keys, next, err := kv.client.Scan(ctx, cursor, match, count).Result()
 	if err != nil {
 		return nil, 0, fmt.Errorf("redis scan match %s: %w", match, err)
 	}

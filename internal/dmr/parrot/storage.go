@@ -58,10 +58,10 @@ func (r *parrotStorage) store(ctx context.Context, streamID uint, repeaterID uin
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.store")
 	defer span.End()
 
-	if err := r.kv.Set(fmt.Sprintf("parrot:stream:%d", streamID), []byte(strconv.FormatUint(uint64(repeaterID), 10))); err != nil {
+	if err := r.kv.Set(ctx, fmt.Sprintf("parrot:stream:%d", streamID), []byte(strconv.FormatUint(uint64(repeaterID), 10))); err != nil {
 		slog.Error("Error setting parrot stream", "streamID", streamID, "error", err)
 	}
-	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
+	if err := r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
 		slog.Error("Error expiring parrot stream", "streamID", streamID, "error", err)
 	}
 }
@@ -70,7 +70,7 @@ func (r *parrotStorage) exists(ctx context.Context, streamID uint) bool {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.exists")
 	defer span.End()
 
-	has, err := r.kv.Has(fmt.Sprintf("parrot:stream:%d", streamID))
+	has, err := r.kv.Has(ctx, fmt.Sprintf("parrot:stream:%d", streamID))
 	if err != nil {
 		slog.Error("Error checking if parrot stream exists", "streamID", streamID, "error", err)
 		return false
@@ -82,7 +82,7 @@ func (r *parrotStorage) refresh(ctx context.Context, streamID uint) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.refresh")
 	defer span.End()
 
-	if err := r.kv.Expire(fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
+	if err := r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
 		slog.Error("Error refreshing parrot stream", "streamID", streamID, "error", err)
 	}
 }
@@ -91,7 +91,7 @@ func (r *parrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.get")
 	defer span.End()
 
-	repeaterIDStr, err := r.kv.Get(fmt.Sprintf("parrot:stream:%d", streamID))
+	repeaterIDStr, err := r.kv.Get(ctx, fmt.Sprintf("parrot:stream:%d", streamID))
 	if err != nil {
 		return 0, ErrKV
 	}
@@ -124,7 +124,7 @@ func (r *parrotStorage) delete(ctx context.Context, streamID uint) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.delete")
 	defer span.End()
 
-	if err := r.kv.Delete(fmt.Sprintf("parrot:stream:%d", streamID)); err != nil {
+	if err := r.kv.Delete(ctx, fmt.Sprintf("parrot:stream:%d", streamID)); err != nil {
 		slog.Error("Error deleting parrot stream", "streamID", streamID, "error", err)
 	}
 	if err := r.queue.Delete(fmt.Sprintf("parrot:stream:%d:packets", streamID)); err != nil {

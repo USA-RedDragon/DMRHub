@@ -149,12 +149,12 @@ func POSTLogin(c *gin.Context) {
 	c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 }
 
-func GETLogout(c *gin.Context) {
+func POSTLogout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
 	err := session.Save()
 	if err != nil {
-		slog.Error("Error saving session during logout", "function", "GETLogout", "error", err)
+		slog.Error("Error saving session during logout", "function", "POSTLogout", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
 		return
 	}

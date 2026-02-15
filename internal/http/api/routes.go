@@ -67,7 +67,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
-	v1Auth.GET("/logout", v1AuthControllers.GETLogout)
+	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
 
 	v1Repeaters := group.Group("/repeaters")
 	// Paginated

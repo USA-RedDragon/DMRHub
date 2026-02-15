@@ -22,6 +22,7 @@ package smtp
 import (
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"strings"
 
@@ -93,7 +94,7 @@ func send(config *configPkg.Config, toEmail string, subject string, body string)
 		"Content-Type: text/html; charset=\"ISO-8859-1\";\r\n" +
 		"Content-Transfer-Encoding: 7bit;\r\n" +
 		"\r\n<html><body>" +
-		body +
+		html.EscapeString(body) +
 		"\r\n</body></html>\r\n",
 	)
 

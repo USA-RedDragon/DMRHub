@@ -347,7 +347,7 @@ func LogoutUser(t *testing.T, router *gin.Engine, jar CookieJar) (APIResponse, *
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/auth/logout", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/auth/logout", nil)
 	assert.NoError(t, err)
 	router.ServeHTTP(w, req)
 

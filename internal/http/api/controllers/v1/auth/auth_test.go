@@ -20,7 +20,10 @@
 package auth_test
 
 import (
+	"context"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -146,4 +149,31 @@ func avgDuration(durations []time.Duration) time.Duration {
 		sum += float64(d)
 	}
 	return time.Duration(math.Round(sum / float64(len(durations))))
+}
+
+// TestLogoutGETNotAllowed verifies that logout is only accessible via POST
+// to prevent CSRF attacks via image tags or link prefetching.
+func TestLogoutGETNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	if err != nil {
+		t.Fatalf("Failed to create test DB router: %v", err)
+	}
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/logout", nil)
+	assert.NoError(t, err)
+
+	for _, cookie := range adminJar.Cookies() {
+		req.AddCookie(&cookie)
+	}
+
+	router.ServeHTTP(w, req)
+
+	// GET should be rejected (404 Not Found or 405 Method Not Allowed)
+	assert.NotEqual(t, 200, w.Code, "Logout via GET should not be allowed")
 }

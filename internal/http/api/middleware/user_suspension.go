@@ -33,6 +33,15 @@ import (
 
 func SuspendedUserLockout() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		defer func() {
+			if recover() != nil {
+				slog.Error("Recovered from panic", "function", "SuspendedUserLockout")
+				// Delete the session cookie
+				c.SetCookie("sessions", "", -1, "/", "", false, true)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			}
+		}()
+
 		session := sessions.Default(c)
 		userID := session.Get("user_id")
 		if userID == nil {
@@ -54,19 +63,6 @@ func SuspendedUserLockout() gin.HandlerFunc {
 			return
 		}
 		db = db.WithContext(c.Request.Context())
-
-		userExists, err := models.UserIDExists(db, uid)
-		if err != nil {
-			slog.Error("Unable to check if user exists", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
-			return
-		}
-
-		if !userExists {
-			slog.Error("User ID does not exist", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
-			return
-		}
 
 		user, err := models.FindUserByID(db, uid)
 		if err != nil {

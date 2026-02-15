@@ -29,7 +29,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -302,6 +304,66 @@ func TestRequireSuperAdminBlocksSuspendedSuperAdmin(t *testing.T) {
 		req.Header.Add("Cookie", cookie.String())
 	}
 	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestSuspendedUserLockoutPanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	// Create a gin engine WITHOUT session middleware to trigger a panic
+	// in sessions.Default(c). The panic recovery defer should catch it
+	// and return 401 instead of crashing.
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(middleware.SuspendedUserLockout())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/test", nil)
+	assert.NoError(t, err)
+	router.ServeHTTP(w, req)
+
+	// Should recover from the panic and return 401, not crash
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestSuspendedUserLockoutDeletedUserBlocked(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		Username: "deleteuser",
+		Password: "testpassword123!",
+		Callsign: "KI5VMF",
+		DMRId:    3191868,
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	// Delete the user directly from the DB
+	db := tdb.DB()
+	assert.NotNil(t, db)
+	err = db.Where("username = ?", "deleteuser").Delete(&models.User{}).Error
+	assert.NoError(t, err)
+
+	// Deleted user should be blocked (FindUserByID fails, no need for separate exists check)
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups", nil)
+	assert.NoError(t, err)
+	for _, cookie := range userJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 

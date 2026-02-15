@@ -20,6 +20,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -129,6 +130,9 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return db, fmt.Errorf("failed to query app settings: %w", result.Error)
+	}
 	if result.RowsAffected == 0 {
 		slog.Debug("App settings entry doesn't exist, creating it")
 		// The record doesn't exist, so create it

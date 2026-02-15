@@ -120,7 +120,7 @@ func BenchmarkRepeaterDB(b *testing.B) {
 		}
 		repeaterDB.isInited.Store(false)
 		repeaterDB.isDone.Store(false)
-		repeaterDB.dmrRepeaters.Store(dmrRepeaterDB{})
+		repeaterDB.metadata.Store(dbMetadata{})
 	}
 }
 

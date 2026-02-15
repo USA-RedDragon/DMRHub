@@ -660,14 +660,17 @@ func (s *IPSCServer) lookupAndCachePeerAuthKey(peerID uint32) ([]byte, error) {
 }
 
 func authWithKey(data []byte, key []byte) bool {
-	// Last 10 bytes are the sha hash
-	payload := data[:len(data)-10]
-	hash := data[len(data)-10:]
-	expectedHash := hmac.New(sha1.New, key)
-	expectedHash.Write(payload)
-	expectedHashSum := expectedHash.Sum(nil)[:10]
+	const truncatedHashLen = 10
+	// Last 10 bytes are the truncated HMAC-SHA1
+	payload := data[:len(data)-truncatedHashLen]
+	hash := data[len(data)-truncatedHashLen:]
 
-	return hmac.Equal(hash, expectedHashSum)
+	mac := hmac.New(sha1.New, key)
+	mac.Write(payload)
+	var sumBuf [sha1.Size]byte
+	expected := mac.Sum(sumBuf[:0])[:truncatedHashLen]
+
+	return hmac.Equal(hash, expected)
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to all IPSC peers.

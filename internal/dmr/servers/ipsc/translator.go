@@ -64,6 +64,8 @@ type streamState struct {
 	headersSent  int  // number of voice headers sent (3 required)
 	burstIndex   int  // 0-5 → A-F
 	firstPacket  bool // true for the very first packet
+	flcCached    bool // whether flcBytes is valid
+	flcBytes     [12]byte
 }
 
 // IPSC burst data type constants (byte 30 of IPSC voice packet)
@@ -77,6 +79,14 @@ const (
 
 // RTP timestamp increment per burst (~60ms spacing in 16.16 format)
 const rtpTimestampIncrement = 480
+
+// IPSC packet buffer pools to avoid per-packet allocations.
+var (
+	ipscBuf54Pool = sync.Pool{New: func() any { b := make([]byte, 54); return &b }} //nolint:gochecknoglobals
+	ipscBuf52Pool = sync.Pool{New: func() any { b := make([]byte, 52); return &b }} //nolint:gochecknoglobals
+	ipscBuf57Pool = sync.Pool{New: func() any { b := make([]byte, 57); return &b }} //nolint:gochecknoglobals
+	ipscBuf66Pool = sync.Pool{New: func() any { b := make([]byte, 66); return &b }} //nolint:gochecknoglobals
+)
 
 func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
@@ -128,6 +138,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		switch elements.DataType(dtypeOrVSeq) {
 		case elements.DataTypeVoiceLCHeader:
 			// Send voice header (IPSC sends 3 copies)
+			results = make([][]byte, 0, 3)
 			for i := 0; i < 3; i++ {
 				data := t.buildVoiceHeader(pkt, ss, i == 0 && ss.firstPacket)
 				results = append(results, data)
@@ -137,7 +148,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			ss.burstIndex = 0
 		case elements.DataTypeTerminatorWithLC:
 			data := t.buildVoiceTerminator(pkt, ss)
-			results = append(results, data)
+			results = [][]byte{data}
 			// Clean up stream state
 			delete(t.streams, uint32(streamID))
 		case elements.DataTypeCSBK, elements.DataTypePIHeader,
@@ -146,7 +157,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			elements.DataTypeMBCHeader, elements.DataTypeMBCContinuation:
 			// Data packet — build IPSC data packet
 			data := t.buildIPSCDataPacket(pkt, ss, elements.DataType(dtypeOrVSeq))
-			results = append(results, data)
+			results = [][]byte{data}
 			ss.firstPacket = false
 		case elements.DataTypeIdle, elements.DataTypeUnifiedSingleBlock, elements.DataTypeReserved:
 			return nil
@@ -159,7 +170,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		// Voice burst — decode DMR data and extract AMBE
 		data := t.buildVoiceBurst(pkt, ss)
 		if data != nil {
-			results = append(results, data)
+			results = [][]byte{data}
 		}
 		// Advance burst index (A=0 through F=5, then wrap)
 		ss.burstIndex = (ss.burstIndex + 1) % 6
@@ -260,7 +271,12 @@ func (t *IPSCTranslator) buildRTPHeader(buf []byte, ss *streamState, marker bool
 // buildVoiceHeader builds a 54-byte IPSC voice header packet.
 // Voice headers embed the Full LC (link control) data.
 func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, isFirst bool) []byte {
-	buf := make([]byte, 54)
+	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+	buf := *bufp
+	// Clear the buffer
+	for i := range buf {
+		buf[i] = 0
+	}
 
 	t.buildIPSCHeader(buf, pkt, ss, false, false)
 
@@ -289,7 +305,7 @@ func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, is
 	// Extract from the DMR burst data — the header burst carries a Voice LC Header
 	// which contains FLCO, FID, ServiceOpt, Dst, Src, CRC
 	t.burst.DecodeFromBytes(pkt.DMRData)
-	flcBytes := extractFullLCBytes(pkt)
+	flcBytes := t.getOrCacheFLC(pkt, ss)
 	copy(buf[38:50], flcBytes[:12])
 
 	// Bytes 50-53: unknown trailing (zeros)
@@ -298,7 +314,12 @@ func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, is
 
 // buildVoiceTerminator builds a 54-byte IPSC voice terminator packet.
 func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState) []byte {
-	buf := make([]byte, 54)
+	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+	buf := *bufp
+	// Clear the buffer
+	for i := range buf {
+		buf[i] = 0
+	}
 
 	t.buildIPSCHeader(buf, pkt, ss, true, false)
 
@@ -319,7 +340,7 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 
 	// Full LC data
 	t.burst.DecodeFromBytes(pkt.DMRData)
-	flcBytes := extractFullLCBytes(pkt)
+	flcBytes := t.getOrCacheFLC(pkt, ss)
 	copy(buf[38:50], flcBytes[:12])
 
 	ss.ipscSeq++
@@ -329,7 +350,12 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 // buildIPSCDataPacket builds a 54-byte IPSC data packet for CSBK, Data Header, etc.
 // The structure is identical to voice header/terminator but with data packet types (0x83/0x84).
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType elements.DataType) []byte {
-	buf := make([]byte, 54)
+	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+	buf := *bufp
+	// Clear the buffer
+	for i := range buf {
+		buf[i] = 0
+	}
 
 	t.buildIPSCHeader(buf, pkt, ss, false, true)
 
@@ -351,7 +377,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	// Bytes 38-49: Extract data from DMR burst via BPTC decode
 	t.burst.DecodeFromBytes(pkt.DMRData)
 	// Use extractFullLCBytes which constructs from packet fields
-	flcBytes := extractFullLCBytes(pkt)
+	flcBytes := t.getOrCacheFLC(pkt, ss)
 	copy(buf[38:50], flcBytes[:12])
 
 	// Bytes 50-53: trailing (zeros)
@@ -385,7 +411,11 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	var buf []byte
 	switch burstIdx {
 	case 0: // Burst A — sync burst, 52 bytes
-		buf = make([]byte, 52)
+		bufp := ipscBuf52Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+		buf = *bufp
+		for i := range buf {
+			buf[i] = 0
+		}
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 
@@ -395,7 +425,11 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 		copy(buf[33:52], ambeData[:])
 
 	case 4: // Burst E — extended with embedded LC, 66 bytes
-		buf = make([]byte, 66)
+		bufp := ipscBuf66Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+		buf = *bufp
+		for i := range buf {
+			buf[i] = 0
+		}
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 
@@ -422,7 +456,11 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 		buf[65] = 0x14 // Unknown trailer
 
 	default: // Bursts B, C, D, F — 57 bytes with embedded signalling
-		buf = make([]byte, 57)
+		bufp := ipscBuf57Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+		buf = *bufp
+		for i := range buf {
+			buf[i] = 0
+		}
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 
@@ -474,6 +512,18 @@ func extractFullLCBytes(pkt models.Packet) [12]byte {
 	var res [12]byte
 	copy(res[:], encoded)
 	return res
+}
+
+// getOrCacheFLC returns cached Full LC bytes for the stream, computing them
+// on first call. Within a single call the src/dst/groupCall never change,
+// so we can cache the expensive Encode() call.
+func (t *IPSCTranslator) getOrCacheFLC(pkt models.Packet, ss *streamState) [12]byte {
+	if ss.flcCached {
+		return ss.flcBytes
+	}
+	ss.flcBytes = extractFullLCBytes(pkt)
+	ss.flcCached = true
+	return ss.flcBytes
 }
 
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
@@ -536,7 +586,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	// Determine what kind of IPSC burst this is from byte 30
 	burstType := data[30]
 
-	var results []models.Packet
+	results := make([]models.Packet, 0, 1)
 
 	switch burstType {
 	case ipscBurstVoiceHead:
@@ -565,8 +615,9 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			return nil
 		}
 
-		pkts := t.buildMMDVMVoiceBurst(src, dst, groupCall, slot, rss, data)
-		results = append(results, pkts...)
+		if pkt, ok := t.buildMMDVMVoiceBurst(src, dst, groupCall, slot, rss, data); ok {
+			results = append(results, pkt)
+		}
 
 	case ipscBurstCSBK:
 		// CSBK or data burst — same 54-byte structure as voice header
@@ -659,7 +710,7 @@ func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 	src, dst uint, groupCall, slot bool,
 	rss *reverseStreamState,
 	ipscData []byte,
-) []models.Packet {
+) (models.Packet, bool) {
 	// Extract the 19-byte AMBE data from IPSC packet (bytes 33-51)
 	var ambeBytes [19]byte
 	copy(ambeBytes[:], ipscData[33:52])
@@ -738,7 +789,7 @@ func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 	rss.seq++
 	rss.burstIndex = (rss.burstIndex + 1) % 6
 
-	return []models.Packet{pkt}
+	return pkt, true
 }
 
 // populateEmbeddedSignalling fills in the embedded signalling fields

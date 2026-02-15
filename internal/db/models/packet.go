@@ -21,9 +21,29 @@ package models
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 )
+
+// encodePool is a pool of byte slices for Packet.Encode/EncodeTo to avoid allocations.
+var encodePool = sync.Pool{ //nolint:gochecknoglobals
+	New: func() any {
+		b := make([]byte, dmrconst.MMDVMMaxPacketLength)
+		return &b
+	},
+}
+
+// GetEncodeBuffer returns a pooled byte slice for encoding packets.
+// The caller must call PutEncodeBuffer when done.
+func GetEncodeBuffer() *[]byte {
+	return encodePool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
+}
+
+// PutEncodeBuffer returns a byte slice to the pool.
+func PutEncodeBuffer(b *[]byte) {
+	encodePool.Put(b)
+}
 
 // Packet is a DMR packet
 //
@@ -97,7 +117,15 @@ func UnpackPacket(data []byte) (Packet, bool) {
 	if len(data) > dmrconst.MMDVMMaxPacketLength {
 		return packet, false
 	}
-	packet.Signature = string(data[:4])
+	// Intern known signatures to avoid heap-allocating a string from the byte slice.
+	switch {
+	case data[0] == 'D' && data[1] == 'M' && data[2] == 'R' && data[3] == 'D':
+		packet.Signature = "DMRD"
+	case data[0] == 'D' && data[1] == 'M' && data[2] == 'R' && data[3] == 'A':
+		packet.Signature = "DMRA"
+	default:
+		packet.Signature = string(data[:4])
+	}
 	packet.Seq = uint(data[4])
 	packet.Src = uint(data[5])<<16 | uint(data[6])<<8 | uint(data[7])
 	packet.Dst = uint(data[8])<<16 | uint(data[9])<<8 | uint(data[10])
@@ -137,9 +165,10 @@ func (p *Packet) String() string {
 	)
 }
 
-func (p *Packet) Encode() []byte {
-	// Encode the packet as we decoded
-	data := make([]byte, dmrconst.MMDVMMaxPacketLength)
+// EncodeTo encodes the packet into dst, which must be at least dmrconst.MMDVMMaxPacketLength bytes.
+// Returns dst for convenience.
+func (p *Packet) EncodeTo(dst []byte) []byte {
+	data := dst[:dmrconst.MMDVMMaxPacketLength]
 	copy(data[:4], []byte(p.Signature))
 	data[4] = byte(p.Seq)
 	data[5] = byte(p.Src >> 16)
@@ -176,5 +205,12 @@ func (p *Packet) Encode() []byte {
 	}
 	data[53] = byte(p.BER)  //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
 	data[54] = byte(p.RSSI) //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
+	return data
+}
+
+// Encode allocates and returns a new byte slice containing the encoded packet.
+func (p *Packet) Encode() []byte {
+	data := make([]byte, dmrconst.MMDVMMaxPacketLength)
+	p.EncodeTo(data)
 	return data
 }

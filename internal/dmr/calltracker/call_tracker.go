@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -94,7 +95,15 @@ type CallTracker struct {
 	db            *gorm.DB
 	pubsub        pubsub.PubSub
 	callEndTimers *xsync.Map[uint64, *time.Timer]
-	inFlightCalls *xsync.Map[uint64, *models.Call]
+	inFlightCalls *xsync.Map[uint64, *inFlightCall]
+}
+
+// inFlightCall wraps a models.Call with a mutex to prevent data races between
+// the packet-processing goroutine (updateCall) and timer-fired goroutine (EndCall).
+type inFlightCall struct {
+	mu    sync.Mutex
+	call  *models.Call
+	ended bool
 }
 
 // NewCallTracker creates a new CallTracker.
@@ -103,7 +112,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 		db:            db,
 		pubsub:        pubsub,
 		callEndTimers: xsync.NewMap[uint64, *time.Timer](),
-		inFlightCalls: xsync.NewMap[uint64, *models.Call](),
+		inFlightCalls: xsync.NewMap[uint64, *inFlightCall](),
 	}
 }
 
@@ -274,7 +283,7 @@ func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
 	}
 
 	// Add the call to the active calls map
-	c.inFlightCalls.Store(callHash, &call)
+	c.inFlightCalls.Store(callHash, &inFlightCall{call: &call})
 
 	slog.Debug("Started call", "streamID", call.StreamID, "src", call.User.Callsign, "dst", call.DestinationID, "repeater", call.Repeater.Callsign)
 
@@ -292,8 +301,13 @@ func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bo
 		return false
 	}
 
-	_, ok := c.inFlightCalls.Load(callHash)
-	return ok
+	ifc, ok := c.inFlightCalls.Load(callHash)
+	if !ok {
+		return false
+	}
+	ifc.mu.Lock()
+	defer ifc.mu.Unlock()
+	return !ifc.ended
 }
 
 func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
@@ -355,17 +369,26 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 	}
 }
 
-func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet models.Packet) {
+func (c *CallTracker) updateCall(ctx context.Context, ifc *inFlightCall, packet models.Packet) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.updateCall")
 	defer span.End()
 
+	ifc.mu.Lock()
+	if ifc.ended {
+		ifc.mu.Unlock()
+		return
+	}
+	call := ifc.call
+
 	hash, err := getCallHash(*call)
 	if err != nil {
+		ifc.mu.Unlock()
 		return
 	}
 
 	timer, ok := c.callEndTimers.Load(hash)
 	if !ok {
+		ifc.mu.Unlock()
 		return
 	}
 
@@ -374,6 +397,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 
 	if call.LastSeq == packet.Seq {
 		// This is a dup
+		ifc.mu.Unlock()
 		return
 	}
 
@@ -418,6 +442,7 @@ func (c *CallTracker) updateCall(ctx context.Context, call *models.Call, packet 
 	// Snapshot the call to avoid a data race between the publish goroutine
 	// (which reads fields via json.Marshal) and EndCall (which writes fields).
 	callCopy := *call
+	ifc.mu.Unlock()
 	go c.publishCall(ctx, &callCopy)
 }
 
@@ -500,13 +525,13 @@ func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packe
 		return
 	}
 
-	call, ok := c.inFlightCalls.Load(hash)
+	ifc, ok := c.inFlightCalls.Load(hash)
 	if !ok {
 		slog.Error("Active call not found")
 		return
 	}
 
-	c.updateCall(ctx, call, packet)
+	c.updateCall(ctx, ifc, packet)
 }
 
 func endCallHandler(ctx context.Context, c *CallTracker, packet models.Packet) func() {
@@ -530,13 +555,22 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 		return
 	}
 
-	call, ok := c.inFlightCalls.LoadAndDelete(hash)
+	ifc, ok := c.inFlightCalls.LoadAndDelete(hash)
 	if !ok {
 		slog.Error("Active call not found")
 		return
 	}
 
+	ifc.mu.Lock()
+	if ifc.ended {
+		ifc.mu.Unlock()
+		return
+	}
+	ifc.ended = true
+	call := ifc.call
+
 	if time.Since(call.StartTime) < 100*time.Millisecond {
+		ifc.mu.Unlock()
 		// This is probably a key-up, so delete the call from the db
 		c.db.Unscoped().Delete(call)
 		return
@@ -552,6 +586,7 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 	call.Duration = time.Since(call.StartTime)
 	call.Active = false
+	ifc.mu.Unlock()
 
 	err = c.db.Omit(clause.Associations).Save(call).Error
 	if err != nil {

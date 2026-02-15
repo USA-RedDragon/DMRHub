@@ -26,7 +26,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -60,20 +60,19 @@ var (
 
 const waitTime = 100 * time.Millisecond
 
+type dbMetadata struct {
+	Count int
+	Date  time.Time
+}
+
 type RepeaterDB struct {
-	uncompressedJSON       []byte
-	dmrRepeaters           atomic.Value
+	metadata               atomic.Value // stores dbMetadata
 	dmrRepeaterMap         *xsync.Map[uint, DMRRepeater]
 	dmrRepeaterMapUpdating *xsync.Map[uint, DMRRepeater]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
 	isDone      atomic.Bool
-}
-
-type dmrRepeaterDB struct {
-	Repeaters []DMRRepeater `json:"rptrs"`
-	Date      time.Time     `json:"-"`
 }
 
 type DMRRepeater struct {
@@ -123,19 +122,172 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 	return true
 }
 
-func (e *dmrRepeaterDB) Unmarshal(b []byte) error {
-	err := json.Unmarshal(b, e)
+func streamDecodeRepeaters(dec *json.Decoder, m *xsync.Map[uint, DMRRepeater]) (int, error) {
+	// Read opening {
+	t, err := dec.Token()
 	if err != nil {
-		return ErrUnmarshal
+		return 0, ErrDecodingDB
 	}
-	return nil
+	if delim, ok := t.(json.Delim); !ok || delim != '{' {
+		return 0, ErrDecodingDB
+	}
+
+	count := 0
+	for dec.More() {
+		t, err = dec.Token()
+		if err != nil {
+			return 0, ErrDecodingDB
+		}
+		key, ok := t.(string)
+		if !ok {
+			return 0, ErrDecodingDB
+		}
+
+		if key == "rptrs" {
+			// Read opening [
+			t, err = dec.Token()
+			if err != nil {
+				return 0, ErrDecodingDB
+			}
+			if delim, ok := t.(json.Delim); !ok || delim != '[' {
+				return 0, ErrDecodingDB
+			}
+
+			for dec.More() {
+				repeater, err := decodeRepeater(dec)
+				if err != nil {
+					return 0, ErrDecodingDB
+				}
+				m.Store(repeater.ID, repeater)
+				count++
+			}
+
+			// Read closing ]
+			if _, err = dec.Token(); err != nil {
+				return 0, ErrDecodingDB
+			}
+		} else {
+			// Skip unknown key's value
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return 0, ErrDecodingDB
+			}
+		}
+	}
+
+	return count, nil
+}
+
+// setRepeaterField assigns a single JSON token value to the matching DMRRepeater field.
+func setRepeaterField(r *DMRRepeater, key string, t json.Token) { //nolint:gocyclo
+	switch key {
+	case "locator":
+		if f, ok := t.(float64); ok {
+			r.Locator = uint(f) //nolint:gosec
+		}
+	case "id":
+		if f, ok := t.(float64); ok {
+			r.ID = uint(f) //nolint:gosec
+		}
+	case "callsign":
+		if s, ok := t.(string); ok {
+			r.Callsign = s
+		}
+	case "city":
+		if s, ok := t.(string); ok {
+			r.City = s
+		}
+	case "state":
+		if s, ok := t.(string); ok {
+			r.State = s
+		}
+	case "country":
+		if s, ok := t.(string); ok {
+			r.Country = s
+		}
+	case "frequency":
+		if s, ok := t.(string); ok {
+			r.Frequency = s
+		}
+	case "color_code":
+		if f, ok := t.(float64); ok {
+			r.ColorCode = uint(f) //nolint:gosec
+		}
+	case "offset":
+		if s, ok := t.(string); ok {
+			r.Offset = s
+		}
+	case "assigned":
+		if s, ok := t.(string); ok {
+			r.Assigned = s
+		}
+	case "ts_linked":
+		if s, ok := t.(string); ok {
+			r.TSLinked = s
+		}
+	case "trustee":
+		if s, ok := t.(string); ok {
+			r.Trustee = s
+		}
+	case "map_info":
+		if s, ok := t.(string); ok {
+			r.MapInfo = s
+		}
+	case "map":
+		if f, ok := t.(float64); ok {
+			r.Map = uint(f) //nolint:gosec
+		}
+	case "ipsc_network":
+		if s, ok := t.(string); ok {
+			r.IPSCNetwork = s
+		}
+	}
+}
+
+// decodeRepeater manually decodes a single DMRRepeater from the JSON token stream,
+// avoiding the reflection overhead of json.Decoder.Decode.
+func decodeRepeater(dec *json.Decoder) (DMRRepeater, error) {
+	var r DMRRepeater
+
+	// Read opening {
+	t, err := dec.Token()
+	if err != nil {
+		return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != '{' {
+		return r, ErrDecodingDB
+	}
+
+	for dec.More() {
+		t, err = dec.Token()
+		if err != nil {
+			return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+		key, ok := t.(string)
+		if !ok {
+			return r, ErrDecodingDB
+		}
+
+		t, err = dec.Token()
+		if err != nil {
+			return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+
+		setRepeaterField(&r, key, t)
+	}
+
+	// Read closing }
+	if _, err = dec.Token(); err != nil {
+		return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+	}
+
+	return r, nil
 }
 
 func UnpackDB() error {
 	lastInit := repeaterDB.isInited.Swap(true)
 	if !lastInit {
-		repeaterDB.dmrRepeaterMap = xsync.NewMap[uint, DMRRepeater]()
-		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
+		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater](xsync.WithPresize(10000), xsync.WithGrowOnly())
 		var err error
 		repeaterDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
 		if err != nil {
@@ -145,21 +297,16 @@ func UnpackDB() error {
 		if err != nil {
 			return ErrXZReader
 		}
-		repeaterDB.uncompressedJSON, err = io.ReadAll(dbReader)
+
+		count, err := streamDecodeRepeaters(json.NewDecoder(dbReader), repeaterDB.dmrRepeaterMapUpdating)
 		if err != nil {
-			return ErrReadDB
+			return err
 		}
-		var tmpDB dmrRepeaterDB
-		if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
-			return ErrDecodingDB
-		}
-
-		tmpDB.Date = repeaterDB.builtInDate
-		repeaterDB.dmrRepeaters.Store(tmpDB)
-		for i := range tmpDB.Repeaters {
-			repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
+		if count == 0 {
+			return ErrNoRepeaters
 		}
 
+		repeaterDB.metadata.Store(dbMetadata{Count: count, Date: repeaterDB.builtInDate})
 		repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 		repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 		repeaterDB.isDone.Store(true)
@@ -169,11 +316,11 @@ func UnpackDB() error {
 		time.Sleep(waitTime)
 	}
 
-	rptdb, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
+	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
 	if !ok {
 		return ErrLoading
 	}
-	if len(rptdb.Repeaters) == 0 {
+	if meta.Count == 0 {
 		return ErrNoRepeaters
 	}
 	return nil
@@ -187,11 +334,12 @@ func Len() int {
 			return 0
 		}
 	}
-	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
+	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
 	if !ok {
-		slog.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR repeaters database")
+		return 0
 	}
-	return len(db.Repeaters)
+	return meta.Count
 }
 
 func Get(id uint) (DMRRepeater, bool) {
@@ -229,40 +377,30 @@ func Update(url string) error {
 	if err != nil {
 		return ErrUpdateFailed
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return ErrUpdateFailed
-	}
-
-	repeaterDB.uncompressedJSON, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return ErrUpdateFailed
-	}
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
 			slog.Error("Error closing response body", "error", err)
 		}
 	}()
-	var tmpDB dmrRepeaterDB
-	if err := json.Unmarshal(repeaterDB.uncompressedJSON, &tmpDB); err != nil {
+
+	if resp.StatusCode != http.StatusOK {
+		return ErrUpdateFailed
+	}
+
+	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater](xsync.WithPresize(Len()), xsync.WithGrowOnly())
+	count, err := streamDecodeRepeaters(json.NewDecoder(resp.Body), repeaterDB.dmrRepeaterMapUpdating)
+	if err != nil {
 		slog.Error("Error decoding DMR repeaters database", "error", err)
 		return ErrUpdateFailed
 	}
 
-	if len(tmpDB.Repeaters) == 0 {
+	if count == 0 {
 		slog.Error("No DMR repeaters found in database")
 		return ErrUpdateFailed
 	}
 
-	tmpDB.Date = time.Now()
-	repeaterDB.dmrRepeaters.Store(tmpDB)
-
-	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
-	for i := range tmpDB.Repeaters {
-		repeaterDB.dmrRepeaterMapUpdating.Store(tmpDB.Repeaters[i].ID, tmpDB.Repeaters[i])
-	}
-
+	repeaterDB.metadata.Store(dbMetadata{Count: count, Date: time.Now()})
 	repeaterDB.dmrRepeaterMap = repeaterDB.dmrRepeaterMapUpdating
 	repeaterDB.dmrRepeaterMapUpdating = xsync.NewMap[uint, DMRRepeater]()
 
@@ -279,9 +417,10 @@ func GetDate() (time.Time, error) {
 			return time.Time{}, err
 		}
 	}
-	db, ok := repeaterDB.dmrRepeaters.Load().(dmrRepeaterDB)
+	meta, ok := repeaterDB.metadata.Load().(dbMetadata)
 	if !ok {
-		slog.Error("Error loading DMR users database")
+		slog.Error("Error loading DMR repeaters database")
+		return time.Time{}, ErrLoading
 	}
-	return db.Date, nil
+	return meta.Date, nil
 }

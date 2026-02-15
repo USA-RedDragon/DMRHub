@@ -39,10 +39,7 @@ type inMemoryPubSub struct {
 
 func (ps *inMemoryPubSub) Publish(topic string, message []byte) error {
 	ps.mu.RLock()
-	subs := make([]*inMemorySubscription, len(ps.topics[topic]))
-	copy(subs, ps.topics[topic])
-	ps.mu.RUnlock()
-
+	subs := ps.topics[topic]
 	for _, sub := range subs {
 		// Copy the message so each subscriber gets independent data
 		msg := make([]byte, len(message))
@@ -53,6 +50,7 @@ func (ps *inMemoryPubSub) Publish(topic string, message []byte) error {
 			slog.Warn("Dropping message for slow in-memory subscriber", "topic", topic)
 		}
 	}
+	ps.mu.RUnlock()
 	return nil
 }
 

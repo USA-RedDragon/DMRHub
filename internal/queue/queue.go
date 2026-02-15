@@ -19,9 +19,13 @@
 
 package queue
 
+import "sync"
+
 // Queue is a simple in-memory queue implementation.
 // It uses a map to store multiple byte slices under a single key.
+// All operations are safe for concurrent use.
 type Queue struct {
+	mu   sync.Mutex
 	data map[string][][]byte // Key -> Array of byte slices
 }
 
@@ -32,17 +36,23 @@ func NewQueue() *Queue {
 }
 
 func (q *Queue) Push(key string, value []byte) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	q.data[key] = append(q.data[key], value)
 	return len(q.data[key]), nil
 }
 
 func (q *Queue) Drain(key string) [][]byte {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	values := q.data[key]
 	delete(q.data, key)
 	return values
 }
 
 func (q *Queue) Delete(key string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	delete(q.data, key)
 	return nil
 }

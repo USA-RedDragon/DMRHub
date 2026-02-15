@@ -21,8 +21,8 @@ package hub
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -123,16 +123,25 @@ func (h *Hub) handleGroupCallVoice(packet models.Packet, sourceName string) {
 		return
 	}
 
+	// talkgroupTopicPrefix is the fixed prefix for talkgroup pubsub topics.
+	const talkgroupTopicPrefix = "hub:packets:talkgroup:"
+
 	// Publish to talkgroup topic (subscription manager handles per-repeater fan-out)
+	encBuf := models.GetEncodeBuffer()
 	var rawPacket models.RawDMRPacket
-	rawPacket.Data = packet.Encode()
-	packedBytes, err := rawPacket.MarshalMsg(nil)
+	rawPacket.Data = packet.EncodeTo(*encBuf)
+	marshalBuf := h.getMarshalBuffer()
+	packedBytes, err := rawPacket.MarshalMsg((*marshalBuf)[:0])
+	models.PutEncodeBuffer(encBuf)
 	if err != nil {
+		h.putMarshalBuffer(marshalBuf)
 		slog.Error("Error marshalling raw packet", "error", err)
 	} else {
-		if err := h.pubsub.Publish(fmt.Sprintf("hub:packets:talkgroup:%d", packet.Dst), packedBytes); err != nil {
+		topic := talkgroupTopicPrefix + strconv.FormatUint(uint64(packet.Dst), 10)
+		if err := h.pubsub.Publish(topic, packedBytes); err != nil {
 			slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
 		}
+		h.putMarshalBuffer(marshalBuf)
 	}
 
 	// Forward to broadcast servers (they handle echo filtering by source name)

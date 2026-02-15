@@ -26,7 +26,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -60,20 +60,19 @@ var (
 
 const waitTime = 100 * time.Millisecond
 
+type dbMetadata struct {
+	Count int
+	Date  time.Time
+}
+
 type UserDB struct {
-	uncompressedJSON   []byte
-	dmrUsers           atomic.Value
+	metadata           atomic.Value // stores dbMetadata
 	dmrUserMap         *xsync.Map[uint, DMRUser]
 	dmrUserMapUpdating *xsync.Map[uint, DMRUser]
 
 	builtInDate time.Time
 	isInited    atomic.Bool
 	isDone      atomic.Bool
-}
-
-type dmrUserDB struct {
-	Users []DMRUser `json:"users"`
-	Date  time.Time `json:"-"`
 }
 
 type DMRUser struct {
@@ -120,19 +119,143 @@ func ValidUserCallsign(dmrID uint, callsign string) bool {
 	return true
 }
 
-func (e *dmrUserDB) Unmarshal(b []byte) error {
-	err := json.Unmarshal(b, e)
+func streamDecodeUsers(dec *json.Decoder, m *xsync.Map[uint, DMRUser]) (int, error) {
+	// Read opening {
+	t, err := dec.Token()
 	if err != nil {
-		return ErrUnmarshal
+		return 0, ErrDecodingDB
 	}
-	return nil
+	if delim, ok := t.(json.Delim); !ok || delim != '{' {
+		return 0, ErrDecodingDB
+	}
+
+	count := 0
+	for dec.More() {
+		t, err = dec.Token()
+		if err != nil {
+			return 0, ErrDecodingDB
+		}
+		key, ok := t.(string)
+		if !ok {
+			return 0, ErrDecodingDB
+		}
+
+		if key == "users" {
+			// Read opening [
+			t, err = dec.Token()
+			if err != nil {
+				return 0, ErrDecodingDB
+			}
+			if delim, ok := t.(json.Delim); !ok || delim != '[' {
+				return 0, ErrDecodingDB
+			}
+
+			for dec.More() {
+				user, err := decodeUser(dec)
+				if err != nil {
+					return 0, ErrDecodingDB
+				}
+				m.Store(user.ID, user)
+				count++
+			}
+
+			// Read closing ]
+			if _, err = dec.Token(); err != nil {
+				return 0, ErrDecodingDB
+			}
+		} else {
+			// Skip unknown key's value
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return 0, ErrDecodingDB
+			}
+		}
+	}
+
+	return count, nil
+}
+
+// decodeUser manually decodes a single DMRUser from the JSON token stream,
+// avoiding the reflection overhead of json.Decoder.Decode.
+func decodeUser(dec *json.Decoder) (DMRUser, error) {
+	var user DMRUser
+
+	// Read opening {
+	t, err := dec.Token()
+	if err != nil {
+		return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != '{' {
+		return user, ErrDecodingDB
+	}
+
+	for dec.More() {
+		t, err = dec.Token()
+		if err != nil {
+			return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+		key, ok := t.(string)
+		if !ok {
+			return user, ErrDecodingDB
+		}
+
+		t, err = dec.Token()
+		if err != nil {
+			return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+
+		switch key {
+		case "id":
+			if f, ok := t.(float64); ok {
+				user.ID = uint(f) //nolint:gosec
+			}
+		case "radio_id":
+			if f, ok := t.(float64); ok {
+				user.RadioID = uint(f) //nolint:gosec
+			}
+		case "state":
+			if s, ok := t.(string); ok {
+				user.State = s
+			}
+		case "surname":
+			if s, ok := t.(string); ok {
+				user.Surname = s
+			}
+		case "city":
+			if s, ok := t.(string); ok {
+				user.City = s
+			}
+		case "callsign":
+			if s, ok := t.(string); ok {
+				user.Callsign = s
+			}
+		case "country":
+			if s, ok := t.(string); ok {
+				user.Country = s
+			}
+		case "name":
+			if s, ok := t.(string); ok {
+				user.Name = s
+			}
+		case "fname":
+			if s, ok := t.(string); ok {
+				user.FName = s
+			}
+		}
+	}
+
+	// Read closing }
+	if _, err = dec.Token(); err != nil {
+		return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+	}
+
+	return user, nil
 }
 
 func UnpackDB() error {
 	lastInit := userDB.isInited.Swap(true)
 	if !lastInit {
-		userDB.dmrUserMap = xsync.NewMap[uint, DMRUser]()
-		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
+		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser](xsync.WithPresize(250000), xsync.WithGrowOnly())
 
 		var err error
 		userDB.builtInDate, err = time.Parse(time.RFC3339, builtInDateStr)
@@ -143,20 +266,17 @@ func UnpackDB() error {
 		if err != nil {
 			return ErrXZReader
 		}
-		userDB.uncompressedJSON, err = io.ReadAll(dbReader)
+
+		count, err := streamDecodeUsers(json.NewDecoder(dbReader), userDB.dmrUserMapUpdating)
 		if err != nil {
-			return ErrReadDB
+			return err
 		}
-		var tmpDB dmrUserDB
-		if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
-			return ErrDecodingDB
-		}
-		tmpDB.Date = userDB.builtInDate
-		userDB.dmrUsers.Store(tmpDB)
-		for i := range tmpDB.Users {
-			userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
+		if count == 0 {
+			slog.Error("No DMR users found in database")
+			return ErrNoUsers
 		}
 
+		userDB.metadata.Store(dbMetadata{Count: count, Date: userDB.builtInDate})
 		userDB.dmrUserMap = userDB.dmrUserMapUpdating
 		userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 		userDB.isDone.Store(true)
@@ -166,12 +286,12 @@ func UnpackDB() error {
 		time.Sleep(waitTime)
 	}
 
-	usrdb, ok := userDB.dmrUsers.Load().(dmrUserDB)
+	meta, ok := userDB.metadata.Load().(dbMetadata)
 	if !ok {
 		slog.Error("Error loading DMR users database")
 		return ErrLoading
 	}
-	if len(usrdb.Users) == 0 {
+	if meta.Count == 0 {
 		slog.Error("No DMR users found in database")
 		return ErrNoUsers
 	}
@@ -186,11 +306,12 @@ func Len() int {
 			return 0
 		}
 	}
-	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
+	meta, ok := userDB.metadata.Load().(dbMetadata)
 	if !ok {
 		slog.Error("Error loading DMR users database")
+		return 0
 	}
-	return len(db.Users)
+	return meta.Count
 }
 
 func Get(dmrID uint) (DMRUser, bool) {
@@ -228,41 +349,30 @@ func Update(url string) error {
 	if err != nil {
 		return ErrUpdateFailed
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return ErrUpdateFailed
-	}
-
-	userDB.uncompressedJSON, err = io.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error("ReadAll error", "error", err)
-		return ErrUpdateFailed
-	}
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
 			slog.Error("Error closing response body", "error", err)
 		}
 	}()
-	var tmpDB dmrUserDB
-	if err := json.Unmarshal(userDB.uncompressedJSON, &tmpDB); err != nil {
+
+	if resp.StatusCode != http.StatusOK {
+		return ErrUpdateFailed
+	}
+
+	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser](xsync.WithPresize(Len()), xsync.WithGrowOnly())
+	count, err := streamDecodeUsers(json.NewDecoder(resp.Body), userDB.dmrUserMapUpdating)
+	if err != nil {
 		slog.Error("Error decoding DMR users database", "error", err)
 		return ErrUpdateFailed
 	}
 
-	if len(tmpDB.Users) == 0 {
+	if count == 0 {
 		slog.Error("No DMR users found in database")
 		return ErrUpdateFailed
 	}
 
-	tmpDB.Date = time.Now()
-	userDB.dmrUsers.Store(tmpDB)
-
-	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
-	for i := range tmpDB.Users {
-		userDB.dmrUserMapUpdating.Store(tmpDB.Users[i].ID, tmpDB.Users[i])
-	}
-
+	userDB.metadata.Store(dbMetadata{Count: count, Date: time.Now()})
 	userDB.dmrUserMap = userDB.dmrUserMapUpdating
 	userDB.dmrUserMapUpdating = xsync.NewMap[uint, DMRUser]()
 
@@ -278,9 +388,10 @@ func GetDate() (time.Time, error) {
 			return time.Time{}, err
 		}
 	}
-	db, ok := userDB.dmrUsers.Load().(dmrUserDB)
+	meta, ok := userDB.metadata.Load().(dbMetadata)
 	if !ok {
 		slog.Error("Error loading DMR users database")
+		return time.Time{}, ErrLoading
 	}
-	return db.Date, nil
+	return meta.Date, nil
 }

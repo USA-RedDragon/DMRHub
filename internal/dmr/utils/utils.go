@@ -20,8 +20,6 @@
 package utils
 
 import (
-	"log/slog"
-
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 )
@@ -34,20 +32,15 @@ func CheckPacketType(packet models.Packet) (bool, bool) {
 		switch dmrconst.DataType(packet.DTypeOrVSeq) {
 		case dmrconst.DTypeVoiceTerm:
 			isVoice = true
-			slog.Debug("Voice terminator packet received", "src", packet.Src)
 		case dmrconst.DTypeVoiceHead:
 			isVoice = true
-			slog.Debug("Voice header packet received", "src", packet.Src)
 		default:
 			isData = true
-			slog.Debug("Data packet received", "src", packet.Src, "dtype", packet.DTypeOrVSeq)
 		}
 	case dmrconst.FrameVoice:
 		isVoice = true
-		slog.Debug("Voice packet received", "src", packet.Src, "vseq", packet.DTypeOrVSeq)
 	case dmrconst.FrameVoiceSync:
 		isVoice = true
-		slog.Debug("Voice sync packet received", "src", packet.Src, "dtype", packet.DTypeOrVSeq)
 	}
 	return isVoice, isData
 }

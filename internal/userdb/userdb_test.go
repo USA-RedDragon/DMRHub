@@ -123,7 +123,7 @@ func BenchmarkUserDB(b *testing.B) {
 		}
 		userDB.isInited.Store(false)
 		userDB.isDone.Store(false)
-		userDB.dmrUsers.Store(dmrUserDB{})
+		userDB.metadata.Store(dbMetadata{})
 	}
 }
 

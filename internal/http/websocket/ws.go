@@ -42,7 +42,6 @@ type Websocket interface {
 type WSHandler struct {
 	wsUpgrader websocket.Upgrader
 	handler    Websocket
-	conn       *websocket.Conn
 }
 
 func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
@@ -89,32 +88,33 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 			slog.Error("Failed to set websocket upgrade", "error", err)
 			return
 		}
-		handler.conn = conn
 
 		defer func() {
 			handler.handler.OnDisconnect(c, c.Request, session)
-			err := handler.conn.Close()
+			err := conn.Close()
 			if err != nil {
 				slog.Error("Failed to close websocket", "error", err)
 			}
 		}()
-		handler.handle(c.Request.Context(), session, c.Request)
+		handler.handle(c.Request.Context(), session, c.Request, conn)
 	}
 }
 
-func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Request) {
+func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Request, conn *websocket.Conn) {
 	writer := wsWriter{
 		writer: make(chan Message, bufferSize),
-		error:  make(chan string),
+		// Buffered so the reader goroutine can always send without blocking,
+		// even if the main select loop has already exited (e.g. context cancelled).
+		error: make(chan string, 1),
 	}
 	h.handler.OnConnect(c, r, writer, s)
 
 	go func() {
 		for {
-			t, msg, err := h.conn.ReadMessage()
+			t, msg, err := conn.ReadMessage()
 			if err != nil {
 				writer.Error("read failed")
-				break
+				return
 			}
 			switch {
 			case t == websocket.PingMessage:
@@ -139,7 +139,7 @@ func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Reques
 		case <-writer.error:
 			return
 		case msg := <-writer.writer:
-			err := h.conn.WriteMessage(msg.Type, msg.Data)
+			err := conn.WriteMessage(msg.Type, msg.Data)
 			if err != nil {
 				return
 			}

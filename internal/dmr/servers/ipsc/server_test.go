@@ -609,6 +609,7 @@ func preRegisterTestPeer(s *IPSCServer, peerID uint32) {
 		s.peers[peerID] = peer
 	}
 	peer.AuthKey = testAuthKey()
+	peer.RegistrationStatus = true
 }
 
 // signTestPacket signs a packet with the standard test auth key.
@@ -1757,7 +1758,7 @@ func TestHandlePacketStripsAuthHash(t *testing.T) {
 	s := newTestServer(t, cfg)
 	// Pre-register peer with auth key
 	s.mu.Lock()
-	s.peers[12345] = &Peer{ID: 12345, AuthKey: decodeAuthKey("1234")}
+	s.peers[12345] = &Peer{ID: 12345, AuthKey: decodeAuthKey("1234"), RegistrationStatus: true}
 	s.mu.Unlock()
 
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}

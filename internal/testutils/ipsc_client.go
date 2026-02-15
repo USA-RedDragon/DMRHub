@@ -50,17 +50,27 @@ type IPSCClient struct {
 	AuthKey  []byte // raw HMAC-SHA1 key (20 bytes, from decodeAuthKey)
 	Password string // hex auth key string
 
-	conn     *net.UDPConn
-	ready    chan struct{}
-	done     chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
+	conn       *net.UDPConn
+	remoteAddr string
+	ready      chan struct{}
+	done       chan struct{}
+	stopOnce   sync.Once
+	wg         sync.WaitGroup
 
-	readyVal atomic.Bool
-	packets  chan IPSCBurst
+	readyVal       atomic.Bool
+	packets        chan IPSCBurst
+	disconnected   chan struct{}
+	disconnectOnce sync.Once
+	rxDone         chan struct{}
+	reconnected    chan struct{}
+	noReconnect    bool // suppress reconnect on DeregistrationRequest
 }
 
-var ErrIPSCHandshakeTimeout = errors.New("IPSC handshake timed out")
+var (
+	ErrIPSCHandshakeTimeout  = errors.New("IPSC handshake timed out")
+	ErrIPSCDeregisterTimeout = errors.New("timed out waiting for IPSC deregistration")
+	ErrIPSCNotConnected      = errors.New("IPSC client not connected")
+)
 
 // NewIPSCClient creates a new IPSC simulator client.
 // password is the hex auth key string as stored in the database.
@@ -68,12 +78,15 @@ func NewIPSCClient(peerID uint32, password string) *IPSCClient {
 	// Decode the auth key the same way the server does
 	authKey := decodeIPSCAuthKey(password)
 	return &IPSCClient{
-		PeerID:   peerID,
-		AuthKey:  authKey,
-		Password: password,
-		ready:    make(chan struct{}),
-		done:     make(chan struct{}),
-		packets:  make(chan IPSCBurst, 100),
+		PeerID:       peerID,
+		AuthKey:      authKey,
+		Password:     password,
+		ready:        make(chan struct{}),
+		done:         make(chan struct{}),
+		packets:      make(chan IPSCBurst, 100),
+		disconnected: make(chan struct{}),
+		rxDone:       make(chan struct{}),
+		reconnected:  make(chan struct{}),
 	}
 }
 
@@ -113,12 +126,42 @@ func (c *IPSCClient) Connect(addr string) error {
 		return fmt.Errorf("dial udp: %w", err)
 	}
 	c.conn = conn
+	c.remoteAddr = addr
 
 	c.wg.Add(1)
 	go c.rx()
 
 	// Send registration request
 	c.sendMasterRegisterRequest()
+
+	return nil
+}
+
+// ConnectWithoutRegistration dials the IPSC server but does NOT send a
+// MasterRegisterRequest. The client can still send HMAC-signed packets
+// (e.g. voice data) through the UDP socket. This is useful for testing
+// that the server rejects traffic from peers that have not completed the
+// registration handshake.
+func (c *IPSCClient) ConnectWithoutRegistration(addr string) error {
+	raddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return fmt.Errorf("resolve addr: %w", err)
+	}
+	conn, err := net.DialUDP("udp", nil, raddr)
+	if err != nil {
+		return fmt.Errorf("dial udp: %w", err)
+	}
+	c.conn = conn
+	c.remoteAddr = addr
+
+	c.wg.Add(1)
+	go c.rx()
+
+	// Mark as "ready" immediately since we skip handshake on purpose.
+	c.readyVal.Store(true)
+	close(c.ready)
+	// Suppress reconnect: the caller does not want to register.
+	c.noReconnect = true
 
 	return nil
 }
@@ -216,8 +259,79 @@ func (c *IPSCClient) Close() {
 	c.wg.Wait()
 }
 
+// WaitDisconnected blocks until the client receives a DeregistrationRequest from the server.
+func (c *IPSCClient) WaitDisconnected(timeout time.Duration) error {
+	select {
+	case <-c.disconnected:
+		return nil
+	case <-time.After(timeout):
+		return ErrIPSCDeregisterTimeout
+	}
+}
+
+// WaitReconnected blocks until the client has completed a re-handshake after
+// a deregistration disconnect. Returns ErrIPSCHandshakeTimeout if the
+// re-handshake does not complete within the timeout.
+func (c *IPSCClient) WaitReconnected(timeout time.Duration) error {
+	select {
+	case <-c.reconnected:
+		return nil
+	case <-time.After(timeout):
+		return ErrIPSCHandshakeTimeout
+	}
+}
+
+// reconnect is called asynchronously when a DeregistrationRequest is received.
+// It closes the old connection, waits for the rx goroutine to exit, and attempts
+// to re-establish the session by dialing and re-handshaking with the same server.
+func (c *IPSCClient) reconnect() {
+	// Close old connection — rx() will see net.ErrClosed and exit
+	if c.conn != nil {
+		_ = c.conn.Close()
+	}
+	// Wait for the old rx goroutine to fully exit
+	<-c.rxDone
+
+	// Check if we're being permanently shut down
+	select {
+	case <-c.done:
+		return
+	default:
+	}
+
+	// Dial new connection to the same server address
+	raddr, err := net.ResolveUDPAddr("udp", c.remoteAddr)
+	if err != nil {
+		return
+	}
+	conn, err := net.DialUDP("udp", nil, raddr)
+	if err != nil {
+		return
+	}
+	c.conn = conn
+
+	// Reset state for new handshake
+	c.rxDone = make(chan struct{})
+	c.ready = make(chan struct{})
+	c.readyVal.Store(false)
+
+	// Start new rx goroutine and send registration request
+	c.wg.Add(1)
+	go c.rx()
+	c.sendMasterRegisterRequest()
+
+	// Wait for the new handshake to complete (or shutdown/timeout)
+	select {
+	case <-c.ready:
+		close(c.reconnected)
+	case <-c.done:
+	case <-time.After(10 * time.Second):
+	}
+}
+
 func (c *IPSCClient) rx() {
 	defer c.wg.Done()
+	defer close(c.rxDone)
 	buf := make([]byte, 1500)
 	for {
 		select {
@@ -275,6 +389,18 @@ func (c *IPSCClient) handlePacket(data []byte) {
 		select {
 		case c.packets <- burst:
 		default:
+		}
+
+	case 0x9A: // DeregistrationRequest — server shutting down, signal disconnect and reconnect
+		c.disconnectOnce.Do(func() {
+			close(c.disconnected)
+		})
+		if !c.noReconnect {
+			c.wg.Add(1)
+			go func() {
+				defer c.wg.Done()
+				c.reconnect()
+			}()
 		}
 	}
 }

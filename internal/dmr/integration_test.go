@@ -1051,3 +1051,57 @@ func TestMultiReplicaDelivery(t *testing.T) {
 		}
 	})
 }
+
+func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+
+		stack.AssignTS1StaticTG(t, 100001, 1)
+
+		stack.StartServers(t)
+
+		// Connect MMDVM client normally
+		mc := testutils.NewMMDVMClient(100001, "", testPassword)
+		require.NoError(t, mc.Connect(stack.MMDVMAddr))
+		defer mc.Close()
+		require.NoError(t, mc.WaitReady(handshakeWait))
+
+		time.Sleep(settleDuration)
+
+		// Connect IPSC client WITHOUT registration — skips MasterRegisterRequest.
+		// The peer is in the DB (so HMAC auth passes), but it never registered
+		// so hub subscriptions are not activated.
+		ic := testutils.NewIPSCClient(200001, ipscAuthKey)
+		require.NoError(t, ic.ConnectWithoutRegistration(stack.IPSCAddr))
+		defer ic.Close()
+
+		time.Sleep(settleDuration)
+
+		// Send group voice from the unregistered IPSC peer.
+		err := ic.SendGroupVoice(1000001, 1, false, 9001)
+		require.NoError(t, err)
+
+		// The server should reject traffic from an unregistered peer, so
+		// the MMDVM client must NOT receive any packets.
+		pkts := mc.Drain(drainWait)
+		assert.Empty(t, pkts,
+			"MMDVM should NOT receive traffic from unregistered IPSC peer")
+
+		// Also verify that the unregistered IPSC peer cannot RECEIVE traffic.
+		// Have the MMDVM client send a group call — the IPSC peer should NOT
+		// receive it because hub subscriptions were never activated.
+		voicePkt := makeGroupVoicePacket(1000001, 1, 9002, false)
+		require.NoError(t, mc.SendDMRD(voicePkt))
+		time.Sleep(50 * time.Millisecond)
+		termPkt := makeGroupVoiceTermPacket(1000001, 1, 9002, false)
+		require.NoError(t, mc.SendDMRD(termPkt))
+
+		bursts := ic.Drain(drainWait)
+		assert.Empty(t, bursts,
+			"Unregistered IPSC peer should NOT receive traffic (no hub subscriptions)")
+	})
+}

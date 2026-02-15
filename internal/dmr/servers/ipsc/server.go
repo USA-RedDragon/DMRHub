@@ -287,6 +287,20 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	}
 	data = data[:len(data)-10] // Remove the hash from the data
 
+	s.mu.RLock()
+	peer, ok := s.peers[peerID]
+	registered := ok && peer.RegistrationStatus
+	s.mu.RUnlock()
+
+	if !registered && PacketType(packetType) != PacketType_MasterRegisterRequest {
+		slog.Warn("dropping packet from unregistered peer", "peerID", peerID, "peer", addr)
+		deregPkt := &Packet{data: s.buildDeregistrationRequest()}
+		if err := s.sendPacket(deregPkt, addr, authKey); err != nil {
+			slog.Warn("failed sending IPSC deregistration", "peer", addr, "peerID", peerID, "error", err)
+		}
+		return nil, ErrPacketIgnored
+	}
+
 	switch PacketType(packetType) {
 	case PacketType_GroupVoice, PacketType_PrivateVoice, PacketType_GroupData, PacketType_PrivateData:
 		if err := s.handleUserPacket(PacketType(packetType), data, addr); err != nil {
@@ -738,7 +752,7 @@ func (s *IPSCServer) sendPacketInternal(data []byte) {
 	s.mu.RLock()
 	peers := make([]*Peer, 0, len(s.peers))
 	for _, peer := range s.peers {
-		if peer.Addr != nil {
+		if peer.Addr != nil && peer.RegistrationStatus {
 			peers = append(peers, peer)
 		}
 	}

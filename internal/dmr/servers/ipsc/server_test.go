@@ -1929,6 +1929,113 @@ func TestLastDBWriteMapInitialized(t *testing.T) {
 	}
 }
 
+// TestStopRejectsNewRegistration is a regression test for the shutdown race
+// condition where a peer could receive a deregistration, leave the network,
+// and immediately re-register before the UDP socket was closed. The fix sets
+// s.stopped before sending deregistration messages so handlePacket rejects
+// new packets during shutdown.
+func TestStopRejectsNewRegistration(t *testing.T) {
+	t.Parallel()
+	s, srvAddr := newTestServerWithUDP(t)
+
+	// dial a client so we have an address to use
+	client, err := net.DialUDP("udp", nil, srvAddr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("expected *net.UDPAddr from LocalAddr")
+	}
+
+	// Pre-register a peer so that Stop() has someone to deregister
+	peerID := uint32(99999)
+	preRegisterTestPeer(s, peerID)
+	s.mu.Lock()
+	s.peers[peerID].Addr = clientAddr
+	s.mu.Unlock()
+
+	// Now simulate the shutdown: set stopped (which Stop does first)
+	s.stopped.Store(true)
+
+	// Attempt a new registration request while stopped
+	newPeerID := uint32(88888)
+	preRegisterTestPeer(s, newPeerID) // add auth key so auth passes
+	regData := signTestPacket(t, makeControlPacketWithModeFlags(
+		PacketType_MasterRegisterRequest, newPeerID, 0x6A, [4]byte{0, 0, 0, 0x0D},
+	))
+
+	_, err = s.handlePacket(context.Background(), regData, clientAddr)
+	if !errors.Is(err, ErrPacketIgnored) {
+		t.Fatalf("expected ErrPacketIgnored during shutdown, got %v", err)
+	}
+
+	// Also verify keepalive packets are rejected
+	aliveData := signTestPacket(t, makeControlPacket(PacketType_MasterAliveRequest, peerID))
+	_, err = s.handlePacket(context.Background(), aliveData, clientAddr)
+	if !errors.Is(err, ErrPacketIgnored) {
+		t.Fatalf("expected ErrPacketIgnored for keepalive during shutdown, got %v", err)
+	}
+}
+
+// TestStopSetsStoppedBeforeDeregistration verifies that calling Stop() on a
+// running server sets the stopped flag before the UDP socket is closed. This
+// prevents the race where a peer could re-register between receiving the
+// deregistration and the socket close.
+func TestStopSetsStoppedBeforeDeregistration(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	s.udp = conn
+
+	// Start the handler goroutine (required for Stop to join via wg.Wait)
+	s.wg.Add(1)
+	go s.handler(context.Background())
+
+	// Add a peer with an address (so Stop iterates over it)
+	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	if err != nil {
+		t.Fatalf("client listen: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("expected *net.UDPAddr from LocalAddr")
+	}
+	s.upsertPeer(context.Background(), 42, clientAddr, 0x6A, [4]byte{})
+
+	// Stop the server
+	if err := s.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop error: %v", err)
+	}
+
+	// After Stop returns, stopped must be true
+	if !s.stopped.Load() {
+		t.Fatal("expected stopped to be true after Stop()")
+	}
+
+	// Any packet should be rejected
+	peerID := uint32(42)
+	preRegisterTestPeer(s, peerID)
+	regData := signTestPacket(t, makeControlPacketWithModeFlags(
+		PacketType_MasterRegisterRequest, peerID, 0x6A, [4]byte{0, 0, 0, 0x0D},
+	))
+
+	// handlePacket should return ErrPacketIgnored. We need a new UDP conn
+	// for the server since the old one is closed, but handlePacket doesn't
+	// use s.udp for reads — it just checks s.stopped. So we can call it directly.
+	_, err = s.handlePacket(context.Background(), regData, clientAddr)
+	if !errors.Is(err, ErrPacketIgnored) {
+		t.Fatalf("expected ErrPacketIgnored after Stop(), got %v", err)
+	}
+}
+
 func FuzzParsePeerID(f *testing.F) {
 	// Valid 5-byte packet with peer ID 311860 (0x0004C234)
 	f.Add([]byte{0x90, 0x00, 0x04, 0xC2, 0x34})

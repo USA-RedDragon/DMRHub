@@ -62,6 +62,21 @@ func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName 
 
 	isVoice, isData := utils.CheckPacketType(packet)
 
+	if isVoice {
+		if _, alreadyActive := h.activeStreams.Load(packet.StreamID); !alreadyActive {
+			// First packet of a new call/stream — track it.
+			h.activeStreams.Store(packet.StreamID, struct{}{})
+			h.callsWg.Add(1)
+		}
+
+		// On voice terminator, mark the stream as finished.
+		if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+			if _, wasActive := h.activeStreams.LoadAndDelete(packet.StreamID); wasActive {
+				defer h.callsWg.Done()
+			}
+		}
+	}
+
 	h.trackCall(ctx, packet, isVoice)
 
 	// Handle special destinations first (parrot, unlink)

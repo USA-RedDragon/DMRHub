@@ -22,7 +22,11 @@ package servers
 import (
 	"context"
 	"testing"
-	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/configulator"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWithGracefulHandoff(t *testing.T) {
@@ -71,72 +75,15 @@ func TestGenerateInstanceID(t *testing.T) {
 	}
 }
 
-// mockKV is a minimal in-process KV store for testing.
-type mockKV struct {
-	data map[string][]byte
-}
-
-func newMockKV() *mockKV {
-	return &mockKV{data: make(map[string][]byte)}
-}
-
-func (m *mockKV) Has(_ context.Context, key string) (bool, error) {
-	_, ok := m.data[key]
-	return ok, nil
-}
-
-func (m *mockKV) Get(_ context.Context, key string) ([]byte, error) {
-	v, ok := m.data[key]
-	if !ok {
-		return nil, ErrNoSuchRepeater
-	}
-	return v, nil
-}
-
-func (m *mockKV) Set(_ context.Context, key string, value []byte) error {
-	m.data[key] = value
-	return nil
-}
-
-func (m *mockKV) Delete(_ context.Context, key string) error {
-	delete(m.data, key)
-	return nil
-}
-
-func (m *mockKV) Expire(_ context.Context, _ string, _ time.Duration) error {
-	return nil
-}
-
-func (m *mockKV) Scan(_ context.Context, _ uint64, match string, _ int64) ([]string, uint64, error) {
-	var keys []string
-	for k := range m.data {
-		if matchGlob(match, k) {
-			keys = append(keys, k)
-		}
-	}
-	return keys, 0, nil
-}
-
-func (m *mockKV) Close() error {
-	return nil
-}
-
-// matchGlob is a very simplistic glob matcher that only supports trailing '*'.
-func matchGlob(pattern, s string) bool {
-	if pattern == "" {
-		return true
-	}
-	if pattern[len(pattern)-1] == '*' {
-		prefix := pattern[:len(pattern)-1]
-		return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-	}
-	return pattern == s
-}
-
 func TestInstanceRegistryNoOtherInstances(t *testing.T) {
 	t.Parallel()
 
-	kv := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	ctx := context.Background()
 
 	r := NewInstanceRegistry(ctx, kv, "instance-1")
@@ -151,7 +98,12 @@ func TestInstanceRegistryNoOtherInstances(t *testing.T) {
 func TestInstanceRegistryWithOtherInstances(t *testing.T) {
 	t.Parallel()
 
-	kv := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	ctx := context.Background()
 
 	r1 := NewInstanceRegistry(ctx, kv, "instance-1")
@@ -172,7 +124,12 @@ func TestInstanceRegistryWithOtherInstances(t *testing.T) {
 func TestInstanceRegistryDeregister(t *testing.T) {
 	t.Parallel()
 
-	kv := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	ctx := context.Background()
 
 	r1 := NewInstanceRegistry(ctx, kv, "instance-1")

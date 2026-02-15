@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 const parrotDelay = 3 * time.Second
@@ -47,19 +48,62 @@ func (h *Hub) doParrot(ctx context.Context, packet models.Packet) {
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		packets := h.parrot.GetStream(ctx, packet.StreamID)
 		h.parrot.StopStream(ctx, packet.StreamID)
-		go h.playbackParrot(ctx, repeaterID, packets)
+		h.callsWg.Add(1)
+		go func() {
+			defer h.callsWg.Done()
+			h.playbackParrot(ctx, repeaterID, packets)
+		}()
 	}
 }
 
-// playbackParrot plays back recorded parrot packets to the source repeater.
-// Publishes to the repeater's pubsub topic so the subscription manager on
-// whichever replica owns the repeater delivers it locally.
 func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []models.Packet) {
 	time.Sleep(parrotDelay)
 
+	// Look up the repeater's server type for direct delivery.
+	var serverType string
+	p, err := models.FindRepeaterByID(h.db, repeaterID)
+	if err != nil {
+		if err != gorm.ErrRecordNotFound {
+			slog.Error("Failed to find repeater for parrot playback", "repeaterID", repeaterID, "error", err)
+		}
+	} else {
+		serverType = p.Type
+	}
+
+	// Track whether we've lost ownership so we don't keep checking KV after
+	// the peer has definitively migrated away.
+	lostOwnership := false
+
 	startedTime := time.Now()
 	for _, pkt := range packets {
-		h.publishToRepeater(repeaterID, pkt)
+		// Prefer direct delivery to the local server — this bypasses pubsub
+		// and prevents duplicate transmission when multiple instances all
+		// subscribe to the same repeater (common during rolling restarts
+		// with auto-registration from keepalives).
+		//
+		// However, if the peer migrated to another instance (detected via KV
+		// ownership), switch to pubsub so the new pod can deliver the packet
+		// to the live peer address. Once ownership is lost, stay on pubsub
+		// for the rest of the playback.
+		useDirect := false
+		if serverType != "" && !lostOwnership {
+			if h.isLocalPeerOwner(ctx, repeaterID) {
+				useDirect = true
+			} else {
+				lostOwnership = true
+				slog.Info("Peer migrated during parrot playback, switching to pubsub",
+					"repeaterID", repeaterID)
+			}
+		}
+
+		if useDirect {
+			if !h.tryDeliverToServer(serverType, RoutedPacket{RepeaterID: repeaterID, Packet: pkt}) {
+				// Server deregistered — fall back to pubsub.
+				h.publishToRepeater(repeaterID, pkt)
+			}
+		} else {
+			h.publishToRepeater(repeaterID, pkt)
+		}
 		h.trackCall(ctx, pkt, true)
 
 		elapsed := time.Since(startedTime)

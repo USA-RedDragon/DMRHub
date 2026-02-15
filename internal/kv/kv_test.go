@@ -306,4 +306,89 @@ func TestKVCancelledContextReturnsCleanly(t *testing.T) {
 	keys, _, scanErr := store.Scan(ctx, 0, "*", 10)
 	_ = keys
 	_ = scanErr
+	_, _ = store.RPush(ctx, "cancel-list", []byte("x"))
+	_, _ = store.LDrain(ctx, "cancel-list")
+}
+
+func TestKVRPush(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	n, err := store.RPush(ctx, "list1", []byte("a"))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	n, err = store.RPush(ctx, "list1", []byte("b"))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	n, err = store.RPush(ctx, "list1", []byte("c"))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+}
+
+func TestKVLDrainReturnsAllElements(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	_, _ = store.RPush(ctx, "drain1", []byte("x"))
+	_, _ = store.RPush(ctx, "drain1", []byte("y"))
+	_, _ = store.RPush(ctx, "drain1", []byte("z"))
+
+	vals, err := store.LDrain(ctx, "drain1")
+	assert.NoError(t, err)
+	assert.Len(t, vals, 3)
+	assert.Equal(t, "x", string(vals[0]))
+	assert.Equal(t, "y", string(vals[1]))
+	assert.Equal(t, "z", string(vals[2]))
+}
+
+func TestKVLDrainDeletesKey(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	_, _ = store.RPush(ctx, "drain2", []byte("val"))
+
+	vals, err := store.LDrain(ctx, "drain2")
+	assert.NoError(t, err)
+	assert.Len(t, vals, 1)
+
+	// Second drain should return empty
+	vals, err = store.LDrain(ctx, "drain2")
+	assert.NoError(t, err)
+	assert.Nil(t, vals)
+}
+
+func TestKVLDrainNonExistent(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+
+	vals, err := store.LDrain(context.Background(), "nosuchlist")
+	assert.NoError(t, err)
+	assert.Nil(t, vals)
+}
+
+func TestKVRPushLargeBinaryData(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	// Push binary data with various sizes
+	data1 := make([]byte, 256)
+	for i := range data1 {
+		data1[i] = byte(i)
+	}
+	data2 := []byte{0, 0, 0, 0} // all zeros
+
+	_, _ = store.RPush(ctx, "binlist", data1)
+	_, _ = store.RPush(ctx, "binlist", data2)
+
+	vals, err := store.LDrain(ctx, "binlist")
+	assert.NoError(t, err)
+	assert.Len(t, vals, 2)
+	assert.Equal(t, data1, vals[0])
+	assert.Equal(t, data2, vals[1])
 }

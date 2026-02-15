@@ -34,6 +34,10 @@ type KV interface {
 	Delete(ctx context.Context, key string) error
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error)
+	// RPush appends a value to a list stored under key. Returns the new length.
+	RPush(ctx context.Context, key string, value []byte) (int64, error)
+	// LDrain atomically returns all elements of the list and deletes the key.
+	LDrain(ctx context.Context, key string) ([][]byte, error)
 	Close() error
 }
 

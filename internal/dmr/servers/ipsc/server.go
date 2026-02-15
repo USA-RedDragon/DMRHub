@@ -192,11 +192,13 @@ func (s *IPSCServer) Addr() net.Addr {
 	return s.udp.LocalAddr()
 }
 
-func (s *IPSCServer) Stop(ctx context.Context) error {
+func (s *IPSCServer) Stop(_ context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping IPSC server")
+
 		s.stopped.Store(true)
 
+		// Unregister from the hub so we stop receiving routed packets.
 		if s.hub != nil {
 			s.hub.UnregisterServer(models.RepeaterTypeIPSC)
 		}

@@ -110,6 +110,33 @@ func (kv *redisKV) Scan(ctx context.Context, cursor uint64, match string, count 
 	return keys, next, nil
 }
 
+func (kv *redisKV) RPush(ctx context.Context, key string, value []byte) (int64, error) {
+	result, err := kv.client.RPush(ctx, key, value).Result()
+	if err != nil {
+		return 0, fmt.Errorf("redis rpush %s: %w", key, err)
+	}
+	return result, nil
+}
+
+func (kv *redisKV) LDrain(ctx context.Context, key string) ([][]byte, error) {
+	// Use a pipeline to atomically get all elements and delete the key.
+	pipe := kv.client.TxPipeline()
+	lrangeCmd := pipe.LRange(ctx, key, 0, -1)
+	pipe.Del(ctx, key)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, fmt.Errorf("redis ldrain %s: %w", key, err)
+	}
+	vals, err := lrangeCmd.Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis ldrain lrange %s: %w", key, err)
+	}
+	result := make([][]byte, len(vals))
+	for i, v := range vals {
+		result[i] = []byte(v)
+	}
+	return result, nil
+}
+
 func (kv *redisKV) Close() error {
 	if err := kv.client.Close(); err != nil {
 		return fmt.Errorf("redis close: %w", err)

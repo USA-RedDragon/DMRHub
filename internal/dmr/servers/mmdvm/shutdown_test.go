@@ -26,10 +26,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/configulator"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/stretchr/testify/require"
 )
 
 // TestHandlePacketRejectsWhenStopped is a regression test for the shutdown race
@@ -39,7 +43,12 @@ import (
 func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 	t.Parallel()
 
-	kvStore := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	kvClient := servers.MakeKVClient(kvStore)
 
 	s := Server{
@@ -83,7 +92,12 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 	t.Parallel()
 
-	kvStore := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	kvClient := servers.MakeKVClient(kvStore)
 
 	s := Server{

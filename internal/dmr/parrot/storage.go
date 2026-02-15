@@ -28,13 +28,11 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/queue"
 	"go.opentelemetry.io/otel"
 )
 
 type parrotStorage struct {
-	kv    kv.KV
-	queue *queue.Queue
+	kv kv.KV
 }
 
 var (
@@ -49,8 +47,7 @@ const parrotExpireTime = 5 * time.Minute
 
 func makeParrotStorage(kv kv.KV) parrotStorage {
 	return parrotStorage{
-		kv:    kv,
-		queue: queue.NewQueue(),
+		kv: kv,
 	}
 }
 
@@ -64,6 +61,8 @@ func (r *parrotStorage) store(ctx context.Context, streamID uint, repeaterID uin
 	if err := r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
 		slog.Error("Error expiring parrot stream", "streamID", streamID, "error", err)
 	}
+	// Also expire the packets list key
+	_ = r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), parrotExpireTime)
 }
 
 func (r *parrotStorage) exists(ctx context.Context, streamID uint) bool {
@@ -85,6 +84,8 @@ func (r *parrotStorage) refresh(ctx context.Context, streamID uint) {
 	if err := r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d", streamID), parrotExpireTime); err != nil {
 		slog.Error("Error refreshing parrot stream", "streamID", streamID, "error", err)
 	}
+	// Also refresh the packets list TTL
+	_ = r.kv.Expire(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), parrotExpireTime)
 }
 
 func (r *parrotStorage) get(ctx context.Context, streamID uint) (uint, error) {
@@ -114,7 +115,7 @@ func (r *parrotStorage) stream(ctx context.Context, streamID uint, packet models
 		return ErrMarshal
 	}
 
-	if _, err := r.queue.Push(fmt.Sprintf("parrot:stream:%d:packets", streamID), packetBytes); err != nil {
+	if _, err := r.kv.RPush(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID), packetBytes); err != nil {
 		slog.Error("Error pushing packet to parrot stream", "streamID", streamID, "error", err)
 	}
 	return nil
@@ -127,7 +128,7 @@ func (r *parrotStorage) delete(ctx context.Context, streamID uint) {
 	if err := r.kv.Delete(ctx, fmt.Sprintf("parrot:stream:%d", streamID)); err != nil {
 		slog.Error("Error deleting parrot stream", "streamID", streamID, "error", err)
 	}
-	if err := r.queue.Delete(fmt.Sprintf("parrot:stream:%d:packets", streamID)); err != nil {
+	if err := r.kv.Delete(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID)); err != nil {
 		slog.Error("Error deleting parrot stream packets", "streamID", streamID, "error", err)
 	}
 }
@@ -136,7 +137,10 @@ func (r *parrotStorage) getStream(ctx context.Context, streamID uint) ([]models.
 	_, span := otel.Tracer("DMRHub").Start(ctx, "kvParrotStorage.getStream")
 	defer span.End()
 
-	packets := r.queue.Drain(fmt.Sprintf("parrot:stream:%d:packets", streamID))
+	packets, err := r.kv.LDrain(ctx, fmt.Sprintf("parrot:stream:%d:packets", streamID))
+	if err != nil {
+		return nil, fmt.Errorf("ldrain parrot stream %d: %w", streamID, err)
+	}
 
 	// Empty array of packets
 	packetArray := make([]models.Packet, len(packets))

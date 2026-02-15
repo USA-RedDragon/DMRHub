@@ -21,14 +21,18 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/puzpuzpuz/xsync/v4"
 	"gorm.io/gorm"
 )
 
@@ -80,6 +84,16 @@ type serverEntry struct {
 
 const serverChannelSize = 500
 
+// peerOwnerKeyPrefix is the KV key prefix for tracking which instance owns
+// (has a live connection to) each repeater/peer. Written on ActivateRepeater,
+// read during parrot playback to detect peer migration.
+const peerOwnerKeyPrefix = "dmrhub:peer_owner:"
+
+// peerOwnerTTL is the TTL for peer ownership keys. Must be long enough to
+// survive brief connection interruptions but short enough to expire after a
+// crash without cleanup.
+const peerOwnerTTL = 5 * time.Minute
+
 // Hub is the central routing core for all DMR protocols.
 type Hub struct {
 	db          *gorm.DB
@@ -93,6 +107,24 @@ type Hub struct {
 
 	subscriptionMgr *subscriptionManager
 
+	// instanceID uniquely identifies this running instance. Used for peer
+	// ownership tracking to detect when a repeater migrates to another pod.
+	instanceID string
+
+	// stopping is set when the server begins graceful shutdown. In-flight
+	// calls and parrot playback continue until they finish naturally;
+	// Kubernetes endpoint removal prevents new traffic from arriving.
+	stopping atomic.Bool
+
+	// callsWg tracks all in-flight activity that must complete before
+	// shutdown: incoming voice calls and parrot playback goroutines.
+	callsWg sync.WaitGroup
+
+	// activeStreams tracks stream IDs currently being processed. Used to
+	// distinguish the first packet of a new call (needs WG increment) from
+	// continuation packets (already tracked).
+	activeStreams *xsync.Map[uint, struct{}]
+
 	// done is closed when Stop is called, allowing blocked deliverToServer
 	// sends to unblock during shutdown.
 	done     chan struct{}
@@ -102,13 +134,14 @@ type Hub struct {
 // NewHub creates a new Hub.
 func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTracker) *Hub {
 	h := &Hub{
-		db:          db,
-		kv:          kvStore,
-		pubsub:      ps,
-		callTracker: ct,
-		parrot:      parrot.NewParrot(kvStore),
-		servers:     make(map[string]*serverEntry),
-		done:        make(chan struct{}),
+		db:            db,
+		kv:            kvStore,
+		pubsub:        ps,
+		callTracker:   ct,
+		parrot:        parrot.NewParrot(kvStore),
+		servers:       make(map[string]*serverEntry),
+		activeStreams: xsync.NewMap[uint, struct{}](),
+		done:          make(chan struct{}),
 	}
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h
@@ -173,6 +206,26 @@ func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
 	}
 }
 
+// tryDeliverToServer attempts to deliver a packet to a server's channel.
+// Returns true if the packet was successfully queued, false if the server
+// is not registered or the hub is stopping.
+func (h *Hub) tryDeliverToServer(serverName string, rp RoutedPacket) bool {
+	h.mu.RLock()
+	entry, ok := h.servers[serverName]
+	h.mu.RUnlock()
+
+	if !ok {
+		return false
+	}
+
+	select {
+	case entry.ch <- rp:
+		return true
+	case <-h.done:
+		return false
+	}
+}
+
 // getServerRole returns the role of a registered server, or -1 if not found.
 func (h *Hub) getServerRole(name string) ServerRole {
 	h.mu.RLock()
@@ -198,6 +251,24 @@ func (h *Hub) hasPeerServers() bool {
 	return false
 }
 
+func (h *Hub) StartDraining() {
+	h.stopping.Store(true)
+	slog.Info("Hub draining: waiting for in-flight calls to finish")
+}
+
+// WaitForCalls blocks until all in-flight calls and parrot playbacks
+// complete. There is no timeout — the shutdown sequence waits as long as
+// needed for every active call to finish.
+func (h *Hub) WaitForCalls() {
+	h.callsWg.Wait()
+	slog.Info("All in-flight calls completed")
+}
+
+// IsStopping returns true if the hub has been told to drain.
+func (h *Hub) IsStopping() bool {
+	return h.stopping.Load()
+}
+
 // Stop cancels all subscriptions and signals blocked deliveries to abort (used at shutdown).
 func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
@@ -207,9 +278,49 @@ func (h *Hub) Stop(ctx context.Context) {
 	})
 }
 
+// SetInstanceID sets the unique instance identifier for this hub. Must be
+// called before any repeaters are activated. The instance ID is used for
+// peer ownership tracking in the shared KV store.
+func (h *Hub) SetInstanceID(id string) {
+	h.instanceID = id
+}
+
+// claimPeerOwnership writes an ownership record for the given repeater in
+// the shared KV store. This lets other methods (e.g. parrot playback) detect
+// when a peer has migrated to a different instance.
+func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint) {
+	if h.instanceID == "" {
+		return
+	}
+	key := fmt.Sprintf("%s%d", peerOwnerKeyPrefix, repeaterID)
+	if err := h.kv.Set(ctx, key, []byte(h.instanceID)); err != nil {
+		slog.Warn("failed to claim peer ownership", "repeaterID", repeaterID, "error", err)
+		return
+	}
+	if err := h.kv.Expire(ctx, key, peerOwnerTTL); err != nil {
+		slog.Warn("failed to set peer ownership TTL", "repeaterID", repeaterID, "error", err)
+	}
+}
+
+// isLocalPeerOwner returns true if this instance currently owns the given
+// repeater according to the shared KV store. Returns true if the KV read
+// fails (fail-open — direct delivery is the safe default for a single instance).
+func (h *Hub) isLocalPeerOwner(ctx context.Context, repeaterID uint) bool {
+	if h.instanceID == "" {
+		return true // no instance tracking → always local
+	}
+	key := fmt.Sprintf("%s%d", peerOwnerKeyPrefix, repeaterID)
+	val, err := h.kv.Get(ctx, key)
+	if err != nil {
+		return true // fail-open: assume local ownership
+	}
+	return string(val) == h.instanceID
+}
+
 // ActivateRepeater sets up pubsub subscriptions for a repeater.
 // Protocol servers should call this when a repeater connects.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
+	h.claimPeerOwnership(ctx, repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 }
 

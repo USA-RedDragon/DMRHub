@@ -26,7 +26,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -376,6 +375,9 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	}
 	registry := servers.NewInstanceRegistry(ctx, kvStore, instanceID)
 
+	// Let the hub know our instance ID so it can track peer ownership in KV.
+	hub.SetInstanceID(instanceID)
+
 	ready := &atomic.Bool{}
 
 	sm := &serverManager{
@@ -422,10 +424,6 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	return sm, nil
 }
 
-// setupShutdownHandlers configures graceful shutdown handlers.
-// It blocks until SIGINT/SIGTERM/SIGQUIT/SIGHUP is received, then
-// performs an orderly shutdown: disconnect repeaters/peers first,
-// cancel hub subscriptions, tear down resources.
 func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub *hub.Hub, servers *serverManager, cleanup func(context.Context) error) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
@@ -433,65 +431,40 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 	sig := <-sigCh
 	slog.Error("Shutting down due to signal", "signal", sig)
 
-	// Mark unhealthy immediately so Kubernetes stops routing traffic
+	// Mark unhealthy immediately so Kubernetes stops routing traffic.
 	servers.ready.Store(false)
 
-	wg := new(sync.WaitGroup)
-
-	wg.Add(1)
+	// Stop the scheduler (independent of DMR shutdown).
 	go func() {
-		defer wg.Done()
-		err := scheduler.StopJobs()
-		if err != nil {
+		if err := scheduler.StopJobs(); err != nil {
 			slog.Error("Failed to stop scheduler jobs", "error", err)
 		}
-		err = scheduler.Shutdown()
-		if err != nil {
+		if err := scheduler.Shutdown(); err != nil {
 			slog.Error("Failed to stop scheduler", "error", err)
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		// Send disconnect messages (MSTCL, deregistration) to repeaters/peers
-		// BEFORE cancelling hub subscriptions — otherwise hub.Stop() may consume
-		// the entire shutdown budget and os.Exit fires before MSTCL is sent.
-		servers.stopDMRServers(ctx)
-		hub.Stop(ctx)
-		servers.closeResources(ctx)
-	}()
+	hub.StartDraining()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if cleanup != nil {
-			const timeout = 5 * time.Second
-			shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			err := cleanup(shutdownCtx)
-			if err != nil {
-				slog.Error("Failed to shutdown tracer", "error", err)
-			}
+	// Wait for all active voice calls and parrot playbacks to complete.
+	// No timeout — we wait as long as needed.
+	hub.WaitForCalls()
+
+	// All calls are done. Now tear everything down.
+	servers.stopDMRServers(ctx)
+	hub.Stop(ctx)
+	servers.closeResources(ctx)
+
+	if cleanup != nil {
+		const timeout = 5 * time.Second
+		shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		if err := cleanup(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown tracer", "error", err)
 		}
-	}()
-
-	// Wait for all the servers to stop
-	const timeout = 10 * time.Second
-
-	c := make(chan struct{})
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-	select {
-	case <-c:
-		slog.Info("All servers stopped, shutting down gracefully")
-		os.Exit(0)
-	case <-time.After(timeout):
-		slog.Error("Shutdown timed out, forcing exit")
-		os.Exit(1)
 	}
+
+	slog.Info("All servers stopped, shutting down gracefully")
 }
 
 func initTracer(config *config.Config) (func(context.Context) error, error) {

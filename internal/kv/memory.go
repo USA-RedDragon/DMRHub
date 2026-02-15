@@ -127,19 +127,28 @@ func (kv inMemoryKV) Expire(_ context.Context, key string, ttl time.Duration) er
 		kv.metrics.RecordKVOperation("expire", status, duration)
 	}()
 
-	value, ok := kv.kv.Load(key)
-	if !ok {
+	var found bool
+	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		if !loaded {
+			found = false
+			return kvValue{}, xsync.CancelOp
+		}
+		found = true
+		if ttl <= 0 {
+			return kvValue{}, xsync.DeleteOp
+		}
+		oldValue.ttl = time.Now().Add(ttl)
+		return oldValue, xsync.UpdateOp
+	})
+	if !found {
 		status = "not_found"
 		return fmt.Errorf("key %s not found", key)
 	}
 	if ttl <= 0 {
-		kv.kv.Delete(key) // Remove the key if ttl is zero or negative
 		status = "deleted"
-		return nil
+	} else {
+		status = "success"
 	}
-	value.ttl = time.Now().Add(ttl)
-	kv.kv.Store(key, value)
-	status = "success"
 	return nil
 }
 
@@ -181,6 +190,85 @@ func (kv inMemoryKV) Scan(_ context.Context, cursor uint64, match string, count 
 	kv.metrics.SetKVKeysTotal(float64(keyCount))
 
 	return keys, 0, nil // cursor is not used in this implementation
+}
+
+func (kv inMemoryKV) RPush(_ context.Context, key string, value []byte) (int64, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		kv.metrics.RecordKVOperation("rpush", "success", duration)
+	}()
+
+	var length int64
+	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		var newList []byte
+		if loaded && oldValue.value != nil {
+			newList = append(append([]byte{}, oldValue.value...), encodeListEntry(value)...)
+		} else {
+			newList = encodeListEntry(value)
+		}
+		length = countListEntries(newList)
+		return kvValue{value: newList, ttl: oldValue.ttl}, xsync.UpdateOp
+	})
+	return length, nil
+}
+
+func (kv inMemoryKV) LDrain(_ context.Context, key string) ([][]byte, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		kv.metrics.RecordKVOperation("ldrain", "success", duration)
+	}()
+
+	existing, loaded := kv.kv.LoadAndDelete(key)
+	if !loaded || existing.value == nil {
+		return nil, nil
+	}
+	return decodeListEntries(existing.value), nil
+}
+
+// encodeListEntry encodes a single entry as [4-byte big-endian length][data].
+func encodeListEntry(data []byte) []byte {
+	l := len(data)
+	entry := make([]byte, 4+l)
+	entry[0] = byte(l >> 24)
+	entry[1] = byte(l >> 16)
+	entry[2] = byte(l >> 8)
+	entry[3] = byte(l)
+	copy(entry[4:], data)
+	return entry
+}
+
+// decodeListEntries decodes entries from the format produced by encodeListEntry.
+func decodeListEntries(data []byte) [][]byte {
+	var entries [][]byte
+	for len(data) >= 4 {
+		l := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+		data = data[4:]
+		if l > len(data) {
+			break
+		}
+		entry := make([]byte, l)
+		copy(entry, data[:l])
+		entries = append(entries, entry)
+		data = data[l:]
+	}
+	return entries
+}
+
+// countListEntries counts the number of entries in the encoded list.
+func countListEntries(data []byte) int64 {
+	var count int64
+	for len(data) >= 4 {
+		l := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+		data = data[4:]
+		if l > len(data) {
+			break
+		}
+		data = data[l:]
+		count++
+	}
+	return count
 }
 
 func (kv inMemoryKV) Close() error {

@@ -21,62 +21,16 @@ package mmdvm
 
 import (
 	"context"
-	"fmt"
 	"testing"
-	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/configulator"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/stretchr/testify/require"
 )
-
-// mockKV is a minimal in-process KV for testing without config or metrics dependencies.
-type mockKV struct {
-	data map[string][]byte
-}
-
-func newMockKV() *mockKV {
-	return &mockKV{data: make(map[string][]byte)}
-}
-
-func (m *mockKV) Has(_ context.Context, key string) (bool, error) {
-	_, ok := m.data[key]
-	return ok, nil
-}
-
-func (m *mockKV) Get(_ context.Context, key string) ([]byte, error) {
-	v, ok := m.data[key]
-	if !ok {
-		return nil, fmt.Errorf("key %s not found", key)
-	}
-	return v, nil
-}
-
-func (m *mockKV) Set(_ context.Context, key string, value []byte) error {
-	m.data[key] = value
-	return nil
-}
-
-func (m *mockKV) Delete(_ context.Context, key string) error {
-	delete(m.data, key)
-	return nil
-}
-
-func (m *mockKV) Expire(_ context.Context, _ string, _ time.Duration) error {
-	return nil
-}
-
-func (m *mockKV) Scan(_ context.Context, _ uint64, _ string, _ int64) ([]string, uint64, error) {
-	return nil, 0, nil
-}
-
-func (m *mockKV) Close() error {
-	return nil
-}
-
-// Compile-time check that mockKV implements kv.KV.
-var _ kv.KV = (*mockKV)(nil)
 
 // makeTestServer creates a minimal Server with only the kvClient set, sufficient for validRepeater tests.
 func makeTestServer(kvStore kv.KV) Server {
@@ -89,7 +43,13 @@ func makeTestServer(kvStore kv.KV) Server {
 func TestValidRepeater_NonExistent(t *testing.T) {
 	t.Parallel()
 
-	s := makeTestServer(newMockKV())
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
+	s := makeTestServer(kvStore)
 	// Repeater 12345 does not exist in KV — should return false immediately
 	if s.validRepeater(context.Background(), 12345, models.RepeaterStateConnected) {
 		t.Error("validRepeater should return false for a non-existent repeater")
@@ -99,7 +59,12 @@ func TestValidRepeater_NonExistent(t *testing.T) {
 func TestValidRepeater_WrongState(t *testing.T) {
 	t.Parallel()
 
-	kvStore := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	kvClient := servers.MakeKVClient(kvStore)
 	s := makeTestServer(kvStore)
 
@@ -116,7 +81,12 @@ func TestValidRepeater_WrongState(t *testing.T) {
 func TestValidRepeater_CorrectState(t *testing.T) {
 	t.Parallel()
 
-	kvStore := newMockKV()
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+
 	kvClient := servers.MakeKVClient(kvStore)
 	s := makeTestServer(kvStore)
 

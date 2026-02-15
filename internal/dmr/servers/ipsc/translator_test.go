@@ -22,6 +22,7 @@ package ipsc
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -1280,6 +1281,155 @@ func TestReturnBufferAllSizes(t *testing.T) {
 		buf := make([]byte, sz)
 		// Should not panic for any size (unknown sizes are silently ignored).
 		ReturnBuffer(buf)
+	}
+}
+
+// --- Regression tests for unbounded stream state maps (memory leak fix) ---
+
+func TestCleanupStaleStreams_RemovesOldForwardStreams(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	// Create a forward stream by translating a voice header
+	pkt := makeTestMMDVMPacket(true, true, dmrconst.FrameDataSync, 1) // VoiceLCHeader
+	tr.TranslateToIPSC(pkt)
+
+	fwd, rev := tr.StreamCount()
+	if fwd != 1 {
+		t.Fatalf("expected 1 forward stream, got %d", fwd)
+	}
+	if rev != 0 {
+		t.Fatalf("expected 0 reverse streams, got %d", rev)
+	}
+
+	// Manually age the stream by setting lastActivity in the past
+	streamID := uint32(pkt.StreamID) //nolint:gosec // test value is within uint32 range
+	tr.mu.Lock()
+	ss := tr.streams[streamID]
+	ss.lastActivity = time.Now().Add(-60 * time.Second)
+	tr.mu.Unlock()
+
+	// Cleanup with 30s timeout should remove the stale stream
+	cleaned := tr.CleanupStaleStreams(30 * time.Second)
+	if cleaned != 1 {
+		t.Fatalf("expected 1 stale stream cleaned, got %d", cleaned)
+	}
+
+	fwd, _ = tr.StreamCount()
+	if fwd != 0 {
+		t.Fatalf("expected 0 forward streams after cleanup, got %d", fwd)
+	}
+}
+
+func TestCleanupStaleStreams_RemovesOldReverseStreams(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	// Create a reverse stream by translating an IPSC voice header
+	data := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	tr.TranslateToMMDVM(0x80, data)
+
+	_, rev := tr.StreamCount()
+	if rev != 1 {
+		t.Fatalf("expected 1 reverse stream, got %d", rev)
+	}
+
+	// Age the reverse stream
+	tr.mu.Lock()
+	for _, rss := range tr.reverseStreams {
+		rss.lastActivity = time.Now().Add(-60 * time.Second)
+	}
+	tr.mu.Unlock()
+
+	cleaned := tr.CleanupStaleStreams(30 * time.Second)
+	if cleaned != 1 {
+		t.Fatalf("expected 1 stale reverse stream cleaned, got %d", cleaned)
+	}
+
+	_, rev = tr.StreamCount()
+	if rev != 0 {
+		t.Fatalf("expected 0 reverse streams after cleanup, got %d", rev)
+	}
+}
+
+func TestCleanupStaleStreams_PreservesActiveStreams(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	// Create a forward stream
+	pkt := makeTestMMDVMPacket(true, true, dmrconst.FrameDataSync, 1)
+	tr.TranslateToIPSC(pkt)
+
+	fwd, _ := tr.StreamCount()
+	if fwd != 1 {
+		t.Fatalf("expected 1 forward stream, got %d", fwd)
+	}
+
+	// Don't age the stream — it was just created
+	cleaned := tr.CleanupStaleStreams(30 * time.Second)
+	if cleaned != 0 {
+		t.Fatalf("expected 0 stale streams cleaned, got %d", cleaned)
+	}
+
+	fwd, _ = tr.StreamCount()
+	if fwd != 1 {
+		t.Fatalf("expected 1 forward stream still present, got %d", fwd)
+	}
+}
+
+func TestCleanupReverseStream(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	// Create a reverse stream
+	data := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	tr.TranslateToMMDVM(0x80, data)
+
+	_, rev := tr.StreamCount()
+	if rev != 1 {
+		t.Fatalf("expected 1 reverse stream, got %d", rev)
+	}
+
+	// The call control value is at bytes 13-16 of the IPSC packet
+	callControl := binary.BigEndian.Uint32(data[13:17])
+	tr.CleanupReverseStream(callControl)
+
+	_, rev = tr.StreamCount()
+	if rev != 0 {
+		t.Fatalf("expected 0 reverse streams after cleanup, got %d", rev)
+	}
+}
+
+func TestStreamCountEmpty(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+	fwd, rev := tr.StreamCount()
+	if fwd != 0 || rev != 0 {
+		t.Fatalf("expected (0, 0) for empty translator, got (%d, %d)", fwd, rev)
+	}
+}
+
+func TestTerminatorCleansUpForwardStream(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	// Create a stream with a voice header
+	pkt := makeTestMMDVMPacket(true, true, dmrconst.FrameDataSync, 1)
+	tr.TranslateToIPSC(pkt)
+
+	fwd, _ := tr.StreamCount()
+	if fwd != 1 {
+		t.Fatalf("expected 1 forward stream after header, got %d", fwd)
+	}
+
+	// Send a terminator for the same stream
+	termPkt := pkt
+	termPkt.DTypeOrVSeq = uint(elements.DataTypeTerminatorWithLC)
+	tr.TranslateToIPSC(termPkt)
+
+	fwd, _ = tr.StreamCount()
+	if fwd != 0 {
+		t.Fatalf("expected 0 forward streams after terminator, got %d", fwd)
 	}
 }
 

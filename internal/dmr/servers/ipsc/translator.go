@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -66,6 +67,7 @@ type streamState struct {
 	firstPacket  bool // true for the very first packet
 	flcCached    bool // whether flcBytes is valid
 	flcBytes     [12]byte
+	lastActivity time.Time // tracks when this stream was last active
 }
 
 // IPSC burst data type constants (byte 30 of IPSC voice packet)
@@ -133,11 +135,13 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			t.nextCallControl = 1
 		}
 		ss = &streamState{
-			callControl: t.nextCallControl,
-			firstPacket: true,
+			callControl:  t.nextCallControl,
+			firstPacket:  true,
+			lastActivity: time.Now(),
 		}
 		t.streams[uint32(streamID)] = ss
 	}
+	ss.lastActivity = time.Now()
 
 	frameType := pkt.FrameType
 	dtypeOrVSeq := pkt.DTypeOrVSeq
@@ -204,6 +208,50 @@ func (t *IPSCTranslator) CleanupStream(streamID uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.streams, streamID)
+}
+
+// CleanupReverseStream removes reverse stream state for a given call control ID.
+func (t *IPSCTranslator) CleanupReverseStream(callControl uint32) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.reverseStreams, callControl)
+}
+
+// CleanupStaleStreams removes any forward or reverse stream entries that
+// have not been active within the given maxAge duration. This prevents
+// unbounded growth of the stream maps when UDP terminator packets are lost.
+func (t *IPSCTranslator) CleanupStaleStreams(maxAge time.Duration) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	cleaned := 0
+
+	for id, ss := range t.streams {
+		if now.Sub(ss.lastActivity) > maxAge {
+			delete(t.streams, id)
+			cleaned++
+		}
+	}
+	for id, rss := range t.reverseStreams {
+		if now.Sub(rss.lastActivity) > maxAge {
+			delete(t.reverseStreams, id)
+			cleaned++
+		}
+	}
+
+	if cleaned > 0 {
+		slog.Debug("IPSCTranslator: cleaned stale streams", "count", cleaned)
+	}
+
+	return cleaned
+}
+
+// StreamCount returns the number of active forward and reverse streams.
+func (t *IPSCTranslator) StreamCount() (forward, reverse int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.streams), len(t.reverseStreams)
 }
 
 // buildIPSCHeader writes the common 18-byte IPSC header (bytes 0-17).
@@ -544,10 +592,11 @@ func (t *IPSCTranslator) getOrCacheFLC(pkt models.Packet, ss *streamState) [12]b
 
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
 type reverseStreamState struct {
-	streamID   uint32
-	seq        uint8
-	burstIndex int  // 0-5 → A-F within a superframe
-	started    bool // whether we've seen a voice header
+	streamID     uint32
+	seq          uint8
+	burstIndex   int       // 0-5 → A-F within a superframe
+	started      bool      // whether we've seen a voice header
+	lastActivity time.Time // tracks when this stream was last active
 }
 
 // TranslateToMMDVM converts raw IPSC user packet data into MMDVM DMRD Packets.
@@ -594,10 +643,12 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			t.nextStreamID = 1
 		}
 		rss = &reverseStreamState{
-			streamID: t.nextStreamID,
+			streamID:     t.nextStreamID,
+			lastActivity: time.Now(),
 		}
 		t.reverseStreams[callControl] = rss
 	}
+	rss.lastActivity = time.Now()
 
 	// Determine what kind of IPSC burst this is from byte 30
 	burstType := data[30]

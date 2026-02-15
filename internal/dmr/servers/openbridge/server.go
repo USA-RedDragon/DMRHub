@@ -24,6 +24,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1" //#nosec G505 -- False positive, used for a protocol
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -113,6 +114,10 @@ func (s *Server) Start(ctx context.Context) error {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
 			slog.Debug("Read from UDP", "length", length, "remoteaddr", remoteaddr, "err", err)
 			if err != nil {
+				// When the socket is closed during shutdown, stop the loop quietly.
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				slog.Error("Error reading from UDP Socket, swallowing error", "error", err)
 				continue
 			}
@@ -143,6 +148,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 // Stop stops the DMR server.
 func (s *Server) Stop(_ context.Context) error {
+	slog.Info("Stopping OpenBridge server")
+
+	s.hub.UnregisterServer("openbridge")
+
+	if err := s.Server.Close(); err != nil {
+		return fmt.Errorf("error closing OpenBridge UDP socket: %w", err)
+	}
+
 	return nil
 }
 

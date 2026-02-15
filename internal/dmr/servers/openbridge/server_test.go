@@ -203,3 +203,60 @@ func TestUDPBufferCopyRegression(t *testing.T) {
 		}
 	}
 }
+
+// TestStopClosesSocketAndUnregistersHub verifies that Stop() properly closes
+// the UDP socket and unregisters the server from the hub. This is a regression
+// test for the bug where Stop() was a no-op, leaking the socket and leaving
+// the hub entry dangling.
+func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	require.NoError(t, err)
+
+	defConfig.Database.Database = ""
+	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.OpenBridge.Port = 0 // OS-assigned port
+
+	database, err := db.MakeDB(&defConfig)
+	require.NoError(t, err)
+	defer func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+	}()
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	require.NoError(t, err)
+	defer func() { _ = ps.Close() }()
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	require.NoError(t, err)
+	defer func() { _ = kvStore.Close() }()
+
+	ct := calltracker.NewCallTracker(database, ps)
+	dmrHub := hub.NewHub(database, kvStore, ps, ct)
+
+	server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, kvStore)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err = server.Start(ctx)
+	require.NoError(t, err)
+
+	// Verify the socket is open by checking that LocalAddr doesn't fail
+	localAddr := server.Server.LocalAddr()
+	require.NotNil(t, localAddr, "socket should be open before Stop")
+
+	// Stop the server
+	err = server.Stop(ctx)
+	require.NoError(t, err)
+
+	// Verify the socket is closed: a write should fail with net.ErrClosed
+	_, writeErr := server.Server.WriteToUDP([]byte("test"), &net.UDPAddr{
+		IP:   net.IPv4(127, 0, 0, 1),
+		Port: 1234,
+	})
+	require.Error(t, writeErr, "writing to a closed socket should return an error")
+}

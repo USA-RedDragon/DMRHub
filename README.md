@@ -24,9 +24,11 @@ Run a DMR network (like TGIF or BrandMeister) server with a single binary compat
 <details>
   <summary>More? Click to expand</summary>
 
+![Configuration Page](doc/Screenshots/setup.png)
+
 ![Repeaters](doc/Screenshots/repeaters.png)
 
 ![Easy Repeater Enrollment](doc/Screenshots/repeaters-easy.png)
 
-![Repeater Management](doc/Screenshots/repeaters-edit.png)
+![Talkgroup Management](doc/Screenshots/talkgroup-management.png)
 </details>

@@ -67,9 +67,13 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to count admin users: %w", err)
 	}
 	if adminCount < 1 {
+		hashedPassword, hashErr := utils.HashPassword("password", defConfig.PasswordSalt)
+		if hashErr != nil {
+			return nil, nil, fmt.Errorf("failed to hash password: %w", hashErr)
+		}
 		err = t.database.Create(&models.User{
 			Username:   "Admin",
-			Password:   utils.HashPassword("password", defConfig.PasswordSalt),
+			Password:   hashedPassword,
 			Admin:      true,
 			SuperAdmin: true,
 			Callsign:   "XXXXXX",

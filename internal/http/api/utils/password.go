@@ -26,7 +26,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"math/big"
 	"strings"
@@ -57,7 +56,7 @@ var (
 	ErrNoRandom            = errors.New("no random source available")
 )
 
-func HashPassword(password string, salt string) string {
+func HashPassword(password string, salt string) (string, error) {
 	var params = argon2Params{
 		memory:      memory,
 		iterations:  iterations,
@@ -69,7 +68,7 @@ func HashPassword(password string, salt string) string {
 	// Fill the salt with cryptographically secure random bytes.
 	_, err := rand.Read(params.salt)
 	if err != nil {
-		slog.Error("Error hashing password", "function", "HashPassword", "error", err)
+		return "", fmt.Errorf("failed to generate random salt: %w", err)
 	}
 
 	bytes := argon2.IDKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
@@ -77,7 +76,7 @@ func HashPassword(password string, salt string) string {
 	b64Hash := base64.RawStdEncoding.EncodeToString(bytes)
 
 	// Return a string using the standard encoded hash representation.
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, params.memory, params.iterations, params.parallelism, b64Salt, b64Hash)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, params.memory, params.iterations, params.parallelism, b64Salt, b64Hash), nil
 }
 
 func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {

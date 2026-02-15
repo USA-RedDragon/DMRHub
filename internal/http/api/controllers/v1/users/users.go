@@ -180,7 +180,12 @@ func POSTUser(c *gin.Context) {
 		}
 
 		// argon2 the password
-		hashedPassword := utils.HashPassword(json.Password, config.PasswordSalt)
+		hashedPassword, err := utils.HashPassword(json.Password, config.PasswordSalt)
+		if err != nil {
+			slog.Error("Error hashing password", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+			return
+		}
 
 		// store the user in the database with Active = false
 		user = models.User{
@@ -602,7 +607,13 @@ func PATCHUser(c *gin.Context) {
 		}
 
 		if json.Password != "" {
-			user.Password = utils.HashPassword(json.Password, config.PasswordSalt)
+			hashedPassword, hashErr := utils.HashPassword(json.Password, config.PasswordSalt)
+			if hashErr != nil {
+				slog.Error("Error hashing password", "error", hashErr)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+				return
+			}
+			user.Password = hashedPassword
 		}
 
 		err = db.Save(&user).Error

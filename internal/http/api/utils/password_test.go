@@ -27,9 +27,34 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 )
 
+func TestHashPasswordReturnsNoErrorOnSuccess(t *testing.T) {
+	// Regression test: HashPassword must return a non-nil error on failure
+	// instead of silently producing a hash with a zero salt.
+	// See: https://github.com/USA-RedDragon/DMRHub report.md "HashPassword silently continues on failure"
+	t.Parallel()
+	hash, err := utils.HashPassword("testpassword", "salt")
+	if err != nil {
+		t.Fatalf("HashPassword returned unexpected error: %v", err)
+	}
+	if hash == "" {
+		t.Fatal("Expected non-empty hash on success")
+	}
+	// Verify the hash can be verified back
+	match, err := utils.VerifyPassword("testpassword", hash, "salt")
+	if err != nil {
+		t.Fatalf("VerifyPassword failed: %v", err)
+	}
+	if !match {
+		t.Error("Expected hash to verify correctly")
+	}
+}
+
 func TestHashPasswordNonEmpty(t *testing.T) {
 	t.Parallel()
-	hash := utils.HashPassword("testpassword", "salt")
+	hash, err := utils.HashPassword("testpassword", "salt")
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
 	if hash == "" {
 		t.Fatal("Expected non-empty hash")
 	}
@@ -40,8 +65,14 @@ func TestHashPasswordNonEmpty(t *testing.T) {
 
 func TestHashPasswordDifferentSalts(t *testing.T) {
 	t.Parallel()
-	hash1 := utils.HashPassword("password", "salt1")
-	hash2 := utils.HashPassword("password", "salt2")
+	hash1, err := utils.HashPassword("password", "salt1")
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
+	hash2, err := utils.HashPassword("password", "salt2")
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
 	if hash1 == hash2 {
 		t.Error("Expected different hashes (random salt should differ)")
 	}
@@ -51,7 +82,10 @@ func TestVerifyPasswordCorrect(t *testing.T) {
 	t.Parallel()
 	salt := "testsalt"
 	password := "mypassword"
-	hash := utils.HashPassword(password, salt)
+	hash, err := utils.HashPassword(password, salt)
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
 
 	match, err := utils.VerifyPassword(password, hash, salt)
 	if err != nil {
@@ -65,7 +99,10 @@ func TestVerifyPasswordCorrect(t *testing.T) {
 func TestVerifyPasswordIncorrect(t *testing.T) {
 	t.Parallel()
 	salt := "testsalt"
-	hash := utils.HashPassword("correctPassword", salt)
+	hash, err := utils.HashPassword("correctPassword", salt)
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
 
 	match, err := utils.VerifyPassword("wrongPassword", hash, salt)
 	if err != nil {

@@ -194,13 +194,14 @@ func (h *Hub) routeToUser(packet models.Packet) {
 	// Find user's last call to determine their most recent repeater
 	var lastCall models.Call
 	err = h.db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
-	if err != nil {
+	switch {
+	case err != nil:
 		slog.Error("Error querying last call for user", "userID", user.ID, "error", err)
-	} else if lastCall.ID != 0 {
+	case lastCall.ID != 0:
 		h.publishToRepeater(lastCall.RepeaterID, packet)
+	default:
+		slog.Warn("Dropping private call to user: no previous call found to determine repeater", "userID", user.ID, "src", packet.Src)
 	}
-
-	// If we don't know which repeater to send to, we have to drop the call.
 }
 
 // isRepeaterID checks if an ID looks like a repeater (6-digit or 9-digit)

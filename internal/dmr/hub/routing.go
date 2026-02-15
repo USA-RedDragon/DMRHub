@@ -21,6 +21,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 // trackCall centralizes call tracking for all protocols.
@@ -163,19 +165,13 @@ func (h *Hub) routeToRepeater(packet models.Packet) {
 
 // routeToUser sends a private call to a user's repeaters via pubsub.
 func (h *Hub) routeToUser(packet models.Packet) {
-	userExists, err := models.UserIDExists(h.db, packet.Dst)
-	if err != nil {
-		slog.Error("Error checking if user exists", "error", err)
-		return
-	}
-	if !userExists {
-		slog.Error("User does not exist", "userID", packet.Dst)
-		return
-	}
-
 	user, err := models.FindUserByID(h.db, packet.Dst)
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("User does not exist", "userID", packet.Dst)
+		} else {
+			slog.Error("Error finding user", "error", err)
+		}
 		return
 	}
 

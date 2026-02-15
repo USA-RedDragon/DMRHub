@@ -22,6 +22,7 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -128,15 +129,11 @@ type callDestination struct {
 
 // lookupSourceUser checks that the source user exists and returns it.
 func (c *CallTracker) lookupSourceUser(srcID uint) (models.User, error) {
-	exists, err := models.UserIDExists(c.db, srcID)
-	if err != nil {
-		return models.User{}, fmt.Errorf("error checking if user %d exists: %w", srcID, err)
-	}
-	if !exists {
-		return models.User{}, fmt.Errorf("user %d does not exist", srcID)
-	}
 	user, err := models.FindUserByID(c.db, srcID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.User{}, fmt.Errorf("user %d does not exist", srcID)
+		}
 		return models.User{}, fmt.Errorf("error finding user %d: %w", srcID, err)
 	}
 	return user, nil
@@ -144,15 +141,11 @@ func (c *CallTracker) lookupSourceUser(srcID uint) (models.User, error) {
 
 // lookupSourceRepeater checks that the source repeater exists and returns it.
 func (c *CallTracker) lookupSourceRepeater(repeaterID uint) (models.Repeater, error) {
-	exists, err := models.RepeaterIDExists(c.db, repeaterID)
-	if err != nil {
-		return models.Repeater{}, fmt.Errorf("error checking if repeater %d exists: %w", repeaterID, err)
-	}
-	if !exists {
-		return models.Repeater{}, fmt.Errorf("repeater %d does not exist", repeaterID)
-	}
 	repeater, err := models.FindRepeaterByID(c.db, repeaterID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Repeater{}, fmt.Errorf("repeater %d does not exist", repeaterID)
+		}
 		return models.Repeater{}, fmt.Errorf("error finding repeater %d: %w", repeaterID, err)
 	}
 	return repeater, nil
@@ -167,50 +160,43 @@ func (c *CallTracker) resolveDestination(packet models.Packet) (*callDestination
 	}
 
 	// Private call — destination is a user.
-	exists, err := models.UserIDExists(c.db, packet.Dst)
+	user, err := models.FindUserByID(c.db, packet.Dst)
 	if err != nil {
-		return nil, fmt.Errorf("error checking if destination user %d exists: %w", packet.Dst, err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("cannot find packet destination %d", packet.Dst)
-	}
-	dest.isToUser = true
-	dest.user, err = models.FindUserByID(c.db, packet.Dst)
-	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("cannot find packet destination %d", packet.Dst)
+		}
 		return nil, fmt.Errorf("error finding destination user %d: %w", packet.Dst, err)
 	}
+	dest.isToUser = true
+	dest.user = user
 	return dest, nil
 }
 
 // resolveGroupCallDestination resolves the destination for a group call (talkgroup or repeater).
 func (c *CallTracker) resolveGroupCallDestination(dstID uint, dest *callDestination) (*callDestination, error) {
-	talkgroupExists, err := models.TalkgroupIDExists(c.db, dstID)
-	if err != nil {
-		return nil, fmt.Errorf("error checking if talkgroup %d exists: %w", dstID, err)
-	}
-
-	repeaterExists, err := models.RepeaterIDExists(c.db, dstID)
-	if err != nil {
-		return nil, fmt.Errorf("error checking if repeater %d exists: %w", dstID, err)
-	}
-
-	switch {
-	case talkgroupExists:
+	// Try talkgroup first (most common case for group calls).
+	talkgroup, err := models.FindTalkgroupByID(c.db, dstID)
+	if err == nil {
 		dest.isToTalkgroup = true
-		dest.talkgroup, err = models.FindTalkgroupByID(c.db, dstID)
-		if err != nil {
-			return nil, fmt.Errorf("error finding talkgroup %d: %w", dstID, err)
-		}
-	case repeaterExists:
-		dest.isToRepeater = true
-		dest.repeater, err = models.FindRepeaterByID(c.db, dstID)
-		if err != nil {
-			return nil, fmt.Errorf("error finding repeater %d: %w", dstID, err)
-		}
-	default:
-		return nil, fmt.Errorf("cannot find packet destination %d", dstID)
+		dest.talkgroup = talkgroup
+		return dest, nil
 	}
-	return dest, nil
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("error finding talkgroup %d: %w", dstID, err)
+	}
+
+	// Fall back to repeater.
+	repeater, err := models.FindRepeaterByID(c.db, dstID)
+	if err == nil {
+		dest.isToRepeater = true
+		dest.repeater = repeater
+		return dest, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("error finding repeater %d: %w", dstID, err)
+	}
+
+	return nil, fmt.Errorf("cannot find packet destination %d", dstID)
 }
 
 // newCallFromPacket builds a models.Call from the packet, source entities, and resolved destination.

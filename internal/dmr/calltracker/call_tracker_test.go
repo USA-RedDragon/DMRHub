@@ -227,6 +227,189 @@ func makeTestCallTrackerWithDB(t *testing.T) (*calltracker.CallTracker, *gorm.DB
 	return ct, database
 }
 
+// TestStartCallGroupCallToTalkgroup verifies StartCall works for a group
+// call whose destination is a talkgroup (the common case). This exercises
+// the refactored resolveGroupCallDestination path that directly calls
+// FindTalkgroupByID instead of checking TalkgroupIDExists first.
+func TestStartCallGroupCallToTalkgroup(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000001,
+		Callsign: "U1",
+		Username: "U1",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100001,
+			Callsign: "RPT1",
+		},
+		OwnerID: 1000001,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{
+		ID:   42,
+		Name: "TG42",
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         42,
+		Repeater:    100001,
+		GroupCall:   true,
+		StreamID:    70001,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	ct.StartCall(context.Background(), packet)
+	assert.True(t, ct.IsCallActive(context.Background(), packet))
+}
+
+// TestStartCallGroupCallToRepeater verifies StartCall works for a group
+// call whose destination is a repeater ID (fallback path in
+// resolveGroupCallDestination). The talkgroup lookup should fail with
+// ErrRecordNotFound and fall through to the repeater lookup.
+func TestStartCallGroupCallToRepeater(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000002,
+		Callsign: "U2",
+		Username: "U2",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100002,
+			Callsign: "RPT2",
+		},
+		OwnerID: 1000002,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+	// Destination repeater — no talkgroup with this ID exists.
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100003,
+			Callsign: "RPT3",
+		},
+		OwnerID: 1000002,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000002,
+		Dst:         100003, // repeater ID, not a talkgroup
+		Repeater:    100002,
+		GroupCall:   true,
+		StreamID:    70002,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	ct.StartCall(context.Background(), packet)
+	assert.True(t, ct.IsCallActive(context.Background(), packet))
+}
+
+// TestStartCallPrivateCallToUser verifies StartCall works for a private
+// call to a user. This exercises the single-query FindUserByID path in
+// resolveDestination that replaced the old UserIDExists + FindUserByID pair.
+func TestStartCallPrivateCallToUser(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000003,
+		Callsign: "U3",
+		Username: "U3",
+		Approved: true,
+	}).Error)
+	// Target user
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000004,
+		Callsign: "U4",
+		Username: "U4",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100004,
+			Callsign: "RPT4",
+		},
+		OwnerID: 1000003,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000003,
+		Dst:         1000004,
+		Repeater:    100004,
+		GroupCall:   false,
+		StreamID:    70003,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	ct.StartCall(context.Background(), packet)
+	assert.True(t, ct.IsCallActive(context.Background(), packet))
+}
+
+// TestStartCallNonExistentDestination verifies StartCall handles a group
+// call to a destination that is neither a talkgroup nor a repeater.
+func TestStartCallNonExistentDestination(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000005,
+		Callsign: "U5",
+		Username: "U5",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100005,
+			Callsign: "RPT5",
+		},
+		OwnerID: 1000005,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000005,
+		Dst:         999999999, // does not exist as talkgroup or repeater
+		Repeater:    100005,
+		GroupCall:   true,
+		StreamID:    70004,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	assert.NotPanics(t, func() {
+		ct.StartCall(context.Background(), packet)
+	})
+	assert.False(t, ct.IsCallActive(context.Background(), packet))
+}
+
 // TestEndCallHandlerWithCanceledContext is a regression test for the bug where
 // endCallHandler captured the request context from StartCall. By the time the
 // 2-second timer fired, that context was already canceled, causing the tracing

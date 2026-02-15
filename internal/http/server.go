@@ -56,7 +56,7 @@ type Server struct {
 
 const defTimeout = 10 * time.Second
 const rateLimitRate = time.Second
-const rateLimitLimit = 10
+const rateLimitLimit = 50
 
 func MakeServer(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, version, commit string) Server {
 	if config.LogLevel == configPkg.LogLevelDebug {

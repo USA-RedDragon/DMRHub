@@ -29,6 +29,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -55,6 +56,27 @@ var (
 	ErrIncompatibleVersion = errors.New("incompatible version of argon2")
 	ErrNoRandom            = errors.New("no random source available")
 )
+
+var (
+	dummyHash     string    //nolint:gochecknoglobals
+	dummyHashOnce sync.Once //nolint:gochecknoglobals
+)
+
+// DummyHash returns a valid argon2id hash generated with the exact same code
+// path and parameters as real password hashes. Using HashPassword (rather than
+// a hand-crafted format string) guarantees identical salt length, key length,
+// and encoding, which eliminates subtle timing differences in VerifyPassword
+// that could leak whether a user account exists.
+func DummyHash() string {
+	dummyHashOnce.Do(func() {
+		var err error
+		dummyHash, err = HashPassword("__dummy_timing_protection__", "__dummy__")
+		if err != nil {
+			panic("failed to generate dummy hash for timing protection: " + err.Error())
+		}
+	})
+	return dummyHash
+}
 
 func HashPassword(password string, salt string) (string, error) {
 	var params = argon2Params{

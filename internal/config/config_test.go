@@ -44,6 +44,8 @@ func makeValidConfig() config.Config {
 				Bind: "[::]",
 				Port: 62031,
 			},
+			RadioIDURL:    "https://www.radioid.net/static/users.json",
+			RepeaterIDURL: "https://www.radioid.net/static/rptrs.json",
 		},
 		Database: config.Database{
 			Driver:   config.DatabaseDriverSQLite,
@@ -352,6 +354,74 @@ func TestPProfValidateValid(t *testing.T) {
 	t.Parallel()
 	p := config.PProf{Enabled: true, Bind: "[::]", Port: 6060}
 	if err := p.Validate(); err != nil {
+		t.Errorf("Expected nil error, got %v", err)
+	}
+}
+
+// --- DMR Validation ---
+
+func TestDMRValidateInvalidRadioIDURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"empty", ""},
+		{"no scheme", "www.radioid.net/static/users.json"},
+		{"no host", "https://"},
+		{"bare path", "/static/users.json"},
+		{"just text", "not-a-url"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := config.DMR{
+				MMDVM:         config.MMDVM{Bind: "[::]", Port: 62031},
+				RadioIDURL:    tt.url,
+				RepeaterIDURL: "https://www.radioid.net/static/rptrs.json",
+			}
+			if !errors.Is(d.Validate(), config.ErrInvalidDMRRadioIDURL) {
+				t.Errorf("Expected ErrInvalidDMRRadioIDURL for %q, got %v", tt.url, d.Validate())
+			}
+		})
+	}
+}
+
+func TestDMRValidateInvalidRepeaterIDURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"empty", ""},
+		{"no scheme", "www.radioid.net/static/rptrs.json"},
+		{"no host", "https://"},
+		{"bare path", "/static/rptrs.json"},
+		{"just text", "not-a-url"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := config.DMR{
+				MMDVM:         config.MMDVM{Bind: "[::]", Port: 62031},
+				RadioIDURL:    "https://www.radioid.net/static/users.json",
+				RepeaterIDURL: tt.url,
+			}
+			if !errors.Is(d.Validate(), config.ErrInvalidDMRRepeaterIDURL) {
+				t.Errorf("Expected ErrInvalidDMRRepeaterIDURL for %q, got %v", tt.url, d.Validate())
+			}
+		})
+	}
+}
+
+func TestDMRValidateValidURLs(t *testing.T) {
+	t.Parallel()
+	d := config.DMR{
+		MMDVM:         config.MMDVM{Bind: "[::]", Port: 62031},
+		RadioIDURL:    "https://www.radioid.net/static/users.json",
+		RepeaterIDURL: "https://www.radioid.net/static/rptrs.json",
+	}
+	if err := d.Validate(); err != nil {
 		t.Errorf("Expected nil error, got %v", err)
 	}
 }

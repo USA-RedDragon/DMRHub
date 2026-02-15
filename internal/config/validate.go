@@ -24,6 +24,15 @@ import (
 	"net/url"
 )
 
+// isValidURL checks that s is a parseable URL with both a scheme and host.
+func isValidURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return u.Scheme != "" && u.Host != ""
+}
+
 var (
 	// ErrInvalidLogLevel indicates that the provided log level is not valid.
 	ErrInvalidLogLevel = errors.New("invalid log level provided")
@@ -317,14 +326,14 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, ipscErrs...)
 	}
 
-	if _, err := url.Parse(d.RadioIDURL); err != nil {
+	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{
 			Field: "dmr.radio-id-url",
 			Err:   ErrInvalidDMRRadioIDURL,
 		})
 	}
 
-	if _, err := url.Parse(d.RepeaterIDURL); err != nil {
+	if !isValidURL(d.RepeaterIDURL) {
 		errs = append(errs, ValidationError{
 			Field: "dmr.repeater-id-url",
 			Err:   ErrInvalidDMRRepeaterIDURL,

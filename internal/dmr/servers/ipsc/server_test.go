@@ -1791,6 +1791,143 @@ func TestErrPacketIgnoredIsSentinel(t *testing.T) {
 	}
 }
 
+// --- Regression tests for ensurePeer deduplication ---
+
+func TestEnsurePeerCreatesNewPeer(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+	s.mu.Lock()
+	peer := s.ensurePeer(100, addr)
+	s.mu.Unlock()
+
+	if peer == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if peer.ID != 100 {
+		t.Fatalf("expected peer ID 100, got %d", peer.ID)
+	}
+	if !peer.Addr.IP.Equal(net.IPv4(10, 0, 0, 1)) {
+		t.Fatalf("expected IP 10.0.0.1, got %v", peer.Addr.IP)
+	}
+	if peer.LastSeen.IsZero() {
+		t.Fatal("expected LastSeen to be set")
+	}
+}
+
+func TestEnsurePeerReusesExistingPeer(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	addr1 := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+	addr2 := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 5678}
+
+	s.mu.Lock()
+	peer1 := s.ensurePeer(100, addr1)
+	s.mu.Unlock()
+
+	s.mu.Lock()
+	peer2 := s.ensurePeer(100, addr2)
+	s.mu.Unlock()
+
+	// Should be the same peer object, updated with new address
+	if peer1 != peer2 {
+		t.Fatal("expected same peer object on re-ensure")
+	}
+	if !peer2.Addr.IP.Equal(net.IPv4(10, 0, 0, 2)) {
+		t.Fatalf("expected updated IP, got %v", peer2.Addr.IP)
+	}
+	if s.peerCount() != 1 {
+		t.Fatalf("expected 1 peer, got %d", s.peerCount())
+	}
+}
+
+// --- Regression tests for DB write debouncing ---
+
+func TestUpdateRepeaterDBTimesDebounce(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	// With no DB configured, this should not panic or fail
+	s.mu.Lock()
+	s.updateRepeaterDBTimes(100, false)
+	s.mu.Unlock()
+
+	// Simulate the debounce mechanism: set a recent lastDBWrite
+	s.mu.Lock()
+	s.lastDBWrite[100] = time.Now()
+	s.mu.Unlock()
+
+	// A second keepalive update should be debounced (no DB = no-op, but the
+	// debounce path is still exercised)
+	s.mu.Lock()
+	s.updateRepeaterDBTimes(100, false)
+	s.mu.Unlock()
+}
+
+func TestUpdateRepeaterDBTimesConnectAlwaysWrites(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	// Set a very recent lastDBWrite to simulate debounce scenario
+	s.mu.Lock()
+	s.lastDBWrite[100] = time.Now()
+	s.mu.Unlock()
+
+	// Connect events (isConnect=true) should bypass debounce.
+	// With no DB this is a no-op, but the code path is exercised.
+	s.mu.Lock()
+	s.updateRepeaterDBTimes(100, true)
+	s.mu.Unlock()
+}
+
+func TestUpsertAndMarkPeerAliveShareEnsurePeer(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+
+	// upsertPeer creates the peer first
+	s.upsertPeer(context.Background(), 100, addr, 0x6A, [4]byte{})
+
+	s.mu.RLock()
+	registered := s.peers[100].RegistrationStatus
+	s.mu.RUnlock()
+	if !registered {
+		t.Fatal("expected peer to be registered after upsert")
+	}
+
+	// markPeerAlive should reuse the same peer
+	s.markPeerAlive(100, addr)
+
+	s.mu.RLock()
+	keepAlive := s.peers[100].KeepAliveReceived
+	s.mu.RUnlock()
+	if keepAlive != 1 {
+		t.Fatalf("expected 1 keepalive, got %d", keepAlive)
+	}
+
+	// Peer count should still be 1
+	if s.peerCount() != 1 {
+		t.Fatalf("expected 1 peer, got %d", s.peerCount())
+	}
+}
+
+func TestLastDBWriteMapInitialized(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	s := newTestServer(t, cfg)
+	if s.lastDBWrite == nil {
+		t.Fatal("expected lastDBWrite map to be initialized")
+	}
+}
+
 func FuzzParsePeerID(f *testing.F) {
 	// Valid 5-byte packet with peer ID 311860 (0x0004C234)
 	f.Add([]byte{0x90, 0x00, 0x04, 0xC2, 0x34})

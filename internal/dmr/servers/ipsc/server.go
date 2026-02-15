@@ -53,6 +53,10 @@ type IPSCServer struct {
 	peers    map[uint32]*Peer
 	lastSend map[uint32]time.Time
 
+	// lastDBWrite tracks the last time we wrote to the DB for each repeater,
+	// used to debounce keepalive DB writes.
+	lastDBWrite map[uint32]time.Time
+
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
 
 	wg       sync.WaitGroup
@@ -102,13 +106,14 @@ var ErrPacketIgnored = errors.New("packet ignored")
 
 func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 	return &IPSCServer{
-		cfg:        cfg,
-		db:         db,
-		hub:        hub,
-		localID:    cfg.DMR.IPSC.NetworkID,
-		peers:      map[uint32]*Peer{},
-		lastSend:   map[uint32]time.Time{},
-		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
+		cfg:         cfg,
+		db:          db,
+		hub:         hub,
+		localID:     cfg.DMR.IPSC.NetworkID,
+		peers:       map[uint32]*Peer{},
+		lastSend:    map[uint32]time.Time{},
+		lastDBWrite: map[uint32]time.Time{},
+		translator:  NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 	}
 }
 
@@ -417,10 +422,9 @@ func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, 
 	s.burstHandler = handler
 }
 
-func (s *IPSCServer) upsertPeer(ctx context.Context, peerID uint32, addr *net.UDPAddr, mode byte, flags [4]byte) []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+// ensurePeer returns the Peer for the given ID, creating it if necessary,
+// and ensures the peer's auth key is cached. The caller must hold s.mu.
+func (s *IPSCServer) ensurePeer(peerID uint32, addr *net.UDPAddr) *Peer {
 	peer, ok := s.peers[peerID]
 	if !ok {
 		peer = &Peer{ID: peerID}
@@ -435,12 +439,20 @@ func (s *IPSCServer) upsertPeer(ctx context.Context, peerID uint32, addr *net.UD
 		}
 	}
 	peer.Addr = cloneUDPAddr(addr)
+	peer.LastSeen = time.Now()
+	return peer
+}
+
+func (s *IPSCServer) upsertPeer(ctx context.Context, peerID uint32, addr *net.UDPAddr, mode byte, flags [4]byte) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	peer := s.ensurePeer(peerID, addr)
 	peer.Mode = mode
 	peer.Flags = flags
-	peer.LastSeen = time.Now()
 	peer.RegistrationStatus = true
 
-	// Update DB with connected time and last ping
+	// Update DB with connected time and last ping (force write on connect)
 	s.updateRepeaterDBTimes(uint(peerID), true)
 
 	// Activate hub subscriptions for this peer
@@ -455,47 +467,51 @@ func (s *IPSCServer) markPeerAlive(peerID uint32, addr *net.UDPAddr) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	peer, ok := s.peers[peerID]
-	if !ok {
-		peer = &Peer{ID: peerID}
-		s.peers[peerID] = peer
-	}
-	if peer.AuthKey == nil && s.db != nil {
-		key, err := s.lookupPeerAuthKey(peerID)
-		if err != nil {
-			slog.Warn("failed to look up auth key for peer", "peerID", peerID, "error", err)
-		} else {
-			peer.AuthKey = key
-		}
-	}
-	peer.Addr = cloneUDPAddr(addr)
-	peer.LastSeen = time.Now()
+	peer := s.ensurePeer(peerID, addr)
 	peer.KeepAliveReceived++
 
-	// Update DB with last ping time
+	// Update DB with last ping time (debounced)
 	s.updateRepeaterDBTimes(uint(peerID), false)
 
 	return peer.AuthKey
 }
 
+// dbWriteDebounceInterval is the minimum time between DB writes for the same
+// repeater's keepalive timestamps. This prevents excessive DB pressure from
+// frequent keepalive packets.
+const dbWriteDebounceInterval = 30 * time.Second
+
 // updateRepeaterDBTimes updates the repeater's DB record with connection/ping times.
+// When isConnect is false (keepalive), writes are debounced to at most once per
+// dbWriteDebounceInterval. Connection events always write immediately.
 func (s *IPSCServer) updateRepeaterDBTimes(repeaterID uint, isConnect bool) {
 	if s.db == nil {
 		return
 	}
+
+	peerID := uint32(repeaterID) //nolint:gosec // repeaterID is always within uint32 range
+	now := time.Now()
+
+	if !isConnect {
+		if last, ok := s.lastDBWrite[peerID]; ok && now.Sub(last) < dbWriteDebounceInterval {
+			return
+		}
+	}
+
 	dbRepeater, err := models.FindRepeaterByID(s.db, repeaterID)
 	if err != nil {
 		slog.Debug("IPSC: repeater not found in DB for time update", "repeaterID", repeaterID)
 		return
 	}
-	now := time.Now()
 	dbRepeater.LastPing = now
 	if isConnect {
 		dbRepeater.Connected = now
 	}
 	if err := s.db.Save(&dbRepeater).Error; err != nil {
 		slog.Error("IPSC: error saving repeater times", "repeaterID", repeaterID, "error", err)
+		return
 	}
+	s.lastDBWrite[peerID] = now
 }
 
 func (s *IPSCServer) buildMasterRegisterReply() []byte {

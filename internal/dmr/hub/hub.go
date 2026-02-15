@@ -92,6 +92,11 @@ type Hub struct {
 	servers map[string]*serverEntry
 
 	subscriptionMgr *subscriptionManager
+
+	// done is closed when Stop is called, allowing blocked deliverToServer
+	// sends to unblock during shutdown.
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // NewHub creates a new Hub.
@@ -103,6 +108,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		callTracker: ct,
 		parrot:      parrot.NewParrot(kvStore),
 		servers:     make(map[string]*serverEntry),
+		done:        make(chan struct{}),
 	}
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h
@@ -158,7 +164,13 @@ func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
 		return
 	}
 
-	entry.ch <- rp
+	select {
+	case entry.ch <- rp:
+	case <-h.done:
+		slog.Debug("Hub stopping, aborting packet delivery",
+			"server", serverName,
+			"repeaterID", rp.RepeaterID)
+	}
 }
 
 // getServerRole returns the role of a registered server, or -1 if not found.
@@ -186,10 +198,13 @@ func (h *Hub) hasPeerServers() bool {
 	return false
 }
 
-// Stop cancels all subscriptions (used at shutdown).
+// Stop cancels all subscriptions and signals blocked deliveries to abort (used at shutdown).
 func (h *Hub) Stop(ctx context.Context) {
-	slog.Info("Stopping all repeater subscriptions")
-	h.stopAllRepeaters(ctx)
+	h.stopOnce.Do(func() {
+		slog.Info("Stopping all repeater subscriptions")
+		h.stopAllRepeaters(ctx)
+		close(h.done)
+	})
 }
 
 // ActivateRepeater sets up pubsub subscriptions for a repeater.

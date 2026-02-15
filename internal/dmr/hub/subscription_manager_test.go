@@ -760,3 +760,60 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 		// Expected: all subscriptions were canceled
 	}
 }
+
+// TestDeliverToServerUnblocksOnStop is a regression test for a bug where
+// deliverToServer did a bare blocking send on the server channel. If the
+// channel was full (slow consumer), the subscription goroutine would block
+// indefinitely, stalling all packet delivery on that topic with no way to
+// recover even during shutdown. The fix adds a select on the hub's done
+// channel so the send is interruptible at shutdown.
+func TestDeliverToServerUnblocksOnStop(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedRepeater(t, database, 100002, 1000001)
+	seedTalkgroup(t, database, 50, "TG50")
+
+	// Assign TG50 to the destination repeater
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100002).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 50}))
+
+	// Register a server but NEVER consume from its channel — this simulates
+	// a slow/stuck consumer that lets the channel fill up.
+	_ = h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.ActivateRepeater(context.Background(), 100001)
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	// Flood the channel with more packets than its buffer (500).
+	// Each RoutePacket publishes asynchronously via pubsub, so we send many
+	// and give them time to be delivered to the server channel.
+	for i := uint(0); i < 600; i++ {
+		pkt := makeVoicePacket(50, 80000+i, true, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	}
+	// Give subscription goroutines time to process and fill the channel.
+	time.Sleep(500 * time.Millisecond)
+
+	// Stop must complete promptly even though the server channel is full.
+	// Before the fix, Stop() would hang because stopAllRepeaters cancels
+	// subscription contexts, but the goroutine blocked in deliverToServer
+	// never checked its context and couldn't exit.
+	done := make(chan struct{})
+	go func() {
+		h.Stop(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Stop completed — the blocked deliverToServer send was interrupted.
+	case <-time.After(5 * time.Second):
+		t.Fatal("Hub.Stop() did not complete within 5s — deliverToServer is likely blocked on a full channel")
+	}
+}

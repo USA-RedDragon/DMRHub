@@ -44,6 +44,7 @@ func TestMakeServerInitialization(t *testing.T) {
 
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.MMDVM.Port = 0 // Use ephemeral port to avoid conflicts under -count >1
 
 	db, err := db.MakeDB(&defConfig)
 	if err != nil {
@@ -64,6 +65,9 @@ func TestMakeServerInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create MMDVM server: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = server.Stop(context.Background())
+	})
 
 	if server.DB != db {
 		t.Errorf("Expected DB to be %v, got %v", db, server.DB)

@@ -170,76 +170,48 @@ func (p *Repeater) UpdateFrom(repeater Repeater) {
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {
-	if packet.Dst == p.ID {
-		return true, packet.Slot
-	}
-
-	if packet.Dst == p.OwnerID {
-		return true, packet.Slot
-	}
-
-	if p.TS2DynamicTalkgroupID != nil {
-		if packet.Dst == *p.TS2DynamicTalkgroupID {
-			return true, true
-		}
-	}
-
-	if p.TS1DynamicTalkgroupID != nil {
-		if packet.Dst == *p.TS1DynamicTalkgroupID {
-			return true, false
-		}
-	}
-
-	if p.InTS2StaticTalkgroups(packet.Dst) {
-		return true, true
-	} else if p.InTS1StaticTalkgroups(packet.Dst) {
-		return true, false
-	}
-
-	return false, false
+	return p.wantRX(packet.Dst, packet.Slot)
 }
 
 func (p *Repeater) WantRXCall(call Call) (bool, bool) {
-	if call.DestinationID == p.ID {
-		return true, call.TimeSlot
+	return p.wantRX(call.DestinationID, call.TimeSlot)
+}
+
+// wantRX is the shared implementation for WantRX and WantRXCall.
+// It returns (wantPacket, slot) for a given destination ID and original slot.
+func (p *Repeater) wantRX(destID uint, slot bool) (bool, bool) {
+	if destID == p.ID {
+		return true, slot
 	}
 
-	if call.DestinationID == p.OwnerID {
-		return true, call.TimeSlot
+	if destID == p.OwnerID {
+		return true, slot
 	}
 
 	if p.TS2DynamicTalkgroupID != nil {
-		if call.DestinationID == *p.TS2DynamicTalkgroupID {
+		if destID == *p.TS2DynamicTalkgroupID {
 			return true, true
 		}
 	}
 
 	if p.TS1DynamicTalkgroupID != nil {
-		if call.DestinationID == *p.TS1DynamicTalkgroupID {
+		if destID == *p.TS1DynamicTalkgroupID {
 			return true, false
 		}
 	}
 
-	if p.InTS2StaticTalkgroups(call.DestinationID) {
+	if isInStaticTalkgroups(p.TS2StaticTalkgroups, destID) {
 		return true, true
-	} else if p.InTS1StaticTalkgroups(call.DestinationID) {
+	} else if isInStaticTalkgroups(p.TS1StaticTalkgroups, destID) {
 		return true, false
 	}
 
 	return false, false
 }
 
-func (p *Repeater) InTS2StaticTalkgroups(dest uint) bool {
-	for _, tg := range p.TS2StaticTalkgroups {
-		if dest == tg.ID {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *Repeater) InTS1StaticTalkgroups(dest uint) bool {
-	for _, tg := range p.TS1StaticTalkgroups {
+// isInStaticTalkgroups checks if a destination ID is in the given talkgroup slice.
+func isInStaticTalkgroups(talkgroups []Talkgroup, dest uint) bool {
+	for _, tg := range talkgroups {
 		if dest == tg.ID {
 			return true
 		}

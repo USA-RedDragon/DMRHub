@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,4 +135,55 @@ func TestRoutePacketUnlinkTS2(t *testing.T) {
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
 	assert.Nil(t, rpt.TS2DynamicTalkgroupID, "expected TS2 dynamic talkgroup to be unlinked")
+}
+
+func TestRoutePacketDynamicTalkgroupLinkingNonexistentTalkgroup(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	// Deliberately do NOT seed talkgroup 999
+
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.ActivateRepeater(context.Background(), 100001)
+
+	// Group voice call to nonexistent TG 999 — should not panic or link
+	pkt := makeVoicePacket(999, 77777, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+
+	time.Sleep(200 * time.Millisecond)
+
+	rpt, err := models.FindRepeaterByID(database, 100001)
+	require.NoError(t, err)
+	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "expected TS1 dynamic talkgroup to remain nil for nonexistent TG")
+}
+
+func TestRoutePacketDynamicTalkgroupLinkingNonexistentRepeater(t *testing.T) {
+	t.Parallel()
+	h, _ := makeTestHub(t)
+
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	// Route a packet from a repeater that doesn't exist — should not panic
+	pkt := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         2,
+		Repeater:    999999,
+		GroupCall:   true,
+		Slot:        false,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		StreamID:    55555,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	assert.NotPanics(t, func() {
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	})
 }

@@ -224,6 +224,9 @@ func setupLogger(cfg *config.Config) {
 		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelWarn}))
 	case config.LogLevelError:
 		logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelError}))
+	default:
+		// Fall back to info level for unrecognized log levels to prevent nil logger panic
+		logger = slog.New(tint.NewHandler(os.Stdout, &tint.Options{Level: slog.LevelInfo}))
 	}
 	slog.SetDefault(logger)
 }

@@ -49,6 +49,7 @@ import { h } from 'vue';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
+import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 
 import API from '@/services/API';
 import { getWebsocketURI } from '@/services/util';
@@ -160,7 +161,10 @@ export default {
           header: 'Last Connected',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
-            return this.hasTimestamp(repeater.connected_time) ? this.relativeTime(repeater.connected_time) : 'Never';
+            if (!this.hasTimestamp(repeater.connected_time)) {
+              return 'Never';
+            }
+            return h(RelativeTimestamp, { time: repeater.connected_time });
           },
         },
         {
@@ -168,7 +172,10 @@ export default {
           header: 'Last Ping',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
-            return this.hasTimestamp(repeater.last_ping_time) ? this.relativeTime(repeater.last_ping_time) : 'Never';
+            if (!this.hasTimestamp(repeater.last_ping_time)) {
+              return 'Never';
+            }
+            return h(RelativeTimestamp, { time: repeater.last_ping_time });
           },
         },
         {
@@ -382,7 +389,7 @@ export default {
           header: 'Created',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
-            return h('span', { title: this.absoluteTime(repeater.created_at) }, this.relativeTime(repeater.created_at));
+            return h(RelativeTimestamp, { time: repeater.created_at });
           },
         },
       ];

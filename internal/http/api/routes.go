@@ -31,6 +31,7 @@ import (
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
+	v1UserDBControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/userdb"
 	v1UsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	websocketControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
@@ -137,6 +138,9 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	group.GET("/config", v1ConfigControllers.GETConfig)
 	group.GET("/config/validate", v1ConfigControllers.GETConfigValidate)
 	group.POST("/config/validate", v1ConfigControllers.POSTConfigValidate)
+
+	v1UserDB := group.Group("/userdb")
+	v1UserDB.GET("/:id", v1UserDBControllers.GETUserDBEntry)
 
 	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/version", v1Controllers.GETVersion)

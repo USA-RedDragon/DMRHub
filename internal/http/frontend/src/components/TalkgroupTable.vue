@@ -57,6 +57,8 @@ import { mapStores } from 'pinia';
 import { useSettingsStore } from '@/store';
 
 import API from '@/services/API';
+import RelativeTimestamp from './RelativeTimestamp.vue';
+import User from '@/components/User.vue';
 
 type TalkgroupUser = { id: number; callsign: string; display?: string };
 type TalkgroupRow = {
@@ -437,7 +439,7 @@ export default {
               if (talkgroup.admins.length === 0) {
                 return 'None';
               }
-              return talkgroup.admins.map((adminUser) => adminUser.display).join(' ');
+              return h('div', { class: 'flex flex-wrap gap-2' }, talkgroup.admins.map((adminUser) => h(User, { user: adminUser, key: adminUser.id })));
             }
 
             return h(
@@ -477,7 +479,7 @@ export default {
               if (!talkgroup.ncos || talkgroup.ncos.length === 0) {
                 return 'None';
               }
-              return talkgroup.ncos.map((nco) => nco.display).join(' ');
+              return h('div', { class: 'flex flex-wrap gap-2' }, talkgroup.ncos.map((nco) => h(User, { user: nco, key: nco.id })));
             }
 
             return h(
@@ -510,11 +512,7 @@ export default {
           header: 'Created',
           cell: ({ row }: { row: { original: TalkgroupRow } }) => {
             const talkgroup = row.original;
-            return h(
-              'span',
-              { title: this.absoluteTime(talkgroup.created_at) },
-              this.relativeTime(talkgroup.created_at),
-            );
+            return h(RelativeTimestamp, { time: talkgroup.created_at });
           },
         },
       );

@@ -48,6 +48,7 @@ import { useUserStore, useSettingsStore } from '@/store';
 
 import API from '@/services/API';
 import { buttonVariants } from '@/components/ui/button';
+import RelativeTimestamp from './RelativeTimestamp.vue';
 
 type UserRow = {
   id: number;
@@ -482,7 +483,7 @@ export default {
         header: 'Created',
         cell: ({ row }: { row: { original: UserRow } }) => {
           const user = row.original;
-          return h('span', { title: this.absoluteTime(user.created_at) }, this.relativeTime(user.created_at));
+          return h(RelativeTimestamp, { time: user.created_at });
         },
       });
 

@@ -39,12 +39,13 @@
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
-
-import { format, formatDistanceToNowStrict } from 'date-fns';
+import User from '@/components/User.vue';
+import Talkgroup from '@/components/Talkgroup.vue';
 
 import { getWebsocketURI } from '@/services/util';
 import API from '@/services/API';
 import ws from '@/services/ws';
+import RelativeTimestamp from './RelativeTimestamp.vue';
 
 type LastHeardRow = {
   id: number;
@@ -109,7 +110,7 @@ export default {
             if (call.active) {
               return 'Active';
             }
-            return h('span', { title: this.absoluteTime(call.start_time) }, this.relativeTime(call.start_time));
+            return h(RelativeTimestamp, { time: call.start_time, active: call.active });
           },
         },
         {
@@ -122,7 +123,7 @@ export default {
           header: 'User',
           cell: ({ row }: { row: { original: LastHeardRow } }) => {
             const call = row.original;
-            return `${call.user.callsign} | ${call.user.id}`;
+            return h(User, { user: call.user });
           },
         },
         {
@@ -131,13 +132,14 @@ export default {
           cell: ({ row }: { row: { original: LastHeardRow } }) => {
             const call = row.original;
             if (call.is_to_talkgroup) {
-              return `TG ${call.to_talkgroup.id}`;
+              return h(Talkgroup, { talkgroup: call.to_talkgroup });
             }
             if (call.is_to_repeater) {
               return `${call.to_repeater.callsign} | ${call.to_repeater.id}`;
             }
             if (call.is_to_user) {
-              return `${call.to_user.callsign} | ${call.to_user.id}`;
+              const call = row.original;
+              return h(User, { user: call.to_user });
             }
             return '-';
           },
@@ -237,20 +239,6 @@ export default {
       }
 
       return copyData;
-    },
-    relativeTime(dateValue: string | Date) {
-      const date = new Date(dateValue);
-      if (Number.isNaN(date.getTime())) {
-        return '-';
-      }
-      return formatDistanceToNowStrict(date, { addSuffix: true });
-    },
-    absoluteTime(dateValue: string | Date) {
-      const date = new Date(dateValue);
-      if (Number.isNaN(date.getTime())) {
-        return '-';
-      }
-      return format(date, 'yyyy-MM-dd HH:mm:ss');
     },
     onWebsocketMessage(event: MessageEvent) {
       const call = JSON.parse(event.data);

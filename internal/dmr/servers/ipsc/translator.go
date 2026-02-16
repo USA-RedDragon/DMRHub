@@ -82,30 +82,6 @@ const (
 // RTP timestamp increment per burst (~60ms spacing in 16.16 format)
 const rtpTimestampIncrement = 480
 
-// IPSC packet buffer pools to avoid per-packet allocations.
-var (
-	ipscBuf54Pool = sync.Pool{New: func() any { b := make([]byte, 54); return &b }} //nolint:gochecknoglobals
-	ipscBuf52Pool = sync.Pool{New: func() any { b := make([]byte, 52); return &b }} //nolint:gochecknoglobals
-	ipscBuf57Pool = sync.Pool{New: func() any { b := make([]byte, 57); return &b }} //nolint:gochecknoglobals
-	ipscBuf66Pool = sync.Pool{New: func() any { b := make([]byte, 66); return &b }} //nolint:gochecknoglobals
-)
-
-// ReturnBuffer returns a buffer previously obtained from TranslateToIPSC
-// back to the appropriate sync.Pool for reuse. Callers should invoke this
-// after they are done with each []byte slice returned by TranslateToIPSC.
-func ReturnBuffer(buf []byte) {
-	switch cap(buf) {
-	case 52:
-		ipscBuf52Pool.Put(&buf)
-	case 54:
-		ipscBuf54Pool.Put(&buf)
-	case 57:
-		ipscBuf57Pool.Put(&buf)
-	case 66:
-		ipscBuf66Pool.Put(&buf)
-	}
-}
-
 func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
 		streams:        make(map[uint32]*streamState),
@@ -335,12 +311,7 @@ func (t *IPSCTranslator) buildRTPHeader(buf []byte, ss *streamState, marker bool
 // buildVoiceHeader builds a 54-byte IPSC voice header packet.
 // Voice headers embed the Full LC (link control) data.
 func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, isFirst bool) []byte {
-	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-	buf := *bufp
-	// Clear the buffer
-	for i := range buf {
-		buf[i] = 0
-	}
+	buf := make([]byte, 54)
 
 	t.buildIPSCHeader(buf, pkt, ss, false, false)
 
@@ -378,12 +349,7 @@ func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, is
 
 // buildVoiceTerminator builds a 54-byte IPSC voice terminator packet.
 func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState) []byte {
-	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-	buf := *bufp
-	// Clear the buffer
-	for i := range buf {
-		buf[i] = 0
-	}
+	buf := make([]byte, 54)
 
 	t.buildIPSCHeader(buf, pkt, ss, true, false)
 
@@ -414,12 +380,7 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 // buildIPSCDataPacket builds a 54-byte IPSC data packet for CSBK, Data Header, etc.
 // The structure is identical to voice header/terminator but with data packet types (0x83/0x84).
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType elements.DataType) []byte {
-	bufp := ipscBuf54Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-	buf := *bufp
-	// Clear the buffer
-	for i := range buf {
-		buf[i] = 0
-	}
+	buf := make([]byte, 54)
 
 	t.buildIPSCHeader(buf, pkt, ss, false, true)
 
@@ -475,11 +436,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	var buf []byte
 	switch burstIdx {
 	case 0: // Burst A — sync burst, 52 bytes
-		bufp := ipscBuf52Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-		buf = *bufp
-		for i := range buf {
-			buf[i] = 0
-		}
+		buf = make([]byte, 52)
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 
@@ -489,11 +446,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 		copy(buf[33:52], ambeData[:])
 
 	case 4: // Burst E — extended with embedded LC, 66 bytes
-		bufp := ipscBuf66Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-		buf = *bufp
-		for i := range buf {
-			buf[i] = 0
-		}
+		buf = make([]byte, 66)
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 
@@ -520,11 +473,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 		buf[65] = 0x14 // Unknown trailer
 
 	default: // Bursts B, C, D, F — 57 bytes with embedded signalling
-		bufp := ipscBuf57Pool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-		buf = *bufp
-		for i := range buf {
-			buf[i] = 0
-		}
+		buf = make([]byte, 57)
 		t.buildIPSCHeader(buf, pkt, ss, false, false)
 		t.buildRTPHeader(buf, ss, false, 0x5D)
 

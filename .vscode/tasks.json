@@ -40,6 +40,16 @@
       },
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "Backend: Race Tests",
+      "type": "shell",
+      "command": "go test -count 10 -race ./...",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
     }
   ]
 }

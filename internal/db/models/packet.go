@@ -21,29 +21,9 @@ package models
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 )
-
-// encodePool is a pool of byte slices for Packet.Encode/EncodeTo to avoid allocations.
-var encodePool = sync.Pool{ //nolint:gochecknoglobals
-	New: func() any {
-		b := make([]byte, dmrconst.MMDVMMaxPacketLength)
-		return &b
-	},
-}
-
-// GetEncodeBuffer returns a pooled byte slice for encoding packets.
-// The caller must call PutEncodeBuffer when done.
-func GetEncodeBuffer() *[]byte {
-	return encodePool.Get().(*[]byte) //nolint:errcheck,forcetypeassert
-}
-
-// PutEncodeBuffer returns a byte slice to the pool.
-func PutEncodeBuffer(b *[]byte) {
-	encodePool.Put(b)
-}
 
 // Packet is a DMR packet
 //

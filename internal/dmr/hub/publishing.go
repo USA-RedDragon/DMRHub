@@ -34,18 +34,11 @@ import (
 // to the given pubsub topic. This is the shared encode → marshal → publish pipeline
 // used by publishToPeer, publishToRepeater, and handleGroupCallVoice.
 func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
-	encBuf := models.GetEncodeBuffer()
-	var rawPacket models.RawDMRPacket
-	rawPacket.Data = packet.EncodeTo(*encBuf)
-	marshalBuf := h.getMarshalBuffer()
-	packedBytes, err := rawPacket.MarshalMsg((*marshalBuf)[:0])
-	models.PutEncodeBuffer(encBuf)
-	if err != nil {
-		h.putMarshalBuffer(marshalBuf)
-		return fmt.Errorf("marshalling packet: %w", err)
+	rawPacket := models.RawDMRPacket{
+		Data: packet.Encode(),
 	}
+	packedBytes, err := rawPacket.MarshalMsg(nil)
 	err = h.pubsub.Publish(topic, packedBytes)
-	h.putMarshalBuffer(marshalBuf)
 	if err != nil {
 		return fmt.Errorf("publishing to %s: %w", topic, err)
 	}
@@ -130,14 +123,13 @@ func (h *Hub) publishForBroadcastServers(packet models.Packet, sourceName string
 		nameBytes = nameBytes[:255]
 	}
 	totalLen := 1 + len(nameBytes) + dmrconst.MMDVMMaxPacketLength
-	buf := h.getBroadcastBuffer(totalLen)
-	(*buf)[0] = byte(len(nameBytes))
-	copy((*buf)[1:], nameBytes)
-	packet.EncodeTo((*buf)[1+len(nameBytes):])
-	msg := (*buf)[:totalLen]
+	buf := make([]byte, totalLen)
+	buf[0] = byte(len(nameBytes))
+	copy(buf[1:], nameBytes)
+	packet.EncodeTo(buf[1+len(nameBytes):])
+	msg := buf[:totalLen]
 
 	if err := h.pubsub.Publish("hub:packets:broadcast", msg); err != nil {
 		slog.Error("Error publishing packet to broadcast", "error", err)
 	}
-	h.putBroadcastBuffer(buf)
 }

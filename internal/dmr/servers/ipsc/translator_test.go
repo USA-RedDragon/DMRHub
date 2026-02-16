@@ -1225,65 +1225,6 @@ func BenchmarkTranslateToIPSCTerminator(b *testing.B) {
 	}
 }
 
-func TestReturnBufferPoolReuse(t *testing.T) {
-	t.Parallel()
-	tr := newTestTranslator(t)
-
-	// Translate a voice header — produces 3 packets of 54 bytes each.
-	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
-	result := tr.TranslateToIPSC(pkt)
-	if len(result) != 3 {
-		t.Fatalf("expected 3 packets, got %d", len(result))
-	}
-
-	// Verify the buffers have the expected capacity.
-	for i, buf := range result {
-		if cap(buf) != 54 {
-			t.Fatalf("packet %d: expected cap 54, got %d", i, cap(buf))
-		}
-	}
-
-	// Return all buffers to the pool.
-	for _, buf := range result {
-		ReturnBuffer(buf)
-	}
-
-	// Now translate again — if pool reuse works, the underlying arrays should
-	// be the same ones we just returned.  Grab pointers before return.
-	result2 := tr.TranslateToIPSC(pkt)
-	if len(result2) != 3 {
-		t.Fatalf("expected 3 packets on second call, got %d", len(result2))
-	}
-
-	// The key assertion: after returning buffers, a subsequent Get() from the
-	// pool should NOT allocate new memory.  We verify by checking that at least
-	// one returned buffer's backing array is reused (pointer equality).
-	reused := false
-	for _, b1 := range result {
-		for _, b2 := range result2 {
-			if cap(b1) == cap(b2) && len(b1) > 0 && len(b2) > 0 && &b1[:1][0] == &b2[:1][0] {
-				reused = true
-				break
-			}
-		}
-	}
-	if !reused {
-		t.Fatal("expected at least one pool buffer to be reused after ReturnBuffer, but none were")
-	}
-}
-
-func TestReturnBufferAllSizes(t *testing.T) {
-	t.Parallel()
-
-	// Verify ReturnBuffer handles all four pool sizes and unknown sizes gracefully.
-	sizes := []int{52, 54, 57, 66, 100}
-	for _, sz := range sizes {
-		buf := make([]byte, sz)
-		// Should not panic for any size (unknown sizes are silently ignored).
-		ReturnBuffer(buf)
-	}
-}
-
 // --- Regression tests for unbounded stream state maps (memory leak fix) ---
 
 func TestCleanupStaleStreams_RemovesOldForwardStreams(t *testing.T) {

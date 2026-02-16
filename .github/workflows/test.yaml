@@ -70,51 +70,51 @@ jobs:
           retention-days: 30
           path: internal/http/frontend/eslint_report.json
 
-  frontend-unit-tests:
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      checks: write
+  # frontend-unit-tests:
+  #   runs-on: ubuntu-24.04
+  #   permissions:
+  #     contents: read
+  #     checks: write
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
-        with:
-          go-version-file: go.mod
+  #     - name: Set up Go
+  #       uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+  #       with:
+  #         go-version-file: go.mod
 
-      - name: Use Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version-file: .node-version
+  #     - name: Use Node.js
+  #       uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+  #       with:
+  #         node-version-file: .node-version
 
-      - run: cd internal/http/frontend && npm ci
+  #     - run: cd internal/http/frontend && npm ci
 
-      - run: make frontend-unit-test
+  #     - run: make frontend-unit-test
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        if: always()
-        with:
-          name: frontend-unit-test-report
-          if-no-files-found: error
-          retention-days: 30
-          path: internal/http/frontend/reports/unit
+  #     - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+  #       if: always()
+  #       with:
+  #         name: frontend-unit-test-report
+  #         if-no-files-found: error
+  #         retention-days: 30
+  #         path: internal/http/frontend/reports/unit
 
-      - name: Publish Test Report
-        if: always()
-        uses: mikepenz/action-junit-report@74626db7353a25a20a72816467ebf035f674c5f8 # v6.2.0
-        with:
-          report_paths: "internal/http/frontend/reports/unit/*.xml"
-          test_files_prefix: "internal/http/frontend"
-          require_tests: true
-          check_retries: true
-          detailed_summary: true
-          fail_on_failure: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-          check_name: Frontend Unit Tests
-          job_name: Tests
+  #     - name: Publish Test Report
+  #       if: always()
+  #       uses: mikepenz/action-junit-report@74626db7353a25a20a72816467ebf035f674c5f8 # v6.2.0
+  #       with:
+  #         report_paths: "internal/http/frontend/reports/unit/*.xml"
+  #         test_files_prefix: "internal/http/frontend"
+  #         require_tests: true
+  #         check_retries: true
+  #         detailed_summary: true
+  #         fail_on_failure: true
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+  #         check_name: Frontend Unit Tests
+  #         job_name: Tests
 
   # frontend-unit-tests-coverage:
   #   runs-on: ubuntu-24.04

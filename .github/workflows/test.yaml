@@ -116,6 +116,40 @@ jobs:
           check_name: Frontend Unit Tests
           job_name: Tests
 
+  frontend-unit-tests-coverage:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Use Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version-file: .node-version
+
+      - run: cd internal/http/frontend && npm ci
+
+      - run: make frontend-unit-test-coverage
+
+      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: frontend-unit
+          files: internal/http/frontend/coverage/unit/lcov.info
+          fail_ci_if_error: true
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: frontend-unit-coverage
+          path: internal/http/frontend/coverage/unit
+          if-no-files-found: error
+          retention-days: 30
+
   frontend-e2e-tests:
     runs-on: ubuntu-24.04
     permissions:
@@ -180,6 +214,22 @@ jobs:
         with:
           name: frontend-e2e-videos-${{ matrix.browser }}
           path: internal/http/frontend/cypress/videos
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: frontend-e2e
+          files: internal/http/frontend/coverage/e2e/lcov.info
+          fail_ci_if_error: false
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: frontend-e2e-coverage-${{ matrix.browser }}
+          path: internal/http/frontend/coverage/e2e
           if-no-files-found: ignore
           retention-days: 30
 

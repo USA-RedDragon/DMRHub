@@ -3,10 +3,22 @@ import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import istanbul from 'vite-plugin-istanbul'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [tailwindcss(), vue()],
+  plugins: [
+    tailwindcss(),
+    vue(),
+    istanbul({
+      include: 'src/*',
+      exclude: ['node_modules', 'tests/'],
+      extension: ['.ts', '.vue'],
+      cypress: true,
+      requireEnv: true,
+      forceBuildInstrument: true,
+    }),
+  ],
   server: {
     proxy: {
       '/api': {

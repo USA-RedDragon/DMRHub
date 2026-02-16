@@ -1,0 +1,12 @@
+{
+  "total": 1,
+  "peers": [
+    {
+      "id": 999001,
+      "ingress": true,
+      "egress": true,
+      "created_at": "2024-03-01T00:00:00Z",
+      "last_ping_time": "2024-06-10T14:00:00Z"
+    }
+  ]
+}

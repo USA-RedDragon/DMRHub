@@ -2,6 +2,7 @@
 import { defineConfig } from 'cypress';
 import process from 'process';
 import cypressMochawesomeReporter from 'cypress-mochawesome-reporter/plugin.js';
+import codeCoverage from '@cypress/code-coverage/task';
 
 export default defineConfig({
   video: process.env.BROWSER !== 'firefox',
@@ -20,6 +21,7 @@ export default defineConfig({
   },
   e2e: {
     setupNodeEvents(on, config) {
+      codeCoverage(on, config);
       cypressMochawesomeReporter(on);
       return config;
     },

@@ -17,11 +17,31 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// https://docs.cypress.io/api/introduction/api.html
+declare namespace Cypress {
+  interface Chainable {
+    /**
+     * Log in as a regular user. Stubs auth endpoints.
+     */
+    login(): Chainable<void>;
 
-describe('My First Test', () => {
-  it('visits the app root url', () => {
-    cy.visit('/');
-    cy.contains('header a', 'DMRHub');
-  });
-});
+    /**
+     * Log in as a super admin. Stubs auth endpoints.
+     */
+    loginAsAdmin(): Chainable<void>;
+
+    /**
+     * Shorthand for cy.intercept() with the /api/v1 prefix.
+     */
+    mockAPI(
+      method: string,
+      path: string,
+      response: object | string | number,
+      statusCode?: number,
+    ): Chainable<null>;
+
+    /**
+     * Stub common endpoints: setupwizard, network name, version, websocket.
+     */
+    stubCommonEndpoints(): Chainable<void>;
+  }
+}

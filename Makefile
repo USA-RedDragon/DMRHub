@@ -90,23 +90,26 @@ update-repeaterdb:
 frontend-unit-test:
 	@cd internal/http/frontend && npm run test:unit
 
+frontend-unit-test-coverage:
+	@cd internal/http/frontend && npm run test:unit:coverage
+
 frontend-e2e-test-electron:
 	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
-	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true npm run build
 	@echo "--> Running end-to-end tests"
-	@cd internal/http/frontend && env NODE_ENV=test npm run test:e2e
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true npm run test:e2e
 
 frontend-e2e-test-chrome:
 	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
-	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true npm run build
 	@echo "--> Running end-to-end tests"
-	@cd internal/http/frontend && env NODE_ENV=test npm run test:e2e:chrome
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true npm run test:e2e:chrome
 
 frontend-e2e-test-firefox:
 	@cd internal/http/frontend && npm ci
 	@echo "--> Building Vue application"
-	@cd internal/http/frontend && env NODE_ENV=test npm run build
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true npm run build
 	@echo "--> Running end-to-end tests"
-	@cd internal/http/frontend && env NODE_ENV=test BROWSER=firefox npm run test:e2e:firefox
+	@cd internal/http/frontend && env NODE_ENV=test CYPRESS_COVERAGE=true BROWSER=firefox npm run test:e2e:firefox

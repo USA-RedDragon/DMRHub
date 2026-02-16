@@ -124,6 +124,7 @@ export default {
   methods: {
     handleLogin(isFormValid: boolean) {
       this.submitted = true;
+      this.v$.$touch();
       if (!isFormValid) {
         return;
       }

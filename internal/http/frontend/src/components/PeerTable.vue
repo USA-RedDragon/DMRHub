@@ -281,7 +281,13 @@ export default {
                 detail: `Peer ${peer.id} deleted`,
                 life: 3000,
               });
-              this.fetchData();
+              // Immediately remove the deleted peer from the local array
+              this.peers = this.peers.filter((p: Record<string, unknown>) => p.id !== peer.id);
+              this.totalRecords = Math.max(0, this.totalRecords - 1);
+              this.editablePeers--;
+              if (this.editablePeers === 0) {
+                this.fetchData();
+              }
             })
             .catch((err) => {
               console.error(err);

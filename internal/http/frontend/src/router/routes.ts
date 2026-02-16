@@ -139,6 +139,16 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/NewTalkgroupsPage.vue'),
     },
     {
+      path: '/admin/peers',
+      name: 'AdminPeers',
+      component: () => import('@/views/admin/OpenBridgePeersPage.vue'),
+    },
+    {
+      path: '/admin/peers/new',
+      name: 'NewPeer',
+      component: () => import('@/views/admin/NewOpenBridgePeerPage.vue'),
+    },
+    {
       path: '/admin/users',
       name: 'AdminUsers',
       component: () => import('@/views/admin/UsersPage.vue'),

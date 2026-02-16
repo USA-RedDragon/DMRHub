@@ -1,11 +1,30 @@
 codecov:
     notify:
-        after_n_builds: 1
+        after_n_builds: 5
 comment:
     require_changes: true
-    after_n_builds: 1
+    after_n_builds: 5
 github_checks:
     annotations: false
 parsers:
     go:
         partials_as_hits: true
+flags:
+    backend:
+        paths:
+            - internal/
+            - cmd/
+        carryforward: true
+    frontend-unit:
+        paths:
+            - internal/http/frontend/src/
+        carryforward: true
+    frontend-e2e:
+        paths:
+            - internal/http/frontend/src/
+        carryforward: true
+ignore:
+    - "internal/http/frontend/dist"
+    - "internal/http/frontend/node_modules"
+    - "**/*_gen.go"
+    - "**/*_gen_test.go"

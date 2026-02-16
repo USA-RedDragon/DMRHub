@@ -34,6 +34,10 @@ export default defineConfigWithVueTs(
       'tests/e2e/**/*.{cy,spec}.{js,ts,jsx,tsx}',
       'cypress/support/**/*.{js,ts,jsx,tsx}'
     ],
+    rules: {
+      ...pluginCypress.configs.recommended.rules,
+      '@typescript-eslint/no-unused-expressions': 'off',
+    },
   },
   {
     files: ['src/components/ui/**/*.vue'],

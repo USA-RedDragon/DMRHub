@@ -1,0 +1,25 @@
+{
+  "total": 2,
+  "users": [
+    {
+      "id": 1234567,
+      "callsign": "W5TST",
+      "username": "testuser",
+      "approved": true,
+      "suspended": false,
+      "admin": false,
+      "repeaters": [],
+      "created_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": 7654321,
+      "callsign": "N0CALL",
+      "username": "anotheruser",
+      "approved": true,
+      "suspended": false,
+      "admin": false,
+      "repeaters": [{ "id": 311001 }],
+      "created_at": "2024-02-20T08:00:00Z"
+    }
+  ]
+}

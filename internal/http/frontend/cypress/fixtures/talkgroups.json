@@ -1,0 +1,25 @@
+{
+  "total": 2,
+  "talkgroups": [
+    {
+      "id": 1,
+      "name": "World",
+      "description": "Worldwide talkgroup",
+      "admins": [
+        { "id": 1234567, "callsign": "W5TST" }
+      ],
+      "ncos": [],
+      "created_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Local",
+      "description": "Local talkgroup",
+      "admins": [],
+      "ncos": [
+        { "id": 1234567, "callsign": "W5TST" }
+      ],
+      "created_at": "2024-01-02T00:00:00Z"
+    }
+  ]
+}

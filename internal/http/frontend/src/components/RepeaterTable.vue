@@ -605,7 +605,14 @@ export default {
                 detail: `Repeater ${repeater.id} deleted`,
                 life: 3000,
               });
-              this.fetchData();
+              // Immediately remove the deleted repeater from the local array
+              this.repeaters = this.repeaters.filter(r => r.id !== repeater.id);
+              this.totalRecords = Math.max(0, this.totalRecords - 1);
+              repeater.editable = false;
+              this.editableRepeaters--;
+              if (this.editableRepeaters === 0) {
+                this.fetchData();
+              }
             })
             .catch((err) => {
               console.error(err);

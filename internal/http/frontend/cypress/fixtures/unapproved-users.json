@@ -1,0 +1,15 @@
+{
+  "total": 1,
+  "users": [
+    {
+      "id": 5555555,
+      "callsign": "KB0NEW",
+      "username": "newuser",
+      "approved": false,
+      "suspended": false,
+      "admin": false,
+      "repeaters": [],
+      "created_at": "2024-06-10T14:00:00Z"
+    }
+  ]
+}

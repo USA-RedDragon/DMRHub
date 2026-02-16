@@ -17,8 +17,33 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { expect, test } from 'vitest';
+/// <reference types="cypress" />
 
-test('name', async () => {
-  expect(true).toBe(true);
-}, 1000);
+declare namespace Cypress {
+  interface Chainable {
+    /**
+     * Log in as a regular user. Stubs auth endpoints.
+     */
+    login(): Chainable<void>;
+
+    /**
+     * Log in as a super admin. Stubs auth endpoints.
+     */
+    loginAsAdmin(): Chainable<void>;
+
+    /**
+     * Shorthand for cy.intercept() with the /api/v1 prefix.
+     */
+    mockAPI(
+      method: string,
+      path: string,
+      response: object | string | number,
+      statusCode?: number,
+    ): Chainable<null>;
+
+    /**
+     * Stub common endpoints: setupwizard, network name, version, websocket.
+     */
+    stubCommonEndpoints(): Chainable<void>;
+  }
+}

@@ -230,7 +230,14 @@ export default {
                 detail: `Talkgroup ${talkgroup.id} deleted`,
                 life: 3000,
               });
-              this.fetchData();
+              // Immediately remove the deleted talkgroup from the local array
+              this.talkgroups = this.talkgroups.filter(t => t.id !== talkgroup.id);
+              this.totalRecords = Math.max(0, this.totalRecords - 1);
+              talkgroup.editable = false;
+              this.editableTalkgroups--;
+              if (this.editableTalkgroups === 0) {
+                this.fetchData();
+              }
             })
             .catch((err) => {
               console.error(err);

@@ -1,0 +1,41 @@
+{
+  "total": 2,
+  "calls": [
+    {
+      "id": 1,
+      "active": false,
+      "start_time": "2024-06-10T14:00:00Z",
+      "time_slot": false,
+      "user": { "id": 1234567, "callsign": "W5TST" },
+      "is_to_talkgroup": true,
+      "to_talkgroup": { "id": 1 },
+      "is_to_repeater": false,
+      "to_repeater": { "id": 0, "callsign": "" },
+      "is_to_user": false,
+      "to_user": { "id": 0, "callsign": "" },
+      "duration": 5500000000,
+      "ber": 0.012,
+      "loss": 0.005,
+      "jitter": 2.3,
+      "rssi": 45
+    },
+    {
+      "id": 2,
+      "active": true,
+      "start_time": "2024-06-10T14:05:00Z",
+      "time_slot": true,
+      "user": { "id": 7654321, "callsign": "N0CALL" },
+      "is_to_talkgroup": false,
+      "to_talkgroup": { "id": 0 },
+      "is_to_repeater": false,
+      "to_repeater": { "id": 0, "callsign": "" },
+      "is_to_user": true,
+      "to_user": { "id": 1234567, "callsign": "W5TST" },
+      "duration": 3000000000,
+      "ber": 0.0,
+      "loss": 0.0,
+      "jitter": 1.1,
+      "rssi": 0
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Frontend: Unit Tests (Vitest)",
+      "type": "shell",
+      "command": "npm run test:unit",
+      "options": {
+        "cwd": "${workspaceFolder}/internal/http/frontend"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: E2E Tests (Cypress headless)",
+      "type": "shell",
+      "command": "npm run test:e2e:headless",
+      "options": {
+        "cwd": "${workspaceFolder}/internal/http/frontend"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: Lint",
+      "type": "shell",
+      "command": "npm run lint",
+      "options": {
+        "cwd": "${workspaceFolder}/internal/http/frontend"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: Lint",
+      "type": "shell",
+      "command": "golangci-lint run ./...",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

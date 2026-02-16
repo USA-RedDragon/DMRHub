@@ -26,6 +26,7 @@ dist-ssr
 *.sln
 *.sw?
 .nyc_output/
+coverage/
 reports/
 eslint_report.json
 

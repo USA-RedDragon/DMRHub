@@ -1,0 +1,11 @@
+{
+  "id": 1234567,
+  "callsign": "W5TST",
+  "username": "testadmin",
+  "admin": true,
+  "superAdmin": true,
+  "created_at": "2024-01-15T10:30:00Z",
+  "approved": true,
+  "suspended": false,
+  "repeaters": []
+}

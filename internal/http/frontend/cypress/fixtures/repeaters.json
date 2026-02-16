@@ -1,0 +1,37 @@
+{
+  "total": 2,
+  "repeaters": [
+    {
+      "id": 311001,
+      "type": "mmdvm",
+      "connected_time": "2024-06-10T14:00:00Z",
+      "created_at": "2024-01-10T09:00:00Z",
+      "last_ping_time": "2024-06-10T14:05:00Z",
+      "slots": 2,
+      "ts1_static_talkgroups": [
+        { "id": 1, "name": "World" }
+      ],
+      "ts2_static_talkgroups": [
+        { "id": 2, "name": "Local" }
+      ],
+      "ts1_dynamic_talkgroup": { "id": 0, "name": "None" },
+      "ts2_dynamic_talkgroup": { "id": 0, "name": "None" },
+      "hotspot": true,
+      "simplex_repeater": false
+    },
+    {
+      "id": 311002,
+      "type": "mmdvm",
+      "connected_time": "2024-06-09T12:00:00Z",
+      "created_at": "2024-02-20T11:00:00Z",
+      "last_ping_time": "2024-06-09T12:05:00Z",
+      "slots": 2,
+      "ts1_static_talkgroups": [],
+      "ts2_static_talkgroups": [],
+      "ts1_dynamic_talkgroup": { "id": 0, "name": "None" },
+      "ts2_dynamic_talkgroup": { "id": 0, "name": "None" },
+      "hotspot": false,
+      "simplex_repeater": false
+    }
+  ]
+}

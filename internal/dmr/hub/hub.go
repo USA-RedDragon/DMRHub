@@ -80,6 +80,8 @@ type ServerHandle struct {
 type serverEntry struct {
 	config ServerConfig
 	ch     chan RoutedPacket
+	mu     sync.RWMutex // protects ch against concurrent send-vs-close
+	closed bool
 }
 
 const serverChannelSize = 500
@@ -176,14 +178,21 @@ func (h *Hub) RegisterServer(cfg ServerConfig) *ServerHandle {
 // UnregisterServer removes a server from the hub and closes its channel.
 func (h *Hub) UnregisterServer(name string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	entry, ok := h.servers[name]
 	if !ok {
+		h.mu.Unlock()
 		return
 	}
-	close(entry.ch)
 	delete(h.servers, name)
+	h.mu.Unlock()
+
+	// Close the channel under the entry's write lock so that any concurrent
+	// send in deliverToServer (which holds the entry read lock) finishes
+	// before the channel is closed.
+	entry.mu.Lock()
+	entry.closed = true
+	close(entry.ch)
+	entry.mu.Unlock()
 }
 
 // deliverToServer pushes a routed packet to a server's channel (last-mile delivery).
@@ -194,6 +203,15 @@ func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
 	h.mu.RUnlock()
 
 	if !ok {
+		return
+	}
+
+	// Hold the entry read lock during the send so that UnregisterServer
+	// (which takes the write lock) cannot close the channel concurrently.
+	entry.mu.RLock()
+	defer entry.mu.RUnlock()
+
+	if entry.closed {
 		return
 	}
 
@@ -215,6 +233,15 @@ func (h *Hub) tryDeliverToServer(serverName string, rp RoutedPacket) bool {
 	h.mu.RUnlock()
 
 	if !ok {
+		return false
+	}
+
+	// Hold the entry read lock during the send so that UnregisterServer
+	// (which takes the write lock) cannot close the channel concurrently.
+	entry.mu.RLock()
+	defer entry.mu.RUnlock()
+
+	if entry.closed {
 		return false
 	}
 

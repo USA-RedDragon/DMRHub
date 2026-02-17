@@ -80,15 +80,10 @@ func NewNetResponseFromNet(net *models.Net, checkInCount int) NetResponse {
 
 // NetCheckInResponse represents a single check-in (call) during a net.
 type NetCheckInResponse struct {
-	CallID    uint               `json:"call_id"`
-	User      WSCallResponseUser `json:"user"`
-	StartTime time.Time          `json:"start_time"`
-	Duration  time.Duration      `json:"duration"`
-	TimeSlot  bool               `json:"time_slot"`
-	Loss      float32            `json:"loss"`
-	Jitter    float32            `json:"jitter"`
-	BER       float32            `json:"ber"`
-	RSSI      float32            `json:"rssi"`
+	CallID     uint               `json:"call_id"`
+	User       WSCallResponseUser `json:"user"`
+	RepeaterID uint               `json:"repeater_id"`
+	StartTime  time.Time          `json:"start_time"`
 }
 
 // NewNetCheckInResponseFromCall builds a NetCheckInResponse from a models.Call.
@@ -99,13 +94,8 @@ func NewNetCheckInResponseFromCall(call *models.Call) NetCheckInResponse {
 			ID:       call.User.ID,
 			Callsign: call.User.Callsign,
 		},
-		StartTime: call.StartTime,
-		Duration:  call.Duration,
-		TimeSlot:  call.TimeSlot,
-		Loss:      call.Loss,
-		Jitter:    call.Jitter,
-		BER:       call.BER,
-		RSSI:      call.RSSI,
+		RepeaterID: call.RepeaterID,
+		StartTime:  call.StartTime,
 	}
 }
 
@@ -119,6 +109,7 @@ type ScheduledNetPost struct {
 	Timezone        string `json:"timezone" binding:"required"`
 	DurationMinutes *uint  `json:"duration_minutes,omitempty"`
 	Enabled         *bool  `json:"enabled,omitempty"`
+	Showcase        *bool  `json:"showcase,omitempty"`
 }
 
 // ScheduledNetPatch is the request body for updating a scheduled net.
@@ -130,6 +121,7 @@ type ScheduledNetPatch struct {
 	Timezone        *string `json:"timezone,omitempty"`
 	DurationMinutes *uint   `json:"duration_minutes,omitempty"`
 	Enabled         *bool   `json:"enabled,omitempty"`
+	Showcase        *bool   `json:"showcase,omitempty"`
 }
 
 // ScheduledNetResponse is the API response for a scheduled net.
@@ -146,6 +138,7 @@ type ScheduledNetResponse struct {
 	Timezone        string                  `json:"timezone"`
 	DurationMinutes *uint                   `json:"duration_minutes,omitempty"`
 	Enabled         bool                    `json:"enabled"`
+	Showcase        bool                    `json:"showcase"`
 	NextRun         *time.Time              `json:"next_run,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
 }
@@ -172,6 +165,7 @@ func NewScheduledNetResponseFromScheduledNet(sn *models.ScheduledNet) ScheduledN
 		Timezone:        sn.Timezone,
 		DurationMinutes: sn.DurationMinutes,
 		Enabled:         sn.Enabled,
+		Showcase:        sn.Showcase,
 		NextRun:         sn.NextRun,
 		CreatedAt:       sn.CreatedAt,
 	}

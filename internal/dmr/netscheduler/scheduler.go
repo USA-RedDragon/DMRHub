@@ -207,6 +207,7 @@ func (ns *NetScheduler) startNetFromSchedule(ctx context.Context, sn *models.Sch
 		DurationMinutes: sn.DurationMinutes,
 		Description:     sn.Description,
 		Active:          true,
+		Showcase:        sn.Showcase,
 	}
 	if err := models.CreateNet(ns.db, &net); err != nil {
 		slog.Error("Failed to create net from schedule", "scheduled_net_id", sn.ID, "error", err)

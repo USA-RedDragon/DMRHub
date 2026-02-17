@@ -151,3 +151,11 @@ func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, en
 	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).Count(&count).Error
 	return int(count), err
 }
+
+// CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window.
+func CountUniqueUsersInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
+	var count int64
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).
+		Distinct("user_id").Count(&count).Error
+	return int(count), err
+}

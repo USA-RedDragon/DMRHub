@@ -51,5 +51,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_peer_ip_port_migration_202602170100(db, cfg),
 		add_nets_tables_migration_202602160300(db, cfg),
 		add_net_showcase_column_migration_202602170200(db, cfg),
+		add_scheduled_net_showcase_column_migration_202602170300(db, cfg),
 	}
 }

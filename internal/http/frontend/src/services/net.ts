@@ -48,13 +48,8 @@ export type Net = {
 export type NetCheckIn = {
   call_id: number;
   user: NetUser;
+  repeater_id: number;
   start_time: string;
-  duration: number;
-  time_slot: boolean;
-  loss: number;
-  jitter: number;
-  ber: number;
-  rssi: number;
 };
 
 export type ScheduledNet = {
@@ -70,6 +65,7 @@ export type ScheduledNet = {
   timezone: string;
   duration_minutes?: number;
   enabled: boolean;
+  showcase: boolean;
   next_run?: string;
   created_at: string;
 };
@@ -173,6 +169,7 @@ export function updateScheduledNet(
     timezone?: string;
     duration_minutes?: number;
     enabled?: boolean;
+    showcase?: boolean;
   },
 ) {
   return API.patch<ScheduledNet>(`/nets/scheduled/${id}`, body);

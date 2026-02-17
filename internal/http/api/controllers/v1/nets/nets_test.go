@@ -434,7 +434,7 @@ func TestGETNetCheckInsExportCSV(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "text/csv")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	// Check that the CSV header row is present
-	assert.Contains(t, w.Body.String(), "Call ID")
+	assert.Contains(t, w.Body.String(), "Time,Callsign,Radio ID,Repeater ID")
 }
 
 func TestGETNetCheckInsExportJSON(t *testing.T) {

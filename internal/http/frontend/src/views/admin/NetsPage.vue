@@ -65,6 +65,7 @@ import {
   getNets,
   getScheduledNets,
   patchNet,
+  updateScheduledNet,
   deleteScheduledNet,
   type Net,
   type ScheduledNet,
@@ -192,6 +193,17 @@ export default {
               : h('span', { class: 'text-muted-foreground' }, 'No'),
         },
         {
+          accessorKey: 'showcase',
+          header: 'Showcase',
+          cell: ({ row }: { row: { original: ScheduledNet } }) => {
+            const sn = row.original;
+            return h(Switch, {
+              modelValue: sn.showcase,
+              'onUpdate:modelValue': (val: boolean) => this.toggleScheduledShowcase(sn.id, val),
+            });
+          },
+        },
+        {
           accessorKey: 'actions',
           header: '',
           cell: ({ row }: { row: { original: ScheduledNet } }) =>
@@ -257,12 +269,22 @@ export default {
     toggleShowcase(netID: number, showcase: boolean) {
       patchNet(netID, { showcase })
         .then((res) => {
-          const idx = this.nets.findIndex((n: Net) => n.id === netID);
-          if (idx !== -1) {
-            const updated = { ...this.nets[idx] } as Net;
-            updated.showcase = res.data?.showcase ?? showcase;
-            this.nets.splice(idx, 1, updated);
-          }
+          this.nets = this.nets.map((n: Net) =>
+            n.id === netID
+              ? { ...n, showcase: res.data?.showcase ?? showcase }
+              : n,
+          );
+        })
+        .catch((err) => console.error(err));
+    },
+    toggleScheduledShowcase(snID: number, showcase: boolean) {
+      updateScheduledNet(snID, { showcase })
+        .then((res) => {
+          this.scheduledNets = this.scheduledNets.map((sn: ScheduledNet) =>
+            sn.id === snID
+              ? { ...sn, showcase: res.data?.showcase ?? showcase }
+              : sn,
+          );
         })
         .catch((err) => console.error(err));
     },

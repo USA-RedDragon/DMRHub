@@ -75,7 +75,7 @@
               </div>
               <div class="detail-row">
                 <dt class="detail-label">Started By</dt>
-                <dd class="detail-value">{{ net.started_by_user.callsign }} ({{ net.started_by_user.id }})</dd>
+                <dd class="detail-value"><User :user="net.started_by_user" /></dd>
               </div>
               <div class="detail-row">
                 <dt class="detail-label">Start Time</dt>
@@ -273,13 +273,8 @@ export default {
         const newCheckIn: NetCheckIn = {
           call_id: data.call_id,
           user: data.user,
+          repeater_id: data.repeater_id ?? 0,
           start_time: data.start_time,
-          duration: data.duration,
-          time_slot: false,
-          loss: 0,
-          jitter: 0,
-          ber: 0,
-          rssi: 0,
         };
         // Avoid duplicate call entries.
         const exists = this.checkIns.some((ci) => ci.call_id === newCheckIn.call_id);

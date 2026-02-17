@@ -434,23 +434,13 @@ func GETNetCheckInsExport(c *gin.Context) {
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.csv", filename))
 		c.Header("Content-Type", "text/csv")
 		w := csv.NewWriter(c.Writer)
-		_ = w.Write([]string{"Call ID", "User ID", "Callsign", "Start Time", "Duration", "Time Slot", "Loss", "Jitter", "BER", "RSSI"})
+		_ = w.Write([]string{"Time", "Callsign", "Radio ID", "Repeater ID"})
 		for _, ci := range resp {
-			ts := "1"
-			if ci.TimeSlot {
-				ts = "2"
-			}
 			_ = w.Write([]string{
-				strconv.FormatUint(uint64(ci.CallID), 10),
-				strconv.FormatUint(uint64(ci.User.ID), 10),
-				ci.User.Callsign,
 				ci.StartTime.Format(time.RFC3339),
-				ci.Duration.String(),
-				ts,
-				fmt.Sprintf("%.2f", ci.Loss),
-				fmt.Sprintf("%.2f", ci.Jitter),
-				fmt.Sprintf("%.2f", ci.BER),
-				fmt.Sprintf("%.2f", ci.RSSI),
+				ci.User.Callsign,
+				strconv.FormatUint(uint64(ci.User.ID), 10),
+				strconv.FormatUint(uint64(ci.RepeaterID), 10),
 			})
 		}
 		w.Flush()
@@ -459,13 +449,13 @@ func GETNetCheckInsExport(c *gin.Context) {
 	}
 }
 
-// countCheckInsForNet returns the number of calls during a net's time window.
+// countCheckInsForNet returns the number of unique users who checked in during a net's time window.
 func countCheckInsForNet(db *gorm.DB, net *models.Net) int {
 	endTime := time.Now()
 	if net.EndTime != nil {
 		endTime = *net.EndTime
 	}
-	count, err := models.CountTalkgroupCallsInTimeRange(db, net.TalkgroupID, net.StartTime, endTime)
+	count, err := models.CountUniqueUsersInTimeRange(db, net.TalkgroupID, net.StartTime, endTime)
 	if err != nil {
 		slog.Error("Failed to count check-ins for net", "error", err)
 		return 0

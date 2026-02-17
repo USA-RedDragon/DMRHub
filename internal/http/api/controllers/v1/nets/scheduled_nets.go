@@ -158,6 +158,11 @@ func POSTScheduledNet(c *gin.Context) {
 		enabled = *req.Enabled
 	}
 
+	showcase := false
+	if req.Showcase != nil {
+		showcase = *req.Showcase
+	}
+
 	sn := models.ScheduledNet{
 		TalkgroupID:     req.TalkgroupID,
 		CreatedByUserID: userID,
@@ -169,6 +174,7 @@ func POSTScheduledNet(c *gin.Context) {
 		Timezone:        req.Timezone,
 		DurationMinutes: req.DurationMinutes,
 		Enabled:         enabled,
+		Showcase:        showcase,
 	}
 	if err := models.CreateScheduledNet(db, &sn); err != nil {
 		slog.Error("Failed to create scheduled net", "error", err)
@@ -254,6 +260,9 @@ func PATCHScheduledNet(c *gin.Context) {
 	}
 	if req.Enabled != nil {
 		sn.Enabled = *req.Enabled
+	}
+	if req.Showcase != nil {
+		sn.Showcase = *req.Showcase
 	}
 
 	// Regenerate cron expression if schedule fields changed.

@@ -47,6 +47,7 @@ type ScheduledNet struct {
 	Timezone        string         `json:"timezone" msg:"timezone"`
 	DurationMinutes *uint          `json:"duration_minutes,omitempty" msg:"duration_minutes,omitempty"`
 	Enabled         bool           `json:"enabled" gorm:"default:true" msg:"enabled"`
+	Showcase        bool           `json:"showcase" gorm:"default:false" msg:"showcase"`
 	NextRun         *time.Time     `json:"next_run,omitempty" msg:"next_run,omitempty"`
 	CreatedAt       time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt       time.Time      `json:"-" msg:"-"`

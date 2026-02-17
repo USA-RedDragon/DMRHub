@@ -139,6 +139,35 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/talkgroups/OwnedTalkgroupsPage.vue'),
     },
     {
+      path: '/nets',
+      name: 'Nets',
+      sitemap: {
+        changefreq: 'daily',
+        priority: 0.8,
+      },
+      component: () => import('@/views/nets/NetsPage.vue'),
+    },
+    {
+      path: '/nets/scheduled/new',
+      name: 'NewScheduledNet',
+      component: () => import('@/views/nets/ScheduledNetFormPage.vue'),
+    },
+    {
+      path: '/nets/scheduled/:id/edit',
+      name: 'EditScheduledNet',
+      component: () => import('@/views/nets/ScheduledNetFormPage.vue'),
+    },
+    {
+      path: '/nets/:id',
+      name: 'NetDetails',
+      component: () => import('@/views/nets/NetDetailsPage.vue'),
+    },
+    {
+      path: '/admin/nets',
+      name: 'AdminNets',
+      component: () => import('@/views/admin/NetsPage.vue'),
+    },
+    {
       path: '/admin/repeaters',
       name: 'AdminRepeaters',
       component: () => import('@/views/admin/RepeatersPage.vue'),

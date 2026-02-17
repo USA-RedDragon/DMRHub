@@ -33,11 +33,11 @@ import (
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
-	setupWizardMiddleware "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
@@ -61,14 +61,14 @@ const defTimeout = 10 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 50
 
-func MakeServer(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, version, commit string) Server {
+func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) Server {
 	if config.LogLevel == configPkg.LogLevelDebug {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := CreateRouter(config, dmrHub, db, pubsub, ready, version, commit)
+	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
@@ -115,7 +115,7 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, version, commit string) {
+func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))
@@ -123,13 +123,14 @@ func addMiddleware(config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db 
 	}
 
 	// DBs
-	r.Use(func(g *gin.Context) { middleware.Provider("DB", db.WithContext(g.Request.Context()))(g) })
+	r.Use(func(g *gin.Context) { middleware.Provider("DB", db.WithContext(g.Request.Context()))(g) }) //nolint:contextcheck
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 
 	r.Use(middleware.Provider("PubSub", pubsub))
 	r.Use(middleware.Provider("Config", config))
 	r.Use(middleware.Provider("Ready", ready))
 	r.Use(middleware.Provider("Hub", dmrHub))
+	r.Use(middleware.Provider("NetScheduler", ns))
 	r.Use(middleware.Provider("Version", version))
 	r.Use(middleware.Provider("Commit", commit))
 	// CORS
@@ -182,7 +183,7 @@ func CreateSetupWizardRouter(config *configPkg.Config, token string, configCompl
 	return r
 }
 
-func CreateRouter(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, version, commit string) *gin.Engine {
+func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) *gin.Engine {
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
@@ -193,7 +194,7 @@ func CreateRouter(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub
 		slog.Error("Failed setting trusted proxies", "error", err)
 	}
 
-	addMiddleware(config, dmrHub, r, db, pubsub, ready, version, commit)
+	addMiddleware(ctx, config, dmrHub, r, db, pubsub, ready, ns, version, commit)
 
 	ratelimitStore := gormRateLimit.NewGORMStore(&gormRateLimit.GORMOptions{
 		DB:    db,

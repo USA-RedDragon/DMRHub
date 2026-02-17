@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
@@ -138,7 +139,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
 
-	servers, err := initializeServers(ctx, cfg, dmrHub, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
+	servers, err := initializeServers(ctx, cfg, dmrHub, callTracker, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
 	if err != nil {
 		return err
 	}
@@ -294,14 +295,16 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
-	servers    []servers.DMRServer
-	httpServer *http.Server
-	kv         kv.KV
-	pubsub     pubsub.PubSub
-	database   *gorm.DB
-	cfg        *config.Config
-	registry   *servers.InstanceRegistry
-	ready      *atomic.Bool
+	servers      []servers.DMRServer
+	httpServer   *http.Server
+	netScheduler *netscheduler.NetScheduler
+	callTracker  *calltracker.CallTracker
+	kv           kv.KV
+	pubsub       pubsub.PubSub
+	database     *gorm.DB
+	cfg          *config.Config
+	registry     *servers.InstanceRegistry
+	ready        *atomic.Bool
 }
 
 func (sm *serverManager) addServer(server servers.DMRServer) {
@@ -347,6 +350,12 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 // closeResources tears down the HTTP server, pubsub, and KV connections.
 // Call this after hub.Stop() has cancelled all subscriptions.
 func (sm *serverManager) closeResources(ctx context.Context) {
+	if sm.callTracker != nil {
+		sm.callTracker.Stop()
+	}
+	if sm.netScheduler != nil {
+		sm.netScheduler.Stop()
+	}
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
 		if err := sm.pubsub.Close(); err != nil {
@@ -368,7 +377,7 @@ func (sm *serverManager) shutdown(ctx context.Context) {
 }
 
 // initializeServers creates and starts all server instances
-func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
+func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct *calltracker.CallTracker, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
 	instanceID, err := servers.GenerateInstanceID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate instance ID: %w", err)
@@ -381,12 +390,13 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	ready := &atomic.Bool{}
 
 	sm := &serverManager{
-		kv:       kvStore,
-		pubsub:   pubsubClient,
-		database: database,
-		cfg:      cfg,
-		registry: registry,
-		ready:    ready,
+		callTracker: ct,
+		kv:          kvStore,
+		pubsub:      pubsubClient,
+		database:    database,
+		cfg:         cfg,
+		registry:    registry,
+		ready:       ready,
 	}
 
 	mmdvmServer, err := mmdvm.MakeServer(cfg, hub, database, pubsubClient, kvStore, version, commit)
@@ -411,7 +421,15 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 		return nil, fmt.Errorf("failed to start servers: %w", err)
 	}
 
-	httpServer := http.MakeServer(cfg, hub, database, pubsubClient, ready, version, commit)
+	ns := netscheduler.NewNetScheduler(database, pubsubClient, kvStore)
+	if err := ns.LoadScheduledNets(ctx); err != nil {
+		slog.Error("Failed to load scheduled nets", "error", err)
+	}
+	ns.Start()
+
+	sm.netScheduler = ns
+
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit)
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

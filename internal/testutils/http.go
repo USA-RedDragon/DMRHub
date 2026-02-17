@@ -100,7 +100,7 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(&defConfig, nil, t.database, pubsub, ready, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(context.TODO(), &defConfig, nil, t.database, pubsub, ready, nil, "test", "deadbeef"), &t, nil
 }
 
 func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
@@ -158,5 +158,5 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(&defConfig, dmrHub, t.database, ps, ready, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef"), &t, nil
 }

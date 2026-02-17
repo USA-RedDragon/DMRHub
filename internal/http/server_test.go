@@ -170,7 +170,7 @@ func TestHealthcheckNotReady(t *testing.T) {
 	assert.NoError(t, err)
 
 	ready := &atomic.Bool{} // default false — not ready
-	router := internalhttp.CreateRouter(&defConfig, nil, database, ps, ready, "test", "test")
+	router := internalhttp.CreateRouter(context.Background(), &defConfig, nil, database, ps, ready, nil, "test", "test")
 
 	w := httptest.NewRecorder()
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)

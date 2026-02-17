@@ -392,3 +392,59 @@ func TestKVRPushLargeBinaryData(t *testing.T) {
 	assert.Equal(t, data1, vals[0])
 	assert.Equal(t, data2, vals[1])
 }
+
+func TestKVSetNXFirstCallSucceeds(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	acquired, err := store.SetNX(ctx, "setnx_key", "val1", 5*time.Second)
+	assert.NoError(t, err)
+	assert.True(t, acquired, "SetNX should succeed when key does not exist")
+
+	// Verify the key was set.
+	val, err := store.Get(ctx, "setnx_key")
+	assert.NoError(t, err)
+	assert.Equal(t, "val1", string(val))
+}
+
+func TestKVSetNXSecondCallFails(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	acquired, err := store.SetNX(ctx, "setnx_dup", "first", 5*time.Second)
+	assert.NoError(t, err)
+	assert.True(t, acquired)
+
+	acquired, err = store.SetNX(ctx, "setnx_dup", "second", 5*time.Second)
+	assert.NoError(t, err)
+	assert.False(t, acquired, "SetNX should fail when key already exists")
+
+	// Original value should be unchanged.
+	val, err := store.Get(ctx, "setnx_dup")
+	assert.NoError(t, err)
+	assert.Equal(t, "first", string(val))
+}
+
+func TestKVSetNXExpiryAllowsReacquire(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	acquired, err := store.SetNX(ctx, "setnx_exp", "v1", 100*time.Millisecond)
+	assert.NoError(t, err)
+	assert.True(t, acquired)
+
+	// Wait for expiry.
+	time.Sleep(200 * time.Millisecond)
+
+	// Should succeed again after TTL expires.
+	acquired, err = store.SetNX(ctx, "setnx_exp", "v2", 5*time.Second)
+	assert.NoError(t, err)
+	assert.True(t, acquired, "SetNX should succeed after TTL expiration")
+
+	val, err := store.Get(ctx, "setnx_exp")
+	assert.NoError(t, err)
+	assert.Equal(t, "v2", string(val))
+}

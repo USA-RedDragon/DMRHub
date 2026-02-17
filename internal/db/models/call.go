@@ -135,3 +135,19 @@ func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool,
 	err := db.Model(&Call{}).Where("stream_id = ? AND active = ? AND user_id = ? AND destination_id = ? AND time_slot = ? AND group_call = ?", streamID, true, src, dst, slot, groupCall).Count(&count).Error
 	return count > 0, err
 }
+
+// FindTalkgroupCallsInTimeRange returns calls for a talkgroup within a time window.
+func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) ([]Call, error) {
+	var calls []Call
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
+		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).
+		Order("start_time desc").Find(&calls).Error
+	return calls, err
+}
+
+// CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window.
+func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
+	var count int64
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).Count(&count).Error
+	return int(count), err
+}

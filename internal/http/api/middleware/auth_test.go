@@ -417,14 +417,17 @@ func TestRequireMiddlewarePanicRecovery(t *testing.T) {
 	t.Parallel()
 
 	middlewares := map[string]gin.HandlerFunc{
-		"RequireLogin":                 middleware.RequireLogin(),
-		"RequireAdmin":                 middleware.RequireAdmin(),
-		"RequireSuperAdmin":            middleware.RequireSuperAdmin(),
-		"RequireAdminOrTGOwner":        middleware.RequireAdminOrTGOwner(),
-		"RequireSelfOrAdmin":           middleware.RequireSelfOrAdmin(),
-		"RequirePeerOwnerOrAdmin":      middleware.RequirePeerOwnerOrAdmin(),
-		"RequireRepeaterOwnerOrAdmin":  middleware.RequireRepeaterOwnerOrAdmin(),
-		"RequireTalkgroupOwnerOrAdmin": middleware.RequireTalkgroupOwnerOrAdmin(),
+		"RequireLogin":                         middleware.RequireLogin(),
+		"RequireAdmin":                         middleware.RequireAdmin(),
+		"RequireSuperAdmin":                    middleware.RequireSuperAdmin(),
+		"RequireAdminOrTGOwner":                middleware.RequireAdminOrTGOwner(),
+		"RequireSelfOrAdmin":                   middleware.RequireSelfOrAdmin(),
+		"RequirePeerOwnerOrAdmin":              middleware.RequirePeerOwnerOrAdmin(),
+		"RequireRepeaterOwnerOrAdmin":          middleware.RequireRepeaterOwnerOrAdmin(),
+		"RequireTalkgroupOwnerOrAdmin":         middleware.RequireTalkgroupOwnerOrAdmin(),
+		"RequireTalkgroupNCOOrOwnerOrAdmin":    middleware.RequireTalkgroupNCOOrOwnerOrAdmin(),
+		"RequireNetNCOOrOwnerOrAdmin":          middleware.RequireNetNCOOrOwnerOrAdmin(),
+		"RequireScheduledNetNCOOrOwnerOrAdmin": middleware.RequireScheduledNetNCOOrOwnerOrAdmin(),
 	}
 
 	for name, mw := range middlewares {
@@ -450,4 +453,42 @@ func TestRequireMiddlewarePanicRecovery(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
 		})
 	}
+}
+
+// TestRequireNetNCOOrOwnerOrAdminBlocksUnauthenticated tests that net stop
+// requires authentication.
+func TestRequireNetNCOOrOwnerOrAdminBlocksUnauthenticated(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/nets/1/stop", nil)
+	assert.NoError(t, err)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestRequireScheduledNetNCOOrOwnerOrAdminBlocksUnauthenticated tests that
+// scheduled net edit requires authentication.
+func TestRequireScheduledNetNCOOrOwnerOrAdminBlocksUnauthenticated(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	assert.NoError(t, err)
+	defer tdb.CloseDB()
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, "/api/v1/nets/scheduled/1", nil)
+	assert.NoError(t, err)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

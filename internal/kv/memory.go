@@ -30,6 +30,8 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
+const kvStatusSuccess = "success"
+
 func makeInMemoryKV(ctx context.Context, _ *config.Config) (KV, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	kv := inMemoryKV{
@@ -91,7 +93,7 @@ func (kv inMemoryKV) Get(_ context.Context, key string) ([]byte, error) {
 		status = "expired"
 		return nil, fmt.Errorf("key %s has expired", key)
 	}
-	status = "success"
+	status = kvStatusSuccess
 	return value.value, nil // Return the first value
 }
 
@@ -147,7 +149,7 @@ func (kv inMemoryKV) Expire(_ context.Context, key string, ttl time.Duration) er
 	if ttl <= 0 {
 		status = "deleted"
 	} else {
-		status = "success"
+		status = kvStatusSuccess
 	}
 	return nil
 }
@@ -190,6 +192,37 @@ func (kv inMemoryKV) Scan(_ context.Context, cursor uint64, match string, count 
 	kv.metrics.SetKVKeysTotal(float64(keyCount))
 
 	return keys, 0, nil // cursor is not used in this implementation
+}
+
+func (kv inMemoryKV) SetNX(_ context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	start := time.Now()
+	var status string
+	defer func() {
+		duration := time.Since(start).Seconds()
+		kv.metrics.RecordKVOperation("setnx", status, duration)
+	}()
+
+	var set bool
+	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(time.Now())) {
+			// Key exists and is not expired.
+			set = false
+			return oldValue, xsync.CancelOp
+		}
+		set = true
+		nv := kvValue{value: []byte(value)}
+		if ttl > 0 {
+			nv.ttl = time.Now().Add(ttl)
+		}
+		return nv, xsync.UpdateOp
+	})
+
+	if set {
+		status = kvStatusSuccess
+	} else {
+		status = "not_set"
+	}
+	return set, nil
 }
 
 func (kv inMemoryKV) RPush(_ context.Context, key string, value []byte) (int64, error) {

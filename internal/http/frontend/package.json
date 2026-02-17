@@ -40,6 +40,7 @@
     "vue-router": "5.0.2"
   },
   "devDependencies": {
+    "@cypress/code-coverage": "4.0.0",
     "@eslint/js": "9.39.2",
     "@tailwindcss/vite": "4.1.18",
     "@tsconfig/node22": "22.0.5",
@@ -53,7 +54,6 @@
     "@vue/eslint-config-typescript": "14.6.0",
     "@vue/test-utils": "2.4.6",
     "@vue/tsconfig": "0.8.1",
-    "@cypress/code-coverage": "4.0.0",
     "cypress": "15.10.0",
     "cypress-mochawesome-reporter": "4.0.2",
     "cypress-multi-reporters": "2.0.5",
@@ -81,6 +81,10 @@
   },
   "nyc": {
     "report-dir": "coverage/e2e",
-    "reporter": ["lcov", "cobertura", "text-summary"]
+    "reporter": [
+      "lcov",
+      "cobertura",
+      "text-summary"
+    ]
   }
 }

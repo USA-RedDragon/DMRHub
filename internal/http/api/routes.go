@@ -28,6 +28,7 @@ import (
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
+	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
@@ -61,8 +62,9 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	ws := router.Group("/ws")
 	ws.Use(ratelimit)
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
-	ws.GET("/calls", websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
-	ws.GET("/peers", websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
+	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
+	ws.GET("/peers", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
+	ws.GET("/nets", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateNetsWebsocket(pubsub)))
 }
 
 func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
@@ -143,6 +145,25 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	group.GET("/config", v1ConfigControllers.GETConfig)
 	group.GET("/config/validate", v1ConfigControllers.GETConfigValidate)
 	group.POST("/config/validate", v1ConfigControllers.POSTConfigValidate)
+
+	v1Nets := group.Group("/nets")
+	// Paginated
+	v1Nets.GET("", v1NetsControllers.GETNets)
+	v1Nets.GET("/:id", v1NetsControllers.GETNet)
+	v1Nets.POST("/start", middleware.RequireLogin(), userSuspension, v1NetsControllers.POSTNetStart)
+	v1Nets.POST("/:id/stop", middleware.RequireNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.POSTNetStop)
+	v1Nets.PATCH("/:id", middleware.RequireAdmin(), userSuspension, v1NetsControllers.PATCHNet)
+	// Paginated
+	v1Nets.GET("/:id/checkins", v1NetsControllers.GETNetCheckIns)
+	v1Nets.GET("/:id/checkins/export", middleware.RequireLogin(), userSuspension, v1NetsControllers.GETNetCheckInsExport)
+
+	v1ScheduledNets := v1Nets.Group("/scheduled")
+	// Paginated
+	v1ScheduledNets.GET("", v1NetsControllers.GETScheduledNets)
+	v1ScheduledNets.GET("/:id", v1NetsControllers.GETScheduledNet)
+	v1ScheduledNets.POST("", middleware.RequireLogin(), userSuspension, v1NetsControllers.POSTScheduledNet)
+	v1ScheduledNets.PATCH("/:id", middleware.RequireScheduledNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.PATCHScheduledNet)
+	v1ScheduledNets.DELETE("/:id", middleware.RequireScheduledNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.DELETEScheduledNet)
 
 	v1UserDB := group.Group("/userdb")
 	v1UserDB.GET("/:id", v1UserDBControllers.GETUserDBEntry)

@@ -10,6 +10,13 @@ linters:
       - path: _test\.go
         linters:
           - dogsled
+          - goconst
+          - gosec
+      - path: internal/testutils/.*\.go
+        linters:
+          - dogsled
+          - goconst
+          - gosec
   settings:
     goheader:
       template-path: .copyright-header

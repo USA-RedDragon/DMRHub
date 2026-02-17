@@ -258,3 +258,99 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
 	}
 }
+
+// isTalkgroupNCOOrOwnerOrAdmin checks if the given user is a system admin,
+// a talkgroup admin, or a talkgroup NCO for the talkgroup identified by talkgroupID.
+func isTalkgroupNCOOrOwnerOrAdmin(db *gorm.DB, user models.User, talkgroupID interface{}) bool {
+	if user.Admin && !user.Suspended && user.Approved {
+		return true
+	}
+
+	var talkgroup models.Talkgroup
+	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", talkgroupID)
+	for _, admin := range talkgroup.Admins {
+		if admin.ID == user.ID && !user.Suspended && user.Approved {
+			return true
+		}
+	}
+	for _, nco := range talkgroup.NCOs {
+		if nco.ID == user.ID && !user.Suspended && user.Approved {
+			return true
+		}
+	}
+	return false
+}
+
+// RequireTalkgroupNCOOrOwnerOrAdmin authorises system admins, talkgroup admins,
+// and talkgroup NCOs. Expects a :talkgroup_id route parameter.
+func RequireTalkgroupNCOOrOwnerOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer panicRecovery(c)
+
+		tgID := c.Param("talkgroup_id")
+		user, db, ok := authenticateUser(c, "RequireTalkgroupNCOOrOwnerOrAdmin")
+		if !ok {
+			return
+		}
+
+		if isTalkgroupNCOOrOwnerOrAdmin(db, user, tgID) {
+			return
+		}
+
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+	}
+}
+
+// RequireNetNCOOrOwnerOrAdmin authorises system admins, the net's talkgroup
+// admins, and the net's talkgroup NCOs. Resolves the talkgroup from a Net
+// identified by the :id route parameter.
+func RequireNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer panicRecovery(c)
+
+		id := c.Param("id")
+		user, db, ok := authenticateUser(c, "RequireNetNCOOrOwnerOrAdmin")
+		if !ok {
+			return
+		}
+
+		var net models.Net
+		if err := db.First(&net, "id = ?", id).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			return
+		}
+
+		if isTalkgroupNCOOrOwnerOrAdmin(db, user, net.TalkgroupID) {
+			return
+		}
+
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+	}
+}
+
+// RequireScheduledNetNCOOrOwnerOrAdmin authorises system admins, the scheduled
+// net's talkgroup admins, and its talkgroup NCOs. Resolves the talkgroup from a
+// ScheduledNet identified by the :id route parameter.
+func RequireScheduledNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer panicRecovery(c)
+
+		id := c.Param("id")
+		user, db, ok := authenticateUser(c, "RequireScheduledNetNCOOrOwnerOrAdmin")
+		if !ok {
+			return
+		}
+
+		var sn models.ScheduledNet
+		if err := db.First(&sn, "id = ?", id).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Scheduled net not found"})
+			return
+		}
+
+		if isTalkgroupNCOOrOwnerOrAdmin(db, user, sn.TalkgroupID) {
+			return
+		}
+
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+	}
+}

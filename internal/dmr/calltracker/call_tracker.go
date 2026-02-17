@@ -39,6 +39,14 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// netEventPayload mirrors the fields we need from WSNetEventResponse
+// for decoding pubsub messages without importing the apimodels cycle.
+type netEventPayload struct {
+	NetID       uint   `json:"net_id"`
+	TalkgroupID uint   `json:"talkgroup_id"`
+	Event       string `json:"event"`
+}
+
 // Assuming +/-7ms of jitter, we'll wait 2 seconds before we consider a call to be over
 // This equates out to about 30 lost voice packets.
 const timerDelay = 2 * time.Second
@@ -97,6 +105,10 @@ type CallTracker struct {
 	pubsub        pubsub.PubSub
 	callEndTimers *xsync.Map[uint64, *time.Timer]
 	inFlightCalls *xsync.Map[uint64, *inFlightCall]
+	// activeNets maps talkgroup ID → net ID for currently active nets.
+	// Updated via pubsub subscription to avoid a DB query per call end.
+	activeNets *xsync.Map[uint, uint]
+	cancelNets context.CancelFunc
 }
 
 // inFlightCall wraps a models.Call with a mutex to prevent data races between
@@ -109,12 +121,76 @@ type inFlightCall struct {
 
 // NewCallTracker creates a new CallTracker.
 func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
-	return &CallTracker{
+	ct := &CallTracker{
 		db:            db,
 		pubsub:        pubsub,
 		callEndTimers: xsync.NewMap[uint64, *time.Timer](),
 		inFlightCalls: xsync.NewMap[uint64, *inFlightCall](),
+		activeNets:    xsync.NewMap[uint, uint](),
 	}
+	ct.loadActiveNets()
+	ct.subscribeNetEvents()
+	return ct
+}
+
+// Stop cancels the net-events subscription goroutine.
+func (c *CallTracker) Stop() {
+	if c.cancelNets != nil {
+		c.cancelNets()
+	}
+}
+
+// loadActiveNets populates the activeNets cache from the database at startup.
+func (c *CallTracker) loadActiveNets() {
+	var nets []models.Net
+	if err := c.db.Where("active = ?", true).Find(&nets).Error; err != nil {
+		slog.Error("CallTracker: failed to load active nets", "error", err)
+		return
+	}
+	for i := range nets {
+		c.activeNets.Store(nets[i].TalkgroupID, nets[i].ID)
+	}
+	if len(nets) > 0 {
+		slog.Info("CallTracker: loaded active nets into cache", "count", len(nets))
+	}
+}
+
+// subscribeNetEvents subscribes to net:events pubsub and keeps activeNets in sync.
+func (c *CallTracker) subscribeNetEvents() {
+	sub := c.pubsub.Subscribe("net:events")
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancelNets = cancel
+	go func() {
+		ch := sub.Channel()
+		for {
+			select {
+			case <-ctx.Done():
+				if err := sub.Close(); err != nil {
+					slog.Error("CallTracker: failed to close net events subscription", "error", err)
+				}
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					// Channel closed (pubsub shutdown) — exit silently.
+					return
+				}
+				if len(msg) == 0 {
+					continue
+				}
+				var evt netEventPayload
+				if err := json.Unmarshal(msg, &evt); err != nil {
+					slog.Error("CallTracker: failed to unmarshal net event", "error", err)
+					continue
+				}
+				switch evt.Event {
+				case "started":
+					c.activeNets.Store(evt.TalkgroupID, evt.NetID)
+				case "stopped":
+					c.activeNets.Delete(evt.TalkgroupID)
+				}
+			}
+		}
+	}()
 }
 
 // callDestination holds the resolved destination for a call.
@@ -592,5 +668,42 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 
 	c.publishCall(ctx, call)
 
+	// If this call's talkgroup has an active net, publish a check-in event.
+	c.publishNetCheckIn(call)
+
 	slog.Info("Call ended", "streamID", packet.StreamID, "src", packet.Src, "dst", packet.Dst, "repeater", packet.Repeater, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
+}
+
+// publishNetCheckIn publishes a check-in event if the call's talkgroup has an active net.
+func (c *CallTracker) publishNetCheckIn(call *models.Call) {
+	if !call.GroupCall || call.ToTalkgroupID == nil {
+		return
+	}
+
+	netID, ok := c.activeNets.Load(*call.ToTalkgroupID)
+	if !ok {
+		return
+	}
+
+	checkIn := apimodels.WSNetCheckInResponse{
+		NetID:  netID,
+		CallID: call.ID,
+		User: apimodels.WSCallResponseUser{
+			ID:       call.User.ID,
+			Callsign: call.User.Callsign,
+		},
+		StartTime: call.StartTime,
+		Duration:  call.Duration,
+	}
+
+	data, err := json.Marshal(checkIn)
+	if err != nil {
+		slog.Error("CallTracker: failed to marshal net check-in", "error", err)
+		return
+	}
+
+	topic := fmt.Sprintf("net:checkins:%d", netID)
+	if err := c.pubsub.Publish(topic, data); err != nil {
+		slog.Error("CallTracker: failed to publish net check-in", "error", err)
+	}
 }

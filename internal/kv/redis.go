@@ -21,6 +21,7 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -108,6 +109,20 @@ func (kv *redisKV) Scan(ctx context.Context, cursor uint64, match string, count 
 		return nil, 0, fmt.Errorf("redis scan match %s: %w", match, err)
 	}
 	return keys, next, nil
+}
+
+func (kv *redisKV) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	err := kv.client.SetArgs(ctx, key, value, redis.SetArgs{
+		Mode: "nx",
+		TTL:  ttl,
+	}).Err()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, fmt.Errorf("redis setnx %s: %w", key, err)
+	}
+	return true, nil
 }
 
 func (kv *redisKV) RPush(ctx context.Context, key string, value []byte) (int64, error) {

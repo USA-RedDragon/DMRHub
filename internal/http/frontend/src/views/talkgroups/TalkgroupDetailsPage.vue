@@ -117,6 +117,103 @@
         </Card>
       </div>
 
+      <!-- Net Control -->
+      <Card>
+        <CardHeader>
+          <div class="flex items-center justify-between">
+            <CardTitle>Net Control</CardTitle>
+            <div class="flex gap-2">
+              <RouterLink v-if="!activeNet" :to="`/nets/scheduled/new?talkgroup_id=${talkgroupID}`">
+                <Button variant="outline" size="sm">Schedule Net</Button>
+              </RouterLink>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <!-- Active Net -->
+          <div v-if="activeNet" class="space-y-3">
+            <div class="flex items-center gap-2">
+              <span class="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span class="text-sm font-semibold text-green-600">Active Net</span>
+            </div>
+            <p v-if="activeNet.description" class="text-sm text-muted-foreground">{{ activeNet.description }}</p>
+            <div class="flex items-center gap-4 text-sm">
+              <span>Started by {{ activeNet.started_by_user.callsign }}</span>
+              <span>{{ activeNet.check_in_count + recentCheckIns.length }} check-ins</span>
+            </div>
+
+            <!-- Recent check-ins panel -->
+            <div v-if="recentCheckIns.length > 0" class="mt-2 rounded-md border p-3 space-y-1">
+              <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Recent Check-Ins</h4>
+              <div
+                v-for="ci in recentCheckIns.slice(0, 5)"
+                :key="ci.call_id"
+                class="flex items-center justify-between text-sm"
+              >
+                <User :user="ci.user" />
+                <span class="text-xs text-muted-foreground">
+                  {{ formatDuration(ci.duration) }}
+                </span>
+              </div>
+              <div v-if="recentCheckIns.length > 5" class="text-xs text-muted-foreground pt-1">
+                and {{ recentCheckIns.length - 5 }} more...
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <RouterLink :to="`/nets/${activeNet.id}`">
+                <Button variant="outline" size="sm">View Check-Ins</Button>
+              </RouterLink>
+              <Button variant="destructive" size="sm" @click="handleStopNet">Stop Net</Button>
+            </div>
+          </div>
+
+          <!-- No active net -->
+          <div v-else class="space-y-3">
+            <p class="text-sm text-muted-foreground">No active net on this talkgroup.</p>
+            <div class="flex gap-2">
+              <Button variant="outline" size="sm" @click="showStartNet = !showStartNet">
+                {{ showStartNet ? 'Cancel' : 'Start Net' }}
+              </Button>
+            </div>
+            <!-- Inline start form -->
+            <div v-if="showStartNet" class="space-y-2 pt-2">
+              <ShadInput
+                type="text"
+                v-model="netDescription"
+                placeholder="Net description (optional)"
+              />
+              <ShadInput
+                type="number"
+                v-model="netDuration"
+                placeholder="Duration in minutes (optional)"
+                min="1"
+                max="1440"
+              />
+              <Button size="sm" @click="handleStartNet">Start</Button>
+            </div>
+          </div>
+
+          <!-- Scheduled Nets -->
+          <div v-if="scheduledNets.length > 0" class="mt-4 pt-4 border-t">
+            <h4 class="text-sm font-semibold mb-2">Scheduled Nets</h4>
+            <ul class="space-y-1">
+              <li v-for="sn in scheduledNets" :key="sn.id" class="text-sm flex items-center justify-between">
+                <span>
+                  <strong>{{ sn.name }}</strong> —
+                  {{ dayNames[sn.day_of_week] }} {{ sn.time_of_day }} UTC
+                  <span v-if="sn.duration_minutes">({{ sn.duration_minutes }}m)</span>
+                  <span v-if="!sn.enabled" class="text-muted-foreground"> (disabled)</span>
+                </span>
+                <RouterLink :to="`/nets/scheduled/${sn.id}/edit`">
+                  <ShadButton variant="ghost" size="sm">Edit</ShadButton>
+                </RouterLink>
+              </li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
       <!-- Last Heard -->
       <Card>
         <CardHeader>
@@ -150,10 +247,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
+import { Button as ShadButton } from '@/components/ui/button';
+import { Input as ShadInput } from '@/components/ui/input';
 import User from '@/components/User.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 
 import API from '@/services/API';
+import {
+  getNets,
+  startNet,
+  stopNet as stopNetAPI,
+  getScheduledNets,
+  type Net,
+  type ScheduledNet,
+} from '@/services/net';
 import { getWebsocketURI } from '@/services/util';
 import ws from '@/services/ws';
 
@@ -210,6 +317,8 @@ export default {
     Separator,
     Skeleton,
     DataTable,
+    ShadButton,
+    ShadInput,
     User,
     RelativeTimestamp,
   },
@@ -223,7 +332,10 @@ export default {
       this.talkgroupID = Number(id);
       this.fetchTalkgroup();
       this.fetchLastheard();
+      this.fetchActiveNet();
+      this.fetchScheduledNets();
       this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
+      this.netSocket = ws.connect(getWebsocketURI() + '/nets', this.onNetWebsocketMessage);
       this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
     }
   },
@@ -233,6 +345,9 @@ export default {
     }
     if (this.socket) {
       this.socket.close();
+    }
+    if (this.netSocket) {
+      this.netSocket.close();
     }
   },
   data: function() {
@@ -247,8 +362,16 @@ export default {
       page: 1,
       rows: 30,
       socket: null as { close(): void } | null,
+      netSocket: null as { close(): void } | null,
       now: Date.now(),
       timeInterval: null as ReturnType<typeof setInterval> | null,
+      activeNet: null as Net | null,
+      recentCheckIns: [] as { call_id: number; user: { id: number; callsign: string }; start_time: string; duration: number }[],
+      scheduledNets: [] as ScheduledNet[],
+      showStartNet: false,
+      netDescription: '',
+      netDuration: '' as string | number,
+      dayNames: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     };
   },
   computed: {
@@ -403,6 +526,98 @@ export default {
         copyLastheard.unshift(call);
       }
       this.lastheard = this.cleanData(copyLastheard);
+    },
+    onNetWebsocketMessage(event: MessageEvent) {
+      const data = JSON.parse(event.data);
+
+      // Check-in event (from net:checkins:{id} topic)
+      if (data.call_id && data.user) {
+        const exists = this.recentCheckIns.some((ci: { call_id: number }) => ci.call_id === data.call_id);
+        if (!exists) {
+          this.recentCheckIns = [data, ...this.recentCheckIns];
+        }
+        return;
+      }
+
+      // Net lifecycle event
+      if (data.talkgroup_id === this.talkgroupID) {
+        this.fetchActiveNet();
+        if (data.event === 'stopped') {
+          this.recentCheckIns = [];
+        }
+      }
+    },
+    fetchActiveNet() {
+      getNets({ talkgroup_id: this.talkgroupID, active: true, limit: 1 })
+        .then((res) => {
+          const nets = res.data.nets || [];
+          const previousNetID = this.activeNet?.id;
+          this.activeNet = (nets.length > 0 ? nets[0] : null) ?? null;
+
+          // If we have an active net and its ID changed (or first load),
+          // reconnect the net websocket with the net_id for live check-ins.
+          if (this.activeNet && this.activeNet.id !== previousNetID) {
+            this.recentCheckIns = [];
+            if (this.netSocket) {
+              this.netSocket.close();
+            }
+            this.netSocket = ws.connect(
+              getWebsocketURI() + '/nets?net_id=' + this.activeNet.id,
+              this.onNetWebsocketMessage,
+            );
+          } else if (!this.activeNet && previousNetID) {
+            // Net ended — reconnect without net_id.
+            this.recentCheckIns = [];
+            if (this.netSocket) {
+              this.netSocket.close();
+            }
+            this.netSocket = ws.connect(getWebsocketURI() + '/nets', this.onNetWebsocketMessage);
+          }
+        })
+        .catch((err) => console.error(err));
+    },
+    fetchScheduledNets() {
+      getScheduledNets({ talkgroup_id: this.talkgroupID })
+        .then((res) => {
+          this.scheduledNets = res.data.scheduled_nets || [];
+        })
+        .catch((err) => console.error(err));
+    },
+    handleStartNet() {
+      const dur = this.netDuration !== '' ? Number(this.netDuration) : undefined;
+      startNet({
+        talkgroup_id: this.talkgroupID,
+        description: this.netDescription.trim() || undefined,
+        duration_minutes: dur,
+      })
+        .then((res) => {
+          this.activeNet = res.data;
+          this.showStartNet = false;
+          this.netDescription = '';
+          this.netDuration = '';
+          this.recentCheckIns = [];
+          // Reconnect WS with the new net_id.
+          if (this.netSocket) {
+            this.netSocket.close();
+          }
+          this.netSocket = ws.connect(
+            getWebsocketURI() + '/nets?net_id=' + res.data.id,
+            this.onNetWebsocketMessage,
+          );
+        })
+        .catch((err) => console.error(err));
+    },
+    handleStopNet() {
+      if (!this.activeNet) return;
+      stopNetAPI(this.activeNet.id)
+        .then(() => {
+          this.activeNet = null;
+          this.recentCheckIns = [];
+        })
+        .catch((err) => console.error(err));
+    },
+    formatDuration(ns: number): string {
+      return (ns / 1000000000).toFixed(1) + 's';
     },
   },
 };

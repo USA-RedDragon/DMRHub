@@ -34,6 +34,9 @@ type KV interface {
 	Delete(ctx context.Context, key string) error
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error)
+	// SetNX sets the key only if it does not already exist. Returns true if the
+	// key was set, false if it was already present. The TTL is applied atomically.
+	SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error)
 	// RPush appends a value to a list stored under key. Returns the new length.
 	RPush(ctx context.Context, key string, value []byte) (int64, error)
 	// LDrain atomically returns all elements of the list and deletes the key.

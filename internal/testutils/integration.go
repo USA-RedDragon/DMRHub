@@ -129,6 +129,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		_ = ipscServer.Stop(context.Background())
 		_ = mmdvmServer.Stop(context.Background())
 		h.Stop(context.Background())
+		ct.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()

@@ -89,6 +89,15 @@
                 <MessageSquare class="h-4 w-4" />
                 Talkgroups
               </router-link>
+              <router-link
+                to="/nets"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/nets' || route.path.startsWith('/nets/') }"
+                @click="mobileOpen = false"
+              >
+                <RadioTower class="h-4 w-4" />
+                Nets
+              </router-link>
             </template>
 
             <!-- Talkgroups section (logged in) -->
@@ -113,6 +122,15 @@
                 <MessageSquare class="h-4 w-4" />
                 Owned
               </router-link>
+              <router-link
+                to="/nets"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/nets' || route.path.startsWith('/nets/') }"
+                @click="mobileOpen = false"
+              >
+                <RadioTower class="h-4 w-4" />
+                Nets
+              </router-link>
             </template>
 
             <!-- OpenBridge Peers -->
@@ -133,6 +151,15 @@
             <template v-if="userStore.loggedIn && userStore.admin">
               <Separator class="my-1" />
               <span class="px-3 py-1 text-xs font-medium text-muted-foreground">Admin</span>
+              <router-link
+                to="/admin/nets"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/nets' }"
+                @click="mobileOpen = false"
+              >
+                <RadioTower class="h-4 w-4" />
+                Nets
+              </router-link>
               <router-link
                 to="/admin/talkgroups"
                 class="mobile-nav-link"
@@ -256,6 +283,15 @@
           Talkgroups
         </router-link>
 
+        <!-- Nets link (always visible) -->
+        <router-link
+          to="/nets"
+          class="desktop-nav-link"
+          :class="{ active: route.path === '/nets' || route.path.startsWith('/nets/') }"
+        >
+          Nets
+        </router-link>
+
         <!-- Talkgroups dropdown (logged in) -->
         <div
           v-if="userStore.loggedIn"
@@ -342,6 +378,15 @@
               :side-offset="4"
               align="start"
             >
+              <DropdownMenuItem as-child>
+                <router-link
+                  to="/admin/nets"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Nets
+                </router-link>
+              </DropdownMenuItem>
               <DropdownMenuItem as-child>
                 <router-link
                   to="/admin/talkgroups"
@@ -434,6 +479,7 @@ import {
   Menu,
   MessageSquare,
   Radio,
+  RadioTower,
   Settings,
   UserCheck,
   UserPlus,

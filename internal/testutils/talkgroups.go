@@ -22,11 +22,14 @@ package testutils
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -36,6 +39,21 @@ import (
 
 func CreateTalkgroup(t *testing.T, router *gin.Engine, jar CookieJar, tg apimodels.TalkgroupPost) (APIResponse, *httptest.ResponseRecorder) {
 	t.Helper()
+
+	if tg.ID == 0 {
+		// Generate a non-zero ID without relying on globals; collision risk is fine for tests.
+		buf := make([]byte, 4)
+		if _, err := rand.Read(buf); err == nil {
+			id := binary.LittleEndian.Uint32(buf)
+			if id == 0 {
+				id = 1
+			}
+			tg.ID = uint(id)
+		} else {
+			// Fallback: time-based value with low collision risk for tests.
+			tg.ID = uint(time.Now().UnixNano() & 0x7fffffff)
+		}
+	}
 
 	jsonBytes, err := json.Marshal(tg)
 	assert.NoError(t, err)

@@ -46,6 +46,7 @@
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { RouterLink } from 'vue-router';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -149,7 +150,12 @@ export default {
         {
           accessorKey: 'id',
           header: 'DMR Radio ID',
-          cell: ({ row }: { row: { original: RepeaterRow } }) => `${row.original.id}`,
+          cell: ({ row }: { row: { original: RepeaterRow } }) => {
+            return h(RouterLink, {
+              to: `/repeaters/${row.original.id}`,
+              class: 'text-primary underline',
+            }, () => `${row.original.id}`);
+          },
         },
         {
           accessorKey: 'type',

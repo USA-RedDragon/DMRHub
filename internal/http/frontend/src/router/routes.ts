@@ -97,6 +97,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/repeaters/RepeatersPage.vue'),
     },
     {
+      path: '/repeaters/:id',
+      name: 'RepeaterDetails',
+      component: () => import('@/views/repeaters/RepeaterDetailsPage.vue'),
+    },
+    {
       path: '/repeaters/new',
       name: 'NewRepeater',
       sitemap: {

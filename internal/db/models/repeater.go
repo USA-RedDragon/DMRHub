@@ -66,6 +66,9 @@ type Repeater struct {
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID               uint           `json:"-" msg:"-"`
 	SimplexRepeater       bool           `json:"simplex_repeater" msg:"simplex_repeater"`
+	City                  string         `json:"city" msg:"-"`
+	State                 string         `json:"state" msg:"-"`
+	Country               string         `json:"country" msg:"-"`
 	CreatedAt             time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
@@ -160,7 +163,10 @@ func (p *Repeater) UpdateFrom(repeater Repeater) {
 	p.Latitude = repeater.Latitude
 	p.Longitude = repeater.Longitude
 	p.Height = repeater.Height
-	p.Location = repeater.Location
+	p.City = repeater.City
+	p.State = repeater.State
+	p.Country = repeater.Country
+	p.Location = fmt.Sprintf("%s, %s, %s", repeater.City, repeater.State, repeater.Country)
 	p.Description = repeater.Description
 	p.Slots = repeater.Slots
 	p.URL = repeater.URL

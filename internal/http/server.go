@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -53,6 +54,7 @@ var (
 type Server struct {
 	*http.Server
 	shutdownChannel chan bool
+	stopOnce        sync.Once
 }
 
 const defTimeout = 10 * time.Second
@@ -78,8 +80,8 @@ func MakeServer(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub p
 	s.SetKeepAlivesEnabled(false)
 
 	return Server{
-		s,
-		make(chan bool),
+		Server:          s,
+		shutdownChannel: make(chan bool),
 	}
 }
 
@@ -102,8 +104,8 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 	s.SetKeepAlivesEnabled(false)
 
 	return Server{
-		s,
-		make(chan bool),
+		Server:          s,
+		shutdownChannel: make(chan bool),
 	}
 }
 
@@ -219,14 +221,16 @@ func CreateRouter(config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub
 	return r
 }
 func (s *Server) Stop(ctx context.Context) {
-	slog.Info("Stopping HTTP Server")
-	const timeout = 5 * time.Second
-	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	if err := s.Shutdown(shutdownCtx); err != nil {
-		slog.Error("Failed to shutdown HTTP server", "error", err)
-	}
-	<-s.shutdownChannel
+	s.stopOnce.Do(func() {
+		slog.Info("Stopping HTTP Server")
+		const timeout = 5 * time.Second
+		shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		if err := s.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown HTTP server", "error", err)
+		}
+		<-s.shutdownChannel
+	})
 }
 
 var ErrClosed = errors.New("server closed")
@@ -235,14 +239,10 @@ var ErrFailed = errors.New("failed to start server")
 func (s *Server) Start() error {
 	go func() {
 		err := s.ListenAndServe()
-		if err != nil {
-			switch {
-			case errors.Is(err, http.ErrServerClosed):
-				s.shutdownChannel <- true
-			default:
-				slog.Error("Failed to start HTTP server", "error", err)
-			}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Failed to start HTTP server", "error", err)
 		}
+		s.shutdownChannel <- true
 	}()
 	return nil
 }

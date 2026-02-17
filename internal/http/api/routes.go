@@ -133,7 +133,7 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	// Paginated
 	v1Lastheard.GET("/repeater/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
-	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardTalkgroup)
+	v1Lastheard.GET("/talkgroup/:id", v1LastheardControllers.GETLastheardTalkgroup)
 
 	group.PUT("/config", v1ConfigControllers.PUTConfig)
 	group.GET("/config", v1ConfigControllers.GETConfig)

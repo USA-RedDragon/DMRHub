@@ -24,7 +24,10 @@
     <TooltipProvider v-if="talkgroupData">
       <Tooltip>
         <TooltipTrigger as-child>
-          <p class="font-medium">{{ talkgroupData.name }}</p>
+          <RouterLink v-if="loggedIn" :to="`/talkgroups/${talkgroup.id}`" class="text-primary underline font-medium">
+            {{ talkgroupData.name }}
+          </RouterLink>
+          <p v-else class="font-medium">{{ talkgroupData.name }}</p>
         </TooltipTrigger>
         <TooltipContent side="top" class="max-w-xs">
           <p class="font-semibold">TG {{ talkgroup.id }} - {{ talkgroupData.name }}</p>
@@ -33,18 +36,24 @@
       </Tooltip>
     </TooltipProvider>
     <div v-else>
-      <p class="font-medium">TG {{ talkgroup.id }}</p>
+      <RouterLink v-if="loggedIn" :to="`/talkgroups/${talkgroup.id}`" class="text-primary underline font-medium">
+        TG {{ talkgroup.id }}
+      </RouterLink>
+      <p v-else class="font-medium">TG {{ talkgroup.id }}</p>
     </div>
   </div>
 </template>
 
 <script lang="ts">
+import { RouterLink } from 'vue-router';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getTalkgroup, type TalkgroupData } from '@/services/talkgroup';
+import { useUserStore } from '@/store';
 
 export default {
   name: 'TalkgroupInfo',
   components: {
+    RouterLink,
     Tooltip,
     TooltipContent,
     TooltipProvider,
@@ -60,6 +69,11 @@ export default {
     return {
       talkgroupData: null as TalkgroupData | null,
     };
+  },
+  computed: {
+    loggedIn(): boolean {
+      return useUserStore().loggedIn;
+    },
   },
   watch: {
     'talkgroup.id': {

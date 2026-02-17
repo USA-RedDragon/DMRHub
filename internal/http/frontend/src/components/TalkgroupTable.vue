@@ -46,6 +46,7 @@
 <script lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h, type RendererElement } from 'vue';
+import { RouterLink } from 'vue-router';
 import { Button as ShadButton } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
 import { Input as Input } from '@/components/ui/input';
@@ -393,7 +394,12 @@ export default {
         {
           accessorKey: 'id',
           header: 'Channel',
-          cell: ({ row }: { row: { original: TalkgroupRow } }) => `${row.original.id}`,
+          cell: ({ row }: { row: { original: TalkgroupRow } }) =>
+            h(
+              RouterLink,
+              { to: `/talkgroups/${row.original.id}`, class: 'text-primary underline' },
+              () => `${row.original.id}`,
+            ),
         },
         {
           accessorKey: 'name',

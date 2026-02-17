@@ -125,6 +125,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/talkgroups/TalkgroupsPage.vue'),
     },
     {
+      path: '/talkgroups/:id',
+      name: 'TalkgroupDetails',
+      component: () => import('@/views/talkgroups/TalkgroupDetailsPage.vue'),
+    },
+    {
       path: '/talkgroups/owned',
       name: 'OwnedTalkgroups',
       sitemap: {

@@ -28,10 +28,10 @@
       <!-- Mobile hamburger -->
       <Sheet v-model:open="mobileOpen">
         <SheetTrigger as-child>
-          <Button variant="ghost" size="icon" class="mr-2 md:hidden">
+          <ShadButton variant="ghost" size="icon" class="mr-2 md:hidden">
             <Menu class="h-5 w-5" />
             <span class="sr-only">Toggle menu</span>
-          </Button>
+          </ShadButton>
         </SheetTrigger>
         <SheetContent side="left" class="w-72 p-0">
           <SheetHeader class="border-b border-border px-4 py-4">
@@ -305,14 +305,13 @@
             @update:open="setMenuOpen('talkgroups', $event)"
           >
             <DropdownMenuTrigger as-child>
-              <button
-                class="desktop-nav-link inline-flex items-center gap-1"
-                :class="{ active: route.path.startsWith('/talkgroups') }"
-                type="button"
-              >
+              <router-link
+                to="/talkgroups"
+                class="desktop-nav-link"
+                :class="{ active: route.path.startsWith('/talkgroup') }">
                 Talkgroups
                 <ChevronDown class="h-3 w-3" />
-              </button>
+              </router-link>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               class="min-w-[10rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
@@ -364,14 +363,14 @@
             @update:open="setMenuOpen('admin', $event)"
           >
             <DropdownMenuTrigger as-child>
-              <button
-                class="desktop-nav-link inline-flex items-center gap-1"
-                :class="{ active: route.path.startsWith('/admin') }"
-                type="button"
-              >
+              <router-link
+                to="/admins/setup"
+                class="desktop-nav-link"
+                :class="{ active: route.path.startsWith('/admin') }">
+              
                 Admin
                 <ChevronDown class="h-3 w-3" />
-              </button>
+              </router-link>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               class="min-w-[10rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
@@ -485,7 +484,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-vue-next';
-import { Button } from '@/components/ui/button';
+import { Button as ShadButton } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
   Sheet,

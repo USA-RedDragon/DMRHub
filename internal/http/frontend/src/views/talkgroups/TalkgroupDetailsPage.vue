@@ -205,9 +205,12 @@
                   <span v-if="sn.duration_minutes">({{ sn.duration_minutes }}m)</span>
                   <span v-if="!sn.enabled" class="text-muted-foreground"> (disabled)</span>
                 </span>
-                <RouterLink :to="`/nets/scheduled/${sn.id}/edit`">
-                  <ShadButton variant="ghost" size="sm">Edit</ShadButton>
-                </RouterLink>
+                <span>
+                  <RouterLink :to="`/nets/scheduled/${sn.id}/edit`">
+                    <ShadButton variant="ghost" size="sm">Edit</ShadButton>
+                  </RouterLink>
+                  <ShadButton variant="destructive" size="sm" @click="handleDeleteScheduledNet(sn)">Delete</ShadButton>
+                </span>
               </li>
             </ul>
           </div>
@@ -258,6 +261,7 @@ import {
   startNet,
   stopNet as stopNetAPI,
   getScheduledNets,
+  deleteScheduledNet,
   type Net,
   type ScheduledNet,
 } from '@/services/net';
@@ -613,6 +617,14 @@ export default {
         .then(() => {
           this.activeNet = null;
           this.recentCheckIns = [];
+        })
+        .catch((err) => console.error(err));
+    },
+    handleDeleteScheduledNet(sn: ScheduledNet) {
+      if (!window.confirm(`Delete scheduled net "${sn.name}"?`)) return;
+      deleteScheduledNet(sn.id)
+        .then(() => {
+          this.scheduledNets = this.scheduledNets.filter((s) => s.id !== sn.id);
         })
         .catch((err) => console.error(err));
     },

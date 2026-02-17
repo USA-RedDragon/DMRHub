@@ -130,7 +130,6 @@ func TestPOSTRepeaterMMDVM(t *testing.T) {
 	rpt, w := testutils.GetRepeater(t, router, repeaterPost.RadioID, userJar)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "mmdvm", rpt.Type)
-	assert.True(t, rpt.Hotspot)
 	assert.Equal(t, repeaterPost.RadioID, rpt.ID)
 }
 
@@ -167,7 +166,6 @@ func TestPOSTRepeaterIPSC(t *testing.T) {
 	rpt, w := testutils.GetRepeater(t, router, repeaterPost.RadioID, userJar)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "ipsc", rpt.Type)
-	assert.True(t, rpt.Hotspot)
 }
 
 func TestPATCHRepeaterPreservesType(t *testing.T) {
@@ -249,48 +247,6 @@ func TestPATCHRepeaterPreservesPassword(t *testing.T) {
 	err = tdb.DB().First(&dbRepeater, repeaterPost.RadioID).Error
 	require.NoError(t, err)
 	assert.Equal(t, originalPassword, dbRepeater.Password, "PATCH should not change repeater password")
-}
-
-func TestPATCHRepeaterPreservesHotspot(t *testing.T) {
-	t.Parallel()
-
-	router, tdb, err := testutils.CreateTestDBRouterWithHub()
-	require.NoError(t, err)
-	defer tdb.CloseDB()
-
-	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
-		Username: "testuser",
-		Password: "password",
-	}
-
-	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-
-	// Create a hotspot repeater (hotspot-style ID)
-	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186805,
-	}
-
-	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Verify it's a hotspot
-	rpt, w := testutils.GetRepeater(t, router, repeaterPost.RadioID, userJar)
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, rpt.Hotspot)
-
-	// PATCH it
-	simplexTrue := true
-	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, userJar, apimodels.RepeaterPatch{
-		SimplexRepeater: &simplexTrue,
-	})
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Verify hotspot is still true
-	rpt, w = testutils.GetRepeater(t, router, repeaterPost.RadioID, userJar)
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, rpt.Hotspot, "PATCH should not change hotspot status")
 }
 
 func TestPATCHRepeaterPreservesOwner(t *testing.T) {

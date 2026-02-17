@@ -47,6 +47,9 @@ const (
 // Compiled once at package level to avoid re-compilation on every request.
 var repeaterIDRegex = regexp.MustCompile(`^[0-9]{6}$`)
 
+// hotspotRegex validates that a radio ID is a valid hotspot ID for the user. It must be 7 or 9 digits long and start with the userID. Compiled once at package level to avoid re-compilation on every request.
+var hotspotRegex = regexp.MustCompile(`^([0-9]{7}|[0-9]{9})$`)
+
 func GETRepeaters(c *gin.Context) {
 	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
@@ -316,23 +319,12 @@ func POSTRepeater(c *gin.Context) {
 		var repeater models.Repeater
 		repeater.Type = json.Type
 		repeater.SimplexRepeater = json.SimplexRepeater
+		repeater.ID = json.RadioID
+		repeater.Owner = user
+		repeater.OwnerID = user.ID
 
-		if json.Type == models.RepeaterTypeIPSC {
-			// IPSC repeaters: validate RadioID as 6-digit or hotspot
-			hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
-
-			switch {
-			case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-				repeater.Hotspot = false
-			case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-				repeater.Hotspot = true
-			default:
-				c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
-				return
-			}
-
-			repeater.ID = json.RadioID
-
+		switch json.Type {
+		case models.RepeaterTypeIPSC:
 			// Generate a random hex auth key (20 bytes = 40 hex chars) for IPSC HMAC-SHA1
 			const ipscKeyLen = 40
 			repeater.Password, err = utils.RandomHexString(ipscKeyLen)
@@ -342,30 +334,21 @@ func POSTRepeater(c *gin.Context) {
 				return
 			}
 
-			repeater.Owner = user
-			repeater.OwnerID = user.ID
-			err := db.Preload("Owner").Create(&repeater).Error
+		case models.RepeaterTypeMMDVM:
+			// Generate a random password
+			const randLen = 12
+			const randNum = 4
+			const randSpecial = 0
+			repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 			if err != nil {
-				slog.Error("Error creating repeater", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
+				slog.Error("Failed to generate a repeater password", "error", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
 				return
 			}
-			dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
-			if ok {
-				go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
-			return
 		}
-
-		// MMDVM repeater creation (existing logic)
-
-		// if json.RadioID is a hotspot, then it will be 7 or 9 digits long and be prefixed by the userID
-		hotspotRegex := regexp.MustCompile(`^` + fmt.Sprintf("%d", userID) + `([0][1-9]|[1-9][0-9])?$`)
 
 		switch {
 		case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-			repeater.Hotspot = false
 			if !config.DMR.DisableRadioIDValidation {
 				if !repeaterdb.IsValidRepeaterID(json.RadioID) {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
@@ -375,79 +358,73 @@ func POSTRepeater(c *gin.Context) {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
 					return
 				}
-			}
-			r, ok := repeaterdb.Get(json.RadioID)
-			if !ok {
-				slog.Error("Error getting repeater from database")
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
-				return
-			}
-			repeater.Callsign = r.Callsign
-			if r.ColorCode > 255 {
-				slog.Error("Color code out of range for uint8", "colorCode", r.ColorCode)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Color code out of range"})
-				return
-			}
-			repeater.ColorCode = uint8(r.ColorCode)
-			// Location is a string with r.City, r.State, and r.Country, set repeater.Location
-			repeater.Location = r.City + ", " + r.State + ", " + r.Country
-			repeater.Description = r.MapInfo
-			// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
-			mhZFloat, parseErr := strconv.ParseFloat(r.Frequency, 32)
-			if parseErr != nil {
-				slog.Error("Error converting frequency to float", "error", parseErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
-				return
-			}
-			const mHzToHz = 1000000
-			repeater.TXFrequency = uint(mhZFloat * mHzToHz)
-			// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
-			var positiveOffset bool
-			if strings.HasPrefix(r.Offset, "-") {
-				positiveOffset = false
-			} else {
-				positiveOffset = true
-			}
-			// strip the +/- from the offset
-			r.Offset = strings.TrimPrefix(r.Offset, "-")
-			r.Offset = strings.TrimPrefix(r.Offset, "+")
-			// convert the offset to a float
-			offsetFloat, parseErr := strconv.ParseFloat(r.Offset, 32)
-			if parseErr != nil {
-				slog.Error("Error converting offset to float", "offset", r.Offset, "error", parseErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
-				return
-			}
-			// convert the offset to an int in Hz
-			offsetInt := uint(offsetFloat * mHzToHz)
-			if positiveOffset {
-				repeater.RXFrequency = repeater.TXFrequency + offsetInt
-			} else {
-				repeater.RXFrequency = repeater.TXFrequency - offsetInt
+
+				r, ok := repeaterdb.Get(json.RadioID)
+				if !ok {
+					slog.Error("Error getting repeater from database")
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
+					return
+				}
+				repeater.Callsign = r.Callsign
+				if r.ColorCode > 255 {
+					slog.Error("Color code out of range for uint8", "colorCode", r.ColorCode)
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Color code out of range"})
+					return
+				}
+				repeater.ColorCode = uint8(r.ColorCode)
+				repeater.City = r.City
+				repeater.State = r.State
+				repeater.Country = r.Country
+				repeater.Description = r.MapInfo
+				// r.Frequency is a string in MHz with a decimal, convert to an int in Hz and set repeater.RXFrequency
+				mhZFloat, parseErr := strconv.ParseFloat(r.Frequency, 32)
+				if parseErr != nil {
+					slog.Error("Error converting frequency to float", "error", parseErr)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
+					return
+				}
+				const mHzToHz = 1000000
+				repeater.TXFrequency = uint(mhZFloat * mHzToHz)
+				// r.Offset is a string with +/- and a decimal in MHz, convert to an int in Hz and set repeater.TXFrequency to RXFrequency +/- Offset
+				var positiveOffset bool
+				if strings.HasPrefix(r.Offset, "-") {
+					positiveOffset = false
+				} else {
+					positiveOffset = true
+				}
+				// strip the +/- from the offset
+				r.Offset = strings.TrimPrefix(r.Offset, "-")
+				r.Offset = strings.TrimPrefix(r.Offset, "+")
+				// convert the offset to a float
+				offsetFloat, parseErr := strconv.ParseFloat(r.Offset, 32)
+				if parseErr != nil {
+					slog.Error("Error converting offset to float", "offset", r.Offset, "error", parseErr)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
+					return
+				}
+				// convert the offset to an int in Hz
+				offsetInt := uint(offsetFloat * mHzToHz)
+				if positiveOffset {
+					repeater.RXFrequency = repeater.TXFrequency + offsetInt
+				} else {
+					repeater.RXFrequency = repeater.TXFrequency - offsetInt
+				}
 			}
 		case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-			repeater.Hotspot = true
+			if !config.DMR.DisableRadioIDValidation {
+				// check that first 7 digits of hotspot ID match userID
+				userIDStr := fmt.Sprintf("%d", userID)
+				if !strings.HasPrefix(fmt.Sprintf("%d", json.RadioID), userIDStr) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Hotspot ID must start with user ID"})
+					return
+				}
+			}
+			repeater.Callsign = user.Callsign
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
 			return
 		}
 
-		repeater.ID = json.RadioID
-
-		// Generate a random password
-		const randLen = 12
-		const randNum = 4
-		const randSpecial = 0
-		repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
-		if err != nil {
-			slog.Error("Failed to generate a repeater password", "error", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
-			return
-		}
-
-		// Find user by userID
-		repeater.Owner = user
-		repeater.OwnerID = user.ID
 		err := db.Preload("Owner").Create(&repeater).Error
 		if err != nil {
 			slog.Error("Error creating repeater", "error", err)

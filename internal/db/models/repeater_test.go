@@ -166,7 +166,6 @@ func FuzzRepeaterUnmarshalMsg(f *testing.F) {
 	good.Port = 62031
 	good.Salt = 0xDEADBEEF
 	good.PingsReceived = 42
-	good.Hotspot = true
 	good.Callsign = goodCallsign
 	good.ID = 307201
 	encoded, err := good.MarshalMsg(nil)
@@ -190,7 +189,6 @@ func BenchmarkRepeaterMarshalMsg(b *testing.B) {
 	r.Port = 62031
 	r.Salt = 0xDEADBEEF
 	r.PingsReceived = 42
-	r.Hotspot = true
 	r.Callsign = goodCallsign
 	r.ID = 307201
 	b.ReportAllocs()
@@ -207,7 +205,6 @@ func BenchmarkRepeaterUnmarshalMsg(b *testing.B) {
 	r.Port = 62031
 	r.Salt = 0xDEADBEEF
 	r.PingsReceived = 42
-	r.Hotspot = true
 	r.Callsign = goodCallsign
 	r.ID = 307201
 	encoded, err := r.MarshalMsg(nil)

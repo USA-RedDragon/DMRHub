@@ -149,7 +149,7 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		slog.Error("Error parsing color code", "error", err)
 		return ErrInvalidInt
 	}
-	if colorCode < 0 || colorCode > 255 {
+	if colorCode < 0 || colorCode > 15 {
 		slog.Error("Invalid color code: out of range for uint8", "colorCode", colorCode)
 		return ErrInvalidInt
 	}

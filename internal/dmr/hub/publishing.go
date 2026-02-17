@@ -38,6 +38,9 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 		Data: packet.Encode(),
 	}
 	packedBytes, err := rawPacket.MarshalMsg(nil)
+	if err != nil {
+		return fmt.Errorf("marshaling RawDMRPacket: %w", err)
+	}
 	err = h.pubsub.Publish(topic, packedBytes)
 	if err != nil {
 		return fmt.Errorf("publishing to %s: %w", topic, err)

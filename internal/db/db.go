@@ -117,7 +117,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		}
 	}
 
-	err = migration.Migrate(db)
+	err = migration.Migrate(db, config)
 	if err != nil {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}

@@ -23,10 +23,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/biter777/countries"
-
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
+	"github.com/biter777/countries"
 	"github.com/gin-gonic/gin"
 )
 

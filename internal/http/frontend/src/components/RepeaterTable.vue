@@ -363,11 +363,6 @@ export default {
           },
         },
         {
-          accessorKey: 'hotspot',
-          header: 'Hotspot',
-          cell: ({ row }: { row: { original: RepeaterRow } }) => `${row.original.hotspot}`,
-        },
-        {
           accessorKey: 'simplex_repeater',
           header: 'Simplex',
           cell: ({ row }: { row: { original: RepeaterRow } }) => {

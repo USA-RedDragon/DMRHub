@@ -269,3 +269,30 @@ func DeleteScheduledNet(t *testing.T, router *gin.Engine, jar CookieJar, id uint
 	router.ServeHTTP(w, req)
 	return w
 }
+
+// PatchNet updates a net (e.g. showcase toggle) via the API.
+func PatchNet(t *testing.T, router *gin.Engine, jar CookieJar, netID uint, body apimodels.NetPatch) (apimodels.NetResponse, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	jsonBytes, err := json.Marshal(body)
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nets/%d", netID), bytes.NewBuffer(jsonBytes))
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	for _, cookie := range jar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+
+	router.ServeHTTP(w, req)
+
+	var resp apimodels.NetResponse
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	return resp, w
+}

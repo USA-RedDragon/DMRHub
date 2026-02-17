@@ -971,3 +971,249 @@ func TestGETScheduledNetsFilterByTalkgroupID(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func TestPATCHNetShowcaseActiveNet(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Create talkgroup and start a net.
+	_, tgW := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{
+		Name:        "Showcase TG",
+		Description: "TG for showcase testing",
+	})
+	require.Equal(t, http.StatusOK, tgW.Code)
+
+	var tg models.Talkgroup
+	err = tdb.DB().Where("name = ?", "Showcase TG").First(&tg).Error
+	require.NoError(t, err)
+
+	startResp, startW := testutils.StartNet(t, router, adminJar, apimodels.NetStartPost{
+		TalkgroupID: tg.ID,
+		Description: "Showcase test net",
+	})
+	require.Equal(t, http.StatusCreated, startW.Code)
+	assert.False(t, startResp.Showcase)
+
+	// Toggle showcase on.
+	patchResp, patchW := testutils.PatchNet(t, router, adminJar, startResp.ID, apimodels.NetPatch{
+		Showcase: boolPtr(true),
+	})
+	assert.Equal(t, http.StatusOK, patchW.Code)
+	assert.True(t, patchResp.Showcase)
+
+	// Confirm via GET.
+	getResp, getW := testutils.GetNet(t, router, adminJar, startResp.ID)
+	assert.Equal(t, http.StatusOK, getW.Code)
+	assert.True(t, getResp.Showcase)
+
+	// Toggle showcase off.
+	patchResp, patchW = testutils.PatchNet(t, router, adminJar, startResp.ID, apimodels.NetPatch{
+		Showcase: boolPtr(false),
+	})
+	assert.Equal(t, http.StatusOK, patchW.Code)
+	assert.False(t, patchResp.Showcase)
+}
+
+func TestPATCHNetShowcaseInactiveNet(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Create talkgroup, start and stop a net.
+	_, tgW := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{
+		Name:        "Showcase Ended TG",
+		Description: "TG for ended showcase testing",
+	})
+	require.Equal(t, http.StatusOK, tgW.Code)
+
+	var tg models.Talkgroup
+	err = tdb.DB().Where("name = ?", "Showcase Ended TG").First(&tg).Error
+	require.NoError(t, err)
+
+	startResp, startW := testutils.StartNet(t, router, adminJar, apimodels.NetStartPost{
+		TalkgroupID: tg.ID,
+		Description: "Ended showcase test",
+	})
+	require.Equal(t, http.StatusCreated, startW.Code)
+
+	_, stopW := testutils.StopNet(t, router, adminJar, startResp.ID)
+	require.Equal(t, http.StatusOK, stopW.Code)
+
+	// Toggle showcase on for an inactive net.
+	patchResp, patchW := testutils.PatchNet(t, router, adminJar, startResp.ID, apimodels.NetPatch{
+		Showcase: boolPtr(true),
+	})
+	assert.Equal(t, http.StatusOK, patchW.Code)
+	assert.True(t, patchResp.Showcase)
+	assert.False(t, patchResp.Active)
+}
+
+func TestPATCHNetShowcaseUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Create talkgroup and start a net.
+	_, tgW := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{
+		Name:        "Unauth Showcase TG",
+		Description: "TG for unauth showcase",
+	})
+	require.Equal(t, http.StatusOK, tgW.Code)
+
+	var tg models.Talkgroup
+	err = tdb.DB().Where("name = ?", "Unauth Showcase TG").First(&tg).Error
+	require.NoError(t, err)
+
+	startResp, startW := testutils.StartNet(t, router, adminJar, apimodels.NetStartPost{
+		TalkgroupID: tg.ID,
+	})
+	require.Equal(t, http.StatusCreated, startW.Code)
+
+	// Try PATCH without auth.
+	w := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	patchBody := apimodels.NetPatch{Showcase: boolPtr(true)}
+	jsonBytes, err := json.Marshal(patchBody)
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nets/%d", startResp.ID), bytes.NewBuffer(jsonBytes))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestPATCHNetShowcaseNotFound(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	patchResp, patchW := testutils.PatchNet(t, router, adminJar, 999999, apimodels.NetPatch{
+		Showcase: boolPtr(true),
+	})
+	assert.Equal(t, http.StatusNotFound, patchW.Code)
+	_ = patchResp
+}
+
+func TestGETNetsShowcaseFilter(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Create talkgroup.
+	_, tgW := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{
+		Name:        "Showcase Filter TG",
+		Description: "TG for showcase filter test",
+	})
+	require.Equal(t, http.StatusOK, tgW.Code)
+
+	var tg models.Talkgroup
+	err = tdb.DB().Where("name = ?", "Showcase Filter TG").First(&tg).Error
+	require.NoError(t, err)
+
+	// Start a net and mark as showcase.
+	startResp, startW := testutils.StartNet(t, router, adminJar, apimodels.NetStartPost{
+		TalkgroupID: tg.ID,
+		Description: "Featured net",
+	})
+	require.Equal(t, http.StatusCreated, startW.Code)
+
+	_, patchW := testutils.PatchNet(t, router, adminJar, startResp.ID, apimodels.NetPatch{
+		Showcase: boolPtr(true),
+	})
+	require.Equal(t, http.StatusOK, patchW.Code)
+
+	// List with showcase filter.
+	w, body := testutils.ListNets(t, router, adminJar, "showcase=true")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result struct {
+		Total int                     `json:"total"`
+		Nets  []apimodels.NetResponse `json:"nets"`
+	}
+	err = json.Unmarshal(body, &result)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Total)
+	require.Len(t, result.Nets, 1)
+	assert.True(t, result.Nets[0].Showcase)
+	assert.Equal(t, "Featured net", result.Nets[0].Description)
+}
+
+func TestGETNetsShowcaseIncludesInactiveNets(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	// Create talkgroup.
+	_, tgW := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{
+		Name:        "Showcase Inactive TG",
+		Description: "TG for showcase inactive test",
+	})
+	require.Equal(t, http.StatusOK, tgW.Code)
+
+	var tg models.Talkgroup
+	err = tdb.DB().Where("name = ?", "Showcase Inactive TG").First(&tg).Error
+	require.NoError(t, err)
+
+	// Start a net, mark as showcase, then stop.
+	startResp, startW := testutils.StartNet(t, router, adminJar, apimodels.NetStartPost{
+		TalkgroupID: tg.ID,
+		Description: "Inactive showcase net",
+	})
+	require.Equal(t, http.StatusCreated, startW.Code)
+
+	_, patchW := testutils.PatchNet(t, router, adminJar, startResp.ID, apimodels.NetPatch{
+		Showcase: boolPtr(true),
+	})
+	require.Equal(t, http.StatusOK, patchW.Code)
+
+	_, stopW := testutils.StopNet(t, router, adminJar, startResp.ID)
+	require.Equal(t, http.StatusOK, stopW.Code)
+
+	// Showcase filter should still include the stopped net.
+	w, body := testutils.ListNets(t, router, adminJar, "showcase=true")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result struct {
+		Total int                     `json:"total"`
+		Nets  []apimodels.NetResponse `json:"nets"`
+	}
+	err = json.Unmarshal(body, &result)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Total)
+	require.Len(t, result.Nets, 1)
+	assert.True(t, result.Nets[0].Showcase)
+	assert.False(t, result.Nets[0].Active)
+}

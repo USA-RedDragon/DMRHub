@@ -106,12 +106,12 @@ func ListActiveNets(db *gorm.DB) ([]Net, error) {
 	return nets, err
 }
 
-// ListShowcaseNets returns active nets marked as showcase.
+// ListShowcaseNets returns nets marked as showcase, regardless of active status.
 func ListShowcaseNets(db *gorm.DB) ([]Net, error) {
 	var nets []Net
 	err := db.Preload("Talkgroup").Preload("StartedByUser").
-		Where("active = ? AND showcase = ?", true, true).
-		Order("talkgroup_id ASC, start_time DESC").Find(&nets).Error
+		Where("showcase = ?", true).
+		Order("active DESC, talkgroup_id ASC, start_time DESC").Find(&nets).Error
 	return nets, err
 }
 

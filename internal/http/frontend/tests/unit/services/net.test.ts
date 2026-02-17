@@ -127,6 +127,12 @@ describe('net service', () => {
       await patchNet(3, { showcase: true });
       expect(mockAPI.patch).toHaveBeenCalledWith('/nets/3', { showcase: true });
     });
+
+    it('calls PATCH /nets/:id to disable showcase', async () => {
+      mockAPI.patch.mockResolvedValue({ data: { id: 3, showcase: false } });
+      await patchNet(3, { showcase: false });
+      expect(mockAPI.patch).toHaveBeenCalledWith('/nets/3', { showcase: false });
+    });
   });
 
   describe('getNetCheckIns', () => {

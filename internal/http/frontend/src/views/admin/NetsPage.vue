@@ -145,10 +145,9 @@ export default {
           header: 'Showcase',
           cell: ({ row }: { row: { original: Net } }) => {
             const net = row.original;
-            if (!net.active) return '—';
             return h(Switch, {
-              checked: net.showcase,
-              'onUpdate:checked': (val: boolean) => this.toggleShowcase(net.id, val),
+              modelValue: net.showcase,
+              'onUpdate:modelValue': (val: boolean) => this.toggleShowcase(net.id, val),
             });
           },
         },
@@ -203,12 +202,12 @@ export default {
                   to: `/nets/scheduled/${row.original.id}/edit`,
                   class: 'text-primary hover:underline text-sm',
                 },
-                () => 'Edit',
+                () => h(ShadButton, { variant: 'outline', size: 'sm' }, () => 'Edit')
               ),
               h(
                 ShadButton,
                 {
-                  variant: 'ghost',
+                  variant: 'outline',
                   size: 'sm',
                   class: 'text-destructive',
                   onClick: () => this.handleDeleteScheduledNet(row.original.id),

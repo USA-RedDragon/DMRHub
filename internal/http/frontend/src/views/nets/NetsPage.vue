@@ -25,10 +25,19 @@
     <div v-if="showcaseNets.length > 0" class="space-y-3">
       <h2 class="text-lg font-semibold">Featured Nets</h2>
       <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card v-for="net in showcaseNets" :key="net.id" class="border-green-500/30 bg-green-50/5">
+        <Card
+          v-for="net in showcaseNets"
+          :key="net.id"
+          :class="net.active
+            ? 'border-green-500/30 bg-green-50/5'
+            : 'border-muted bg-muted/5'"
+        >
           <CardHeader class="pb-2">
             <div class="flex items-center gap-2">
-              <span class="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span
+                v-if="net.active"
+                class="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse"
+              />
               <CardTitle class="text-base">
                 <RouterLink :to="`/talkgroups/${net.talkgroup_id}`" class="hover:underline">
                   TG {{ net.talkgroup_id }} — {{ net.talkgroup.name }}
@@ -51,6 +60,37 @@
               >
                 View Details
               </RouterLink>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+
+    <!-- Upcoming scheduled nets -->
+    <div v-if="upcomingNets.length > 0" class="space-y-3">
+      <h2 class="text-lg font-semibold">Upcoming Nets</h2>
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card v-for="sn in upcomingNets" :key="sn.id" class="border-blue-500/30 bg-blue-50/5">
+          <CardHeader class="pb-2">
+            <div class="flex items-center gap-2">
+              <span class="inline-block h-2 w-2 rounded-full bg-blue-500" />
+              <CardTitle class="text-base">
+                <RouterLink :to="`/talkgroups/${sn.talkgroup_id}`" class="hover:underline">
+                  TG {{ sn.talkgroup_id }} — {{ sn.talkgroup.name }}
+                </RouterLink>
+              </CardTitle>
+            </div>
+            <CardDescription v-if="sn.description">{{ sn.description }}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-muted-foreground">{{ sn.name }}</span>
+              <span v-if="sn.next_run" class="font-medium">
+                {{ formatNextRun(sn.next_run) }}
+              </span>
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+              {{ dayNames[sn.day_of_week] }} at {{ sn.time_of_day }} {{ sn.timezone }}
             </div>
           </CardContent>
         </Card>
@@ -93,9 +133,12 @@ import { RouterLink } from 'vue-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
-import { getNets, type Net } from '@/services/net';
+import { getNets, getScheduledNets, type Net, type ScheduledNet } from '@/services/net';
 import { getWebsocketURI } from '@/services/util';
+import { formatDistanceToNow, isPast } from 'date-fns';
 import ws from '@/services/ws';
+
+const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default {
   components: {
@@ -112,6 +155,7 @@ export default {
   mounted() {
     this.fetchNets();
     this.fetchShowcaseNets();
+    this.fetchUpcomingNets();
     this.socket = ws.connect(getWebsocketURI() + '/nets', this.onWebsocketMessage);
   },
   unmounted() {
@@ -123,11 +167,13 @@ export default {
     return {
       nets: [] as Net[],
       showcaseNets: [] as Net[],
+      upcomingNets: [] as ScheduledNet[],
       loading: false,
       totalRecords: 0,
       page: 1,
       rows: 30,
       socket: null as { close(): void } | null,
+      dayNames,
     };
   },
   computed: {
@@ -227,6 +273,20 @@ export default {
           this.showcaseNets = res.data.nets || [];
         })
         .catch((err) => console.error(err));
+    },
+    fetchUpcomingNets() {
+      getScheduledNets({ limit: 30 })
+        .then((res) => {
+          const all = res.data.scheduled_nets || [];
+          // Show enabled scheduled nets with a future next_run.
+          this.upcomingNets = all.filter(
+            (sn) => sn.enabled && sn.next_run && !isPast(new Date(sn.next_run)),
+          );
+        })
+        .catch((err) => console.error(err));
+    },
+    formatNextRun(nextRun: string): string {
+      return formatDistanceToNow(new Date(nextRun), { addSuffix: true });
     },
   },
 };

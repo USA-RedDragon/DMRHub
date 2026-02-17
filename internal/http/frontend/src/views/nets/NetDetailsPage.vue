@@ -98,26 +98,22 @@
         </Card>
       </div>
 
-      <!-- Check-ins table -->
+      <!-- Check-ins -->
       <Card>
         <CardHeader>
           <CardTitle>Check-Ins</CardTitle>
-          <CardDescription>Calls during this net session</CardDescription>
+          <CardDescription>Users who checked in during this net</CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable
-            :columns="checkInColumns"
-            :data="checkIns"
-            :loading="checkInsLoading"
-            :loading-text="'Loading check-ins...'"
-            :empty-text="'No check-ins yet'"
-            :manual-pagination="true"
-            :page-index="page - 1"
-            :page-size="rows"
-            :page-count="totalPages"
-            @update:page-index="handlePageIndexUpdate"
-            @update:page-size="handlePageSizeUpdate"
-          />
+          <div v-if="checkInsLoading" class="text-muted-foreground text-sm">Loading check-ins...</div>
+          <div v-else-if="uniqueUsers.length === 0" class="text-muted-foreground text-sm">No check-ins yet</div>
+          <div v-else class="flex flex-wrap gap-3">
+            <User
+              v-for="user in uniqueUsers"
+              :key="user.id"
+              :user="user"
+            />
+          </div>
         </CardContent>
       </Card>
     </template>
@@ -125,11 +121,8 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
-import { h } from 'vue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DataTable } from '@/components/ui/data-table';
 import { Button as ShadButton } from '@/components/ui/button';
 import User from '@/components/User.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
@@ -141,6 +134,7 @@ import {
   stopNet,
   type Net,
   type NetCheckIn,
+  type NetUser,
 } from '@/services/net';
 import { getWebsocketURI } from '@/services/util';
 import ws from '@/services/ws';
@@ -153,9 +147,9 @@ export default {
     CardHeader,
     CardTitle,
     Skeleton,
-    DataTable,
     ShadButton,
     RelativeTimestamp,
+    User,
   },
   head: {
     title: 'Net Details',
@@ -186,9 +180,6 @@ export default {
       error: '',
       checkIns: [] as NetCheckIn[],
       checkInsLoading: false,
-      totalRecords: 0,
-      page: 1,
-      rows: 30,
       socket: null as { close(): void } | null,
     };
   },
@@ -197,57 +188,16 @@ export default {
       const userStore = useUserStore();
       return userStore.loggedIn;
     },
-    checkInColumns() {
-      return [
-        {
-          accessorKey: 'user',
-          header: 'User',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            h(User, { user: row.original.user }),
-        },
-        {
-          accessorKey: 'start_time',
-          header: 'Time',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            h(RelativeTimestamp, { time: row.original.start_time }),
-        },
-        {
-          accessorKey: 'duration',
-          header: 'Duration',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            `${(row.original.duration / 1000000000).toFixed(1)}s`,
-        },
-        {
-          accessorKey: 'time_slot',
-          header: 'TS',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            row.original.time_slot ? '2' : '1',
-        },
-        {
-          accessorKey: 'ber',
-          header: 'BER',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            `${(row.original.ber * 100).toFixed(1)}%`,
-        },
-        {
-          accessorKey: 'loss',
-          header: 'Loss',
-          cell: ({ row }: { row: { original: NetCheckIn } }) =>
-            `${(row.original.loss * 100).toFixed(1)}%`,
-        },
-        {
-          accessorKey: 'rssi',
-          header: 'RSSI',
-          cell: ({ row }: { row: { original: NetCheckIn } }) => {
-            const rssi = Number(row.original.rssi);
-            return rssi !== 0 ? `-${rssi}dBm` : '—';
-          },
-        },
-      ] as ColumnDef<NetCheckIn, unknown>[];
-    },
-    totalPages(): number {
-      if (!this.totalRecords || this.totalRecords <= 0) return 1;
-      return Math.max(1, Math.ceil(this.totalRecords / this.rows));
+    uniqueUsers(): NetUser[] {
+      const seen = new Set<number>();
+      const users: NetUser[] = [];
+      for (const ci of this.checkIns) {
+        if (!seen.has(ci.user.id)) {
+          seen.add(ci.user.id);
+          users.push(ci.user);
+        }
+      }
+      return users;
     },
   },
   methods: {
@@ -264,11 +214,10 @@ export default {
           this.loading = false;
         });
     },
-    fetchCheckIns(page = 1, limit = 30) {
+    fetchCheckIns() {
       this.checkInsLoading = true;
-      getNetCheckIns(this.netID, { page, limit })
+      getNetCheckIns(this.netID, { limit: 10000 })
         .then((res) => {
-          this.totalRecords = res.data.total;
           this.checkIns = res.data.check_ins || [];
           this.checkInsLoading = false;
         })
@@ -315,24 +264,12 @@ export default {
         })
         .catch((err) => console.error(err));
     },
-    handlePageIndexUpdate(pageIndex: number) {
-      const nextPage = pageIndex + 1;
-      if (nextPage === this.page || nextPage < 1) return;
-      this.page = nextPage;
-      this.fetchCheckIns(this.page, this.rows);
-    },
-    handlePageSizeUpdate(pageSize: number) {
-      if (pageSize === this.rows || pageSize <= 0) return;
-      this.rows = pageSize;
-      this.page = 1;
-      this.fetchCheckIns(this.page, this.rows);
-    },
+
     onWebsocketMessage(event: MessageEvent) {
       const data = JSON.parse(event.data);
 
       // Check-in event (from net:checkins:{id} topic)
       if (data.call_id && data.user) {
-        // Prepend the new check-in to the live list.
         const newCheckIn: NetCheckIn = {
           call_id: data.call_id,
           user: data.user,
@@ -344,15 +281,14 @@ export default {
           ber: 0,
           rssi: 0,
         };
-        // Avoid duplicates.
+        // Avoid duplicate call entries.
         const exists = this.checkIns.some((ci) => ci.call_id === newCheckIn.call_id);
         if (!exists) {
           this.checkIns = [newCheckIn, ...this.checkIns];
-          this.totalRecords++;
         }
-        // Update the check-in count on the net.
+        // Update the check-in count on the net (unique users).
         if (this.net) {
-          this.net.check_in_count = this.totalRecords;
+          this.net.check_in_count = this.uniqueUsers.length;
         }
         return;
       }

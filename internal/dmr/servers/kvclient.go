@@ -41,22 +41,15 @@ var (
 	ErrNoSuchRepeater    = errors.New("no such repeater")
 	ErrUnmarshalRepeater = errors.New("unmarshal repeater")
 	ErrCastRepeater      = errors.New("unable to cast repeater id")
-	ErrNoSuchPeer        = errors.New("no such peer")
-	ErrUnmarshalPeer     = errors.New("unmarshal peer")
 )
 
 const (
 	repeaterExpireTime = 5 * time.Minute
 	repeaterKeyPrefix  = "mmdvm:repeater:"
-	peerKeyPrefix      = "openbridge:peer:"
 )
 
 func repeaterKey(repeaterID uint) string {
 	return fmt.Sprintf("%s%d", repeaterKeyPrefix, repeaterID)
-}
-
-func peerKey(peerID uint) string {
-	return fmt.Sprintf("%s%d", peerKeyPrefix, peerID)
 }
 
 func MakeKVClient(kv kv.KV) *KVClient {
@@ -177,22 +170,4 @@ func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 		}
 	}
 	return repeaters, nil
-}
-
-func (s *KVClient) GetPeer(ctx context.Context, peerID uint) (models.Peer, error) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getPeer")
-	defer span.End()
-
-	peerBits, err := s.kv.Get(ctx, peerKey(peerID))
-	if err != nil {
-		slog.Error("Error getting peer from KV", "peerID", peerID, "error", err)
-		return models.Peer{}, ErrNoSuchPeer
-	}
-	var peer models.Peer
-	_, err = peer.UnmarshalMsg(peerBits)
-	if err != nil {
-		slog.Error("Error unmarshalling peer", "peerID", peerID, "error", err)
-		return models.Peer{}, ErrUnmarshalPeer
-	}
-	return peer, nil
 }

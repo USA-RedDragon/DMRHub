@@ -243,3 +243,133 @@ func TestDeletePeerNonExistentNoError(t *testing.T) {
 	err := models.DeletePeer(database, 999)
 	assert.NoError(t, err)
 }
+
+func FuzzPeerUnmarshalMsg(f *testing.F) {
+	// Seed with a valid msgp-encoded Peer
+	goodPeer := models.Peer{
+		ID:   12345,
+		IP:   "192.168.1.100",
+		Port: 62035,
+	}
+	encoded, err := goodPeer.MarshalMsg(nil)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(encoded)
+	f.Add([]byte{})                             // empty
+	f.Add([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}) // garbage
+	f.Add([]byte{0x80})                         // truncated msgp map header
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		t.Parallel()
+		var p models.Peer
+		_, _ = p.UnmarshalMsg(data)
+	})
+}
+
+// --- Benchmarks ---
+
+// BenchmarkFindPeerByID measures the cost of looking up a single peer by ID.
+func BenchmarkFindPeerByID(b *testing.B) {
+	database, cleanup := benchMakeTestDB(b)
+	defer cleanup()
+
+	owner := models.User{ID: 1, Callsign: "N0CALL", Username: "benchuser"}
+	database.Create(&owner)
+	database.Create(&models.Peer{ID: 500, OwnerID: 1, IP: "10.0.0.1", Port: 62035})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = models.FindPeerByID(database, 500)
+	}
+}
+
+// BenchmarkPeerIDExists measures the cost of checking peer existence.
+func BenchmarkPeerIDExists(b *testing.B) {
+	database, cleanup := benchMakeTestDB(b)
+	defer cleanup()
+
+	owner := models.User{ID: 1, Callsign: "N0CALL", Username: "benchuser"}
+	database.Create(&owner)
+	database.Create(&models.Peer{ID: 500, OwnerID: 1})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = models.PeerIDExists(database, 500)
+	}
+}
+
+// BenchmarkListPeers measures the cost of listing all peers (10 peers).
+func BenchmarkListPeers(b *testing.B) {
+	database, cleanup := benchMakeTestDB(b)
+	defer cleanup()
+
+	owner := models.User{ID: 1, Callsign: "N0CALL", Username: "benchuser"}
+	database.Create(&owner)
+	for id := uint(100); id < 110; id++ {
+		database.Create(&models.Peer{ID: id, OwnerID: 1, IP: "10.0.0.1", Port: 62035})
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = models.ListPeers(database)
+	}
+}
+
+// BenchmarkPeerMarshalMsg measures msgp serialization of a Peer with IP/Port.
+func BenchmarkPeerMarshalMsg(b *testing.B) {
+	p := models.Peer{
+		ID:   12345,
+		IP:   "192.168.1.100",
+		Port: 62035,
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.MarshalMsg(nil)
+	}
+}
+
+// BenchmarkPeerUnmarshalMsg measures msgp deserialization of a Peer with IP/Port.
+func BenchmarkPeerUnmarshalMsg(b *testing.B) {
+	p := models.Peer{
+		ID:   12345,
+		IP:   "192.168.1.100",
+		Port: 62035,
+	}
+	encoded, err := p.MarshalMsg(nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var dec models.Peer
+		_, _ = dec.UnmarshalMsg(encoded)
+	}
+}
+
+func benchMakeTestDB(b *testing.B) (*gorm.DB, func()) {
+	b.Helper()
+
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defConfig.Database.Database = ""
+	defConfig.Database.ExtraParameters = []string{}
+
+	database, err := db.MakeDB(&defConfig)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	cleanup := func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+	}
+	return database, cleanup
+}

@@ -21,6 +21,7 @@ package peers
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -152,6 +153,78 @@ func DELETEPeer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Peer deleted"})
 }
 
+func PATCHPeer(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		return
+	}
+	peerID := uint(idUint64)
+	exists, err := models.PeerIDExists(db, peerID)
+	if err != nil {
+		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		return
+	}
+
+	var json apimodels.PeerPatch
+	if err := c.ShouldBindJSON(&json); err != nil {
+		slog.Error("JSON data is invalid", "function", "PATCHPeer", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		return
+	}
+
+	updates := make(map[string]interface{})
+	if json.IP != nil {
+		if net.ParseIP(*json.IP) == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+			return
+		}
+		updates["ip"] = *json.IP
+	}
+	if json.Port != nil {
+		const maxPort = 65535
+		if *json.Port < 1 || *json.Port > maxPort {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Port must be between 1 and 65535"})
+			return
+		}
+		updates["port"] = *json.Port
+	}
+	if json.Ingress != nil {
+		updates["ingress"] = *json.Ingress
+	}
+	if json.Egress != nil {
+		updates["egress"] = *json.Egress
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		return
+	}
+
+	if err := db.Model(&models.Peer{}).Where("id = ?", peerID).Updates(updates).Error; err != nil {
+		slog.Error("Error updating peer", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
+	peer, err := models.FindPeerByID(db, peerID)
+	if err != nil {
+		slog.Error("Error finding updated peer", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+	c.JSON(http.StatusOK, peer)
+}
+
 func POSTPeer(c *gin.Context) {
 	session := sessions.Default(c)
 	usID := session.Get("user_id")
@@ -192,10 +265,25 @@ func POSTPeer(c *gin.Context) {
 			return
 		}
 
+		// Validate IP address
+		if net.ParseIP(json.IP) == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+			return
+		}
+
+		// Validate port range
+		const maxPort = 65535
+		if json.Port < 1 || json.Port > maxPort {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Port must be between 1 and 65535"})
+			return
+		}
+
 		var peer models.Peer
 
 		peer.Egress = json.Egress
 		peer.Ingress = json.Ingress
+		peer.IP = json.IP
+		peer.Port = json.Port
 
 		// Peer validated to fit within a 4 byte integer
 		if json.ID <= 0 || json.ID > 4294967295 {

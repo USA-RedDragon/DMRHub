@@ -52,12 +52,6 @@ func TestRepeaterKey(t *testing.T) {
 	assert.Equal(t, "mmdvm:repeater:999999", repeaterKey(999999))
 }
 
-func TestPeerKey(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "openbridge:peer:100", peerKey(100))
-	assert.Equal(t, "openbridge:peer:0", peerKey(0))
-}
-
 func TestKVClientStoreAndGetRepeater(t *testing.T) {
 	t.Parallel()
 	store := makeTestKV(t)
@@ -153,16 +147,6 @@ func TestKVClientUpdateRepeaterConnection(t *testing.T) {
 	got, err := client.GetRepeater(ctx, 300)
 	require.NoError(t, err)
 	assert.Equal(t, models.RepeaterStateConnected, got.Connection)
-}
-
-func TestKVClientGetNonexistentPeer(t *testing.T) {
-	t.Parallel()
-	store := makeTestKV(t)
-	client := MakeKVClient(store)
-	ctx := context.Background()
-
-	_, err := client.GetPeer(ctx, 88888)
-	assert.ErrorIs(t, err, ErrNoSuchPeer)
 }
 
 // TestKeyFormatConsistency verifies that the key helpers produce keys

@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator"
@@ -41,16 +42,18 @@ import (
 // IntegrationStack is a full DMRHub test environment with real MMDVM and IPSC
 // servers on ephemeral UDP ports, backed by in-memory SQLite, pubsub, and KV.
 type IntegrationStack struct {
-	Config      *config.Config
-	DB          *gorm.DB
-	Hub         *hub.Hub
-	PubSub      pubsub.PubSub
-	KV          kv.KV
-	CallTracker *calltracker.CallTracker
-	MMDVMServer *mmdvm.Server
-	IPSCServer  *ipsc.IPSCServer
-	MMDVMAddr   string // host:port of the MMDVM server
-	IPSCAddr    string // host:port of the IPSC server
+	Config           *config.Config
+	DB               *gorm.DB
+	Hub              *hub.Hub
+	PubSub           pubsub.PubSub
+	KV               kv.KV
+	CallTracker      *calltracker.CallTracker
+	MMDVMServer      *mmdvm.Server
+	IPSCServer       *ipsc.IPSCServer
+	OpenBridgeServer *openbridge.Server
+	MMDVMAddr        string // host:port of the MMDVM server
+	IPSCAddr         string // host:port of the IPSC server
+	OpenBridgeAddr   string // host:port of the OpenBridge server
 }
 
 // SetupIntegrationStack creates and starts a full integration test environment.
@@ -72,14 +75,20 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		be.Setup(t, &defConfig)
 	}
 
+	const localhost = "127.0.0.1"
+
 	// Ephemeral ports
-	defConfig.DMR.MMDVM.Bind = "127.0.0.1"
+	defConfig.DMR.MMDVM.Bind = localhost
 	defConfig.DMR.MMDVM.Port = 0
 
 	defConfig.DMR.IPSC.Enabled = true
-	defConfig.DMR.IPSC.Bind = "127.0.0.1"
+	defConfig.DMR.IPSC.Bind = localhost
 	defConfig.DMR.IPSC.Port = 0
 	defConfig.DMR.IPSC.NetworkID = 999999
+
+	defConfig.DMR.OpenBridge.Enabled = true
+	defConfig.DMR.OpenBridge.Bind = localhost
+	defConfig.DMR.OpenBridge.Port = 0
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
@@ -100,18 +109,23 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 
 	ipscServer := ipsc.NewIPSCServer(&defConfig, h, database)
 
+	obServer, err := openbridge.MakeServer(&defConfig, h, database, ps)
+	require.NoError(t, err)
+
 	stack := &IntegrationStack{
-		Config:      &defConfig,
-		DB:          database,
-		Hub:         h,
-		PubSub:      ps,
-		KV:          kvStore,
-		CallTracker: ct,
-		MMDVMServer: &mmdvmServer,
-		IPSCServer:  ipscServer,
+		Config:           &defConfig,
+		DB:               database,
+		Hub:              h,
+		PubSub:           ps,
+		KV:               kvStore,
+		CallTracker:      ct,
+		MMDVMServer:      &mmdvmServer,
+		IPSCServer:       ipscServer,
+		OpenBridgeServer: &obServer,
 	}
 
 	t.Cleanup(func() {
+		_ = obServer.Stop(context.Background())
 		_ = ipscServer.Stop(context.Background())
 		_ = mmdvmServer.Stop(context.Background())
 		h.Stop(context.Background())
@@ -153,7 +167,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) string {
 	return mmdvm2.Server.LocalAddr().String()
 }
 
-// StartServers starts the Hub and the MMDVM and IPSC servers.
+// StartServers starts the Hub and the MMDVM, IPSC, and OpenBridge servers.
 // Repeater subscriptions are activated lazily when repeaters connect
 // via the protocol handshake.
 func (s *IntegrationStack) StartServers(t *testing.T) {
@@ -166,8 +180,12 @@ func (s *IntegrationStack) StartServers(t *testing.T) {
 	err = s.IPSCServer.Start(context.Background())
 	require.NoError(t, err)
 
+	err = s.OpenBridgeServer.Start(context.Background())
+	require.NoError(t, err)
+
 	s.MMDVMAddr = s.MMDVMServer.Server.LocalAddr().String()
 	s.IPSCAddr = s.IPSCServer.Addr().String()
+	s.OpenBridgeAddr = s.OpenBridgeServer.Server.LocalAddr().String()
 }
 
 // SeedUser creates a User in the DB.
@@ -236,4 +254,31 @@ func (s *IntegrationStack) AssignTS2StaticTG(t *testing.T, repeaterID, tgID uint
 	var rpt models.Repeater
 	require.NoError(t, s.DB.First(&rpt, repeaterID).Error)
 	require.NoError(t, s.DB.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
+}
+
+// SeedPeer creates an OpenBridge peer in the DB.
+func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, password string, ip string, port int, ingress bool, egress bool) {
+	t.Helper()
+	err := s.DB.Create(&models.Peer{
+		ID:       id,
+		OwnerID:  ownerID,
+		Password: password,
+		IP:       ip,
+		Port:     port,
+		Ingress:  ingress,
+		Egress:   egress,
+	}).Error
+	require.NoError(t, err)
+}
+
+// SeedPeerRule creates a peer rule in the DB.
+func (s *IntegrationStack) SeedPeerRule(t *testing.T, peerID uint, direction bool, subjectIDMin uint, subjectIDMax uint) {
+	t.Helper()
+	err := s.DB.Create(&models.PeerRule{
+		PeerID:       peerID,
+		Direction:    direction,
+		SubjectIDMin: subjectIDMin,
+		SubjectIDMax: subjectIDMax,
+	}).Error
+	require.NoError(t, err)
 }

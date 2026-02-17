@@ -21,6 +21,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -69,4 +70,17 @@ func ListEgressRulesForPeer(db *gorm.DB, peerID uint) ([]PeerRule, error) {
 	var peerRules []PeerRule
 	err := db.Preload("Peer").Order("id asc").Where("peer_id = ? AND direction = false", peerID).Find(&peerRules).Error
 	return peerRules, err
+}
+
+func FindPeerRuleByID(db *gorm.DB, id uint) (PeerRule, error) {
+	var rule PeerRule
+	err := db.Preload("Peer").First(&rule, id).Error
+	return rule, err
+}
+
+func DeletePeerRule(db *gorm.DB, id uint) error {
+	if err := db.Unscoped().Delete(&PeerRule{}, id).Error; err != nil {
+		return fmt.Errorf("delete peer rule: %w", err)
+	}
+	return nil
 }

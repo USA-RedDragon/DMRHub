@@ -20,8 +20,23 @@
 package apimodels
 
 type PeerPost struct {
-	ID      uint `json:"id" binding:"required"`
-	OwnerID uint `json:"owner" binding:"required"`
-	Ingress bool `json:"ingress"`
-	Egress  bool `json:"egress"`
+	ID      uint   `json:"id" binding:"required"`
+	OwnerID uint   `json:"owner" binding:"required"`
+	IP      string `json:"ip" binding:"required"`
+	Port    int    `json:"port"`
+	Ingress bool   `json:"ingress"`
+	Egress  bool   `json:"egress"`
+}
+
+type PeerPatch struct {
+	IP      *string `json:"ip"`
+	Port    *int    `json:"port"`
+	Ingress *bool   `json:"ingress"`
+	Egress  *bool   `json:"egress"`
+}
+
+type PeerRulePost struct {
+	Direction    bool `json:"direction"`
+	SubjectIDMin uint `json:"subject_id_min"`
+	SubjectIDMax uint `json:"subject_id_max" binding:"required"`
 }

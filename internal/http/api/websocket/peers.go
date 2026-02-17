@@ -21,18 +21,22 @@ package websocket
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
+	gorillaWebsocket "github.com/gorilla/websocket"
 	"gorm.io/gorm"
 )
 
 type PeersWebsocket struct {
 	websocket.Websocket
-	pubsub pubsub.PubSub
-	db     *gorm.DB
+	pubsub       pubsub.PubSub
+	db           *gorm.DB
+	subscription pubsub.Subscription
+	cancel       context.CancelFunc
 }
 
 func CreatePeersWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *PeersWebsocket {
@@ -45,8 +49,38 @@ func CreatePeersWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *PeersWebsocket {
 func (c *PeersWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *PeersWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) {
+func (c *PeersWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) {
+	newCtx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+
+	c.subscription = c.pubsub.Subscribe("hub:events:peers")
+
+	go func() {
+		channel := c.subscription.Channel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-newCtx.Done():
+				return
+			case msg := <-channel:
+				w.WriteMessage(websocket.Message{
+					Type: gorillaWebsocket.TextMessage,
+					Data: msg,
+				})
+			}
+		}
+	}()
 }
 
 func (c *PeersWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
+	if c.subscription != nil {
+		err := c.subscription.Close()
+		if err != nil {
+			slog.Error("Failed to close peers pubsub", "error", err)
+		}
+	}
+	if c.cancel != nil {
+		c.cancel()
+	}
 }

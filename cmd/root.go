@@ -295,7 +295,7 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
 	servers    []servers.DMRServer
-	httpServer http.Server
+	httpServer *http.Server
 	kv         kv.KV
 	pubsub     pubsub.PubSub
 	database   *gorm.DB
@@ -396,7 +396,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	sm.addServer(&mmdvmServer)
 
 	if cfg.DMR.OpenBridge.Enabled {
-		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient, kvStore)
+		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OpenBridge server: %w", err)
 		}
@@ -416,7 +416,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, kv
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
-	sm.httpServer = httpServer
+	sm.httpServer = &httpServer
 
 	ready.Store(true)
 	slog.Info("Server ready to accept traffic")

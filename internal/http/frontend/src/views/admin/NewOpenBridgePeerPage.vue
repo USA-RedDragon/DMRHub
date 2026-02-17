@@ -72,6 +72,50 @@
             >
           </span>
           <br />
+          <label class="field-label" for="ip">IP Address</label>
+          <ShadInput
+            id="ip"
+            type="text"
+            v-model="v$.ip.$model"
+            :aria-invalid="v$.ip.$invalid && submitted"
+            placeholder="e.g. 192.168.1.100"
+          />
+          <span v-if="v$.ip.$error && submitted">
+            <span v-for="(error, index) of v$.ip.$errors" :key="index">
+              <small class="p-error">{{ error.$message.replace("Value", "IP Address") }}</small>
+            </span>
+            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="(v$.ip.$invalid && submitted) || v$.ip.$pending.$response"
+              class="p-error"
+              >{{ v$.ip.required.$message.replace("Value", "IP Address") }}</small
+            >
+          </span>
+          <br />
+          <label class="field-label" for="port">Port</label>
+          <ShadInput
+            id="port"
+            type="text"
+            v-model="v$.port.$model"
+            :aria-invalid="v$.port.$invalid && submitted"
+            placeholder="e.g. 62035"
+          />
+          <span v-if="v$.port.$error && submitted">
+            <span v-for="(error, index) of v$.port.$errors" :key="index">
+              <small class="p-error">{{ error.$message.replace("Value", "Port") }}</small>
+            </span>
+            <br />
+          </span>
+          <span v-else>
+            <small
+              v-if="(v$.port.$invalid && submitted) || v$.port.$pending.$response"
+              class="p-error"
+              >{{ v$.port.required.$message.replace("Value", "Port") }}</small
+            >
+          </span>
+          <br />
           <div class="checkbox-row">
             <input id="ingress" type="checkbox" v-model="ingress" />
             <label for="ingress">Receive DMR traffic from this peer</label>
@@ -106,7 +150,7 @@ import {
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';
-import { required, numeric } from '@vuelidate/validators';
+import { required, numeric, ipAddress, between } from '@vuelidate/validators';
 
 export default {
   components: {
@@ -129,6 +173,8 @@ export default {
   data: function() {
     return {
       id: '',
+      ip: '',
+      port: '',
       ingress: false,
       egress: false,
       submitted: false,
@@ -142,6 +188,15 @@ export default {
       id: {
         required,
         numeric,
+      },
+      ip: {
+        required,
+        ipAddress,
+      },
+      port: {
+        required,
+        numeric,
+        between: between(1, 65535),
       },
       owner_id: {
         required,
@@ -185,6 +240,8 @@ export default {
       API.post('/peers', {
         id: numericID,
         owner: parseInt(this.owner_id),
+        ip: this.ip,
+        port: parseInt(this.port),
         ingress: this.ingress,
         egress: this.egress,
       })

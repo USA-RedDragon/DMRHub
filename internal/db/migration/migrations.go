@@ -48,5 +48,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_simplex_repeater_column_migration_202602130100(db, cfg),
 		split_location_migration_202602160100(db, cfg),
 		fix_ipsc_repeater_data_migration_202602160200(db, cfg),
+		add_peer_ip_port_migration_202602170100(db, cfg),
 	}
 }

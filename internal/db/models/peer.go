@@ -34,8 +34,8 @@ import (
 type Peer struct {
 	ID        uint           `json:"id" gorm:"primaryKey" msg:"id"`
 	LastPing  time.Time      `json:"last_ping_time" msg:"last_ping"`
-	IP        string         `json:"-" gorm:"-" msg:"ip"`
-	Port      int            `json:"-" gorm:"-" msg:"port"`
+	IP        string         `json:"ip" msg:"ip"`
+	Port      int            `json:"port" msg:"port"`
 	Password  string         `json:"-" msg:"-"`
 	Owner     User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID   uint           `json:"-" msg:"-"`

@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -35,8 +36,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -54,10 +53,9 @@ type Server struct {
 	Server        *net.UDPConn
 	Tracer        trace.Tracer
 
-	DB       *gorm.DB
-	kvClient *servers.KVClient
-	pubsub   pubsub.PubSub
-	hub      *hub.Hub
+	DB     *gorm.DB
+	pubsub pubsub.PubSub
+	hub    *hub.Hub
 
 	hubHandle *hub.ServerHandle
 	wg        sync.WaitGroup
@@ -66,7 +64,7 @@ type Server struct {
 }
 
 // MakeServer creates a new DMR server.
-func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) (Server, error) {
+func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub) (Server, error) {
 	socketAddress := net.UDPAddr{
 		IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
 		Port: config.DMR.OpenBridge.Port,
@@ -92,7 +90,6 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Server:        server,
 		DB:            db,
 		pubsub:        pubsub,
-		kvClient:      servers.MakeKVClient(kv),
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		done:          make(chan struct{}),
 	}, nil
@@ -222,21 +219,33 @@ func (s *Server) consumeHubPackets(ctx context.Context) {
 }
 
 // sendPacketToPeer sends a packet to a specific OpenBridge peer.
-func (s *Server) sendPacketToPeer(ctx context.Context, peerID uint, packet models.Packet) {
+func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
 
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
-	peer, err := s.kvClient.GetPeer(ctx, peerID)
+	peer, err := models.FindPeerByID(s.DB, peerID)
 	if err != nil {
-		slog.Error("Error getting peer from kv", "peerID", peerID, "error", err)
+		slog.Error("Error getting peer from DB", "peerID", peerID, "error", err)
 		return
 	}
 	// OpenBridge is always TS1
 	packet.Slot = false
-	_, err = s.Server.WriteToUDP(packet.Encode(), &net.UDPAddr{
+	packet.Repeater = peerID
+	encodedPacket := packet.Encode()[:dmrconst.MMDVMPacketLength]
+
+	// Compute HMAC-SHA1 and append to outbound packet
+	h := hmac.New(sha1.New, []byte(peer.Password))
+	_, err = h.Write(encodedPacket)
+	if err != nil {
+		slog.Error("Error computing HMAC for outbound OpenBridge packet", "error", err)
+		return
+	}
+	outbound := slices.Concat(encodedPacket, h.Sum(nil))
+
+	_, err = s.Server.WriteToUDP(outbound, &net.UDPAddr{
 		IP:   net.ParseIP(peer.IP),
 		Port: peer.Port,
 	})
@@ -262,7 +271,7 @@ func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes
 	return true
 }
 
-func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) {
+func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
@@ -320,6 +329,15 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 		return
 	}
 
+	// Warn if the source IP doesn't match the configured peer IP
+	if peer.IP != "" && remoteAddr != nil && remoteAddr.IP.String() != peer.IP {
+		slog.Warn("OpenBridge packet source IP does not match configured peer IP",
+			"peerID", peerID,
+			"configuredIP", peer.IP,
+			"sourceIP", remoteAddr.IP.String(),
+		)
+	}
+
 	should, err := rules.PeerShouldIngress(s.DB, &peer, &packet)
 	if err != nil {
 		slog.Error("Failed to check peer ingress rules", "peerID", peerID, "error", err)
@@ -351,4 +369,10 @@ func (s *Server) handlePacket(ctx context.Context, _ *net.UDPAddr, data []byte) 
 
 	// Route to local repeaters via Hub
 	s.hub.RoutePacket(ctx, packet, "openbridge")
+
+	// Publish peer activity event for WebSocket consumers
+	peerEvent := fmt.Sprintf(`{"peer_id":%d,"event":"active","src":%d,"dst":%d}`, peerID, packet.Src, packet.Dst)
+	if err := s.pubsub.Publish("hub:events:peers", []byte(peerEvent)); err != nil {
+		slog.Error("Error publishing peer event", "error", err)
+	}
 }

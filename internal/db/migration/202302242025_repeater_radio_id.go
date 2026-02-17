@@ -23,30 +23,31 @@ import (
 	"fmt"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"
 )
 
-func Migrate(db *gorm.DB, cfg *config.Config) error {
-	m := gormigrate.New(db, gormigrate.DefaultOptions, migrations(db, cfg))
-
-	if err := m.Migrate(); err != nil {
-		return fmt.Errorf("could not migrate: %w", err)
-	}
-
-	return nil
-}
-
-func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
-	return []*gormigrate.Migration{
-		repeater_radio_id_migration_202302242025(db, cfg),
-		drop_join_table_migration_202311190252(db, cfg),
-		fix_call_data_migration_202602100435(db, cfg),
-
-		fix_call_data_migration_202602100457(db, cfg),
-		add_repeater_type_column_migration_202506150100(db, cfg),
-		add_simplex_repeater_column_migration_202602130100(db, cfg),
-		split_location_migration_202602160100(db, cfg),
-		fix_ipsc_repeater_data_migration_202602160200(db, cfg),
+func repeater_radio_id_migration_202302242025(db *gorm.DB, _ *config.Config) *gormigrate.Migration {
+	return &gormigrate.Migration{
+		ID: "202302242025",
+		Migrate: func(tx *gorm.DB) error {
+			if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
+				err := tx.Migrator().RenameColumn(&models.Repeater{}, "radio_id", "id")
+				if err != nil {
+					return fmt.Errorf("could not rename column: %w", err)
+				}
+			}
+			return nil
+		},
+		Rollback: func(tx *gorm.DB) error {
+			if db.Migrator().HasTable(&models.Repeater{}) && db.Migrator().HasColumn(&models.Repeater{}, "id") && !db.Migrator().HasColumn(&models.Repeater{}, "radio_id") {
+				err := tx.Migrator().RenameColumn(&models.Repeater{}, "id", "radio_id")
+				if err != nil {
+					return fmt.Errorf("could not rename column: %w", err)
+				}
+			}
+			return nil
+		},
 	}
 }

@@ -27,26 +27,26 @@ import (
 	"gorm.io/gorm"
 )
 
-func Migrate(db *gorm.DB, cfg *config.Config) error {
-	m := gormigrate.New(db, gormigrate.DefaultOptions, migrations(db, cfg))
-
-	if err := m.Migrate(); err != nil {
-		return fmt.Errorf("could not migrate: %w", err)
-	}
-
-	return nil
-}
-
-func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
-	return []*gormigrate.Migration{
-		repeater_radio_id_migration_202302242025(db, cfg),
-		drop_join_table_migration_202311190252(db, cfg),
-		fix_call_data_migration_202602100435(db, cfg),
-
-		fix_call_data_migration_202602100457(db, cfg),
-		add_repeater_type_column_migration_202506150100(db, cfg),
-		add_simplex_repeater_column_migration_202602130100(db, cfg),
-		split_location_migration_202602160100(db, cfg),
-		fix_ipsc_repeater_data_migration_202602160200(db, cfg),
+func drop_join_table_migration_202311190252(db *gorm.DB, _ *config.Config) *gormigrate.Migration {
+	return &gormigrate.Migration{
+		ID: "202311190252",
+		Migrate: func(tx *gorm.DB) error {
+			if db.Migrator().HasTable("repeater_ts1_static_talkgroups") && db.Migrator().HasColumn("repeater_ts1_static_talkgroups", "repeater_radio_id") {
+				err := tx.Migrator().DropTable("repeater_ts1_static_talkgroups")
+				if err != nil {
+					return fmt.Errorf("could not drop table: %w", err)
+				}
+			}
+			if db.Migrator().HasTable("repeater_ts2_static_talkgroups") && db.Migrator().HasColumn("repeater_ts2_static_talkgroups", "repeater_radio_id") {
+				err := tx.Migrator().DropTable("repeater_ts2_static_talkgroups")
+				if err != nil {
+					return fmt.Errorf("could not drop table: %w", err)
+				}
+			}
+			return nil
+		},
+		Rollback: func(tx *gorm.DB) error {
+			return nil
+		},
 	}
 }

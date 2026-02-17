@@ -41,6 +41,8 @@ import { h } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
 import User from '@/components/User.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
+import Repeater from '@/components/Repeater.vue';
+import { useUserStore } from '@/store';
 
 import { getWebsocketURI } from '@/services/util';
 import API from '@/services/API';
@@ -52,6 +54,7 @@ type LastHeardRow = {
   active: boolean;
   start_time: string | Date;
   time_slot: boolean;
+  repeater: { id: number; callsign: string };
   user: { id: number; callsign: string };
   is_to_talkgroup: boolean;
   to_talkgroup: { id: number };
@@ -101,7 +104,7 @@ export default {
     columns() {
       // Reference this.now to trigger recomputation when the timer updates
       void this.now;
-      return [
+      const columns = [
         {
           accessorKey: 'time',
           header: 'Time',
@@ -144,6 +147,20 @@ export default {
             return '-';
           },
         },
+      ] as ColumnDef<LastHeardRow, unknown>[];
+
+      if (this.loggedIn) {
+        columns.push({
+          accessorKey: 'repeater',
+          header: 'Repeater',
+          cell: ({ row }: { row: { original: LastHeardRow } }) => {
+            const call = row.original;
+            return h(Repeater, { repeater: call.repeater });
+          },
+        });
+      }
+
+      columns.push(...[
         {
           accessorKey: 'duration',
           header: 'Duration',
@@ -172,7 +189,12 @@ export default {
             return rssi !== 0 ? `-${rssi}dBm` : '-';
           },
         },
-      ] as ColumnDef<LastHeardRow, unknown>[];
+      ]);
+      return columns;
+    },
+    loggedIn(): boolean {
+      const userStore = useUserStore();
+      return userStore.loggedIn;
     },
     totalPages() {
       if (!this.totalRecords || this.totalRecords <= 0) {

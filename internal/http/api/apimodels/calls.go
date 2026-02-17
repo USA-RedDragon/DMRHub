@@ -48,6 +48,7 @@ type WSCallResponse struct {
 	Active        bool                    `json:"active"`
 	TimeSlot      bool                    `json:"time_slot"`
 	GroupCall     bool                    `json:"group_call"`
+	RepeaterID    uint                    `json:"repeater_id"`
 	IsToTalkgroup bool                    `json:"is_to_talkgroup"`
 	ToTalkgroup   WSCallResponseTalkgroup `json:"to_talkgroup"`
 	IsToUser      bool                    `json:"is_to_user"`
@@ -77,6 +78,7 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		Jitter:        call.Jitter,
 		BER:           call.BER,
 		RSSI:          call.RSSI,
+		RepeaterID:    call.RepeaterID,
 	}
 	resp.User.ID = call.User.ID
 	resp.User.Callsign = call.User.Callsign

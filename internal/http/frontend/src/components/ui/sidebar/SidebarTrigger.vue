@@ -2,7 +2,7 @@
 import type { HTMLAttributes } from "vue"
 import { PanelLeft } from "lucide-vue-next"
 import { cn } from "@/lib/utils"
-import { Button } from '@/components/ui/button'
+import { Button as ShadButton } from '@/components/ui/button'
 import { useSidebar } from "./utils"
 
 const props = defineProps<{
@@ -13,7 +13,7 @@ const { toggleSidebar } = useSidebar()
 </script>
 
 <template>
-  <Button
+  <ShadButton
     data-sidebar="trigger"
     data-slot="sidebar-trigger"
     variant="ghost"
@@ -23,5 +23,5 @@ const { toggleSidebar } = useSidebar()
   >
     <PanelLeft />
     <span class="sr-only">Toggle Sidebar</span>
-  </Button>
+  </ShadButton>
 </template>

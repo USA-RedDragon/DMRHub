@@ -23,12 +23,12 @@
   <div class="mode-toggle" :class="{ compact }">
     <DropdownMenuRoot :modal="false">
       <DropdownMenuTrigger as-child>
-        <button class="mode-trigger" type="button" aria-label="Toggle theme">
+        <ShadButton class="mode-trigger" type="button" aria-label="Toggle theme">
           <Sun v-if="mode === 'light'" :size="16" />
           <Moon v-else-if="mode === 'dark'" :size="16" />
           <Monitor v-else :size="16" />
           <span class="mode-label">Theme: {{ modeLabel }}</span>
-        </button>
+        </ShadButton>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent class="mode-menu" :side-offset="8" align="end">
@@ -58,6 +58,7 @@ import {
 } from 'reka-ui';
 import { Monitor, Moon, Sun } from 'lucide-vue-next';
 import { useColorMode } from '@/composables/useColorMode';
+import { Button as ShadButton } from '@/components/ui/button';
 
 defineProps({
   compact: {

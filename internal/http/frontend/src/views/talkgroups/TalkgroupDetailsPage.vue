@@ -124,7 +124,7 @@
             <CardTitle>Net Control</CardTitle>
             <div class="flex gap-2">
               <RouterLink v-if="!activeNet" :to="`/nets/scheduled/new?talkgroup_id=${talkgroupID}`">
-                <Button variant="outline" size="sm">Schedule Net</Button>
+                <ShadButton variant="outline" size="sm">Schedule Net</ShadButton>
               </RouterLink>
             </div>
           </div>
@@ -162,9 +162,9 @@
 
             <div class="flex gap-2">
               <RouterLink :to="`/nets/${activeNet.id}`">
-                <Button variant="outline" size="sm">View Check-Ins</Button>
+                <ShadButton variant="outline" size="sm">View Check-Ins</ShadButton>
               </RouterLink>
-              <Button variant="destructive" size="sm" @click="handleStopNet">Stop Net</Button>
+              <ShadButton variant="destructive" size="sm" @click="handleStopNet">Stop Net</ShadButton>
             </div>
           </div>
 
@@ -172,9 +172,9 @@
           <div v-else class="space-y-3">
             <p class="text-sm text-muted-foreground">No active net on this talkgroup.</p>
             <div class="flex gap-2">
-              <Button variant="outline" size="sm" @click="showStartNet = !showStartNet">
+              <ShadButton variant="outline" size="sm" @click="showStartNet = !showStartNet">
                 {{ showStartNet ? 'Cancel' : 'Start Net' }}
-              </Button>
+              </ShadButton>
             </div>
             <!-- Inline start form -->
             <div v-if="showStartNet" class="space-y-2 pt-2">
@@ -190,7 +190,7 @@
                 min="1"
                 max="1440"
               />
-              <Button size="sm" @click="handleStartNet">Start</Button>
+              <ShadButton variant="outline" size="sm" @click="handleStartNet">Start</ShadButton>
             </div>
           </div>
 

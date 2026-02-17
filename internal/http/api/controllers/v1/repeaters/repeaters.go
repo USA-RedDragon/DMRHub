@@ -271,6 +271,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
 }
 
+//nolint:gocyclo
 func POSTRepeater(c *gin.Context) {
 	session := sessions.Default(c)
 	usID := session.Get("user_id")
@@ -287,10 +288,12 @@ func POSTRepeater(c *gin.Context) {
 	}
 	db, ok := utils.GetDB(c)
 	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 	config, ok := utils.GetConfig(c)
 	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
 		return
 	}
 
@@ -306,6 +309,7 @@ func POSTRepeater(c *gin.Context) {
 	if err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTRepeater", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		return
 	} else {
 		// Default type to MMDVM if not specified
 		if json.Type == "" {
@@ -313,6 +317,10 @@ func POSTRepeater(c *gin.Context) {
 		}
 		if json.Type != models.RepeaterTypeMMDVM && json.Type != models.RepeaterTypeIPSC {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater type"})
+			return
+		}
+		if json.Type == models.RepeaterTypeIPSC && !config.DMR.IPSC.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "IPSC is not enabled on this server"})
 			return
 		}
 

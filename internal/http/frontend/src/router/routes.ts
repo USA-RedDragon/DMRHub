@@ -163,6 +163,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/nets/NetDetailsPage.vue'),
     },
     {
+      path: '/peers',
+      name: 'Peers',
+      component: () => import('@/views/peers/OpenBridgePeersPage.vue'),
+    },
+    {
       path: '/admin/nets',
       name: 'AdminNets',
       component: () => import('@/views/admin/NetsPage.vue'),

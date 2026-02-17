@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -707,4 +708,96 @@ func TestPOSTPeerInvalidPort(t *testing.T) {
 	resp, w := testutils.CreatePeer(t, router, adminJar, peer)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "Port must be between 1 and 65535", resp.Error)
+}
+
+func TestGETPeersOpenBridgeDisabledNotRegistered(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(cfg *config.Config) {
+		cfg.DMR.OpenBridge.Enabled = false
+	})
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	// When OpenBridge is disabled the peer API routes are not registered.
+	// The request may return 404 or be caught by the SPA wildcard (200 + text/html).
+	// Either way, the response must NOT be JSON from the peers controller.
+	ct := w.Header().Get("Content-Type")
+	assert.NotContains(t, ct, "application/json",
+		"Peers API endpoint should not be registered when OpenBridge is disabled")
+}
+
+func TestPOSTPeerOpenBridgeDisabledReturns404(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(cfg *config.Config) {
+		cfg.DMR.OpenBridge.Enabled = false
+	})
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	peer := apimodels.PeerPost{
+		ID:      400001,
+		IP:      "10.0.0.1",
+		Port:    62035,
+		Ingress: true,
+		Egress:  true,
+	}
+
+	jsonBody, err := json.Marshal(peer)
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/peers", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGETMyPeersOpenBridgeDisabledReturns404(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(cfg *config.Config) {
+		cfg.DMR.OpenBridge.Enabled = false
+	})
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers/my", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

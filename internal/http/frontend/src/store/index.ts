@@ -30,8 +30,11 @@ interface UserState {
   hasOpenBridgePeers: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface SettingsState {}
+interface SettingsState {
+  ipscEnabled: boolean;
+  openBridgeEnabled: boolean;
+  loaded: boolean;
+}
 
 export const useUserStore = defineStore('user', {
   state: (): UserState => ({
@@ -50,7 +53,23 @@ export const useUserStore = defineStore('user', {
 
 export const useSettingsStore = defineStore('settings', {
   state: (): SettingsState => ({
+    ipscEnabled: false,
+    openBridgeEnabled: false,
+    loaded: false,
   }),
   getters: {},
-  actions: {},
+  actions: {
+    async fetchConfig() {
+      if (this.loaded) return;
+      try {
+        const { default: API } = await import('@/services/API');
+        const res = await API.get('/config');
+        this.ipscEnabled = res.data?.dmr?.ipsc?.enabled ?? false;
+        this.openBridgeEnabled = res.data?.dmr?.openbridge?.enabled ?? false;
+        this.loaded = true;
+      } catch {
+        // Config endpoint unavailable; leave defaults
+      }
+    },
+  },
 });

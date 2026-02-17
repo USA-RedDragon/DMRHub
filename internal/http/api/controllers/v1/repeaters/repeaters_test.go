@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -519,4 +520,62 @@ func TestPATCHRepeaterNonexistent(t *testing.T) {
 	})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "repeater does not exist", resp.Error)
+}
+
+func TestPOSTRepeaterIPSCDisabledRejects(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(cfg *config.Config) {
+		cfg.DMR.IPSC.Enabled = false
+	})
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	repeaterPost := apimodels.RepeaterPost{
+		RadioID: 319186803,
+		Type:    "ipsc",
+	}
+
+	resp, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, "IPSC is not enabled on this server", resp.Error)
+}
+
+func TestPOSTRepeaterIPSCDisabledAllowsMMDVM(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(cfg *config.Config) {
+		cfg.DMR.IPSC.Enabled = false
+	})
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+
+	repeaterPost := apimodels.RepeaterPost{
+		RadioID: 319186804,
+	}
+
+	resp, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Repeater created", resp.Message)
+	assert.NotEmpty(t, resp.Password)
 }

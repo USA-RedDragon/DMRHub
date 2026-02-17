@@ -27,7 +27,7 @@
           <CardTitle>New Repeater</CardTitle>
         </CardHeader>
         <CardContent>
-          <div class="field">
+          <div v-if="repeaterTypes.length > 1" class="field">
             <label class="field-label" for="repeaterType">Repeater Type</label>
             <select
               id="repeaterType"
@@ -37,7 +37,7 @@
               <option v-for="type in repeaterTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
             </select>
           </div>
-          <br />
+          <br v-if="repeaterTypes.length > 1" />
           <label class="field-label" for="radioID">DMR Radio ID</label>
           <ShadInput
             id="radioID"
@@ -97,6 +97,7 @@ import {
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
 import API from '@/services/API';
+import { useSettingsStore } from '@/store';
 
 import { useVuelidate } from '@vuelidate/core';
 import { required, numeric } from '@vuelidate/validators';
@@ -115,17 +116,16 @@ export default {
     title: 'New Repeater',
   },
   setup: () => ({ v$: useVuelidate() }),
-  created() {},
+  created() {
+    const settingsStore = useSettingsStore();
+    settingsStore.fetchConfig();
+  },
   mounted() {},
   data: function() {
     return {
       radioID: '',
       repeaterType: 'mmdvm',
       simplexRepeater: false,
-      repeaterTypes: [
-        { label: 'MMDVM', value: 'mmdvm' },
-        { label: 'Motorola IPSC', value: 'ipsc' },
-      ],
       submitted: false,
       hostname: window.location.hostname,
     };
@@ -137,6 +137,18 @@ export default {
         numeric,
       },
     };
+  },
+  computed: {
+    repeaterTypes() {
+      const settingsStore = useSettingsStore();
+      const types = [
+        { label: 'MMDVM', value: 'mmdvm' },
+      ];
+      if (settingsStore.ipscEnabled) {
+        types.push({ label: 'Motorola IPSC', value: 'ipsc' });
+      }
+      return types;
+    },
   },
   methods: {
     handleRepeater(isFormValid: boolean) {

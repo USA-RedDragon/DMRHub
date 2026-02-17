@@ -57,17 +57,19 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit)
-	v1(apiV1, userSuspension)
+	v1(config, apiV1, userSuspension)
 
 	ws := router.Group("/ws")
 	ws.Use(ratelimit)
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
 	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
-	ws.GET("/peers", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
+	if config.DMR.OpenBridge.Enabled {
+		ws.GET("/peers", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
+	}
 	ws.GET("/nets", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateNetsWebsocket(pubsub)))
 }
 
-func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
+func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
@@ -117,18 +119,20 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.PATCHUser)
 	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.DELETEUser)
 
-	v1Peers := group.Group("/peers")
-	// Paginated
-	v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
-	// Paginated
-	v1Peers.GET("/my", middleware.RequireLogin(), v1PeersControllers.GETMyPeers)
-	v1Peers.POST("", middleware.RequireAdmin(), v1PeersControllers.POSTPeer)
-	v1Peers.GET("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeer)
-	v1Peers.PATCH("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.PATCHPeer)
-	v1Peers.DELETE("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeer)
-	v1Peers.GET("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeerRules)
-	v1Peers.POST("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRule)
-	v1Peers.DELETE("/:id/rules/:ruleId", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeerRule)
+	if config.DMR.OpenBridge.Enabled {
+		v1Peers := group.Group("/peers")
+		// Paginated
+		v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
+		// Paginated
+		v1Peers.GET("/my", middleware.RequireLogin(), v1PeersControllers.GETMyPeers)
+		v1Peers.POST("", middleware.RequireAdmin(), v1PeersControllers.POSTPeer)
+		v1Peers.GET("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeer)
+		v1Peers.PATCH("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.PATCHPeer)
+		v1Peers.DELETE("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeer)
+		v1Peers.GET("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeerRules)
+		v1Peers.POST("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRule)
+		v1Peers.DELETE("/:id/rules/:ruleId", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeerRule)
+	}
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in

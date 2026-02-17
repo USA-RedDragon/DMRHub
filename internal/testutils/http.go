@@ -63,6 +63,8 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 
 	defConfig.Database.Database = "" // Use in-memory database for tests
 	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.OpenBridge.Enabled = true
+	defConfig.DMR.IPSC.Enabled = true
 
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
@@ -113,6 +115,78 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	defConfig.Database.Database = "" // Use in-memory database for tests
 	defConfig.Database.ExtraParameters = []string{}
 	defConfig.DMR.DisableRadioIDValidation = true
+	defConfig.DMR.OpenBridge.Enabled = true
+	defConfig.DMR.IPSC.Enabled = true
+
+	t.database, err = db.MakeDB(&defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	adminCount := int64(0)
+	err = t.database.Model(&models.User{}).Where("username = ?", "Admin").Count(&adminCount).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to count admin users: %w", err)
+	}
+	if adminCount < 1 {
+		hashedPassword, hashErr := utils.HashPassword("password", defConfig.PasswordSalt)
+		if hashErr != nil {
+			return nil, nil, fmt.Errorf("failed to hash password: %w", hashErr)
+		}
+		err = t.database.Create(&models.User{
+			Username:   "Admin",
+			Password:   hashedPassword,
+			Admin:      true,
+			SuperAdmin: true,
+			Callsign:   "XXXXXX",
+			Approved:   true,
+		}).Error
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create admin user: %w", err)
+		}
+	}
+
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
+	}
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
+	}
+
+	ct := calltracker.NewCallTracker(t.database, ps)
+	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
+
+	ready := &atomic.Bool{}
+	ready.Store(true)
+
+	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef"), &t, nil
+}
+
+// ConfigOption is a function that mutates a config before the test router is created.
+type ConfigOption func(*config.Config)
+
+// CreateTestDBRouterWithOptions creates a test DB router and applies optional
+// config overrides. This is useful for testing behavior when specific features
+// (e.g. OpenBridge, IPSC) are disabled.
+func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, error) {
+	var t TestDB
+	defConfig, err := configulator.New[config.Config]().Default()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
+	}
+
+	defConfig.Database.Database = "" // Use in-memory database for tests
+	defConfig.Database.ExtraParameters = []string{}
+	defConfig.DMR.OpenBridge.Enabled = true
+	defConfig.DMR.IPSC.Enabled = true
+	defConfig.DMR.DisableRadioIDValidation = true
+
+	for _, opt := range opts {
+		opt(&defConfig)
+	}
 
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {

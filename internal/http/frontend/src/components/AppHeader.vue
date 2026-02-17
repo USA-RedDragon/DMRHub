@@ -134,7 +134,7 @@
             </template>
 
             <!-- OpenBridge Peers -->
-            <template v-if="openBridgeFeature">
+            <template v-if="settingsStore.openBridgeEnabled">
               <Separator class="my-1" />
               <router-link
                 to="/peers"
@@ -177,6 +177,16 @@
               >
                 <Antenna class="h-4 w-4" />
                 Repeaters
+              </router-link>
+              <router-link
+                v-if="settingsStore.openBridgeEnabled"
+                to="/admin/peers"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/peers' }"
+                @click="mobileOpen = false"
+              >
+                <Globe class="h-4 w-4" />
+                Peers
               </router-link>
               <router-link
                 to="/admin/users"
@@ -342,7 +352,7 @@
 
         <!-- OpenBridge Peers -->
         <router-link
-          v-if="openBridgeFeature"
+          v-if="settingsStore.openBridgeEnabled"
           to="/peers"
           class="desktop-nav-link"
           :class="{ active: route.path === '/peers' }"
@@ -402,6 +412,15 @@
                   @click="closeMenus"
                 >
                   Repeaters
+                </router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem v-if="settingsStore.openBridgeEnabled" as-child>
+                <router-link
+                  to="/admin/peers"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Peers
                 </router-link>
               </DropdownMenuItem>
               <DropdownMenuItem as-child>
@@ -495,14 +514,14 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import API from '@/services/API';
-import { useUserStore } from '@/store';
+import { useUserStore, useSettingsStore } from '@/store';
 
 const userStore = useUserStore();
+const settingsStore = useSettingsStore();
 const route = useRoute();
 const router = useRouter();
 
 const title = ref(localStorage.getItem('title') || 'DMRHub');
-const openBridgeFeature = ref(false);
 const openTalkgroupsMenu = ref(false);
 const openAdminMenu = ref(false);
 const mobileOpen = ref(false);
@@ -584,6 +603,7 @@ const logout = () => {
 
 onMounted(() => {
   getTitle();
+  settingsStore.fetchConfig();
   document.addEventListener('click', handleOutsideClick);
 });
 

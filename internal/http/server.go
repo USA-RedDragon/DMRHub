@@ -123,16 +123,15 @@ func addMiddleware(config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db 
 	}
 
 	// DBs
-	r.Use(middleware.DatabaseProvider(db))
+	r.Use(func(g *gin.Context) { middleware.Provider("DB", db.WithContext(g.Request.Context()))(g) })
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
-	r.Use(middleware.PubSubProvider(pubsub))
-	r.Use(middleware.ConfigProvider(config))
-	r.Use(middleware.ReadinessProvider(ready))
-	r.Use(func(c *gin.Context) {
-		c.Set("Hub", dmrHub)
-		c.Next()
-	})
 
+	r.Use(middleware.Provider("PubSub", pubsub))
+	r.Use(middleware.Provider("Config", config))
+	r.Use(middleware.Provider("Ready", ready))
+	r.Use(middleware.Provider("Hub", dmrHub))
+	r.Use(middleware.Provider("Version", version))
+	r.Use(middleware.Provider("Commit", commit))
 	// CORS
 	if config.HTTP.CORS.Enabled {
 		corsConfig := cors.DefaultConfig()
@@ -144,9 +143,6 @@ func addMiddleware(config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db 
 	// Sessions
 	sessionStore := gormSessions.NewStore(db, true, config.GetDerivedSecret())
 	r.Use(sessions.Sessions("sessions", sessionStore))
-
-	// Versioning
-	r.Use(middleware.VersionProvider(version, commit))
 }
 
 func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
@@ -156,9 +152,9 @@ func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token str
 		r.Use(middleware.TracingProvider(config))
 	}
 
-	r.Use(middleware.ConfigProvider(config))
-	r.Use(setupWizardMiddleware.SetupWizardProvider(token))
-	r.Use(setupWizardMiddleware.SetupWizardConfigCompleteChanProvider(configCompleteChan))
+	r.Use(middleware.Provider("Config", config))
+	r.Use(middleware.Provider("SetupWizard", token))
+	r.Use(middleware.Provider("SetupWizardConfigCompleteChan", configCompleteChan))
 
 	// CORS
 	corsConfig := cors.DefaultConfig()
@@ -167,7 +163,8 @@ func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token str
 	r.Use(cors.New(corsConfig))
 
 	// Versioning
-	r.Use(middleware.VersionProvider(version, commit))
+	r.Use(middleware.Provider("Version", version))
+	r.Use(middleware.Provider("Commit", commit))
 }
 
 func CreateSetupWizardRouter(config *configPkg.Config, token string, configCompleteChan chan any, version, commit string) *gin.Engine {

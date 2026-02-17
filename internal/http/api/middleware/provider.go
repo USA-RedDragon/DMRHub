@@ -20,13 +20,12 @@
 package middleware
 
 import (
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
 )
 
-func PubSubProvider(pubsub pubsub.PubSub) gin.HandlerFunc {
+func Provider[T any](key string, thing T) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set("PubSub", pubsub)
+		c.Set(key, thing)
 		c.Next()
 	}
 }

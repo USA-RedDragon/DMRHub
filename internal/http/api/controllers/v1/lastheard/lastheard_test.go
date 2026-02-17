@@ -78,7 +78,7 @@ func TestGETLastheardAuthenticated(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestGETLastheardTalkgroupRequiresLogin(t *testing.T) {
+func TestGETLastheardTalkgroup(t *testing.T) {
 	t.Parallel()
 
 	router, tdb, err := testutils.CreateTestDBRouter()
@@ -93,31 +93,6 @@ func TestGETLastheardTalkgroupRequiresLogin(t *testing.T) {
 	defer cancel()
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/talkgroup/9990", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestGETLastheardTalkgroupAuthenticated(t *testing.T) {
-	t.Parallel()
-
-	router, tdb, err := testutils.CreateTestDBRouter()
-	if err != nil {
-		t.Fatalf("Failed to create test DB router: %v", err)
-	}
-	defer tdb.CloseDB()
-
-	_, _, adminJar := testutils.LoginAdmin(t, router)
-
-	w := httptest.NewRecorder()
-
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/lastheard/talkgroup/9990", nil)
-	for _, cookie := range adminJar.Cookies() {
-		req.Header.Add("Cookie", cookie.String())
-	}
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)

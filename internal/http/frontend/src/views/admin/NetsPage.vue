@@ -219,9 +219,8 @@ export default {
               h(
                 ShadButton,
                 {
-                  variant: 'outline',
+                  variant: 'destructive',
                   size: 'sm',
-                  class: 'text-destructive',
                   onClick: () => this.handleDeleteScheduledNet(row.original.id),
                 },
                 () => 'Delete',

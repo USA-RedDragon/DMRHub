@@ -270,10 +270,10 @@ func FuzzPeerRuleEgressMatch(f *testing.F) {
 		t.Parallel()
 
 		// Cap to uint32 range to avoid SQLite int64 overflow
-		const maxID = uint(1<<32 - 1)
-		ruleMin %= (maxID + 1)
-		ruleMax %= (maxID + 1)
-		src %= (maxID + 1)
+		const maxID = uint64(1<<32 - 1)
+		ruleMin = uint(uint64(ruleMin) % (maxID + 1))
+		ruleMax = uint(uint64(ruleMax) % (maxID + 1))
+		src = uint(uint64(src) % (maxID + 1))
 
 		database, cleanup := makeTestDB(t)
 		defer cleanup()
@@ -315,10 +315,10 @@ func FuzzPeerRuleIngressMatch(f *testing.F) {
 		t.Parallel()
 
 		// Cap to uint32 range to avoid SQLite int64 overflow
-		const maxID = uint(1<<32 - 1)
-		ruleMin %= (maxID + 1)
-		ruleMax %= (maxID + 1)
-		dst %= (maxID + 1)
+		const maxID = uint64(1<<32 - 1)
+		ruleMin = uint(uint64(ruleMin) % (maxID + 1))
+		ruleMax = uint(uint64(ruleMax) % (maxID + 1))
+		dst = uint(uint64(dst) % (maxID + 1))
 
 		database, cleanup := makeTestDB(t)
 		defer cleanup()

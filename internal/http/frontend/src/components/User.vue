@@ -24,10 +24,10 @@
     <TooltipProvider v-if="radioIdData">
       <Tooltip>
         <TooltipTrigger as-child>
-          <div>
+          <component :is="isLoggedIn ? 'RouterLink' : 'div'" :to="isLoggedIn ? `/users/${user.id}` : undefined" :class="isLoggedIn ? 'text-primary underline' : ''">
             <span v-if="radioIdData.flag" class="cursor-default text-base leading-none">{{ radioIdData.flag }}&nbsp;</span>
             <span class="font-medium">{{ user.callsign }}</span>
-          </div>
+          </component>
         </TooltipTrigger>
         <TooltipContent side="top" class="max-w-xs">
           <p class="font-semibold">{{ radioIdData.name }} {{ radioIdData.surname }}</p>
@@ -38,19 +38,24 @@
       </Tooltip>
     </TooltipProvider>
     <div v-else>
-      <span class="font-medium">{{ user.callsign }}</span>
+      <component :is="isLoggedIn ? 'RouterLink' : 'span'" :to="isLoggedIn ? `/users/${user.id}` : undefined" :class="isLoggedIn ? 'text-primary underline font-medium' : 'font-medium'">
+        {{ user.callsign }}
+      </component>
       <span class="text-muted-foreground text-sm">&nbsp;({{ user.id }})</span>
     </div>
   </div>
 </template>
 
 <script lang="ts">
+import { RouterLink } from 'vue-router';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getUserDB, type RadioIdData } from '@/services/userdb';
+import { useUserStore } from '@/store';
 
 export default {
   name: 'UserInfo',
   components: {
+    RouterLink,
     Tooltip,
     TooltipContent,
     TooltipProvider,
@@ -68,6 +73,10 @@ export default {
     };
   },
   computed: {
+    isLoggedIn(): boolean {
+      const userStore = useUserStore();
+      return userStore.loggedIn;
+    },
     location(): string {
       if (!this.radioIdData) return '';
       const parts = [this.radioIdData.city, this.radioIdData.state].filter(Boolean);

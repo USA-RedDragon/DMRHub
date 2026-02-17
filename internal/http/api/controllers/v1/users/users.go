@@ -412,6 +412,44 @@ func POSTUserApprove(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User approved"})
 }
 
+// userProfileResponse is the public-safe view of a user profile.
+// It intentionally omits username, email, and password.
+type userProfileResponse struct {
+	ID        uint              `json:"id"`
+	Callsign  string            `json:"callsign"`
+	Admin     bool              `json:"admin"`
+	Approved  bool              `json:"approved"`
+	Repeaters []models.Repeater `json:"repeaters"`
+	CreatedAt string            `json:"created_at"`
+}
+
+func GETUserProfile(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	id := c.Param("id")
+	userID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+	user, err := models.FindUserByID(db, uint(userID))
+	if err != nil {
+		slog.Error("Error finding user", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		return
+	}
+	c.JSON(http.StatusOK, userProfileResponse{
+		ID:        user.ID,
+		Callsign:  user.Callsign,
+		Admin:     user.Admin,
+		Approved:  user.Approved,
+		Repeaters: user.Repeaters,
+		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
 func GETUser(c *gin.Context) {
 	db, ok := utils.GetDB(c)
 	if !ok {

@@ -19,6 +19,7 @@
 
 import { createRouter, createWebHistory } from 'vue-router';
 import { routes, setupwizardRoutes } from './routes';
+import { useUserStore } from '@/store';
 
 export default (setupwizard: boolean) => {
   if (setupwizard) {
@@ -28,8 +29,10 @@ export default (setupwizard: boolean) => {
     });
   }
 
-  return createRouter({
+  const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: routes(),
   });
+
+  return router;
 };

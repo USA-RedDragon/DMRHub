@@ -110,6 +110,7 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	v1Users.POST("/approve/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserApprove)
 	v1Users.POST("/unsuspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserUnsuspend)
 	v1Users.POST("/suspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserSuspend)
+	v1Users.GET("/:id/profile", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserProfile)
 	v1Users.GET("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.GETUser)
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.PATCHUser)
 	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.DELETEUser)
@@ -128,9 +129,9 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 	// Paginated
 	v1Lastheard.GET("", v1LastheardControllers.GETLastheard)
 	// Paginated
-	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardUser)
+	v1Lastheard.GET("/user/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardUser)
 	// Paginated
-	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
+	v1Lastheard.GET("/repeater/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardTalkgroup)
 

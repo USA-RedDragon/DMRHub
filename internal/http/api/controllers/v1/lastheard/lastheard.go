@@ -26,7 +26,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,47 +38,23 @@ func GETLastheard(c *gin.Context) {
 	if !ok {
 		return
 	}
-	session := sessions.Default(c)
-	userID := session.Get("user_id")
 	var calls []models.Call
 	var count int
-	if userID == nil {
-		// This is okay, we just query the latest public calls
-		var err error
-		calls, err = models.FindCalls(db)
-		if err != nil {
-			slog.Error("Unable to find calls", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-			return
-		}
-		count, err = models.CountCalls(cDb)
-		if err != nil {
-			slog.Error("Unable to count calls", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-			return
-		}
-	} else {
-		// Get the last calls for the user
-		uid, ok := userID.(uint)
-		if !ok {
-			slog.Error("Unable to convert user_id to uint")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-			return
-		}
-		var err error
-		calls, err = models.FindUserCalls(db, uid)
-		if err != nil {
-			slog.Error("Unable to find user calls", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-			return
-		}
-		count, err = models.CountUserCalls(cDb, uid)
-		if err != nil {
-			slog.Error("Unable to count user calls", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
-			return
-		}
+
+	var err error
+	calls, err = models.FindCalls(db)
+	if err != nil {
+		slog.Error("Unable to find calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
 	}
+	count, err = models.CountCalls(cDb)
+	if err != nil {
+		slog.Error("Unable to count calls", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		return
+	}
+
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
 	} else {

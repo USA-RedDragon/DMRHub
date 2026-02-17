@@ -85,13 +85,13 @@ func v1(group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
 
 	v1Talkgroups := group.Group("/talkgroups")
 	// Paginated
-	v1Talkgroups.GET("", middleware.RequireLogin(), userSuspension, v1TalkgroupsControllers.GETTalkgroups)
+	v1Talkgroups.GET("", v1TalkgroupsControllers.GETTalkgroups)
 	// Paginated
 	v1Talkgroups.GET("/my", middleware.RequireLogin(), userSuspension, v1TalkgroupsControllers.GETMyTalkgroups)
 	v1Talkgroups.POST("", middleware.RequireAdmin(), userSuspension, v1TalkgroupsControllers.POSTTalkgroup)
 	v1Talkgroups.POST("/:id/admins", middleware.RequireAdmin(), userSuspension, v1TalkgroupsControllers.POSTTalkgroupAdmins)
 	v1Talkgroups.POST("/:id/ncos", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.POSTTalkgroupNCOs)
-	v1Talkgroups.GET("/:id", middleware.RequireLogin(), userSuspension, v1TalkgroupsControllers.GETTalkgroup)
+	v1Talkgroups.GET("/:id", v1TalkgroupsControllers.GETTalkgroup)
 	v1Talkgroups.PATCH("/:id", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.PATCHTalkgroup)
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), userSuspension, v1TalkgroupsControllers.DELETETalkgroup)
 

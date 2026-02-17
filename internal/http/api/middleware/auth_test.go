@@ -210,7 +210,7 @@ func TestSuspendedUserBlocked(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users", nil)
 	assert.NoError(t, err)
 	for _, cookie := range userJar.Cookies() {
 		req.Header.Add("Cookie", cookie.String())
@@ -357,7 +357,7 @@ func TestSuspendedUserLockoutDeletedUserBlocked(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users", nil)
 	assert.NoError(t, err)
 	for _, cookie := range userJar.Cookies() {
 		req.Header.Add("Cookie", cookie.String())

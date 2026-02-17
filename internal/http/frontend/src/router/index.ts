@@ -19,7 +19,6 @@
 
 import { createRouter, createWebHistory } from 'vue-router';
 import { routes, setupwizardRoutes } from './routes';
-import { useUserStore } from '@/store';
 
 export default (setupwizard: boolean) => {
   if (setupwizard) {

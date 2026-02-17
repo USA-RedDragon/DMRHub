@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted } from 'vue';
 import { RouterView } from 'vue-router';
 import { useHead } from '@unhead/vue';
 import { Toaster } from '@/components/ui/toast';
@@ -41,7 +41,6 @@ import API from '@/services/API';
 import { useUserStore } from '@/store';
 
 const userStore = useUserStore();
-let refresh = 0;
 
 useHead({
   titleTemplate: `%s | ${localStorage.getItem('title') || 'DMRHub'}`,
@@ -71,13 +70,6 @@ const fetchData = () => {
 
 onMounted(() => {
   fetchData();
-  refresh = window.setInterval(fetchData, 5000);
-});
-
-onUnmounted(() => {
-  if (refresh !== 0) {
-    clearInterval(refresh);
-  }
 });
 </script>
 

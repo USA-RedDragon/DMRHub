@@ -77,7 +77,21 @@
               Repeaters
             </router-link>
 
-            <!-- Talkgroups section -->
+            <!-- Talkgroups link (anon) -->
+            <template v-if="!userStore.loggedIn">
+              <Separator class="my-1" />
+              <router-link
+                to="/talkgroups"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/talkgroups' }"
+                @click="mobileOpen = false"
+              >
+                <MessageSquare class="h-4 w-4" />
+                Talkgroups
+              </router-link>
+            </template>
+
+            <!-- Talkgroups section (logged in) -->
             <template v-if="userStore.loggedIn">
               <Separator class="my-1" />
               <span class="px-3 py-1 text-xs font-medium text-muted-foreground">Talkgroups</span>
@@ -232,7 +246,17 @@
           Repeaters
         </router-link>
 
-        <!-- Talkgroups dropdown -->
+        <!-- Talkgroups link (anon) -->
+        <router-link
+          v-if="!userStore.loggedIn"
+          to="/talkgroups"
+          class="desktop-nav-link"
+          :class="{ active: route.path === '/talkgroups' }"
+        >
+          Talkgroups
+        </router-link>
+
+        <!-- Talkgroups dropdown (logged in) -->
         <div
           v-if="userStore.loggedIn"
           class="relative"

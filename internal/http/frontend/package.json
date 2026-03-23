@@ -40,7 +40,7 @@
     "vue-router": "5.0.2"
   },
   "devDependencies": {
-    "@cypress/code-coverage": "4.0.0",
+    "@cypress/code-coverage": "4.0.3",
     "@eslint/js": "9.39.2",
     "@tailwindcss/vite": "4.1.18",
     "@tsconfig/node22": "22.0.5",

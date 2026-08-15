@@ -8,7 +8,7 @@ require (
 	github.com/USA-RedDragon/dmrgo v0.0.1
 	github.com/biter777/countries v1.7.5
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
-	github.com/emersion/go-smtp v0.24.0
+	github.com/emersion/go-smtp v0.25.0
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-contrib/pprof v1.5.3
 	github.com/gin-contrib/sessions v1.0.4

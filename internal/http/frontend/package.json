@@ -48,7 +48,7 @@
     "@unhead/vue": "2.1.4",
     "@vitejs/plugin-vue": "6.0.4",
     "@vitest/coverage-v8": "4.0.18",
-    "@vitest/eslint-plugin": "1.6.9",
+    "@vitest/eslint-plugin": "1.6.27",
     "@vitest/ui": "4.0.18",
     "@vue/eslint-config-prettier": "10.2.0",
     "@vue/eslint-config-typescript": "14.7.0",

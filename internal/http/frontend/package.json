@@ -45,7 +45,7 @@
     "@tailwindcss/vite": "4.1.18",
     "@tsconfig/node22": "22.0.5",
     "@types/jsdom": "27.0.0",
-    "@unhead/vue": "2.1.4",
+    "@unhead/vue": "3.4.0",
     "@vitejs/plugin-vue": "6.0.4",
     "@vitest/coverage-v8": "4.0.18",
     "@vitest/eslint-plugin": "1.6.9",

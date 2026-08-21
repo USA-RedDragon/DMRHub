@@ -54,7 +54,7 @@
     "@vue/eslint-config-typescript": "14.7.0",
     "@vue/test-utils": "2.4.6",
     "@vue/tsconfig": "0.8.1",
-    "cypress": "15.10.0",
+    "cypress": "15.21.0",
     "cypress-mochawesome-reporter": "4.0.2",
     "cypress-multi-reporters": "2.0.5",
     "cypress-wait-for-stable-dom": "0.1.0",

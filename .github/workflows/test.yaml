@@ -217,7 +217,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+      - uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -429,7 +429,7 @@ jobs:
         run: |
           env CGO_ENABLED=0 go test -v ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic
 
-      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+      - uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

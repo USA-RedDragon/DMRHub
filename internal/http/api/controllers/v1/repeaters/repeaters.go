@@ -39,6 +39,16 @@ import (
 )
 
 const (
+	errorKey              = "error"
+	msgAuthFailed         = "Authentication failed"
+	msgTryAgainLater      = "Try again later"
+	msgErrGettingRepeater = "Error getting repeater"
+	messageKey            = "message"
+	msgInvalidJSON        = "JSON data is invalid"
+	msgErrSavingRepeater  = "Error saving repeater"
+)
+
+const (
 	LinkTypeDynamic = "dynamic"
 	LinkTypeStatic  = "static"
 )
@@ -62,14 +72,14 @@ func GETRepeaters(c *gin.Context) {
 	repeaters, err := models.ListRepeaters(db)
 	if err != nil {
 		slog.Error("Error getting repeaters", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters"})
 		return
 	}
 
 	count, err := models.CountRepeaters(cDb)
 	if err != nil {
 		slog.Error("Error getting repeaters", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters"})
 		return
 	}
 
@@ -90,14 +100,14 @@ func GETMyRepeaters(c *gin.Context) {
 	userID := session.Get("user_id")
 	if userID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
 		slog.Error("Unable to convert userID to uint", "function", "GETMyRepeaters", "userID", userID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -105,14 +115,14 @@ func GETMyRepeaters(c *gin.Context) {
 	repeaters, err := models.GetUserRepeaters(db, uid)
 	if err != nil {
 		slog.Error("Error getting repeaters owned by user", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters owned by user"})
 		return
 	}
 
 	count, err := models.CountUserRepeaters(cDb, uid)
 	if err != nil {
 		slog.Error("Error getting repeaters owned by user", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeaters owned by user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters owned by user"})
 		return
 	}
 
@@ -128,7 +138,7 @@ func GETRepeater(c *gin.Context) {
 	// Validate repeater ID
 	repeaterID, err := validateRepeaterID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
@@ -136,10 +146,10 @@ func GETRepeater(c *gin.Context) {
 	repeater, err := validateAndFetchRepeater(db, repeaterID)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating repeater", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeater})
 		}
 		return
 	}
@@ -156,17 +166,17 @@ func DELETERepeater(c *gin.Context) {
 	// Validate repeater ID
 	repeaterID, err := validateRepeaterID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
 	err = models.DeleteRepeater(db, repeaterID)
 	if err != nil {
 		slog.Error("Error deleting repeater", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting repeater"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting repeater"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Repeater deleted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater deleted"})
 }
 
 func POSTRepeaterTalkgroups(c *gin.Context) {
@@ -178,15 +188,15 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	// Validate repeater ID
 	repeaterID, err := validateRepeaterID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
 	var json apimodels.RepeaterTalkgroupsPost
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTRepeaterTalkgroups", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "POSTRepeaterTalkgroups", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
 
@@ -194,10 +204,10 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	repeater, err := validateAndFetchRepeater(db, repeaterID)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating repeater", "function", "POSTRepeaterTalkgroups", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeater})
 		}
 		return
 	}
@@ -205,14 +215,14 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	err = db.Model(repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 	if err != nil {
 		slog.Error("Error updating TS1StaticTalkgroups", "function", "POSTRepeaterTalkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1StaticTalkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating TS1StaticTalkgroups"})
 		return
 	}
 	repeater.TS1StaticTalkgroups = json.TS1StaticTalkgroups
 	err = db.Model(repeater).Association("TS2StaticTalkgroups").Replace(json.TS2StaticTalkgroups)
 	if err != nil {
 		slog.Error("Error updating TS2StaticTalkgroups", "function", "POSTRepeaterTalkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2StaticTalkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating TS2StaticTalkgroups"})
 		return
 	}
 	repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
@@ -222,7 +232,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		err = db.Model(repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
 		if err != nil {
 			slog.Error("Error deleting TS1DynamicTalkgroup", "function", "POSTRepeaterTalkgroups", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS1DynamicTalkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting TS1DynamicTalkgroup"})
 			return
 		}
 	} else {
@@ -231,7 +241,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		err = db.Model(repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
 		if err != nil {
 			slog.Error("Error updating TS1DynamicTalkgroup", "function", "POSTRepeaterTalkgroups", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS1DynamicTalkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating TS1DynamicTalkgroup"})
 			return
 		}
 	}
@@ -241,7 +251,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		err = db.Model(repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
 		if err != nil {
 			slog.Error("Error deleting TS2DynamicTalkgroup", "function", "POSTRepeaterTalkgroups", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting TS2DynamicTalkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting TS2DynamicTalkgroup"})
 			return
 		}
 	} else {
@@ -250,25 +260,25 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		err = db.Model(repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)
 		if err != nil {
 			slog.Error("Error updating TS2DynamicTalkgroup", "function", "POSTRepeaterTalkgroups", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating TS2DynamicTalkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating TS2DynamicTalkgroup"})
 			return
 		}
 	}
 
 	err = db.Save(repeater).Error
 	if err != nil {
-		slog.Error("Error saving repeater", "function", "POSTRepeaterTalkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
+		slog.Error(msgErrSavingRepeater, "function", "POSTRepeaterTalkgroups", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
 		return
 	}
 	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 	if !ok {
 		slog.Error("Hub cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "Repeater talkgroups updated"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater talkgroups updated"})
 }
 
 //nolint:gocyclo
@@ -277,38 +287,38 @@ func POSTRepeater(c *gin.Context) {
 	usID := session.Get("user_id")
 	if usID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 	userID, ok := usID.(uint)
 	if !ok {
 		slog.Error("userID cast failed")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 	db, ok := utils.GetDB(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	config, ok := utils.GetConfig(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
 	user, err := models.FindUserByID(db, userID)
 	if err != nil {
 		slog.Error("Error getting user", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting user"})
 		return
 	}
 
 	var json apimodels.RepeaterPost
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTRepeater", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "POSTRepeater", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	} else {
 		// Default type to MMDVM if not specified
@@ -316,11 +326,11 @@ func POSTRepeater(c *gin.Context) {
 			json.Type = models.RepeaterTypeMMDVM
 		}
 		if json.Type != models.RepeaterTypeMMDVM && json.Type != models.RepeaterTypeIPSC {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repeater type"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid repeater type"})
 			return
 		}
 		if json.Type == models.RepeaterTypeIPSC && !config.DMR.IPSC.Enabled {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "IPSC is not enabled on this server"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "IPSC is not enabled on this server"})
 			return
 		}
 
@@ -338,7 +348,7 @@ func POSTRepeater(c *gin.Context) {
 			repeater.Password, err = utils.RandomHexString(ipscKeyLen)
 			if err != nil {
 				slog.Error("Failed to generate an IPSC auth key", "error", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate an IPSC auth key"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate an IPSC auth key"})
 				return
 			}
 
@@ -350,7 +360,7 @@ func POSTRepeater(c *gin.Context) {
 			repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 			if err != nil {
 				slog.Error("Failed to generate a repeater password", "error", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a repeater password"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate a repeater password"})
 				return
 			}
 		}
@@ -359,24 +369,24 @@ func POSTRepeater(c *gin.Context) {
 		case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			if !config.DMR.DisableRadioIDValidation {
 				if !repeaterdb.IsValidRepeaterID(json.RadioID) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID is not valid"})
+					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Repeater ID is not valid"})
 					return
 				}
 				if !repeaterdb.ValidRepeaterCallsign(json.RadioID, user.Callsign) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Repeater ID does not match assigned callsign"})
+					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Repeater ID does not match assigned callsign"})
 					return
 				}
 
 				r, ok := repeaterdb.Get(json.RadioID)
 				if !ok {
 					slog.Error("Error getting repeater from database")
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater from database"})
+					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeater from database"})
 					return
 				}
 				repeater.Callsign = r.Callsign
 				if r.ColorCode > 255 {
 					slog.Error("Color code out of range for uint8", "colorCode", r.ColorCode)
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Color code out of range"})
+					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Color code out of range"})
 					return
 				}
 				repeater.ColorCode = uint8(r.ColorCode)
@@ -388,7 +398,7 @@ func POSTRepeater(c *gin.Context) {
 				mhZFloat, parseErr := strconv.ParseFloat(r.Frequency, 32)
 				if parseErr != nil {
 					slog.Error("Error converting frequency to float", "error", parseErr)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting frequency to float"})
+					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error converting frequency to float"})
 					return
 				}
 				const mHzToHz = 1000000
@@ -407,7 +417,7 @@ func POSTRepeater(c *gin.Context) {
 				offsetFloat, parseErr := strconv.ParseFloat(r.Offset, 32)
 				if parseErr != nil {
 					slog.Error("Error converting offset to float", "offset", r.Offset, "error", parseErr)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error converting offset to float"})
+					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error converting offset to float"})
 					return
 				}
 				// convert the offset to an int in Hz
@@ -423,27 +433,27 @@ func POSTRepeater(c *gin.Context) {
 				// check that first 7 digits of hotspot ID match userID
 				userIDStr := fmt.Sprintf("%d", userID)
 				if !strings.HasPrefix(fmt.Sprintf("%d", json.RadioID), userIDStr) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Hotspot ID must start with user ID"})
+					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Hotspot ID must start with user ID"})
 					return
 				}
 			}
 			repeater.Callsign = user.Callsign
 		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "RadioID is invalid"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "RadioID is invalid"})
 			return
 		}
 
 		err := db.Preload("Owner").Create(&repeater).Error
 		if err != nil {
 			slog.Error("Error creating repeater", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating repeater"})
 			return
 		}
 		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 		if ok {
 			go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Repeater created", "password": repeater.Password})
+		c.JSON(http.StatusOK, gin.H{messageKey: "Repeater created", "password": repeater.Password})
 	}
 }
 
@@ -458,25 +468,25 @@ func POSTRepeaterLink(c *gin.Context) {
 
 	// Validate link type and slot
 	if linkType != LinkTypeDynamic && linkType != LinkTypeStatic {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid link type"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid link type"})
 		return
 	}
 	if slot != "1" && slot != "2" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid slot"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid slot"})
 		return
 	}
 
 	// Validate repeater ID
 	repeaterID, err := validateRepeaterID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
 	// Validate talkgroup ID
 	talkgroupID, err := validateTalkgroupID(c.Param("target"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
@@ -484,10 +494,10 @@ func POSTRepeaterLink(c *gin.Context) {
 	repeater, err := validateAndFetchRepeater(db, repeaterID)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating repeater", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error finding repeater"})
 		}
 		return
 	}
@@ -496,10 +506,10 @@ func POSTRepeaterLink(c *gin.Context) {
 	talkgroup, err := validateAndFetchTalkgroup(db, talkgroupID)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error finding talkgroup"})
 		}
 		return
 	}
@@ -523,7 +533,7 @@ func POSTRepeaterLink(c *gin.Context) {
 			err := db.Model(repeater).Association("TS1StaticTalkgroups").Append(talkgroup)
 			if err != nil {
 				slog.Error("Error appending TS1StaticTalkgroups", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS1StaticTalkgroups"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error appending TS1StaticTalkgroups"})
 				return
 			}
 		case "2":
@@ -531,15 +541,15 @@ func POSTRepeaterLink(c *gin.Context) {
 			err := db.Model(repeater).Association("TS2StaticTalkgroups").Append(talkgroup)
 			if err != nil {
 				slog.Error("Error appending TS2StaticTalkgroups", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending TS2StaticTalkgroups"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error appending TS2StaticTalkgroups"})
 				return
 			}
 		}
 	}
 	err = db.Save(repeater).Error
 	if err != nil {
-		slog.Error("Error saving repeater", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
+		slog.Error(msgErrSavingRepeater, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
 		return
 	}
 	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
@@ -724,7 +734,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	// Validate parameters
 	params, err := validateUnlinkParams(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
@@ -732,10 +742,10 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	repeater, talkgroup, err := validateAndFetchEntities(db, params)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating entities", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error validating entities"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error validating entities"})
 		}
 		return
 	}
@@ -744,7 +754,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 	if !ok {
 		slog.Error("Hub cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	switch params.linkType {
@@ -756,16 +766,16 @@ func POSTRepeaterUnlink(c *gin.Context) {
 
 	if err != nil {
 		if strings.Contains(err.Error(), "not linked") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error unlinking talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
 		}
 		return
 	}
 
 	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "Timeslot unlinked"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Timeslot unlinked"})
 }
 
 func PATCHRepeater(c *gin.Context) {
@@ -776,25 +786,25 @@ func PATCHRepeater(c *gin.Context) {
 
 	repeaterID, err := validateRepeaterID(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
 	var json apimodels.RepeaterPatch
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "PATCHRepeater", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "PATCHRepeater", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
 
 	repeater, err := validateAndFetchRepeater(db, repeaterID)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		} else {
 			slog.Error("Error validating repeater", "function", "PATCHRepeater", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting repeater"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeater})
 		}
 		return
 	}
@@ -805,17 +815,17 @@ func PATCHRepeater(c *gin.Context) {
 
 	err = db.Save(repeater).Error
 	if err != nil {
-		slog.Error("Error saving repeater", "function", "PATCHRepeater", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving repeater"})
+		slog.Error(msgErrSavingRepeater, "function", "PATCHRepeater", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
 		return
 	}
 
 	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 	if !ok {
 		slog.Error("Hub cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "Repeater updated"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater updated"})
 }

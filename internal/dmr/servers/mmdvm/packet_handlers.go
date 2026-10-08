@@ -266,7 +266,7 @@ func (s *Server) handleRPTKPacket(ctx context.Context, remoteAddr net.UDPAddr, d
 		rxSalt := binary.BigEndian.Uint32(data[8:])
 		// sha256 hash repeater.Salt + the passphrase
 		const bytesIn32Bits = 4
-		saltBytes := make([]byte, bytesIn32Bits)
+		saltBytes := make([]byte, bytesIn32Bits, bytesIn32Bits+len(password))
 		binary.BigEndian.PutUint32(saltBytes, repeater.Salt)
 		hash := sha256.Sum256(append(saltBytes, []byte(password)...))
 		calcedSalt := binary.BigEndian.Uint32(hash[:])

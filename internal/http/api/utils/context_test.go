@@ -37,7 +37,7 @@ func makeTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	return c, w
 }
 

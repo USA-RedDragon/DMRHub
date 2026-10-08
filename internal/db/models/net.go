@@ -26,6 +26,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	colActive  = "active"
+	colEndTime = "end_time"
+)
+
 //go:generate go run github.com/tinylib/msgp
 
 // Net represents a single net check-in session on a talkgroup.
@@ -147,8 +152,8 @@ func EndNet(db *gorm.DB, id uint) error {
 	now := time.Now()
 	result := db.Model(&Net{}).Where("id = ? AND active = ?", id, true).
 		Updates(map[string]interface{}{
-			"active":   false,
-			"end_time": now,
+			colActive:  false,
+			colEndTime: now,
 		})
 	if result.Error != nil {
 		return fmt.Errorf("failed to end net: %w", result.Error)

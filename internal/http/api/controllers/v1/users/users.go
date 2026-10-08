@@ -38,6 +38,19 @@ import (
 	gopwned "github.com/mavjs/goPwned"
 )
 
+const (
+	usersKey          = "users"
+	errorKey          = "error"
+	totalKey          = "total"
+	msgErrGettingUser = "Error getting user"
+	messageKey        = "message"
+	msgInvalidUserID  = "Invalid User ID"
+	msgNotLoggedIn    = "Not logged in"
+	msgErrSavingUser  = "Error saving user"
+	msgUserNotFound   = "User does not exist"
+	msgErrFindingUser = "Error finding user"
+)
+
 func GETUsers(c *gin.Context) {
 	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
@@ -50,17 +63,17 @@ func GETUsers(c *gin.Context) {
 	users, err := models.ListUsers(db)
 	if err != nil {
 		slog.Error("Error getting users", "function", "GETUsers", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting users"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting users"})
 		return
 	}
 
 	total, err := models.CountUsers(cDb)
 	if err != nil {
 		slog.Error("Error getting user count", "function", "GETUsers", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user count"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting user count"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"total": total, "users": users})
+	c.JSON(http.StatusOK, gin.H{totalKey: total, usersKey: users})
 }
 
 // POSTUser is used to register a new user.
@@ -78,28 +91,28 @@ func POSTUser(c *gin.Context) {
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
 	} else {
 		if !config.DMR.DisableRadioIDValidation {
 			if !userdb.IsValidUserID(json.DMRId) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is not valid"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
 				return
 			}
 			if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
 				return
 			}
 		}
 
 		isValid, errString := json.IsValidUsername()
 		if !isValid {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errString})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: errString})
 			return
 		}
 
 		// Check that password isn't a zero string
 		if json.Password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password cannot be blank"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
 			return
 		}
 
@@ -107,23 +120,23 @@ func POSTUser(c *gin.Context) {
 		var user models.User
 		err := db.Find(&user, "username = ?", json.Username).Error
 		if err != nil {
-			slog.Error("Error getting user", "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 			return
 		} else if user.ID != 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
 			return
 		}
 
 		// Check if the DMR ID is already taken
 		exists, err := models.UserIDExists(db, json.DMRId)
 		if err != nil {
-			slog.Error("Error getting user", "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 			return
 		}
 		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "DMR ID is already registered"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is already registered"})
 			return
 		}
 
@@ -138,11 +151,11 @@ func POSTUser(c *gin.Context) {
 			if err != nil {
 				// If the error message starts with "Too many requests", then tell the user to retry in one minute
 				if strings.HasPrefix(err.Error(), "Too many requests") {
-					c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests. Please try again in one minute"})
+					c.JSON(http.StatusTooManyRequests, gin.H{errorKey: "Too many requests. Please try again in one minute"})
 					return
 				}
 				slog.Error("Error getting pwned passwords", "function", "POSTUser", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting pwned passwords"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting pwned passwords"})
 				return
 			}
 			strKArray := string(karray)
@@ -156,7 +169,7 @@ func POSTUser(c *gin.Context) {
 				count, err := strconv.ParseInt(strArray[1], 0, 32)
 				if err != nil {
 					slog.Error("Error parsing pwned password count", "function", "POSTUser", "error", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error parsing pwned password count"})
+					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error parsing pwned password count"})
 					return
 				}
 				if test == lrange {
@@ -164,7 +177,7 @@ func POSTUser(c *gin.Context) {
 				}
 			}
 			if result > 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Password has been reported in a data breach. Please use another one"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password has been reported in a data breach. Please use another one"})
 				return
 			}
 		}
@@ -173,7 +186,7 @@ func POSTUser(c *gin.Context) {
 		hashedPassword, err := utils.HashPassword(json.Password, config.PasswordSalt)
 		if err != nil {
 			slog.Error("Error hashing password", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
 			return
 		}
 
@@ -189,10 +202,10 @@ func POSTUser(c *gin.Context) {
 		err = db.Create(&user).Error
 		if err != nil {
 			slog.Error("Error creating user", "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "User created, please wait for admin approval"})
+		c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(
 				config,
@@ -223,36 +236,36 @@ func POSTUserDemote(c *gin.Context) {
 
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	session := sessions.Default(c)
 	fromUserID, ok := session.Get("user_id").(uint)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgNotLoggedIn})
 		return
 	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot demote yourself"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot demote yourself"})
 		return
 	}
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error getting user", "function", "POSTUserDemote", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		slog.Error(msgErrGettingUser, "function", "POSTUserDemote", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 		return
 	}
 
 	user.Admin = false
 	err = db.Save(&user).Error
 	if err != nil {
-		slog.Error("Error saving user", "function", "POSTUserDemote", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
+		slog.Error(msgErrSavingUser, "function", "POSTUserDemote", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User demoted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User demoted"})
 
 	if config.SMTP.Enabled {
 		err = smtp.SendToAdmins(
@@ -281,39 +294,39 @@ func POSTUserPromote(c *gin.Context) {
 	id := c.Param("id")
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	if idInt < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID: negative value"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid User ID: negative value"})
 		return
 	}
 
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(idInt))
 	if err != nil {
-		slog.Error("Error getting user", "function", "POSTUserPromote", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		slog.Error(msgErrGettingUser, "function", "POSTUserPromote", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 		return
 	}
 	if user.ID == dmrconst.ParrotUser {
 		// Prevent promoting the Parrot user
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot promote the Parrot user"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot promote the Parrot user"})
 		return
 	}
 	if !user.Approved {
 		// Prevent promoting an unapproved user
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot promote an unapproved user"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot promote an unapproved user"})
 		return
 	}
 	user.Admin = true
 	err = db.Save(&user).Error
 	if err != nil {
-		slog.Error("Error saving user", "function", "POSTUserPromote", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
+		slog.Error(msgErrSavingUser, "function", "POSTUserPromote", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User promoted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User promoted"})
 
 	if config.SMTP.Enabled {
 		err = smtp.SendToAdmins(
@@ -337,37 +350,37 @@ func POSTUserUnsuspend(c *gin.Context) {
 
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	session := sessions.Default(c)
 	fromUserID, ok := session.Get("user_id").(uint)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgNotLoggedIn})
 		return
 	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot unsuspend yourself"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot unsuspend yourself"})
 		return
 	}
 
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error getting user", "function", "POSTUserUnsuspend", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		slog.Error(msgErrGettingUser, "function", "POSTUserUnsuspend", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 		return
 	}
 
 	user.Suspended = false
 	err = db.Save(&user).Error
 	if err != nil {
-		slog.Error("Error saving user", "function", "POSTUserUnsuspend", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
+		slog.Error(msgErrSavingUser, "function", "POSTUserUnsuspend", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User unsuspended"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User unsuspended"})
 }
 
 func POSTUserApprove(c *gin.Context) {
@@ -379,37 +392,37 @@ func POSTUserApprove(c *gin.Context) {
 
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	session := sessions.Default(c)
 	fromUserID, ok := session.Get("user_id").(uint)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not logged in"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgNotLoggedIn})
 		return
 	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot approve yourself"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot approve yourself"})
 		return
 	}
 
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error getting user", "function", "POSTUserApprove", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+		slog.Error(msgErrGettingUser, "function", "POSTUserApprove", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 		return
 	}
 
 	user.Approved = true
 	err = db.Save(&user).Error
 	if err != nil {
-		slog.Error("Error saving user", "function", "POSTUserApprove", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
+		slog.Error(msgErrSavingUser, "function", "POSTUserApprove", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User approved"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User approved"})
 }
 
 // userProfileResponse is the public-safe view of a user profile.
@@ -431,13 +444,13 @@ func GETUserProfile(c *gin.Context) {
 	id := c.Param("id")
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgUserNotFound})
 		return
 	}
 	c.JSON(http.StatusOK, userProfileResponse{
@@ -459,13 +472,13 @@ func GETUser(c *gin.Context) {
 	// Convert string id into uint
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgUserNotFound})
 		return
 	}
 	c.JSON(http.StatusOK, user)
@@ -484,18 +497,18 @@ func GETUserAdmins(c *gin.Context) {
 	users, err := models.FindUserAdmins(db)
 	if err != nil {
 		slog.Error("Error finding users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Admins not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Admins not found"})
 		return
 	}
 
 	total, err := models.CountUserAdmins(cDb)
 	if err != nil {
 		slog.Error("Error counting users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Admins not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Admins not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	c.JSON(http.StatusOK, gin.H{usersKey: users, totalKey: total})
 }
 
 func GETUserSuspended(c *gin.Context) {
@@ -511,17 +524,17 @@ func GETUserSuspended(c *gin.Context) {
 	users, err := models.FindUserSuspended(db)
 	if err != nil {
 		slog.Error("Error finding users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Suspended users not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Suspended users not found"})
 		return
 	}
 	total, err := models.CountUserSuspended(cDb)
 	if err != nil {
 		slog.Error("Error counting users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Suspended users not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Suspended users not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	c.JSON(http.StatusOK, gin.H{usersKey: users, totalKey: total})
 }
 
 func GETUserUnapproved(c *gin.Context) {
@@ -537,18 +550,18 @@ func GETUserUnapproved(c *gin.Context) {
 	users, err := models.FindUserUnapproved(db)
 	if err != nil {
 		slog.Error("Error finding users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unapproved users not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Unapproved users not found"})
 		return
 	}
 
 	total, err := models.CountUserUnapproved(cDb)
 	if err != nil {
 		slog.Error("Error counting users", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unapproved users not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Unapproved users not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	c.JSON(http.StatusOK, gin.H{usersKey: users, totalKey: total})
 }
 
 func PATCHUser(c *gin.Context) {
@@ -563,19 +576,19 @@ func PATCHUser(c *gin.Context) {
 	id := c.Param("id")
 	idInt, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	var json apimodels.UserPatch
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
 		slog.Error("JSON data is invalid", "function", "PATCHUser", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
 	} else {
 		user, err := models.FindUserByID(db, uint(idInt))
 		if err != nil {
-			slog.Error("Error finding user", "error", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+			slog.Error(msgErrFindingUser, "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: msgUserNotFound})
 			return
 		}
 
@@ -584,7 +597,7 @@ func PATCHUser(c *gin.Context) {
 			if userdb.ValidUserCallsign(user.ID, json.Callsign) {
 				user.Callsign = strings.ToUpper(json.Callsign)
 			} else {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Callsign does not match DMR ID"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
 				return
 			}
 		}
@@ -594,11 +607,11 @@ func PATCHUser(c *gin.Context) {
 			var existingUser models.User
 			err := db.Find(&existingUser, "username = ?", json.Username).Error
 			if err != nil {
-				slog.Error("Error finding user", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
+				slog.Error(msgErrFindingUser, "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 				return
 			} else if existingUser.ID != 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Username is already taken"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
 				return
 			}
 			user.Username = json.Username
@@ -608,7 +621,7 @@ func PATCHUser(c *gin.Context) {
 			hashedPassword, hashErr := utils.HashPassword(json.Password, config.PasswordSalt)
 			if hashErr != nil {
 				slog.Error("Error hashing password", "error", hashErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
 				return
 			}
 			user.Password = hashedPassword
@@ -617,10 +630,10 @@ func PATCHUser(c *gin.Context) {
 		err = db.Save(&user).Error
 		if err != nil {
 			slog.Error("Error updating user", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating user"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "User updated"})
+		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
 }
 
@@ -631,28 +644,28 @@ func DELETEUser(c *gin.Context) {
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid user ID"})
 		return
 	}
 
 	exists, err := models.UserIDExists(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error checking if user exists", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if user exists"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error checking if user exists"})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User does not exist"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgUserNotFound})
 		return
 	}
 
 	err = models.DeleteUser(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting user"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User deleted"})
 }
 
 func POSTUserSuspend(c *gin.Context) {
@@ -664,47 +677,47 @@ func POSTUserSuspend(c *gin.Context) {
 
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
 		return
 	}
 	session := sessions.Default(c)
 	fromUserID, ok := session.Get("user_id").(uint)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 	if uint(userID) == fromUserID {
 		// don't allow a user to demote themselves
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend yourself"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot suspend yourself"})
 		return
 	}
 
 	// Grab the user from the database
 	user, err := models.FindUserByID(db, uint(userID))
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
 
 	if user.Admin || user.SuperAdmin {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend an admin"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot suspend an admin"})
 		return
 	}
 
 	if user.ID == dmrconst.ParrotUser {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "You cannot suspend the Parrot user"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot suspend the Parrot user"})
 		return
 	}
 
 	user.Suspended = true
 	err = db.Save(&user).Error
 	if err != nil {
-		slog.Error("Error saving user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving user"})
+		slog.Error(msgErrSavingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User suspended"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User suspended"})
 }
 
 func GETUserSelf(c *gin.Context) {
@@ -717,21 +730,21 @@ func GETUserSelf(c *gin.Context) {
 	userID := session.Get("user_id")
 	if userID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
 		slog.Error("userID cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 
 	user, err := models.FindUserByID(db, uid)
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
 	c.JSON(http.StatusOK, user)

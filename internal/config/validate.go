@@ -24,6 +24,22 @@ import (
 	"net/url"
 )
 
+const (
+	fieldRedisPort         = "redis.port"
+	fieldDatabasePort      = "database.port"
+	fieldHTTPPort          = "http.port"
+	fieldDMRMMDVMPort      = "dmr.mmdvm.port"
+	fieldDMROpenBridgePort = "dmr.openbridge.port"
+	fieldDMRIPSCPort       = "dmr.ipsc.port"
+	fieldDMRIPSCNetworkID  = "dmr.ipsc.network-id"
+	fieldSMTPPort          = "smtp.port"
+	fieldMetricsPort       = "metrics.port"
+	fieldPProfPort         = "pprof.port"
+	fieldLogLevel          = "log-level"
+	fieldSecret            = "secret"
+	fieldPasswordSalt      = "password-salt"
+)
+
 // isValidURL checks that s is a parseable URL with both a scheme and host.
 func isValidURL(s string) bool {
 	u, err := url.Parse(s)
@@ -122,7 +138,7 @@ func (r Redis) ValidateWithFields() (errs []ValidationError) {
 	}
 	if r.Port <= 0 || r.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "redis.port",
+			Field: fieldRedisPort,
 			Err:   ErrInvalidRedisPort,
 		})
 	}
@@ -154,7 +170,7 @@ func (d Database) ValidateWithFields() (errs []ValidationError) {
 
 	if d.Driver != DatabaseDriverSQLite && (d.Port <= 0 || d.Port > 65535) {
 		errs = append(errs, ValidationError{
-			Field: "database.port",
+			Field: fieldDatabasePort,
 			Err:   ErrInvalidDatabasePort,
 		})
 	}
@@ -209,7 +225,7 @@ func (h HTTP) ValidateWithFields() (errs []ValidationError) {
 
 	if h.Port <= 0 || h.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "http.port",
+			Field: fieldHTTPPort,
 			Err:   ErrInvalidHTTPPort,
 		})
 	}
@@ -243,7 +259,7 @@ func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 
 	if h.Port <= 0 || h.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "dmr.mmdvm.port",
+			Field: fieldDMRMMDVMPort,
 			Err:   ErrInvalidDMRMMDVMPort,
 		})
 	}
@@ -269,7 +285,7 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 	}
 	if o.Port <= 0 || o.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "dmr.openbridge.port",
+			Field: fieldDMROpenBridgePort,
 			Err:   ErrInvalidDMROpenBridgePort,
 		})
 	}
@@ -294,13 +310,13 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 	}
 	if o.Port <= 0 || o.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "dmr.ipsc.port",
+			Field: fieldDMRIPSCPort,
 			Err:   ErrInvalidIPSCPort,
 		})
 	}
 	if o.NetworkID == 0 {
 		errs = append(errs, ValidationError{
-			Field: "dmr.ipsc.network-id",
+			Field: fieldDMRIPSCNetworkID,
 			Err:   ErrInvalidIPSCNetworkID,
 		})
 	}
@@ -361,7 +377,7 @@ func (s SMTP) ValidateWithFields() (errs []ValidationError) {
 	}
 	if s.Port <= 0 || s.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "smtp.port",
+			Field: fieldSMTPPort,
 			Err:   ErrInvalidSMTPPort,
 		})
 	}
@@ -421,7 +437,7 @@ func (m Metrics) ValidateWithFields() (errs []ValidationError) {
 	}
 	if m.Port <= 0 || m.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "metrics.port",
+			Field: fieldMetricsPort,
 			Err:   ErrInvalidMetricsPort,
 		})
 	}
@@ -447,7 +463,7 @@ func (p PProf) ValidateWithFields() (errs []ValidationError) {
 	}
 	if p.Port <= 0 || p.Port > 65535 {
 		errs = append(errs, ValidationError{
-			Field: "pprof.port",
+			Field: fieldPProfPort,
 			Err:   ErrInvalidPProfPort,
 		})
 	}
@@ -479,21 +495,21 @@ func (c Config) ValidateWithFields() (errs []ValidationError) {
 		c.LogLevel != LogLevelWarn &&
 		c.LogLevel != LogLevelError {
 		errs = append(errs, ValidationError{
-			Field: "log-level",
+			Field: fieldLogLevel,
 			Err:   ErrInvalidLogLevel,
 		})
 	}
 
 	if c.Secret == "" {
 		errs = append(errs, ValidationError{
-			Field: "secret",
+			Field: fieldSecret,
 			Err:   ErrSecretRequired,
 		})
 	}
 
 	if c.PasswordSalt == "" {
 		errs = append(errs, ValidationError{
-			Field: "password-salt",
+			Field: fieldPasswordSalt,
 			Err:   ErrPasswordSaltRequired,
 		})
 	}

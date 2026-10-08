@@ -29,12 +29,12 @@ func MakeDB() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		config, ok := c.MustGet("Config").(*config.Config)
 		if !ok {
-			c.AbortWithStatusJSON(500, gin.H{"error": "Unable to get DB config from context"})
+			c.AbortWithStatusJSON(500, gin.H{errorKey: "Unable to get DB config from context"})
 			return
 		}
 		db, err := db.MakeDB(config)
 		if err != nil {
-			c.AbortWithStatusJSON(500, gin.H{"error": "Unable to connect to database: " + err.Error()})
+			c.AbortWithStatusJSON(500, gin.H{errorKey: "Unable to connect to database: " + err.Error()})
 			return
 		}
 		c.Set("DB", db)

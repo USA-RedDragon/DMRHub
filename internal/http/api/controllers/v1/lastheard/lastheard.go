@@ -29,6 +29,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	errorKey         = "error"
+	totalKey         = "total"
+	msgTryAgainLater = "Try again later"
+	callsKey         = "calls"
+)
+
 func GETLastheard(c *gin.Context) {
 	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
@@ -45,20 +52,20 @@ func GETLastheard(c *gin.Context) {
 	calls, err = models.FindCalls(db)
 	if err != nil {
 		slog.Error("Unable to find calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	count, err = models.CountCalls(cDb)
 	if err != nil {
 		slog.Error("Unable to count calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
 	} else {
-		c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
+		c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
 	}
 }
 
@@ -74,23 +81,23 @@ func GETLastheardUser(c *gin.Context) {
 	id := c.Param("id")
 	userID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid User ID"})
 		return
 	}
 	userID := uint(userID64)
 	calls, err := models.FindUserCalls(db, userID)
 	if err != nil {
 		slog.Error("Unable to find user calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	count, err := models.CountUserCalls(cDb, userID)
 	if err != nil {
 		slog.Error("Unable to count user calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
+	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
 }
 
 func GETLastheardRepeater(c *gin.Context) {
@@ -105,23 +112,23 @@ func GETLastheardRepeater(c *gin.Context) {
 	id := c.Param("id")
 	repeaterID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Repeater ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid Repeater ID"})
 		return
 	}
 	repeaterID := uint(repeaterID64)
 	calls, err := models.FindRepeaterCalls(db, repeaterID)
 	if err != nil {
 		slog.Error("Unable to find repeater calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	count, err := models.CountRepeaterCalls(cDb, repeaterID)
 	if err != nil {
 		slog.Error("Unable to count repeater calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
+	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
@@ -132,21 +139,21 @@ func GETLastheardTalkgroup(c *gin.Context) {
 	id := c.Param("id")
 	talkgroupID64, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid Talkgroup ID"})
 		return
 	}
 	talkgroupID := uint(talkgroupID64)
 	calls, err := models.FindTalkgroupCalls(db, talkgroupID)
 	if err != nil {
 		slog.Error("Unable to find talkgroup calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	count, err := models.CountTalkgroupCalls(db, talkgroupID)
 	if err != nil {
 		slog.Error("Unable to count talkgroup calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"calls": calls, "total": count})
+	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
 }

@@ -30,10 +30,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	errorKey  = "error"
+	errorsKey = "errors"
+)
+
 func PUTConfig(c *gin.Context) {
 	var req apimodels.POSTConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
@@ -47,13 +52,13 @@ func PUTConfig(c *gin.Context) {
 
 	errs := nextCfg.ValidateWithFields()
 	if len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid configuration", "errors": errs})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: errs})
 		return
 	}
 	*currentCfg = *nextCfg
 	if err := currentCfg.Save(); err != nil {
 		slog.Error("Failed to save config", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Failed to save config: " + err.Error()})
 		return
 	}
 
@@ -86,13 +91,13 @@ func GETConfigValidate(c *gin.Context) {
 
 	errs := config.ValidateWithFields()
 
-	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, "errors": formatErrors(errs)})
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
 }
 
 func POSTConfigValidate(c *gin.Context) {
 	var req apimodels.POSTConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 	currentCfg, ok := utils.GetConfig(c)
@@ -105,7 +110,7 @@ func POSTConfigValidate(c *gin.Context) {
 
 	errs := nextCfg.ValidateWithFields()
 
-	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, "errors": formatErrors(errs)})
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
 }
 
 func formatErrors(errs []config.ValidationError) map[string]any {

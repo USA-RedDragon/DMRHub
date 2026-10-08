@@ -54,13 +54,13 @@ func GETScheduledNets(c *gin.Context) {
 	if tgIDStr != "" {
 		tgID, parseErr := strconv.ParseUint(tgIDStr, 10, 32)
 		if parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup_id"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid talkgroup_id"})
 			return
 		}
 		scheduledNets, err = models.FindScheduledNetsForTalkgroup(db, uint(tgID))
 		if err != nil {
 			slog.Error("Failed to list scheduled nets for talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count, err = models.CountScheduledNetsForTalkgroup(cDb, uint(tgID))
@@ -68,14 +68,14 @@ func GETScheduledNets(c *gin.Context) {
 		scheduledNets, err = models.ListScheduledNets(db)
 		if err != nil {
 			slog.Error("Failed to list scheduled nets", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count, err = models.CountScheduledNets(cDb)
 	}
 	if err != nil {
 		slog.Error("Failed to count scheduled nets", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -83,7 +83,7 @@ func GETScheduledNets(c *gin.Context) {
 	for i := range scheduledNets {
 		resp = append(resp, apimodels.NewScheduledNetResponseFromScheduledNet(&scheduledNets[i]))
 	}
-	c.JSON(http.StatusOK, gin.H{"scheduled_nets": resp, "total": count})
+	c.JSON(http.StatusOK, gin.H{"scheduled_nets": resp, totalKey: count})
 }
 
 // GETScheduledNet returns a single scheduled net by ID.
@@ -96,18 +96,18 @@ func GETScheduledNet(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	sn, err := models.FindScheduledNetByID(db, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Scheduled net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: "Scheduled net not found"})
 			return
 		}
 		slog.Error("Failed to find scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -122,13 +122,13 @@ func POSTScheduledNet(c *gin.Context) {
 	}
 	var req apimodels.ScheduledNetPost
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidRequestBody})
 		return
 	}
 
 	// Validate name length.
 	if len(req.Name) == 0 || len(req.Name) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be between 1 and 100 characters"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name must be between 1 and 100 characters"})
 		return
 	}
 
@@ -136,17 +136,17 @@ func POSTScheduledNet(c *gin.Context) {
 	exists, err := models.TalkgroupIDExists(db, req.TalkgroupID)
 	if err != nil {
 		slog.Error("Failed to check talkgroup existence", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Talkgroup not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "Talkgroup not found"})
 		return
 	}
 
 	cronExpr, err := models.GenerateCronExpression(req.DayOfWeek, req.TimeOfDay)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
 
@@ -178,7 +178,7 @@ func POSTScheduledNet(c *gin.Context) {
 	}
 	if err := models.CreateScheduledNet(db, &sn); err != nil {
 		slog.Error("Failed to create scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -195,7 +195,7 @@ func POSTScheduledNet(c *gin.Context) {
 	sn, err = models.FindScheduledNetByID(db, sn.ID)
 	if err != nil {
 		slog.Error("Failed to reload scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusCreated, apimodels.NewScheduledNetResponseFromScheduledNet(&sn))
@@ -211,31 +211,31 @@ func PATCHScheduledNet(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	sn, err := models.FindScheduledNetByID(db, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Scheduled net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: "Scheduled net not found"})
 			return
 		}
 		slog.Error("Failed to find scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
 	var req apimodels.ScheduledNetPatch
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidRequestBody})
 		return
 	}
 
 	scheduleChanged := false
 	if req.Name != nil {
 		if len(*req.Name) == 0 || len(*req.Name) > 100 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be between 1 and 100 characters"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name must be between 1 and 100 characters"})
 			return
 		}
 		sn.Name = *req.Name
@@ -269,7 +269,7 @@ func PATCHScheduledNet(c *gin.Context) {
 	if scheduleChanged {
 		cronExpr, cronErr := models.GenerateCronExpression(sn.DayOfWeek, sn.TimeOfDay)
 		if cronErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": cronErr.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: cronErr.Error()})
 			return
 		}
 		sn.CronExpression = cronExpr
@@ -277,7 +277,7 @@ func PATCHScheduledNet(c *gin.Context) {
 
 	if err := models.UpdateScheduledNet(db, &sn); err != nil {
 		slog.Error("Failed to update scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -296,7 +296,7 @@ func PATCHScheduledNet(c *gin.Context) {
 	sn, err = models.FindScheduledNetByID(db, sn.ID)
 	if err != nil {
 		slog.Error("Failed to reload scheduled net after update", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusOK, apimodels.NewScheduledNetResponseFromScheduledNet(&sn))
@@ -312,7 +312,7 @@ func DELETEScheduledNet(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
@@ -323,7 +323,7 @@ func DELETEScheduledNet(c *gin.Context) {
 
 	if err := models.DeleteScheduledNet(db, uint(id)); err != nil {
 		slog.Error("Failed to delete scheduled net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 

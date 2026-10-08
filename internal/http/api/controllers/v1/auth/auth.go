@@ -32,6 +32,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	errorKey = "error"
+)
+
 // loginMinDuration is the minimum time the login handler will take once
 // calibrated. It is set on the first login attempt by running a full
 // argon2 derivation and adding 50% headroom.
@@ -69,16 +73,16 @@ func POSTLogin(c *gin.Context) {
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTLogin", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
 	} else {
 		// Check that one of username or callsign is not blank
 		if json.Username == "" && json.Callsign == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username or Callsign must be provided"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username or Callsign must be provided"})
 			return
 		}
 		// Check that password isn't a zero string
 		if json.Password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password cannot be blank"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
 			return
 		}
 		var user models.User
@@ -120,7 +124,7 @@ func POSTLogin(c *gin.Context) {
 		slog.Debug("Password verification completed", "function", "POSTLogin", "verified", verified, "userID", user.ID)
 		if userFound && verified && err == nil {
 			if user.Suspended {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
+				c.JSON(http.StatusUnauthorized, gin.H{errorKey: "User is suspended"})
 				return
 			}
 			if user.Approved {
@@ -128,19 +132,19 @@ func POSTLogin(c *gin.Context) {
 				err = session.Save()
 				if err != nil {
 					slog.Error("Error saving session", "function", "POSTLogin", "error", err, "userID", user.ID)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
+					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error saving session"})
 					return
 				}
 				c.JSON(http.StatusOK, gin.H{"message": "Logged in"})
 				return
 			}
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User is not approved"})
+			c.JSON(http.StatusUnauthorized, gin.H{errorKey: "User is not approved"})
 			return
 		}
 		slog.Error("Password verification failed", "function", "POSTLogin", "error", err)
 	}
 
-	c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+	c.JSON(http.StatusUnauthorized, gin.H{errorKey: "Authentication failed"})
 }
 
 func POSTLogout(c *gin.Context) {
@@ -149,7 +153,7 @@ func POSTLogout(c *gin.Context) {
 	err := session.Save()
 	if err != nil {
 		slog.Error("Error saving session during logout", "function", "POSTLogout", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error saving session"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})

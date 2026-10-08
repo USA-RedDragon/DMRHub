@@ -34,6 +34,16 @@ import (
 )
 
 const (
+	errorKey         = "error"
+	msgTryAgainLater = "Try again later"
+	msgAuthFailed    = "Authentication failed"
+	msgInvalidPeerID = "Invalid peer ID"
+	messageKey       = "message"
+	msgPeerNotFound  = "Peer not found"
+	msgInvalidJSON   = "JSON data is invalid"
+)
+
+const (
 	LinkTypeDynamic = "dynamic"
 	LinkTypeStatic  = "static"
 )
@@ -50,13 +60,13 @@ func GETPeers(c *gin.Context) {
 	peers, err := models.ListPeers(db)
 	if err != nil {
 		slog.Error("Error listing peers", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	count, err := models.CountPeers(cDb)
 	if err != nil {
 		slog.Error("Error counting peers", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"total": count, "peers": peers})
@@ -76,14 +86,14 @@ func GETMyPeers(c *gin.Context) {
 	userID := session.Get("user_id")
 	if userID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
 		slog.Error("Unable to convert userID to uint", "function", "GETMyPeers", "userID", userID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -91,14 +101,14 @@ func GETMyPeers(c *gin.Context) {
 	peers, err := models.GetUserPeers(db, uid)
 	if err != nil {
 		slog.Error("Error getting peers owned by user", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting peers owned by user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting peers owned by user"})
 		return
 	}
 
 	count, err := models.CountUserPeers(cDb, uid)
 	if err != nil {
 		slog.Error("Error counting user peers", "userID", userID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -114,23 +124,23 @@ func GETPeer(c *gin.Context) {
 	// Convert string id into uint
 	peerID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 	exists, err := models.PeerIDExists(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Peer does not exist"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Peer does not exist"})
 		return
 	}
 	peer, err := models.FindPeerByID(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error finding peer", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusOK, peer)
@@ -143,14 +153,14 @@ func DELETEPeer(c *gin.Context) {
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 	if err = models.DeletePeer(db, uint(idUint64)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Peer deleted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Peer deleted"})
 }
 
 func PATCHPeer(c *gin.Context) {
@@ -160,32 +170,32 @@ func PATCHPeer(c *gin.Context) {
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 	peerID := uint(idUint64)
 	exists, err := models.PeerIDExists(db, peerID)
 	if err != nil {
 		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgPeerNotFound})
 		return
 	}
 
 	var json apimodels.PeerPatch
 	if err := c.ShouldBindJSON(&json); err != nil {
-		slog.Error("JSON data is invalid", "function", "PATCHPeer", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "PATCHPeer", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
 
 	updates := make(map[string]interface{})
 	if json.IP != nil {
 		if net.ParseIP(*json.IP) == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid IP address"})
 			return
 		}
 		updates["ip"] = *json.IP
@@ -193,7 +203,7 @@ func PATCHPeer(c *gin.Context) {
 	if json.Port != nil {
 		const maxPort = 65535
 		if *json.Port < 1 || *json.Port > maxPort {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Port must be between 1 and 65535"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Port must be between 1 and 65535"})
 			return
 		}
 		updates["port"] = *json.Port
@@ -206,20 +216,20 @@ func PATCHPeer(c *gin.Context) {
 	}
 
 	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "No fields to update"})
 		return
 	}
 
 	if err := db.Model(&models.Peer{}).Where("id = ?", peerID).Updates(updates).Error; err != nil {
 		slog.Error("Error updating peer", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
 	peer, err := models.FindPeerByID(db, peerID)
 	if err != nil {
 		slog.Error("Error finding updated peer", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusOK, peer)
@@ -230,13 +240,13 @@ func POSTPeer(c *gin.Context) {
 	usID := session.Get("user_id")
 	if usID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 	userID, ok := usID.(uint)
 	if !ok {
 		slog.Error("userID cast failed")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return
 	}
 	db, ok := utils.GetDB(c)
@@ -250,31 +260,31 @@ func POSTPeer(c *gin.Context) {
 	var json apimodels.PeerPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTPeer", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "POSTPeer", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 	} else {
 		exists, existsErr := models.PeerIDExists(db, json.ID)
 		if existsErr != nil {
 			slog.Error("Error checking peer ID existence", "function", "POSTPeer", "peerID", json.ID, "error", existsErr)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		if exists {
 			slog.Error("Peer ID already exists", "function", "POSTPeer", "peerID", json.ID)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID already exists"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Peer ID already exists"})
 			return
 		}
 
 		// Validate IP address
 		if net.ParseIP(json.IP) == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid IP address"})
 			return
 		}
 
 		// Validate port range
 		const maxPort = 65535
 		if json.Port < 1 || json.Port > maxPort {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Port must be between 1 and 65535"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Port must be between 1 and 65535"})
 			return
 		}
 
@@ -288,7 +298,7 @@ func POSTPeer(c *gin.Context) {
 		// Peer validated to fit within a 4 byte integer
 		if json.ID <= 0 || json.ID > 4294967295 {
 			slog.Error("Peer ID is invalid", "function", "POSTPeer", "peerID", json.ID)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Peer ID is invalid"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Peer ID is invalid"})
 			return
 		}
 
@@ -301,7 +311,7 @@ func POSTPeer(c *gin.Context) {
 		peer.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
 		if err != nil {
 			slog.Error("Failed to generate a peer password", "function", "POSTPeer", "error", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate a peer password"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate a peer password"})
 			return
 		}
 
@@ -309,7 +319,7 @@ func POSTPeer(c *gin.Context) {
 		db.First(&user, json.OwnerID)
 		if db.Error != nil {
 			slog.Error("Error getting user", "function", "POSTPeer", "userID", userID, "error", db.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting user"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting user"})
 			return
 		}
 
@@ -318,10 +328,10 @@ func POSTPeer(c *gin.Context) {
 		peer.OwnerID = json.OwnerID
 		db.Preload("Owner").Create(&peer)
 		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": db.Error.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: db.Error.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Peer created", "password": peer.Password})
+		c.JSON(http.StatusOK, gin.H{messageKey: "Peer created", "password": peer.Password})
 
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(

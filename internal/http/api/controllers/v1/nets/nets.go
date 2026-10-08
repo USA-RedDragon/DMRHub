@@ -40,6 +40,16 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	msgTryAgainLater      = "Try again later"
+	netsKey               = "nets"
+	msgInvalidID          = "Invalid id"
+	msgNetNotFound        = "Net not found"
+	msgInvalidRequestBody = "Invalid request body"
+	errorKey              = "error"
+	totalKey              = "total"
+)
+
 // GETNets lists nets with optional filtering by talkgroup_id and active status.
 func GETNets(c *gin.Context) {
 	db, ok := utils.GetPaginatedDB(c)
@@ -66,38 +76,38 @@ func GETNets(c *gin.Context) {
 		nets, err = models.ListShowcaseNets(db)
 		if err != nil {
 			slog.Error("Failed to list showcase nets", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count = len(nets)
 	case tgIDStr != "":
 		tgID, parseErr := strconv.ParseUint(tgIDStr, 10, 32)
 		if parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup_id"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid talkgroup_id"})
 			return
 		}
 		if activeStr == queryTrue {
 			net, findErr := models.FindActiveNetForTalkgroup(cDb, uint(tgID))
 			if findErr != nil {
 				if errors.Is(findErr, gorm.ErrRecordNotFound) {
-					c.JSON(http.StatusOK, gin.H{"nets": []any{}, "total": 0})
+					c.JSON(http.StatusOK, gin.H{netsKey: []any{}, totalKey: 0})
 					return
 				}
 				slog.Error("Failed to find active net", "error", findErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 				return
 			}
 			checkIns := countCheckInsForNet(cDb, &net)
 			c.JSON(http.StatusOK, gin.H{
-				"nets":  []apimodels.NetResponse{apimodels.NewNetResponseFromNet(&net, checkIns)},
-				"total": 1,
+				netsKey:  []apimodels.NetResponse{apimodels.NewNetResponseFromNet(&net, checkIns)},
+				totalKey: 1,
 			})
 			return
 		}
 		nets, err = models.FindNetsForTalkgroup(db, uint(tgID))
 		if err != nil {
 			slog.Error("Failed to list nets for talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count, err = models.CountNetsForTalkgroup(cDb, uint(tgID))
@@ -105,7 +115,7 @@ func GETNets(c *gin.Context) {
 		nets, err = models.ListActiveNets(db)
 		if err != nil {
 			slog.Error("Failed to list active nets", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count, err = models.CountActiveNets(cDb)
@@ -113,14 +123,14 @@ func GETNets(c *gin.Context) {
 		nets, err = models.ListNets(db)
 		if err != nil {
 			slog.Error("Failed to list nets", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		count, err = models.CountNets(cDb)
 	}
 	if err != nil {
 		slog.Error("Failed to count nets", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -129,7 +139,7 @@ func GETNets(c *gin.Context) {
 		checkIns := countCheckInsForNet(cDb, &nets[i])
 		resp = append(resp, apimodels.NewNetResponseFromNet(&nets[i], checkIns))
 	}
-	c.JSON(http.StatusOK, gin.H{"nets": resp, "total": count})
+	c.JSON(http.StatusOK, gin.H{netsKey: resp, totalKey: count})
 }
 
 // GETNet returns a single net by ID.
@@ -142,18 +152,18 @@ func GETNet(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	net, err := models.FindNetByID(db, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: msgNetNotFound})
 			return
 		}
 		slog.Error("Failed to find net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -171,24 +181,24 @@ func PATCHNet(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	var req apimodels.NetPatch
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidRequestBody})
 		return
 	}
 
 	if req.Showcase != nil {
 		if err := models.UpdateNetShowcase(db, uint(id), *req.Showcase); err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+				c.JSON(http.StatusNotFound, gin.H{errorKey: msgNetNotFound})
 				return
 			}
 			slog.Error("Failed to update net showcase", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 	}
@@ -196,11 +206,11 @@ func PATCHNet(c *gin.Context) {
 	net, err := models.FindNetByID(db, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: msgNetNotFound})
 			return
 		}
 		slog.Error("Failed to reload net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -216,7 +226,7 @@ func POSTNetStart(c *gin.Context) {
 	}
 	var req apimodels.NetStartPost
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidRequestBody})
 		return
 	}
 
@@ -224,23 +234,23 @@ func POSTNetStart(c *gin.Context) {
 	exists, err := models.TalkgroupIDExists(db, req.TalkgroupID)
 	if err != nil {
 		slog.Error("Failed to check talkgroup existence", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Talkgroup not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "Talkgroup not found"})
 		return
 	}
 
 	// Check that no active net exists for this talkgroup.
 	_, err = models.FindActiveNetForTalkgroup(db, req.TalkgroupID)
 	if err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "An active net already exists for this talkgroup"})
+		c.JSON(http.StatusConflict, gin.H{errorKey: "An active net already exists for this talkgroup"})
 		return
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("Failed to check for active net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -257,7 +267,7 @@ func POSTNetStart(c *gin.Context) {
 	}
 	if err := models.CreateNet(db, &net); err != nil {
 		slog.Error("Failed to create net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -265,7 +275,7 @@ func POSTNetStart(c *gin.Context) {
 	net, err = models.FindNetByID(db, net.ID)
 	if err != nil {
 		slog.Error("Failed to reload net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -293,17 +303,17 @@ func POSTNetStop(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	if err := models.EndNet(db, uint(id)); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Active net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: "Active net not found"})
 			return
 		}
 		slog.Error("Failed to end net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -316,7 +326,7 @@ func POSTNetStop(c *gin.Context) {
 	net, err := models.FindNetByID(db, uint(id))
 	if err != nil {
 		slog.Error("Failed to reload net after stop", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -340,18 +350,18 @@ func GETNetCheckIns(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	net, err := models.FindNetByID(cDb, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: msgNetNotFound})
 			return
 		}
 		slog.Error("Failed to find net", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -363,14 +373,14 @@ func GETNetCheckIns(c *gin.Context) {
 	calls, err := models.FindTalkgroupCallsInTimeRange(db, net.TalkgroupID, net.StartTime, endTime)
 	if err != nil {
 		slog.Error("Failed to find check-in calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
 	count, err := models.CountTalkgroupCallsInTimeRange(cDb, net.TalkgroupID, net.StartTime, endTime)
 	if err != nil {
 		slog.Error("Failed to count check-in calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -378,7 +388,7 @@ func GETNetCheckIns(c *gin.Context) {
 	for i := range calls {
 		resp = append(resp, apimodels.NewNetCheckInResponseFromCall(&calls[i]))
 	}
-	c.JSON(http.StatusOK, gin.H{"check_ins": resp, "total": count})
+	c.JSON(http.StatusOK, gin.H{"check_ins": resp, totalKey: count})
 }
 
 // GETNetCheckInsExport exports the check-in list as CSV or JSON.
@@ -391,18 +401,18 @@ func GETNetCheckInsExport(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidID})
 		return
 	}
 
 	net, err := models.FindNetByID(db, uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			c.JSON(http.StatusNotFound, gin.H{errorKey: msgNetNotFound})
 			return
 		}
 		slog.Error("Failed to find net for export", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -414,7 +424,7 @@ func GETNetCheckInsExport(c *gin.Context) {
 	calls, err := models.FindTalkgroupCallsInTimeRange(db, net.TalkgroupID, net.StartTime, endTime)
 	if err != nil {
 		slog.Error("Failed to find check-in calls for export", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
@@ -445,7 +455,7 @@ func GETNetCheckInsExport(c *gin.Context) {
 		}
 		w.Flush()
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid format, must be csv or json"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid format, must be csv or json"})
 	}
 }
 

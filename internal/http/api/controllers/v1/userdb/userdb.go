@@ -29,6 +29,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	parrotName = "Parrot"
+)
+
 type UserDBResponse struct {
 	userdb.DMRUser
 	Flag string `json:"flag"`
@@ -60,9 +64,9 @@ func GETUserDBEntry(c *gin.Context) {
 		c.JSON(http.StatusOK, UserDBResponse{
 			DMRUser: userdb.DMRUser{
 				ID:       dmrconst.ParrotUser,
-				Callsign: "Parrot",
-				FName:    "Parrot",
-				Name:     "Parrot",
+				Callsign: parrotName,
+				FName:    parrotName,
+				Name:     parrotName,
 				RadioID:  dmrconst.ParrotUser,
 			},
 			Flag: "\U0001F99C", // 🦜

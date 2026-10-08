@@ -34,6 +34,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	errorKey               = "error"
+	msgInvalidTalkgroupID  = "Invalid talkgroup ID"
+	msgNegativeTalkgroupID = "Invalid talkgroup ID: negative value"
+	msgErrFindingTalkgroup = "Error finding talkgroup"
+	messageKey             = "message"
+	msgInvalidJSON         = "JSON data is invalid"
+	msgErrSavingTalkgroup  = "Error saving talkgroup"
+)
+
 const maxNameLength = 20
 const maxDescriptionLength = 240
 
@@ -49,14 +59,14 @@ func GETTalkgroups(c *gin.Context) {
 	talkgroups, err := models.ListTalkgroups(db)
 	if err != nil {
 		slog.Error("Error listing talkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error listing talkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error listing talkgroups"})
 		return
 	}
 
 	total, err := models.CountTalkgroups(cDb)
 	if err != nil {
 		slog.Error("Error counting talkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting talkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error counting talkgroups"})
 		return
 	}
 
@@ -77,27 +87,27 @@ func GETMyTalkgroups(c *gin.Context) {
 	userID := session.Get("user_id")
 	if userID == nil {
 		slog.Error("userID not found")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.JSON(http.StatusUnauthorized, gin.H{errorKey: "Authentication failed"})
 		return
 	}
 
 	uid, ok := userID.(uint)
 	if !ok {
 		slog.Error("userID cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 
 	talkgroups, err := models.FindTalkgroupsByOwnerID(db, uid)
 	if err != nil {
 		slog.Error("Error listing talkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error listing talkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error listing talkgroups"})
 		return
 	}
 	total, err := models.CountTalkgroupsByOwnerID(cDb, uid)
 	if err != nil {
 		slog.Error("Error counting talkgroups", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting talkgroups"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error counting talkgroups"})
 		return
 	}
 
@@ -112,17 +122,17 @@ func GETTalkgroup(c *gin.Context) {
 	id := c.Param("id")
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidTalkgroupID})
 		return
 	}
 	if idInt < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgNegativeTalkgroupID})
 		return
 	}
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	if err != nil {
-		slog.Error("Error finding talkgroup", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
+		slog.Error(msgErrFindingTalkgroup, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingTalkgroup})
 		return
 	}
 	c.JSON(http.StatusOK, talkgroup)
@@ -135,13 +145,13 @@ func DELETETalkgroup(c *gin.Context) {
 	}
 	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidTalkgroupID})
 		return
 	}
 	affectedRepeaterIDs, err := models.DeleteTalkgroup(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting talkgroup", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting talkgroup"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting talkgroup"})
 		return
 	}
 	// Reload affected repeaters so stale subscriptions are cleaned up
@@ -150,7 +160,7 @@ func DELETETalkgroup(c *gin.Context) {
 			go dmrHub.ReloadRepeater(context.Background(), rid)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Talkgroup deleted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup deleted"})
 }
 
 func POSTTalkgroupNCOs(c *gin.Context) {
@@ -172,26 +182,26 @@ func postTalkgroupAssociation(c *gin.Context, associationName string, roleName s
 	id := c.Param("id")
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidTalkgroupID})
 		return
 	}
 	if idInt < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgNegativeTalkgroupID})
 		return
 	}
 
 	talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 	if err != nil {
-		slog.Error("Error finding talkgroup", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
+		slog.Error(msgErrFindingTalkgroup, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingTalkgroup})
 		return
 	}
 
 	var json apimodels.TalkgroupAdminAction
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "postTalkgroupAssociation", "association", associationName, "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "postTalkgroupAssociation", "association", associationName, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
 
@@ -199,18 +209,18 @@ func postTalkgroupAssociation(c *gin.Context, associationName string, roleName s
 	err = db.Model(&talkgroup).Association(associationName).Clear()
 	if err != nil {
 		slog.Error("Error clearing talkgroup "+associationName, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error clearing talkgroup " + associationName})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error clearing talkgroup " + associationName})
 		return
 	}
 
 	if len(json.UserIDs) == 0 {
 		err = db.Save(&talkgroup).Error
 		if err != nil {
-			slog.Error("Error saving talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
+			slog.Error(msgErrSavingTalkgroup, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingTalkgroup})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Talkgroup " + associationName + " cleared"})
+		c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup " + associationName + " cleared"})
 		return
 	}
 
@@ -218,23 +228,23 @@ func postTalkgroupAssociation(c *gin.Context, associationName string, roleName s
 		user, err := models.FindUserByID(db, userID)
 		if err != nil {
 			slog.Error("Error finding user", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding user"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error finding user"})
 			return
 		}
 		err = db.Model(&talkgroup).Association(associationName).Append(&user)
 		if err != nil {
 			slog.Error("Error appending "+associationName+" member", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error appending " + associationName + " member"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error appending " + associationName + " member"})
 			return
 		}
 	}
 	err = db.Save(&talkgroup).Error
 	if err != nil {
-		slog.Error("Error saving talkgroup", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
+		slog.Error(msgErrSavingTalkgroup, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingTalkgroup})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "User appointed as " + roleName})
+	c.JSON(http.StatusOK, gin.H{messageKey: "User appointed as " + roleName})
 }
 
 func PATCHTalkgroup(c *gin.Context) {
@@ -245,37 +255,37 @@ func PATCHTalkgroup(c *gin.Context) {
 	id := c.Param("id")
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidTalkgroupID})
 		return
 	}
 	if idInt < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid talkgroup ID: negative value"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgNegativeTalkgroupID})
 		return
 	}
 	var json apimodels.TalkgroupPatch
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "PATCHTalkgroup", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "PATCHTalkgroup", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 	} else {
 		talkgroup, err := models.FindTalkgroupByID(db, uint(idInt))
 		if err != nil {
-			slog.Error("Error finding talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding talkgroup"})
+			slog.Error(msgErrFindingTalkgroup, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingTalkgroup})
 			return
 		}
 
 		if json.Name != "" {
 			// Validate length less than 20 characters
 			if len(json.Name) > maxNameLength {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be less than 20 characters"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name must be less than 20 characters"})
 				return
 			}
 			// Trim any whitespace
 			json.Name = strings.TrimSpace(json.Name)
 			// Check that length isn't 0
 			if len(json.Name) == 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be defined"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name must be defined"})
 				return
 			}
 			talkgroup.Name = json.Name
@@ -283,13 +293,13 @@ func PATCHTalkgroup(c *gin.Context) {
 		if json.Description != "" {
 			// Validate length less than 240 characters
 			if len(json.Description) > maxDescriptionLength {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be less than 240 characters"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Description must be less than 240 characters"})
 				return
 			}
 			json.Description = strings.TrimSpace(json.Description)
 			// Check that length isn't 0
 			if len(json.Description) == 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be defined"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Description must be defined"})
 				return
 			}
 			talkgroup.Description = json.Description
@@ -297,8 +307,8 @@ func PATCHTalkgroup(c *gin.Context) {
 
 		err = db.Save(&talkgroup).Error
 		if err != nil {
-			slog.Error("Error saving talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving talkgroup"})
+			slog.Error(msgErrSavingTalkgroup, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingTalkgroup})
 			return
 		}
 	}
@@ -312,22 +322,22 @@ func POSTTalkgroup(c *gin.Context) {
 	var json apimodels.TalkgroupPost
 	err := c.ShouldBindJSON(&json)
 	if err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTTalkgroup", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "POSTTalkgroup", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 	} else {
 		if json.Name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Name is required"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name is required"})
 			return
 		}
 		// Validate length less than 20 characters
 		if len(json.Name) > maxNameLength {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be less than 20 characters"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Name must be less than 20 characters"})
 			return
 		}
 		if json.Description != "" {
 			// Validate length less than 240 characters
 			if len(json.Description) > maxDescriptionLength {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Description must be less than 240 characters"})
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Description must be less than 240 characters"})
 				return
 			}
 		}
@@ -335,11 +345,11 @@ func POSTTalkgroup(c *gin.Context) {
 		exists, err := models.TalkgroupIDExists(db, json.ID)
 		if err != nil {
 			slog.Error("Error checking if talkgroup ID exists", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking if talkgroup ID exists"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error checking if talkgroup ID exists"})
 			return
 		}
 		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Talkgroup ID already exists"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Talkgroup ID already exists"})
 			return
 		}
 
@@ -352,9 +362,9 @@ func POSTTalkgroup(c *gin.Context) {
 		err = db.Create(&talkgroup).Error
 		if err != nil {
 			slog.Error("Error creating talkgroup", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating talkgroup"})
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating talkgroup"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Talkgroup created"})
+		c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup created"})
 	}
 }

@@ -6,6 +6,8 @@ run:
 linters:
   exclusions:
     generated: lax
+    paths:
+      - .*_configulator\.go$
     rules:
       - path: _test\.go
         linters:
@@ -16,6 +18,14 @@ linters:
         linters:
           - dogsled
           - goconst
+          - gosec
+      - path: internal/(db/models/packet|dmr/dmrconst/const|dmr/hub/publishing|dmr/servers/ipsc/translator|kv/memory)\.go
+        text: G115
+        linters:
+          - gosec
+      - path: internal/dmr/servers/ipsc/translator\.go
+        text: G602
+        linters:
           - gosec
   settings:
     goheader:
@@ -68,4 +78,7 @@ formatters:
   enable:
     - gci
     - gofmt
+  exclusions:
+    paths:
+      - .*_configulator\.go$
 

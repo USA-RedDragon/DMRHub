@@ -38,7 +38,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 				slog.Error("Recovered from panic", "function", "SuspendedUserLockout")
 				// Delete the session cookie
 				c.SetCookie("sessions", "", -1, "/", "", false, true)
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			}
 		}()
 
@@ -46,20 +46,20 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		userID := session.Get("user_id")
 		if userID == nil {
 			slog.Debug("SuspendedUserLockout: No user_id found in session")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 		uid, ok := userID.(uint)
 		if !ok {
 			slog.Error("Unable to convert user_id to uint", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 
 		db, ok := c.MustGet("DB").(*gorm.DB)
 		if !ok {
 			slog.Error("Unable to get DB from context", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 		db = db.WithContext(c.Request.Context())
@@ -67,7 +67,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 		user, err := models.FindUserByID(db, uid)
 		if err != nil {
 			slog.Error("Unable to find user by ID", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 
@@ -81,7 +81,7 @@ func SuspendedUserLockout() gin.HandlerFunc {
 
 		if user.Suspended {
 			slog.Error("User is suspended", "function", "SuspendedUserLockout")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User is suspended"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: "User is suspended"})
 			return
 		}
 	}

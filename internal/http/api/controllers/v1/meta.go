@@ -30,6 +30,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	errorKey = "error"
+)
+
 func GETNetworkName(c *gin.Context) {
 	config, ok := utils.GetConfig(c)
 	if !ok {
@@ -38,7 +42,7 @@ func GETNetworkName(c *gin.Context) {
 
 	_, err := io.WriteString(c.Writer, config.NetworkName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting network name"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting network name"})
 	}
 }
 
@@ -46,27 +50,27 @@ func GETVersion(c *gin.Context) {
 	version, ok := c.MustGet("Version").(string)
 	if !ok {
 		slog.Error("Unable to get Version from context", "function", "GETVersion")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 
 	commit, ok := c.MustGet("Commit").(string)
 	if !ok {
 		slog.Error("Unable to get Commit from context", "function", "GETVersion")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 
 	_, err := io.WriteString(c.Writer, fmt.Sprintf("%s-%s", version, commit))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting version"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting version"})
 	}
 }
 
 func GETPing(c *gin.Context) {
 	_, err := io.WriteString(c.Writer, fmt.Sprintf("%d", time.Now().Unix()))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting ping"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting ping"})
 	}
 }
 

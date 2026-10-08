@@ -29,13 +29,18 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	errorKey         = "error"
+	msgTryAgainLater = "Try again later"
+)
+
 // GetDB extracts the "DB" value from the gin context. On failure it writes
 // an HTTP 500 response and returns nil, false.
 func GetDB(c *gin.Context) (*gorm.DB, bool) {
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return nil, false
 	}
 	return db, true
@@ -47,7 +52,7 @@ func GetPaginatedDB(c *gin.Context) (*gorm.DB, bool) {
 	db, ok := c.MustGet("PaginatedDB").(*gorm.DB)
 	if !ok {
 		slog.Error("DB cast failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return nil, false
 	}
 	return db, true
@@ -59,7 +64,7 @@ func GetConfig(c *gin.Context) (*config.Config, bool) {
 	cfg, ok := c.MustGet("Config").(*config.Config)
 	if !ok {
 		slog.Error("Unable to get Config from context")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return nil, false
 	}
 	return cfg, true

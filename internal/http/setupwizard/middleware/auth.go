@@ -27,38 +27,43 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	msgAuthFailed = "Authentication failed"
+	errorKey      = "error"
+)
+
 func RequireSetupWizardToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if recover() != nil {
 				slog.Error("Recovered from panic", "function", "RequireSetupWizardToken")
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			}
 		}()
 
 		providedToken := c.GetHeader("X-SetupWizard-Token")
 		if providedToken == "" {
 			slog.Debug("RequireSetupWizardToken: No X-SetupWizard-Token header found")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 
 		expectedToken, ok := c.MustGet("SetupWizard").(string)
 		if !ok {
 			slog.Error("RequireSetupWizardToken: No SetupWizard token found in context")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 
 		if expectedToken == "" {
 			slog.Error("RequireSetupWizardToken: Empty SetupWizard token in context")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 
 		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
 			slog.Warn("RequireSetupWizardToken: Invalid X-SetupWizard-Token provided")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 	}

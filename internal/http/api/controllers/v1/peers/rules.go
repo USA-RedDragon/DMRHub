@@ -37,25 +37,25 @@ func GETPeerRules(c *gin.Context) {
 	}
 	peerID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 
 	exists, err := models.PeerIDExists(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgPeerNotFound})
 		return
 	}
 
 	rules, err := models.ListRulesForPeer(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error listing peer rules", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"rules": rules})
@@ -68,30 +68,30 @@ func POSTPeerRule(c *gin.Context) {
 	}
 	peerID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 
 	exists, err := models.PeerIDExists(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgPeerNotFound})
 		return
 	}
 
 	var json apimodels.PeerRulePost
 	if err := c.ShouldBindJSON(&json); err != nil {
-		slog.Error("JSON data is invalid", "function", "POSTPeerRule", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "JSON data is invalid"})
+		slog.Error(msgInvalidJSON, "function", "POSTPeerRule", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
 
 	if json.SubjectIDMin > json.SubjectIDMax {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "subject_id_min must be <= subject_id_max"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "subject_id_min must be <= subject_id_max"})
 		return
 	}
 
@@ -103,11 +103,11 @@ func POSTPeerRule(c *gin.Context) {
 	}
 	if err := db.Create(&rule).Error; err != nil {
 		slog.Error("Error creating peer rule", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Peer rule created", "rule": rule})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Peer rule created", "rule": rule})
 }
 
 func DELETEPeerRule(c *gin.Context) {
@@ -117,43 +117,43 @@ func DELETEPeerRule(c *gin.Context) {
 	}
 	peerID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid peer ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
 		return
 	}
 
 	exists, err := models.PeerIDExists(db, uint(peerID))
 	if err != nil {
 		slog.Error("Error checking peer existence", "peerID", peerID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgPeerNotFound})
 		return
 	}
 
 	ruleID, err := strconv.ParseUint(c.Param("ruleId"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid rule ID"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid rule ID"})
 		return
 	}
 
 	rule, err := models.FindPeerRuleByID(db, uint(ruleID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "Rule not found"})
 		return
 	}
 
 	if rule.PeerID != uint(peerID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Rule does not belong to this peer"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Rule does not belong to this peer"})
 		return
 	}
 
 	if err := models.DeletePeerRule(db, uint(ruleID)); err != nil {
 		slog.Error("Error deleting peer rule", "ruleID", ruleID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Peer rule deleted"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Peer rule deleted"})
 }

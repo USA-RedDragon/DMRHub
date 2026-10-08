@@ -33,6 +33,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	errorKey      = "error"
+	msgAuthFailed = "Authentication failed"
+)
+
 // authenticateUser performs the common session extraction, panic recovery,
 // tracing, and DB user lookup shared by all Require* middleware functions.
 // It returns the authenticated user, the contextualized DB handle, and true
@@ -42,13 +47,13 @@ func authenticateUser(c *gin.Context, authName string) (models.User, *gorm.DB, b
 	userID := session.Get("user_id")
 	if userID == nil {
 		slog.Debug(authName+": No user_id found in session", "function", authName)
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return models.User{}, nil, false
 	}
 	uid, ok := userID.(uint)
 	if !ok {
 		slog.Error("Unable to convert user_id to uint", "function", authName)
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return models.User{}, nil, false
 	}
 
@@ -67,7 +72,7 @@ func authenticateUser(c *gin.Context, authName string) (models.User, *gorm.DB, b
 	db, ok := c.MustGet("DB").(*gorm.DB)
 	if !ok {
 		slog.Error("Unable to get DB from context", "function", authName)
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		return models.User{}, nil, false
 	}
 	db = db.WithContext(ctx)
@@ -87,7 +92,7 @@ func panicRecovery(c *gin.Context) {
 	if recover() != nil {
 		slog.Error("Recovered from panic in auth middleware")
 		c.SetCookie("sessions", "", -1, "/", "", false, true)
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -107,14 +112,14 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		talkgroups, err := models.FindTalkgroupsByOwnerID(db, user.ID)
 		if err != nil {
 			slog.Error("Failed to find talkgroups for owner", "function", "RequireAdminOrTGOwner", "userID", user.ID, "error", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
 		if len(talkgroups) > 0 && user.Approved && !user.Suspended {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -128,7 +133,7 @@ func RequireAdmin() gin.HandlerFunc {
 		}
 
 		if !user.Admin || !user.Approved || user.Suspended {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		}
 	}
 }
@@ -144,7 +149,7 @@ func RequireSuperAdmin() gin.HandlerFunc {
 
 		if !user.SuperAdmin || !user.Approved || user.Suspended {
 			slog.Error("User is not a super admin or is not approved/suspended")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		}
 	}
 }
@@ -159,7 +164,7 @@ func RequireLogin() gin.HandlerFunc {
 		}
 
 		if !user.Approved || user.Suspended {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 		}
 	}
 }
@@ -184,7 +189,7 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -208,7 +213,7 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -234,7 +239,7 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 			}
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -255,7 +260,7 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -297,7 +302,7 @@ func RequireTalkgroupNCOOrOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -316,7 +321,7 @@ func RequireNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 
 		var net models.Net
 		if err := db.First(&net, "id = ?", id).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Net not found"})
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{errorKey: "Net not found"})
 			return
 		}
 
@@ -324,7 +329,7 @@ func RequireNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }
 
@@ -343,7 +348,7 @@ func RequireScheduledNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 
 		var sn models.ScheduledNet
 		if err := db.First(&sn, "id = ?", id).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Scheduled net not found"})
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{errorKey: "Scheduled net not found"})
 			return
 		}
 
@@ -351,6 +356,6 @@ func RequireScheduledNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 	}
 }

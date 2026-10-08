@@ -1,10 +1,10 @@
 module github.com/USA-RedDragon/DMRHub
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.6
-	github.com/USA-RedDragon/configulator v0.0.4
+	github.com/USA-RedDragon/configulator/v2 v2.2.0
 	github.com/USA-RedDragon/dmrgo v0.0.1
 	github.com/biter777/countries v1.7.5
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
@@ -16,6 +16,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-co-op/gocron/v2 v2.19.1
 	github.com/go-gormigrate/gormigrate/v2 v2.1.5
+	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.8.0
@@ -40,9 +41,8 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.40.0
 	go.opentelemetry.io/otel/sdk v1.40.0
 	go.opentelemetry.io/otel/trace v1.40.0
-	golang.org/x/crypto v0.48.0
-	golang.org/x/sync v0.19.0
-	gopkg.in/yaml.v3 v3.0.1
+	golang.org/x/crypto v0.57.0
+	golang.org/x/sync v0.23.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -65,6 +65,7 @@ require (
 	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
+	github.com/dave/jennifer v1.7.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
@@ -84,7 +85,6 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
@@ -125,7 +125,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect
@@ -141,17 +141,20 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
-	golang.org/x/tools v0.41.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/grpc v1.78.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/sqlite v1.23.1 // indirect
 )
+
+tool github.com/USA-RedDragon/configulator/v2/cmd/configulator

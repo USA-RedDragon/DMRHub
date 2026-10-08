@@ -32,7 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -51,7 +51,7 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	defConfig.Database.Database = fmt.Sprintf("file:memdb_%p", t)

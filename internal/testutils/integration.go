@@ -34,7 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -61,7 +61,7 @@ type IntegrationStack struct {
 func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	// In-memory SQLite — use a named shared-cache DB so all connections within

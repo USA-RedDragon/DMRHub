@@ -27,7 +27,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/cmd"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
+	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
+	"github.com/goccy/go-yaml"
 	_ "github.com/tinylib/msgp/printer"
 )
 
@@ -48,19 +50,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	c := configulator.New[config.Config]().
+	c := configulator.New(config.ConfigSchema()).
 		WithEnvironmentVariables(&configulator.EnvironmentVariableOptions{
 			Separator: "_",
 		}).
 		WithFile(&configulator.FileOptions{
-			Paths: []string{
+			Search: []string{
 				"config.yaml",
 				"config.yml",
 				path.Join(configDir, "DMRHub", "config.yaml"),
 				path.Join(configDir, "DMRHub", "config.yml"),
 			},
-		}).
-		WithPFlags(rootCmd.Flags(), nil)
+			Decoders: configulator.Decoders{
+				".yaml": yaml.Unmarshal,
+				".yml":  yaml.Unmarshal,
+			},
+		})
+	cpflag.Bind(c, rootCmd.Flags(), config.ConfigPFlagHooks(), nil)
 
 	rootCmd.SetContext(c.WithContext(context.TODO()))
 

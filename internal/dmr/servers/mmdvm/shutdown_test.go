@@ -31,7 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +43,7 @@ import (
 func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
@@ -92,7 +92,7 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)

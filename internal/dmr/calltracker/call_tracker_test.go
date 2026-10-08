@@ -31,7 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -40,7 +40,7 @@ import (
 func makeTestCallTracker(t *testing.T) (*calltracker.CallTracker, func()) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	defConfig.Database.Database = ""
@@ -92,7 +92,7 @@ func TestStartCallNonExistentUser(t *testing.T) {
 func TestStartCallNonExistentRepeater(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -134,7 +134,7 @@ func TestStartCallNonExistentRepeater(t *testing.T) {
 func TestCallTrackerMultipleInstances(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -204,7 +204,7 @@ func TestCallTrackerIsCallActive(t *testing.T) {
 func makeTestCallTrackerWithDB(t *testing.T) (*calltracker.CallTracker, *gorm.DB) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	defConfig.Database.Database = fmt.Sprintf("file:memdb_ct_%p", t)

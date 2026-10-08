@@ -27,7 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +43,7 @@ func makeTestServer(kvStore kv.KV) Server {
 func TestValidRepeater_NonExistent(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
@@ -59,7 +59,7 @@ func TestValidRepeater_NonExistent(t *testing.T) {
 func TestValidRepeater_WrongState(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
@@ -81,7 +81,7 @@ func TestValidRepeater_WrongState(t *testing.T) {
 func TestValidRepeater_CorrectState(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)

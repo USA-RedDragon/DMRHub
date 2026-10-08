@@ -33,7 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -56,7 +56,7 @@ func (t *TestDB) DB() *gorm.DB {
 
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	var t TestDB
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
@@ -107,7 +107,7 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 
 func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	var t TestDB
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
@@ -173,7 +173,7 @@ type ConfigOption func(*config.Config)
 // (e.g. OpenBridge, IPSC) are disabled.
 func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, error) {
 	var t TestDB
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}

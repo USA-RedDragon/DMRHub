@@ -30,7 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -169,7 +169,7 @@ func TestPeerPublishRespectsContextCancellation(t *testing.T) {
 
 func makeTestPubSubB(b *testing.B) pubsub.PubSub {
 	b.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatalf("Failed to create default config: %v", err)
 	}

@@ -25,13 +25,13 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 func TestMakeDBInMemoryDatabase(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestMakeDBAppSettingsAlreadyExists(t *testing.T) {
 	// Use a file-based SQLite DB so we can call MakeDB twice on the same data.
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}

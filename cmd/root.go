@@ -47,7 +47,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lmittmann/tint"
 	"github.com/pkg/browser"

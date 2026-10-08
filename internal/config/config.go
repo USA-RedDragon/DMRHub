@@ -26,21 +26,23 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/goccy/go-yaml"
 	"golang.org/x/crypto/pbkdf2"
-	"gopkg.in/yaml.v3"
 )
 
 // Config stores the application configuration.
+//
+//go:generate go tool configulator -type Config
 type Config struct {
 	LogLevel     LogLevel `json:"log-level,omitempty" yaml:"log-level,omitempty" name:"log-level" description:"Logging level for the application. One of debug, info, warn, or error" default:"info"`
 	Redis        Redis    `json:"redis,omitempty" name:"redis" description:"Redis configuration for the application"`
 	Database     Database `json:"database,omitempty" name:"database" description:"Database configuration for the application"`
-	Secret       string   `json:"-" yaml:"secret" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session"`
-	PasswordSalt string   `json:"-" yaml:"password-salt" name:"password-salt" description:"Salt used for hashing user passwords, should be a random string of sufficient length"`
+	Secret       string   `json:"-" yaml:"secret" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters"`
+	PasswordSalt string   `json:"-" yaml:"password-salt" name:"password-salt" description:"Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret"`
 	HTTP         HTTP     `json:"http,omitempty" name:"http" description:"HTTP server configuration for the application"`
 	DMR          DMR      `json:"dmr,omitempty" name:"dmr" description:"DMR server configuration for the application"`
 	SMTP         SMTP     `json:"smtp,omitempty" name:"smtp" description:"SMTP configuration for sending emails"`
-	NetworkName  string   `json:"network-name,omitempty" yaml:"network-name" name:"network-name" description:"Name of the DMR network, used in various places like the network status page" default:"DMRHub"`
+	NetworkName  string   `json:"network-name,omitempty" yaml:"network-name" name:"network-name" description:"Name of the DMR network, shown in the web interface" default:"DMRHub"`
 	Metrics      Metrics  `json:"metrics,omitempty" name:"metrics" description:"Metrics configuration for the application"`
 	PProf        PProf    `json:"pprof,omitempty" name:"pprof" description:"PProf configuration for the application, used for profiling and debugging purposes"`
 	HIBPAPIKey   string   `json:"-" yaml:"hibp-api-key" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
@@ -59,7 +61,7 @@ type Metrics struct {
 	Bind           string   `json:"bind,omitempty" name:"bind" description:"Metrics server listen address" default:"[::]"`
 	Port           int      `json:"port,omitempty" name:"port" description:"Metrics server port" default:"9000"`
 	TrustedProxies []string `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the metrics server"`
-	OTLPEndpoint   string   `json:"otlp-endpoint,omitempty" yaml:"otlp-endpoint" name:"otlp-endpoint" description:"OTLP endpoint for exporting telemetry data"`
+	OTLPEndpoint   string   `json:"otlp-endpoint,omitempty" yaml:"otlp-endpoint" name:"otlp-endpoint" description:"OTLP endpoint for exporting OpenTelemetry tracing data"`
 }
 
 // PProf holds the PProf configuration.
@@ -80,12 +82,12 @@ type Redis struct {
 
 // Database holds the database configuration.
 type Database struct {
-	Driver          DatabaseDriver `json:"driver,omitempty" name:"driver" description:"Database driver to use" default:"sqlite"`
+	Driver          DatabaseDriver `json:"driver,omitempty" name:"driver" description:"Database driver to use. One of sqlite, postgres, or mysql" default:"sqlite"`
 	Database        string         `json:"database,omitempty" name:"database" description:"Database name or path" default:"DMRHub.db"`
-	Host            string         `json:"host,omitempty" name:"host" description:"Database host address"`
-	Port            int            `json:"port,omitempty" name:"port" description:"Database port"`
-	Username        string         `json:"username,omitempty" name:"username" description:"Database username"`
-	Password        string         `json:"-" yaml:"password" name:"password" description:"Database password"`
+	Host            string         `json:"host,omitempty" name:"host" description:"Database host address (postgres and mysql only)"`
+	Port            int            `json:"port,omitempty" name:"port" description:"Database port (postgres and mysql only)"`
+	Username        string         `json:"username,omitempty" name:"username" description:"Database username (postgres and mysql only)"`
+	Password        string         `json:"-" yaml:"password" name:"password" description:"Database password (postgres and mysql only)"`
 	ExtraParameters []string       `json:"extra-parameters,omitempty" yaml:"extra-parameters" name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL)"`
 }
 
@@ -96,19 +98,19 @@ type HTTP struct {
 	RobotsTXT      RobotsTXT `json:"robots-txt,omitempty" yaml:"robots-txt" name:"robots-txt" description:"Robots.txt configuration for the HTTP server"`
 	CORS           CORS      `json:"cors,omitempty" name:"cors" description:"CORS configuration for the HTTP server"`
 	TrustedProxies []string  `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the HTTP server"`
-	CanonicalHost  string    `json:"canonical-host,omitempty" yaml:"canonical-host" name:"canonical-host" description:"Canonical host for the HTTP server, used for generating absolute URLs"`
+	CanonicalHost  string    `json:"canonical-host,omitempty" yaml:"canonical-host" name:"canonical-host" description:"URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required"`
 }
 
 // CORS holds the CORS configuration for the HTTP server.
 type CORS struct {
 	Enabled bool     `json:"enabled,omitempty" name:"enabled" description:"Enable CORS support for the HTTP server" default:"false"`
-	Hosts   []string `json:"extra-hosts,omitempty" yaml:"extra-hosts" name:"extra-hosts" description:"List of allowed CORS hosts"`
+	Hosts   []string `json:"extra-hosts,omitempty" yaml:"extra-hosts" name:"extra-hosts" description:"List of additional allowed CORS origins"`
 }
 
 // RobotsTXT holds the configuration for the robots.txt file served by the HTTP server.
 type RobotsTXT struct {
 	Mode    RobotsTXTMode `json:"mode,omitempty" name:"mode" description:"Mode for serving robots.txt. One of allow, disabled, or custom" default:"disabled"`
-	Content string        `json:"content,omitempty" name:"content" description:"Content of the robots.txt file"`
+	Content string        `json:"content,omitempty" name:"content" description:"Content of the robots.txt file when mode is custom"`
 }
 
 // DMR holds the DMR server configuration.
@@ -132,12 +134,12 @@ type IPSC struct {
 	Enabled   bool   `json:"enabled,omitempty" name:"enabled" description:"Enable IPSC server support" default:"false"`
 	Bind      string `json:"bind,omitempty" name:"bind" description:"IPSC server listen address" default:"[::]"`
 	Port      int    `json:"port,omitempty" name:"port" description:"IPSC server port" default:"50000"`
-	NetworkID uint32 `json:"network-id,omitempty" yaml:"network-id" name:"network-id" description:"DMR network ID that identifies this server to IPSC peers"`
+	NetworkID uint32 `json:"network-id,omitempty" yaml:"network-id" name:"network-id" description:"DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled"`
 }
 
 // OpenBridge holds the configuration for the OpenBridge server.
 type OpenBridge struct {
-	Enabled bool   `json:"enabled,omitempty" name:"enabled" description:"Enable OpenBridge server support" default:"false"`
+	Enabled bool   `json:"enabled,omitempty" name:"enabled" description:"Enable experimental OpenBridge server support" default:"false"`
 	Bind    string `json:"bind,omitempty" name:"bind" description:"OpenBridge server listen address" default:"[::]"`
 	Port    int    `json:"port,omitempty" name:"port" description:"OpenBridge server port" default:"62035"`
 }
@@ -147,7 +149,7 @@ type SMTP struct {
 	Enabled    bool           `json:"enabled,omitempty" name:"enabled" description:"Enable SMTP support for sending emails" default:"false"`
 	Host       string         `json:"host,omitempty" name:"host" description:"SMTP server host address"`
 	Port       int            `json:"port,omitempty" name:"port" description:"SMTP server port" default:"25"`
-	TLS        SMTPTLS        `json:"tls,omitempty" name:"tls" description:"SMTP TLS mode" default:"none"`
+	TLS        SMTPTLS        `json:"tls,omitempty" name:"tls" description:"SMTP TLS mode. One of none, starttls, or implicit" default:"none"`
 	Username   string         `json:"username,omitempty" name:"username" description:"SMTP server username"`
 	Password   string         `json:"-" yaml:"password" name:"password" description:"SMTP server password"`
 	From       string         `json:"from,omitempty" name:"from" description:"Email address to use as the sender"`

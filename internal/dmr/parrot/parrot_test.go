@@ -27,14 +27,14 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func makeTestParrot(t *testing.T) (*parrot.Parrot, func()) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)

@@ -25,7 +25,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -34,7 +34,7 @@ import (
 func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	defConfig.Database.Database = ""
@@ -355,7 +355,7 @@ func BenchmarkPeerUnmarshalMsg(b *testing.B) {
 func benchMakeTestDB(b *testing.B) (*gorm.DB, func()) {
 	b.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatal(err)
 	}

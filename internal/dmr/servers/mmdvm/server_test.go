@@ -28,7 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 func TestMakeServerInitialization(t *testing.T) {
@@ -37,7 +37,7 @@ func TestMakeServerInitialization(t *testing.T) {
 	version := "1.0.0"
 	commit := "abc123"
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}

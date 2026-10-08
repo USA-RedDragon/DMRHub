@@ -26,12 +26,12 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 func makeTestPubSub(t *testing.T) pubsub.PubSub {
 	t.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestPubSubDifferentTopics(t *testing.T) {
 
 func TestPubSubClose(t *testing.T) {
 	t.Parallel()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestPubSubSubscriptionCloseClosesChannel(t *testing.T) {
 
 func TestPubSubCloseClosesAllSubscriptionChannels(t *testing.T) {
 	t.Parallel()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestPubSubDoubleCloseNoPanic(t *testing.T) {
 
 func makeTestPubSubB(b *testing.B) pubsub.PubSub {
 	b.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatalf("Failed to create default config: %v", err)
 	}

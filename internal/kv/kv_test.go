@@ -26,13 +26,13 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func makeTestKV(t *testing.T) kv.KV {
 	t.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
@@ -184,7 +184,7 @@ func TestKVOverwrite(t *testing.T) {
 
 func TestKVClose(t *testing.T) {
 	t.Parallel()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	store, err := kv.MakeKV(context.Background(), &defConfig)
@@ -198,7 +198,7 @@ func TestKVClose(t *testing.T) {
 
 func makeTestKVB(b *testing.B) kv.KV {
 	b.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatalf("Failed to create default config: %v", err)
 	}

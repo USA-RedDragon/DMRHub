@@ -34,7 +34,7 @@ import (
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -153,7 +153,7 @@ func TestHealthcheckReady(t *testing.T) {
 func TestHealthcheckNotReady(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	defConfig.Database.Database = ""

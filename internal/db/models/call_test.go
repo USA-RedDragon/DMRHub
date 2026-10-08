@@ -25,7 +25,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ import (
 func TestFindCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -57,7 +57,7 @@ func TestFindCallsReturnsError(t *testing.T) {
 func TestCountCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -77,7 +77,7 @@ func TestCountCallsReturnsError(t *testing.T) {
 func TestFindUserCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -97,7 +97,7 @@ func TestFindUserCallsReturnsError(t *testing.T) {
 func TestCountUserCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -117,7 +117,7 @@ func TestCountUserCallsReturnsError(t *testing.T) {
 func TestFindRepeaterCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -137,7 +137,7 @@ func TestFindRepeaterCallsReturnsError(t *testing.T) {
 func TestFindTalkgroupCallsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -157,7 +157,7 @@ func TestFindTalkgroupCallsReturnsError(t *testing.T) {
 func TestActiveCallExistsReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -177,7 +177,7 @@ func TestActiveCallExistsReturnsError(t *testing.T) {
 func TestCallQueriesSucceedOnValidDB(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}

@@ -25,7 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,7 +78,7 @@ func TestGenerateInstanceID(t *testing.T) {
 func TestInstanceRegistryNoOtherInstances(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kv, err := kv.MakeKV(context.Background(), &defConfig)
@@ -98,7 +98,7 @@ func TestInstanceRegistryNoOtherInstances(t *testing.T) {
 func TestInstanceRegistryWithOtherInstances(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kv, err := kv.MakeKV(context.Background(), &defConfig)
@@ -124,7 +124,7 @@ func TestInstanceRegistryWithOtherInstances(t *testing.T) {
 func TestInstanceRegistryDeregister(t *testing.T) {
 	t.Parallel()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
 	kv, err := kv.MakeKV(context.Background(), &defConfig)

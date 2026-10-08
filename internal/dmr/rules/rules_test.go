@@ -26,7 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
@@ -34,7 +34,7 @@ import (
 func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
 	defConfig.Database.Database = ""
@@ -365,7 +365,7 @@ func BenchmarkPeerShouldEgress100Rules(b *testing.B) {
 func benchmarkPeerShouldEgress(b *testing.B, numRules uint) {
 	b.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -417,7 +417,7 @@ func BenchmarkPeerShouldIngress10Rules(b *testing.B) {
 func benchmarkPeerShouldIngress(b *testing.B, numRules uint) {
 	b.Helper()
 
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatal(err)
 	}

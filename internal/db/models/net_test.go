@@ -28,7 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/configulator"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +39,7 @@ import (
 // so that every operation returns an error.
 func closedDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -318,7 +318,7 @@ func FuzzGenerateCronExpression(f *testing.F) {
 
 func openDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = ""
 	defConfig.Database.ExtraParameters = []string{}
@@ -334,7 +334,7 @@ func openDB(t *testing.T) (*gorm.DB, func()) {
 
 func benchOpenDB(b *testing.B) (*gorm.DB, func()) {
 	b.Helper()
-	defConfig, err := configulator.New[config.Config]().Default()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		b.Fatal(err)
 	}

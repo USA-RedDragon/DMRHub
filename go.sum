@@ -6,8 +6,8 @@ github.com/JGLTechnologies/gin-rate-limit v1.5.9/go.mod h1:t9eLOUxikPI0TzKy0VYRb
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/USA-RedDragon/configulator/v2 v2.4.0 h1:dfaf5zWAErLoHutBkMNXM8bo5/YSzuHDzJ/rtN4QKkE=
-github.com/USA-RedDragon/configulator/v2 v2.4.0/go.mod h1:L/HGK6Bf1Wr7dbBibAW0zpXhvG0A+7cMI0U9Rz9Hplg=
+github.com/USA-RedDragon/configulator/v2 v2.5.0 h1:Z6eY4ncXH6m7cTCfF0/chRJxUT5/TQnFDoBgh0CMV9Y=
+github.com/USA-RedDragon/configulator/v2 v2.5.0/go.mod h1:L/HGK6Bf1Wr7dbBibAW0zpXhvG0A+7cMI0U9Rz9Hplg=
 github.com/USA-RedDragon/dmrgo v0.0.1 h1:SaUppB+nDdWEAtJwkaXobkDbgzGSfzpt7jZUHM3SqvE=
 github.com/USA-RedDragon/dmrgo v0.0.1/go.mod h1:+ySk1tyAYWlC7jr+SW2b7qI3vJ20yPNxkwwjafptj7U=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

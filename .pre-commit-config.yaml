@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/USA-RedDragon/configulator
-    rev: v2.3.2
+    rev: v2.4.0
     hooks:
       - id: configulator-generate
         args: [-dir, internal/config, -type, Config]

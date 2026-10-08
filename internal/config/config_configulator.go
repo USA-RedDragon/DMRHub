@@ -5,108 +5,122 @@
 package config
 
 import (
-	jsontext "encoding/json/jsontext"
-	v2 "encoding/json/v2"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
-	configulator "github.com/USA-RedDragon/configulator/v2"
-	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
-	"github.com/spf13/pflag"
 	"math"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/USA-RedDragon/configulator/v2"
+	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
+	"github.com/USA-RedDragon/configulator/v2/impl"
+	"github.com/spf13/pflag"
 )
 
 type redisShadow struct {
-	Enabled  *bool   `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Host     *string `json:"host" toml:"host" yaml:"host"`
-	Port     *int    `json:"port" toml:"port" yaml:"port"`
+	Enabled  *bool   `json:"enabled"  toml:"enabled"  yaml:"enabled"`
+	Host     *string `json:"host"     toml:"host"     yaml:"host"`
+	Port     *int    `json:"port"     toml:"port"     yaml:"port"`
 	Password *string `json:"password" toml:"password" yaml:"password"`
 }
+
 type databaseShadow struct {
-	Driver          *string   `json:"driver" toml:"driver" yaml:"driver"`
-	Database        *string   `json:"database" toml:"database" yaml:"database"`
-	Host            *string   `json:"host" toml:"host" yaml:"host"`
-	Port            *int      `json:"port" toml:"port" yaml:"port"`
-	Username        *string   `json:"username" toml:"username" yaml:"username"`
-	Password        *string   `json:"password" toml:"password" yaml:"password"`
+	Driver          *string   `json:"driver"           toml:"driver"           yaml:"driver"`
+	Database        *string   `json:"database"         toml:"database"         yaml:"database"`
+	Host            *string   `json:"host"             toml:"host"             yaml:"host"`
+	Port            *int      `json:"port"             toml:"port"             yaml:"port"`
+	Username        *string   `json:"username"         toml:"username"         yaml:"username"`
+	Password        *string   `json:"password"         toml:"password"         yaml:"password"`
 	ExtraParameters *[]string `json:"extra-parameters" toml:"extra-parameters" yaml:"extra-parameters"`
 }
+
 type robotsTXTShadow struct {
-	Mode    *string `json:"mode" toml:"mode" yaml:"mode"`
+	Mode    *string `json:"mode"    toml:"mode"    yaml:"mode"`
 	Content *string `json:"content" toml:"content" yaml:"content"`
 }
+
 type cORSShadow struct {
-	Enabled *bool     `json:"enabled" toml:"enabled" yaml:"enabled"`
+	Enabled *bool     `json:"enabled"     toml:"enabled"     yaml:"enabled"`
 	Hosts   *[]string `json:"extra-hosts" toml:"extra-hosts" yaml:"extra-hosts"`
 }
+
 type hTTPShadow struct {
-	Bind           *string          `json:"bind" toml:"bind" yaml:"bind"`
-	Port           *int             `json:"port" toml:"port" yaml:"port"`
-	RobotsTXT      *robotsTXTShadow `json:"robots-txt" toml:"robots-txt" yaml:"robots-txt"`
-	CORS           *cORSShadow      `json:"cors" toml:"cors" yaml:"cors"`
+	Bind           *string          `json:"bind"            toml:"bind"            yaml:"bind"`
+	Port           *int             `json:"port"            toml:"port"            yaml:"port"`
+	RobotsTXT      *robotsTXTShadow `json:"robots-txt"      toml:"robots-txt"      yaml:"robots-txt"`
+	CORS           *cORSShadow      `json:"cors"            toml:"cors"            yaml:"cors"`
 	TrustedProxies *[]string        `json:"trusted-proxies" toml:"trusted-proxies" yaml:"trusted-proxies"`
-	CanonicalHost  *string          `json:"canonical-host" toml:"canonical-host" yaml:"canonical-host"`
+	CanonicalHost  *string          `json:"canonical-host"  toml:"canonical-host"  yaml:"canonical-host"`
 }
+
 type mMDVMShadow struct {
 	Bind *string `json:"bind" toml:"bind" yaml:"bind"`
 	Port *int    `json:"port" toml:"port" yaml:"port"`
 }
+
 type openBridgeShadow struct {
 	Enabled *bool   `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Bind    *string `json:"bind" toml:"bind" yaml:"bind"`
-	Port    *int    `json:"port" toml:"port" yaml:"port"`
+	Bind    *string `json:"bind"    toml:"bind"    yaml:"bind"`
+	Port    *int    `json:"port"    toml:"port"    yaml:"port"`
 }
+
 type iPSCShadow struct {
-	Enabled   *bool   `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Bind      *string `json:"bind" toml:"bind" yaml:"bind"`
-	Port      *int    `json:"port" toml:"port" yaml:"port"`
+	Enabled   *bool   `json:"enabled"    toml:"enabled"    yaml:"enabled"`
+	Bind      *string `json:"bind"       toml:"bind"       yaml:"bind"`
+	Port      *int    `json:"port"       toml:"port"       yaml:"port"`
 	NetworkID *uint32 `json:"network-id" toml:"network-id" yaml:"network-id"`
 }
+
 type dMRShadow struct {
-	MMDVM                    *mMDVMShadow      `json:"mmdvm" toml:"mmdvm" yaml:"mmdvm"`
-	OpenBridge               *openBridgeShadow `json:"openbridge" toml:"openbridge" yaml:"openbridge"`
-	IPSC                     *iPSCShadow       `json:"ipsc" toml:"ipsc" yaml:"ipsc"`
+	MMDVM                    *mMDVMShadow      `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
+	OpenBridge               *openBridgeShadow `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
+	IPSC                     *iPSCShadow       `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
 	DisableRadioIDValidation *bool             `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
-	RadioIDURL               *string           `json:"radio-id-url" toml:"radio-id-url" yaml:"radio-id-url"`
-	RepeaterIDURL            *string           `json:"repeater-id-url" toml:"repeater-id-url" yaml:"repeater-id-url"`
+	RadioIDURL               *string           `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
+	RepeaterIDURL            *string           `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
 }
+
 type sMTPShadow struct {
-	Enabled    *bool   `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Host       *string `json:"host" toml:"host" yaml:"host"`
-	Port       *int    `json:"port" toml:"port" yaml:"port"`
-	TLS        *string `json:"tls" toml:"tls" yaml:"tls"`
-	Username   *string `json:"username" toml:"username" yaml:"username"`
-	Password   *string `json:"password" toml:"password" yaml:"password"`
-	From       *string `json:"from" toml:"from" yaml:"from"`
+	Enabled    *bool   `json:"enabled"     toml:"enabled"     yaml:"enabled"`
+	Host       *string `json:"host"        toml:"host"        yaml:"host"`
+	Port       *int    `json:"port"        toml:"port"        yaml:"port"`
+	TLS        *string `json:"tls"         toml:"tls"         yaml:"tls"`
+	Username   *string `json:"username"    toml:"username"    yaml:"username"`
+	Password   *string `json:"password"    toml:"password"    yaml:"password"`
+	From       *string `json:"from"        toml:"from"        yaml:"from"`
 	AuthMethod *string `json:"auth-method" toml:"auth-method" yaml:"auth-method"`
 }
+
 type metricsShadow struct {
-	Enabled        *bool     `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Bind           *string   `json:"bind" toml:"bind" yaml:"bind"`
-	Port           *int      `json:"port" toml:"port" yaml:"port"`
+	Enabled        *bool     `json:"enabled"         toml:"enabled"         yaml:"enabled"`
+	Bind           *string   `json:"bind"            toml:"bind"            yaml:"bind"`
+	Port           *int      `json:"port"            toml:"port"            yaml:"port"`
 	TrustedProxies *[]string `json:"trusted-proxies" toml:"trusted-proxies" yaml:"trusted-proxies"`
-	OTLPEndpoint   *string   `json:"otlp-endpoint" toml:"otlp-endpoint" yaml:"otlp-endpoint"`
+	OTLPEndpoint   *string   `json:"otlp-endpoint"   toml:"otlp-endpoint"   yaml:"otlp-endpoint"`
 }
+
 type pProfShadow struct {
-	Enabled        *bool     `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Bind           *string   `json:"bind" toml:"bind" yaml:"bind"`
+	Enabled        *bool     `json:"enabled"         toml:"enabled"         yaml:"enabled"`
+	Bind           *string   `json:"bind"            toml:"bind"            yaml:"bind"`
 	TrustedProxies *[]string `json:"trusted-proxies" toml:"trusted-proxies" yaml:"trusted-proxies"`
-	Port           *int      `json:"port" toml:"port" yaml:"port"`
+	Port           *int      `json:"port"            toml:"port"            yaml:"port"`
 }
+
 type configShadow struct {
-	LogLevel     *string         `json:"log-level" toml:"log-level" yaml:"log-level"`
-	Redis        *redisShadow    `json:"redis" toml:"redis" yaml:"redis"`
-	Database     *databaseShadow `json:"database" toml:"database" yaml:"database"`
-	Secret       *string         `json:"secret" toml:"secret" yaml:"secret"`
+	LogLevel     *string         `json:"log-level"     toml:"log-level"     yaml:"log-level"`
+	Redis        *redisShadow    `json:"redis"         toml:"redis"         yaml:"redis"`
+	Database     *databaseShadow `json:"database"      toml:"database"      yaml:"database"`
+	Secret       *string         `json:"secret"        toml:"secret"        yaml:"secret"`
 	PasswordSalt *string         `json:"password-salt" toml:"password-salt" yaml:"password-salt"`
-	HTTP         *hTTPShadow     `json:"http" toml:"http" yaml:"http"`
-	DMR          *dMRShadow      `json:"dmr" toml:"dmr" yaml:"dmr"`
-	SMTP         *sMTPShadow     `json:"smtp" toml:"smtp" yaml:"smtp"`
-	NetworkName  *string         `json:"network-name" toml:"network-name" yaml:"network-name"`
-	Metrics      *metricsShadow  `json:"metrics" toml:"metrics" yaml:"metrics"`
-	PProf        *pProfShadow    `json:"pprof" toml:"pprof" yaml:"pprof"`
-	HIBPAPIKey   *string         `json:"hibp-api-key" toml:"hibp-api-key" yaml:"hibp-api-key"`
+	HTTP         *hTTPShadow     `json:"http"          toml:"http"          yaml:"http"`
+	DMR          *dMRShadow      `json:"dmr"           toml:"dmr"           yaml:"dmr"`
+	SMTP         *sMTPShadow     `json:"smtp"          toml:"smtp"          yaml:"smtp"`
+	NetworkName  *string         `json:"network-name"  toml:"network-name"  yaml:"network-name"`
+	Metrics      *metricsShadow  `json:"metrics"       toml:"metrics"       yaml:"metrics"`
+	PProf        *pProfShadow    `json:"pprof"         toml:"pprof"         yaml:"pprof"`
+	HIBPAPIKey   *string         `json:"hibp-api-key"  toml:"hibp-api-key"  yaml:"hibp-api-key"`
 }
 
 // ConfigSchema returns the generated schema for Config.
@@ -117,6 +131,7 @@ func ConfigSchema() *configulator.Schema[Config] {
 		DecodeFile:    configDecodeFile,
 	}
 }
+
 func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) error {
 	cfg.LogLevel = LogLevel("info")
 	set("log-level", configulator.LayerDefault, "default tag")
@@ -129,7 +144,7 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	cfg.Database.Database = "DMRHub.db"
 	set("database.database", configulator.LayerDefault, "default tag")
 	{
-		lst := configulator.SplitList("_pragma=foreign_keys(1),_pragma=journal_mode(WAL)", sep)
+		lst := impl.SplitList("_pragma=foreign_keys(1),_pragma=journal_mode(WAL)", sep)
 		cfg.Database.ExtraParameters = lst
 		set("database.extra-parameters", configulator.LayerDefault, "default tag")
 	}
@@ -187,6 +202,7 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("pprof.port", configulator.LayerDefault, "default tag")
 	return nil
 }
+
 func configDecodeFile(data []byte, u configulator.Unmarshal, cfg *Config, sep string, set configulator.SetOrigin, file string) error {
 	var sh configShadow
 	if err := u(data, &sh); err != nil {
@@ -197,7 +213,8 @@ func configDecodeFile(data []byte, u configulator.Unmarshal, cfg *Config, sep st
 	}
 	return sh.applyTo(cfg, sep, set, file)
 }
-func (s *configShadow) applyTo(cfg *Config, sep string, set configulator.SetOrigin, file string) error {
+
+func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin, file string) error {
 	if s.LogLevel != nil {
 		cfg.LogLevel = LogLevel(*s.LogLevel)
 		set("log-level", configulator.LayerFile, file)
@@ -436,491 +453,386 @@ func (s *configShadow) applyTo(cfg *Config, sep string, set configulator.SetOrig
 	}
 	return nil
 }
+
 func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.SetOrigin) error {
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "log-level"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.LogLevel = LogLevel(v)
-			set("log-level", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "log-level"); ok {
+		cfg.LogLevel = LogLevel(v)
+		set("log-level", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "redis", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "redis.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "redis", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "redis.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.Redis.Enabled = p
-			set("redis.enabled", configulator.LayerEnv, n)
 		}
+		cfg.Redis.Enabled = p
+		set("redis.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "redis", "host"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Redis.Host = v
-			set("redis.host", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "redis", "host"); ok {
+		cfg.Redis.Host = v
+		set("redis.host", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "redis", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "redis.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "redis", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "redis.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.Redis.Port = int(p)
-			set("redis.port", configulator.LayerEnv, n)
 		}
+		cfg.Redis.Port = int(p)
+		set("redis.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "redis", "password"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Redis.Password = v
-			set("redis.password", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "redis", "password"); ok {
+		cfg.Redis.Password = v
+		set("redis.password", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "driver"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.Driver = DatabaseDriver(v)
-			set("database.driver", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "driver"); ok {
+		cfg.Database.Driver = DatabaseDriver(v)
+		set("database.driver", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "database"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.Database = v
-			set("database.database", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "database"); ok {
+		cfg.Database.Database = v
+		set("database.database", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "host"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.Host = v
-			set("database.host", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "host"); ok {
+		cfg.Database.Host = v
+		set("database.host", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "database.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "database.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.Database.Port = int(p)
-			set("database.port", configulator.LayerEnv, n)
 		}
+		cfg.Database.Port = int(p)
+		set("database.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "username"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.Username = v
-			set("database.username", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "username"); ok {
+		cfg.Database.Username = v
+		set("database.username", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "password"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.Password = v
-			set("database.password", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "password"); ok {
+		cfg.Database.Password = v
+		set("database.password", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "extra-parameters"); true {
-		if v, ok := ec.Getenv(n); ok {
-			lst := configulator.SplitList(v, ec.ArraySeparator)
-			cfg.Database.ExtraParameters = lst
-			set("database.extra-parameters", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "database", "extra-parameters"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.Database.ExtraParameters = lst
+		set("database.extra-parameters", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "secret"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Secret = v
-			set("secret", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "secret"); ok {
+		cfg.Secret = v
+		set("secret", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "password-salt"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.PasswordSalt = v
-			set("password-salt", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "password-salt"); ok {
+		cfg.PasswordSalt = v
+		set("password-salt", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.Bind = v
-			set("http.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "bind"); ok {
+		cfg.HTTP.Bind = v
+		set("http.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "http.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "http.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.HTTP.Port = int(p)
-			set("http.port", configulator.LayerEnv, n)
 		}
+		cfg.HTTP.Port = int(p)
+		set("http.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "robots-txt", "mode"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.RobotsTXT.Mode = RobotsTXTMode(v)
-			set("http.robots-txt.mode", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "robots-txt", "mode"); ok {
+		cfg.HTTP.RobotsTXT.Mode = RobotsTXTMode(v)
+		set("http.robots-txt.mode", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "robots-txt", "content"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.RobotsTXT.Content = v
-			set("http.robots-txt.content", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "robots-txt", "content"); ok {
+		cfg.HTTP.RobotsTXT.Content = v
+		set("http.robots-txt.content", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "cors", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "http.cors.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "cors", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "http.cors.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.HTTP.CORS.Enabled = p
-			set("http.cors.enabled", configulator.LayerEnv, n)
 		}
+		cfg.HTTP.CORS.Enabled = p
+		set("http.cors.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "cors", "extra-hosts"); true {
-		if v, ok := ec.Getenv(n); ok {
-			lst := configulator.SplitList(v, ec.ArraySeparator)
-			cfg.HTTP.CORS.Hosts = lst
-			set("http.cors.extra-hosts", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "cors", "extra-hosts"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.HTTP.CORS.Hosts = lst
+		set("http.cors.extra-hosts", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "trusted-proxies"); true {
-		if v, ok := ec.Getenv(n); ok {
-			lst := configulator.SplitList(v, ec.ArraySeparator)
-			cfg.HTTP.TrustedProxies = lst
-			set("http.trusted-proxies", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "trusted-proxies"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.HTTP.TrustedProxies = lst
+		set("http.trusted-proxies", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "canonical-host"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.CanonicalHost = v
-			set("http.canonical-host", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "http", "canonical-host"); ok {
+		cfg.HTTP.CanonicalHost = v
+		set("http.canonical-host", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.DMR.MMDVM.Bind = v
-			set("dmr.mmdvm.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "bind"); ok {
+		cfg.DMR.MMDVM.Bind = v
+		set("dmr.mmdvm.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.mmdvm.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.MMDVM.Port = int(p)
-			set("dmr.mmdvm.port", configulator.LayerEnv, n)
 		}
+		cfg.DMR.MMDVM.Port = int(p)
+		set("dmr.mmdvm.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.openbridge.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.openbridge.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.OpenBridge.Enabled = p
-			set("dmr.openbridge.enabled", configulator.LayerEnv, n)
 		}
+		cfg.DMR.OpenBridge.Enabled = p
+		set("dmr.openbridge.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.DMR.OpenBridge.Bind = v
-			set("dmr.openbridge.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "bind"); ok {
+		cfg.DMR.OpenBridge.Bind = v
+		set("dmr.openbridge.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.openbridge.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.openbridge.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.OpenBridge.Port = int(p)
-			set("dmr.openbridge.port", configulator.LayerEnv, n)
 		}
+		cfg.DMR.OpenBridge.Port = int(p)
+		set("dmr.openbridge.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.ipsc.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.IPSC.Enabled = p
-			set("dmr.ipsc.enabled", configulator.LayerEnv, n)
 		}
+		cfg.DMR.IPSC.Enabled = p
+		set("dmr.ipsc.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.DMR.IPSC.Bind = v
-			set("dmr.ipsc.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "bind"); ok {
+		cfg.DMR.IPSC.Bind = v
+		set("dmr.ipsc.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.ipsc.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.IPSC.Port = int(p)
-			set("dmr.ipsc.port", configulator.LayerEnv, n)
 		}
+		cfg.DMR.IPSC.Port = int(p)
+		set("dmr.ipsc.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "network-id"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseUint(v, 10, 32)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.ipsc.network-id",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "network-id"); ok {
+		p, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.network-id",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.IPSC.NetworkID = uint32(p)
-			set("dmr.ipsc.network-id", configulator.LayerEnv, n)
 		}
+		cfg.DMR.IPSC.NetworkID = uint32(p)
+		set("dmr.ipsc.network-id", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "disable-radio-id-validation"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "dmr.disable-radio-id-validation",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "disable-radio-id-validation"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.disable-radio-id-validation",
+				Source: n,
+				Value:  v,
 			}
-			cfg.DMR.DisableRadioIDValidation = p
-			set("dmr.disable-radio-id-validation", configulator.LayerEnv, n)
 		}
+		cfg.DMR.DisableRadioIDValidation = p
+		set("dmr.disable-radio-id-validation", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-url"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.DMR.RadioIDURL = v
-			set("dmr.radio-id-url", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-url"); ok {
+		cfg.DMR.RadioIDURL = v
+		set("dmr.radio-id-url", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "dmr", "repeater-id-url"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.DMR.RepeaterIDURL = v
-			set("dmr.repeater-id-url", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "repeater-id-url"); ok {
+		cfg.DMR.RepeaterIDURL = v
+		set("dmr.repeater-id-url", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "smtp.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "smtp.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.SMTP.Enabled = p
-			set("smtp.enabled", configulator.LayerEnv, n)
 		}
+		cfg.SMTP.Enabled = p
+		set("smtp.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "host"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.Host = v
-			set("smtp.host", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "host"); ok {
+		cfg.SMTP.Host = v
+		set("smtp.host", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "smtp.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "smtp.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.SMTP.Port = int(p)
-			set("smtp.port", configulator.LayerEnv, n)
 		}
+		cfg.SMTP.Port = int(p)
+		set("smtp.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "tls"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.TLS = SMTPTLS(v)
-			set("smtp.tls", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "tls"); ok {
+		cfg.SMTP.TLS = SMTPTLS(v)
+		set("smtp.tls", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "username"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.Username = v
-			set("smtp.username", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "username"); ok {
+		cfg.SMTP.Username = v
+		set("smtp.username", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "password"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.Password = v
-			set("smtp.password", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "password"); ok {
+		cfg.SMTP.Password = v
+		set("smtp.password", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "from"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.From = v
-			set("smtp.from", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "from"); ok {
+		cfg.SMTP.From = v
+		set("smtp.from", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "smtp", "auth-method"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.SMTP.AuthMethod = SMTPAuthMethod(v)
-			set("smtp.auth-method", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "auth-method"); ok {
+		cfg.SMTP.AuthMethod = SMTPAuthMethod(v)
+		set("smtp.auth-method", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "network-name"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.NetworkName = v
-			set("network-name", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "network-name"); ok {
+		cfg.NetworkName = v
+		set("network-name", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "metrics.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "metrics", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "metrics.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.Metrics.Enabled = p
-			set("metrics.enabled", configulator.LayerEnv, n)
 		}
+		cfg.Metrics.Enabled = p
+		set("metrics.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Metrics.Bind = v
-			set("metrics.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "metrics", "bind"); ok {
+		cfg.Metrics.Bind = v
+		set("metrics.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "metrics.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "metrics", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "metrics.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.Metrics.Port = int(p)
-			set("metrics.port", configulator.LayerEnv, n)
 		}
+		cfg.Metrics.Port = int(p)
+		set("metrics.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "trusted-proxies"); true {
-		if v, ok := ec.Getenv(n); ok {
-			lst := configulator.SplitList(v, ec.ArraySeparator)
-			cfg.Metrics.TrustedProxies = lst
-			set("metrics.trusted-proxies", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "metrics", "trusted-proxies"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.Metrics.TrustedProxies = lst
+		set("metrics.trusted-proxies", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "otlp-endpoint"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.Metrics.OTLPEndpoint = v
-			set("metrics.otlp-endpoint", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "metrics", "otlp-endpoint"); ok {
+		cfg.Metrics.OTLPEndpoint = v
+		set("metrics.otlp-endpoint", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "pprof", "enabled"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseBool(v)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "pprof.enabled",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "pprof", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "pprof.enabled",
+				Source: n,
+				Value:  v,
 			}
-			cfg.PProf.Enabled = p
-			set("pprof.enabled", configulator.LayerEnv, n)
 		}
+		cfg.PProf.Enabled = p
+		set("pprof.enabled", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "pprof", "bind"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.PProf.Bind = v
-			set("pprof.bind", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "pprof", "bind"); ok {
+		cfg.PProf.Bind = v
+		set("pprof.bind", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "pprof", "trusted-proxies"); true {
-		if v, ok := ec.Getenv(n); ok {
-			lst := configulator.SplitList(v, ec.ArraySeparator)
-			cfg.PProf.TrustedProxies = lst
-			set("pprof.trusted-proxies", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "pprof", "trusted-proxies"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.PProf.TrustedProxies = lst
+		set("pprof.trusted-proxies", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "pprof", "port"); true {
-		if v, ok := ec.Getenv(n); ok {
-			p, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return &configulator.ParseError{
-					Err:    err,
-					Path:   "pprof.port",
-					Source: n,
-					Value:  v,
-				}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "pprof", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "pprof.port",
+				Source: n,
+				Value:  v,
 			}
-			cfg.PProf.Port = int(p)
-			set("pprof.port", configulator.LayerEnv, n)
 		}
+		cfg.PProf.Port = int(p)
+		set("pprof.port", configulator.LayerEnv, n)
 	}
-	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "hibp-api-key"); true {
-		if v, ok := ec.Getenv(n); ok {
-			cfg.HIBPAPIKey = v
-			set("hibp-api-key", configulator.LayerEnv, n)
-		}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "hibp-api-key"); ok {
+		cfg.HIBPAPIKey = v
+		set("hibp-api-key", configulator.LayerEnv, n)
 	}
 	return nil
 }
@@ -932,10 +844,71 @@ func ConfigPFlagHooks() cpflag.Hooks[Config] {
 		Register: configRegisterPFlags,
 	}
 }
+
 func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
-	names := []string{strings.Join([]string{"log-level"}, o.Separator), strings.Join([]string{"redis", "enabled"}, o.Separator), strings.Join([]string{"redis", "host"}, o.Separator), strings.Join([]string{"redis", "port"}, o.Separator), strings.Join([]string{"redis", "password"}, o.Separator), strings.Join([]string{"database", "driver"}, o.Separator), strings.Join([]string{"database", "database"}, o.Separator), strings.Join([]string{"database", "host"}, o.Separator), strings.Join([]string{"database", "port"}, o.Separator), strings.Join([]string{"database", "username"}, o.Separator), strings.Join([]string{"database", "password"}, o.Separator), strings.Join([]string{"database", "extra-parameters"}, o.Separator), strings.Join([]string{"secret"}, o.Separator), strings.Join([]string{"password-salt"}, o.Separator), strings.Join([]string{"http", "bind"}, o.Separator), strings.Join([]string{"http", "port"}, o.Separator), strings.Join([]string{"http", "robots-txt", "mode"}, o.Separator), strings.Join([]string{"http", "robots-txt", "content"}, o.Separator), strings.Join([]string{"http", "cors", "enabled"}, o.Separator), strings.Join([]string{"http", "cors", "extra-hosts"}, o.Separator), strings.Join([]string{"http", "trusted-proxies"}, o.Separator), strings.Join([]string{"http", "canonical-host"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "bind"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "port"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "enabled"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "bind"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "enabled"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "bind"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "network-id"}, o.Separator), strings.Join([]string{"dmr", "disable-radio-id-validation"}, o.Separator), strings.Join([]string{"dmr", "radio-id-url"}, o.Separator), strings.Join([]string{"dmr", "repeater-id-url"}, o.Separator), strings.Join([]string{"smtp", "enabled"}, o.Separator), strings.Join([]string{"smtp", "host"}, o.Separator), strings.Join([]string{"smtp", "port"}, o.Separator), strings.Join([]string{"smtp", "tls"}, o.Separator), strings.Join([]string{"smtp", "username"}, o.Separator), strings.Join([]string{"smtp", "password"}, o.Separator), strings.Join([]string{"smtp", "from"}, o.Separator), strings.Join([]string{"smtp", "auth-method"}, o.Separator), strings.Join([]string{"network-name"}, o.Separator), strings.Join([]string{"metrics", "enabled"}, o.Separator), strings.Join([]string{"metrics", "bind"}, o.Separator), strings.Join([]string{"metrics", "port"}, o.Separator), strings.Join([]string{"metrics", "trusted-proxies"}, o.Separator), strings.Join([]string{"metrics", "otlp-endpoint"}, o.Separator), strings.Join([]string{"pprof", "enabled"}, o.Separator), strings.Join([]string{"pprof", "bind"}, o.Separator), strings.Join([]string{"pprof", "trusted-proxies"}, o.Separator), strings.Join([]string{"pprof", "port"}, o.Separator), strings.Join([]string{"hibp-api-key"}, o.Separator)}
+	names := []string{
+		"log-level",
+		"redis" + o.Separator + "enabled",
+		"redis" + o.Separator + "host",
+		"redis" + o.Separator + "port",
+		"redis" + o.Separator + "password",
+		"database" + o.Separator + "driver",
+		"database" + o.Separator + "database",
+		"database" + o.Separator + "host",
+		"database" + o.Separator + "port",
+		"database" + o.Separator + "username",
+		"database" + o.Separator + "password",
+		"database" + o.Separator + "extra-parameters",
+		"secret",
+		"password-salt",
+		"http" + o.Separator + "bind",
+		"http" + o.Separator + "port",
+		"http" + o.Separator + "robots-txt" + o.Separator + "mode",
+		"http" + o.Separator + "robots-txt" + o.Separator + "content",
+		"http" + o.Separator + "cors" + o.Separator + "enabled",
+		"http" + o.Separator + "cors" + o.Separator + "extra-hosts",
+		"http" + o.Separator + "trusted-proxies",
+		"http" + o.Separator + "canonical-host",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "bind",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "port",
+		"dmr" + o.Separator + "openbridge" + o.Separator + "enabled",
+		"dmr" + o.Separator + "openbridge" + o.Separator + "bind",
+		"dmr" + o.Separator + "openbridge" + o.Separator + "port",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "enabled",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "bind",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "port",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "network-id",
+		"dmr" + o.Separator + "disable-radio-id-validation",
+		"dmr" + o.Separator + "radio-id-url",
+		"dmr" + o.Separator + "repeater-id-url",
+		"smtp" + o.Separator + "enabled",
+		"smtp" + o.Separator + "host",
+		"smtp" + o.Separator + "port",
+		"smtp" + o.Separator + "tls",
+		"smtp" + o.Separator + "username",
+		"smtp" + o.Separator + "password",
+		"smtp" + o.Separator + "from",
+		"smtp" + o.Separator + "auth-method",
+		"network-name",
+		"metrics" + o.Separator + "enabled",
+		"metrics" + o.Separator + "bind",
+		"metrics" + o.Separator + "port",
+		"metrics" + o.Separator + "trusted-proxies",
+		"metrics" + o.Separator + "otlp-endpoint",
+		"pprof" + o.Separator + "enabled",
+		"pprof" + o.Separator + "bind",
+		"pprof" + o.Separator + "trusted-proxies",
+		"pprof" + o.Separator + "port",
+		"hibp-api-key",
+	}
 	for i, name := range names {
-		if fs.Lookup(name) != nil || slices.Contains(names[:i], name) {
+		if f := fs.Lookup(name); f != nil {
+			return &configulator.FlagConflictError{
+				Existing: f.Name,
+				Flag:     name,
+			}
+		}
+		if slices.Contains(names[:i], name) {
 			return &configulator.FlagConflictError{
 				Existing: name,
 				Flag:     name,
@@ -945,12 +918,12 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[0], "info", "Logging level for the application. One of debug, info, warn, or error")
 	fs.Bool(names[1], false, "Enable Redis support")
 	fs.String(names[2], "", "Redis host address")
-	fs.Int(names[3], 6379, "Redis port")
+	fs.Var(impl.NewInt(6379), names[3], "Redis port")
 	fs.String(names[4], "", "Redis password")
 	fs.String(names[5], "sqlite", "Database driver to use. One of sqlite, postgres, or mysql")
 	fs.String(names[6], "DMRHub.db", "Database name or path")
 	fs.String(names[7], "", "Database host address (postgres and mysql only)")
-	fs.Int(names[8], 0, "Database port (postgres and mysql only)")
+	fs.Var(impl.NewInt(0), names[8], "Database port (postgres and mysql only)")
 	fs.String(names[9], "", "Database username (postgres and mysql only)")
 	fs.String(names[10], "", "Database password (postgres and mysql only)")
 	fs.StringSlice(names[11], nil, "Additional parameters for the database connection, e.g., sslmode=disable")
@@ -958,7 +931,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[12], "", "Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters")
 	fs.String(names[13], "", "Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret")
 	fs.String(names[14], "[::]", "HTTP server listen address")
-	fs.Int(names[15], 3005, "HTTP server port")
+	fs.Var(impl.NewInt(3005), names[15], "HTTP server port")
 	fs.String(names[16], "disabled", "Mode for serving robots.txt. One of allow, disabled, or custom")
 	fs.String(names[17], "", "Content of the robots.txt file when mode is custom")
 	fs.Bool(names[18], false, "Enable CORS support for the HTTP server")
@@ -966,20 +939,20 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.StringSlice(names[20], nil, "List of trusted proxy IPs for the HTTP server")
 	fs.String(names[21], "", "URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required")
 	fs.String(names[22], "[::]", "MMDVM server listen address")
-	fs.Int(names[23], 62031, "MMDVM server port")
+	fs.Var(impl.NewInt(62031), names[23], "MMDVM server port")
 	fs.Bool(names[24], false, "Enable experimental OpenBridge server support")
 	fs.String(names[25], "[::]", "OpenBridge server listen address")
-	fs.Int(names[26], 62035, "OpenBridge server port")
+	fs.Var(impl.NewInt(62035), names[26], "OpenBridge server port")
 	fs.Bool(names[27], false, "Enable IPSC server support")
 	fs.String(names[28], "[::]", "IPSC server listen address")
-	fs.Int(names[29], 50000, "IPSC server port")
-	fs.Uint32(names[30], uint32(0), "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
+	fs.Var(impl.NewInt(50000), names[29], "IPSC server port")
+	fs.Uint32(names[30], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
 	fs.Bool(names[31], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
 	fs.String(names[32], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
 	fs.String(names[33], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
 	fs.Bool(names[34], false, "Enable SMTP support for sending emails")
 	fs.String(names[35], "", "SMTP server host address")
-	fs.Int(names[36], 25, "SMTP server port")
+	fs.Var(impl.NewInt(25), names[36], "SMTP server port")
 	fs.String(names[37], "none", "SMTP TLS mode. One of none, starttls, or implicit")
 	fs.String(names[38], "", "SMTP server username")
 	fs.String(names[39], "", "SMTP server password")
@@ -988,18 +961,19 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[42], "DMRHub", "Name of the DMR network, shown in the web interface")
 	fs.Bool(names[43], false, "Enable metrics collection and export")
 	fs.String(names[44], "[::]", "Metrics server listen address")
-	fs.Int(names[45], 9000, "Metrics server port")
+	fs.Var(impl.NewInt(9000), names[45], "Metrics server port")
 	fs.StringSlice(names[46], nil, "List of trusted proxy IPs for the metrics server")
 	fs.String(names[47], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
 	fs.Bool(names[48], false, "Enable PProf profiling and debugging support")
 	fs.String(names[49], "[::]", "PProf server listen address")
 	fs.StringSlice(names[50], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Int(names[51], 6060, "PProf server port")
+	fs.Var(impl.NewInt(6060), names[51], "PProf server port")
 	fs.String(names[52], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
-func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep string, set configulator.SetOrigin) error {
-	if n := strings.Join([]string{"log-level"}, o.Separator); fs.Changed(n) {
+
+func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ string, set configulator.SetOrigin) error {
+	if n := "log-level"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1011,7 +985,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.LogLevel = LogLevel(v)
 		set("log-level", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"redis", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "redis" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1023,7 +997,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Redis.Enabled = v
 		set("redis.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"redis", "host"}, o.Separator); fs.Changed(n) {
+	if n := "redis" + o.Separator + "host"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1035,7 +1009,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Redis.Host = v
 		set("redis.host", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"redis", "port"}, o.Separator); fs.Changed(n) {
+	if n := "redis" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1047,7 +1021,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Redis.Port = v
 		set("redis.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"redis", "password"}, o.Separator); fs.Changed(n) {
+	if n := "redis" + o.Separator + "password"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1059,7 +1033,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Redis.Password = v
 		set("redis.password", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "driver"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "driver"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1071,7 +1045,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Driver = DatabaseDriver(v)
 		set("database.driver", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "database"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "database"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1083,7 +1057,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Database = v
 		set("database.database", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "host"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "host"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1095,7 +1069,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Host = v
 		set("database.host", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "port"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1107,7 +1081,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Port = v
 		set("database.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "username"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "username"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1119,7 +1093,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Username = v
 		set("database.username", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "password"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "password"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1131,7 +1105,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.Password = v
 		set("database.password", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"database", "extra-parameters"}, o.Separator); fs.Changed(n) {
+	if n := "database" + o.Separator + "extra-parameters"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1143,7 +1117,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Database.ExtraParameters = v
 		set("database.extra-parameters", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"secret"}, o.Separator); fs.Changed(n) {
+	if n := "secret"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1155,7 +1129,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Secret = v
 		set("secret", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"password-salt"}, o.Separator); fs.Changed(n) {
+	if n := "password-salt"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1167,7 +1141,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.PasswordSalt = v
 		set("password-salt", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1179,7 +1153,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.Bind = v
 		set("http.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "port"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1191,7 +1165,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.Port = v
 		set("http.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "robots-txt", "mode"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "robots-txt" + o.Separator + "mode"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1203,7 +1177,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.RobotsTXT.Mode = RobotsTXTMode(v)
 		set("http.robots-txt.mode", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "robots-txt", "content"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "robots-txt" + o.Separator + "content"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1215,7 +1189,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.RobotsTXT.Content = v
 		set("http.robots-txt.content", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "cors", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "cors" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1227,7 +1201,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.CORS.Enabled = v
 		set("http.cors.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "cors", "extra-hosts"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "cors" + o.Separator + "extra-hosts"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1239,7 +1213,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.CORS.Hosts = v
 		set("http.cors.extra-hosts", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "trusted-proxies"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "trusted-proxies"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1251,7 +1225,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.TrustedProxies = v
 		set("http.trusted-proxies", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"http", "canonical-host"}, o.Separator); fs.Changed(n) {
+	if n := "http" + o.Separator + "canonical-host"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1263,7 +1237,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.HTTP.CanonicalHost = v
 		set("http.canonical-host", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "mmdvm", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1275,7 +1249,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.MMDVM.Bind = v
 		set("dmr.mmdvm.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "mmdvm", "port"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1287,7 +1261,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.MMDVM.Port = v
 		set("dmr.mmdvm.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "openbridge", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1299,7 +1273,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.OpenBridge.Enabled = v
 		set("dmr.openbridge.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "openbridge", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1311,7 +1285,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.OpenBridge.Bind = v
 		set("dmr.openbridge.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "openbridge", "port"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1323,7 +1297,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.OpenBridge.Port = v
 		set("dmr.openbridge.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "ipsc", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1335,7 +1309,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.IPSC.Enabled = v
 		set("dmr.ipsc.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "ipsc", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1347,7 +1321,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.IPSC.Bind = v
 		set("dmr.ipsc.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "ipsc", "port"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1359,7 +1333,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.IPSC.Port = v
 		set("dmr.ipsc.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "ipsc", "network-id"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "network-id"; fs.Changed(n) {
 		v, err := fs.GetUint32(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1371,7 +1345,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.IPSC.NetworkID = v
 		set("dmr.ipsc.network-id", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "disable-radio-id-validation"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "disable-radio-id-validation"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1383,7 +1357,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.DisableRadioIDValidation = v
 		set("dmr.disable-radio-id-validation", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "radio-id-url"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "radio-id-url"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1395,7 +1369,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.RadioIDURL = v
 		set("dmr.radio-id-url", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"dmr", "repeater-id-url"}, o.Separator); fs.Changed(n) {
+	if n := "dmr" + o.Separator + "repeater-id-url"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1407,7 +1381,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.DMR.RepeaterIDURL = v
 		set("dmr.repeater-id-url", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1419,7 +1393,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.Enabled = v
 		set("smtp.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "host"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "host"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1431,7 +1405,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.Host = v
 		set("smtp.host", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "port"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1443,7 +1417,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.Port = v
 		set("smtp.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "tls"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "tls"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1455,7 +1429,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.TLS = SMTPTLS(v)
 		set("smtp.tls", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "username"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "username"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1467,7 +1441,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.Username = v
 		set("smtp.username", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "password"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "password"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1479,7 +1453,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.Password = v
 		set("smtp.password", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "from"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "from"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1491,7 +1465,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.From = v
 		set("smtp.from", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"smtp", "auth-method"}, o.Separator); fs.Changed(n) {
+	if n := "smtp" + o.Separator + "auth-method"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1503,7 +1477,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.SMTP.AuthMethod = SMTPAuthMethod(v)
 		set("smtp.auth-method", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"network-name"}, o.Separator); fs.Changed(n) {
+	if n := "network-name"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1515,7 +1489,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.NetworkName = v
 		set("network-name", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"metrics", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "metrics" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1527,7 +1501,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Metrics.Enabled = v
 		set("metrics.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"metrics", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "metrics" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1539,7 +1513,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Metrics.Bind = v
 		set("metrics.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"metrics", "port"}, o.Separator); fs.Changed(n) {
+	if n := "metrics" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1551,7 +1525,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Metrics.Port = v
 		set("metrics.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"metrics", "trusted-proxies"}, o.Separator); fs.Changed(n) {
+	if n := "metrics" + o.Separator + "trusted-proxies"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1563,7 +1537,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Metrics.TrustedProxies = v
 		set("metrics.trusted-proxies", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"metrics", "otlp-endpoint"}, o.Separator); fs.Changed(n) {
+	if n := "metrics" + o.Separator + "otlp-endpoint"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1575,7 +1549,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.Metrics.OTLPEndpoint = v
 		set("metrics.otlp-endpoint", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"pprof", "enabled"}, o.Separator); fs.Changed(n) {
+	if n := "pprof" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1587,7 +1561,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.PProf.Enabled = v
 		set("pprof.enabled", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"pprof", "bind"}, o.Separator); fs.Changed(n) {
+	if n := "pprof" + o.Separator + "bind"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1599,7 +1573,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.PProf.Bind = v
 		set("pprof.bind", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"pprof", "trusted-proxies"}, o.Separator); fs.Changed(n) {
+	if n := "pprof" + o.Separator + "trusted-proxies"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1611,7 +1585,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.PProf.TrustedProxies = v
 		set("pprof.trusted-proxies", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"pprof", "port"}, o.Separator); fs.Changed(n) {
+	if n := "pprof" + o.Separator + "port"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1623,7 +1597,7 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 		cfg.PProf.Port = v
 		set("pprof.port", configulator.LayerCLI, "--"+n)
 	}
-	if n := strings.Join([]string{"hibp-api-key"}, o.Separator); fs.Changed(n) {
+	if n := "hibp-api-key"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
@@ -1637,56 +1611,71 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep st
 	}
 	return nil
 }
+
 func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	tok, err := dec.ReadToken()
 	if err != nil {
 		return err
 	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
+	if tok.Kind() != jsontext.KindBeginObject {
+		return fmt.Errorf("expected an object, got %v", tok.Kind())
 	}
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "log-level":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.LogLevel = &str
 			default:
-				return fmt.Errorf("log-level: expected a string, got %v", v.Kind())
+				return configJSONError("log-level", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "redis":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("redis", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub redisShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "redis"); err != nil {
 					return err
 				}
 				s.Redis = &sub
 			}
 		case "database":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("database", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub databaseShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "database"); err != nil {
 					return err
 				}
 				s.Database = &sub
@@ -1697,12 +1686,12 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Secret = &str
 			default:
-				return fmt.Errorf("secret: expected a string, got %v", v.Kind())
+				return configJSONError("secret", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "password-salt":
 			v, err := dec.ReadToken()
@@ -1710,45 +1699,66 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.PasswordSalt = &str
 			default:
-				return fmt.Errorf("password-salt: expected a string, got %v", v.Kind())
+				return configJSONError("password-salt", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "http":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("http", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub hTTPShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "http"); err != nil {
 					return err
 				}
 				s.HTTP = &sub
 			}
 		case "dmr":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("dmr", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub dMRShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "dmr"); err != nil {
 					return err
 				}
 				s.DMR = &sub
 			}
 		case "smtp":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("smtp", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub sMTPShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "smtp"); err != nil {
 					return err
 				}
 				s.SMTP = &sub
@@ -1759,33 +1769,47 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.NetworkName = &str
 			default:
-				return fmt.Errorf("network-name: expected a string, got %v", v.Kind())
+				return configJSONError("network-name", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "metrics":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("metrics", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub metricsShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "metrics"); err != nil {
 					return err
 				}
 				s.Metrics = &sub
 			}
 		case "pprof":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("pprof", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub pProfShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, "pprof"); err != nil {
 					return err
 				}
 				s.PProf = &sub
@@ -1796,50 +1820,50 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.HIBPAPIKey = &str
 			default:
-				return fmt.Errorf("hibp-api-key: expected a string, got %v", v.Kind())
+				return configJSONError("hibp-api-key", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*configShadow)(nil)
+var _ json.UnmarshalerFrom = (*configShadow)(nil)
 
-func (s *redisShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *redisShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "host":
 			v, err := dec.ReadToken()
@@ -1847,12 +1871,12 @@ func (s *redisShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Host = &str
 			default:
-				return fmt.Errorf("host: expected a string, got %v", v.Kind())
+				return configJSONError(path+".host", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -1860,16 +1884,19 @@ func (s *redisShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "password":
 			v, err := dec.ReadToken()
@@ -1877,50 +1904,48 @@ func (s *redisShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Password = &str
 			default:
-				return fmt.Errorf("password: expected a string, got %v", v.Kind())
+				return configJSONError(path+".password", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*redisShadow)(nil)
-
-func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *databaseShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "driver":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Driver = &str
 			default:
-				return fmt.Errorf("driver: expected a string, got %v", v.Kind())
+				return configJSONError(path+".driver", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "database":
 			v, err := dec.ReadToken()
@@ -1928,12 +1953,12 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Database = &str
 			default:
-				return fmt.Errorf("database: expected a string, got %v", v.Kind())
+				return configJSONError(path+".database", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "host":
 			v, err := dec.ReadToken()
@@ -1941,12 +1966,12 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Host = &str
 			default:
-				return fmt.Errorf("host: expected a string, got %v", v.Kind())
+				return configJSONError(path+".host", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -1954,16 +1979,19 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "username":
 			v, err := dec.ReadToken()
@@ -1971,12 +1999,12 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Username = &str
 			default:
-				return fmt.Errorf("username: expected a string, got %v", v.Kind())
+				return configJSONError(path+".username", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "password":
 			v, err := dec.ReadToken()
@@ -1984,34 +2012,34 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Password = &str
 			default:
-				return fmt.Errorf("password: expected a string, got %v", v.Kind())
+				return configJSONError(path+".password", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "extra-parameters":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
-				tok, err := dec.ReadToken()
+				open, err := dec.ReadToken()
 				if err != nil {
 					return err
 				}
-				if tok.Kind() != '[' {
-					return fmt.Errorf("extra-parameters: expected an array, got %v", tok.Kind())
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".extra-parameters", open, fmt.Errorf("expected an array, got %v", open.Kind()))
 				}
 				out := []string{}
-				for dec.PeekKind() != ']' {
+				for dec.PeekKind() != jsontext.KindEndArray {
 					v, err := dec.ReadToken()
 					if err != nil {
 						return err
 					}
-					if v.Kind() != '"' {
-						return fmt.Errorf("extra-parameters: expected a string element, got %v", v.Kind())
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".extra-parameters"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 					}
 					el := v.String()
 					out = append(out, el)
@@ -2022,42 +2050,40 @@ func (s *databaseShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.ExtraParameters = &out
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*databaseShadow)(nil)
-
-func (s *hTTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *hTTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "bind":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2065,62 +2091,79 @@ func (s *hTTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "robots-txt":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".robots-txt", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub robotsTXTShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, path+".robots-txt"); err != nil {
 					return err
 				}
 				s.RobotsTXT = &sub
 			}
 		case "cors":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".cors", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub cORSShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, path+".cors"); err != nil {
 					return err
 				}
 				s.CORS = &sub
 			}
 		case "trusted-proxies":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
-				tok, err := dec.ReadToken()
+				open, err := dec.ReadToken()
 				if err != nil {
 					return err
 				}
-				if tok.Kind() != '[' {
-					return fmt.Errorf("trusted-proxies: expected an array, got %v", tok.Kind())
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".trusted-proxies", open, fmt.Errorf("expected an array, got %v", open.Kind()))
 				}
 				out := []string{}
-				for dec.PeekKind() != ']' {
+				for dec.PeekKind() != jsontext.KindEndArray {
 					v, err := dec.ReadToken()
 					if err != nil {
 						return err
 					}
-					if v.Kind() != '"' {
-						return fmt.Errorf("trusted-proxies: expected a string element, got %v", v.Kind())
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".trusted-proxies"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 					}
 					el := v.String()
 					out = append(out, el)
@@ -2136,50 +2179,48 @@ func (s *hTTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.CanonicalHost = &str
 			default:
-				return fmt.Errorf("canonical-host: expected a string, got %v", v.Kind())
+				return configJSONError(path+".canonical-host", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*hTTPShadow)(nil)
-
-func (s *robotsTXTShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *robotsTXTShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "mode":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Mode = &str
 			default:
-				return fmt.Errorf("mode: expected a string, got %v", v.Kind())
+				return configJSONError(path+".mode", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "content":
 			v, err := dec.ReadToken()
@@ -2187,72 +2228,70 @@ func (s *robotsTXTShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Content = &str
 			default:
-				return fmt.Errorf("content: expected a string, got %v", v.Kind())
+				return configJSONError(path+".content", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*robotsTXTShadow)(nil)
-
-func (s *cORSShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *cORSShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "extra-hosts":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
-				tok, err := dec.ReadToken()
+				open, err := dec.ReadToken()
 				if err != nil {
 					return err
 				}
-				if tok.Kind() != '[' {
-					return fmt.Errorf("extra-hosts: expected an array, got %v", tok.Kind())
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".extra-hosts", open, fmt.Errorf("expected an array, got %v", open.Kind()))
 				}
 				out := []string{}
-				for dec.PeekKind() != ']' {
+				for dec.PeekKind() != jsontext.KindEndArray {
 					v, err := dec.ReadToken()
 					if err != nil {
 						return err
 					}
-					if v.Kind() != '"' {
-						return fmt.Errorf("extra-hosts: expected a string element, got %v", v.Kind())
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".extra-hosts"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 					}
 					el := v.String()
 					out = append(out, el)
@@ -2263,62 +2302,81 @@ func (s *cORSShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.Hosts = &out
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*cORSShadow)(nil)
-
-func (s *dMRShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "mmdvm":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".mmdvm", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub mMDVMShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, path+".mmdvm"); err != nil {
 					return err
 				}
 				s.MMDVM = &sub
 			}
 		case "openbridge":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".openbridge", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub openBridgeShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, path+".openbridge"); err != nil {
 					return err
 				}
 				s.OpenBridge = &sub
 			}
 		case "ipsc":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".ipsc", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
 				var sub iPSCShadow
-				if err := sub.UnmarshalJSONFrom(dec); err != nil {
+				if err := sub.decodeJSON(dec, path+".ipsc"); err != nil {
 					return err
 				}
 				s.IPSC = &sub
@@ -2329,12 +2387,12 @@ func (s *dMRShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.DisableRadioIDValidation = &b
 			default:
-				return fmt.Errorf("disable-radio-id-validation: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".disable-radio-id-validation", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "radio-id-url":
 			v, err := dec.ReadToken()
@@ -2342,12 +2400,12 @@ func (s *dMRShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.RadioIDURL = &str
 			default:
-				return fmt.Errorf("radio-id-url: expected a string, got %v", v.Kind())
+				return configJSONError(path+".radio-id-url", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "repeater-id-url":
 			v, err := dec.ReadToken()
@@ -2355,50 +2413,48 @@ func (s *dMRShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.RepeaterIDURL = &str
 			default:
-				return fmt.Errorf("repeater-id-url: expected a string, got %v", v.Kind())
+				return configJSONError(path+".repeater-id-url", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*dMRShadow)(nil)
-
-func (s *mMDVMShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *mMDVMShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "bind":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2406,54 +2462,55 @@ func (s *mMDVMShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*mMDVMShadow)(nil)
-
-func (s *openBridgeShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *openBridgeShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "bind":
 			v, err := dec.ReadToken()
@@ -2461,12 +2518,12 @@ func (s *openBridgeShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2474,54 +2531,55 @@ func (s *openBridgeShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*openBridgeShadow)(nil)
-
-func (s *iPSCShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *iPSCShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "bind":
 			v, err := dec.ReadToken()
@@ -2529,12 +2587,12 @@ func (s *iPSCShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2542,16 +2600,19 @@ func (s *iPSCShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "network-id":
 			v, err := dec.ReadToken()
@@ -2559,57 +2620,55 @@ func (s *iPSCShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Uint()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
 				if err != nil {
-					return err
+					return configJSONError(path+".network-id", v, err)
 				}
-				if num > math.MaxUint32 {
-					return fmt.Errorf("network-id: %d overflows uint32", num)
+				if raw > math.MaxUint32 {
+					return configJSONError(path+".network-id", v, fmt.Errorf("%d overflows uint32", raw))
 				}
-				val := uint32(num)
-				s.NetworkID = &val
+				num := uint32(raw)
+				s.NetworkID = &num
 			default:
-				return fmt.Errorf("network-id: expected a number, got %v", v.Kind())
+				return configJSONError(path+".network-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*iPSCShadow)(nil)
-
-func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "host":
 			v, err := dec.ReadToken()
@@ -2617,12 +2676,12 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Host = &str
 			default:
-				return fmt.Errorf("host: expected a string, got %v", v.Kind())
+				return configJSONError(path+".host", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2630,16 +2689,19 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "tls":
 			v, err := dec.ReadToken()
@@ -2647,12 +2709,12 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.TLS = &str
 			default:
-				return fmt.Errorf("tls: expected a string, got %v", v.Kind())
+				return configJSONError(path+".tls", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "username":
 			v, err := dec.ReadToken()
@@ -2660,12 +2722,12 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Username = &str
 			default:
-				return fmt.Errorf("username: expected a string, got %v", v.Kind())
+				return configJSONError(path+".username", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "password":
 			v, err := dec.ReadToken()
@@ -2673,12 +2735,12 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Password = &str
 			default:
-				return fmt.Errorf("password: expected a string, got %v", v.Kind())
+				return configJSONError(path+".password", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "from":
 			v, err := dec.ReadToken()
@@ -2686,12 +2748,12 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.From = &str
 			default:
-				return fmt.Errorf("from: expected a string, got %v", v.Kind())
+				return configJSONError(path+".from", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "auth-method":
 			v, err := dec.ReadToken()
@@ -2699,50 +2761,48 @@ func (s *sMTPShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.AuthMethod = &str
 			default:
-				return fmt.Errorf("auth-method: expected a string, got %v", v.Kind())
+				return configJSONError(path+".auth-method", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*sMTPShadow)(nil)
-
-func (s *metricsShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *metricsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "bind":
 			v, err := dec.ReadToken()
@@ -2750,12 +2810,12 @@ func (s *metricsShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "port":
 			v, err := dec.ReadToken()
@@ -2763,38 +2823,41 @@ func (s *metricsShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "trusted-proxies":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
-				tok, err := dec.ReadToken()
+				open, err := dec.ReadToken()
 				if err != nil {
 					return err
 				}
-				if tok.Kind() != '[' {
-					return fmt.Errorf("trusted-proxies: expected an array, got %v", tok.Kind())
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".trusted-proxies", open, fmt.Errorf("expected an array, got %v", open.Kind()))
 				}
 				out := []string{}
-				for dec.PeekKind() != ']' {
+				for dec.PeekKind() != jsontext.KindEndArray {
 					v, err := dec.ReadToken()
 					if err != nil {
 						return err
 					}
-					if v.Kind() != '"' {
-						return fmt.Errorf("trusted-proxies: expected a string element, got %v", v.Kind())
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".trusted-proxies"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 					}
 					el := v.String()
 					out = append(out, el)
@@ -2810,50 +2873,48 @@ func (s *metricsShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.OTLPEndpoint = &str
 			default:
-				return fmt.Errorf("otlp-endpoint: expected a string, got %v", v.Kind())
+				return configJSONError(path+".otlp-endpoint", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*metricsShadow)(nil)
-
-func (s *pProfShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	tok, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
-	if tok.Kind() != '{' {
-		return fmt.Errorf("expected object, got %v", tok.Kind())
-	}
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *pProfShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil {
 			return err
 		}
-		if tok.Kind() == '}' {
+		if tok.Kind() == jsontext.KindEndObject {
 			return nil
 		}
-		switch tok.String() {
+		switch key := tok.String(); key {
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case 't', 'f':
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
 				b := v.Bool()
 				s.Enabled = &b
 			default:
-				return fmt.Errorf("enabled: expected a bool, got %v", v.Kind())
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		case "bind":
 			v, err := dec.ReadToken()
@@ -2861,34 +2922,34 @@ func (s *pProfShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '"':
+			case jsontext.KindNull:
+			case jsontext.KindString:
 				str := v.String()
 				s.Bind = &str
 			default:
-				return fmt.Errorf("bind: expected a string, got %v", v.Kind())
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "trusted-proxies":
-			if dec.PeekKind() == 'n' {
+			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
 				}
 			} else {
-				tok, err := dec.ReadToken()
+				open, err := dec.ReadToken()
 				if err != nil {
 					return err
 				}
-				if tok.Kind() != '[' {
-					return fmt.Errorf("trusted-proxies: expected an array, got %v", tok.Kind())
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".trusted-proxies", open, fmt.Errorf("expected an array, got %v", open.Kind()))
 				}
 				out := []string{}
-				for dec.PeekKind() != ']' {
+				for dec.PeekKind() != jsontext.KindEndArray {
 					v, err := dec.ReadToken()
 					if err != nil {
 						return err
 					}
-					if v.Kind() != '"' {
-						return fmt.Errorf("trusted-proxies: expected a string element, got %v", v.Kind())
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".trusted-proxies"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 					}
 					el := v.String()
 					out = append(out, el)
@@ -2904,82 +2965,104 @@ func (s *pProfShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				return err
 			}
 			switch v.Kind() {
-			case 'n':
-			case '0':
-				num, err := v.Int()
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
 				if err != nil {
-					return err
+					return configJSONError(path+".port", v, err)
 				}
-				val := int(num)
-				s.Port = &val
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
 			default:
-				return fmt.Errorf("port: expected a number, got %v", v.Kind())
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
-			return fmt.Errorf("unknown key %q", tok.String())
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-var _ v2.UnmarshalerFrom = (*pProfShadow)(nil)
+// configJSONError returns a ParseError for the JSON token v at path.
+func configJSONError(path string, v jsontext.Token, err error) error {
+	return &configulator.ParseError{
+		Err:   err,
+		Path:  path,
+		Value: v.String(),
+	}
+}
 
 // PrintConfig renders every field as "path = value" lines, redacting
 // fields tagged secret:"true". The origin Report holds no values,
 // so this is the only place redaction happens.
-func (c *Config) PrintConfig() string {
+func (c Config) PrintConfig() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("log-level = %v\n", c.LogLevel))
-	b.WriteString(fmt.Sprintf("redis.enabled = %v\n", c.Redis.Enabled))
-	b.WriteString(fmt.Sprintf("redis.host = %v\n", c.Redis.Host))
-	b.WriteString(fmt.Sprintf("redis.port = %v\n", c.Redis.Port))
-	b.WriteString(fmt.Sprintf("redis.password = %v\n", c.Redis.Password))
-	b.WriteString(fmt.Sprintf("database.driver = %v\n", c.Database.Driver))
-	b.WriteString(fmt.Sprintf("database.database = %v\n", c.Database.Database))
-	b.WriteString(fmt.Sprintf("database.host = %v\n", c.Database.Host))
-	b.WriteString(fmt.Sprintf("database.port = %v\n", c.Database.Port))
-	b.WriteString(fmt.Sprintf("database.username = %v\n", c.Database.Username))
-	b.WriteString(fmt.Sprintf("database.password = %v\n", c.Database.Password))
-	b.WriteString(fmt.Sprintf("database.extra-parameters = %v\n", c.Database.ExtraParameters))
-	b.WriteString(fmt.Sprintf("secret = %v\n", c.Secret))
-	b.WriteString(fmt.Sprintf("password-salt = %v\n", c.PasswordSalt))
-	b.WriteString(fmt.Sprintf("http.bind = %v\n", c.HTTP.Bind))
-	b.WriteString(fmt.Sprintf("http.port = %v\n", c.HTTP.Port))
-	b.WriteString(fmt.Sprintf("http.robots-txt.mode = %v\n", c.HTTP.RobotsTXT.Mode))
-	b.WriteString(fmt.Sprintf("http.robots-txt.content = %v\n", c.HTTP.RobotsTXT.Content))
-	b.WriteString(fmt.Sprintf("http.cors.enabled = %v\n", c.HTTP.CORS.Enabled))
-	b.WriteString(fmt.Sprintf("http.cors.extra-hosts = %v\n", c.HTTP.CORS.Hosts))
-	b.WriteString(fmt.Sprintf("http.trusted-proxies = %v\n", c.HTTP.TrustedProxies))
-	b.WriteString(fmt.Sprintf("http.canonical-host = %v\n", c.HTTP.CanonicalHost))
-	b.WriteString(fmt.Sprintf("dmr.mmdvm.bind = %v\n", c.DMR.MMDVM.Bind))
-	b.WriteString(fmt.Sprintf("dmr.mmdvm.port = %v\n", c.DMR.MMDVM.Port))
-	b.WriteString(fmt.Sprintf("dmr.openbridge.enabled = %v\n", c.DMR.OpenBridge.Enabled))
-	b.WriteString(fmt.Sprintf("dmr.openbridge.bind = %v\n", c.DMR.OpenBridge.Bind))
-	b.WriteString(fmt.Sprintf("dmr.openbridge.port = %v\n", c.DMR.OpenBridge.Port))
-	b.WriteString(fmt.Sprintf("dmr.ipsc.enabled = %v\n", c.DMR.IPSC.Enabled))
-	b.WriteString(fmt.Sprintf("dmr.ipsc.bind = %v\n", c.DMR.IPSC.Bind))
-	b.WriteString(fmt.Sprintf("dmr.ipsc.port = %v\n", c.DMR.IPSC.Port))
-	b.WriteString(fmt.Sprintf("dmr.ipsc.network-id = %v\n", c.DMR.IPSC.NetworkID))
-	b.WriteString(fmt.Sprintf("dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation))
-	b.WriteString(fmt.Sprintf("dmr.radio-id-url = %v\n", c.DMR.RadioIDURL))
-	b.WriteString(fmt.Sprintf("dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL))
-	b.WriteString(fmt.Sprintf("smtp.enabled = %v\n", c.SMTP.Enabled))
-	b.WriteString(fmt.Sprintf("smtp.host = %v\n", c.SMTP.Host))
-	b.WriteString(fmt.Sprintf("smtp.port = %v\n", c.SMTP.Port))
-	b.WriteString(fmt.Sprintf("smtp.tls = %v\n", c.SMTP.TLS))
-	b.WriteString(fmt.Sprintf("smtp.username = %v\n", c.SMTP.Username))
-	b.WriteString(fmt.Sprintf("smtp.password = %v\n", c.SMTP.Password))
-	b.WriteString(fmt.Sprintf("smtp.from = %v\n", c.SMTP.From))
-	b.WriteString(fmt.Sprintf("smtp.auth-method = %v\n", c.SMTP.AuthMethod))
-	b.WriteString(fmt.Sprintf("network-name = %v\n", c.NetworkName))
-	b.WriteString(fmt.Sprintf("metrics.enabled = %v\n", c.Metrics.Enabled))
-	b.WriteString(fmt.Sprintf("metrics.bind = %v\n", c.Metrics.Bind))
-	b.WriteString(fmt.Sprintf("metrics.port = %v\n", c.Metrics.Port))
-	b.WriteString(fmt.Sprintf("metrics.trusted-proxies = %v\n", c.Metrics.TrustedProxies))
-	b.WriteString(fmt.Sprintf("metrics.otlp-endpoint = %v\n", c.Metrics.OTLPEndpoint))
-	b.WriteString(fmt.Sprintf("pprof.enabled = %v\n", c.PProf.Enabled))
-	b.WriteString(fmt.Sprintf("pprof.bind = %v\n", c.PProf.Bind))
-	b.WriteString(fmt.Sprintf("pprof.trusted-proxies = %v\n", c.PProf.TrustedProxies))
-	b.WriteString(fmt.Sprintf("pprof.port = %v\n", c.PProf.Port))
-	b.WriteString(fmt.Sprintf("hibp-api-key = %v\n", c.HIBPAPIKey))
+	fmt.Fprintf(&b, "log-level = %v\n", c.LogLevel)
+	fmt.Fprintf(&b, "redis.enabled = %v\n", c.Redis.Enabled)
+	fmt.Fprintf(&b, "redis.host = %v\n", c.Redis.Host)
+	fmt.Fprintf(&b, "redis.port = %v\n", c.Redis.Port)
+	fmt.Fprintf(&b, "redis.password = %v\n", c.Redis.Password)
+	fmt.Fprintf(&b, "database.driver = %v\n", c.Database.Driver)
+	fmt.Fprintf(&b, "database.database = %v\n", c.Database.Database)
+	fmt.Fprintf(&b, "database.host = %v\n", c.Database.Host)
+	fmt.Fprintf(&b, "database.port = %v\n", c.Database.Port)
+	fmt.Fprintf(&b, "database.username = %v\n", c.Database.Username)
+	fmt.Fprintf(&b, "database.password = %v\n", c.Database.Password)
+	fmt.Fprintf(&b, "database.extra-parameters = %v\n", c.Database.ExtraParameters)
+	fmt.Fprintf(&b, "secret = %v\n", c.Secret)
+	fmt.Fprintf(&b, "password-salt = %v\n", c.PasswordSalt)
+	fmt.Fprintf(&b, "http.bind = %v\n", c.HTTP.Bind)
+	fmt.Fprintf(&b, "http.port = %v\n", c.HTTP.Port)
+	fmt.Fprintf(&b, "http.robots-txt.mode = %v\n", c.HTTP.RobotsTXT.Mode)
+	fmt.Fprintf(&b, "http.robots-txt.content = %v\n", c.HTTP.RobotsTXT.Content)
+	fmt.Fprintf(&b, "http.cors.enabled = %v\n", c.HTTP.CORS.Enabled)
+	fmt.Fprintf(&b, "http.cors.extra-hosts = %v\n", c.HTTP.CORS.Hosts)
+	fmt.Fprintf(&b, "http.trusted-proxies = %v\n", c.HTTP.TrustedProxies)
+	fmt.Fprintf(&b, "http.canonical-host = %v\n", c.HTTP.CanonicalHost)
+	fmt.Fprintf(&b, "dmr.mmdvm.bind = %v\n", c.DMR.MMDVM.Bind)
+	fmt.Fprintf(&b, "dmr.mmdvm.port = %v\n", c.DMR.MMDVM.Port)
+	fmt.Fprintf(&b, "dmr.openbridge.enabled = %v\n", c.DMR.OpenBridge.Enabled)
+	fmt.Fprintf(&b, "dmr.openbridge.bind = %v\n", c.DMR.OpenBridge.Bind)
+	fmt.Fprintf(&b, "dmr.openbridge.port = %v\n", c.DMR.OpenBridge.Port)
+	fmt.Fprintf(&b, "dmr.ipsc.enabled = %v\n", c.DMR.IPSC.Enabled)
+	fmt.Fprintf(&b, "dmr.ipsc.bind = %v\n", c.DMR.IPSC.Bind)
+	fmt.Fprintf(&b, "dmr.ipsc.port = %v\n", c.DMR.IPSC.Port)
+	fmt.Fprintf(&b, "dmr.ipsc.network-id = %v\n", c.DMR.IPSC.NetworkID)
+	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
+	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
+	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)
+	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
+	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
+	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)
+	fmt.Fprintf(&b, "smtp.tls = %v\n", c.SMTP.TLS)
+	fmt.Fprintf(&b, "smtp.username = %v\n", c.SMTP.Username)
+	fmt.Fprintf(&b, "smtp.password = %v\n", c.SMTP.Password)
+	fmt.Fprintf(&b, "smtp.from = %v\n", c.SMTP.From)
+	fmt.Fprintf(&b, "smtp.auth-method = %v\n", c.SMTP.AuthMethod)
+	fmt.Fprintf(&b, "network-name = %v\n", c.NetworkName)
+	fmt.Fprintf(&b, "metrics.enabled = %v\n", c.Metrics.Enabled)
+	fmt.Fprintf(&b, "metrics.bind = %v\n", c.Metrics.Bind)
+	fmt.Fprintf(&b, "metrics.port = %v\n", c.Metrics.Port)
+	fmt.Fprintf(&b, "metrics.trusted-proxies = %v\n", c.Metrics.TrustedProxies)
+	fmt.Fprintf(&b, "metrics.otlp-endpoint = %v\n", c.Metrics.OTLPEndpoint)
+	fmt.Fprintf(&b, "pprof.enabled = %v\n", c.PProf.Enabled)
+	fmt.Fprintf(&b, "pprof.bind = %v\n", c.PProf.Bind)
+	fmt.Fprintf(&b, "pprof.trusted-proxies = %v\n", c.PProf.TrustedProxies)
+	fmt.Fprintf(&b, "pprof.port = %v\n", c.PProf.Port)
+	fmt.Fprintf(&b, "hibp-api-key = %v\n", c.HIBPAPIKey)
 	return b.String()
+}
+
+func configQuoteKey(k string) string {
+	if strings.ContainsAny(k, ".[") {
+		return "\"" + strings.NewReplacer("\\", "\\\\", "\"", "\\\"").Replace(k) + "\""
+	}
+	return k
 }

@@ -1,4 +1,4 @@
-# Sample configuration for Config.
+# Sample configuration
 # Logging level for the application. One of debug, info, warn, or error
 log-level: "info"
 # Redis configuration for the application

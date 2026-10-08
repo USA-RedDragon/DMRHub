@@ -5,8 +5,8 @@ filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEKWjV8V+WSxDXJ4NFATAsZjh8iIbsQIg=
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/JGLTechnologies/gin-rate-limit v1.5.6 h1:BrL2wXrF7SSqmB88YTGFVKMGVcjURMUeKqwQrlmzweI=
-github.com/JGLTechnologies/gin-rate-limit v1.5.6/go.mod h1:fwUuBegxLKm8+/4ST0zDFssRFTFaVZ7bH3ApK7iNZww=
+github.com/JGLTechnologies/gin-rate-limit v1.5.9 h1:EXbE5sSHG/4oaWSrhFgm5ebFzIAdBwaeIgwia8esUvo=
+github.com/JGLTechnologies/gin-rate-limit v1.5.9/go.mod h1:t9eLOUxikPI0TzKy0VYRbZJr7hBP2Qg9E3JigoxF70g=
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=

@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.6
-	github.com/USA-RedDragon/configulator/v2 v2.2.0
+	github.com/USA-RedDragon/configulator/v2 v2.3.0
 	github.com/USA-RedDragon/dmrgo v0.0.1
 	github.com/biter777/countries v1.7.5
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
@@ -31,6 +31,7 @@ require (
 	github.com/redis/go-redis/extra/redisotel/v9 v9.18.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.6.3
 	github.com/ulikunitz/xz v0.5.15
@@ -125,7 +126,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect

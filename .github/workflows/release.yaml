@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    uses: USA-RedDragon/reusable-actions/.github/workflows/goreleaser.yaml@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
+    uses: USA-RedDragon/reusable-actions/.github/workflows/goreleaser.yaml@9e98bee4aee24c7fe3199099bd0329d2deee8985 # v2.0.29
     with:
       setup-node: true
       docker-hub-username: jamcswain

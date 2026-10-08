@@ -134,7 +134,7 @@ jobs:
 
   #     - run: make frontend-unit-test-coverage
 
-  #     - uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
+  #     - uses: USA-RedDragon/reusable-actions/coverage@9e98bee4aee24c7fe3199099bd0329d2deee8985 # v2.0.29
   #       if: always()
   #       with:
   #         file: internal/http/frontend/coverage/unit/lcov.info
@@ -231,7 +231,7 @@ jobs:
 
       - name: Report coverage
         if: always() && matrix.browser == 'chrome'
-        uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
+        uses: USA-RedDragon/reusable-actions/coverage@9e98bee4aee24c7fe3199099bd0329d2deee8985 # v2.0.29
         with:
           file: internal/http/frontend/coverage/e2e/lcov.info
           badge: .github/badges/frontend-coverage.svg
@@ -460,7 +460,7 @@ jobs:
 
       - name: Report coverage
         if: always()
-        uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
+        uses: USA-RedDragon/reusable-actions/coverage@9e98bee4aee24c7fe3199099bd0329d2deee8985 # v2.0.29
         with:
           file: coverage.out
           token: ${{ steps.app-token.outputs.token }}

@@ -12,6 +12,7 @@ import (
 	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
 	"github.com/spf13/pflag"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -116,7 +117,7 @@ func ConfigSchema() *configulator.Schema[Config] {
 		DecodeFile:    configDecodeFile,
 	}
 }
-func configApplyDefaults(cfg *Config, set configulator.SetOrigin) error {
+func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) error {
 	cfg.LogLevel = LogLevel("info")
 	set("log-level", configulator.LayerDefault, "default tag")
 	cfg.Redis.Enabled = false
@@ -127,8 +128,11 @@ func configApplyDefaults(cfg *Config, set configulator.SetOrigin) error {
 	set("database.driver", configulator.LayerDefault, "default tag")
 	cfg.Database.Database = "DMRHub.db"
 	set("database.database", configulator.LayerDefault, "default tag")
-	cfg.Database.ExtraParameters = []string{"_pragma=foreign_keys(1)", "_pragma=journal_mode(WAL)"}
-	set("database.extra-parameters", configulator.LayerDefault, "default tag")
+	{
+		lst := configulator.SplitList("_pragma=foreign_keys(1),_pragma=journal_mode(WAL)", sep)
+		cfg.Database.ExtraParameters = lst
+		set("database.extra-parameters", configulator.LayerDefault, "default tag")
+	}
 	cfg.HTTP.Bind = "[::]"
 	set("http.bind", configulator.LayerDefault, "default tag")
 	cfg.HTTP.Port = 3005
@@ -183,7 +187,7 @@ func configApplyDefaults(cfg *Config, set configulator.SetOrigin) error {
 	set("pprof.port", configulator.LayerDefault, "default tag")
 	return nil
 }
-func configDecodeFile(data []byte, u configulator.Unmarshal, cfg *Config, set configulator.SetOrigin, file string) error {
+func configDecodeFile(data []byte, u configulator.Unmarshal, cfg *Config, sep string, set configulator.SetOrigin, file string) error {
 	var sh configShadow
 	if err := u(data, &sh); err != nil {
 		return &configulator.DecodeError{
@@ -191,9 +195,9 @@ func configDecodeFile(data []byte, u configulator.Unmarshal, cfg *Config, set co
 			Path: file,
 		}
 	}
-	return sh.applyTo(cfg, set, file)
+	return sh.applyTo(cfg, sep, set, file)
 }
-func (s *configShadow) applyTo(cfg *Config, set configulator.SetOrigin, file string) error {
+func (s *configShadow) applyTo(cfg *Config, sep string, set configulator.SetOrigin, file string) error {
 	if s.LogLevel != nil {
 		cfg.LogLevel = LogLevel(*s.LogLevel)
 		set("log-level", configulator.LayerFile, file)
@@ -528,7 +532,8 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 	}
 	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "database", "extra-parameters"); true {
 		if v, ok := ec.Getenv(n); ok {
-			cfg.Database.ExtraParameters = configulator.SplitList(v, ec.ArraySeparator)
+			lst := configulator.SplitList(v, ec.ArraySeparator)
+			cfg.Database.ExtraParameters = lst
 			set("database.extra-parameters", configulator.LayerEnv, n)
 		}
 	}
@@ -594,13 +599,15 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 	}
 	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "cors", "extra-hosts"); true {
 		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.CORS.Hosts = configulator.SplitList(v, ec.ArraySeparator)
+			lst := configulator.SplitList(v, ec.ArraySeparator)
+			cfg.HTTP.CORS.Hosts = lst
 			set("http.cors.extra-hosts", configulator.LayerEnv, n)
 		}
 	}
 	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "http", "trusted-proxies"); true {
 		if v, ok := ec.Getenv(n); ok {
-			cfg.HTTP.TrustedProxies = configulator.SplitList(v, ec.ArraySeparator)
+			lst := configulator.SplitList(v, ec.ArraySeparator)
+			cfg.HTTP.TrustedProxies = lst
 			set("http.trusted-proxies", configulator.LayerEnv, n)
 		}
 	}
@@ -855,7 +862,8 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 	}
 	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "metrics", "trusted-proxies"); true {
 		if v, ok := ec.Getenv(n); ok {
-			cfg.Metrics.TrustedProxies = configulator.SplitList(v, ec.ArraySeparator)
+			lst := configulator.SplitList(v, ec.ArraySeparator)
+			cfg.Metrics.TrustedProxies = lst
 			set("metrics.trusted-proxies", configulator.LayerEnv, n)
 		}
 	}
@@ -888,7 +896,8 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 	}
 	if n := configulator.EnvName(ec.Opts.Prefix, ec.Opts.Separator, "pprof", "trusted-proxies"); true {
 		if v, ok := ec.Getenv(n); ok {
-			cfg.PProf.TrustedProxies = configulator.SplitList(v, ec.ArraySeparator)
+			lst := configulator.SplitList(v, ec.ArraySeparator)
+			cfg.PProf.TrustedProxies = lst
 			set("pprof.trusted-proxies", configulator.LayerEnv, n)
 		}
 	}
@@ -924,67 +933,72 @@ func ConfigPFlagHooks() cpflag.Hooks[Config] {
 	}
 }
 func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
-	for _, name := range []string{strings.Join([]string{"log-level"}, o.Separator), strings.Join([]string{"redis", "enabled"}, o.Separator), strings.Join([]string{"redis", "host"}, o.Separator), strings.Join([]string{"redis", "port"}, o.Separator), strings.Join([]string{"redis", "password"}, o.Separator), strings.Join([]string{"database", "driver"}, o.Separator), strings.Join([]string{"database", "database"}, o.Separator), strings.Join([]string{"database", "host"}, o.Separator), strings.Join([]string{"database", "port"}, o.Separator), strings.Join([]string{"database", "username"}, o.Separator), strings.Join([]string{"database", "password"}, o.Separator), strings.Join([]string{"database", "extra-parameters"}, o.Separator), strings.Join([]string{"secret"}, o.Separator), strings.Join([]string{"password-salt"}, o.Separator), strings.Join([]string{"http", "bind"}, o.Separator), strings.Join([]string{"http", "port"}, o.Separator), strings.Join([]string{"http", "robots-txt", "mode"}, o.Separator), strings.Join([]string{"http", "robots-txt", "content"}, o.Separator), strings.Join([]string{"http", "cors", "enabled"}, o.Separator), strings.Join([]string{"http", "cors", "extra-hosts"}, o.Separator), strings.Join([]string{"http", "trusted-proxies"}, o.Separator), strings.Join([]string{"http", "canonical-host"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "bind"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "port"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "enabled"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "bind"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "enabled"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "bind"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "network-id"}, o.Separator), strings.Join([]string{"dmr", "disable-radio-id-validation"}, o.Separator), strings.Join([]string{"dmr", "radio-id-url"}, o.Separator), strings.Join([]string{"dmr", "repeater-id-url"}, o.Separator), strings.Join([]string{"smtp", "enabled"}, o.Separator), strings.Join([]string{"smtp", "host"}, o.Separator), strings.Join([]string{"smtp", "port"}, o.Separator), strings.Join([]string{"smtp", "tls"}, o.Separator), strings.Join([]string{"smtp", "username"}, o.Separator), strings.Join([]string{"smtp", "password"}, o.Separator), strings.Join([]string{"smtp", "from"}, o.Separator), strings.Join([]string{"smtp", "auth-method"}, o.Separator), strings.Join([]string{"network-name"}, o.Separator), strings.Join([]string{"metrics", "enabled"}, o.Separator), strings.Join([]string{"metrics", "bind"}, o.Separator), strings.Join([]string{"metrics", "port"}, o.Separator), strings.Join([]string{"metrics", "trusted-proxies"}, o.Separator), strings.Join([]string{"metrics", "otlp-endpoint"}, o.Separator), strings.Join([]string{"pprof", "enabled"}, o.Separator), strings.Join([]string{"pprof", "bind"}, o.Separator), strings.Join([]string{"pprof", "trusted-proxies"}, o.Separator), strings.Join([]string{"pprof", "port"}, o.Separator), strings.Join([]string{"hibp-api-key"}, o.Separator)} {
-		if fs.Lookup(name) != nil {
-			return fmt.Errorf("flag --%s already registered on this FlagSet", name)
+	names := []string{strings.Join([]string{"log-level"}, o.Separator), strings.Join([]string{"redis", "enabled"}, o.Separator), strings.Join([]string{"redis", "host"}, o.Separator), strings.Join([]string{"redis", "port"}, o.Separator), strings.Join([]string{"redis", "password"}, o.Separator), strings.Join([]string{"database", "driver"}, o.Separator), strings.Join([]string{"database", "database"}, o.Separator), strings.Join([]string{"database", "host"}, o.Separator), strings.Join([]string{"database", "port"}, o.Separator), strings.Join([]string{"database", "username"}, o.Separator), strings.Join([]string{"database", "password"}, o.Separator), strings.Join([]string{"database", "extra-parameters"}, o.Separator), strings.Join([]string{"secret"}, o.Separator), strings.Join([]string{"password-salt"}, o.Separator), strings.Join([]string{"http", "bind"}, o.Separator), strings.Join([]string{"http", "port"}, o.Separator), strings.Join([]string{"http", "robots-txt", "mode"}, o.Separator), strings.Join([]string{"http", "robots-txt", "content"}, o.Separator), strings.Join([]string{"http", "cors", "enabled"}, o.Separator), strings.Join([]string{"http", "cors", "extra-hosts"}, o.Separator), strings.Join([]string{"http", "trusted-proxies"}, o.Separator), strings.Join([]string{"http", "canonical-host"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "bind"}, o.Separator), strings.Join([]string{"dmr", "mmdvm", "port"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "enabled"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "bind"}, o.Separator), strings.Join([]string{"dmr", "openbridge", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "enabled"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "bind"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "port"}, o.Separator), strings.Join([]string{"dmr", "ipsc", "network-id"}, o.Separator), strings.Join([]string{"dmr", "disable-radio-id-validation"}, o.Separator), strings.Join([]string{"dmr", "radio-id-url"}, o.Separator), strings.Join([]string{"dmr", "repeater-id-url"}, o.Separator), strings.Join([]string{"smtp", "enabled"}, o.Separator), strings.Join([]string{"smtp", "host"}, o.Separator), strings.Join([]string{"smtp", "port"}, o.Separator), strings.Join([]string{"smtp", "tls"}, o.Separator), strings.Join([]string{"smtp", "username"}, o.Separator), strings.Join([]string{"smtp", "password"}, o.Separator), strings.Join([]string{"smtp", "from"}, o.Separator), strings.Join([]string{"smtp", "auth-method"}, o.Separator), strings.Join([]string{"network-name"}, o.Separator), strings.Join([]string{"metrics", "enabled"}, o.Separator), strings.Join([]string{"metrics", "bind"}, o.Separator), strings.Join([]string{"metrics", "port"}, o.Separator), strings.Join([]string{"metrics", "trusted-proxies"}, o.Separator), strings.Join([]string{"metrics", "otlp-endpoint"}, o.Separator), strings.Join([]string{"pprof", "enabled"}, o.Separator), strings.Join([]string{"pprof", "bind"}, o.Separator), strings.Join([]string{"pprof", "trusted-proxies"}, o.Separator), strings.Join([]string{"pprof", "port"}, o.Separator), strings.Join([]string{"hibp-api-key"}, o.Separator)}
+	for i, name := range names {
+		if fs.Lookup(name) != nil || slices.Contains(names[:i], name) {
+			return &configulator.FlagConflictError{
+				Existing: name,
+				Flag:     name,
+			}
 		}
 	}
-	fs.String(strings.Join([]string{"log-level"}, o.Separator), "info", "Logging level for the application. One of debug, info, warn, or error")
-	fs.Bool(strings.Join([]string{"redis", "enabled"}, o.Separator), false, "Enable Redis support")
-	fs.String(strings.Join([]string{"redis", "host"}, o.Separator), "", "Redis host address")
-	fs.Int(strings.Join([]string{"redis", "port"}, o.Separator), 6379, "Redis port")
-	fs.String(strings.Join([]string{"redis", "password"}, o.Separator), "", "Redis password")
-	fs.String(strings.Join([]string{"database", "driver"}, o.Separator), "sqlite", "Database driver to use. One of sqlite, postgres, or mysql")
-	fs.String(strings.Join([]string{"database", "database"}, o.Separator), "DMRHub.db", "Database name or path")
-	fs.String(strings.Join([]string{"database", "host"}, o.Separator), "", "Database host address (postgres and mysql only)")
-	fs.Int(strings.Join([]string{"database", "port"}, o.Separator), 0, "Database port (postgres and mysql only)")
-	fs.String(strings.Join([]string{"database", "username"}, o.Separator), "", "Database username (postgres and mysql only)")
-	fs.String(strings.Join([]string{"database", "password"}, o.Separator), "", "Database password (postgres and mysql only)")
-	fs.StringSlice(strings.Join([]string{"database", "extra-parameters"}, o.Separator), []string{"_pragma=foreign_keys(1)", "_pragma=journal_mode(WAL)"}, "Additional parameters for the database connection, e.g., sslmode=disable")
-	fs.String(strings.Join([]string{"secret"}, o.Separator), "", "Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters")
-	fs.String(strings.Join([]string{"password-salt"}, o.Separator), "", "Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret")
-	fs.String(strings.Join([]string{"http", "bind"}, o.Separator), "[::]", "HTTP server listen address")
-	fs.Int(strings.Join([]string{"http", "port"}, o.Separator), 3005, "HTTP server port")
-	fs.String(strings.Join([]string{"http", "robots-txt", "mode"}, o.Separator), "disabled", "Mode for serving robots.txt. One of allow, disabled, or custom")
-	fs.String(strings.Join([]string{"http", "robots-txt", "content"}, o.Separator), "", "Content of the robots.txt file when mode is custom")
-	fs.Bool(strings.Join([]string{"http", "cors", "enabled"}, o.Separator), false, "Enable CORS support for the HTTP server")
-	fs.StringSlice(strings.Join([]string{"http", "cors", "extra-hosts"}, o.Separator), nil, "List of additional allowed CORS origins")
-	fs.StringSlice(strings.Join([]string{"http", "trusted-proxies"}, o.Separator), nil, "List of trusted proxy IPs for the HTTP server")
-	fs.String(strings.Join([]string{"http", "canonical-host"}, o.Separator), "", "URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required")
-	fs.String(strings.Join([]string{"dmr", "mmdvm", "bind"}, o.Separator), "[::]", "MMDVM server listen address")
-	fs.Int(strings.Join([]string{"dmr", "mmdvm", "port"}, o.Separator), 62031, "MMDVM server port")
-	fs.Bool(strings.Join([]string{"dmr", "openbridge", "enabled"}, o.Separator), false, "Enable experimental OpenBridge server support")
-	fs.String(strings.Join([]string{"dmr", "openbridge", "bind"}, o.Separator), "[::]", "OpenBridge server listen address")
-	fs.Int(strings.Join([]string{"dmr", "openbridge", "port"}, o.Separator), 62035, "OpenBridge server port")
-	fs.Bool(strings.Join([]string{"dmr", "ipsc", "enabled"}, o.Separator), false, "Enable IPSC server support")
-	fs.String(strings.Join([]string{"dmr", "ipsc", "bind"}, o.Separator), "[::]", "IPSC server listen address")
-	fs.Int(strings.Join([]string{"dmr", "ipsc", "port"}, o.Separator), 50000, "IPSC server port")
-	fs.Uint32(strings.Join([]string{"dmr", "ipsc", "network-id"}, o.Separator), uint32(0), "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
-	fs.Bool(strings.Join([]string{"dmr", "disable-radio-id-validation"}, o.Separator), false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(strings.Join([]string{"dmr", "radio-id-url"}, o.Separator), "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(strings.Join([]string{"dmr", "repeater-id-url"}, o.Separator), "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Bool(strings.Join([]string{"smtp", "enabled"}, o.Separator), false, "Enable SMTP support for sending emails")
-	fs.String(strings.Join([]string{"smtp", "host"}, o.Separator), "", "SMTP server host address")
-	fs.Int(strings.Join([]string{"smtp", "port"}, o.Separator), 25, "SMTP server port")
-	fs.String(strings.Join([]string{"smtp", "tls"}, o.Separator), "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(strings.Join([]string{"smtp", "username"}, o.Separator), "", "SMTP server username")
-	fs.String(strings.Join([]string{"smtp", "password"}, o.Separator), "", "SMTP server password")
-	fs.String(strings.Join([]string{"smtp", "from"}, o.Separator), "", "Email address to use as the sender")
-	fs.String(strings.Join([]string{"smtp", "auth-method"}, o.Separator), "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(strings.Join([]string{"network-name"}, o.Separator), "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(strings.Join([]string{"metrics", "enabled"}, o.Separator), false, "Enable metrics collection and export")
-	fs.String(strings.Join([]string{"metrics", "bind"}, o.Separator), "[::]", "Metrics server listen address")
-	fs.Int(strings.Join([]string{"metrics", "port"}, o.Separator), 9000, "Metrics server port")
-	fs.StringSlice(strings.Join([]string{"metrics", "trusted-proxies"}, o.Separator), nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(strings.Join([]string{"metrics", "otlp-endpoint"}, o.Separator), "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(strings.Join([]string{"pprof", "enabled"}, o.Separator), false, "Enable PProf profiling and debugging support")
-	fs.String(strings.Join([]string{"pprof", "bind"}, o.Separator), "[::]", "PProf server listen address")
-	fs.StringSlice(strings.Join([]string{"pprof", "trusted-proxies"}, o.Separator), nil, "List of trusted proxy IPs for the PProf server")
-	fs.Int(strings.Join([]string{"pprof", "port"}, o.Separator), 6060, "PProf server port")
-	fs.String(strings.Join([]string{"hibp-api-key"}, o.Separator), "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.String(names[0], "info", "Logging level for the application. One of debug, info, warn, or error")
+	fs.Bool(names[1], false, "Enable Redis support")
+	fs.String(names[2], "", "Redis host address")
+	fs.Int(names[3], 6379, "Redis port")
+	fs.String(names[4], "", "Redis password")
+	fs.String(names[5], "sqlite", "Database driver to use. One of sqlite, postgres, or mysql")
+	fs.String(names[6], "DMRHub.db", "Database name or path")
+	fs.String(names[7], "", "Database host address (postgres and mysql only)")
+	fs.Int(names[8], 0, "Database port (postgres and mysql only)")
+	fs.String(names[9], "", "Database username (postgres and mysql only)")
+	fs.String(names[10], "", "Database password (postgres and mysql only)")
+	fs.StringSlice(names[11], nil, "Additional parameters for the database connection, e.g., sslmode=disable")
+	fs.Lookup(names[11]).DefValue = "[_pragma=foreign_keys(1),_pragma=journal_mode(WAL)]"
+	fs.String(names[12], "", "Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters")
+	fs.String(names[13], "", "Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret")
+	fs.String(names[14], "[::]", "HTTP server listen address")
+	fs.Int(names[15], 3005, "HTTP server port")
+	fs.String(names[16], "disabled", "Mode for serving robots.txt. One of allow, disabled, or custom")
+	fs.String(names[17], "", "Content of the robots.txt file when mode is custom")
+	fs.Bool(names[18], false, "Enable CORS support for the HTTP server")
+	fs.StringSlice(names[19], nil, "List of additional allowed CORS origins")
+	fs.StringSlice(names[20], nil, "List of trusted proxy IPs for the HTTP server")
+	fs.String(names[21], "", "URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required")
+	fs.String(names[22], "[::]", "MMDVM server listen address")
+	fs.Int(names[23], 62031, "MMDVM server port")
+	fs.Bool(names[24], false, "Enable experimental OpenBridge server support")
+	fs.String(names[25], "[::]", "OpenBridge server listen address")
+	fs.Int(names[26], 62035, "OpenBridge server port")
+	fs.Bool(names[27], false, "Enable IPSC server support")
+	fs.String(names[28], "[::]", "IPSC server listen address")
+	fs.Int(names[29], 50000, "IPSC server port")
+	fs.Uint32(names[30], uint32(0), "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
+	fs.Bool(names[31], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[32], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[33], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Bool(names[34], false, "Enable SMTP support for sending emails")
+	fs.String(names[35], "", "SMTP server host address")
+	fs.Int(names[36], 25, "SMTP server port")
+	fs.String(names[37], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[38], "", "SMTP server username")
+	fs.String(names[39], "", "SMTP server password")
+	fs.String(names[40], "", "Email address to use as the sender")
+	fs.String(names[41], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[42], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[43], false, "Enable metrics collection and export")
+	fs.String(names[44], "[::]", "Metrics server listen address")
+	fs.Int(names[45], 9000, "Metrics server port")
+	fs.StringSlice(names[46], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[47], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[48], false, "Enable PProf profiling and debugging support")
+	fs.String(names[49], "[::]", "PProf server listen address")
+	fs.StringSlice(names[50], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Int(names[51], 6060, "PProf server port")
+	fs.String(names[52], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
-func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, set configulator.SetOrigin) error {
+func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, sep string, set configulator.SetOrigin) error {
 	if n := strings.Join([]string{"log-level"}, o.Separator); fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {

@@ -156,7 +156,6 @@ jobs:
     permissions:
       contents: read
       checks: write
-      pull-requests: write
 
     strategy:
       fail-fast: false
@@ -164,18 +163,10 @@ jobs:
         browser: ["firefox", "chrome", "electron"]
 
     steps:
-      - name: Generate GitHub App Token
-        if: matrix.browser == 'chrome'
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.AUTO_COMMIT_APP_ID }}
-          private-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token || github.token }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -229,20 +220,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Report coverage
-        if: always() && matrix.browser == 'chrome'
-        uses: USA-RedDragon/reusable-actions/coverage@529a6c6e160b4039d6251284544c13a806f65156 # v2.0.29
-        with:
-          file: internal/http/frontend/coverage/e2e/lcov.info
-          badge: .github/badges/frontend-coverage.svg
-          baseline: .github/coverage-baseline-frontend.tsv
-          label: frontend coverage
-          marker: frontend-coverage
-          if-no-file: warn
-          token: ${{ steps.app-token.outputs.token }}
-          git-user-name: usa-reddragon-auto-commit-bot[bot]
-          git-user-email: usa-reddragon-auto-commit-bot[bot]@users.noreply.github.com
-
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -250,6 +227,25 @@ jobs:
           path: internal/http/frontend/coverage/e2e
           if-no-files-found: ignore
           retention-days: 30
+
+  frontend-coverage:
+    needs: frontend-e2e-tests
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: USA-RedDragon/reusable-actions/.github/workflows/coverage.yaml@c5ee15922a0ff4229b0f06a8d0551541b5cabfdc # v2.0.34
+    with:
+      artifact: frontend-e2e-coverage-chrome
+      file: lcov.info
+      badge: .github/badges/frontend-coverage.svg
+      baseline: .github/coverage-baseline-frontend.tsv
+      label: frontend coverage
+      marker: frontend-coverage
+      if-no-file: warn
+      app-id: ${{ vars.AUTO_COMMIT_APP_ID }}
+    secrets:
+      app-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
 
   backend-benchmark-tests:
     runs-on: ubuntu-24.04
@@ -420,20 +416,12 @@ jobs:
     permissions:
       contents: read
       checks: write
-      pull-requests: write
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.AUTO_COMMIT_APP_ID }}
-          private-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -458,15 +446,6 @@ jobs:
           env CGO_ENABLED=0 go test -v ./... -coverprofile coverage.raw -coverpkg=./... -covermode atomic
           grep -v -e '_configulator\.go:' -e '_gen\.go:' -e '_gen_test\.go:' coverage.raw > coverage.out
 
-      - name: Report coverage
-        if: always()
-        uses: USA-RedDragon/reusable-actions/coverage@529a6c6e160b4039d6251284544c13a806f65156 # v2.0.29
-        with:
-          file: coverage.out
-          token: ${{ steps.app-token.outputs.token }}
-          git-user-name: usa-reddragon-auto-commit-bot[bot]
-          git-user-email: usa-reddragon-auto-commit-bot[bot]@users.noreply.github.com
-
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -474,3 +453,17 @@ jobs:
           path: coverage.out
           if-no-files-found: error
           retention-days: 30
+
+  coverage:
+    needs: backend-unit-tests-coverage
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: USA-RedDragon/reusable-actions/.github/workflows/coverage.yaml@c5ee15922a0ff4229b0f06a8d0551541b5cabfdc # v2.0.34
+    with:
+      artifact: backend-coverage
+      file: coverage.out
+      app-id: ${{ vars.AUTO_COMMIT_APP_ID }}
+    secrets:
+      app-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}

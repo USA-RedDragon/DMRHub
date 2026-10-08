@@ -26,9 +26,9 @@ internal/db/models/repeater_configuration.go	143	103
 internal/db/models/scheduled_net.go	39	39
 internal/db/models/talkgroup.go	86	78
 internal/db/models/user.go	54	32
-internal/dmr/calltracker/call_tracker.go	447	393
+internal/dmr/calltracker/call_tracker.go	447	392
 internal/dmr/dmrconst/const.go	13	13
-internal/dmr/hub/hub.go	137	115
+internal/dmr/hub/hub.go	137	116
 internal/dmr/hub/parrot_handler.go	60	52
 internal/dmr/hub/publishing.go	58	45
 internal/dmr/hub/routing.go	96	88
@@ -39,12 +39,12 @@ internal/dmr/parrot/parrot.go	61	56
 internal/dmr/parrot/storage.go	85	72
 internal/dmr/rules/rules.go	16	14
 internal/dmr/servers/instance_registry.go	55	40
-internal/dmr/servers/ipsc/server.go	499	441
+internal/dmr/servers/ipsc/server.go	499	439
 internal/dmr/servers/ipsc/translator.go	737	709
 internal/dmr/servers/kvclient.go	99	82
-internal/dmr/servers/mmdvm/packet_handlers.go	327	205
+internal/dmr/servers/mmdvm/packet_handlers.go	327	204
 internal/dmr/servers/mmdvm/server.go	207	170
-internal/dmr/servers/openbridge/server.go	253	215
+internal/dmr/servers/openbridge/server.go	253	216
 internal/dmr/utils/utils.go	10	10
 internal/dmrdb/dmrdb.go	103	77
 internal/http/api/apimodels/calls.go	18	18

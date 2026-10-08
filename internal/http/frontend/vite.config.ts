@@ -38,10 +38,9 @@ export default defineConfig({
     },
   },
   test: {
-    reporters: ['junit', 'html', 'default'],
+    reporters: ['junit', ['html', { outputDir: 'reports/unit' }], 'default'],
     outputFile: {
       junit: 'reports/unit/junit.xml',
-      html: 'reports/unit/index.html',
     },
   },
 })

@@ -8,6 +8,7 @@ linters:
     generated: lax
     paths:
       - .*_configulator\.go$
+      - internal/http/frontend/node_modules
     rules:
       - path: _test\.go
         linters:
@@ -81,4 +82,5 @@ formatters:
   exclusions:
     paths:
       - .*_configulator\.go$
+      - internal/http/frontend/node_modules
 

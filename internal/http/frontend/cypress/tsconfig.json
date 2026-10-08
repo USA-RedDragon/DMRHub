@@ -6,9 +6,8 @@
     "lib": ["ES2015", "ES2020.Intl", "DOM", "DOM.Iterable"],
     "types": ["cypress"],
     "isolatedModules": false,
-    "baseUrl": "..",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["../src/*"]
     }
   },
   "include": [

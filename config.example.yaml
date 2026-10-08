@@ -26,7 +26,7 @@ database:
   # Database password (postgres and mysql only)
   # password: ""
   # Additional parameters for the database connection, e.g., sslmode=disable
-  extra-parameters: [_pragma=foreign_keys(1),_pragma=journal_mode(WAL)]
+  extra-parameters: ["_pragma=foreign_keys(1)", "_pragma=journal_mode(WAL)"]
 # Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters
 # secret: ""
 # Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret

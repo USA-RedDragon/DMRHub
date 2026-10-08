@@ -50,21 +50,21 @@ var repeaterDB = dmrdb.NewDB[DMRRepeater](dmrdb.Config[DMRRepeater]{ //nolint:go
 var ErrDecodingDB = dmrdb.ErrDecodingDB
 
 type DMRRepeater struct {
-	Locator     uint   `json:"locator"`
-	ID          uint   `json:"id"`
-	Callsign    string `json:"callsign"`
-	City        string `json:"city"`
-	State       string `json:"state"`
-	Country     string `json:"country"`
-	Frequency   string `json:"frequency"`
-	ColorCode   uint   `json:"color_code"`
-	Offset      string `json:"offset"`
-	Assigned    string `json:"assigned"`
-	TSLinked    string `json:"ts_linked"`
-	Trustee     string `json:"trustee"`
-	MapInfo     string `json:"map_info"`
-	Map         uint   `json:"map"`
-	IPSCNetwork string `json:"ipsc_network"`
+	Locator     uint     `json:"locator"`
+	ID          uint     `json:"id"`
+	Callsign    string   `json:"callsign"`
+	City        string   `json:"city"`
+	State       string   `json:"state"`
+	Country     string   `json:"country"`
+	Frequency   string   `json:"frequency"`
+	ColorCode   uint     `json:"color_code"`
+	Offset      string   `json:"offset"`
+	Assigned    string   `json:"assigned"`
+	TSLinked    string   `json:"ts_linked"`
+	Trustees    []string `json:"trustees"`
+	MapInfo     string   `json:"map_info"`
+	Map         uint     `json:"map"`
+	IPSCNetwork string   `json:"ipsc_network"`
 }
 
 func IsValidRepeaterID(dmrID uint) bool {
@@ -81,11 +81,13 @@ func ValidRepeaterCallsign(dmrID uint, callsign string) bool {
 		return false
 	}
 
-	if !strings.EqualFold(repeater.Trustee, callsign) {
-		return false
+	for _, trustee := range repeater.Trustees {
+		if strings.EqualFold(trustee, callsign) {
+			return true
+		}
 	}
 
-	return true
+	return false
 }
 
 func streamDecodeRepeaters(dec *json.Decoder, m *xsync.Map[uint, DMRRepeater]) (int, error) {
@@ -191,10 +193,6 @@ func setRepeaterField(r *DMRRepeater, key string, t json.Token) { //nolint:gocyc
 		if s, ok := t.(string); ok {
 			r.TSLinked = s
 		}
-	case "trustee":
-		if s, ok := t.(string); ok {
-			r.Trustee = s
-		}
 	case "map_info":
 		if s, ok := t.(string); ok {
 			r.MapInfo = s
@@ -239,6 +237,21 @@ func decodeRepeater(dec *json.Decoder) (DMRRepeater, error) {
 			return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
 		}
 
+		if key == "trustee" {
+			r.Trustees, err = decodeTrustees(dec, t)
+			if err != nil {
+				return r, err
+			}
+			continue
+		}
+
+		if delim, ok := t.(json.Delim); ok {
+			if err := skipComposite(dec, delim); err != nil {
+				return r, err
+			}
+			continue
+		}
+
 		setRepeaterField(&r, key, t)
 	}
 
@@ -248,6 +261,65 @@ func decodeRepeater(dec *json.Decoder) (DMRRepeater, error) {
 	}
 
 	return r, nil
+}
+
+// decodeTrustees reads the trustee value, which RadioID.net now publishes as an
+// array of callsigns but older dumps carry as a single string.
+func decodeTrustees(dec *json.Decoder, t json.Token) ([]string, error) {
+	switch v := t.(type) {
+	case string:
+		return []string{v}, nil
+	case nil:
+		return nil, nil
+	case json.Delim:
+		if v != '[' {
+			return nil, ErrDecodingDB
+		}
+		var trustees []string
+		for dec.More() {
+			t, err := dec.Token()
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+			}
+			if s, ok := t.(string); ok {
+				trustees = append(trustees, s)
+			} else if delim, ok := t.(json.Delim); ok {
+				if err := skipComposite(dec, delim); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if _, err := dec.Token(); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+		return trustees, nil
+	default:
+		return nil, ErrDecodingDB
+	}
+}
+
+// skipComposite consumes the rest of an array or object whose opening
+// delimiter has already been read.
+func skipComposite(dec *json.Decoder, open json.Delim) error {
+	if open != '[' && open != '{' {
+		return ErrDecodingDB
+	}
+	depth := 1
+	for depth > 0 {
+		t, err := dec.Token()
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrDecodingDB, err)
+		}
+		if delim, ok := t.(json.Delim); ok {
+			switch delim {
+			case '[', '{':
+				depth++
+			case ']', '}':
+				depth--
+			}
+		}
+	}
+	return nil
 }
 
 func UnpackDB() error {

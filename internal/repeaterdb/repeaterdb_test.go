@@ -20,11 +20,14 @@
 package repeaterdb
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 const defaultRepeaterDBURL = "https://www.radioid.net/static/rptrs.json"
@@ -109,6 +112,43 @@ func TestUpdate(t *testing.T) {
 			r.Errorf("Update did not update the database")
 		}
 	})
+}
+
+func TestStreamDecodeRepeaters(t *testing.T) {
+	t.Parallel()
+	const data = `{"rptrs":[` +
+		`{"id":112601,"callsign":"W8AOR","trustee":["W8AOR","K8COP"],"map_info":null,` +
+		`"talkgroups":[{"talkgroup":5152,"description":"Local","timeslot":1,"discovery":0}],"color_code":3},` +
+		`{"id":110601,"callsign":"WB6ECE","trustee":"KA6SQG","lat":"47.2","status":"ACTIVE","color_code":2}` +
+		`]}`
+
+	m := xsync.NewMap[uint, DMRRepeater]()
+	count, err := streamDecodeRepeaters(json.NewDecoder(strings.NewReader(data)), m)
+	if err != nil {
+		t.Fatalf("streamDecodeRepeaters failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 repeaters, got %d", count)
+	}
+
+	multi, ok := m.Load(112601)
+	if !ok {
+		t.Fatal("112601 missing")
+	}
+	if !slices.Equal(multi.Trustees, []string{"W8AOR", "K8COP"}) {
+		t.Errorf("unexpected trustees %v", multi.Trustees)
+	}
+	if multi.ColorCode != 3 {
+		t.Errorf("expected color code 3, got %d", multi.ColorCode)
+	}
+
+	single, ok := m.Load(110601)
+	if !ok {
+		t.Fatal("110601 missing")
+	}
+	if !slices.Equal(single.Trustees, []string{"KA6SQG"}) {
+		t.Errorf("unexpected trustees %v", single.Trustees)
+	}
 }
 
 func BenchmarkRepeaterDB(b *testing.B) {

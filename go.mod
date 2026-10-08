@@ -19,7 +19,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/kachit/gorm-seeder v0.0.3
 	github.com/lmittmann/tint v1.1.3
 	github.com/mavjs/goPwned v0.0.2

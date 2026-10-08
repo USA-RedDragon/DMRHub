@@ -1,0 +1,10 @@
+repos:
+  - repo: https://github.com/USA-RedDragon/configulator
+    rev: v2.2.0
+    hooks:
+      - id: configulator-generate
+        args: [-dir, internal/config, -type, Config]
+      - id: configulator-markdown
+        args: [-dir, internal/config, -type, Config, -markdown-file, doc/Configuration.md]
+      - id: configulator-sample
+        args: [-dir, internal/config, -type, Config, -sample-file, config.example.yaml]

@@ -42,6 +42,9 @@ const (
 	handshakeWait  = 5 * time.Second
 	drainWait      = 2 * time.Second
 	settleDuration = 500 * time.Millisecond
+	// callHoldTime keeps a test call well past the 100ms key-up threshold in
+	// EndCall, since packet handling delays shorten the measured duration.
+	callHoldTime = 500 * time.Millisecond
 )
 
 // allBackends returns the list of backends to test against.
@@ -372,7 +375,7 @@ func TestPrivateCallToUserLastHeard(t *testing.T) {
 		// The call must last >100ms or EndCall treats it as a key-up and deletes it.
 		grpPkt := makeGroupVoicePacket(1000002, 1, 50, false)
 		require.NoError(t, c2.SendDMRD(grpPkt))
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(callHoldTime)
 		grpTerm := makeGroupVoiceTermPacket(1000002, 1, 50, false)
 		require.NoError(t, c2.SendDMRD(grpTerm))
 
@@ -650,7 +653,7 @@ func TestPrivateCallToRepeaterOwner(t *testing.T) {
 		// The call must last >100ms or EndCall treats it as a key-up and deletes it.
 		grpPkt := makeGroupVoicePacket(1000002, 1, 55, false)
 		require.NoError(t, c2.SendDMRD(grpPkt))
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(callHoldTime)
 		grpTerm := makeGroupVoiceTermPacket(1000002, 1, 55, false)
 		require.NoError(t, c2.SendDMRD(grpTerm))
 

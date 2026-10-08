@@ -75,7 +75,7 @@ func TestNetCheckInDuringActiveNet(t *testing.T) {
 		voicePkt := makeGroupVoicePacket(1000001, 100, 500, false)
 		voicePkt.Repeater = 200001
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(callHoldTime)
 		termPkt := makeGroupVoiceTermPacket(1000001, 100, 500, false)
 		termPkt.Repeater = 200001
 		require.NoError(t, c1.SendDMRD(termPkt))
@@ -192,7 +192,7 @@ func TestNetCheckInPubsubEvent(t *testing.T) {
 		voicePkt := makeGroupVoicePacket(1000003, 300, 600, false)
 		voicePkt.Repeater = 300001
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(callHoldTime)
 		termPkt := makeGroupVoiceTermPacket(1000003, 300, 600, false)
 		termPkt.Repeater = 300001
 		require.NoError(t, c1.SendDMRD(termPkt))

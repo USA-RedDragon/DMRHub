@@ -29,8 +29,8 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
+	"github.com/moby/moby/api/types/container"
+	"github.com/ory/dockertest/v4"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -56,36 +56,33 @@ func PostgresRedisBackend() Backend {
 		Setup: func(t *testing.T, cfg *config.Config) {
 			t.Helper()
 
-			pool, poolErr := dockertest.NewPool("")
+			pool, poolErr := dockertest.NewPool(t.Context(), "", dockertest.WithMaxWait(60*time.Second))
 			if poolErr != nil {
 				t.Skip("Docker not available: " + poolErr.Error())
 			}
-			pool.MaxWait = 60 * time.Second
+			t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
 
 			// --- PostgreSQL ---
-			pgResource, err := pool.RunWithOptions(&dockertest.RunOptions{
-				Repository: "postgres",
-				Tag:        "16-alpine",
-				Env: []string{
+			pgResource, err := pool.Run(t.Context(), "postgres",
+				dockertest.WithTag("16-alpine"),
+				dockertest.WithEnv([]string{
 					"POSTGRES_USER=test",
 					"POSTGRES_PASSWORD=test",
 					"POSTGRES_DB=testdb",
-				},
-			}, func(hc *docker.HostConfig) {
-				hc.AutoRemove = true
-				hc.RestartPolicy = docker.RestartPolicy{Name: "no"}
-			})
+				}),
+				dockertest.WithoutReuse(),
+				dockertest.WithHostConfig(func(hc *container.HostConfig) {
+					hc.AutoRemove = true
+					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+				}),
+			)
 			if err != nil {
 				t.Fatalf("start postgres container: %v", err)
 			}
-			if err := pgResource.Expire(120); err != nil {
-				t.Fatalf("setting postgres container expiry: %v", err)
-			}
-			t.Cleanup(func() { _ = pool.Purge(pgResource) })
 
 			pgPort, _ := strconv.Atoi(pgResource.GetPort("5432/tcp"))
 
-			if err := pool.Retry(func() error {
+			if err := pool.Retry(t.Context(), 0, func() error {
 				db, err := sql.Open("pgx",
 					fmt.Sprintf("postgres://test:test@localhost:%d/testdb?sslmode=disable", pgPort))
 				if err != nil {
@@ -106,24 +103,21 @@ func PostgresRedisBackend() Backend {
 			}
 
 			// --- Redis ---
-			redisResource, err := pool.RunWithOptions(&dockertest.RunOptions{
-				Repository: "redis",
-				Tag:        "7-alpine",
-			}, func(hc *docker.HostConfig) {
-				hc.AutoRemove = true
-				hc.RestartPolicy = docker.RestartPolicy{Name: "no"}
-			})
+			redisResource, err := pool.Run(t.Context(), "redis",
+				dockertest.WithTag("7-alpine"),
+				dockertest.WithoutReuse(),
+				dockertest.WithHostConfig(func(hc *container.HostConfig) {
+					hc.AutoRemove = true
+					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+				}),
+			)
 			if err != nil {
 				t.Fatalf("start redis container: %v", err)
 			}
-			if err := redisResource.Expire(120); err != nil {
-				t.Fatalf("setting redis container expiry: %v", err)
-			}
-			t.Cleanup(func() { _ = pool.Purge(redisResource) })
 
 			redisPort, _ := strconv.Atoi(redisResource.GetPort("6379/tcp"))
 
-			if err := pool.Retry(func() error {
+			if err := pool.Retry(t.Context(), 0, func() error {
 				rdb := redis.NewClient(&redis.Options{
 					Addr: fmt.Sprintf("localhost:%d", redisPort),
 				})

@@ -134,13 +134,14 @@ jobs:
 
   #     - run: make frontend-unit-test-coverage
 
-  #     - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+  #     - uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
   #       if: always()
   #       with:
-  #         token: ${{ secrets.CODECOV_TOKEN }}
-  #         flags: frontend-unit
-  #         files: internal/http/frontend/coverage/unit/lcov.info
-  #         fail_ci_if_error: true
+  #         file: internal/http/frontend/coverage/unit/lcov.info
+  #         badge: .github/badges/frontend-unit-coverage.svg
+  #         baseline: .github/coverage-baseline-frontend-unit.tsv
+  #         label: frontend unit coverage
+  #         marker: frontend-unit-coverage
 
   #     - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
   #       if: always()
@@ -155,6 +156,7 @@ jobs:
     permissions:
       contents: read
       checks: write
+      pull-requests: write
 
     strategy:
       fail-fast: false
@@ -162,8 +164,18 @@ jobs:
         browser: ["firefox", "chrome", "electron"]
 
     steps:
+      - name: Generate GitHub App Token
+        if: matrix.browser == 'chrome'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AUTO_COMMIT_APP_ID }}
+          private-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Set up Go
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
@@ -217,13 +229,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
-        if: always()
+      - name: Report coverage
+        if: always() && matrix.browser == 'chrome'
+        uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: frontend-e2e
-          files: internal/http/frontend/coverage/e2e/lcov.info
-          fail_ci_if_error: false
+          file: internal/http/frontend/coverage/e2e/lcov.info
+          badge: .github/badges/frontend-coverage.svg
+          baseline: .github/coverage-baseline-frontend.tsv
+          label: frontend coverage
+          marker: frontend-coverage
+          if-no-file: warn
+          token: ${{ steps.app-token.outputs.token }}
+          git-user-name: usa-reddragon-auto-commit-bot[bot]
+          git-user-email: usa-reddragon-auto-commit-bot[bot]@users.noreply.github.com
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
@@ -402,10 +420,20 @@ jobs:
     permissions:
       contents: read
       checks: write
+      pull-requests: write
 
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AUTO_COMMIT_APP_ID }}
+          private-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Go
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
@@ -427,14 +455,17 @@ jobs:
 
       - name: Unit tests
         run: |
-          env CGO_ENABLED=0 go test -v ./... -coverprofile coverage.out -coverpkg=./... -covermode atomic
+          env CGO_ENABLED=0 go test -v ./... -coverprofile coverage.raw -coverpkg=./... -covermode atomic
+          grep -v -e '_configulator\.go:' -e '_gen\.go:' -e '_gen_test\.go:' coverage.raw > coverage.out
 
-      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+      - name: Report coverage
         if: always()
+        uses: USA-RedDragon/reusable-actions/coverage@764c7aee28d4145c8b84d8c550727a6924a96c7e # v2.0.25
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: backend
-          fail_ci_if_error: true
+          file: coverage.out
+          token: ${{ steps.app-token.outputs.token }}
+          git-user-name: usa-reddragon-auto-commit-bot[bot]
+          git-user-email: usa-reddragon-auto-commit-bot[bot]@users.noreply.github.com
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()

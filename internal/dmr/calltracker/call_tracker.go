@@ -641,19 +641,18 @@ func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
 	ifc.ended = true
 	call := ifc.call
 
-	if time.Since(call.StartTime) < 100*time.Millisecond {
-		ifc.mu.Unlock()
-		// This is probably a key-up, so delete the call from the db
-		c.db.Unscoped().Delete(call)
-		return
-	}
-
-	// Delete the call end timer
 	timer, ok := c.callEndTimers.LoadAndDelete(hash)
 	if !ok {
 		slog.Error("Call end timer not found")
 	} else {
 		timer.Stop()
+	}
+
+	if time.Since(call.StartTime) < 100*time.Millisecond {
+		ifc.mu.Unlock()
+		// This is probably a key-up, so delete the call from the db
+		c.db.Unscoped().Delete(call)
+		return
 	}
 
 	call.Duration = time.Since(call.StartTime)

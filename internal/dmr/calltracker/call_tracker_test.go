@@ -472,3 +472,60 @@ func TestEndCallHandlerWithCanceledContext(t *testing.T) {
 	assert.False(t, ct.IsCallActive(context.Background(), packet),
 		"call should have been ended by the timer even though the original context was canceled")
 }
+
+// TestKeyUpDoesNotLeaveEndTimer verifies that a call discarded as a key-up
+// stops its end timer, so the stale timer cannot end a later call that
+// hashes the same.
+func TestKeyUpDoesNotLeaveEndTimer(t *testing.T) {
+	t.Parallel()
+	ct, database := makeTestCallTrackerWithDB(t)
+
+	require.NoError(t, database.Create(&models.User{
+		ID:       1000001,
+		Callsign: "U1",
+		Username: "U1",
+		Approved: true,
+	}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{
+			ID:       100001,
+			Callsign: "RPT1",
+		},
+		OwnerID: 1000001,
+		Type:    models.RepeaterTypeMMDVM,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{
+		ID:   42,
+		Name: "TG42",
+	}).Error)
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         42,
+		Repeater:    100001,
+		GroupCall:   true,
+		StreamID:    70101,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+
+	ctx := context.Background()
+	ct.StartCall(ctx, packet)
+	ct.EndCall(ctx, packet)
+	require.False(t, ct.IsCallActive(ctx, packet), "key-up should not leave an active call")
+
+	ct.StartCall(ctx, packet)
+	require.True(t, ct.IsCallActive(ctx, packet))
+
+	deadline := time.Now().Add(2500 * time.Millisecond)
+	for seq := uint(1); time.Now().Before(deadline); seq++ {
+		packet.Seq = seq % 256
+		ct.ProcessCallPacket(ctx, packet)
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	assert.True(t, ct.IsCallActive(ctx, packet), "call receiving packets should still be active")
+}

@@ -30,6 +30,13 @@ jobs:
         run: |
           sudo apt-get update 
           sudo apt-get install -y make wget xz-utils git
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check the live RadioID.net format
+        run: |
+          go test -count=1 -tags live -run TestLiveUpdate -v ./internal/repeaterdb/... ./internal/userdb/...
       - name: Update databases
         run: |
           make update-dbs
@@ -47,6 +54,9 @@ jobs:
           then
           exit 2
           fi
+      - name: Decode the refreshed databases
+        run: |
+          go test -count=1 ./internal/repeaterdb/... ./internal/userdb/...
       - name: Commit changes to databases
         run: |
           git commit --signoff -m "Automated update of RadioID.net Databases" internal/repeaterdb internal/userdb

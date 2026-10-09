@@ -1,0 +1,4 @@
+{"users": [
+{"name": "Hans Juergen", "fname": "Hans Juergen", "surname": "", "country": "Canada", "callsign": "VA3BOC", "city": "Cornwall", "radio_id": 1023007, "id": 1023007, "state": "Ontario", "has_valid_callsign": "0", "has_valid_email": 0},
+{"name": "Jacob", "fname": "Jacob", "surname": "", "country": "United States", "callsign": "KI5VMF", "city": "Moore", "radio_id": 3191868, "id": 3191868, "state": "Oklahoma", "has_valid_callsign": "1", "has_valid_email": 1}
+]}

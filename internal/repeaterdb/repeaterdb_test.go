@@ -21,16 +21,19 @@ package repeaterdb
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmrdb"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/dbtest"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 	"github.com/puzpuzpuz/xsync/v4"
 )
-
-const defaultRepeaterDBURL = "https://www.radioid.net/static/rptrs.json"
 
 func TestRepeaterdb(t *testing.T) {
 	t.Parallel()
@@ -97,21 +100,157 @@ func TestRepeaterdbInvalidRepeater(t *testing.T) {
 	}
 }
 
-func TestUpdate(t *testing.T) {
+// newFixtureDB returns a repeater database, separate from the package one, seeded with the old-format fixture.
+func newFixtureDB(t *testing.T) *dmrdb.DB[DMRRepeater] {
+	t.Helper()
+	db := newDB(dbtest.Compress(t, readFixture(t, "rptrs-old.json")), builtInDateStr)
+	if err := db.UnpackDB(); err != nil {
+		t.Fatalf("UnpackDB failed: %v", err)
+	}
+	return db
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	return data
+}
+
+func TestUpdateFromEmbeddedDB(t *testing.T) {
 	t.Parallel()
-	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
-		err := Update(defaultRepeaterDBURL)
-		if err != nil {
+	srv := dbtest.NewServer(t, 0, dbtest.Decompress(t, comressedDMRRepeatersDB))
+	db := newFixtureDB(t)
+	if err := db.Update(srv.URL); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if db.Len() != Len() {
+		t.Errorf("Update loaded %d repeaters, UnpackDB loaded %d", db.Len(), Len())
+	}
+	repeater, ok := db.Get(313060)
+	if !ok || !strings.EqualFold(repeater.Callsign, "KP4DJT") || !slices.Contains(repeater.Trustees, "KP4DJT") {
+		t.Errorf("unexpected repeater 313060: %+v", repeater)
+	}
+}
+
+func TestUpdateFixtures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		fixture  string
+		count    int
+		id       uint
+		trustees []string
+	}{
+		{fixture: "rptrs-current.json", count: 4, id: 112601, trustees: []string{"W8AOR", "K8COP"}},
+		{fixture: "rptrs-current.json", count: 4, id: 250006, trustees: []string{"R0BB"}},
+		{fixture: "rptrs-old.json", count: 2, id: 110601, trustees: []string{"KA6SQG"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fixture, func(t *testing.T) {
+			t.Parallel()
+			srv := dbtest.NewServer(t, 0, readFixture(t, tt.fixture))
+			db := newFixtureDB(t)
+			if err := db.Update(srv.URL); err != nil {
+				t.Fatalf("Update failed: %v", err)
+			}
+			if db.Len() != tt.count {
+				t.Errorf("expected %d repeaters, got %d", tt.count, db.Len())
+			}
+			repeater, ok := db.Get(tt.id)
+			if !ok {
+				t.Fatalf("%d missing", tt.id)
+			}
+			if !slices.Equal(repeater.Trustees, tt.trustees) {
+				t.Errorf("expected trustees %v, got %v", tt.trustees, repeater.Trustees)
+			}
+			if repeater.ID != tt.id || repeater.Callsign == "" || repeater.ColorCode == 0 || repeater.Frequency == "" {
+				t.Errorf("repeater %d decoded incompletely: %+v", tt.id, repeater)
+			}
+			date, err := db.GetDate()
+			if err != nil || date.Equal(db.GetBuiltInDate()) {
+				t.Errorf("Update did not move the database date: %v %v", date, err)
+			}
+		})
+	}
+}
+
+func TestUpdateFailures(t *testing.T) {
+	t.Parallel()
+	current := string(readFixture(t, "rptrs-current.json"))
+	tests := []struct {
+		name string
+		url  func(t *testing.T) string
+	}{
+		{"server error", func(t *testing.T) string { return dbtest.NewServer(t, 1, []byte(current)).URL }},
+		{"truncated body", func(t *testing.T) string { return dbtest.NewTruncatedServer(t, []byte(current)) }},
+		{"id becomes a string", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 112601`, `"id": "112601"`, 1))).URL
+		}},
+		{"id renamed", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.ReplaceAll(current, `"id": `, `"repeater_id": `))).URL
+		}},
+		{"color code becomes a string", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"color_code": 1`, `"color_code": "1"`, 1))).URL
+		}},
+		{"trustee becomes an object", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["KA6SQG"]`, `"trustee": {"callsign": "KA6SQG"}`, 1))).URL
+		}},
+		{"trustees become objects", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["KA6SQG"]`, `"trustee": [{"callsign": "KA6SQG"}]`, 1))).URL
+		}},
+		{"rptrs becomes an object", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(`{"rptrs": {"110601": {"id": 110601}}}`)).URL
+		}},
+		{"no repeaters", func(t *testing.T) string { return dbtest.NewServer(t, 0, []byte(`{"rptrs": []}`)).URL }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			db := newFixtureDB(t)
+			err := db.Update(tt.url(t))
+			if !errors.Is(err, dmrdb.ErrUpdateFailed) {
+				t.Fatalf("expected ErrUpdateFailed, got %v", err)
+			}
+			if db.Len() != 2 {
+				t.Errorf("failed update replaced the database, it now has %d repeaters", db.Len())
+			}
+			if _, ok := db.Get(313060); !ok {
+				t.Error("failed update dropped repeater 313060")
+			}
+		})
+	}
+}
+
+func TestUpdateRetriesWithBackoff(t *testing.T) {
+	t.Parallel()
+	srv := dbtest.NewServer(t, 2, readFixture(t, "rptrs-current.json"))
+	db := newFixtureDB(t)
+	var delays []time.Duration
+	backoff := retry.Backoff{
+		Attempts: 5,
+		Initial:  time.Second,
+		Max:      4 * time.Second,
+		Sleep:    func(d time.Duration) { delays = append(delays, d) },
+	}
+	ok := backoff.Run(t, func(r *retry.R) {
+		if err := db.Update(srv.URL); err != nil {
 			r.Errorf("Update failed: %v", err)
 		}
-		dbDate, err := GetDate()
-		if err != nil {
-			r.Errorf("GetDate failed: %v", err)
-		}
-		if time.Time.Equal(repeaterDB.GetBuiltInDate(), dbDate) {
-			r.Errorf("Update did not update the database")
-		}
 	})
+	if !ok {
+		t.Fatal("Update never succeeded")
+	}
+	if srv.Hits() != 3 {
+		t.Errorf("expected 3 requests, got %d", srv.Hits())
+	}
+	if want := []time.Duration{time.Second, 2 * time.Second}; !slices.Equal(delays, want) {
+		t.Errorf("expected delays %v, got %v", want, delays)
+	}
+	if db.Len() != 4 {
+		t.Errorf("expected 4 repeaters, got %d", db.Len())
+	}
 }
 
 func TestStreamDecodeRepeaters(t *testing.T) {

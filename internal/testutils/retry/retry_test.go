@@ -20,6 +20,7 @@
 package retry
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -53,5 +54,66 @@ func TestRetryAttempts(t *testing.T) {
 
 	if attempts != 5 {
 		t.Errorf("attempts=%d; want %d", attempts, 5)
+	}
+}
+
+type fakeTB struct {
+	failed bool
+}
+
+func (f *fakeTB) Helper()             {}
+func (f *fakeTB) Logf(string, ...any) {}
+func (f *fakeTB) Fail()               { f.failed = true }
+
+func TestBackoffDelays(t *testing.T) {
+	t.Parallel()
+
+	var delays []time.Duration
+	tb := &fakeTB{}
+	b := Backoff{
+		Attempts: 5,
+		Initial:  time.Second,
+		Max:      3 * time.Second,
+		Sleep:    func(d time.Duration) { delays = append(delays, d) },
+	}
+	calls := 0
+	if b.Run(tb, func(r *R) { calls++; r.Fail() }) {
+		t.Fatal("Run reported success for a function that always fails")
+	}
+	if !tb.failed {
+		t.Error("Run did not mark the test as failed")
+	}
+	if calls != 5 {
+		t.Errorf("calls=%d; want 5", calls)
+	}
+	want := []time.Duration{time.Second, 2 * time.Second, 3 * time.Second, 3 * time.Second}
+	if !slices.Equal(delays, want) {
+		t.Errorf("delays=%v; want %v", delays, want)
+	}
+}
+
+func TestBackoffStopsOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	var delays []time.Duration
+	tb := &fakeTB{}
+	b := Backoff{
+		Attempts: 5,
+		Initial:  time.Second,
+		Sleep:    func(d time.Duration) { delays = append(delays, d) },
+	}
+	if !b.Run(tb, func(r *R) {
+		if r.Attempt < 3 {
+			r.Fail()
+		}
+	}) {
+		t.Fatal("Run reported failure")
+	}
+	if tb.failed {
+		t.Error("Run marked the test as failed")
+	}
+	want := []time.Duration{time.Second, 2 * time.Second}
+	if !slices.Equal(delays, want) {
+		t.Errorf("delays=%v; want %v", delays, want)
 	}
 }

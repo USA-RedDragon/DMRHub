@@ -20,14 +20,18 @@
 package userdb
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmrdb"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/dbtest"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/retry"
 )
-
-const defaultUserDBURL = "https://www.radioid.net/static/users.json"
 
 func TestUserdb(t *testing.T) {
 	t.Parallel()
@@ -97,21 +101,154 @@ func TestUserdbInvalidUser(t *testing.T) {
 	}
 }
 
-func TestUpdate(t *testing.T) {
+// newFixtureDB returns a user database, separate from the package one, seeded with the old-format fixture.
+func newFixtureDB(t *testing.T) *dmrdb.DB[DMRUser] {
+	t.Helper()
+	db := newDB(dbtest.Compress(t, readFixture(t, "users-old.json")), builtInDateStr)
+	if err := db.UnpackDB(); err != nil {
+		t.Fatalf("UnpackDB failed: %v", err)
+	}
+	return db
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+	return data
+}
+
+func TestUpdateFromEmbeddedDB(t *testing.T) {
 	t.Parallel()
-	retry.Retry(t, 5, time.Millisecond, func(r *retry.R) {
-		err := Update(defaultUserDBURL)
-		if err != nil {
+	srv := dbtest.NewServer(t, 0, dbtest.Decompress(t, compressedDMRUsersDB))
+	db := newFixtureDB(t)
+	if err := db.Update(srv.URL); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if db.Len() != Len() {
+		t.Errorf("Update loaded %d users, UnpackDB loaded %d", db.Len(), Len())
+	}
+	user, ok := db.Get(3191868)
+	if !ok || !strings.EqualFold(user.Callsign, "KI5VMF") {
+		t.Errorf("unexpected user 3191868: %+v", user)
+	}
+}
+
+func TestUpdateFixtures(t *testing.T) {
+	t.Parallel()
+	for _, fixture := range []string{"users-current.json", "users-old.json"} {
+		t.Run(fixture, func(t *testing.T) {
+			t.Parallel()
+			srv := dbtest.NewServer(t, 0, readFixture(t, fixture))
+			db := newFixtureDB(t)
+			if err := db.Update(srv.URL); err != nil {
+				t.Fatalf("Update failed: %v", err)
+			}
+			if db.Len() != 2 {
+				t.Errorf("expected 2 users, got %d", db.Len())
+			}
+			want := DMRUser{
+				ID:       1023007,
+				RadioID:  1023007,
+				Name:     "Hans Juergen",
+				FName:    "Hans Juergen",
+				Callsign: "VA3BOC",
+				City:     "Cornwall",
+				State:    "Ontario",
+				Country:  "Canada",
+			}
+			if user, _ := db.Get(1023007); user != want {
+				t.Errorf("expected %+v, got %+v", want, user)
+			}
+			date, err := db.GetDate()
+			if err != nil || date.Equal(db.GetBuiltInDate()) {
+				t.Errorf("Update did not move the database date: %v %v", date, err)
+			}
+		})
+	}
+}
+
+func TestUpdateFailures(t *testing.T) {
+	t.Parallel()
+	current := string(readFixture(t, "users-current.json"))
+	tests := []struct {
+		name string
+		url  func(t *testing.T) string
+	}{
+		{"server error", func(t *testing.T) string { return dbtest.NewServer(t, 1, []byte(current)).URL }},
+		{"truncated body", func(t *testing.T) string { return dbtest.NewTruncatedServer(t, []byte(current)) }},
+		{"id becomes a string", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 1023007`, `"id": "1023007"`, 1))).URL
+		}},
+		{"id renamed", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.ReplaceAll(current, `"id": `, `"user_id": `))).URL
+		}},
+		{"callsign becomes an array", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"callsign": "VA3BOC"`, `"callsign": ["VA3BOC"]`, 1))).URL
+		}},
+		{"users becomes an object", func(t *testing.T) string {
+			return dbtest.NewServer(t, 0, []byte(`{"users": {"1023007": {"id": 1023007}}}`)).URL
+		}},
+		{"no users", func(t *testing.T) string { return dbtest.NewServer(t, 0, []byte(`{"users": []}`)).URL }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			db := newFixtureDB(t)
+			err := db.Update(tt.url(t))
+			if !errors.Is(err, dmrdb.ErrUpdateFailed) {
+				t.Fatalf("expected ErrUpdateFailed, got %v", err)
+			}
+			if db.Len() != 2 {
+				t.Errorf("failed update replaced the database, it now has %d users", db.Len())
+			}
+			if _, ok := db.Get(3191868); !ok {
+				t.Error("failed update dropped user 3191868")
+			}
+		})
+	}
+}
+
+func TestUpdateIgnoresNewFields(t *testing.T) {
+	t.Parallel()
+	data := `{"users": [{"id": 3191868, "callsign": "KI5VMF", "flags": {"validated": [1, 2]}, "radio_id": 3191868}]}`
+	srv := dbtest.NewServer(t, 0, []byte(data))
+	db := newFixtureDB(t)
+	if err := db.Update(srv.URL); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if user, ok := db.Get(3191868); !ok || user.Callsign != "KI5VMF" || user.RadioID != 3191868 {
+		t.Errorf("unexpected user 3191868: %+v", user)
+	}
+}
+
+func TestUpdateRetriesWithBackoff(t *testing.T) {
+	t.Parallel()
+	srv := dbtest.NewServer(t, 2, readFixture(t, "users-current.json"))
+	db := newFixtureDB(t)
+	var delays []time.Duration
+	backoff := retry.Backoff{
+		Attempts: 5,
+		Initial:  time.Second,
+		Max:      4 * time.Second,
+		Sleep:    func(d time.Duration) { delays = append(delays, d) },
+	}
+	ok := backoff.Run(t, func(r *retry.R) {
+		if err := db.Update(srv.URL); err != nil {
 			r.Errorf("Update failed: %v", err)
 		}
-		date, err := GetDate()
-		if err != nil {
-			r.Errorf("GetDate failed: %v", err)
-		}
-		if time.Time.Equal(userDB.GetBuiltInDate(), date) {
-			r.Errorf("Update did not update the database")
-		}
 	})
+	if !ok {
+		t.Fatal("Update never succeeded")
+	}
+	if srv.Hits() != 3 {
+		t.Errorf("expected 3 requests, got %d", srv.Hits())
+	}
+	if want := []time.Duration{time.Second, 2 * time.Second}; !slices.Equal(delays, want) {
+		t.Errorf("expected delays %v, got %v", want, delays)
+	}
 }
 
 func BenchmarkUserDB(b *testing.B) {

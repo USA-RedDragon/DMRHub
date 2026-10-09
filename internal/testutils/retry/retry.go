@@ -25,7 +25,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"testing"
 	"time"
 )
 
@@ -70,8 +69,34 @@ func lineNumber() string {
 	return filepath.Base(file) + ":" + strconv.Itoa(line) + ": "
 }
 
-func Retry(t *testing.T, maxAttempts int, sleep time.Duration, f func(r *R)) bool {
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+// TB is the part of testing.TB that Backoff reports to.
+type TB interface {
+	Helper()
+	Logf(format string, args ...any)
+	Fail()
+}
+
+// Backoff retries a function with an exponentially growing delay between attempts.
+type Backoff struct {
+	// Attempts is the maximum number of times the function runs.
+	Attempts int
+	// Initial is the delay after the first failed attempt. Each later delay doubles.
+	Initial time.Duration
+	// Max caps the delay. Zero means no cap.
+	Max time.Duration
+	// Sleep waits between attempts. It defaults to time.Sleep and lets tests skip the wait.
+	Sleep func(time.Duration)
+}
+
+// Run calls f until it succeeds or the attempts run out, marking t as failed in the latter case.
+func (b Backoff) Run(t TB, f func(r *R)) bool {
+	t.Helper()
+	sleep := b.Sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	delay := b.Initial
+	for attempt := 1; attempt <= b.Attempts; attempt++ {
 		r := &R{Attempt: attempt, log: &bytes.Buffer{}}
 
 		f(r)
@@ -83,12 +108,24 @@ func Retry(t *testing.T, maxAttempts int, sleep time.Duration, f func(r *R)) boo
 			return true
 		}
 
-		if attempt == maxAttempts {
+		if attempt == b.Attempts {
 			t.Logf("FAILED after %d attempts:%s", attempt, r.log.String())
-			t.Fail()
+			break
 		}
 
-		time.Sleep(sleep)
+		t.Logf("attempt %d failed, retrying in %s:%s", attempt, delay, r.log.String())
+		sleep(delay)
+		delay *= 2
+		if b.Max > 0 && delay > b.Max {
+			delay = b.Max
+		}
 	}
+	t.Fail()
 	return false
+}
+
+// Retry runs f up to maxAttempts times with a fixed delay between attempts.
+func Retry(t TB, maxAttempts int, sleep time.Duration, f func(r *R)) bool {
+	t.Helper()
+	return Backoff{Attempts: maxAttempts, Initial: sleep, Max: sleep}.Run(t, f)
 }

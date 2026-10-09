@@ -29,11 +29,11 @@ internal/db/models/talkgroup.go	61	53
 internal/db/models/user.go	52	30
 internal/dmr/calltracker/call_tracker.go	293	235
 internal/dmr/dmrconst/const.go	13	13
-internal/dmr/hub/hub.go	93	72
+internal/dmr/hub/hub.go	93	71
 internal/dmr/hub/parrot_handler.go	43	35
 internal/dmr/hub/publishing.go	48	35
 internal/dmr/hub/routing.go	80	72
-internal/dmr/hub/subscription_manager.go	264	216
+internal/dmr/hub/subscription_manager.go	264	215
 internal/dmr/hub/talkgroup.go	60	55
 internal/dmr/netscheduler/scheduler.go	100	20
 internal/dmr/parrot/parrot.go	34	29
@@ -43,7 +43,7 @@ internal/dmr/servers/instance_registry.go	43	32
 internal/dmr/servers/ipsc/server.go	350	296
 internal/dmr/servers/ipsc/translator.go	335	307
 internal/dmr/servers/kvclient.go	71	54
-internal/dmr/servers/mmdvm/packet_handlers.go	237	137
+internal/dmr/servers/mmdvm/packet_handlers.go	237	136
 internal/dmr/servers/mmdvm/server.go	142	105
 internal/dmr/servers/openbridge/server.go	166	130
 internal/dmr/utils/utils.go	10	10
@@ -89,9 +89,9 @@ internal/http/setupwizard/routes.go	12	0
 internal/http/websocket/writer.go	2	1
 internal/http/websocket/ws.go	45	25
 internal/kv/kv.go	6	5
-internal/kv/memory.go	175	163
+internal/kv/memory.go	175	154
 internal/kv/redis.go	58	35
-internal/metrics/prometheus.go	14	14
+internal/metrics/prometheus.go	14	12
 internal/metrics/server.go	18	14
 internal/pprof/server.go	16	0
 internal/pubsub/memory.go	35	34

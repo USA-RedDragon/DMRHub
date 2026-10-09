@@ -58,11 +58,11 @@ src/plugins/confirmBridge.ts	27	20
 src/plugins/toastBridge.ts	22	15
 src/router/index.ts	4	3
 src/router/routes.ts	31	16
-src/services/API.ts	10	9
+src/services/API.ts	10	10
 src/services/net.ts	29	20
 src/services/repeater.ts	15	2
 src/services/talkgroup.ts	15	8
-src/services/userdb.ts	15	12
+src/services/userdb.ts	15	11
 src/services/util.ts	7	6
 src/services/ws.ts	51	30
 src/store/index.ts	11	11

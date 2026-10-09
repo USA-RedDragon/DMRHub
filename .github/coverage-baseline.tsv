@@ -45,9 +45,10 @@ internal/dmr/servers/ipsc/translator.go	335	307
 internal/dmr/servers/kvclient.go	71	54
 internal/dmr/servers/mmdvm/packet_handlers.go	237	137
 internal/dmr/servers/mmdvm/server.go	142	105
-internal/dmr/servers/openbridge/server.go	166	129
+internal/dmr/servers/openbridge/server.go	166	130
 internal/dmr/utils/utils.go	10	10
-internal/dmrdb/dmrdb.go	89	63
+internal/dmrdb/decode.go	25	23
+internal/dmrdb/dmrdb.go	89	68
 internal/http/api/apimodels/calls.go	14	14
 internal/http/api/apimodels/config.go	20	14
 internal/http/api/apimodels/net.go	3	2
@@ -97,9 +98,10 @@ internal/pubsub/memory.go	35	34
 internal/pubsub/pubsub.go	3	3
 internal/pubsub/redis.go	33	22
 internal/queue/queue.go	14	14
-internal/repeaterdb/repeaterdb.go	142	106
+internal/repeaterdb/repeaterdb.go	115	84
 internal/smtp/sender.go	35	0
 internal/testutils/backends.go	54	45
+internal/testutils/dbtest/dbtest.go	37	32
 internal/testutils/http.go	103	83
 internal/testutils/integration.go	91	91
 internal/testutils/ipsc_client.go	233	180
@@ -108,8 +110,8 @@ internal/testutils/nets.go	136	129
 internal/testutils/openbridge_client.go	87	68
 internal/testutils/peers.go	100	100
 internal/testutils/repeaters.go	98	98
-internal/testutils/retry/retry.go	24	18
+internal/testutils/retry/retry.go	36	35
 internal/testutils/talkgroups.go	96	94
 internal/testutils/users.go	190	190
-internal/userdb/userdb.go	92	68
+internal/userdb/userdb.go	93	67
 main.go	11	0

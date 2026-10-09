@@ -8,7 +8,7 @@ src/components/Repeater.vue	7	0
 src/components/RepeaterTable.vue	198	127
 src/components/Talkgroup.vue	5	4
 src/components/TalkgroupTable.vue	165	100
-src/components/User.vue	9	5
+src/components/User.vue	9	6
 src/components/UserRegistrationCard.vue	14	10
 src/components/UserTable.vue	144	89
 src/components/ui/button/Button.vue	1	1
@@ -62,7 +62,7 @@ src/services/API.ts	10	10
 src/services/net.ts	29	20
 src/services/repeater.ts	15	2
 src/services/talkgroup.ts	15	8
-src/services/userdb.ts	15	8
+src/services/userdb.ts	15	11
 src/services/util.ts	7	6
 src/services/ws.ts	51	30
 src/store/index.ts	11	11

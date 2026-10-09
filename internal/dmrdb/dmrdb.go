@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -191,7 +192,7 @@ func (db *DB[T]) Update(url string) error {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ErrUpdateFailed
+		return fmt.Errorf("%w: %w", ErrUpdateFailed, err)
 	}
 	defer func() {
 		err := resp.Body.Close()
@@ -201,19 +202,19 @@ func (db *DB[T]) Update(url string) error {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return ErrUpdateFailed
+		return fmt.Errorf("%w: unexpected status %s", ErrUpdateFailed, resp.Status)
 	}
 
 	db.updatingMap = xsync.NewMap[uint, T](xsync.WithPresize(db.Len()), xsync.WithGrowOnly())
 	count, err := db.config.Decode(json.NewDecoder(resp.Body), db.updatingMap)
 	if err != nil {
 		slog.Error("Error decoding database", "entity", db.config.EntityName, "error", err)
-		return ErrUpdateFailed
+		return fmt.Errorf("%w: %w", ErrUpdateFailed, err)
 	}
 
 	if count == 0 {
 		slog.Error("No entries found in database", "entity", db.config.EntityName)
-		return ErrUpdateFailed
+		return fmt.Errorf("%w: %w", ErrUpdateFailed, ErrNoEntries)
 	}
 
 	db.metadata.Store(dbMetadata{Count: count, Date: time.Now()})

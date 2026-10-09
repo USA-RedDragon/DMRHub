@@ -39,13 +39,18 @@ var builtInDateStr string
 //go:embed users.json.xz
 var compressedDMRUsersDB []byte
 
-var userDB = dmrdb.NewDB[DMRUser](dmrdb.Config[DMRUser]{ //nolint:gochecknoglobals
-	CompressedData: compressedDMRUsersDB,
-	BuiltInDateStr: builtInDateStr,
-	Presize:        250000,
-	EntityName:     "users",
-	Decode:         streamDecodeUsers,
-})
+var userDB = newDB(compressedDMRUsersDB, builtInDateStr) //nolint:gochecknoglobals
+
+// newDB creates a user database seeded with the given xz-compressed JSON dump.
+func newDB(compressed []byte, dateStr string) *dmrdb.DB[DMRUser] {
+	return dmrdb.NewDB[DMRUser](dmrdb.Config[DMRUser]{
+		CompressedData: compressed,
+		BuiltInDateStr: dateStr,
+		Presize:        250000,
+		EntityName:     "users",
+		Decode:         streamDecodeUsers,
+	})
+}
 
 var ErrDecodingDB = dmrdb.ErrDecodingDB
 
@@ -120,7 +125,7 @@ func streamDecodeUsers(dec *json.Decoder, m *xsync.Map[uint, DMRUser]) (int, err
 			for dec.More() {
 				user, err := decodeUser(dec)
 				if err != nil {
-					return 0, ErrDecodingDB
+					return 0, err
 				}
 				m.Store(user.ID, user)
 				count++
@@ -171,43 +176,8 @@ func decodeUser(dec *json.Decoder) (DMRUser, error) {
 			return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
 		}
 
-		switch key {
-		case "id":
-			if f, ok := t.(float64); ok {
-				user.ID = uint(f) //nolint:gosec
-			}
-		case "radio_id":
-			if f, ok := t.(float64); ok {
-				user.RadioID = uint(f) //nolint:gosec
-			}
-		case "state":
-			if s, ok := t.(string); ok {
-				user.State = s
-			}
-		case "surname":
-			if s, ok := t.(string); ok {
-				user.Surname = s
-			}
-		case "city":
-			if s, ok := t.(string); ok {
-				user.City = s
-			}
-		case "callsign":
-			if s, ok := t.(string); ok {
-				user.Callsign = s
-			}
-		case "country":
-			if s, ok := t.(string); ok {
-				user.Country = s
-			}
-		case "name":
-			if s, ok := t.(string); ok {
-				user.Name = s
-			}
-		case "fname":
-			if s, ok := t.(string); ok {
-				user.FName = s
-			}
+		if err := setUserField(dec, &user, key, t); err != nil {
+			return user, err
 		}
 	}
 
@@ -216,7 +186,42 @@ func decodeUser(dec *json.Decoder) (DMRUser, error) {
 		return user, fmt.Errorf("%w: %w", ErrDecodingDB, err)
 	}
 
+	if user.ID == 0 {
+		return user, fmt.Errorf("%w: user without an id", ErrDecodingDB)
+	}
+
 	return user, nil
+}
+
+// setUserField decodes the value of a single user field, whose first token is t.
+func setUserField(dec *json.Decoder, user *DMRUser, key string, t json.Token) error {
+	var err error
+	switch key {
+	case "id":
+		err = dmrdb.SetUint(&user.ID, t)
+	case "radio_id":
+		err = dmrdb.SetUint(&user.RadioID, t)
+	case "state":
+		err = dmrdb.SetString(&user.State, t)
+	case "surname":
+		err = dmrdb.SetString(&user.Surname, t)
+	case "city":
+		err = dmrdb.SetString(&user.City, t)
+	case "callsign":
+		err = dmrdb.SetString(&user.Callsign, t)
+	case "country":
+		err = dmrdb.SetString(&user.Country, t)
+	case "name":
+		err = dmrdb.SetString(&user.Name, t)
+	case "fname":
+		err = dmrdb.SetString(&user.FName, t)
+	default:
+		err = dmrdb.SkipValue(dec, t)
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	return nil
 }
 
 func UnpackDB() error {

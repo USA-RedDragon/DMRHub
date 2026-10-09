@@ -39,13 +39,18 @@ var builtInDateStr string
 //go:embed repeaters.json.xz
 var comressedDMRRepeatersDB []byte
 
-var repeaterDB = dmrdb.NewDB[DMRRepeater](dmrdb.Config[DMRRepeater]{ //nolint:gochecknoglobals
-	CompressedData: comressedDMRRepeatersDB,
-	BuiltInDateStr: builtInDateStr,
-	Presize:        10000,
-	EntityName:     "repeaters",
-	Decode:         streamDecodeRepeaters,
-})
+var repeaterDB = newDB(comressedDMRRepeatersDB, builtInDateStr) //nolint:gochecknoglobals
+
+// newDB creates a repeater database seeded with the given xz-compressed JSON dump.
+func newDB(compressed []byte, dateStr string) *dmrdb.DB[DMRRepeater] {
+	return dmrdb.NewDB[DMRRepeater](dmrdb.Config[DMRRepeater]{
+		CompressedData: compressed,
+		BuiltInDateStr: dateStr,
+		Presize:        10000,
+		EntityName:     "repeaters",
+		Decode:         streamDecodeRepeaters,
+	})
+}
 
 var ErrDecodingDB = dmrdb.ErrDecodingDB
 
@@ -124,7 +129,7 @@ func streamDecodeRepeaters(dec *json.Decoder, m *xsync.Map[uint, DMRRepeater]) (
 			for dec.More() {
 				repeater, err := decodeRepeater(dec)
 				if err != nil {
-					return 0, ErrDecodingDB
+					return 0, err
 				}
 				m.Store(repeater.ID, repeater)
 				count++
@@ -146,66 +151,47 @@ func streamDecodeRepeaters(dec *json.Decoder, m *xsync.Map[uint, DMRRepeater]) (
 	return count, nil
 }
 
-// setRepeaterField assigns a single JSON token value to the matching DMRRepeater field.
-func setRepeaterField(r *DMRRepeater, key string, t json.Token) { //nolint:gocyclo
+// setRepeaterField decodes the value of a single repeater field, whose first token is t.
+func setRepeaterField(dec *json.Decoder, r *DMRRepeater, key string, t json.Token) error {
+	var err error
 	switch key {
 	case "locator":
-		if f, ok := t.(float64); ok {
-			r.Locator = uint(f) //nolint:gosec
-		}
+		err = dmrdb.SetUint(&r.Locator, t)
 	case "id":
-		if f, ok := t.(float64); ok {
-			r.ID = uint(f) //nolint:gosec
-		}
+		err = dmrdb.SetUint(&r.ID, t)
 	case "callsign":
-		if s, ok := t.(string); ok {
-			r.Callsign = s
-		}
+		err = dmrdb.SetString(&r.Callsign, t)
 	case "city":
-		if s, ok := t.(string); ok {
-			r.City = s
-		}
+		err = dmrdb.SetString(&r.City, t)
 	case "state":
-		if s, ok := t.(string); ok {
-			r.State = s
-		}
+		err = dmrdb.SetString(&r.State, t)
 	case "country":
-		if s, ok := t.(string); ok {
-			r.Country = s
-		}
+		err = dmrdb.SetString(&r.Country, t)
 	case "frequency":
-		if s, ok := t.(string); ok {
-			r.Frequency = s
-		}
+		err = dmrdb.SetString(&r.Frequency, t)
 	case "color_code":
-		if f, ok := t.(float64); ok {
-			r.ColorCode = uint(f) //nolint:gosec
-		}
+		err = dmrdb.SetUint(&r.ColorCode, t)
 	case "offset":
-		if s, ok := t.(string); ok {
-			r.Offset = s
-		}
+		err = dmrdb.SetString(&r.Offset, t)
 	case "assigned":
-		if s, ok := t.(string); ok {
-			r.Assigned = s
-		}
+		err = dmrdb.SetString(&r.Assigned, t)
 	case "ts_linked":
-		if s, ok := t.(string); ok {
-			r.TSLinked = s
-		}
+		err = dmrdb.SetString(&r.TSLinked, t)
 	case "map_info":
-		if s, ok := t.(string); ok {
-			r.MapInfo = s
-		}
+		err = dmrdb.SetString(&r.MapInfo, t)
 	case "map":
-		if f, ok := t.(float64); ok {
-			r.Map = uint(f) //nolint:gosec
-		}
+		err = dmrdb.SetUint(&r.Map, t)
 	case "ipsc_network":
-		if s, ok := t.(string); ok {
-			r.IPSCNetwork = s
-		}
+		err = dmrdb.SetString(&r.IPSCNetwork, t)
+	case "trustee":
+		r.Trustees, err = decodeTrustees(dec, t)
+	default:
+		err = dmrdb.SkipValue(dec, t)
 	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	return nil
 }
 
 // decodeRepeater manually decodes a single DMRRepeater from the JSON token stream,
@@ -237,27 +223,18 @@ func decodeRepeater(dec *json.Decoder) (DMRRepeater, error) {
 			return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
 		}
 
-		if key == "trustee" {
-			r.Trustees, err = decodeTrustees(dec, t)
-			if err != nil {
-				return r, err
-			}
-			continue
+		if err := setRepeaterField(dec, &r, key, t); err != nil {
+			return r, err
 		}
-
-		if delim, ok := t.(json.Delim); ok {
-			if err := skipComposite(dec, delim); err != nil {
-				return r, err
-			}
-			continue
-		}
-
-		setRepeaterField(&r, key, t)
 	}
 
 	// Read closing }
 	if _, err = dec.Token(); err != nil {
 		return r, fmt.Errorf("%w: %w", ErrDecodingDB, err)
+	}
+
+	if r.ID == 0 {
+		return r, fmt.Errorf("%w: repeater without an id", ErrDecodingDB)
 	}
 
 	return r, nil
@@ -281,12 +258,12 @@ func decodeTrustees(dec *json.Decoder, t json.Token) ([]string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrDecodingDB, err)
 			}
-			if s, ok := t.(string); ok {
+			switch s := t.(type) {
+			case string:
 				trustees = append(trustees, s)
-			} else if delim, ok := t.(json.Delim); ok {
-				if err := skipComposite(dec, delim); err != nil {
-					return nil, err
-				}
+			case nil:
+			default:
+				return nil, fmt.Errorf("%w: expected a callsign, got %T", ErrDecodingDB, t)
 			}
 		}
 		if _, err := dec.Token(); err != nil {
@@ -296,30 +273,6 @@ func decodeTrustees(dec *json.Decoder, t json.Token) ([]string, error) {
 	default:
 		return nil, ErrDecodingDB
 	}
-}
-
-// skipComposite consumes the rest of an array or object whose opening
-// delimiter has already been read.
-func skipComposite(dec *json.Decoder, open json.Delim) error {
-	if open != '[' && open != '{' {
-		return ErrDecodingDB
-	}
-	depth := 1
-	for depth > 0 {
-		t, err := dec.Token()
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrDecodingDB, err)
-		}
-		if delim, ok := t.(json.Delim); ok {
-			switch delim {
-			case '[', '{':
-				depth++
-			case ']', '}':
-				depth--
-			}
-		}
-	}
-	return nil
 }
 
 func UnpackDB() error {

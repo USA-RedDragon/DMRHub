@@ -28,6 +28,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -56,6 +58,30 @@ var (
 	ErrIncompatibleVersion = errors.New("incompatible version of argon2")
 	ErrNoRandom            = errors.New("no random source available")
 )
+
+// argon2Slots bounds how many argon2 derivations run at once. Each derivation
+// allocates its whole memory cost (64 MiB) up front, so a burst of concurrent
+// logins could otherwise grow the heap without limit.
+var argon2Slots = make(chan struct{}, argon2Concurrency()) //nolint:gochecknoglobals
+
+// argon2Concurrency returns the number of argon2 derivations allowed to run at
+// once. Each derivation already uses parallelism threads, so a few slots keep
+// every CPU busy. On 32-bit targets the garbage collector falls behind
+// overlapping derivations and the heap grows until the address space runs out,
+// so derivations run one at a time there.
+func argon2Concurrency() int {
+	if strconv.IntSize == 32 {
+		return 1
+	}
+	return max(2, runtime.GOMAXPROCS(0)/parallelism)
+}
+
+// idKey is argon2.IDKey gated by argon2Slots.
+func idKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	argon2Slots <- struct{}{}
+	defer func() { <-argon2Slots }()
+	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+}
 
 var (
 	dummyHash     string    //nolint:gochecknoglobals
@@ -93,7 +119,7 @@ func HashPassword(password string, salt string) (string, error) {
 		return "", fmt.Errorf("failed to generate random salt: %w", err)
 	}
 
-	bytes := argon2.IDKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
+	bytes := idKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
 	b64Salt := base64.RawStdEncoding.EncodeToString(params.salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(bytes)
 
@@ -144,7 +170,7 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 	p.keyLength = uint32(hashLen)
 
 	// Derive the key from the other password using the same parameters.
-	otherHash := argon2.IDKey([]byte(password+pwsalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
+	otherHash := idKey([]byte(password+pwsalt), salt, p.iterations, p.memory, p.parallelism, p.keyLength)
 
 	// Check that the contents of the hashed passwords are identical. Note
 	// that we are using the subtle.ConstantTimeCompare() function for this

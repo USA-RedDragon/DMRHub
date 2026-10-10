@@ -62,12 +62,6 @@ const rateLimitRate = time.Second
 const rateLimitLimit = 50
 
 func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) Server {
-	if config.LogLevel == configPkg.LogLevelDebug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
 	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
@@ -86,12 +80,6 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 }
 
 func MakeSetupWizardServer(config *configPkg.Config, token string, configCompleteChan chan any, version, commit string) Server {
-	if config.LogLevel == configPkg.LogLevelDebug {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
 	r := CreateSetupWizardRouter(config, token, configCompleteChan, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", "[::]", "port", "3005")

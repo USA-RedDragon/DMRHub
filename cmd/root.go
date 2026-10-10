@@ -48,6 +48,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/gin-gonic/gin"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lmittmann/tint"
 	"github.com/pkg/browser"
@@ -214,7 +215,7 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 	return cfg, nil
 }
 
-// setupLogger configures the structured logger
+// setupLogger configures the structured logger and the gin mode
 func setupLogger(cfg *config.Config) {
 	var logger *slog.Logger
 	switch cfg.LogLevel {
@@ -231,6 +232,12 @@ func setupLogger(cfg *config.Config) {
 		logger = slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{Level: slog.LevelInfo}))
 	}
 	slog.SetDefault(logger)
+
+	if cfg.LogLevel == config.LogLevelDebug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 }
 
 // setupScheduler creates and configures the job scheduler

@@ -41,7 +41,6 @@ func CreateMetricsServer(config *config.Config) error {
 	}
 
 	r := gin.New()
-	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
 	// Tracing

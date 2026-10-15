@@ -158,7 +158,11 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			results = [][]byte{data}
 			ss.firstPacket = false
 		case elements.DataTypeRate34, elements.DataTypeRate1:
-			// Not BPTC coded, and the IPSC layout for these is not known.
+			// TODO: Rate 3/4 and Rate 1 blocks are dropped because no verified IPSC
+			// layout exists for them. node-dmr-lib reads rate 3/4 as burst type 8 with
+			// 18 bytes and the DBSN+CRC-9 moved to the end, unverified. Capture a
+			// confirmed rate 3/4 and a rate 1 transfer through a MOTOTRBO repeater on
+			// IPSC, derive the layout, and add both directions with tests.
 			slog.Debug("IPSCTranslator: unsupported data dtype", "dtype", dtypeOrVSeq)
 			return nil
 		case elements.DataTypeIdle, elements.DataTypeUnifiedSingleBlock, elements.DataTypeReserved:

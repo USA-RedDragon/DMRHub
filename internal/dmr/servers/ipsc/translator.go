@@ -149,12 +149,18 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			delete(t.streams, uint32(streamID))
 		case elements.DataTypeCSBK, elements.DataTypePIHeader,
 			elements.DataTypeDataHeader, elements.DataTypeRate12,
-			elements.DataTypeRate34, elements.DataTypeRate1,
 			elements.DataTypeMBCHeader, elements.DataTypeMBCContinuation:
 			// Data packet — build IPSC data packet
 			data := t.buildIPSCDataPacket(pkt, ss, elements.DataType(dtypeOrVSeq))
+			if data == nil {
+				return nil
+			}
 			results = [][]byte{data}
 			ss.firstPacket = false
+		case elements.DataTypeRate34, elements.DataTypeRate1:
+			// Not BPTC coded, and the IPSC layout for these is not known.
+			slog.Debug("IPSCTranslator: unsupported data dtype", "dtype", dtypeOrVSeq)
+			return nil
 		case elements.DataTypeIdle, elements.DataTypeUnifiedSingleBlock, elements.DataTypeReserved:
 			return nil
 		default:
@@ -377,7 +383,14 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 
 // buildIPSCDataPacket builds a 54-byte IPSC data packet for CSBK, Data Header, etc.
 // The structure is identical to voice header/terminator but with data packet types (0x83/0x84).
+// It returns nil when the BPTC(196,96) payload of the burst cannot be corrected.
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType elements.DataType) []byte {
+	payload, ok := decodeBPTCPayload(pkt.DMRData)
+	if !ok {
+		slog.Debug("IPSCTranslator: uncorrectable data burst", "dtype", dataType)
+		return nil
+	}
+
 	buf := make([]byte, 54)
 
 	t.buildIPSCHeader(buf, pkt, ss, false, true)
@@ -397,11 +410,8 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	}
 	binary.BigEndian.PutUint16(buf[36:38], 0x0060) // Data size (96 bits = 12 bytes)
 
-	// Bytes 38-49: Extract data from DMR burst via BPTC decode
-	t.burst.DecodeFromBytes(pkt.DMRData)
-	// Use extractFullLCBytes which constructs from packet fields
-	flcBytes := t.getOrCacheFLC(pkt, ss)
-	copy(buf[38:50], flcBytes[:12])
+	// Bytes 38-49: BPTC(196,96) payload of the DMR burst
+	copy(buf[38:50], payload[:])
 
 	// Bytes 50-53: trailing (zeros)
 	ss.ipscSeq++

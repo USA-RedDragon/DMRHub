@@ -282,3 +282,43 @@ func TestTranslateToMMDVMShortPacketGetsParity(t *testing.T) {
 		t.Fatalf("LC %x ok=%v has bad parity", lc, ok)
 	}
 }
+
+func TestTranslateToIPSCDataCarriesPayload(t *testing.T) {
+	t.Parallel()
+	payload := lc12(t, "bd00a5a5000064000001c7b1")
+	for _, dt := range []elements.DataType{
+		elements.DataTypeCSBK, elements.DataTypePIHeader, elements.DataTypeDataHeader,
+		elements.DataTypeRate12, elements.DataTypeMBCHeader, elements.DataTypeMBCContinuation,
+	} {
+		tr := newTestTranslator(t)
+		pkt := voiceLCPacket(payload, dt)
+		dmrData := pkt.DMRData
+		// A voice LC cached earlier in the stream must not leak into data packets.
+		tr.TranslateToIPSC(voiceLCPacket(lc12(t, "0000000000022f9be50bbebf"), elements.DataTypeVoiceLCHeader))
+		out := tr.TranslateToIPSC(pkt)
+		if len(out) != 1 {
+			t.Fatalf("dtype %d: expected 1 packet, got %d", dt, len(out))
+		}
+		if out[0][0] != 0x83 || out[0][30] != byte(dt) {
+			t.Fatalf("dtype %d: packet type 0x%02X burst type 0x%02X", dt, out[0][0], out[0][30])
+		}
+		if !bytes.Equal(out[0][38:50], payload[:]) {
+			t.Fatalf("dtype %d: payload %x, want %x", dt, out[0][38:50], payload)
+		}
+		back := tr.TranslateToMMDVM(out[0][0], out[0])
+		if len(back) != 1 || back[0].DMRData != dmrData {
+			t.Fatalf("dtype %d: round trip changed the burst", dt)
+		}
+	}
+}
+
+func TestTranslateToIPSCDropsNonBPTCData(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+	for _, dt := range []elements.DataType{elements.DataTypeRate34, elements.DataTypeRate1} {
+		pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(dt))
+		if out := tr.TranslateToIPSC(pkt); out != nil {
+			t.Fatalf("dtype %d: expected nil, got %d packets", dt, len(out))
+		}
+	}
+}

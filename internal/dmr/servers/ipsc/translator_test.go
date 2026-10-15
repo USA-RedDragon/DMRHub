@@ -1028,14 +1028,26 @@ func TestPopulateEmbeddedSignallingContinuation(t *testing.T) {
 	var burst layer2.Burst
 	burst.HasEmbeddedSignalling = true
 
-	// Bursts C, D, F should all get ContinuationFragmentLCorCSBK
-	for _, idx := range []int{2, 3, 5} {
+	// Bursts C, D should get ContinuationFragmentLCorCSBK
+	for _, idx := range []int{2, 3} {
 		ipscData := make([]byte, 57)
 		tr.populateEmbeddedSignalling(&burst, idx, ipscData)
 		if burst.EmbeddedSignalling.LCSS != enums.ContinuationFragmentLCorCSBK {
 			t.Fatalf("burst index %d: expected LCSS ContinuationFragmentLCorCSBK, got %d",
 				idx, burst.EmbeddedSignalling.LCSS)
 		}
+	}
+}
+
+func TestPopulateEmbeddedSignallingBurstF(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+
+	var burst layer2.Burst
+	burst.HasEmbeddedSignalling = true
+	tr.populateEmbeddedSignalling(&burst, 5, make([]byte, 57))
+	if burst.EmbeddedSignalling.LCSS != enums.SingleFragmentLCorCSBK {
+		t.Fatalf("expected LCSS SingleFragmentLCorCSBK, got %d", burst.EmbeddedSignalling.LCSS)
 	}
 }
 

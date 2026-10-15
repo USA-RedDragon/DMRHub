@@ -851,13 +851,16 @@ func (t *IPSCTranslator) populateEmbeddedSignalling(burst *layer2.Burst, burstId
 		ParityOK:                           true,
 	}
 
-	// Set LCSS based on burst position
+	// Set LCSS based on burst position. The LC fills bursts B-E; burst F
+	// carries non-LC signalling, which uses Single fragment (TS 102 361-1 7.1.3).
 	switch burstIdx {
 	case 1: // Burst B — first fragment
 		burst.EmbeddedSignalling.LCSS = enums.FirstFragmentLC
 	case 4: // Burst E — last fragment
 		burst.EmbeddedSignalling.LCSS = enums.LastFragmentLCorCSBK
-	default: // Bursts C, D, F — continuation
+	case 5: // Burst F — single fragment
+		burst.EmbeddedSignalling.LCSS = enums.SingleFragmentLCorCSBK
+	default: // Bursts C, D — continuation
 		burst.EmbeddedSignalling.LCSS = enums.ContinuationFragmentLCorCSBK
 	}
 

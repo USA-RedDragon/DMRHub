@@ -68,7 +68,7 @@
     "mochawesome-merge": "5.1.1",
     "mochawesome-report-generator": "6.3.2",
     "path-parser": "6.1.0",
-    "prettier": "3.9.9",
+    "prettier": "3.9.10",
     "sass": "1.105.1",
     "sitemap": "9.0.1",
     "start-server-and-test": "3.0.13",

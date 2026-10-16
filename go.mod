@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.9
 	github.com/USA-RedDragon/configulator/v2 v2.5.0
-	github.com/USA-RedDragon/dmrgo v0.0.1
+	github.com/USA-RedDragon/dmrgo/v2 v2.0.0
 	github.com/biter777/countries v1.7.5
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.25.0
@@ -140,3 +140,5 @@ require (
 )
 
 tool github.com/USA-RedDragon/configulator/v2/cmd/configulator
+
+replace github.com/USA-RedDragon/dmrgo/v2 => /home/reddragon/Projects/dmrgo/v2

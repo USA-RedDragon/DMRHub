@@ -21,9 +21,7 @@ package ipsc
 
 import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/dmrgo/dmr/enums"
-	"github.com/USA-RedDragon/dmrgo/dmr/fec/bptc"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2/elements"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 )
 
 // gfMul multiplies in GF(2^8) modulo x^8 + x^4 + x^3 + x^2 + 1 (TS 102 361-1 B.14).
@@ -61,8 +59,8 @@ func rs129Parity(lc []byte) [3]byte {
 }
 
 // fullLCMask returns the Table B.21 RS(12,9) mask byte for a Full LC data type.
-func fullLCMask(dataType elements.DataType) byte {
-	if dataType == elements.DataTypeTerminatorWithLC {
+func fullLCMask(dataType enums.DataType) byte {
+	if dataType == enums.DataTypeTerminatorWithLC {
 		return 0x99
 	}
 	return 0x96
@@ -70,7 +68,7 @@ func fullLCMask(dataType elements.DataType) byte {
 
 // setFullLCParity writes the masked RS(12,9) parity of lc[0:9] into lc[9:12].
 // IPSC carries the parity masked, the same as on air.
-func setFullLCParity(lc *[12]byte, dataType elements.DataType) {
+func setFullLCParity(lc *[12]byte, dataType enums.DataType) {
 	p := rs129Parity(lc[:9])
 	mask := fullLCMask(dataType)
 	for i := range p {
@@ -79,7 +77,7 @@ func setFullLCParity(lc *[12]byte, dataType elements.DataType) {
 }
 
 // fullLCParityOK reports whether lc[9:12] holds the masked RS(12,9) parity of lc[0:9].
-func fullLCParityOK(lc [12]byte, dataType elements.DataType) bool {
+func fullLCParityOK(lc [12]byte, dataType enums.DataType) bool {
 	want := lc
 	setFullLCParity(&want, dataType)
 	return want == lc
@@ -94,21 +92,4 @@ func fullLCMatchesPacket(lc [12]byte, pkt models.Packet) bool {
 	dst := uint(lc[3])<<16 | uint(lc[4])<<8 | uint(lc[5])
 	src := uint(lc[6])<<16 | uint(lc[7])<<8 | uint(lc[8])
 	return lc[0]&0x3F == flco && dst == pkt.Dst && src == pkt.Src
-}
-
-// decodeBPTCPayload returns the 96 info bits of a BPTC(196,96) coded data
-// burst as 12 bytes. ok is false when the FEC cannot correct the burst.
-func decodeBPTCPayload(dmrData [33]byte) (payload [12]byte, ok bool) {
-	var bits [196]byte
-	for i := 0; i < 98; i++ {
-		bits[i] = (dmrData[i/8] >> (7 - i%8)) & 1
-		j := 166 + i
-		bits[98+i] = (dmrData[j/8] >> (7 - j%8)) & 1
-	}
-	var codec bptc.BPTC19696
-	info, _, uncorrectable := codec.DeinterleaveDataBits(bits)
-	for i, b := range info {
-		payload[i/8] |= b << (7 - i%8)
-	}
-	return payload, !uncorrectable
 }

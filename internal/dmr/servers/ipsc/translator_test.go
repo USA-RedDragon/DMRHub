@@ -26,10 +26,10 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/dmrgo/dmr/enums"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2/elements"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 )
 
 func newTestTranslator(t *testing.T) *IPSCTranslator {
@@ -546,25 +546,16 @@ func TestMultipleStreamsConcurrent(t *testing.T) {
 // round-trips through layer2.Burst Decode/Encode. This allows buildVoiceBurst
 // and buildMMDVMVoiceBurst to work on realistic data.
 func makeVoiceDMRData(syncBurst bool) [33]byte {
-	var burst layer2.Burst
-	// Set up minimal voice frames (silence-ish)
-	burst.VoiceData = pdu.Vocoder{}
+	var burst layer2.RawBurst
+	burst.SetAMBEFrames([3]vocoder.AMBEFrame{})
 	if syncBurst {
-		burst.SyncPattern = enums.MsSourcedVoice
-		burst.VoiceBurst = enums.VoiceBurstA
-		burst.HasEmbeddedSignalling = false
-	} else {
-		burst.SyncPattern = enums.EmbeddedSignallingPattern
-		burst.VoiceBurst = enums.VoiceBurstB
-		burst.HasEmbeddedSignalling = true
-		burst.EmbeddedSignalling = pdu.EmbeddedSignalling{
-			ColorCode:                          0,
-			PreemptionAndPowerControlIndicator: false,
-			LCSS:                               enums.FirstFragmentLC,
-			ParityOK:                           true,
+		if err := burst.SetSync(enums.SyncMSSourcedVoice); err != nil {
+			panic(err)
 		}
+	} else {
+		burst.SetEMB(pdu.EmbeddedSignalling{LCSS: enums.LCSSFirstFragment})
 	}
-	return burst.Encode()
+	return burst
 }
 
 func TestBuildVoiceBurstA(t *testing.T) {
@@ -727,7 +718,7 @@ func TestBuildVoiceBurstSkipsDataBurst(t *testing.T) {
 	tr.TranslateToIPSC(header)
 
 	// Build a DMR data burst (not voice) — the burst decodes as IsData=true
-	dataDMR := layer2.BuildLCDataBurst([12]byte{}, elements.DataTypeVoiceLCHeader, 0)
+	dataDMR := dataBurst([12]byte{}, enums.DataTypeVoiceLCHeader)
 
 	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameVoice, 0)
 	pkt.StreamID = header.StreamID
@@ -962,117 +953,69 @@ func TestBuildMMDVMVoiceBurstPrivateCall(t *testing.T) {
 	}
 }
 
-func TestPopulateEmbeddedSignallingBurstB(t *testing.T) {
+func TestEmbeddedSignallingBurstB(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
-
-	var burst layer2.Burst
-	burst.HasEmbeddedSignalling = true
 
 	// Burst B with 57-byte packet (5 bytes embedded data at [52:57])
 	ipscData := make([]byte, 57)
-	ipscData[52] = 0xAB
-	ipscData[53] = 0xCD
-	ipscData[54] = 0xEF
-	ipscData[55] = 0x12
+	copy(ipscData[52:56], []byte{0xAB, 0xCD, 0xEF, 0x12})
 
-	tr.populateEmbeddedSignalling(&burst, 1, ipscData)
-
-	// Burst B (index 1) should have LCSS = FirstFragmentLC
-	if burst.EmbeddedSignalling.LCSS != enums.FirstFragmentLC {
-		t.Fatalf("expected LCSS FirstFragmentLC, got %d", burst.EmbeddedSignalling.LCSS)
+	emb, frag := embeddedSignalling(1, ipscData)
+	if emb.LCSS != enums.LCSSFirstFragment {
+		t.Fatalf("expected LCSS first fragment, got %s", emb.LCSS)
 	}
-
-	// Check that embedded data was unpacked
-	packed := burst.PackEmbeddedSignallingData()
-	//nolint:gosec // packed is [4]byte, index is always in range
-	if packed[0] != 0xAB || packed[1] != 0xCD || packed[2] != 0xEF || packed[3] != 0x12 {
-		t.Fatalf("expected embedded data [AB CD EF 12], got [%02X %02X %02X %02X]",
-			packed[0], packed[1], packed[2], packed[3])
+	if frag != [4]byte{0xAB, 0xCD, 0xEF, 0x12} {
+		t.Fatalf("expected embedded data [AB CD EF 12], got % X", frag)
 	}
 }
 
-func TestPopulateEmbeddedSignallingBurstE(t *testing.T) {
+func TestEmbeddedSignallingBurstE(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
-
-	var burst layer2.Burst
-	burst.HasEmbeddedSignalling = true
 
 	// Burst E with 66-byte packet (7 bytes embedded data at [52:59])
 	ipscData := make([]byte, 66)
-	ipscData[52] = 0x11
-	ipscData[53] = 0x22
-	ipscData[54] = 0x33
-	ipscData[55] = 0x44
+	copy(ipscData[52:56], []byte{0x11, 0x22, 0x33, 0x44})
 
-	tr.populateEmbeddedSignalling(&burst, 4, ipscData)
-
-	// Burst E (index 4) should have LCSS = LastFragmentLCorCSBK
-	if burst.EmbeddedSignalling.LCSS != enums.LastFragmentLCorCSBK {
-		t.Fatalf("expected LCSS LastFragmentLCorCSBK, got %d", burst.EmbeddedSignalling.LCSS)
+	emb, frag := embeddedSignalling(4, ipscData)
+	if emb.LCSS != enums.LCSSLastFragment {
+		t.Fatalf("expected LCSS last fragment, got %s", emb.LCSS)
 	}
-
-	packed := burst.PackEmbeddedSignallingData()
-	//nolint:gosec // packed is [4]byte, index is always in range
-	if packed[0] != 0x11 || packed[1] != 0x22 || packed[2] != 0x33 || packed[3] != 0x44 {
-		t.Fatalf("expected embedded data [11 22 33 44], got [%02X %02X %02X %02X]",
-			packed[0], packed[1], packed[2], packed[3])
+	if frag != [4]byte{0x11, 0x22, 0x33, 0x44} {
+		t.Fatalf("expected embedded data [11 22 33 44], got % X", frag)
 	}
 }
 
-func TestPopulateEmbeddedSignallingContinuation(t *testing.T) {
+func TestEmbeddedSignallingContinuation(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
 
-	var burst layer2.Burst
-	burst.HasEmbeddedSignalling = true
-
-	// Bursts C, D should get ContinuationFragmentLCorCSBK
+	// Bursts C, D should get continuation fragment
 	for _, idx := range []int{2, 3} {
-		ipscData := make([]byte, 57)
-		tr.populateEmbeddedSignalling(&burst, idx, ipscData)
-		if burst.EmbeddedSignalling.LCSS != enums.ContinuationFragmentLCorCSBK {
-			t.Fatalf("burst index %d: expected LCSS ContinuationFragmentLCorCSBK, got %d",
-				idx, burst.EmbeddedSignalling.LCSS)
+		emb, _ := embeddedSignalling(idx, make([]byte, 57))
+		if emb.LCSS != enums.LCSSContinuationFragment {
+			t.Fatalf("burst index %d: expected LCSS continuation fragment, got %s", idx, emb.LCSS)
 		}
 	}
 }
 
-func TestPopulateEmbeddedSignallingBurstF(t *testing.T) {
+func TestEmbeddedSignallingBurstF(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
 
-	var burst layer2.Burst
-	burst.HasEmbeddedSignalling = true
-	tr.populateEmbeddedSignalling(&burst, 5, make([]byte, 57))
-	if burst.EmbeddedSignalling.LCSS != enums.SingleFragmentLCorCSBK {
-		t.Fatalf("expected LCSS SingleFragmentLCorCSBK, got %d", burst.EmbeddedSignalling.LCSS)
+	emb, _ := embeddedSignalling(5, make([]byte, 57))
+	if emb.LCSS != enums.LCSSSingleFragment {
+		t.Fatalf("expected LCSS single fragment, got %s", emb.LCSS)
 	}
 }
 
-func TestPopulateEmbeddedSignallingNoEmbeddedData(t *testing.T) {
+func TestEmbeddedSignallingNoEmbeddedData(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
-
-	var burst layer2.Burst
-	burst.HasEmbeddedSignalling = true
 
 	// A 52-byte packet doesn't match 57 or 66, so no embedded data is extracted
-	ipscData := make([]byte, 52)
-	tr.populateEmbeddedSignalling(&burst, 1, ipscData)
-
-	// LCSS should still be set
-	if burst.EmbeddedSignalling.LCSS != enums.FirstFragmentLC {
-		t.Fatalf("expected LCSS FirstFragmentLC, got %d", burst.EmbeddedSignalling.LCSS)
+	emb, frag := embeddedSignalling(1, make([]byte, 52))
+	if emb.LCSS != enums.LCSSFirstFragment {
+		t.Fatalf("expected LCSS first fragment, got %s", emb.LCSS)
 	}
-
-	// Embedded data should remain empty (all zeros)
-	packed := burst.PackEmbeddedSignallingData()
-	for i, b := range packed {
-		if b != 0 {
-			t.Fatalf("expected zero embedded data byte %d, got 0x%02X", i, b)
-		}
+	if frag != [4]byte{} {
+		t.Fatalf("expected zero embedded data, got % X", frag)
 	}
 }
 
@@ -1081,7 +1024,7 @@ func TestPopulateEmbeddedSignallingNoEmbeddedData(t *testing.T) {
 func FuzzTranslateToIPSC(f *testing.F) {
 	// Seed with a voice LC header packet
 	f.Add("DMRD", uint(1), uint(1000001), uint(1), uint(307201), true, true,
-		uint(dmrconst.FrameDataSync), uint(elements.DataTypeVoiceLCHeader), uint(5001),
+		uint(dmrconst.FrameDataSync), uint(enums.DataTypeVoiceLCHeader), uint(5001),
 		byte(1), byte(2), byte(3))
 	// Voice burst
 	f.Add("DMRD", uint(2), uint(1000001), uint(1), uint(307201), false, true,
@@ -1089,7 +1032,7 @@ func FuzzTranslateToIPSC(f *testing.F) {
 		byte(0xAA), byte(0xBB), byte(0xCC))
 	// Terminator
 	f.Add("DMRD", uint(3), uint(1000001), uint(1), uint(307201), false, true,
-		uint(dmrconst.FrameDataSync), uint(elements.DataTypeTerminatorWithLC), uint(5001),
+		uint(dmrconst.FrameDataSync), uint(enums.DataTypeTerminatorWithLC), uint(5001),
 		byte(0), byte(0), byte(0))
 
 	f.Fuzz(func(t *testing.T, sig string, seq, src, dst, repeater uint, slot, groupCall bool,
@@ -1169,7 +1112,7 @@ func FuzzTranslateToMMDVM(f *testing.F) {
 func FuzzTranslatorRoundTrip(f *testing.F) {
 	// Seed with a voice LC header packet
 	f.Add(uint(1), uint(1000001), uint(1), uint(307201), true, true,
-		uint(dmrconst.FrameDataSync), uint(elements.DataTypeVoiceLCHeader), uint(5001))
+		uint(dmrconst.FrameDataSync), uint(enums.DataTypeVoiceLCHeader), uint(5001))
 
 	f.Fuzz(func(t *testing.T, seq, src, dst, repeater uint,
 		slot, groupCall bool, frameType, dtypeOrVSeq, streamID uint) {
@@ -1201,7 +1144,7 @@ func FuzzTranslatorRoundTrip(f *testing.F) {
 // --- Benchmarks ---
 
 func BenchmarkTranslateToIPSCVoiceHeader(b *testing.B) {
-	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1217,7 +1160,7 @@ func BenchmarkTranslateToIPSCVoiceBurst(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Send a header first to establish stream state, then benchmark burst
 		tr := NewIPSCTranslator(12345)
-		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader))
 		header.StreamID = pkt.StreamID
 		tr.TranslateToIPSC(header)
 		tr.TranslateToIPSC(pkt)
@@ -1225,12 +1168,12 @@ func BenchmarkTranslateToIPSCVoiceBurst(b *testing.B) {
 }
 
 func BenchmarkTranslateToIPSCTerminator(b *testing.B) {
-	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeTerminatorWithLC))
+	pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(enums.DataTypeTerminatorWithLC))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		tr := NewIPSCTranslator(12345)
-		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(elements.DataTypeVoiceLCHeader))
+		header := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader))
 		header.StreamID = pkt.StreamID
 		tr.TranslateToIPSC(header)
 		tr.TranslateToIPSC(pkt)
@@ -1377,7 +1320,7 @@ func TestTerminatorCleansUpForwardStream(t *testing.T) {
 
 	// Send a terminator for the same stream
 	termPkt := pkt
-	termPkt.DTypeOrVSeq = uint(elements.DataTypeTerminatorWithLC)
+	termPkt.DTypeOrVSeq = uint(enums.DataTypeTerminatorWithLC)
 	tr.TranslateToIPSC(termPkt)
 
 	fwd, _ = tr.StreamCount()

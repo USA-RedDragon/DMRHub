@@ -27,8 +27,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2"
-	"github.com/USA-RedDragon/dmrgo/dmr/layer2/elements"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 )
 
 // IPSC packets from a MOTOTRBO repeater: a group voice header and terminator
@@ -112,36 +113,82 @@ func TestRS129ParityCaptureVectors(t *testing.T) {
 		}
 		var cw [12]byte
 		copy(cw[:], lc)
-		setFullLCParity(&cw, elements.DataTypeVoiceLCHeader)
+		setFullLCParity(&cw, enums.DataTypeVoiceLCHeader)
 		if got := hex.EncodeToString(cw[9:]); got != tc.header {
 			t.Errorf("%s: header parity %s, want %s", tc.name, got, tc.header)
 		}
-		if !fullLCParityOK(cw, elements.DataTypeVoiceLCHeader) || fullLCParityOK(cw, elements.DataTypeTerminatorWithLC) {
+		if !fullLCParityOK(cw, enums.DataTypeVoiceLCHeader) || fullLCParityOK(cw, enums.DataTypeTerminatorWithLC) {
 			t.Errorf("%s: header mask check failed", tc.name)
 		}
-		setFullLCParity(&cw, elements.DataTypeTerminatorWithLC)
+		setFullLCParity(&cw, enums.DataTypeTerminatorWithLC)
 		if got := hex.EncodeToString(cw[9:]); got != tc.term {
 			t.Errorf("%s: terminator parity %s, want %s", tc.name, got, tc.term)
 		}
 	}
 }
 
-func TestDecodeBPTCPayloadRoundTrip(t *testing.T) {
+func dataBurst(p [12]byte, dt enums.DataType) [33]byte {
+	b, err := layer2.BuildDataBurst(p, dt, 0, layer2.SyncSourceBS)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func decodeBPTCPayload(b [33]byte) ([12]byte, bool) {
+	p, res := layer2.RawBurst(b).BPTCPayload()
+	return p, !res.Uncorrectable
+}
+
+// TestTranslateToIPSCDataHeaderVector checks the IPSC payload of an
+// unconfirmed data header from 3191868 to group 9 with 2 blocks to follow.
+// dmrgo v0.0.1 BPTC(196,96) read rows 1-8 one column late and sent
+// 824a00001261787b0401a83b for this burst.
+func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 	t.Parallel()
-	rng := rand.New(rand.NewPCG(3, 4))
-	for n := 0; n < 100; n++ {
-		var payload [12]byte
-		for i := range payload {
-			payload[i] = byte(rng.UintN(256))
-		}
-		got, ok := decodeBPTCPayload(layer2.BuildLCDataBurst(payload, elements.DataTypeCSBK, 0))
-		if !ok || got != payload {
-			t.Fatalf("payload %x: decoded %x ok=%v", payload, got, ok)
-		}
+	tr := newTestTranslator(t)
+	var burst [33]byte
+	copy(burst[:], mustHex(t, "08dd874c11ff21001564cb21ddadff57d75df5de6a3818ea304a248d80080d809d"))
+	pkt := models.Packet{
+		Signature:   "DMRD",
+		Src:         3191868,
+		Dst:         9,
+		GroupCall:   true,
+		FrameType:   dmrconst.FrameDataSync,
+		DTypeOrVSeq: uint(enums.DataTypeDataHeader),
+		StreamID:    0x5678,
+		DMRData:     burst,
+	}
+	out := tr.TranslateToIPSC(pkt)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 packet, got %d", len(out))
+	}
+	if got := hex.EncodeToString(out[0][38:50]); got != "82a500000930b43c8200d41d" {
+		t.Fatalf("header payload %s, want 82a500000930b43c8200d41d", got)
+	}
+	h := pdu.DataHeaderBytes(out[0][38:50])
+	target, source, ok := h.Addresses()
+	if !h.CRCOK() || !ok || target != 9 || source != 3191868 {
+		t.Fatalf("header CRC ok=%v addresses ok=%v target=%d source=%d", h.CRCOK(), ok, target, source)
+	}
+	if bf := out[0][46] & 0x7F; bf != 2 {
+		t.Fatalf("blocks to follow %d, want 2", bf)
+	}
+
+	// The reverse direction must rebuild the same BPTC info bits. The color
+	// code differs (7 on air, 0 from DMRHub), so skip the slot type and SYNC.
+	back := tr.TranslateToMMDVM(out[0][0], out[0])
+	if len(back) != 1 {
+		t.Fatalf("expected 1 MMDVM packet, got %d", len(back))
+	}
+	got := back[0].DMRData
+	if !bytes.Equal(got[:12], burst[:12]) || got[12]&0xC0 != burst[12]&0xC0 ||
+		got[20]&0x03 != burst[20]&0x03 || !bytes.Equal(got[21:], burst[21:]) {
+		t.Fatalf("MMDVM burst %x, want info bits of %x", got, burst)
 	}
 }
 
-func voiceLCPacket(lc [12]byte, dataType elements.DataType) models.Packet {
+func voiceLCPacket(lc [12]byte, dataType enums.DataType) models.Packet {
 	return models.Packet{
 		Signature:   "DMRD",
 		Src:         0x2F9BE5,
@@ -151,7 +198,7 @@ func voiceLCPacket(lc [12]byte, dataType elements.DataType) models.Packet {
 		FrameType:   dmrconst.FrameDataSync,
 		DTypeOrVSeq: uint(dataType),
 		StreamID:    0x1234,
-		DMRData:     layer2.BuildLCDataBurst(lc, dataType, 0),
+		DMRData:     dataBurst(lc, dataType),
 	}
 }
 
@@ -165,7 +212,7 @@ func TestTranslateToIPSCPassesCapturedLCThrough(t *testing.T) {
 	copy(hlc[:], header[38:50])
 	copy(tlc[:], term[38:50])
 
-	headers := tr.TranslateToIPSC(voiceLCPacket(hlc, elements.DataTypeVoiceLCHeader))
+	headers := tr.TranslateToIPSC(voiceLCPacket(hlc, enums.DataTypeVoiceLCHeader))
 	if len(headers) != 3 {
 		t.Fatalf("expected 3 headers, got %d", len(headers))
 	}
@@ -174,7 +221,7 @@ func TestTranslateToIPSCPassesCapturedLCThrough(t *testing.T) {
 			t.Fatalf("header LC %x, want %x", out[38:50], header[38:50])
 		}
 	}
-	out := tr.TranslateToIPSC(voiceLCPacket(tlc, elements.DataTypeTerminatorWithLC))
+	out := tr.TranslateToIPSC(voiceLCPacket(tlc, enums.DataTypeTerminatorWithLC))
 	if len(out) != 1 || !bytes.Equal(out[0][38:50], term[38:50]) {
 		t.Fatalf("terminator LC %x, want %x", out[0][38:50], term[38:50])
 	}
@@ -185,8 +232,8 @@ func TestTranslateToIPSCKeepsServiceOptions(t *testing.T) {
 	tr := newTestTranslator(t)
 	// Emergency + priority 3 with FID 0x10: a synthesized LC would lose these.
 	lc := lc12(t, "001083000002"+"2f9be5"+"000000")
-	setFullLCParity(&lc, elements.DataTypeVoiceLCHeader)
-	out := tr.TranslateToIPSC(voiceLCPacket(lc, elements.DataTypeVoiceLCHeader))
+	setFullLCParity(&lc, enums.DataTypeVoiceLCHeader)
+	out := tr.TranslateToIPSC(voiceLCPacket(lc, enums.DataTypeVoiceLCHeader))
 	if !bytes.Equal(out[0][38:50], lc[:]) {
 		t.Fatalf("header LC %x, want %x", out[0][38:50], lc)
 	}
@@ -210,7 +257,7 @@ func TestTranslateToIPSCSynthesizesLC(t *testing.T) {
 		}},
 	}
 	for _, tc := range tests {
-		for _, dt := range []elements.DataType{elements.DataTypeVoiceLCHeader, elements.DataTypeTerminatorWithLC} {
+		for _, dt := range []enums.DataType{enums.DataTypeVoiceLCHeader, enums.DataTypeTerminatorWithLC} {
 			tr := newTestTranslator(t)
 			pkt := voiceLCPacket(tc.lc, dt)
 			if tc.pkt != nil {
@@ -264,7 +311,7 @@ func TestTranslateToMMDVMRecomputesParityAfterFLCOChange(t *testing.T) {
 	if lc[0] != 0x03 {
 		t.Fatalf("FLCO 0x%02X, want 0x03", lc[0])
 	}
-	if !fullLCParityOK(lc, elements.DataTypeVoiceLCHeader) {
+	if !fullLCParityOK(lc, enums.DataTypeVoiceLCHeader) {
 		t.Fatalf("LC %x has bad parity", lc)
 	}
 }
@@ -278,7 +325,7 @@ func TestTranslateToMMDVMShortPacketGetsParity(t *testing.T) {
 		t.Fatalf("expected 1 packet, got %d", len(out))
 	}
 	lc, ok := decodeBPTCPayload(out[0].DMRData)
-	if !ok || !fullLCParityOK(lc, elements.DataTypeTerminatorWithLC) {
+	if !ok || !fullLCParityOK(lc, enums.DataTypeTerminatorWithLC) {
 		t.Fatalf("LC %x ok=%v has bad parity", lc, ok)
 	}
 }
@@ -286,15 +333,15 @@ func TestTranslateToMMDVMShortPacketGetsParity(t *testing.T) {
 func TestTranslateToIPSCDataCarriesPayload(t *testing.T) {
 	t.Parallel()
 	payload := lc12(t, "bd00a5a5000064000001c7b1")
-	for _, dt := range []elements.DataType{
-		elements.DataTypeCSBK, elements.DataTypePIHeader, elements.DataTypeDataHeader,
-		elements.DataTypeRate12, elements.DataTypeMBCHeader, elements.DataTypeMBCContinuation,
+	for _, dt := range []enums.DataType{
+		enums.DataTypeCSBK, enums.DataTypePIHeader, enums.DataTypeDataHeader,
+		enums.DataTypeRate12, enums.DataTypeMBCHeader, enums.DataTypeMBCContinuation,
 	} {
 		tr := newTestTranslator(t)
 		pkt := voiceLCPacket(payload, dt)
 		dmrData := pkt.DMRData
 		// A voice LC cached earlier in the stream must not leak into data packets.
-		tr.TranslateToIPSC(voiceLCPacket(lc12(t, "0000000000022f9be50bbebf"), elements.DataTypeVoiceLCHeader))
+		tr.TranslateToIPSC(voiceLCPacket(lc12(t, "0000000000022f9be50bbebf"), enums.DataTypeVoiceLCHeader))
 		out := tr.TranslateToIPSC(pkt)
 		if len(out) != 1 {
 			t.Fatalf("dtype %d: expected 1 packet, got %d", dt, len(out))
@@ -315,7 +362,7 @@ func TestTranslateToIPSCDataCarriesPayload(t *testing.T) {
 func TestTranslateToIPSCDropsNonBPTCData(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
-	for _, dt := range []elements.DataType{elements.DataTypeRate34, elements.DataTypeRate1} {
+	for _, dt := range []enums.DataType{enums.DataTypeRate34, enums.DataTypeRate1} {
 		pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(dt))
 		if out := tr.TranslateToIPSC(pkt); out != nil {
 			t.Fatalf("dtype %d: expected nil, got %d packets", dt, len(out))

@@ -61,11 +61,9 @@ type streamState struct {
 	rtpSeq       uint16
 	rtpTimestamp uint32
 	ipscSeq      uint8
-	headersSent  int  // number of voice headers sent (3 required)
-	burstIndex   int  // 0-5 → A-F
-	firstPacket  bool // true for the very first packet
-	flcCached    bool // whether flcBytes is valid
-	flcBytes     [12]byte
+	headersSent  int       // number of voice headers sent (3 required)
+	burstIndex   int       // 0-5 → A-F
+	firstPacket  bool      // true for the very first packet
 	lastActivity time.Time // tracks when this stream was last active
 }
 
@@ -348,7 +346,7 @@ func (t *IPSCTranslator) buildVoiceHeader(pkt models.Packet, ss *streamState, is
 	// Bytes 38-49: Full LC data (12 bytes)
 	// The header burst carries a Voice LC Header
 	// which contains FLCO, FID, ServiceOpt, Dst, Src, RS(12,9) parity
-	flcBytes := t.ipscFullLC(pkt, ss, enums.DataTypeVoiceLCHeader)
+	flcBytes := ipscFullLC(pkt, enums.DataTypeVoiceLCHeader)
 	copy(buf[38:50], flcBytes[:12])
 
 	// Bytes 50-53: unknown trailing (zeros)
@@ -377,7 +375,7 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 	binary.BigEndian.PutUint16(buf[36:38], 0x0060)
 
 	// Full LC data
-	flcBytes := t.ipscFullLC(pkt, ss, enums.DataTypeTerminatorWithLC)
+	flcBytes := ipscFullLC(pkt, enums.DataTypeTerminatorWithLC)
 	copy(buf[38:50], flcBytes[:12])
 
 	ss.ipscSeq++
@@ -501,46 +499,40 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	return buf
 }
 
-// extractFullLCBytes builds the 9 Full Link Control data bytes from the
-// packet fields. The 3 parity bytes are left zero; see setFullLCParity.
-func extractFullLCBytes(pkt models.Packet) [12]byte {
+// extractFullLCBytes builds the 9 Full Link Control octets of a group or
+// unit-to-unit voice call from the packet fields.
+func extractFullLCBytes(pkt models.Packet) pdu.LCBytes {
 	if pkt.Dst > dmrconst.MaxDMRAddress || pkt.Src > dmrconst.MaxDMRAddress {
 		slog.Error("Full LC address out of range")
-		return [12]byte{}
+		return pdu.LCBytes{}
 	}
 	lc, err := pdu.NewVoiceLCBytes(pkt.GroupCall, uint32(pkt.Dst), uint32(pkt.Src), layer3.MotorolaServiceOptions())
 	if err != nil {
 		slog.Error("Failed to encode Full LC", "error", err)
-		return [12]byte{}
 	}
-
-	var res [12]byte
-	copy(res[:9], lc[:])
-	return res
+	return lc
 }
 
 // ipscFullLC returns the 12-byte Full LC codeword (masked parity) for an IPSC
 // voice header or terminator. It passes the received LC through when it is
 // valid and names the same call as pkt, and builds one from pkt otherwise.
-func (t *IPSCTranslator) ipscFullLC(pkt models.Packet, ss *streamState, dataType enums.DataType) [12]byte {
-	if lc, res := layer2.RawBurst(pkt.DMRData).BPTCPayload(); !res.Uncorrectable && fullLCParityOK(lc, dataType) && fullLCMatchesPacket(lc, pkt) {
-		return lc
+func ipscFullLC(pkt models.Packet, dataType enums.DataType) [12]byte {
+	if cw, ok := layer2.RawBurst(pkt.DMRData).MMDVMHostPayload(dataType); ok && fullLCMatchesPacket(cw, pkt) {
+		return cw
 	}
-	lc := t.getOrCacheFLC(pkt, ss)
-	setFullLCParity(&lc, dataType)
-	return lc
+	cw, err := extractFullLCBytes(pkt).Codeword(dataType)
+	if err != nil {
+		slog.Error("Failed to encode Full LC codeword", "error", err)
+	}
+	return cw
 }
 
-// getOrCacheFLC returns cached Full LC bytes for the stream, computing them
-// on first call. Within a single call the src/dst/groupCall never change,
-// so we can cache the expensive Encode() call.
-func (t *IPSCTranslator) getOrCacheFLC(pkt models.Packet, ss *streamState) [12]byte {
-	if ss.flcCached {
-		return ss.flcBytes
-	}
-	ss.flcBytes = extractFullLCBytes(pkt)
-	ss.flcCached = true
-	return ss.flcBytes
+// fullLCMatchesPacket reports whether a voice Full LC names the same call as pkt.
+func fullLCMatchesPacket(cw [12]byte, pkt models.Packet) bool {
+	lc := pdu.LCBytes(cw[:9])
+	group, okGroup := lc.Group()
+	target, source, okAddr := lc.Addresses()
+	return okGroup && okAddr && group == pkt.GroupCall && uint(target) == pkt.Dst && uint(source) == pkt.Src
 }
 
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
@@ -696,44 +688,40 @@ func (t *IPSCTranslator) buildMMDVMDataPacket(
 	}
 	rss.seq++
 
-	// Extract payload bytes from IPSC packet (bytes 38-49 = 12 bytes)
-	var lcBytes [12]byte
-	needParity := false
+	// Extract payload bytes from IPSC packet (bytes 38-49 = 12 bytes).
+	// CSBK and data payloads pass through as they came from the radio.
+	var payload [12]byte
+	reseal := false
 	if len(ipscData) >= 50 {
-		copy(lcBytes[:], ipscData[38:50])
+		copy(payload[:], ipscData[38:50])
 	} else {
-		needParity = true
-		// Construct from packet fields
-		lcBytes[1] = 0x00
-		lcBytes[2] = 0x20
-		lcBytes[3] = byte(dst >> 16)
-		lcBytes[4] = byte(dst >> 8)
-		lcBytes[5] = byte(dst)
-		lcBytes[6] = byte(src >> 16)
-		lcBytes[7] = byte(src >> 8)
-		lcBytes[8] = byte(src)
+		lc := extractFullLCBytes(models.Packet{Src: src, Dst: dst, GroupCall: groupCall})
+		copy(payload[:9], lc[:])
+		reseal = true
 	}
 
-	// For voice LC headers and terminators, override the FLCO byte to match
-	// the group/private flag from the IPSC packet type.
-	// The parity covers this byte, so recompute it after a change.
-	if dataType == enums.DataTypeVoiceLCHeader || dataType == enums.DataTypeTerminatorWithLC {
-		flco := byte(enums.FLCOUnitToUnitVoiceChannelUser)
+	// For voice LC headers and terminators, override the FLCO to match the
+	// group/private flag from the IPSC packet type. The parity covers the
+	// FLCO, so reseal after a change.
+	if dataType.CarriesFullLC() {
+		flco := enums.FLCOUnitToUnitVoiceChannelUser
 		if groupCall {
-			flco = byte(enums.FLCOGroupVoiceChannelUser)
+			flco = enums.FLCOGroupVoiceChannelUser
 		}
-		if lcBytes[0] != flco {
-			lcBytes[0] = flco
-			needParity = true
+		if lc := (*pdu.LCBytes)(payload[:9]); lc.FLCO() != flco {
+			lc.SetFLCO(flco)
+			reseal = true
 		}
-		if needParity {
-			setFullLCParity(&lcBytes, dataType)
+		if reseal {
+			if err := pdu.Seal(&payload, dataType); err != nil {
+				slog.Debug("IPSCTranslator: cannot seal Full LC", "error", err)
+				return pkt, false
+			}
 		}
 	}
-	// For CSBK/data types, preserve the payload bytes as-is from the radio
 
 	// Build the 33-byte DMR data burst
-	burst, err := layer2.BuildDataBurst(lcBytes, dataType, 0, layer2.SyncSourceBS)
+	burst, err := layer2.BuildDataBurst(payload, dataType, 0, layer2.SyncSourceBS)
 	if err != nil {
 		slog.Debug("IPSCTranslator: cannot build data burst", "dtype", dataType, "error", err)
 		return pkt, false

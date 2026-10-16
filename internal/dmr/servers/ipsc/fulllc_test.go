@@ -22,7 +22,6 @@ package ipsc
 import (
 	"bytes"
 	"encoding/hex"
-	"math/rand/v2"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -55,74 +54,68 @@ func lc12(t *testing.T, s string) [12]byte {
 	return lc
 }
 
-func TestRS129ParityTableB18(t *testing.T) {
-	t.Parallel()
-	// TS 102 361-1 Table B.18: parity columns of the generator matrix rows.
-	rows := []string{"1cbcfd", "893108", "ad4136", "7d7116", "f3a63a", "08837b", "3f6f02", "6c0da7", "0e3840"}
-	for i, want := range rows {
-		var m [9]byte
-		m[i] = 0x01
-		p := rs129Parity(m[:])
-		if got := hex.EncodeToString(p[:]); got != want {
-			t.Errorf("row %d: parity %s, want %s", i, got, want)
-		}
+// seal writes the masked RS(12,9) parity of lc[0:9] into lc[9:12].
+func seal(t *testing.T, lc *[12]byte, dt enums.DataType) {
+	t.Helper()
+	if err := pdu.Seal(lc, dt); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestRS129ParityLinear(t *testing.T) {
-	t.Parallel()
-	// c = m x G, so the parity of any message is the XOR of scaled rows.
-	rng := rand.New(rand.NewPCG(1, 2))
-	for n := 0; n < 200; n++ {
-		var m [9]byte
-		for i := range m {
-			m[i] = byte(rng.UintN(256))
-		}
-		var want [3]byte
-		for i := range m {
-			var unit [9]byte
-			unit[i] = 1
-			row := rs129Parity(unit[:])
-			for j := range want {
-				want[j] ^= gfMul(m[i], row[j])
-			}
-		}
-		if got := rs129Parity(m[:]); got != want {
-			t.Fatalf("message %x: parity %x, want %x", m, got, want)
-		}
-	}
-}
-
-func TestRS129ParityCaptureVectors(t *testing.T) {
+func TestFullLCCodewordCaptureVectors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
 		lc     string
-		parity string
 		header string
 		term   string
 	}{
-		{name: "group", lc: "0000000000022f9be5", parity: "9d2829", header: "0bbebf", term: "04b1b0"},
-		{name: "private", lc: "0300002f9be52f9f67", parity: "eea8b5", header: "783e23", term: "77312c"},
+		{name: "group", lc: "0000000000022f9be5", header: "0bbebf", term: "04b1b0"},
+		{name: "private", lc: "0300002f9be52f9f67", header: "783e23", term: "77312c"},
 	}
 	for _, tc := range tests {
-		lc := mustHex(t, tc.lc)
-		p := rs129Parity(lc)
-		if got := hex.EncodeToString(p[:]); got != tc.parity {
-			t.Errorf("%s: parity %s, want %s", tc.name, got, tc.parity)
-		}
 		var cw [12]byte
-		copy(cw[:], lc)
-		setFullLCParity(&cw, enums.DataTypeVoiceLCHeader)
+		copy(cw[:], mustHex(t, tc.lc))
+		seal(t, &cw, enums.DataTypeVoiceLCHeader)
 		if got := hex.EncodeToString(cw[9:]); got != tc.header {
 			t.Errorf("%s: header parity %s, want %s", tc.name, got, tc.header)
 		}
-		if !fullLCParityOK(cw, enums.DataTypeVoiceLCHeader) || fullLCParityOK(cw, enums.DataTypeTerminatorWithLC) {
+		if !pdu.FullLCParityOK(cw, enums.DataTypeVoiceLCHeader) || pdu.FullLCParityOK(cw, enums.DataTypeTerminatorWithLC) {
 			t.Errorf("%s: header mask check failed", tc.name)
 		}
-		setFullLCParity(&cw, enums.DataTypeTerminatorWithLC)
+		seal(t, &cw, enums.DataTypeTerminatorWithLC)
 		if got := hex.EncodeToString(cw[9:]); got != tc.term {
 			t.Errorf("%s: terminator parity %s, want %s", tc.name, got, tc.term)
+		}
+	}
+}
+
+// TestTranslateToIPSCSynthesizedLCCodeword checks the synthesized Full LC
+// against codewords from the RS(12,9) encoder of TS 102 361-1 B.3.6 with
+// the Table B.21 masks.
+func TestTranslateToIPSCSynthesizedLCCodeword(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		group    bool
+		src, dst uint
+		dt       enums.DataType
+		want     string
+	}{
+		{group: true, src: 0x2F9BE5, dst: 2, dt: enums.DataTypeVoiceLCHeader, want: "0000200000022f9be50f7631"},
+		{group: true, src: 0x2F9BE5, dst: 2, dt: enums.DataTypeTerminatorWithLC, want: "0000200000022f9be500793e"},
+		{group: false, src: 100, dst: 200, dt: enums.DataTypeVoiceLCHeader, want: "0300200000c8000064fa3725"},
+		{group: false, src: 100, dst: 200, dt: enums.DataTypeTerminatorWithLC, want: "0300200000c8000064f5382a"},
+	}
+	for _, tc := range tests {
+		tr := newTestTranslator(t)
+		pkt := voiceLCPacket([12]byte{}, tc.dt)
+		pkt.Src, pkt.Dst, pkt.GroupCall = tc.src, tc.dst, tc.group
+		out := tr.TranslateToIPSC(pkt)
+		if len(out) == 0 {
+			t.Fatalf("dtype %d: no output", tc.dt)
+		}
+		if got := hex.EncodeToString(out[0][38:50]); got != tc.want {
+			t.Errorf("group=%v dtype %d: LC %s, want %s", tc.group, tc.dt, got, tc.want)
 		}
 	}
 }
@@ -232,7 +225,7 @@ func TestTranslateToIPSCKeepsServiceOptions(t *testing.T) {
 	tr := newTestTranslator(t)
 	// Emergency + priority 3 with FID 0x10: a synthesized LC would lose these.
 	lc := lc12(t, "001083000002"+"2f9be5"+"000000")
-	setFullLCParity(&lc, enums.DataTypeVoiceLCHeader)
+	seal(t, &lc, enums.DataTypeVoiceLCHeader)
 	out := tr.TranslateToIPSC(voiceLCPacket(lc, enums.DataTypeVoiceLCHeader))
 	if !bytes.Equal(out[0][38:50], lc[:]) {
 		t.Fatalf("header LC %x, want %x", out[0][38:50], lc)
@@ -269,7 +262,7 @@ func TestTranslateToIPSCSynthesizesLC(t *testing.T) {
 			}
 			var got [12]byte
 			copy(got[:], out[0][38:50])
-			if !fullLCParityOK(got, dt) {
+			if !pdu.FullLCParityOK(got, dt) {
 				t.Errorf("%s dtype %d: LC %x has bad parity", tc.name, dt, got)
 			}
 			if !fullLCMatchesPacket(got, pkt) {
@@ -311,7 +304,7 @@ func TestTranslateToMMDVMRecomputesParityAfterFLCOChange(t *testing.T) {
 	if lc[0] != 0x03 {
 		t.Fatalf("FLCO 0x%02X, want 0x03", lc[0])
 	}
-	if !fullLCParityOK(lc, enums.DataTypeVoiceLCHeader) {
+	if !pdu.FullLCParityOK(lc, enums.DataTypeVoiceLCHeader) {
 		t.Fatalf("LC %x has bad parity", lc)
 	}
 }
@@ -325,7 +318,7 @@ func TestTranslateToMMDVMShortPacketGetsParity(t *testing.T) {
 		t.Fatalf("expected 1 packet, got %d", len(out))
 	}
 	lc, ok := decodeBPTCPayload(out[0].DMRData)
-	if !ok || !fullLCParityOK(lc, enums.DataTypeTerminatorWithLC) {
+	if !ok || !pdu.FullLCParityOK(lc, enums.DataTypeTerminatorWithLC) {
 		t.Fatalf("LC %x ok=%v has bad parity", lc, ok)
 	}
 }

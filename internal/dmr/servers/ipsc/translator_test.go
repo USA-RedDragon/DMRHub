@@ -546,14 +546,13 @@ func TestMultipleStreamsConcurrent(t *testing.T) {
 // round-trips through layer2.Burst Decode/Encode. This allows buildVoiceBurst
 // and buildMMDVMVoiceBurst to work on realistic data.
 func makeVoiceDMRData(syncBurst bool) [33]byte {
-	var burst layer2.RawBurst
-	burst.SetAMBEFrames([3]vocoder.AMBEFrame{})
+	pos := enums.VoiceBurstB
 	if syncBurst {
-		if err := burst.SetSync(enums.SyncMSSourcedVoice); err != nil {
-			panic(err)
-		}
-	} else {
-		burst.SetEMB(pdu.EmbeddedSignalling{LCSS: enums.LCSSFirstFragment})
+		pos = enums.VoiceBurstA
+	}
+	burst, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{}, pos, pdu.EmbeddedSignalling{}, [4]byte{}, layer2.SyncSourceMS)
+	if err != nil {
+		panic(err)
 	}
 	return burst
 }
@@ -953,69 +952,67 @@ func TestBuildMMDVMVoiceBurstPrivateCall(t *testing.T) {
 	}
 }
 
-func TestEmbeddedSignallingBurstB(t *testing.T) {
+func TestEmbeddedFragment(t *testing.T) {
 	t.Parallel()
-
-	// Burst B with 57-byte packet (5 bytes embedded data at [52:57])
-	ipscData := make([]byte, 57)
-	copy(ipscData[52:56], []byte{0xAB, 0xCD, 0xEF, 0x12})
-
-	emb, frag := embeddedSignalling(1, ipscData)
-	if emb.LCSS != enums.LCSSFirstFragment {
-		t.Fatalf("expected LCSS first fragment, got %s", emb.LCSS)
-	}
-	if frag != [4]byte{0xAB, 0xCD, 0xEF, 0x12} {
-		t.Fatalf("expected embedded data [AB CD EF 12], got % X", frag)
-	}
-}
-
-func TestEmbeddedSignallingBurstE(t *testing.T) {
-	t.Parallel()
-
-	// Burst E with 66-byte packet (7 bytes embedded data at [52:59])
-	ipscData := make([]byte, 66)
-	copy(ipscData[52:56], []byte{0x11, 0x22, 0x33, 0x44})
-
-	emb, frag := embeddedSignalling(4, ipscData)
-	if emb.LCSS != enums.LCSSLastFragment {
-		t.Fatalf("expected LCSS last fragment, got %s", emb.LCSS)
-	}
-	if frag != [4]byte{0x11, 0x22, 0x33, 0x44} {
-		t.Fatalf("expected embedded data [11 22 33 44], got % X", frag)
-	}
-}
-
-func TestEmbeddedSignallingContinuation(t *testing.T) {
-	t.Parallel()
-
-	// Bursts C, D should get continuation fragment
-	for _, idx := range []int{2, 3} {
-		emb, _ := embeddedSignalling(idx, make([]byte, 57))
-		if emb.LCSS != enums.LCSSContinuationFragment {
-			t.Fatalf("burst index %d: expected LCSS continuation fragment, got %s", idx, emb.LCSS)
+	frag := []byte{0xAB, 0xCD, 0xEF, 0x12}
+	for _, n := range []int{57, 66} {
+		ipscData := make([]byte, n)
+		copy(ipscData[52:56], frag)
+		if got := embeddedFragment(ipscData); got != [4]byte(frag) {
+			t.Fatalf("%d-byte packet: embedded data % X, want % X", n, got, frag)
 		}
 	}
-}
-
-func TestEmbeddedSignallingBurstF(t *testing.T) {
-	t.Parallel()
-
-	emb, _ := embeddedSignalling(5, make([]byte, 57))
-	if emb.LCSS != enums.LCSSSingleFragment {
-		t.Fatalf("expected LCSS single fragment, got %s", emb.LCSS)
-	}
-}
-
-func TestEmbeddedSignallingNoEmbeddedData(t *testing.T) {
-	t.Parallel()
-
 	// A 52-byte packet doesn't match 57 or 66, so no embedded data is extracted
-	emb, frag := embeddedSignalling(1, make([]byte, 52))
-	if emb.LCSS != enums.LCSSFirstFragment {
-		t.Fatalf("expected LCSS first fragment, got %s", emb.LCSS)
+	if got := embeddedFragment(make([]byte, 52)); got != [4]byte{} {
+		t.Fatalf("52-byte packet: embedded data % X, want zero", got)
 	}
-	if frag != [4]byte{} {
-		t.Fatalf("expected zero embedded data, got % X", frag)
+}
+
+// TestBuildMMDVMVoiceBurstLCSS checks the EMB of a translated superframe.
+// The embedded LC fills bursts B-E; burst F carries Single fragment
+// signalling (TS 102 361-1 clause 7.1.3), not Continuation.
+func TestBuildMMDVMVoiceBurstLCSS(t *testing.T) {
+	t.Parallel()
+	tr := newTestTranslator(t)
+	header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
+	tr.TranslateToMMDVM(0x80, header)
+
+	want := []enums.LCSS{
+		enums.LCSSFirstFragment, enums.LCSSContinuationFragment, enums.LCSSContinuationFragment,
+		enums.LCSSLastFragment, enums.LCSSSingleFragment,
+	}
+	for i := 0; i < 6; i++ {
+		n := 57
+		switch i {
+		case 0:
+			n = 52
+		case 4:
+			n = 66
+		}
+		burstData := make([]byte, n)
+		copy(burstData[:18], header[:18])
+		burstData[30] = ipscBurstSlot1
+		frag := [4]byte{0x10, 0x20, 0x30, byte(i)}
+		if n > 52 {
+			copy(burstData[52:56], frag[:])
+		}
+		out := tr.TranslateToMMDVM(0x80, burstData)
+		if len(out) != 1 {
+			t.Fatalf("burst %d: expected 1 packet, got %d", i, len(out))
+		}
+		raw := layer2.RawBurst(out[0].DMRData)
+		if i == 0 {
+			if p, d := raw.Sync(); p != enums.SyncMSSourcedVoice || d != 0 {
+				t.Fatalf("burst A: SYNC %s distance %d", p, d)
+			}
+			continue
+		}
+		if got := raw.EMB().LCSS; got != want[i-1] {
+			t.Errorf("burst %d: LCSS %s, want %s", i, got, want[i-1])
+		}
+		if got := raw.EmbeddedData(); got != frag {
+			t.Errorf("burst %d: embedded data % X, want % X", i, got, frag)
+		}
 	}
 }
 

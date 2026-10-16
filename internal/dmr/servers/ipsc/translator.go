@@ -749,16 +749,12 @@ func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 	// Determine if this is a sync burst (A) or embedded signalling burst (B-F)
 	burstIdx := rss.burstIndex % 6
 
-	var dmrData layer2.RawBurst
-	dmrData.SetAMBEFrames(frames)
-	if burstIdx == 0 {
-		if err := dmrData.SetSync(enums.SyncMSSourcedVoice); err != nil {
-			return models.Packet{}, false
-		}
-	} else {
-		emb, frag := embeddedSignalling(burstIdx, ipscData)
-		dmrData.SetEMB(emb)
-		dmrData.SetEmbeddedData(frag)
+	pos, _ := enums.VoiceBurstAt(burstIdx)
+	dmrData, err := layer2.BuildVoiceBurst(frames, pos, pdu.EmbeddedSignalling{},
+		embeddedFragment(ipscData), layer2.SyncSourceMS)
+	if err != nil {
+		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
+		return models.Packet{}, false
 	}
 
 	frameType := dmrconst.FrameVoice
@@ -785,25 +781,12 @@ func (t *IPSCTranslator) buildMMDVMVoiceBurst(
 	return pkt, true
 }
 
-// embeddedSignalling returns the EMB and the embedded signalling field of
-// voice burst B-F (burstIdx 1-5) from the IPSC packet's trailing data.
-func embeddedSignalling(burstIdx int, ipscData []byte) (emb pdu.EmbeddedSignalling, frag [4]byte) {
-	// Set LCSS based on burst position. The LC fills bursts B-E; burst F
-	// carries non-LC signalling, which uses Single fragment (TS 102 361-1 7.1.3).
-	switch burstIdx {
-	case 1: // Burst B — first fragment
-		emb.LCSS = enums.LCSSFirstFragment
-	case 4: // Burst E — last fragment
-		emb.LCSS = enums.LCSSLastFragment
-	case 5: // Burst F — single fragment
-		emb.LCSS = enums.LCSSSingleFragment
-	default: // Bursts C, D — continuation
-		emb.LCSS = enums.LCSSContinuationFragment
-	}
-
-	// Bursts B, C, D, F carry 5 bytes at [52:57] and burst E 7 bytes at [52:59].
+// embeddedFragment returns the embedded signalling field of a voice burst
+// B-F from the IPSC packet's trailing data. Bursts B, C, D, F carry 5 bytes
+// at [52:57] and burst E 7 bytes at [52:59].
+func embeddedFragment(ipscData []byte) (frag [4]byte) {
 	if len(ipscData) == 57 || len(ipscData) == 66 {
 		copy(frag[:], ipscData[52:56])
 	}
-	return emb, frag
+	return frag
 }

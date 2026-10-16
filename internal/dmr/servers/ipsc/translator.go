@@ -72,6 +72,8 @@ const (
 	ipscBurstVoiceHead byte = 0x01
 	ipscBurstVoiceTerm byte = 0x02
 	ipscBurstCSBK      byte = 0x03
+	ipscBurstRate34    byte = 0x08 // rate 3/4 block, see ipscRate34
+	ipscBurstRaw       byte = 0x1F // undecodable block: the 196 info bits
 	ipscBurstSlot1     byte = 0x0A
 	ipscBurstSlot2     byte = 0x8A
 )
@@ -145,7 +147,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			// Clean up stream state
 			delete(t.streams, uint32(streamID))
 		case enums.DataTypeCSBK, enums.DataTypePIHeader,
-			enums.DataTypeDataHeader, enums.DataTypeRate12,
+			enums.DataTypeDataHeader, enums.DataTypeRate12, enums.DataTypeRate34,
 			enums.DataTypeMBCHeader, enums.DataTypeMBCContinuation:
 			// Data packet — build IPSC data packet
 			data := t.buildIPSCDataPacket(pkt, ss, enums.DataType(dtypeOrVSeq))
@@ -154,12 +156,11 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			}
 			results = [][]byte{data}
 			ss.firstPacket = false
-		case enums.DataTypeRate34, enums.DataTypeRate1:
-			// TODO: Rate 3/4 and Rate 1 blocks are dropped because no verified IPSC
-			// layout exists for them. node-dmr-lib reads rate 3/4 as burst type 8 with
-			// 18 bytes and the DBSN+CRC-9 moved to the end, unverified. Capture a
-			// confirmed rate 3/4 and a rate 1 transfer through a MOTOTRBO repeater on
-			// IPSC, derive the layout, and add both directions with tests.
+		case enums.DataTypeRate1:
+			// Rate 1 blocks are dropped: IPSC has no known rate 1 layout. An
+			// XPR 8400 sent clean rate 1 blocks to IPSC as burst type 0x06 with
+			// a BPTC(196,96) decode of the uncoded bits, or as an undecodable
+			// block (0x1F), so its firmware does not carry rate 1 either.
 			slog.Debug("IPSCTranslator: unsupported data dtype", "dtype", dtypeOrVSeq)
 			return nil
 		case enums.DataTypeIdle, enums.DataTypeUnifiedSingleBlock, enums.DataTypeReserved:
@@ -382,17 +383,65 @@ func (t *IPSCTranslator) buildVoiceTerminator(pkt models.Packet, ss *streamState
 	return buf
 }
 
-// buildIPSCDataPacket builds a 54-byte IPSC data packet for CSBK, Data Header, etc.
+// buildIPSCDataPacket builds an IPSC data packet for CSBK, Data Header, etc.
 // The structure is identical to voice header/terminator but with data packet types (0x83/0x84).
-// It returns nil when the BPTC(196,96) payload of the burst cannot be corrected.
+// A BPTC(196,96) burst carries its 12 decoded octets and a rate 3/4 burst
+// the 18 octets of ipscRate34. A rate 3/4 burst that does not decode goes
+// out as ipscBurstRaw with its 196 info bits, as a MOTOTRBO repeater sends
+// it. It returns nil when the BPTC(196,96) payload cannot be corrected.
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
-	payload, res := layer2.RawBurst(pkt.DMRData).BPTCPayload()
+	raw := layer2.RawBurst(pkt.DMRData)
+	if dataType == enums.DataTypeRate34 {
+		if p, res := raw.Rate34Payload(); !res.Uncorrectable {
+			rot := ipscRate34(p)
+			return t.writeIPSCDataPacket(pkt, ss, ipscBurstRate34, 144, rot[:])
+		}
+		info := infoBits(raw)
+		return t.writeIPSCDataPacket(pkt, ss, ipscBurstRaw, 196, info[:])
+	}
+
+	payload, res := raw.BPTCPayload()
 	if res.Uncorrectable {
 		slog.Debug("IPSCTranslator: uncorrectable data burst", "dtype", dataType)
 		return nil
 	}
+	return t.writeIPSCDataPacket(pkt, ss, byte(dataType), 96, payload[:])
+}
 
-	buf := make([]byte, 54)
+// ipscRate34 returns the IPSC payload of a rate 3/4 block: its 18 decoded
+// octets rotated left by 2, so octets 0-1 (the DBSN and CRC-9 of a
+// confirmed block) come last. This is the layout an XPR 8400 sends.
+func ipscRate34(p [18]byte) (o [18]byte) {
+	copy(o[:16], p[2:])
+	copy(o[16:], p[:2])
+	return o
+}
+
+// dmrRate34 is the reverse of ipscRate34.
+func dmrRate34(o [18]byte) (p [18]byte) {
+	copy(p[:2], o[16:])
+	copy(p[2:], o[:16])
+	return p
+}
+
+// infoBits returns the 196 info bits of a data burst (burst bits 0-97 and
+// 166-263) packed most significant bit first, before any FEC decode.
+func infoBits(b layer2.RawBurst) (info [25]byte) {
+	for i := 0; i < 196; i++ {
+		j := i
+		if i >= 98 {
+			j = i + 68
+		}
+		info[i/8] |= ((b[j/8] >> (7 - j%8)) & 1) << (7 - i%8)
+	}
+	return info
+}
+
+// writeIPSCDataPacket writes an IPSC data packet of burst type burstType
+// that carries the bits-bit payload, padded to an even octet count.
+func (t *IPSCTranslator) writeIPSCDataPacket(pkt models.Packet, ss *streamState, burstType byte, bits uint16, payload []byte) []byte {
+	n := (len(payload) + 1) &^ 1
+	buf := make([]byte, 38+n+4)
 
 	t.buildIPSCHeader(buf, pkt, ss, false, true)
 
@@ -400,21 +449,20 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	t.buildRTPHeader(buf, ss, ss.firstPacket, 0x5D)
 
 	// RTP Payload — data burst
-	buf[30] = byte(dataType) // Burst type = DMR data type (e.g. 0x03 for CSBK)
-	buf[31] = 0xC0           // RSSI threshold / parity
-	binary.BigEndian.PutUint16(buf[32:34], 0x000A)
-	buf[34] = 0x80 // RSSI status
+	buf[30] = burstType                                             // Burst type = DMR data type (e.g. 0x03 for CSBK)
+	buf[31] = 0xC0                                                  // RSSI threshold / parity
+	binary.BigEndian.PutUint16(buf[32:34], uint16((len(buf)-34)/2)) // Length to follow in words
+	buf[34] = 0x80                                                  // RSSI status
 	if pkt.Slot {
 		buf[35] = ipscBurstSlot2 // Slot type/sync
 	} else {
 		buf[35] = ipscBurstSlot1
 	}
-	binary.BigEndian.PutUint16(buf[36:38], 0x0060) // Data size (96 bits = 12 bytes)
+	binary.BigEndian.PutUint16(buf[36:38], bits) // Data size in bits
 
-	// Bytes 38-49: BPTC(196,96) payload of the DMR burst
-	copy(buf[38:50], payload[:])
+	copy(buf[38:], payload)
 
-	// Bytes 50-53: trailing (zeros)
+	// Last 4 bytes: trailing (zeros)
 	ss.ipscSeq++
 	return buf
 }
@@ -641,6 +689,11 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			results = append(results, pkt)
 		}
 
+	case ipscBurstRaw:
+		// An undecodable block does not name its data type, so it cannot be
+		// rebuilt as a burst.
+		slog.Debug("IPSCTranslator: dropping undecodable IPSC data block")
+
 	default:
 		// Treat any other burst type as a generic data packet if it has
 		// the same structure as a voice header (54 bytes with LC data).
@@ -666,7 +719,8 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 
 // buildMMDVMDataPacket builds an MMDVM DMRD packet for a voice LC header, terminator,
 // or data burst (CSBK, Data Header, etc.).
-// It constructs the 33-byte DMR burst from the IPSC payload data using BPTC encoding.
+// It constructs the 33-byte DMR burst from the IPSC payload: BPTC(196,96) for
+// the 12-octet payloads and the rate 3/4 code for an ipscRate34 payload.
 func (t *IPSCTranslator) buildMMDVMDataPacket(
 	src, dst uint, groupCall, slot bool,
 	peerID uint32,
@@ -687,6 +741,20 @@ func (t *IPSCTranslator) buildMMDVMDataPacket(
 		StreamID:    uint(rss.streamID),
 	}
 	rss.seq++
+
+	if dataType == enums.DataTypeRate34 {
+		if len(ipscData) < 56 {
+			slog.Debug("IPSCTranslator: rate 3/4 block too short", "length", len(ipscData))
+			return pkt, false
+		}
+		burst, err := layer2.BuildBurst(&pdu.Rate34Data{Data: dmrRate34([18]byte(ipscData[38:56]))}, 0, layer2.SyncSourceBS)
+		if err != nil {
+			slog.Debug("IPSCTranslator: cannot build rate 3/4 burst", "error", err)
+			return pkt, false
+		}
+		pkt.DMRData = burst
+		return pkt, true
+	}
 
 	// Extract payload bytes from IPSC packet (bytes 38-49 = 12 bytes).
 	// CSBK and data payloads pass through as they came from the radio.

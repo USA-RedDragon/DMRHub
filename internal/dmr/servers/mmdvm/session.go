@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -39,6 +40,12 @@ import (
 // beaconDelay is the time after a login at which the server asks the
 // repeater for a beacon.
 const beaconDelay = time.Minute
+
+// maxPending is the most sessions that are not logged in, so that RPTLs
+// from many spoofed addresses cannot grow the session table without bound.
+const maxPending = 1024
+
+var errTooManyPending = errors.New("too many sessions that are not logged in")
 
 // link is the session of the repeater at one address.
 type link struct {
@@ -63,6 +70,9 @@ func (s *Server) linkFor(addr net.UDPAddr) (*link, error) {
 	key := addr.String()
 	if l, ok := s.links[key]; ok {
 		return l, nil
+	}
+	if len(s.links)-len(s.byID) >= maxPending {
+		return nil, errTooManyPending
 	}
 	m, err := session.NewMaster(&session.MasterConfig{Dialect: dmrd.DialectMMDVM})
 	if err != nil {
@@ -201,7 +211,7 @@ func (s *Server) login(ctx context.Context, now time.Duration, l *link, id uint3
 	s.run(ctx, now, l, l.m.Admit(now, salt, []byte(password), buf[:0]))
 }
 
-var errNoPassword = fmt.Errorf("repeater has no password")
+var errNoPassword = errors.New("repeater has no password")
 
 func (s *Server) password(repeaterID uint) (string, error) {
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
@@ -238,7 +248,6 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 	repeater.Connected = now
 	repeater.LastPing = now
 	repeater.Connection = models.RepeaterStateConnected
-	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
@@ -250,6 +259,7 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
 		return false
 	}
+	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 	slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
 	return true
 }
@@ -286,19 +296,28 @@ func (s *Server) stopBeacon(l *link) {
 }
 
 func (s *Server) down(ctx context.Context, l *link, o session.Output) {
-	slog.Info("Repeater session ended", "repeaterID", o.ID, "reason", o.Reason, "state", o.State)
 	if s.byID[o.ID] != l {
+		slog.Debug("Repeater login ended", "repeaterID", o.ID, "reason", o.Reason, "state", o.State)
 		return
 	}
+	slog.Info("Repeater session ended", "repeaterID", o.ID, "reason", o.Reason)
 	s.stopBeacon(l)
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
-	if !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
+	if (o.Reason != session.ReasonTimeout || s.kvStale(ctx, o.ID)) && !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
 		slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
 	}
 	if s.hub != nil {
 		s.hub.DeactivateRepeater(ctx, uint(o.ID))
 	}
+}
+
+// kvStale reports whether the KV record of the repeater id has no ping
+// within the session timeout. A fresh record after a timeout here means
+// that another replica took the session over and keeps the record.
+func (s *Server) kvStale(ctx context.Context, id uint32) bool {
+	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+	return err != nil || time.Since(repeater.LastPing) >= session.TimeoutDefault
 }
 
 func (s *Server) data(ctx context.Context, o session.Output) {
@@ -355,7 +374,7 @@ func (s *Server) ping(ctx context.Context, l *link) {
 }
 
 // resume takes over the session of a repeater that logged in to another
-// DMRHub replica, or at another address, as the KV store records it, so
+// DMRHub replica from the same address, as the KV store records it, so
 // that a rolling restart does not make the repeater log in again. The
 // session machine has no way to start in a logged-in state, so resume
 // plays a login with salt 0 and an empty password into it and drops what
@@ -366,7 +385,8 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 		return
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-	if err != nil || repeater.Connection != models.RepeaterStateConnected {
+	if err != nil || repeater.Connection != models.RepeaterStateConnected ||
+		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port {
 		return
 	}
 	token, err := auth.Token(dmrd.DialectMMDVM, 0, nil)
@@ -394,9 +414,6 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 		return
 	}
 	slog.Info("Resumed repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
-	repeater.IP = l.addr.IP.String()
-	repeater.Port = l.addr.Port
-	s.kvClient.StoreRepeater(ctx, uint(id), repeater)
 	s.up(ctx, l, id)
 }
 

@@ -215,7 +215,7 @@ func (p *SessionPeer) run(out []session.Output) {
 			case p.packets <- models.PacketFromData(&d, d.Size > 53):
 			default:
 			}
-		case session.OutputLogin, session.OutputConfig, session.OutputOptions, session.OutputMessage:
+		case session.OutputLogin, session.OutputConfig, session.OutputOptions, session.OutputMessage, session.OutputPong:
 		}
 	}
 }

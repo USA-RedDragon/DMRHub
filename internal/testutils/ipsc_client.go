@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -33,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer3"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/auth"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/session"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 )
 
@@ -47,117 +47,117 @@ type IPSCBurst struct {
 	Data       []byte
 }
 
-// IPSCClient is a simulated IPSC peer client for integration testing.
-// It performs the full IPSC registration handshake (MasterRegisterRequest → MasterRegisterReply)
-// and can send/receive IPSC voice burst packets over UDP.
+// IPSCClient is a simulated IPSC peer for integration testing. It
+// registers with the master through the dmrgo session Peer and sends and
+// receives IPSC voice packets over UDP.
 type IPSCClient struct {
 	PeerID   uint32
-	AuthKey  *[20]byte // raw HMAC-SHA1 key, nil when the password is not hex
-	Password string    // hex auth key string
+	Password string
 
-	conn       *net.UDPConn
-	remoteAddr string
-	ready      chan struct{}
-	done       chan struct{}
-	stopOnce   sync.Once
-	wg         sync.WaitGroup
+	key     [20]byte
+	useAuth bool
 
-	readyVal       atomic.Bool
-	packets        chan IPSCBurst
-	disconnected   chan struct{}
-	disconnectOnce sync.Once
-	rxDone         chan struct{}
-	reconnected    chan struct{}
-	noReconnect    bool // suppress reconnect on DeregistrationRequest
-	rtpSeq         atomic.Uint32
+	mu      sync.Mutex
+	peer    *session.Peer
+	conn    *net.UDPConn
+	master  *net.UDPAddr
+	start   time.Time
+	started bool
+	rtpSeq  uint16
+
+	ready    chan struct{}
+	upOnce   sync.Once
+	done     chan struct{}
+	stopOnce sync.Once
+	wg       sync.WaitGroup
+	packets  chan IPSCBurst
 }
 
 var (
-	ErrIPSCHandshakeTimeout  = errors.New("IPSC handshake timed out")
-	ErrIPSCDeregisterTimeout = errors.New("timed out waiting for IPSC deregistration")
-	ErrIPSCNotConnected      = errors.New("IPSC client not connected")
+	ErrIPSCHandshakeTimeout = errors.New("IPSC handshake timed out")
+	ErrIPSCNotConnected     = errors.New("IPSC client not connected")
 )
 
-// NewIPSCClient creates a new IPSC simulator client.
-// password is the hex auth key string as stored in the database.
+// NewIPSCClient creates a new IPSC simulator client. password is the hex
+// auth key as stored in the database; a password that is not hex turns
+// authentication off.
 func NewIPSCClient(peerID uint32, password string) *IPSCClient {
-	// Decode the auth key the same way the server does
-	authKey := decodeIPSCAuthKey(password)
+	key, err := ipscauth.ParseKey(password)
 	return &IPSCClient{
-		PeerID:       peerID,
-		AuthKey:      authKey,
-		Password:     password,
-		ready:        make(chan struct{}),
-		done:         make(chan struct{}),
-		packets:      make(chan IPSCBurst, 100),
-		disconnected: make(chan struct{}),
-		rxDone:       make(chan struct{}),
-		reconnected:  make(chan struct{}),
+		PeerID:   peerID,
+		Password: password,
+		key:      key,
+		useAuth:  err == nil,
+		ready:    make(chan struct{}),
+		done:     make(chan struct{}),
+		packets:  make(chan IPSCBurst, 100),
 	}
 }
 
-// decodeIPSCAuthKey decodes a hex auth key string into raw bytes, as the
-// server does.
-func decodeIPSCAuthKey(hexKey string) *[20]byte {
-	key, err := ipscauth.ParseKey(hexKey)
+func (c *IPSCClient) dial(addr string) error {
+	master, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		return nil
+		return fmt.Errorf("resolve addr: %w", err)
 	}
-	return &key
+	if master.IP == nil || master.IP.IsUnspecified() {
+		master.IP = net.IPv4(127, 0, 0, 1)
+	}
+	var to session.Addr
+	copy(to.IP[:], master.IP.To4())
+	to.Port = uint16(master.Port) //nolint:gosec // a UDP port fits
+	peer, err := session.NewPeer(&session.PeerConfig{
+		ID:     c.PeerID,
+		Master: to,
+		Auth:   c.useAuth,
+		Key:    c.key,
+		Alive:  time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("making IPSC peer: %w", err)
+	}
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		return fmt.Errorf("listen udp: %w", err)
+	}
+	c.peer, c.conn, c.master, c.start = peer, conn, master, time.Now()
+	c.wg.Add(1)
+	go c.rx()
+	return nil
 }
 
-// Connect dials the IPSC server and starts the registration handshake.
+// Connect starts the registration with the master at addr.
 func (c *IPSCClient) Connect(addr string) error {
-	raddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return fmt.Errorf("resolve addr: %w", err)
+	if err := c.dial(addr); err != nil {
+		return err
 	}
-	conn, err := net.DialUDP("udp", nil, raddr)
-	if err != nil {
-		return fmt.Errorf("dial udp: %w", err)
-	}
-	c.conn = conn
-	c.remoteAddr = addr
-
-	c.wg.Add(1)
-	go c.rx()
-
-	// Send registration request
-	c.sendMasterRegisterRequest()
-
+	c.startSession()
 	return nil
 }
 
-// ConnectWithoutRegistration dials the IPSC server but does NOT send a
-// MasterRegisterRequest. The client can still send HMAC-signed packets
-// (e.g. voice data) through the UDP socket. This is useful for testing
-// that the server rejects traffic from peers that have not completed the
-// registration handshake.
+// ConnectWithoutRegistration opens a socket to the master at addr without
+// a registration, so the client can send signed voice packets as a peer
+// that registered with another master does. Drain then registers the
+// client, so that it can receive.
 func (c *IPSCClient) ConnectWithoutRegistration(addr string) error {
-	raddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return fmt.Errorf("resolve addr: %w", err)
+	if err := c.dial(addr); err != nil {
+		return err
 	}
-	conn, err := net.DialUDP("udp", nil, raddr)
-	if err != nil {
-		return fmt.Errorf("dial udp: %w", err)
-	}
-	c.conn = conn
-	c.remoteAddr = addr
-
-	c.wg.Add(1)
-	go c.rx()
-
-	// Mark as "ready" immediately since we skip handshake on purpose.
-	c.readyVal.Store(true)
-	close(c.ready)
-	// Suppress reconnect: the caller does not want to register.
-	c.noReconnect = true
-
+	c.upOnce.Do(func() { close(c.ready) })
 	return nil
 }
 
-// WaitReady blocks until the registration handshake is complete.
+func (c *IPSCClient) startSession() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return
+	}
+	c.started = true
+	c.wg.Add(1)
+	go c.ticks()
+}
+
+// WaitReady blocks until the registration is complete.
 func (c *IPSCClient) WaitReady(timeout time.Duration) error {
 	select {
 	case <-c.ready:
@@ -174,6 +174,7 @@ func (c *IPSCClient) ReceivedPackets() <-chan IPSCBurst {
 
 // Drain collects all packets received within the given timeout window.
 func (c *IPSCClient) Drain(timeout time.Duration) []IPSCBurst {
+	c.startSession()
 	var result []IPSCBurst
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -187,55 +188,42 @@ func (c *IPSCClient) Drain(timeout time.Duration) []IPSCBurst {
 	}
 }
 
-// SendGroupVoice sends an IPSC group voice burst with a voice LC header, a voice burst, and a terminator.
+// SendGroupVoice sends an IPSC group voice call: a voice LC header, a voice
+// burst and a terminator.
 func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) error {
-	// Voice header
-	header := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstType(enums.DataTypeVoiceLCHeader), false)
-	if _, err := c.conn.Write(c.signPacket(header)); err != nil {
-		return fmt.Errorf("send voice header: %w", err)
-	}
-
-	// Small delay between packets
-	time.Sleep(10 * time.Millisecond)
-
-	// Voice burst (Slot1 type)
-	burst := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstVoice, false)
-	if _, err := c.conn.Write(c.signPacket(burst)); err != nil {
-		return fmt.Errorf("send voice burst: %w", err)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	// Voice terminator
-	term := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstType(enums.DataTypeTerminatorWithLC), true)
-	if _, err := c.conn.Write(c.signPacket(term)); err != nil {
-		return fmt.Errorf("send voice term: %w", err)
-	}
-
-	return nil
+	return c.sendVoice(ipscwire.OpGroupVoice, src, dst, true, slot, streamID)
 }
 
-// SendPrivateVoice sends an IPSC private voice burst.
+// SendPrivateVoice sends an IPSC private voice call.
 func (c *IPSCClient) SendPrivateVoice(src, dst uint, slot bool, streamID uint32) error {
-	header := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstType(enums.DataTypeVoiceLCHeader), false)
-	if _, err := c.conn.Write(c.signPacket(header)); err != nil {
-		return fmt.Errorf("send voice header: %w", err)
+	return c.sendVoice(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID)
+}
+
+func (c *IPSCClient) sendVoice(op ipscwire.Opcode, src, dst uint, groupCall, slot bool, streamID uint32) error {
+	if c.conn == nil {
+		return ErrIPSCNotConnected
 	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	burst := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstVoice, false)
-	if _, err := c.conn.Write(c.signPacket(burst)); err != nil {
-		return fmt.Errorf("send voice burst: %w", err)
+	for i, burst := range []ipscwire.BurstType{
+		ipscwire.BurstType(enums.DataTypeVoiceLCHeader),
+		ipscwire.BurstVoice,
+		ipscwire.BurstType(enums.DataTypeTerminatorWithLC),
+	} {
+		if i > 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		c.mu.Lock()
+		p := c.buildVoicePacket(op, src, dst, groupCall, slot, streamID, burst, i == 2)
+		if p != nil {
+			p = c.peer.Sign(p)
+		}
+		c.mu.Unlock()
+		if p == nil {
+			return fmt.Errorf("building voice packet %d: %w", i, ErrIPSCNotConnected)
+		}
+		if _, err := c.conn.WriteToUDP(p, c.master); err != nil {
+			return fmt.Errorf("send voice packet %d: %w", i, err)
+		}
 	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	term := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstType(enums.DataTypeTerminatorWithLC), true)
-	if _, err := c.conn.Write(c.signPacket(term)); err != nil {
-		return fmt.Errorf("send voice term: %w", err)
-	}
-
 	return nil
 }
 
@@ -244,223 +232,91 @@ func (c *IPSCClient) Close() {
 	c.stopOnce.Do(func() {
 		close(c.done)
 		if c.conn != nil {
+			c.mu.Lock()
+			c.run(c.peer.Close(time.Since(c.start), make([]session.Output, 0, c.peer.MaxOutputs())))
+			c.mu.Unlock()
 			_ = c.conn.Close()
 		}
 	})
 	c.wg.Wait()
 }
 
-// WaitDisconnected blocks until the client receives a DeregistrationRequest from the server.
-func (c *IPSCClient) WaitDisconnected(timeout time.Duration) error {
-	select {
-	case <-c.disconnected:
-		return nil
-	case <-time.After(timeout):
-		return ErrIPSCDeregisterTimeout
+func (c *IPSCClient) run(out []session.Output) {
+	for _, o := range out {
+		switch o.Kind {
+		case session.OutputSend:
+			to := &net.UDPAddr{IP: net.IPv4(o.Addr.IP[0], o.Addr.IP[1], o.Addr.IP[2], o.Addr.IP[3]), Port: int(o.Addr.Port)}
+			_, _ = c.conn.WriteToUDP(o.Packet, to)
+		case session.OutputUp:
+			c.upOnce.Do(func() { close(c.ready) })
+		case session.OutputData:
+			c.receive(o.Packet)
+		case session.OutputDown, session.OutputPeers, session.OutputDropped:
+		}
 	}
 }
 
-// WaitReconnected blocks until the client has completed a re-handshake after
-// a deregistration disconnect. Returns ErrIPSCHandshakeTimeout if the
-// re-handshake does not complete within the timeout.
-func (c *IPSCClient) WaitReconnected(timeout time.Duration) error {
-	select {
-	case <-c.reconnected:
-		return nil
-	case <-time.After(timeout):
-		return ErrIPSCHandshakeTimeout
-	}
-}
-
-// reconnect is called asynchronously when a DeregistrationRequest is received.
-// It closes the old connection, waits for the rx goroutine to exit, and attempts
-// to re-establish the session by dialing and re-handshaking with the same server.
-func (c *IPSCClient) reconnect() {
-	// Close old connection — rx() will see net.ErrClosed and exit
-	if c.conn != nil {
-		_ = c.conn.Close()
-	}
-	// Wait for the old rx goroutine to fully exit
-	<-c.rxDone
-
-	// Check if we're being permanently shut down
-	select {
-	case <-c.done:
-		return
-	default:
-	}
-
-	// Dial new connection to the same server address
-	raddr, err := net.ResolveUDPAddr("udp", c.remoteAddr)
-	if err != nil {
-		return
-	}
-	conn, err := net.DialUDP("udp", nil, raddr)
-	if err != nil {
-		return
-	}
-	c.conn = conn
-
-	// Reset state for new handshake
-	c.rxDone = make(chan struct{})
-	c.ready = make(chan struct{})
-	c.readyVal.Store(false)
-
-	// Start new rx goroutine and send registration request
-	c.wg.Add(1)
-	go c.rx()
-	c.sendMasterRegisterRequest()
-
-	// Wait for the new handshake to complete (or shutdown/timeout)
-	select {
-	case <-c.ready:
-		close(c.reconnected)
-	case <-c.done:
-	case <-time.After(10 * time.Second):
-	}
-}
-
-func (c *IPSCClient) rx() {
-	defer c.wg.Done()
-	defer close(c.rxDone)
-	buf := make([]byte, 1500)
-	for {
-		select {
-		case <-c.done:
-			return
-		default:
-		}
-		_ = c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		n, err := c.conn.Read(buf)
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
-			continue
-		}
-		if n < 1 {
-			continue
-		}
-		data := make([]byte, n)
-		copy(data, buf[:n])
-
-		c.handlePacket(data)
-	}
-}
-
-func (c *IPSCClient) handlePacket(data []byte) {
-	if len(data) < 1 {
-		return
-	}
-
-	// Strip HMAC if present (last 10 bytes)
-	payload := data
-	if len(data) > ipscauth.TrailerLen {
-		payload = data[:len(data)-ipscauth.TrailerLen]
-	}
-
-	switch op := ipscwire.Opcode(data[0]); op { //nolint:exhaustive
-	case ipscwire.OpRegisterReply:
-		if !c.readyVal.Load() {
-			c.readyVal.Store(true)
-			close(c.ready)
-			// Start keepalive
-			c.wg.Add(1)
-			go c.keepAlive()
-		}
-
+func (c *IPSCClient) receive(p []byte) {
+	op := ipscwire.Opcode(p[0])
+	switch op { //nolint:exhaustive
 	case ipscwire.OpGroupVoice, ipscwire.OpPrivateVoice, ipscwire.OpGroupData, ipscwire.OpPrivateData:
-		burst := c.parseIPSCBurst(op, payload)
-		select {
-		case c.packets <- burst:
-		default:
-		}
-
-	case ipscwire.OpDeregisterRequest: // server shutting down, signal disconnect and reconnect
-		c.disconnectOnce.Do(func() {
-			close(c.disconnected)
-		})
-		if !c.noReconnect {
-			c.wg.Add(1)
-			go func() {
-				defer c.wg.Done()
-				c.reconnect()
-			}()
-		}
-
-	default: // MasterAliveReply and PeerListReply are ignored
+	default:
+		return
 	}
-}
-
-func (c *IPSCClient) parseIPSCBurst(op ipscwire.Opcode, data []byte) IPSCBurst {
-	burst := IPSCBurst{
-		PacketType: byte(op),
-		Data:       data,
-	}
-	if u, err := ipscwire.DecodeUser(data); err == nil {
+	burst := IPSCBurst{PacketType: byte(op), Data: append([]byte(nil), p...)}
+	if u, err := ipscwire.DecodeUser(p); err == nil {
 		burst.PeerID = u.ID
 		burst.Src = uint(u.Source)
 		burst.Dst = uint(u.Destination)
 		burst.GroupCall = op == ipscwire.OpGroupVoice || op == ipscwire.OpGroupData
 		burst.Slot = u.Info.Slot() == enums.Slot2
 	}
-	return burst
-}
-
-// peerControl returns a control packet of the client with the mode and
-// flags of a MOTOTRBO peer.
-func (c *IPSCClient) peerControl(op ipscwire.Opcode) []byte {
-	ctl := ipscwire.Control{
-		Opcode: op,
-		ID:     c.PeerID,
-		// Mode: operational + digital + ts1 + ts2
-		Mode:    0x6A,
-		Flags:   ipscwire.Flags{0x00, 0x00, 0x00, 0x1D},
-		Version: [4]byte{0x04, 0x02, 0x04, 0x01},
+	select {
+	case c.packets <- burst:
+	default:
 	}
-	pkt, err := ctl.AppendBinary(nil)
-	if err != nil {
-		return nil
-	}
-	return c.signPacket(pkt)
 }
 
-func (c *IPSCClient) sendMasterRegisterRequest() {
-	_, _ = c.conn.Write(c.peerControl(ipscwire.OpRegisterRequest))
-}
-
-func (c *IPSCClient) keepAlive() {
+func (c *IPSCClient) rx() {
 	defer c.wg.Done()
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	c.sendMasterAliveRequest()
+	buf := make([]byte, session.MaxPacket)
 	for {
-		select {
-		case <-ticker.C:
-			c.sendMasterAliveRequest()
-		case <-c.done:
+		n, from, err := c.conn.ReadFromUDP(buf)
+		if err != nil {
 			return
 		}
+		var addr session.Addr
+		copy(addr.IP[:], from.IP.To4())
+		addr.Port = uint16(from.Port) //nolint:gosec // a UDP port fits
+		c.mu.Lock()
+		c.run(c.peer.Packet(time.Since(c.start), addr, buf[:n], make([]session.Output, 0, c.peer.MaxOutputs())))
+		c.mu.Unlock()
 	}
 }
 
-func (c *IPSCClient) sendMasterAliveRequest() {
-	_, _ = c.conn.Write(c.peerControl(ipscwire.OpAliveRequest))
-}
-
-func (c *IPSCClient) signPacket(data []byte) []byte {
-	if c.AuthKey == nil {
-		return data
+func (c *IPSCClient) ticks() {
+	defer c.wg.Done()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.mu.Lock()
+			c.run(c.peer.Tick(time.Since(c.start), make([]session.Output, 0, c.peer.MaxOutputs())))
+			c.mu.Unlock()
+		}
 	}
-	return ipscauth.NewKey(*c.AuthKey).Sign(data)
 }
 
 // buildVoicePacket constructs an IPSC voice user packet as an XPR 8400
 // sends it: a voice LC header or terminator with the Full LC of the call,
 // or voice burst A with silence. It returns nil when the packet does not
-// encode.
+// encode. The caller holds c.mu.
 func (c *IPSCClient) buildVoicePacket(op ipscwire.Opcode, src, dst uint, groupCall, slot bool, streamID uint32, burstType ipscwire.BurstType, isEnd bool) []byte {
-	seq := uint16(c.rtpSeq.Add(1)) //nolint:gosec // the RTP sequence number wraps
+	c.rtpSeq++
+	seq := c.rtpSeq
 	u := ipscwire.User{
 		Opcode:      op,
 		ID:          c.PeerID,

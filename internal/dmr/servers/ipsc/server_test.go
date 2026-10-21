@@ -145,15 +145,15 @@ func voicePacket(id uint32) []byte {
 }
 
 func peers(s *IPSCServer, id uint32) int {
-	s.mu.RLock()
-	l, ok := s.links[id]
-	s.mu.RUnlock()
-	if !ok {
-		return 0
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for i := range s.m.Peers() {
+		if s.m.PeerAt(i).ID == id {
+			n++
+		}
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.m.Peers()
+	return n
 }
 
 func register(t *testing.T, s *IPSCServer, client *net.UDPConn, addr *net.UDPAddr, id uint32) {
@@ -180,8 +180,8 @@ func TestUnknownPeerDropped(t *testing.T) {
 	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 42), addr); err == nil {
 		t.Fatal("expected an error for a peer that is not in the DB")
 	}
-	if len(s.links) != 0 {
-		t.Fatal("expected no session for an unknown peer")
+	if s.m.Peers() != 0 {
+		t.Fatal("expected no peer for an unknown repeater")
 	}
 }
 
@@ -247,8 +247,8 @@ func TestKeylessPeer(t *testing.T) {
 	if err != nil || len(r) != 16 {
 		t.Fatalf("reply %x: %v", r, err)
 	}
-	if c.Flags.Has(ipscwire.FlagAuth) {
-		t.Fatal("a keyless peer should get no auth flag")
+	if !c.Flags.Has(ipscwire.FlagMasterPeer) {
+		t.Fatal("the reply should come from the master")
 	}
 }
 
@@ -406,10 +406,10 @@ func TestSendToRegisteredPeers(t *testing.T) {
 
 func TestPace(t *testing.T) {
 	t.Parallel()
-	var l link
-	l.pace()
+	var p peerState
+	p.pace()
 	start := time.Now()
-	l.pace()
+	p.pace()
 	if d := time.Since(start); d < burstInterval-time.Millisecond {
 		t.Fatalf("second send after %v, want at least %v", d, burstInterval)
 	}
@@ -457,4 +457,49 @@ func FuzzHandlePacket(f *testing.F) {
 		_ = s.handlePacket(context.Background(), data, addr)
 		_ = s.handlePacket(context.Background(), signTestPacket(t, data), addr)
 	})
+}
+
+func TestPeersWithOwnKeys(t *testing.T) {
+	t.Parallel()
+	s, srv := newTestServerWithUDP(t)
+	keyA, keyB := testKey(t), [20]byte{19: 0x42}
+	s.keyFor = func(id uint32) ([20]byte, bool, error) {
+		if id == 201 {
+			return keyA, true, nil
+		}
+		return keyB, true, nil
+	}
+	cA, aA := dialServer(t, srv)
+	cB, aB := dialServer(t, srv)
+	for _, p := range []struct {
+		c   *net.UDPConn
+		a   *net.UDPAddr
+		id  uint32
+		key [20]byte
+	}{{cA, aA, 201, keyA}, {cB, aB, 202, keyB}} {
+		req := ipscauth.NewKey(p.key).Sign(control(t, ipscwire.OpRegisterRequest, p.id))
+		if err := s.handlePacket(context.Background(), req, p.a); err != nil {
+			t.Fatalf("register %d: %v", p.id, err)
+		}
+		if _, ok := ipscauth.NewKey(p.key).Verify(readUDP(t, p.c)); !ok {
+			t.Fatalf("reply to %d is not signed with its key", p.id)
+		}
+	}
+	bad := ipscauth.NewKey(keyA).Sign(control(t, ipscwire.OpAliveRequest, 202))
+	if err := s.handlePacket(context.Background(), bad, aB); !errors.Is(err, ErrPacketIgnored) {
+		t.Fatalf("a packet of 202 signed with the key of 201: err %v", err)
+	}
+	expectNoUDP(t, cB)
+
+	data := voicePacket(311860)
+	s.sendPacketInternal(data)
+	for _, p := range []struct {
+		c   *net.UDPConn
+		key [20]byte
+	}{{cA, keyA}, {cB, keyB}} {
+		body, ok := ipscauth.NewKey(p.key).Verify(readUDP(t, p.c))
+		if !ok || string(body) != string(data) {
+			t.Fatal("user packet not signed with the key of the peer")
+		}
+	}
 }

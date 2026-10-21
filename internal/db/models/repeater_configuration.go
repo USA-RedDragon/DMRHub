@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 )
 
 //go:generate go run github.com/tinylib/msgp
@@ -73,136 +74,84 @@ const (
 	packageIDMaxLen   = 40
 )
 
-// Config packet field byte offsets.
-// Layout: [RPTC(4)][ID(4)][Callsign(8)][RXFreq(9)][TXFreq(9)][TXPower(2)]
-//
-//	[ColorCode(2)][Lat(8)][Lon(9)][Height(3)][Location(20)][Desc(19)]
-//	[Slots(1)][URL(124)][SoftwareID(40)][PackageID(40)] = 302 bytes
-const (
-	cfgCallsignStart    = 8
-	cfgCallsignEnd      = 16
-	cfgRXFreqStart      = 16
-	cfgRXFreqEnd        = 25
-	cfgTXFreqStart      = 25
-	cfgTXFreqEnd        = 34
-	cfgTXPowerStart     = 34
-	cfgTXPowerEnd       = 36
-	cfgColorCodeStart   = 36
-	cfgColorCodeEnd     = 38
-	cfgLatitudeStart    = 38
-	cfgLatitudeEnd      = 46
-	cfgLongitudeStart   = 46
-	cfgLongitudeEnd     = 55
-	cfgHeightStart      = 55
-	cfgHeightEnd        = 58
-	cfgLocationStart    = 58
-	cfgLocationEnd      = 78
-	cfgDescriptionStart = 78
-	cfgDescriptionEnd   = 97
-	cfgSlotsOffset      = 97
-	cfgURLStart         = 98
-	cfgURLEnd           = 222
-	cfgSoftwareIDStart  = 222
-	cfgSoftwareIDEnd    = 262
-	cfgPackageIDStart   = 262
-	cfgPackageIDEnd     = 302
-)
+var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 
+// ParseConfig reads the 302-octet RPTC configuration message data.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
-	c.Callsign = strings.ToUpper(strings.TrimRight(string(data[cfgCallsignStart:cfgCallsignEnd]), " "))
+	cfg, err := dmrd.ConfigOf(data)
+	if err != nil {
+		slog.Error("Error reading RPTC packet", "error", err)
+		return ErrInvalidConfig
+	}
 
-	rxFreq, err := strconv.ParseInt(strings.TrimRight(string(data[cfgRXFreqStart:cfgRXFreqEnd]), " "), 0, 32)
+	c.Callsign = strings.ToUpper(string(cfg.Callsign()))
+
+	rxFreq, err := cfg.RXFrequency()
 	if err != nil {
 		slog.Error("Error parsing rx frequency", "error", err)
 		return ErrInvalidInt
 	}
-	if rxFreq < 0 {
-		slog.Error("Invalid rx frequency: negative value", "frequency", rxFreq)
-		return ErrInvalidInt
-	}
 	c.RXFrequency = uint(rxFreq)
 
-	txFreq, err := strconv.ParseInt(strings.TrimRight(string(data[cfgTXFreqStart:cfgTXFreqEnd]), " "), 0, 32)
+	txFreq, err := cfg.TXFrequency()
 	if err != nil {
 		slog.Error("Error parsing tx frequency", "error", err)
 		return ErrInvalidInt
 	}
-	if txFreq < 0 {
-		slog.Error("Invalid tx frequency: negative value", "frequency", txFreq)
-		return ErrInvalidInt
-	}
 	c.TXFrequency = uint(txFreq)
 
-	txPower, err := strconv.ParseInt(strings.TrimRight(string(data[cfgTXPowerStart:cfgTXPowerEnd]), " "), 0, 32)
+	c.TXPower, err = cfg.Power()
 	if err != nil {
 		slog.Error("Error parsing tx power", "error", err)
 		return ErrInvalidInt
 	}
-	if txPower < 0 || txPower > 255 {
-		slog.Error("Invalid tx power: out of range for uint8", "power", txPower)
-		return ErrInvalidInt
-	}
-	c.TXPower = uint8(txPower)
 
-	colorCode, err := strconv.ParseInt(strings.TrimRight(string(data[cfgColorCodeStart:cfgColorCodeEnd]), " "), 0, 32)
+	c.ColorCode, err = cfg.ColorCode()
 	if err != nil {
 		slog.Error("Error parsing color code", "error", err)
 		return ErrInvalidInt
 	}
-	if colorCode < 0 || colorCode > 15 {
-		slog.Error("Invalid color code: out of range for uint8", "colorCode", colorCode)
+	if c.ColorCode > maxColorCode {
+		slog.Error("Invalid color code: out of range", "colorCode", c.ColorCode)
 		return ErrInvalidInt
 	}
-	c.ColorCode = uint8(colorCode)
 
-	lat, err := strconv.ParseFloat(strings.TrimRight(string(data[cfgLatitudeStart:cfgLatitudeEnd]), " "), 32)
+	c.Latitude, err = strconv.ParseFloat(string(cfg.Latitude()), 32)
 	if err != nil {
 		slog.Error("Error parsing latitude", "error", err)
 		return ErrInvalidFloat
 	}
-	c.Latitude = lat
 
-	long, err := strconv.ParseFloat(strings.TrimRight(string(data[cfgLongitudeStart:cfgLongitudeEnd]), " "), 32)
+	c.Longitude, err = strconv.ParseFloat(string(cfg.Longitude()), 32)
 	if err != nil {
 		slog.Error("Error parsing longitude", "error", err)
 		return ErrInvalidFloat
 	}
-	c.Longitude = long
 
-	height, err := strconv.ParseInt(strings.TrimRight(string(data[cfgHeightStart:cfgHeightEnd]), " "), 0, 32)
+	c.Height, err = cfg.Height()
 	if err != nil {
 		slog.Error("Error parsing height", "error", err)
 		return ErrInvalidInt
 	}
-	if height < 0 || height > 65535 {
-		slog.Error("Invalid height: out of range for uint16", "height", height)
-		return ErrInvalidInt
-	}
-	c.Height = uint16(height)
 
-	c.Location = strings.TrimRight(string(data[cfgLocationStart:cfgLocationEnd]), " ")
+	c.Location = string(cfg.Location())
+	c.Description = string(cfg.Description())
 
-	c.Description = strings.TrimRight(string(data[cfgDescriptionStart:cfgDescriptionEnd]), " ")
-
-	slots, err := strconv.ParseInt(string(data[cfgSlotsOffset]), 0, 32)
+	slots, err := cfg.Slots()
 	if err != nil {
 		slog.Error("Error parsing slots", "error", err)
 		return ErrInvalidInt
 	}
-	if slots < 0 {
-		slog.Error("Invalid slots: negative value", "slots", slots)
-		return ErrInvalidInt
-	}
 	c.Slots = uint(slots)
 
-	c.URL = strings.TrimRight(string(data[cfgURLStart:cfgURLEnd]), " ")
+	c.URL = string(cfg.URL())
 
-	c.SoftwareID = strings.TrimRight(string(data[cfgSoftwareIDStart:cfgSoftwareIDEnd]), " ")
+	c.SoftwareID = string(cfg.SoftwareID())
 	if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub " + version + "-" + commit
 	}
 
-	c.PackageID = strings.TrimRight(string(data[cfgPackageIDStart:cfgPackageIDEnd]), " ")
+	c.PackageID = string(cfg.PackageID())
 	if c.PackageID == "" {
 		c.PackageID = version + "-" + commit
 	}

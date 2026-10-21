@@ -21,20 +21,20 @@ package mmdvm
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"log/slog"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -62,6 +62,8 @@ type Server struct {
 	wg            sync.WaitGroup
 	done          chan struct{}
 	stopOnce      sync.Once
+	// newSalt, when set, makes the login salts in place of crypto/rand.
+	newSalt func() (uint32, error)
 }
 
 var (
@@ -70,7 +72,6 @@ var (
 )
 
 const largestMessageSize = 302
-const repeaterIDLength = 4
 const bufferSize = 1000000 // 1MB
 
 // MakeServer creates a new DMR server.
@@ -145,13 +146,15 @@ func (s *Server) Stop(ctx context.Context) error {
 					slog.Error("Error getting repeater from KV", "repeater", repeater, "error", err)
 					return true
 				}
-				repeaterBinary := make([]byte, repeaterIDLength)
-				if repeater > 0xFFFFFFFF {
+				if repeater > math.MaxUint32 {
 					slog.Error("Repeater ID too large for uint32", "repeater", repeater)
 					return true
 				}
-				binary.BigEndian.PutUint32(repeaterBinary, uint32(repeater))
-				mstclPayload := append([]byte(dmrconst.CommandMSTCL), repeaterBinary...)
+				mstclPayload, err := dmrd.Control{Command: dmrd.CommandMSTCL, ID: uint32(repeater)}.AppendBinary(nil, dmrd.DialectMMDVM)
+				if err != nil {
+					slog.Error("Error encoding MSTCL command", "repeater", repeater, "error", err)
+					return true
+				}
 				_, err = s.Server.WriteToUDP(mstclPayload, &net.UDPAddr{
 					IP:   net.ParseIP(repeaterInfo.IP),
 					Port: repeaterInfo.Port,
@@ -274,9 +277,15 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrconst.Command, data []byte) {
+// sendCommand sends the control message command with the ID field id to
+// the repeater repeaterIDBytes.
+func (s *Server) sendCommand(ctx context.Context, repeaterIDBytes uint, command dmrd.Command, id uint32) {
 	slog.Debug("Sending command", "command", command, "repeaterID", repeaterIDBytes)
-	commandPrefixedData := append([]byte(command), data...)
+	commandPrefixedData, err := dmrd.Control{Command: command, ID: id}.AppendBinary(nil, dmrd.DialectMMDVM)
+	if err != nil {
+		slog.Error("Error encoding command", "command", command, "error", err)
+		return
+	}
 	repeater, err := s.kvClient.GetRepeater(ctx, repeaterIDBytes)
 	if err != nil {
 		if errors.Is(err, servers.ErrNoSuchRepeater) {
@@ -326,46 +335,44 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
-	const signatureLength = 4
-	if len(data) < signatureLength {
-		// Not enough data here to be a valid packet
-		slog.Error("Invalid packet length", "length", len(data))
-		return
-	}
 
-	switch dmrconst.Command(data[:4]) { //nolint:exhaustive
-	case dmrconst.CommandDMRA:
+	command := dmrd.Classify(data, dmrd.DialectMMDVM)
+	switch command { //nolint:exhaustive
+	case dmrd.CommandDMRA:
 		s.handleDMRAPacket(ctx, data)
-	case dmrconst.CommandDMRD:
+		return
+	case dmrd.CommandDMRD:
 		s.handleDMRDPacket(ctx, remoteAddr, data)
-	case dmrconst.CommandRPTO:
+		return
+	case dmrd.CommandRPTC:
+		s.handleRPTCPacket(ctx, remoteAddr, data)
+		return
+	case dmrd.CommandRPTO:
 		// https://github.com/g4klx/MMDVMHost/blob/master/DMRplus_startup_options.md
 		// Options are not yet supported
 		slog.Error("TODO: RPTO")
-	case dmrconst.CommandRPTL:
-		s.handleRPTLPacket(ctx, remoteAddr, data)
-	case dmrconst.CommandRPTK:
-		s.handleRPTKPacket(ctx, remoteAddr, data)
-	case dmrconst.CommandRPTC:
-		if dmrconst.Command(data[:5]) == dmrconst.CommandRPTCL {
-			s.handleRPTCLPacket(ctx, data)
-		} else {
-			s.handleRPTCPacket(ctx, remoteAddr, data)
-		}
-	case dmrconst.CommandRPTPING[:4]:
-		s.handleRPTPINGPacket(ctx, remoteAddr, data)
-	// I don't think we ever receive these
-	case dmrconst.CommandRPTACK[:4]:
-		slog.Error("TODO: RPTACK")
-	case dmrconst.CommandMSTCL[:4]:
-		slog.Error("TODO: MSTCL")
-	case dmrconst.CommandMSTNAK[:4]:
-		slog.Error("TODO: MSTNAK")
-	case dmrconst.CommandMSTPONG[:4]:
-		slog.Error("TODO: MSTPONG")
-	case dmrconst.CommandRPTSBKN[:4]:
-		slog.Error("TODO: RPTSBKN")
+		return
+	case dmrd.CommandUnknown:
+		slog.Error("Unknown command", "length", len(data))
+		return
+	}
+
+	msg, err := dmrd.DecodeControl(data, dmrd.DialectMMDVM)
+	if err != nil {
+		slog.Error("Invalid packet", "command", command, "length", len(data), "error", err)
+		return
+	}
+	switch command { //nolint:exhaustive
+	case dmrd.CommandRPTL:
+		s.handleRPTLPacket(ctx, remoteAddr, msg)
+	case dmrd.CommandRPTK:
+		s.handleRPTKPacket(ctx, remoteAddr, msg)
+	case dmrd.CommandRPTCL:
+		s.handleRPTCLPacket(ctx, msg)
+	case dmrd.CommandRPTPING:
+		s.handleRPTPINGPacket(ctx, remoteAddr, msg)
 	default:
-		slog.Error("Unknown command", "command", dmrconst.Command(data[:4]))
+		// The master sends the rest; a repeater should not.
+		slog.Error("Unexpected command", "command", command)
 	}
 }

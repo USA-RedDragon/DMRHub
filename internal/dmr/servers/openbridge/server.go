@@ -21,14 +21,10 @@ package openbridge
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha1" //#nosec G505 -- False positive, used for a protocol
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
-	"slices"
 	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,6 +33,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -234,16 +232,17 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 	// OpenBridge is always TS1
 	packet.Slot = false
 	packet.Repeater = peerID
-	encodedPacket := packet.Encode()[:dmrconst.MMDVMPacketLength]
-
-	// Compute HMAC-SHA1 and append to outbound packet
-	h := hmac.New(sha1.New, []byte(peer.Password))
-	_, err = h.Write(encodedPacket)
+	bridge := dmrd.Bridge{Version: 1, Data: packet.Data()}
+	bridge.Data.Size = dmrconst.MMDVMPacketLength
+	outbound, err := bridge.AppendBinary(make([]byte, 0, packetLength))
 	if err != nil {
-		slog.Error("Error computing HMAC for outbound OpenBridge packet", "error", err)
+		slog.Error("Error encoding OpenBridge packet", "error", err)
 		return
 	}
-	outbound := slices.Concat(encodedPacket, h.Sum(nil))
+	if err := auth.NewBridge([]byte(peer.Password)).Sign(outbound); err != nil {
+		slog.Error("Error signing outbound OpenBridge packet", "error", err)
+		return
+	}
 
 	_, err = s.Server.WriteToUDP(outbound, &net.UDPAddr{
 		IP:   net.ParseIP(peer.IP),
@@ -254,17 +253,11 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 	}
 }
 
-func (s *Server) validateHMAC(ctx context.Context, packetBytes []byte, hmacBytes []byte, peer models.Peer) bool {
+func (s *Server) validateHMAC(ctx context.Context, data []byte, peer models.Peer) bool {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.validateHMAC")
 	defer span.End()
 
-	h := hmac.New(sha1.New, []byte(peer.Password))
-	_, err := h.Write(packetBytes)
-	if err != nil {
-		slog.Error("Error hashing OpenBridge packet", "error", err)
-		return false
-	}
-	if !hmac.Equal(h.Sum(nil), hmacBytes) {
+	if !auth.NewBridge([]byte(peer.Password)).Verify(data) {
 		slog.Error("Invalid OpenBridge HMAC")
 		return false
 	}
@@ -275,26 +268,18 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
-	const signatureLength = 4
-
 	if len(data) != packetLength {
 		slog.Error("Invalid OpenBridge packet length", "length", len(data), "expected", packetLength)
 		return
 	}
 
-	if dmrconst.Command(data[:signatureLength]) != dmrconst.CommandDMRD {
-		slog.Error("Unknown command", "command", string(data[:signatureLength]))
+	bridge, err := dmrd.DecodeBridge(data)
+	if err != nil {
+		slog.Error("Invalid OpenBridge packet", "error", err)
 		return
 	}
 
-	packetBytes := data[:dmrconst.MMDVMPacketLength]
-	hmacBytes := data[dmrconst.MMDVMPacketLength:packetLength]
-
-	packet, ok := models.UnpackPacket(packetBytes)
-	if !ok {
-		slog.Error("Invalid OpenBridge packet")
-		return
-	}
+	packet := models.PacketFromData(&bridge.Data, false)
 
 	slog.Debug("OpenBridge packet received", "packet", packet.String())
 
@@ -304,8 +289,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	peerIDBytes := data[11:15]
-	peerID := uint(binary.BigEndian.Uint32(peerIDBytes))
+	peerID := uint(bridge.Data.Repeater)
 	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)
 
 	exists, err := models.PeerIDExists(s.DB, peerID)
@@ -324,7 +308,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	if !s.validateHMAC(ctx, packetBytes, hmacBytes, peer) {
+	if !s.validateHMAC(ctx, data, peer) {
 		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
 		return
 	}

@@ -164,6 +164,7 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 		// RPTO
 		_, err = gw.Write(capture[6].p)
 		require.NoError(t, err)
+		require.Equal(t, capture[7].p, readUDPPacket(t, gw))
 		time.Sleep(settleDuration)
 
 		var call [][]byte

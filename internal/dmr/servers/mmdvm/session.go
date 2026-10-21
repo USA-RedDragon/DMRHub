@@ -1,0 +1,419 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+package mmdvm
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"fmt"
+	"log/slog"
+	"net"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	"go.opentelemetry.io/otel"
+)
+
+// beaconDelay is the time after a login at which the server asks the
+// repeater for a beacon.
+const beaconDelay = time.Minute
+
+// link is the session of the repeater at one address.
+type link struct {
+	key    string
+	addr   net.UDPAddr
+	m      *session.Master
+	beacon *time.Timer
+}
+
+func (s *Server) now() time.Duration {
+	if s.epoch.IsZero() {
+		s.epoch = time.Now()
+	}
+	return time.Since(s.epoch)
+}
+
+func (s *Server) linkFor(addr net.UDPAddr) (*link, error) {
+	if s.links == nil {
+		s.links = map[string]*link{}
+		s.byID = map[uint32]*link{}
+	}
+	key := addr.String()
+	if l, ok := s.links[key]; ok {
+		return l, nil
+	}
+	m, err := session.NewMaster(&session.MasterConfig{Dialect: dmrd.DialectMMDVM})
+	if err != nil {
+		return nil, fmt.Errorf("failed to make MMDVM session: %w", err)
+	}
+	l := &link{key: key, addr: addr, m: m}
+	s.links[key] = l
+	return l, nil
+}
+
+func (s *Server) forget(l *link) {
+	if l.m.State() == session.StateIdle && s.links[l.key] == l {
+		delete(s.links, l.key)
+	}
+}
+
+func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
+	if s.stopped.Load() {
+		return
+	}
+
+	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
+	defer span.End()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped.Load() {
+		return
+	}
+	l, err := s.linkFor(remoteAddr)
+	if err != nil {
+		slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
+		return
+	}
+	now := s.now()
+	command := dmrd.Classify(data, dmrd.DialectMMDVM)
+	if l.m.State() == session.StateIdle {
+		s.resume(ctx, now, l, data, command)
+	}
+	var buf [session.MaxOutputs]session.Output
+	s.run(ctx, now, l, l.m.Packet(now, data, buf[:0]))
+	if command == dmrd.CommandRPTPING && l.m.State() == session.StateRunning {
+		s.ping(ctx, l)
+	}
+	s.forget(l)
+}
+
+func (s *Server) tick(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for _, l := range s.links {
+		var buf [session.MaxOutputs]session.Output
+		s.run(ctx, now, l, l.m.Tick(now, buf[:0]))
+		s.forget(l)
+	}
+}
+
+func (s *Server) closeSessions(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slog.Info("Stopping MMDVM server, sending MSTCL to connected repeaters", "count", len(s.byID))
+	now := s.now()
+	for _, l := range s.links {
+		var buf [session.MaxOutputs]session.Output
+		s.run(ctx, now, l, l.m.Close(now, buf[:0]))
+	}
+	clear(s.links)
+}
+
+func (s *Server) write(addr net.UDPAddr, p []byte) {
+	if _, err := s.Server.WriteToUDP(p, &addr); err != nil {
+		slog.Error("Error sending packet", "remoteAddr", addr.String(), "error", err)
+	}
+}
+
+// run carries out the outputs of a session. A config that DMRHub cannot
+// read refuses the login, so the acknowledgement that the session made for
+// it is not sent.
+func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []session.Output) {
+	for _, o := range out {
+		if o.Kind == session.OutputConfig && !s.takeConfig(ctx, l, o.Packet) {
+			var buf [session.MaxOutputs]session.Output
+			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+			return
+		}
+	}
+	for _, o := range out {
+		switch o.Kind {
+		case session.OutputSend:
+			s.write(l.addr, o.Packet)
+		case session.OutputLogin:
+			s.login(ctx, now, l, o.ID)
+		case session.OutputUp:
+			s.up(ctx, l, o.ID)
+		case session.OutputDown:
+			s.down(ctx, l, o)
+		case session.OutputOptions:
+			slog.Info("Repeater options", "repeaterID", o.ID, "options", string(o.Packet))
+		case session.OutputData:
+			s.data(ctx, o)
+		case session.OutputMessage:
+			slog.Debug("Repeater message", "repeaterID", o.ID, "command", o.Command)
+		case session.OutputConfig:
+		}
+	}
+}
+
+// salt returns a new random login salt.
+func (s *Server) salt() (uint32, error) {
+	if s.newSalt != nil {
+		return s.newSalt()
+	}
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0, fmt.Errorf("failed to read random salt: %w", err)
+	}
+	return binary.BigEndian.Uint32(b[:]), nil
+}
+
+func (s *Server) login(ctx context.Context, now time.Duration, l *link, id uint32) {
+	var buf [session.MaxOutputs]session.Output
+	password, err := s.password(uint(id))
+	if err != nil {
+		slog.Debug("Refusing login", "repeaterID", id, "remoteAddr", l.addr.String(), "error", err)
+		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		return
+	}
+	salt, err := s.salt()
+	if err != nil {
+		slog.Error("Error generating random salt", "error", err)
+		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		return
+	}
+	slog.Debug("Login from Repeater ID", "repeaterID", id)
+	s.run(ctx, now, l, l.m.Admit(now, salt, []byte(password), buf[:0]))
+}
+
+var errNoPassword = fmt.Errorf("repeater has no password")
+
+func (s *Server) password(repeaterID uint) (string, error) {
+	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find repeater: %w", err)
+	}
+	if !exists {
+		return "", fmt.Errorf("repeater %d does not exist", repeaterID)
+	}
+	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find repeater: %w", err)
+	}
+	if repeater.Password == "" {
+		return "", errNoPassword
+	}
+	return repeater.Password, nil
+}
+
+func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
+	repeaterID := uint(l.m.ID())
+	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+	if err != nil {
+		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	if err := repeater.ParseConfig(data, s.Version, s.Commit); err != nil {
+		slog.Error("Invalid RPTC packet", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	now := time.Now()
+	repeater.IP = l.addr.IP.String()
+	repeater.Port = l.addr.Port
+	repeater.Connected = now
+	repeater.LastPing = now
+	repeater.Connection = models.RepeaterStateConnected
+	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+
+	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+	if err != nil {
+		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	dbRepeater.UpdateFrom(repeater)
+	if err := s.DB.Save(&dbRepeater).Error; err != nil {
+		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
+	return true
+}
+
+func (s *Server) up(ctx context.Context, l *link, id uint32) {
+	if old, ok := s.byID[id]; ok && old != l {
+		s.stopBeacon(old)
+		old.m.Reset()
+		s.forget(old)
+	}
+	s.byID[id] = l
+	s.connected.Store(uint(id), l.addr)
+	s.stopBeacon(l)
+	addr := l.addr
+	l.beacon = time.AfterFunc(beaconDelay, func() {
+		if a, ok := s.connected.Load(uint(id)); !ok || a.String() != addr.String() {
+			return
+		}
+		p, err := dmrd.Control{Command: dmrd.CommandRPTSBKN, ID: id}.AppendBinary(nil, dmrd.DialectMMDVM)
+		if err == nil {
+			s.write(addr, p)
+		}
+	})
+	if s.hub != nil {
+		s.hub.ActivateRepeater(ctx, uint(id))
+	}
+}
+
+func (s *Server) stopBeacon(l *link) {
+	if l.beacon != nil {
+		l.beacon.Stop()
+		l.beacon = nil
+	}
+}
+
+func (s *Server) down(ctx context.Context, l *link, o session.Output) {
+	slog.Info("Repeater session ended", "repeaterID", o.ID, "reason", o.Reason, "state", o.State)
+	if s.byID[o.ID] != l {
+		return
+	}
+	s.stopBeacon(l)
+	delete(s.byID, o.ID)
+	s.connected.Delete(uint(o.ID))
+	if !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
+		slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
+	}
+	if s.hub != nil {
+		s.hub.DeactivateRepeater(ctx, uint(o.ID))
+	}
+}
+
+func (s *Server) data(ctx context.Context, o session.Output) {
+	switch o.Command { //nolint:exhaustive
+	case dmrd.CommandDMRD:
+		d, err := dmrd.DecodeData(o.Packet)
+		if err != nil {
+			slog.Error("Failed to decode DMRD packet", "error", err)
+			return
+		}
+		packet := models.PacketFromData(&d, d.Size > dmrconst.MMDVMPacketLength)
+		if packet.Dst == 0 {
+			return
+		}
+		slog.Debug("DMRD packet received", "packet", packet.String())
+		if s.hub != nil {
+			s.hub.RoutePacket(ctx, packet, models.RepeaterTypeMMDVM)
+		}
+	case dmrd.CommandDMRA:
+		alias, err := dmrd.DecodeTalkerAlias(o.Packet)
+		if err != nil {
+			slog.Error("Invalid DMRA packet", "length", len(o.Packet), "error", err)
+			return
+		}
+		slog.Debug("Talk alias", "repeaterID", alias.Repeater, "type", alias.Type, "data", string(alias.Data[:]))
+	default:
+		slog.Debug("Repeater data", "repeaterID", o.ID, "command", o.Command)
+	}
+}
+
+func (s *Server) ping(ctx context.Context, l *link) {
+	repeaterID := uint(l.m.ID())
+	now := time.Now()
+	repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
+	if err != nil {
+		slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
+		return
+	}
+	repeater.PingsReceived++
+	repeater.LastPing = now
+	repeater.IP = l.addr.IP.String()
+	repeater.Port = l.addr.Port
+	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+
+	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
+	if err != nil {
+		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
+		return
+	}
+	dbRepeater.LastPing = now
+	if err := s.DB.Save(&dbRepeater).Error; err != nil {
+		slog.Error("Error saving repeater", "repeaterID", repeaterID, "error", err)
+	}
+}
+
+// resume takes over the session of a repeater that logged in to another
+// DMRHub replica, or at another address, as the KV store records it, so
+// that a rolling restart does not make the repeater log in again. The
+// session machine has no way to start in a logged-in state, so resume
+// plays a login with salt 0 and an empty password into it and drops what
+// it answers.
+func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte, command dmrd.Command) {
+	id, ok := repeaterOf(data, command)
+	if !ok {
+		return
+	}
+	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+	if err != nil || repeater.Connection != models.RepeaterStateConnected {
+		return
+	}
+	token, err := auth.Token(dmrd.DialectMMDVM, 0, nil)
+	if err != nil {
+		return
+	}
+	var cfg dmrd.Config
+	cfg.Reset()
+	cfg.SetID(id)
+	rptl, err := dmrd.Control{Command: dmrd.CommandRPTL, ID: id}.AppendBinary(nil, dmrd.DialectMMDVM)
+	if err != nil {
+		return
+	}
+	rptk, err := dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token}.AppendBinary(nil, dmrd.DialectMMDVM)
+	if err != nil {
+		return
+	}
+	var buf [session.MaxOutputs]session.Output
+	l.m.Packet(now, rptl, buf[:0])
+	l.m.Admit(now, 0, nil, buf[:0])
+	l.m.Packet(now, rptk, buf[:0])
+	l.m.Packet(now, cfg[:], buf[:0])
+	if l.m.State() != session.StateRunning {
+		l.m.Reset()
+		return
+	}
+	slog.Info("Resumed repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
+	repeater.IP = l.addr.IP.String()
+	repeater.Port = l.addr.Port
+	s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+	s.up(ctx, l, id)
+}
+
+func repeaterOf(data []byte, command dmrd.Command) (uint32, bool) {
+	switch command { //nolint:exhaustive
+	case dmrd.CommandDMRD:
+		d, err := dmrd.DecodeData(data)
+		return d.Repeater, err == nil
+	case dmrd.CommandDMRA:
+		a, err := dmrd.DecodeTalkerAlias(data)
+		return a.Repeater, err == nil
+	case dmrd.CommandDMRG:
+		g, err := dmrd.DecodePosition(data)
+		return g.Repeater, err == nil
+	case dmrd.CommandRPTPING, dmrd.CommandRPTO:
+		c, err := dmrd.DecodeControl(data, dmrd.DialectMMDVM)
+		return c.ID, err == nil
+	}
+	return 0, false
+}

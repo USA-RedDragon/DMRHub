@@ -478,7 +478,11 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 
 	// Extract the 19-byte FEC-decoded AMBE payload from the 3 vocoder frames
 	frames, _ := raw.AMBEFrames()
-	ambeData := vocoder.PackAMBEVoice(frames)
+	ambeData, err := vocoder.PackAMBEVoice(frames)
+	if err != nil {
+		slog.Debug("IPSCTranslator: cannot pack AMBE frames", "error", err)
+		return nil
+	}
 	embData := raw.EmbeddedData()
 	hasEmbedded := t.burst.HasEmbeddedSignalling()
 
@@ -777,7 +781,10 @@ func (t *IPSCTranslator) buildMMDVMDataPacket(
 			flco = enums.FLCOGroupVoiceChannelUser
 		}
 		if lc := (*pdu.LCBytes)(payload[:9]); lc.FLCO() != flco {
-			lc.SetFLCO(flco)
+			if err := lc.SetFLCO(flco); err != nil {
+				slog.Debug("IPSCTranslator: cannot set FLCO", "error", err)
+				return pkt, false
+			}
 			reseal = true
 		}
 		if reseal {

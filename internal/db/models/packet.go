@@ -21,8 +21,11 @@ package models
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 )
 
 // Packet is a DMR packet
@@ -89,53 +92,39 @@ func (p Packet) Equal(other Packet) bool {
 	return true
 }
 
+// UnpackPacket decodes a DMRD packet of 53, 55 or 71 octets. A packet
+// without the BER and RSSI octets gets -1 in both.
 func UnpackPacket(data []byte) (Packet, bool) {
-	var packet Packet
-	if len(data) < dmrconst.MMDVMPacketLength {
-		return packet, false
+	d, err := dmrd.DecodeData(data)
+	if err != nil {
+		return Packet{}, false
 	}
-	if len(data) > dmrconst.MMDVMMaxPacketLength {
-		return packet, false
+	return PacketFromData(&d, len(data) > dmrconst.MMDVMPacketLength), true
+}
+
+// PacketFromData returns the Packet of the DMRD packet d. hasQuality
+// reports whether d carried the BER and RSSI octets; without them both are
+// -1.
+func PacketFromData(d *dmrd.Data, hasQuality bool) Packet {
+	p := Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Seq:         uint(d.Seq),
+		Src:         uint(d.Source),
+		Dst:         uint(d.Destination),
+		Repeater:    uint(d.Repeater),
+		Slot:        d.Slot == enums.Slot2,
+		GroupCall:   !d.Private,
+		FrameType:   dmrconst.FrameType(d.Frame),
+		DTypeOrVSeq: uint(d.Value),
+		StreamID:    uint(d.Stream),
+		DMRData:     d.Burst,
+		BER:         -1,
+		RSSI:        -1,
 	}
-	// Intern known signatures to avoid heap-allocating a string from the byte slice.
-	switch {
-	case data[0] == 'D' && data[1] == 'M' && data[2] == 'R' && data[3] == 'D':
-		packet.Signature = "DMRD"
-	case data[0] == 'D' && data[1] == 'M' && data[2] == 'R' && data[3] == 'A':
-		packet.Signature = "DMRA"
-	default:
-		packet.Signature = string(data[:4])
+	if hasQuality {
+		p.BER, p.RSSI = int(d.BER), int(d.RSSI)
 	}
-	packet.Seq = uint(data[4])
-	packet.Src = uint(data[5])<<16 | uint(data[6])<<8 | uint(data[7])
-	packet.Dst = uint(data[8])<<16 | uint(data[9])<<8 | uint(data[10])
-	packet.Repeater = uint(data[11])<<24 | uint(data[12])<<16 | uint(data[13])<<8 | uint(data[14])
-	bits := data[15]
-	packet.Slot = false
-	if (bits & 0x80) != 0 {
-		packet.Slot = true
-	}
-	packet.GroupCall = true
-	if (bits & 0x40) != 0 {
-		packet.GroupCall = false
-	}
-	packet.FrameType = dmrconst.FrameType((bits & 0x30) >> 4)
-	packet.DTypeOrVSeq = uint(bits & 0xF)
-	packet.StreamID = uint(data[16])<<24 | uint(data[17])<<16 | uint(data[18])<<8 | uint(data[19])
-	copy(packet.DMRData[:], data[20:53])
-	// Bytes 53-54 are BER and RSSI, respectively
-	// But they are optional, so don't error if they don't exist
-	if len(data) > dmrconst.MMDVMPacketLength {
-		packet.BER = int(data[dmrconst.MMDVMPacketLength])
-	} else {
-		packet.BER = -1
-	}
-	if len(data) > dmrconst.MMDVMPacketLength+1 {
-		packet.RSSI = int(data[dmrconst.MMDVMPacketLength+1])
-	} else {
-		packet.RSSI = -1
-	}
-	return packet, true
+	return p
 }
 
 func (p *Packet) String() string {
@@ -145,46 +134,44 @@ func (p *Packet) String() string {
 	)
 }
 
-// EncodeTo encodes the packet into dst, which must be at least dmrconst.MMDVMMaxPacketLength bytes.
-// Returns dst for convenience.
-func (p *Packet) EncodeTo(dst []byte) []byte {
-	data := dst[:dmrconst.MMDVMMaxPacketLength]
-	copy(data[:4], []byte(p.Signature))
-	data[4] = byte(p.Seq)
-	data[5] = byte(p.Src >> 16)
-	data[6] = byte(p.Src >> 8)
-	data[7] = byte(p.Src)
-	data[8] = byte(p.Dst >> 16)
-	data[9] = byte(p.Dst >> 8)
-	data[10] = byte(p.Dst)
-	data[11] = byte(p.Repeater >> 24)
-	data[12] = byte(p.Repeater >> 16)
-	data[13] = byte(p.Repeater >> 8)
-	data[14] = byte(p.Repeater)
-	bits := byte(0)
-	if p.Slot {
-		bits |= 0x80
-	}
-	if !p.GroupCall {
-		bits |= 0x40
-	}
-	bits |= byte(p.FrameType << 4)
-	bits |= byte(p.DTypeOrVSeq)
-	data[15] = bits
-	data[16] = byte(p.StreamID >> 24)
-	data[17] = byte(p.StreamID >> 16)
-	data[18] = byte(p.StreamID >> 8)
-	data[19] = byte(p.StreamID)
-	copy(data[20:53], p.DMRData[:])
-
+// Data returns p as a 55-octet DMRD packet. Each field is cut to its width
+// in the packet, and a BER or RSSI of -1 becomes 0.
+func (p *Packet) Data() dmrd.Data {
 	if p.BER == -1 {
 		p.BER = 0
 	}
 	if p.RSSI == -1 {
 		p.RSSI = 0
 	}
-	data[53] = byte(p.BER)  //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
-	data[54] = byte(p.RSSI) //nolint:gosec // Idk why it says G602: slice index out of range (gosec)
+	slot := enums.Slot1
+	if p.Slot {
+		slot = enums.Slot2
+	}
+	return dmrd.Data{
+		Seq:         uint8(p.Seq),
+		Source:      uint32(p.Src & dmrconst.MaxDMRAddress),
+		Destination: uint32(p.Dst & dmrconst.MaxDMRAddress),
+		Repeater:    uint32(p.Repeater),
+		Slot:        slot,
+		Private:     !p.GroupCall,
+		Frame:       dmrd.FrameType(p.FrameType & 0x3),
+		Value:       uint8(p.DTypeOrVSeq & 0xF),
+		Stream:      uint32(p.StreamID),
+		Burst:       p.DMRData,
+		BER:         uint8(p.BER),
+		RSSI:        uint8(p.RSSI),
+		Size:        dmrconst.MMDVMMaxPacketLength,
+	}
+}
+
+// EncodeTo encodes the packet into dst, which must be at least dmrconst.MMDVMMaxPacketLength bytes.
+// Returns dst for convenience.
+func (p *Packet) EncodeTo(dst []byte) []byte {
+	d := p.Data()
+	data, err := d.AppendBinary(dst[:0])
+	if err != nil {
+		slog.Error("Failed to encode DMRD packet", "error", err)
+	}
 	return data
 }
 

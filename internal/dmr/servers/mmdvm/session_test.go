@@ -20,9 +20,22 @@
 package mmdvm
 
 import (
+	"context"
 	"errors"
 	"net"
 	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPendingSessionsAreCapped(t *testing.T) {
@@ -40,4 +53,45 @@ func TestPendingSessionsAreCapped(t *testing.T) {
 	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, 0, 0), Port: 62031}); err != nil {
 		t.Fatalf("known address: %v", err)
 	}
+}
+
+func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	cfg.Database.Database = ""
+	cfg.Database.ExtraParameters = []string{}
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860},
+		Type:                  models.RepeaterTypeMMDVM,
+		Password:              "s3cret",
+	}).Error)
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	s := Server{
+		DB:        database,
+		Server:    conn,
+		kvClient:  servers.MakeKVClient(kvStore),
+		connected: xsync.NewMap[uint, net.UDPAddr](),
+	}
+	rptl, err := dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}.AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	from := net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 62031}
+	s.handlePacket(context.Background(), from, rptl)
+	require.Len(t, s.links, 1)
+	require.Equal(t, session.StateAuth, s.links[from.String()].m.State())
+
+	s.epoch = s.epoch.Add(-(session.LoginTimeoutDefault - time.Second))
+	s.tick(context.Background())
+	require.Len(t, s.links, 1, "the login should still be open before LoginTimeout")
+
+	s.epoch = s.epoch.Add(-2 * time.Second)
+	s.tick(context.Background())
+	require.Empty(t, s.links, "the half-open login should end after LoginTimeout")
 }

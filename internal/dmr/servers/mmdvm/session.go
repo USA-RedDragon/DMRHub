@@ -40,8 +40,9 @@ import (
 // repeater for a beacon.
 const beaconDelay = time.Minute
 
-// maxPending is the most sessions that are not logged in, so that RPTLs
-// from many spoofed addresses cannot grow the session table without bound.
+// maxPending is the most sessions that are not logged in. LoginTimeout ends
+// each of them, but RPTLs from many spoofed addresses could still fill the
+// session table faster than that.
 const maxPending = 1024
 
 var errTooManyPending = errors.New("too many sessions that are not logged in")
@@ -73,7 +74,10 @@ func (s *Server) linkFor(addr net.UDPAddr) (*link, error) {
 	if len(s.links)-len(s.byID) >= maxPending {
 		return nil, errTooManyPending
 	}
-	m, err := session.NewMaster(&session.MasterConfig{Dialect: dmrd.DialectMMDVM})
+	m, err := session.NewMaster(&session.MasterConfig{
+		Dialect:      dmrd.DialectMMDVM,
+		LoginTimeout: session.LoginTimeoutDefault,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to make MMDVM session: %w", err)
 	}

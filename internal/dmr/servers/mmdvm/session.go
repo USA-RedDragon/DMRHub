@@ -107,15 +107,11 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 		return
 	}
 	now := s.now()
-	command := dmrd.Classify(data, dmrd.DialectMMDVM)
 	if l.m.State() == session.StateIdle {
-		s.resume(ctx, now, l, data, command)
+		s.resume(ctx, now, l, data)
 	}
 	var buf [session.MaxOutputs]session.Output
 	s.run(ctx, now, l, l.m.Packet(now, data, buf[:0]))
-	if command == dmrd.CommandRPTPING && l.m.State() == session.StateRunning {
-		s.ping(ctx, l)
-	}
 	s.forget(l)
 }
 
@@ -175,6 +171,8 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []sess
 			s.data(ctx, o)
 		case session.OutputMessage:
 			slog.Debug("Repeater message", "repeaterID", o.ID, "command", o.Command)
+		case session.OutputPong:
+			s.ping(ctx, l)
 		case session.OutputConfig:
 		}
 	}
@@ -375,8 +373,8 @@ func (s *Server) ping(ctx context.Context, l *link) {
 // resume takes over the session of a repeater that logged in to another
 // DMRHub replica from the same address, as the KV store records it, so
 // that a rolling restart does not make the repeater log in again.
-func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte, command dmrd.Command) {
-	id, ok := repeaterOf(data, command)
+func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte) {
+	id, ok := repeaterOf(data, dmrd.Classify(data, dmrd.DialectMMDVM))
 	if !ok {
 		return
 	}

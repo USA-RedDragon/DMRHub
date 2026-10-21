@@ -20,9 +20,11 @@
 package dmr_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
 	"github.com/stretchr/testify/assert"
@@ -89,6 +91,9 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 
 				assert.Equal(t, session.StateRunning, gw.State())
 				assert.Zero(t, gw.Downs(), "the session should not have ended")
+				rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
+				require.NoError(t, err)
+				assert.NotZero(t, rec.PingsReceived, "the pings of the peer should be recorded")
 			})
 		})
 	}

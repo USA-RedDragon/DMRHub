@@ -20,17 +20,16 @@
 package testutils
 
 import (
-	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
 )
 
 const openbridgePacketLength = 73
@@ -199,17 +198,16 @@ func (c *OpenBridgeClient) sendPacket(pkt models.Packet) error {
 	if c.conn == nil {
 		return ErrOpenBridgeNotConnected
 	}
-	encoded := pkt.Encode()
-	// Only use the first 53 bytes (DMRD packet, no BER/RSSI)
-	packetBytes := encoded[:dmrconst.MMDVMPacketLength]
-
-	// Compute HMAC-SHA1
-	h := hmac.New(sha1.New, []byte(c.Password))
-	_, err := h.Write(packetBytes)
+	// Only the 53-octet DMRD packet, without BER and RSSI
+	bridge := dmrd.Bridge{Version: 1, Data: pkt.Data()}
+	bridge.Data.Size = dmrconst.MMDVMPacketLength
+	outbound, err := bridge.AppendBinary(nil)
 	if err != nil {
-		return fmt.Errorf("computing HMAC: %w", err)
+		return fmt.Errorf("encoding packet: %w", err)
 	}
-	outbound := slices.Concat(packetBytes, h.Sum(nil))
+	if err := auth.NewBridge([]byte(c.Password)).Sign(outbound); err != nil {
+		return fmt.Errorf("signing packet: %w", err)
+	}
 
 	_, err = c.conn.Write(outbound)
 	if err != nil {
@@ -253,20 +251,14 @@ func (c *OpenBridgeClient) rx() {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		packetBytes := data[:dmrconst.MMDVMPacketLength]
-		hmacBytes := data[dmrconst.MMDVMPacketLength:]
-
-		// Validate HMAC
-		h := hmac.New(sha1.New, []byte(c.Password))
-		_, _ = h.Write(packetBytes)
-		if !hmac.Equal(h.Sum(nil), hmacBytes) {
+		if !auth.NewBridge([]byte(c.Password)).Verify(data) {
 			continue // Invalid HMAC, skip
 		}
-
-		pkt, ok := models.UnpackPacket(packetBytes)
-		if !ok {
+		bridge, err := dmrd.DecodeBridge(data)
+		if err != nil {
 			continue
 		}
+		pkt := models.PacketFromData(&bridge.Data, false)
 		select {
 		case c.packets <- pkt:
 		default:

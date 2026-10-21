@@ -20,8 +20,6 @@
 package testutils
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -30,7 +28,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
 )
 
 // MMDVMClient is a simulated MMDVM repeater client for integration testing.
@@ -178,30 +177,33 @@ func (c *MMDVMClient) rx() {
 }
 
 func (c *MMDVMClient) handlePacket(data []byte) {
-	sig := string(data[:4])
+	command := dmrd.Classify(data, dmrd.DialectMMDVM)
+	var msg dmrd.Control
+	if command == dmrd.CommandRPTACK {
+		var err error
+		if msg, err = dmrd.DecodeControl(data, dmrd.DialectMMDVM); err != nil {
+			return
+		}
+	}
 
 	switch c.state.Load() {
 	case mmdvmStateSentLogin:
-		// Expecting RPTACK with 4-byte salt
-		if len(data) >= 6 && string(data[:6]) == string(dmrconst.CommandRPTACK) {
-			if len(data) < 10 {
-				return
-			}
-			salt := data[len(data)-4:]
-			c.sendRPTK(salt)
+		// Expecting RPTACK with the salt
+		if command == dmrd.CommandRPTACK {
+			c.sendRPTK(msg.ID)
 			c.state.Store(mmdvmStateSentAuth)
 		}
 
 	case mmdvmStateSentAuth:
 		// Expecting RPTACK to confirm auth
-		if len(data) >= 6 && string(data[:6]) == string(dmrconst.CommandRPTACK) {
+		if command == dmrd.CommandRPTACK {
 			c.sendRPTC()
 			c.state.Store(mmdvmStateSentConfig)
 		}
 
 	case mmdvmStateSentConfig:
 		// Expecting RPTACK to confirm config
-		if len(data) >= 6 && string(data[:6]) == string(dmrconst.CommandRPTACK) {
+		if command == dmrd.CommandRPTACK {
 			c.state.Store(mmdvmStateReady)
 			c.readyVal.Store(true)
 			close(c.ready)
@@ -211,8 +213,7 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 		}
 
 	case mmdvmStateReady:
-		switch dmrconst.Command(sig) {
-		case dmrconst.CommandDMRD:
+		if command == dmrd.CommandDMRD {
 			pkt, ok := models.UnpackPacket(data)
 			if ok {
 				select {
@@ -221,66 +222,59 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 					// drop if channel full
 				}
 			}
-		case dmrconst.CommandMSTPONG:
-			// MSTPONG — ignore
-		case dmrconst.CommandMSTCL:
-			// MSTCL — server closing
-		case dmrconst.CommandRPTSBKN:
-			// RPTSBKN — beacon, ignore
-		case dmrconst.CommandDMRA, dmrconst.CommandMSTNAK, dmrconst.CommandRPTL, dmrconst.CommandRPTPING, dmrconst.CommandRPTACK, dmrconst.CommandRPTK, dmrconst.CommandRPTC, dmrconst.CommandRPTO, dmrconst.CommandRPTCL:
-			// Unexpected commands in ready state — ignore
 		}
+		// MSTPONG, MSTCL, RPTSBKN and the rest are ignored.
 	}
 }
 
-func (c *MMDVMClient) sendLogin() {
-	data := make([]byte, 8)
-	copy(data[0:4], []byte(dmrconst.CommandRPTL))
-	binary.BigEndian.PutUint32(data[4:8], c.RepeaterID)
+func (c *MMDVMClient) sendControl(command dmrd.Command, id uint32, token [32]byte) {
+	data, err := dmrd.Control{Command: command, ID: id, Token: token}.AppendBinary(nil, dmrd.DialectMMDVM)
+	if err != nil {
+		return
+	}
 	_, _ = c.conn.Write(data)
 }
 
-func (c *MMDVMClient) sendRPTK(salt []byte) {
-	s256 := sha256.New()
-	s256.Write(salt)
-	s256.Write([]byte(c.Password))
-	token := s256.Sum(nil)
+func (c *MMDVMClient) sendLogin() {
+	c.sendControl(dmrd.CommandRPTL, c.RepeaterID, [32]byte{})
+}
 
-	buf := make([]byte, 40)
-	copy(buf[0:4], dmrconst.CommandRPTK)
-	binary.BigEndian.PutUint32(buf[4:8], c.RepeaterID)
-	copy(buf[8:], token)
-	_, _ = c.conn.Write(buf)
+func (c *MMDVMClient) sendRPTK(salt uint32) {
+	token, err := auth.Token(dmrd.DialectMMDVM, salt, []byte(c.Password))
+	if err != nil {
+		return
+	}
+	c.sendControl(dmrd.CommandRPTK, c.RepeaterID, token)
 }
 
 func (c *MMDVMClient) sendRPTC() {
-	str := make([]byte, 0, 302)
-	str = append(str, []byte(dmrconst.CommandRPTC)...)
-	idBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(idBytes, c.RepeaterID)
-	str = append(str, idBytes...)
-
 	callsign := c.Callsign
 	if callsign == "" {
 		callsign = fmt.Sprintf("T%04dST", c.RepeaterID%10000)
 	}
 
-	str = append(str, []byte(fmt.Sprintf("%-8s", callsign))...)       // 8:16
-	str = append(str, []byte(fmt.Sprintf("%09d", 440000000))...)      // 16:25 rxfreq
-	str = append(str, []byte(fmt.Sprintf("%09d", 440000000))...)      // 25:34 txfreq
-	str = append(str, []byte(fmt.Sprintf("%02d", 10))...)             // 34:36 txpower
-	str = append(str, []byte(fmt.Sprintf("%02d", 1))...)              // 36:38 color code
-	str = append(str, []byte(fmt.Sprintf("%+08.4f", 0.0))...)         // 38:46 lat
-	str = append(str, []byte(fmt.Sprintf("%+09.4f", 0.0))...)         // 46:55 lon
-	str = append(str, []byte(fmt.Sprintf("%03d", 10))...)             // 55:58 height
-	str = append(str, []byte(fmt.Sprintf("%-20s", "Test"))...)        // 58:78 location
-	str = append(str, []byte(fmt.Sprintf("%-19s", "Integration"))...) // 78:97 description
-	str = append(str, []byte("3")...)                                 // 97:98 slots
-	str = append(str, []byte(fmt.Sprintf("%-124s", ""))...)           // 98:222 url
-	str = append(str, []byte(fmt.Sprintf("%-40s", "20210921"))...)    // 222:262 softwareID
-	str = append(str, []byte(fmt.Sprintf("%-40s", "TestPackage"))...) // 262:302 packageID
-
-	_, _ = c.conn.Write(str)
+	var cfg dmrd.Config
+	cfg.Reset()
+	cfg.SetID(c.RepeaterID)
+	err := errors.Join(
+		cfg.SetCallsign([]byte(callsign)),
+		cfg.SetRXFrequency(440000000),
+		cfg.SetTXFrequency(440000000),
+		cfg.SetPower(10),
+		cfg.SetColorCode(1),
+		cfg.SetLatitude([]byte(fmt.Sprintf("%+08.4f", 0.0))),
+		cfg.SetLongitude([]byte(fmt.Sprintf("%+09.4f", 0.0))),
+		cfg.SetHeight(10),
+		cfg.SetLocation([]byte("Test")),
+		cfg.SetDescription([]byte("Integration")),
+		cfg.SetSlots(3),
+		cfg.SetSoftwareID([]byte("20210921")),
+		cfg.SetPackageID([]byte("TestPackage")),
+	)
+	if err != nil {
+		return
+	}
+	_, _ = c.conn.Write(cfg[:])
 }
 
 func (c *MMDVMClient) ping() {
@@ -299,8 +293,5 @@ func (c *MMDVMClient) ping() {
 }
 
 func (c *MMDVMClient) sendPing() {
-	data := make([]byte, 11)
-	copy(data[0:7], []byte(dmrconst.CommandRPTPING))
-	binary.BigEndian.PutUint32(data[7:11], c.RepeaterID)
-	_, _ = c.conn.Write(data)
+	c.sendControl(dmrd.CommandRPTPING, c.RepeaterID, [32]byte{})
 }

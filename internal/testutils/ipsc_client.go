@@ -20,15 +20,20 @@
 package testutils
 
 import (
-	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/layer3"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
+	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/auth"
+	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 )
 
 // IPSCBurst represents a raw IPSC user packet received by the simulator client.
@@ -47,8 +52,8 @@ type IPSCBurst struct {
 // and can send/receive IPSC voice burst packets over UDP.
 type IPSCClient struct {
 	PeerID   uint32
-	AuthKey  []byte // raw HMAC-SHA1 key (20 bytes, from decodeAuthKey)
-	Password string // hex auth key string
+	AuthKey  *[20]byte // raw HMAC-SHA1 key, nil when the password is not hex
+	Password string    // hex auth key string
 
 	conn       *net.UDPConn
 	remoteAddr string
@@ -64,6 +69,7 @@ type IPSCClient struct {
 	rxDone         chan struct{}
 	reconnected    chan struct{}
 	noReconnect    bool // suppress reconnect on DeregistrationRequest
+	rtpSeq         atomic.Uint32
 }
 
 var (
@@ -90,29 +96,14 @@ func NewIPSCClient(peerID uint32, password string) *IPSCClient {
 	}
 }
 
-// decodeIPSCAuthKey decodes a hex auth key string into raw bytes.
-// Mirrors the server's decodeAuthKey function.
-func decodeIPSCAuthKey(hexKey string) []byte {
-	for len(hexKey) < 40 {
-		hexKey = "0" + hexKey
+// decodeIPSCAuthKey decodes a hex auth key string into raw bytes, as the
+// server does.
+func decodeIPSCAuthKey(hexKey string) *[20]byte {
+	key, err := ipscauth.ParseKey(hexKey)
+	if err != nil {
+		return nil
 	}
-	key := make([]byte, 20)
-	for i := 0; i < 20; i++ {
-		var val byte
-		for j := 0; j < 2; j++ {
-			c := hexKey[i*2+j]
-			switch {
-			case c >= '0' && c <= '9':
-				val = val*16 + (c - '0')
-			case c >= 'a' && c <= 'f':
-				val = val*16 + (c - 'a' + 10)
-			case c >= 'A' && c <= 'F':
-				val = val*16 + (c - 'A' + 10)
-			}
-		}
-		key[i] = val
-	}
-	return key
+	return &key
 }
 
 // Connect dials the IPSC server and starts the registration handshake.
@@ -199,7 +190,7 @@ func (c *IPSCClient) Drain(timeout time.Duration) []IPSCBurst {
 // SendGroupVoice sends an IPSC group voice burst with a voice LC header, a voice burst, and a terminator.
 func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) error {
 	// Voice header
-	header := c.buildVoicePacket(0x80, src, dst, true, slot, streamID, 0x01, false)
+	header := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstType(enums.DataTypeVoiceLCHeader), false)
 	if _, err := c.conn.Write(c.signPacket(header)); err != nil {
 		return fmt.Errorf("send voice header: %w", err)
 	}
@@ -208,7 +199,7 @@ func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) e
 	time.Sleep(10 * time.Millisecond)
 
 	// Voice burst (Slot1 type)
-	burst := c.buildVoicePacket(0x80, src, dst, true, slot, streamID, 0x0A, false)
+	burst := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstVoice, false)
 	if _, err := c.conn.Write(c.signPacket(burst)); err != nil {
 		return fmt.Errorf("send voice burst: %w", err)
 	}
@@ -216,7 +207,7 @@ func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) e
 	time.Sleep(10 * time.Millisecond)
 
 	// Voice terminator
-	term := c.buildVoicePacket(0x80, src, dst, true, slot, streamID, 0x02, true)
+	term := c.buildVoicePacket(ipscwire.OpGroupVoice, src, dst, true, slot, streamID, ipscwire.BurstType(enums.DataTypeTerminatorWithLC), true)
 	if _, err := c.conn.Write(c.signPacket(term)); err != nil {
 		return fmt.Errorf("send voice term: %w", err)
 	}
@@ -226,21 +217,21 @@ func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) e
 
 // SendPrivateVoice sends an IPSC private voice burst.
 func (c *IPSCClient) SendPrivateVoice(src, dst uint, slot bool, streamID uint32) error {
-	header := c.buildVoicePacket(0x81, src, dst, false, slot, streamID, 0x01, false)
+	header := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstType(enums.DataTypeVoiceLCHeader), false)
 	if _, err := c.conn.Write(c.signPacket(header)); err != nil {
 		return fmt.Errorf("send voice header: %w", err)
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
-	burst := c.buildVoicePacket(0x81, src, dst, false, slot, streamID, 0x0A, false)
+	burst := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstVoice, false)
 	if _, err := c.conn.Write(c.signPacket(burst)); err != nil {
 		return fmt.Errorf("send voice burst: %w", err)
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
-	term := c.buildVoicePacket(0x81, src, dst, false, slot, streamID, 0x02, true)
+	term := c.buildVoicePacket(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID, ipscwire.BurstType(enums.DataTypeTerminatorWithLC), true)
 	if _, err := c.conn.Write(c.signPacket(term)); err != nil {
 		return fmt.Errorf("send voice term: %w", err)
 	}
@@ -362,16 +353,14 @@ func (c *IPSCClient) handlePacket(data []byte) {
 		return
 	}
 
-	packetType := data[0]
-
 	// Strip HMAC if present (last 10 bytes)
 	payload := data
-	if len(data) > 10 {
-		payload = data[:len(data)-10]
+	if len(data) > ipscauth.TrailerLen {
+		payload = data[:len(data)-ipscauth.TrailerLen]
 	}
 
-	switch packetType {
-	case 0x91: // MasterRegisterReply
+	switch op := ipscwire.Opcode(data[0]); op { //nolint:exhaustive
+	case ipscwire.OpRegisterReply:
 		if !c.readyVal.Load() {
 			c.readyVal.Store(true)
 			close(c.ready)
@@ -380,18 +369,14 @@ func (c *IPSCClient) handlePacket(data []byte) {
 			go c.keepAlive()
 		}
 
-	case 0x97: // MasterAliveReply — ignore
-
-	case 0x93: // PeerListReply — ignore
-
-	case 0x80, 0x81, 0x83, 0x84: // Voice/data packets
-		burst := c.parseIPSCBurst(packetType, payload)
+	case ipscwire.OpGroupVoice, ipscwire.OpPrivateVoice, ipscwire.OpGroupData, ipscwire.OpPrivateData:
+		burst := c.parseIPSCBurst(op, payload)
 		select {
 		case c.packets <- burst:
 		default:
 		}
 
-	case 0x9A: // DeregistrationRequest — server shutting down, signal disconnect and reconnect
+	case ipscwire.OpDeregisterRequest: // server shutting down, signal disconnect and reconnect
 		c.disconnectOnce.Do(func() {
 			close(c.disconnected)
 		})
@@ -402,41 +387,46 @@ func (c *IPSCClient) handlePacket(data []byte) {
 				c.reconnect()
 			}()
 		}
+
+	default: // MasterAliveReply and PeerListReply are ignored
 	}
 }
 
-func (c *IPSCClient) parseIPSCBurst(packetType byte, data []byte) IPSCBurst {
+func (c *IPSCClient) parseIPSCBurst(op ipscwire.Opcode, data []byte) IPSCBurst {
 	burst := IPSCBurst{
-		PacketType: packetType,
+		PacketType: byte(op),
 		Data:       data,
 	}
-	if len(data) >= 12 {
-		burst.PeerID = binary.BigEndian.Uint32(data[1:5])
-		burst.Src = uint(data[6])<<16 | uint(data[7])<<8 | uint(data[8])
-		burst.Dst = uint(data[9])<<16 | uint(data[10])<<8 | uint(data[11])
-		burst.GroupCall = packetType == 0x80 || packetType == 0x83
-	}
-	if len(data) >= 18 {
-		burst.Slot = (data[17] & 0x20) != 0
+	if u, err := ipscwire.DecodeUser(data); err == nil {
+		burst.PeerID = u.ID
+		burst.Src = uint(u.Source)
+		burst.Dst = uint(u.Destination)
+		burst.GroupCall = op == ipscwire.OpGroupVoice || op == ipscwire.OpGroupData
+		burst.Slot = u.Info.Slot() == enums.Slot2
 	}
 	return burst
 }
 
-func (c *IPSCClient) sendMasterRegisterRequest() {
-	// Packet: [0x90][PeerID 4B][Mode 1B][Flags 4B]
-	pkt := make([]byte, 10)
-	pkt[0] = 0x90
-	binary.BigEndian.PutUint32(pkt[1:5], c.PeerID)
-	// Mode: operational + digital + ts1 + ts2
-	pkt[5] = 0x6A
-	// Flags
-	pkt[6] = 0x00
-	pkt[7] = 0x00
-	pkt[8] = 0x00
-	pkt[9] = 0x1D
+// peerControl returns a control packet of the client with the mode and
+// flags of a MOTOTRBO peer.
+func (c *IPSCClient) peerControl(op ipscwire.Opcode) []byte {
+	ctl := ipscwire.Control{
+		Opcode: op,
+		ID:     c.PeerID,
+		// Mode: operational + digital + ts1 + ts2
+		Mode:    0x6A,
+		Flags:   ipscwire.Flags{0x00, 0x00, 0x00, 0x1D},
+		Version: [4]byte{0x04, 0x02, 0x04, 0x01},
+	}
+	pkt, err := ctl.AppendBinary(nil)
+	if err != nil {
+		return nil
+	}
+	return c.signPacket(pkt)
+}
 
-	signed := c.signPacket(pkt)
-	_, _ = c.conn.Write(signed)
+func (c *IPSCClient) sendMasterRegisterRequest() {
+	_, _ = c.conn.Write(c.peerControl(ipscwire.OpRegisterRequest))
 }
 
 func (c *IPSCClient) keepAlive() {
@@ -455,121 +445,67 @@ func (c *IPSCClient) keepAlive() {
 }
 
 func (c *IPSCClient) sendMasterAliveRequest() {
-	pkt := make([]byte, 10)
-	pkt[0] = 0x96
-	binary.BigEndian.PutUint32(pkt[1:5], c.PeerID)
-	pkt[5] = 0x6A
-	pkt[6] = 0x00
-	pkt[7] = 0x00
-	pkt[8] = 0x00
-	pkt[9] = 0x1D
-
-	signed := c.signPacket(pkt)
-	_, _ = c.conn.Write(signed)
+	_, _ = c.conn.Write(c.peerControl(ipscwire.OpAliveRequest))
 }
 
 func (c *IPSCClient) signPacket(data []byte) []byte {
 	if c.AuthKey == nil {
 		return data
 	}
-	h := hmac.New(sha1.New, c.AuthKey)
-	h.Write(data)
-	hashSum := h.Sum(nil)[:10]
-	return append(data, hashSum...)
+	return ipscauth.NewKey(*c.AuthKey).Sign(data)
 }
 
-// buildVoicePacket constructs an IPSC voice/data user packet.
-// burstType: 0x01=VoiceHead, 0x0A=Slot1Voice, 0x02=VoiceTerm
-func (c *IPSCClient) buildVoicePacket(packetType byte, src, dst uint, groupCall, slot bool, streamID uint32, burstType byte, isEnd bool) []byte {
-	// Build a 54-byte packet for headers/terminators, 57 for voice bursts
-	size := 54
-	if burstType == 0x0A || burstType == 0x8A {
-		size = 57
+// buildVoicePacket constructs an IPSC voice user packet as an XPR 8400
+// sends it: a voice LC header or terminator with the Full LC of the call,
+// or voice burst A with silence. It returns nil when the packet does not
+// encode.
+func (c *IPSCClient) buildVoicePacket(op ipscwire.Opcode, src, dst uint, groupCall, slot bool, streamID uint32, burstType ipscwire.BurstType, isEnd bool) []byte {
+	seq := uint16(c.rtpSeq.Add(1)) //nolint:gosec // the RTP sequence number wraps
+	u := ipscwire.User{
+		Opcode:      op,
+		ID:          c.PeerID,
+		Source:      uint32(src),
+		Destination: uint32(dst),
+		Priority:    0x02,
+		CallControl: streamID,
+		RTP:         ipscwire.RTP{Flags: 0x80, PayloadType: 0x5D, Seq: seq, Timestamp: 480 * uint32(seq)},
 	}
-
-	pkt := make([]byte, size)
-
-	// Byte 0: Packet type
-	pkt[0] = packetType
-
-	// Bytes 1-4: Peer ID
-	binary.BigEndian.PutUint32(pkt[1:5], c.PeerID)
-
-	// Byte 5: Sequence
-	pkt[5] = 0x00
-
-	// Bytes 6-8: Source
-	pkt[6] = byte(src >> 16)
-	pkt[7] = byte(src >> 8)
-	pkt[8] = byte(src)
-
-	// Bytes 9-11: Destination
-	pkt[9] = byte(dst >> 16)
-	pkt[10] = byte(dst >> 8)
-	pkt[11] = byte(dst)
-
-	// Byte 12: Priority/flags
-	pkt[12] = 0x00
-
-	// Bytes 13-16: Call control (use streamID)
-	binary.BigEndian.PutUint32(pkt[13:17], streamID)
-
-	// Byte 17: Call info (slot + end flag)
-	callInfo := byte(0x00)
 	if slot {
-		callInfo |= 0x20
+		u.Info |= 0x20
 	}
 	if isEnd {
-		callInfo |= 0x40
-	}
-	pkt[17] = callInfo
-
-	// Bytes 18-29: RTP header (12 bytes) — fill with minimal valid values
-	pkt[18] = 0x80 // RTP version 2
-	pkt[19] = 0x5D // Payload type
-	// RTP seq (bytes 20-21)
-	pkt[20] = 0x00
-	pkt[21] = 0x01
-	// RTP timestamp (bytes 22-25)
-	binary.BigEndian.PutUint32(pkt[22:26], 480)
-	// RTP SSRC (bytes 26-29)
-	binary.BigEndian.PutUint32(pkt[26:30], streamID)
-
-	// Byte 30: Burst type
-	pkt[30] = burstType
-
-	// Byte 31: Length
-	if burstType == 0x01 || burstType == 0x02 {
-		pkt[31] = 0x16 // 22 bytes follow
-	} else {
-		pkt[31] = 0x19 // 25 bytes follow
+		u.Info |= 0x40
+		u.RTP.PayloadType = 0x5E
 	}
 
-	// Byte 32: Unknown
-	pkt[32] = 0x06
-
-	// Bytes 33-51: AMBE data (19 bytes of silence)
-	// Leave as zeros for test purposes
-
-	// For voice header/term: bytes 38-49 are LC data (12 bytes)
-	if burstType == 0x01 || burstType == 0x02 {
-		// FLCO
-		if groupCall {
-			pkt[38] = 0x00 // Group voice
-		} else {
-			pkt[38] = 0x03 // Unit to unit
+	var raw layer2.RawBurst
+	var err error
+	if burstType == ipscwire.BurstVoice {
+		raw, err = layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{}, enums.VoiceBurstA, pdu.EmbeddedSignalling{}, [4]byte{}, layer2.SyncSourceMS)
+		if err == nil {
+			err = u.SetRawBurst(raw, layer2.KindVoice, enums.VoiceBurstA, 0)
 		}
-		pkt[39] = 0x00
-		pkt[40] = 0x20 // Service options
-		// Destination (bytes 41-43)
-		pkt[41] = byte(dst >> 16)
-		pkt[42] = byte(dst >> 8)
-		pkt[43] = byte(dst)
-		// Source (bytes 44-46)
-		pkt[44] = byte(src >> 16)
-		pkt[45] = byte(src >> 8)
-		pkt[46] = byte(src)
+	} else {
+		dt := enums.DataType(burstType)
+		var lc pdu.LCBytes
+		var cw [12]byte
+		lc, err = pdu.NewVoiceLCBytes(groupCall, uint32(dst), uint32(src), layer3.MotorolaServiceOptions())
+		if err == nil {
+			cw, err = lc.Codeword(dt)
+		}
+		if err == nil {
+			raw, err = layer2.BuildDataBurst(cw, dt, 1, layer2.SyncSourceMS)
+		}
+		if err == nil {
+			err = u.SetRawBurst(raw, layer2.KindData, enums.VoiceBurstUnknown, dt)
+		}
 	}
-
+	if err != nil {
+		return nil
+	}
+	pkt, err := u.AppendBinary(nil)
+	if err != nil {
+		return nil
+	}
 	return pkt
 }

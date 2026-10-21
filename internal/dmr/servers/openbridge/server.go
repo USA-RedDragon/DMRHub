@@ -177,11 +177,14 @@ func (s *Server) listen(ctx context.Context) {
 			slog.Error("Error closing pubsub", "error", err)
 		}
 	}()
+	// The Redis subscription makes a new channel and goroutine on each
+	// Channel call, so read from one.
+	channel := subscription.Channel()
 	for {
 		select {
 		case <-s.done:
 			return
-		case msg, ok := <-subscription.Channel():
+		case msg, ok := <-channel:
 			if !ok {
 				return
 			}

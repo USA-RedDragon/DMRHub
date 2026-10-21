@@ -233,7 +233,7 @@ func (c *IPSCClient) Close() {
 		close(c.done)
 		if c.conn != nil {
 			c.mu.Lock()
-			c.run(c.peer.Close(time.Since(c.start), make([]session.Output, 0, c.peer.MaxOutputs())))
+			c.run(c.peer.Close(make([]session.Output, 0, c.peer.MaxOutputs())))
 			c.mu.Unlock()
 			_ = c.conn.Close()
 		}
@@ -289,7 +289,7 @@ func (c *IPSCClient) rx() {
 		copy(addr.IP[:], from.IP.To4())
 		addr.Port = uint16(from.Port) //nolint:gosec // a UDP port fits
 		c.mu.Lock()
-		c.run(c.peer.Packet(time.Since(c.start), addr, buf[:n], make([]session.Output, 0, c.peer.MaxOutputs())))
+		c.run(c.peer.Packet(addr, buf[:n], make([]session.Output, 0, c.peer.MaxOutputs())))
 		c.mu.Unlock()
 	}
 }

@@ -186,7 +186,7 @@ func (p *SessionPeer) Close() {
 	p.stopOnce.Do(func() {
 		p.mu.Lock()
 		var buf [session.MaxOutputs]session.Output
-		p.run(p.peer.Close(time.Since(p.start), buf[:0]))
+		p.run(p.peer.Close(buf[:0]))
 		p.mu.Unlock()
 		close(p.done)
 		_ = p.conn.Close()

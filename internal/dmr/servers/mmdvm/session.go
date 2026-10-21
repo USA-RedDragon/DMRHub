@@ -137,7 +137,7 @@ func (s *Server) closeSessions(ctx context.Context) {
 	now := s.now()
 	for _, l := range s.links {
 		var buf [session.MaxOutputs]session.Output
-		s.run(ctx, now, l, l.m.Close(now, buf[:0]))
+		s.run(ctx, now, l, l.m.Close(buf[:0]))
 	}
 	clear(s.links)
 }
@@ -155,7 +155,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []sess
 	for _, o := range out {
 		if o.Kind == session.OutputConfig && !s.takeConfig(ctx, l, o.Packet) {
 			var buf [session.MaxOutputs]session.Output
-			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+			s.run(ctx, now, l, l.m.Refuse(buf[:0]))
 			return
 		}
 	}
@@ -199,17 +199,17 @@ func (s *Server) login(ctx context.Context, now time.Duration, l *link, id uint3
 	password, err := s.password(uint(id))
 	if err != nil {
 		slog.Debug("Refusing login", "repeaterID", id, "remoteAddr", l.addr.String(), "error", err)
-		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		s.run(ctx, now, l, l.m.Refuse(buf[:0]))
 		return
 	}
 	salt, err := s.salt()
 	if err != nil {
 		slog.Error("Error generating random salt", "error", err)
-		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		s.run(ctx, now, l, l.m.Refuse(buf[:0]))
 		return
 	}
 	slog.Debug("Login from Repeater ID", "repeaterID", id)
-	s.run(ctx, now, l, l.m.Admit(now, salt, []byte(password), buf[:0]))
+	s.run(ctx, now, l, l.m.Admit(salt, []byte(password), buf[:0]))
 }
 
 var errNoPassword = errors.New("repeater has no password")

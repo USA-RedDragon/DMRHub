@@ -247,8 +247,8 @@ func TestKeylessPeer(t *testing.T) {
 	if err != nil || len(r) != 16 {
 		t.Fatalf("reply %x: %v", r, err)
 	}
-	if !c.Flags.Has(ipscwire.FlagMasterPeer) {
-		t.Fatal("the reply should come from the master")
+	if c.Flags.Has(ipscwire.FlagAuth) {
+		t.Fatal("a keyless peer should get no auth flag")
 	}
 }
 

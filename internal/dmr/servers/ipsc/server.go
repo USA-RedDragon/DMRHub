@@ -97,13 +97,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		done:       make(chan struct{}),
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 	}
-	var flags ipscwire.Flags
-	flags.Set(ipscwire.FlagVoice, true)
-	flags.Set(ipscwire.FlagData, true)
-	// The Master sets FlagAuth only with a system key. Peers here have keys
-	// of their own, and the master of the XPR 8400 capture sends the flag.
-	flags.Set(ipscwire.FlagAuth, true)
-	m, err := session.NewMaster(&session.MasterConfig{ID: s.localID, Flags: flags, MaxPeers: session.MaxPeersLimit})
+	m, err := session.NewMaster(&session.MasterConfig{ID: s.localID, MaxPeers: session.MaxPeersLimit})
 	if err != nil {
 		slog.Error("error creating IPSC session", "error", err)
 	} else {

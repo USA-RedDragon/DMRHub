@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -70,6 +71,7 @@ func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []mod
 	} else {
 		serverType = p.Type
 	}
+	packets = parrotReply(packets, enums.ColorCode(p.ColorCode&0xF))
 
 	// Track whether we've lost ownership so we don't keep checking KV after
 	// the peer has definitively migrated away.

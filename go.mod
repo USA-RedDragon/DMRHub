@@ -141,4 +141,4 @@ require (
 
 tool github.com/USA-RedDragon/configulator/v2/cmd/configulator
 
-replace github.com/USA-RedDragon/dmrgo/v2 => /home/reddragon/Projects/dmrgo/v2
+replace github.com/USA-RedDragon/dmrgo/v2 => /home/reddragon/Projects/dmrgo/.claude/worktrees/rx-pareto/.claude/wt-netsm/v2

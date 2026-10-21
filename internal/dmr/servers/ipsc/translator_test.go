@@ -20,6 +20,7 @@
 package ipsc
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 	"time"
@@ -294,7 +295,43 @@ func makeTestIPSCPacket(packetType byte, burstType byte, groupCall, slot bool) [
 	// Burst type (byte 30)
 	buf[30] = burstType
 
+	// A BPTC(196,96) payload of 12 octets, as an XPR 8400 sends it
+	buf[33] = 0x0A
+	buf[34] = 0x80
+	buf[35] = 0x0A
+	buf[37] = 0x60
+
 	return buf
+}
+
+// ipscVoiceTestPacket returns IPSC voice burst idx (0 to 5 for A to F,
+// wrapping) of the call that header starts, in the layout and with the RTP
+// sequence number an XPR 8400 sends it.
+func ipscVoiceTestPacket(header []byte, callControl uint32, idx int) []byte {
+	var data []byte
+	switch idx % 6 {
+	case 0:
+		data = make([]byte, 52)
+		data[31], data[32] = 0x14, 0x40
+	case 4:
+		data = make([]byte, 66)
+		data[31], data[32] = 0x22, 0x16
+	default:
+		data = make([]byte, 57)
+		data[31], data[32] = 0x19, 0x06
+	}
+	copy(data[:30], header[:30])
+	binary.BigEndian.PutUint32(data[13:17], callControl)
+	binary.BigEndian.PutUint16(data[20:22], uint16(idx+1)) //nolint:gosec // idx is small
+	data[30] = ipscBurstSlot1
+	if header[17]&0x20 != 0 {
+		data[30] = ipscBurstSlot2
+	}
+	// The EMB of bursts B to F: CC 1 and the LCSS of the position
+	if emb := [6]byte{0, 0x12, 0x16, 0x16, 0x14, 0x10}[idx%6]; emb != 0 {
+		data[len(data)-1] = emb
+	}
+	return data
 }
 
 func TestTranslateToMMDVMVoiceHeader(t *testing.T) {
@@ -667,8 +704,13 @@ func TestBuildVoiceBurstE(t *testing.T) {
 	burstE := makeTestMMDVMPacket(true, false, dmrconst.FrameVoice, 4)
 	burstE.StreamID = header.StreamID
 	burstE.DMRData = makeVoiceDMRData(false)
-	burstE.Src = 0x112233
-	burstE.Dst = 0x445566
+	var emb pdu.EmbeddedSignalling
+	emb.ColorCode, emb.LCSS = 7, enums.LCSSLastFragment
+	built, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{}, enums.VoiceBurstE, emb, [4]byte{}, layer2.SyncSourceMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	burstE.DMRData = built
 
 	result := tr.TranslateToIPSC(burstE)
 	if len(result) != 1 {
@@ -690,21 +732,14 @@ func TestBuildVoiceBurstE(t *testing.T) {
 		t.Fatalf("expected unknown field 0x16 for burst E, got 0x%02X", result[0][32])
 	}
 
-	// Check that dst is repeated at bytes 59-61
-	dstRepeated := uint(result[0][59])<<16 | uint(result[0][60])<<8 | uint(result[0][61])
-	if dstRepeated != 0x445566 {
-		t.Fatalf("expected dst 0x445566 at bytes 59-61, got 0x%06X", dstRepeated)
+	// Bytes 56-64 carry the Full LC of the call: group voice, dst, src
+	if lc := result[0][56:65]; lc[0] != 0x00 || !bytes.Equal(lc[3:9], []byte{0, 0, 200, 0, 0, 100}) {
+		t.Fatalf("expected the call LC at bytes 56-64, got % X", lc)
 	}
 
-	// Check that src is repeated at bytes 62-64
-	srcRepeated := uint(result[0][62])<<16 | uint(result[0][63])<<8 | uint(result[0][64])
-	if srcRepeated != 0x112233 {
-		t.Fatalf("expected src 0x112233 at bytes 62-64, got 0x%06X", srcRepeated)
-	}
-
-	// Trailer byte
-	if result[0][65] != 0x14 {
-		t.Fatalf("expected trailer byte 0x14, got 0x%02X", result[0][65])
+	// Byte 65 is the EMB of the burst: CC 7, last fragment
+	if result[0][65] != 0x74 {
+		t.Fatalf("expected EMB 0x74, got 0x%02X", result[0][65])
 	}
 }
 
@@ -772,12 +807,7 @@ func TestBuildMMDVMVoiceBurstFromSlot1(t *testing.T) {
 	tr.TranslateToMMDVM(0x80, header)
 
 	// Build an IPSC voice burst (slot1 = burst A, 52 bytes)
-	burstData := make([]byte, 52)
-	copy(burstData[:18], header[:18]) // reuse IPSC header
-	burstData[30] = ipscBurstSlot1
-	burstData[31] = 0x14
-	burstData[32] = 0x40
-	// AMBE data at bytes 33-51 (19 bytes, zeros = silence)
+	burstData := ipscVoiceTestPacket(header, 0xAAAA, 0)
 
 	result := tr.TranslateToMMDVM(0x80, burstData)
 	if len(result) != 1 {
@@ -820,12 +850,7 @@ func TestBuildMMDVMVoiceBurstSequencing(t *testing.T) {
 
 	// Send 3 voice bursts and verify sequencing
 	for i := 0; i < 3; i++ {
-		burstData := make([]byte, 52)
-		copy(burstData[:18], header[:18])
-		binary.BigEndian.PutUint32(burstData[13:17], 0xEEEE)
-		burstData[30] = ipscBurstSlot1
-		burstData[31] = 0x14
-		burstData[32] = 0x40
+		burstData := ipscVoiceTestPacket(header, 0xEEEE, i)
 
 		result := tr.TranslateToMMDVM(0x80, burstData)
 		if len(result) != 1 {
@@ -862,12 +887,7 @@ func TestBuildMMDVMVoiceBurstWrapsAt6(t *testing.T) {
 
 	// Send 7 voice bursts — the 7th should wrap to burstIndex 0 (voice sync again)
 	for i := 0; i < 7; i++ {
-		burstData := make([]byte, 52)
-		copy(burstData[:18], header[:18])
-		binary.BigEndian.PutUint32(burstData[13:17], 0xFFFF)
-		burstData[30] = ipscBurstSlot1
-		burstData[31] = 0x14
-		burstData[32] = 0x40
+		burstData := ipscVoiceTestPacket(header, 0xFFFF, i)
 
 		result := tr.TranslateToMMDVM(0x80, burstData)
 		if len(result) != 1 {
@@ -891,12 +911,7 @@ func TestBuildMMDVMVoiceBurstSlot2(t *testing.T) {
 	binary.BigEndian.PutUint32(header[13:17], 0x1111)
 	tr.TranslateToMMDVM(0x80, header)
 
-	burstData := make([]byte, 52)
-	copy(burstData[:18], header[:18])
-	binary.BigEndian.PutUint32(burstData[13:17], 0x1111)
-	burstData[30] = ipscBurstSlot2
-	burstData[31] = 0x14
-	burstData[32] = 0x40
+	burstData := ipscVoiceTestPacket(header, 0x1111, 0)
 
 	result := tr.TranslateToMMDVM(0x80, burstData)
 	if len(result) != 1 {
@@ -936,12 +951,7 @@ func TestBuildMMDVMVoiceBurstPrivateCall(t *testing.T) {
 	binary.BigEndian.PutUint32(header[13:17], 0x3333)
 	tr.TranslateToMMDVM(0x81, header)
 
-	burstData := make([]byte, 52)
-	copy(burstData[:18], header[:18])
-	binary.BigEndian.PutUint32(burstData[13:17], 0x3333)
-	burstData[30] = ipscBurstSlot1
-	burstData[31] = 0x14
-	burstData[32] = 0x40
+	burstData := ipscVoiceTestPacket(header, 0x3333, 0)
 
 	result := tr.TranslateToMMDVM(0x81, burstData)
 	if len(result) != 1 {
@@ -949,70 +959,6 @@ func TestBuildMMDVMVoiceBurstPrivateCall(t *testing.T) {
 	}
 	if result[0].GroupCall {
 		t.Fatal("expected GroupCall=false for private call voice burst")
-	}
-}
-
-func TestEmbeddedFragment(t *testing.T) {
-	t.Parallel()
-	frag := []byte{0xAB, 0xCD, 0xEF, 0x12}
-	for _, n := range []int{57, 66} {
-		ipscData := make([]byte, n)
-		copy(ipscData[52:56], frag)
-		if got := embeddedFragment(ipscData); got != [4]byte(frag) {
-			t.Fatalf("%d-byte packet: embedded data % X, want % X", n, got, frag)
-		}
-	}
-	// A 52-byte packet doesn't match 57 or 66, so no embedded data is extracted
-	if got := embeddedFragment(make([]byte, 52)); got != [4]byte{} {
-		t.Fatalf("52-byte packet: embedded data % X, want zero", got)
-	}
-}
-
-// TestBuildMMDVMVoiceBurstLCSS checks the EMB of a translated superframe.
-// The embedded LC fills bursts B-E; burst F carries Single fragment
-// signalling (TS 102 361-1 clause 7.1.3), not Continuation.
-func TestBuildMMDVMVoiceBurstLCSS(t *testing.T) {
-	t.Parallel()
-	tr := newTestTranslator(t)
-	header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
-	tr.TranslateToMMDVM(0x80, header)
-
-	want := []enums.LCSS{
-		enums.LCSSFirstFragment, enums.LCSSContinuationFragment, enums.LCSSContinuationFragment,
-		enums.LCSSLastFragment, enums.LCSSSingleFragment,
-	}
-	for i := 0; i < 6; i++ {
-		n := 57
-		switch i {
-		case 0:
-			n = 52
-		case 4:
-			n = 66
-		}
-		burstData := make([]byte, n)
-		copy(burstData[:18], header[:18])
-		burstData[30] = ipscBurstSlot1
-		frag := [4]byte{0x10, 0x20, 0x30, byte(i)}
-		if n > 52 {
-			copy(burstData[52:56], frag[:])
-		}
-		out := tr.TranslateToMMDVM(0x80, burstData)
-		if len(out) != 1 {
-			t.Fatalf("burst %d: expected 1 packet, got %d", i, len(out))
-		}
-		raw := layer2.RawBurst(out[0].DMRData)
-		if i == 0 {
-			if p, d := raw.Sync(); p != enums.SyncMSSourcedVoice || d != 0 {
-				t.Fatalf("burst A: SYNC %s distance %d", p, d)
-			}
-			continue
-		}
-		if got := raw.EMB().LCSS; got != want[i-1] {
-			t.Errorf("burst %d: LCSS %s, want %s", i, got, want[i-1])
-		}
-		if got := raw.EmbeddedData(); got != frag {
-			t.Errorf("burst %d: embedded data % X, want % X", i, got, frag)
-		}
 	}
 }
 

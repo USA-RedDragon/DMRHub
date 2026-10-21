@@ -313,6 +313,7 @@ func TestTranslateToMMDVMShortPacketGetsParity(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
 	data := makeTestIPSCPacket(0x80, ipscBurstVoiceTerm, true, false)[:40]
+	data[37] = 0 // no payload
 	out := tr.TranslateToMMDVM(0x80, data)
 	if len(out) != 1 {
 		t.Fatalf("expected 1 packet, got %d", len(out))

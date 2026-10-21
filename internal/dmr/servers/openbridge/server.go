@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -34,7 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -59,6 +60,58 @@ type Server struct {
 	wg        sync.WaitGroup
 	done      chan struct{}
 	stopOnce  sync.Once
+
+	bridgesMu sync.Mutex
+	bridges   map[uint]*bridge
+	epoch     time.Time
+}
+
+// bridge is the OpenBridge link of one peer, for the passphrase it was made
+// with.
+type bridge struct {
+	mu       sync.Mutex
+	password string
+	b        *session.Bridge
+}
+
+func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
+	s.bridgesMu.Lock()
+	defer s.bridgesMu.Unlock()
+	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password {
+		return b, nil
+	}
+	sb, err := session.NewBridge(&session.BridgeConfig{Key: []byte(peer.Password)})
+	if err != nil {
+		return nil, fmt.Errorf("failed to make OpenBridge link: %w", err)
+	}
+	if s.bridges == nil {
+		s.bridges = map[uint]*bridge{}
+	}
+	b := &bridge{password: peer.Password, b: sb}
+	s.bridges[peer.ID] = b
+	return b, nil
+}
+
+// verified reports whether data is a DMRD packet with a good signature.
+func (b *bridge) verified(now time.Duration, data []byte) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var buf [session.MaxOutputs]session.Output
+	for _, o := range b.b.Packet(now, data, buf[:0]) {
+		if o.Kind == session.OutputData && o.Command == dmrd.CommandDMRD {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *bridge) sign(p []byte) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.b.Sign(p); err != nil {
+		return fmt.Errorf("failed to sign OpenBridge packet: %w", err)
+	}
+	return nil
 }
 
 // MakeServer creates a new DMR server.
@@ -90,6 +143,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		pubsub:        pubsub,
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		done:          make(chan struct{}),
+		epoch:         time.Now(),
 	}, nil
 }
 
@@ -242,7 +296,12 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 		slog.Error("Error encoding OpenBridge packet", "error", err)
 		return
 	}
-	if err := auth.NewBridge([]byte(peer.Password)).Sign(outbound); err != nil {
+	b, err := s.bridgeFor(peer)
+	if err != nil {
+		slog.Error("Error making OpenBridge link", "peerID", peerID, "error", err)
+		return
+	}
+	if err := b.sign(outbound); err != nil {
 		slog.Error("Error signing outbound OpenBridge packet", "error", err)
 		return
 	}
@@ -254,17 +313,6 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 	if err != nil {
 		slog.Error("Error sending packet", "error", err)
 	}
-}
-
-func (s *Server) validateHMAC(ctx context.Context, data []byte, peer models.Peer) bool {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "Server.validateHMAC")
-	defer span.End()
-
-	if !auth.NewBridge([]byte(peer.Password)).Verify(data) {
-		slog.Error("Invalid OpenBridge HMAC")
-		return false
-	}
-	return true
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
@@ -311,7 +359,12 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	if !s.validateHMAC(ctx, data, peer) {
+	b, err := s.bridgeFor(peer)
+	if err != nil {
+		slog.Error("Error making OpenBridge link", "peerID", peerID, "error", err)
+		return
+	}
+	if !b.verified(time.Since(s.epoch), data) {
 		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
 		return
 	}

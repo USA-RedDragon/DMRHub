@@ -25,7 +25,6 @@ import (
 	"crypto/sha1" //nolint:gosec
 	"encoding/hex"
 	"fmt"
-	"net"
 	"testing"
 )
 
@@ -48,24 +47,14 @@ var xprControlGolden = []struct {
 func TestXPRControlGolden(t *testing.T) {
 	t.Parallel()
 	s, srvAddr := newTestServerWithUDP(t)
-	client, err := net.DialUDP("udp", nil, srvAddr)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer func() { _ = client.Close() }()
-	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		t.Fatal("expected *net.UDPAddr from LocalAddr")
-	}
-	preRegisterTestPeer(s, 0x0004CE2E)
-	s.peers[0x0004CE2E].RegistrationStatus = false
+	client, clientAddr := dialServer(t, srvAddr)
 
 	for _, tc := range xprControlGolden {
 		if tc.name == "peer list" {
 			tc.reply = fmt.Sprintf("%s%04x6a", tc.reply[:len(tc.reply)-6], clientAddr.Port)
 		}
 		req := signTestPacket(t, mustDecodeHex(t, tc.request))
-		if _, err := s.handlePacket(context.Background(), req, clientAddr); err != nil {
+		if err := s.handlePacket(context.Background(), req, clientAddr); err != nil {
 			t.Fatalf("%s: handlePacket: %v", tc.name, err)
 		}
 		if tc.reply == "" {

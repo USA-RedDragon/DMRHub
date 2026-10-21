@@ -32,7 +32,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
 	"go.opentelemetry.io/otel"
 )
@@ -375,10 +374,7 @@ func (s *Server) ping(ctx context.Context, l *link) {
 
 // resume takes over the session of a repeater that logged in to another
 // DMRHub replica from the same address, as the KV store records it, so
-// that a rolling restart does not make the repeater log in again. The
-// session machine has no way to start in a logged-in state, so resume
-// plays a login with salt 0 and an empty password into it and drops what
-// it answers.
+// that a rolling restart does not make the repeater log in again.
 func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte, command dmrd.Command) {
 	id, ok := repeaterOf(data, command)
 	if !ok {
@@ -389,32 +385,9 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port {
 		return
 	}
-	token, err := auth.Token(dmrd.DialectMMDVM, 0, nil)
-	if err != nil {
-		return
-	}
-	var cfg dmrd.Config
-	cfg.Reset()
-	cfg.SetID(id)
-	rptl, err := dmrd.Control{Command: dmrd.CommandRPTL, ID: id}.AppendBinary(nil, dmrd.DialectMMDVM)
-	if err != nil {
-		return
-	}
-	rptk, err := dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token}.AppendBinary(nil, dmrd.DialectMMDVM)
-	if err != nil {
-		return
-	}
+	slog.Info("Resuming repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
 	var buf [session.MaxOutputs]session.Output
-	l.m.Packet(now, rptl, buf[:0])
-	l.m.Admit(now, 0, nil, buf[:0])
-	l.m.Packet(now, rptk, buf[:0])
-	l.m.Packet(now, cfg[:], buf[:0])
-	if l.m.State() != session.StateRunning {
-		l.m.Reset()
-		return
-	}
-	slog.Info("Resumed repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
-	s.up(ctx, l, id)
+	s.run(ctx, now, l, l.m.Resume(now, id, buf[:0]))
 }
 
 func repeaterOf(data []byte, command dmrd.Command) (uint32, bool) {

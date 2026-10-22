@@ -36,6 +36,7 @@ const props = withDefaults(
     pageSize?: number
     pageCount?: number
     manualPagination?: boolean
+    summary?: string
   }>(),
   {
     loading: false,
@@ -45,6 +46,7 @@ const props = withDefaults(
     pageSize: 30,
     pageCount: -1,
     manualPagination: false,
+    summary: "",
   },
 )
 
@@ -141,6 +143,6 @@ const visibleRows = computed(() => {
       </TableBody>
     </Table>
 
-    <DataTablePagination :table="table" />
+    <DataTablePagination :table="table" :summary="summary" />
   </div>
 </template>

@@ -76,6 +76,16 @@
               <Antenna class="h-4 w-4" />
               Repeaters
             </router-link>
+            <router-link
+              v-if="userStore.loggedIn"
+              to="/messages"
+              class="mobile-nav-link"
+              :class="{ active: route.path === '/messages' }"
+              @click="mobileOpen = false"
+            >
+              <Mail class="h-4 w-4" />
+              Messages
+            </router-link>
 
             <!-- Talkgroups link (anon) -->
             <template v-if="!userStore.loggedIn">
@@ -360,6 +370,15 @@
           </DropdownMenuRoot>
         </div>
 
+        <router-link
+          v-if="userStore.loggedIn"
+          to="/messages"
+          class="desktop-nav-link"
+          :class="{ active: route.path === '/messages' }"
+        >
+          Messages
+        </router-link>
+
         <!-- OpenBridge Peers -->
         <router-link
           v-if="settingsStore.openBridgeEnabled"
@@ -512,6 +531,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  Mail,
   Menu,
   MessageSquare,
   Radio,

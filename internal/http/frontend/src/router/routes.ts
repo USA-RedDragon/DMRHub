@@ -88,6 +88,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/auth/RegisterPage.vue'),
     },
     {
+      path: '/messages',
+      name: 'Messages',
+      component: () => import('@/views/messages/MessagesPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'Settings',
       component: () => import('@/views/users/SettingsPage.vue'),

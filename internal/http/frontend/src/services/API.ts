@@ -42,6 +42,7 @@ instance.interceptors.response.use(
       window.location.pathname !== '/lastheard' &&
       window.location.pathname !== '/register' &&
       window.location.pathname !== '/settings' &&
+      window.location.pathname !== '/messages' &&
       (status === 401 || status === 403)
     ) {
       window.location.pathname = '/login';

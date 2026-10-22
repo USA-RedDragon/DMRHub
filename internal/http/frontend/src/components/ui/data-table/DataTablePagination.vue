@@ -4,14 +4,16 @@ import { Button as ShadButton } from "@/components/ui/button"
 
 defineProps<{
   table: Table<TData>
+  summary?: string
 }>()
 </script>
 
 <template>
-  <div class="flex items-center justify-between gap-2">
+  <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="text-sm text-muted-foreground">
       Page {{ table.getState().pagination.pageIndex + 1 }}
       <span v-if="table.getPageCount() > 0">of {{ table.getPageCount() }}</span>
+      <span v-if="summary"> · {{ summary }}</span>
     </div>
     <div class="flex items-center gap-2">
       <ShadButton

@@ -76,6 +76,58 @@ func TestOpenBridgeInboundPeerToLocalRepeater(t *testing.T) {
 	})
 }
 
+// TestOpenBridgeInboundKeepsStreamOrder sends one call from an OpenBridge
+// peer with no gap between packets. The local repeater must get the packets
+// in the order the peer sent them.
+func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeerRule(t, 500001, true, 1, 1)
+		stack.StartServers(t)
+
+		mc := testutils.NewMMDVMClient(100001, "", testPassword)
+		defer mc.Close()
+		require.NoError(t, mc.Connect(stack.MMDVMAddr))
+		require.NoError(t, mc.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+
+		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		defer obc.Close()
+		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
+
+		const count = 40
+		want := make([]uint, 0, count)
+		for i := range count {
+			pkt := makeGroupVoicePacket(1000001, 1, 7101, false)
+			pkt.Seq = uint(i)
+			pkt.Repeater = 500001
+			pkt.DTypeOrVSeq = uint(i % 6)
+			if i%6 == 0 {
+				pkt.FrameType = dmrconst.FrameVoiceSync
+			}
+			require.NoError(t, obc.SendRawPacket(pkt))
+			want = append(want, pkt.Seq)
+		}
+
+		got := make([]uint, 0, count)
+		deadline := time.After(10 * time.Second)
+		for len(got) < count {
+			select {
+			case p := <-mc.ReceivedPackets():
+				got = append(got, p.Seq)
+			case <-deadline:
+				t.Fatalf("got %d of %d packets: %v", len(got), count, got)
+			}
+		}
+		assert.Equal(t, want, got)
+	})
+}
+
 // TestOpenBridgeOutboundLocalRepeaterToPeer verifies that an MMDVM repeater
 // sending a group call delivers the packet to an OpenBridge peer with a
 // matching egress rule, including a valid HMAC.

@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
@@ -44,6 +45,11 @@ import (
 const packetLength = 73
 const largestMessageSize = 73
 const bufferSize = 1000000 // 1MB
+
+const (
+	ingressWorkers   = 8
+	ingressQueueSize = 500
+)
 
 // OpenBridge is the same as HBRP, but with a single packet type.
 type Server struct {
@@ -57,6 +63,7 @@ type Server struct {
 	hub    *hub.Hub
 
 	hubHandle *hub.ServerHandle
+	ingress   *streamorder.Queue
 	wg        sync.WaitGroup
 	done      chan struct{}
 	stopOnce  sync.Once
@@ -160,6 +167,8 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
+	s.ingress = streamorder.New(ingressWorkers, ingressQueueSize, s.done)
+
 	s.wg.Add(3)
 	go s.listen(ctx)
 	go s.consumeHubPackets(ctx)
@@ -180,22 +189,19 @@ func (s *Server) Start(ctx context.Context) error {
 			// Copy the buffer data since s.Buffer will be reused for the next read
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
-			go func() {
-				p := models.RawDMRPacket{
-					Data:       data,
-					RemoteIP:   remoteaddr.IP.String(),
-					RemotePort: remoteaddr.Port,
-				}
-				packedBytes, err := p.MarshalMsg(nil)
-				if err != nil {
-					slog.Error("Error marshalling packet", "error", err)
-					return
-				}
-				if err := s.pubsub.Publish("openbridge:incoming", packedBytes); err != nil {
-					slog.Error("Error publishing packet to openbridge:incoming", "error", err)
-					return
-				}
-			}()
+			p := models.RawDMRPacket{
+				Data:       data,
+				RemoteIP:   remoteaddr.IP.String(),
+				RemotePort: remoteaddr.Port,
+			}
+			packedBytes, err := p.MarshalMsg(nil)
+			if err != nil {
+				slog.Error("Error marshalling packet", "error", err)
+				continue
+			}
+			if err := s.pubsub.Publish("openbridge:incoming", packedBytes); err != nil {
+				slog.Error("Error publishing packet to openbridge:incoming", "error", err)
+			}
 		}
 	}()
 
@@ -248,10 +254,11 @@ func (s *Server) listen(ctx context.Context) {
 				slog.Error("Error unmarshalling packet", "error", err)
 				continue
 			}
-			go s.handlePacket(ctx, &net.UDPAddr{
+			addr := &net.UDPAddr{
 				IP:   net.ParseIP(packet.RemoteIP),
 				Port: packet.RemotePort,
-			}, packet.Data)
+			}
+			s.ingress.Do(ctx, streamOf(packet.Data), func() { s.handlePacket(ctx, addr, packet.Data) })
 		}
 	}
 }
@@ -313,6 +320,14 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 	if err != nil {
 		slog.Error("Error sending packet", "error", err)
 	}
+}
+
+func streamOf(data []byte) uint {
+	b, err := dmrd.DecodeBridge(data)
+	if err != nil {
+		return 0
+	}
+	return uint(b.Data.Stream)
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {

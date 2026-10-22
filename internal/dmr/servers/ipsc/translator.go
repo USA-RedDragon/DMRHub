@@ -473,22 +473,23 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	}
 
 	var results []models.Packet
+	dt, isData := u.Burst.DataType()
 	switch {
 	case u.IsVoice():
 		results = t.voiceToMMDVM(&u, base, rss)
-	case u.Burst == ipscwire.BurstRaw:
+	case u.Burst.Type() == ipscwire.BurstRaw:
 		// An undecodable block is not relayed.
 		slog.Debug("IPSCTranslator: dropping undecodable IPSC data block")
-	case u.Burst == ipscwire.BurstSyncLost:
+	case u.Burst.Type() == ipscwire.BurstSyncLost:
 		t.events = rss.rx.Lost(time.Since(t.epoch), t.events[:0])
-	case byte(u.Burst) <= byte(enums.DataTypeIdle):
-		results = t.dataToMMDVM(&u, base, rss)
+	case isData:
+		results = t.dataToMMDVM(&u, dt, base, rss)
 	default:
 		slog.Debug("IPSCTranslator: unknown IPSC burst type", "burstType", u.Burst)
 		return nil
 	}
 
-	if u.Info.End() || byte(u.Burst) == ipscBurstVoiceTerm {
+	if u.Info.End() || (isData && dt == enums.DataTypeTerminatorWithLC) {
 		delete(t.reverseStreams, u.CallControl)
 	}
 
@@ -498,8 +499,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 // dataToMMDVM builds the MMDVM packet of an IPSC voice header, terminator
 // or data burst. Only the first of the voice headers that IPSC repeats goes
 // out.
-func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, base models.Packet, rss *reverseStreamState) []models.Packet {
-	dt := enums.DataType(u.Burst)
+func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base models.Packet, rss *reverseStreamState) []models.Packet {
 	if dt.CarriesFullLC() && !fixFullLC(u, dt, base.GroupCall) {
 		return nil
 	}

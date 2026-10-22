@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
+	"github.com/USA-RedDragon/dmrgo/v2/voice"
 )
 
 func newTestTranslator(t *testing.T) *IPSCTranslator {
@@ -919,6 +920,35 @@ func TestBuildMMDVMVoiceBurstSlot2(t *testing.T) {
 	}
 	if !result[0].Slot {
 		t.Fatal("expected Slot=true for TS2 voice burst")
+	}
+}
+
+func TestBuildMMDVMVoiceBurstSyncLost(t *testing.T) {
+	t.Parallel()
+	for _, slot2 := range []bool{false, true} {
+		tr := newTestTranslator(t)
+		header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, slot2)
+		binary.BigEndian.PutUint32(header[13:17], 0x2222)
+		tr.TranslateToMMDVM(0x80, header)
+		for i := range 2 {
+			if got := tr.TranslateToMMDVM(0x80, ipscVoiceTestPacket(header, 0x2222, i)); len(got) != 1 {
+				t.Fatalf("slot 2 %v, burst %d: %d packets, want 1", slot2, i, len(got))
+			}
+		}
+		// A BurstSyncLost packet has no body, as an XPR 8400 sends it
+		lost := ipscVoiceTestPacket(header, 0x2222, 2)[:34]
+		lost[30], lost[31], lost[32], lost[33] = 0x13, 0x80, 0, 0
+		if slot2 {
+			lost[30] |= 0x80
+		}
+		rss := tr.reverseStreams[0x2222]
+		if rss == nil || rss.rx.State() == voice.StateIdle {
+			t.Fatalf("slot 2 %v: no call before the lost burst", slot2)
+		}
+		tr.TranslateToMMDVM(0x80, lost)
+		if s := rss.rx.State(); s != voice.StateIdle {
+			t.Fatalf("slot 2 %v: receiver state %v after the lost burst, want idle", slot2, s)
+		}
 	}
 }
 

@@ -359,7 +359,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	}
 
 	d := pkt.Data()
-	pos := d.Hint().VoiceBurst
+	pos := d.Hint(0).VoiceBurst
 	if _, ok := pos.Index(); !ok {
 		pos, _ = enums.VoiceBurstAt(ss.burstIndex % 6)
 	}
@@ -508,7 +508,8 @@ func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base m
 		slog.Debug("IPSCTranslator: cannot build data burst", "dtype", dt, "error", err)
 		return nil
 	}
-	t.events = rss.rx.Burst(time.Since(t.epoch), &raw, u.Hint(), t.events[:0])
+	now := time.Since(t.epoch)
+	t.events = rss.rx.Burst(now, &raw, u.Hint(now), t.events[:0])
 
 	if dt == enums.DataTypeVoiceLCHeader {
 		if rss.started {
@@ -573,7 +574,8 @@ func (t *IPSCTranslator) voiceToMMDVM(u *ipscwire.User, base models.Packet, rss 
 		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
 		return nil
 	}
-	t.events = rss.rx.Burst(time.Since(t.epoch), &raw, u.Hint(), t.events[:0])
+	now := time.Since(t.epoch)
+	t.events = rss.rx.Burst(now, &raw, u.Hint(now), t.events[:0])
 
 	var results []models.Packet
 	for i := range t.events {

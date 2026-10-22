@@ -126,7 +126,8 @@ func parrotVoiceSlots(packets []models.Packet) [][9]byte {
 		pkt := packets[i]
 		d := pkt.Data()
 		raw := d.Burst
-		events = rx.Burst(time.Duration(i)*burstTime, &raw, d.Hint(), events[:0])
+		now := time.Duration(i) * burstTime
+		events = rx.Burst(now, &raw, d.Hint(now), events[:0])
 		for j := range events {
 			if events[j].Kind == voice.EventVoice {
 				s := events[j].Burst.VoiceSlots()

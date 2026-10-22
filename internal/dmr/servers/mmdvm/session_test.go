@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
@@ -94,4 +95,95 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	s.epoch = s.epoch.Add(-2 * time.Second)
 	s.tick(context.Background())
 	require.Empty(t, s.links, "the half-open login should end after LoginTimeout")
+}
+
+func TestConfigAcceptOrRefuse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		forget bool
+		want   dmrd.Command
+	}{
+		{name: "accepted", want: dmrd.CommandRPTACK},
+		{name: "refused", forget: true, want: dmrd.CommandMSTNAK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			const id = 311861
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			require.NoError(t, err)
+			cfg.Database.Database = ""
+			cfg.Database.ExtraParameters = []string{}
+			database, err := db.MakeDB(&cfg)
+			require.NoError(t, err)
+			kvStore, err := kv.MakeKV(context.Background(), &cfg)
+			require.NoError(t, err)
+			require.NoError(t, database.Create(&models.Repeater{
+				RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
+				Type:                  models.RepeaterTypeMMDVM,
+				Password:              "s3cret",
+			}).Error)
+			conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = conn.Close() })
+			peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = peer.Close() })
+			from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+			s := Server{
+				DB:        database,
+				Server:    conn,
+				kvClient:  servers.MakeKVClient(kvStore),
+				connected: xsync.NewMap[uint, net.UDPAddr](),
+				newSalt:   func() (uint32, error) { return 0x01020304, nil },
+			}
+			read := func() dmrd.Command {
+				buf := make([]byte, 512)
+				require.NoError(t, peer.SetReadDeadline(time.Now().Add(time.Second)))
+				n, _, err := peer.ReadFromUDP(buf)
+				require.NoError(t, err)
+				return dmrd.Classify(buf[:n], dmrd.DialectMMDVM)
+			}
+
+			rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
+			require.NoError(t, err)
+			s.handlePacket(context.Background(), from, rptl)
+			require.Equal(t, dmrd.CommandRPTACK, read())
+			token, err := dmrdauth.Token(dmrd.DialectMMDVM, 0x01020304, []byte("s3cret"))
+			require.NoError(t, err)
+			rptk, err := (&dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token}).AppendBinary(nil, dmrd.DialectMMDVM)
+			require.NoError(t, err)
+			s.handlePacket(context.Background(), from, rptk)
+			require.Equal(t, dmrd.CommandRPTACK, read())
+
+			if tc.forget {
+				require.NoError(t, database.Unscoped().Delete(&models.Repeater{}, id).Error)
+			}
+			var rptc dmrd.MMDVMConfig
+			rptc.Reset()
+			rptc.SetID(id)
+			require.NoError(t, errors.Join(
+				rptc.SetCallsign([]byte("N0CALL")),
+				rptc.SetRXFrequency(440000000),
+				rptc.SetTXFrequency(440000000),
+				rptc.SetPower(10),
+				rptc.SetColorCode(1),
+				rptc.SetLatitude([]byte("+00.0000")),
+				rptc.SetLongitude([]byte("+000.0000")),
+				rptc.SetHeight(10),
+				rptc.SetSlots(3),
+			))
+			s.handlePacket(context.Background(), from, rptc[:])
+			require.Equal(t, tc.want, read())
+			if tc.forget {
+				require.Empty(t, s.links)
+				_, ok := s.connected.Load(id)
+				require.False(t, ok)
+			} else {
+				require.Equal(t, dmrdsession.StateRunning, s.links[from.String()].m.State())
+				_, ok := s.connected.Load(id)
+				require.True(t, ok)
+			}
+		})
+	}
 }

@@ -148,17 +148,9 @@ func (s *Server) write(addr net.UDPAddr, p []byte) {
 	}
 }
 
-// run carries out the outputs of a session. A config that DMRHub cannot
-// read refuses the login, so the acknowledgement that the session made for
-// it is not sent.
+// run carries out the outputs of a session. DMRHub accepts a config that it
+// can read and refuses the login for any other.
 func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrdsession.Output) {
-	for _, o := range out {
-		if o.Kind == dmrdsession.OutputConfig && !s.takeConfig(ctx, l, o.Packet) {
-			var buf [dmrdsession.MaxOutputs]dmrdsession.Output
-			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
-			return
-		}
-	}
 	for _, o := range out {
 		switch o.Kind {
 		case dmrdsession.OutputSend:
@@ -179,7 +171,11 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 			s.ping(ctx, l)
 		case dmrdsession.OutputConfig:
 			var buf [dmrdsession.MaxOutputs]dmrdsession.Output
-			s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
+			if s.takeConfig(ctx, l, o.Packet) {
+				s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
+			} else {
+				s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+			}
 		}
 	}
 }

@@ -31,20 +31,24 @@ import (
 	apiWebsocket "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	coderWS "github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	gorillaWS "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 )
 
-func dial(t *testing.T, url string) *gorillaWS.Conn {
+func dial(t *testing.T, url string) *coderWS.Conn {
 	t.Helper()
 	header := http.Header{}
 	header.Set("Origin", url)
-	conn, resp, err := gorillaWS.DefaultDialer.Dial("ws"+strings.TrimPrefix(url, "http")+"/ws", header)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, resp, err := coderWS.Dial(ctx, "ws"+strings.TrimPrefix(url, "http")+"/ws", &coderWS.DialOptions{HTTPHeader: header})
 	require.NoError(t, err)
-	_ = resp.Body.Close()
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	return conn
 }
 
@@ -63,14 +67,15 @@ func TestCallsWebsocketKeepsStatePerConnection(t *testing.T) {
 
 	a := dial(t, server.URL)
 	b := dial(t, server.URL)
-	defer func() { _ = b.Close() }()
+	defer func() { _ = b.CloseNow() }()
 	time.Sleep(100 * time.Millisecond)
-	require.NoError(t, a.Close())
+	require.NoError(t, a.Close(coderWS.StatusNormalClosure, ""))
 	time.Sleep(100 * time.Millisecond)
 
 	require.NoError(t, ps.Publish("calls:public", []byte("call")))
-	require.NoError(t, b.SetReadDeadline(time.Now().Add(2*time.Second)))
-	_, msg, err := b.ReadMessage()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, msg, err := b.Read(ctx)
 	require.NoError(t, err, "the second connection lost its stream when the first closed")
 	require.Equal(t, "call", string(msg))
 }

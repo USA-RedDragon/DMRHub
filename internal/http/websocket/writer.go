@@ -19,32 +19,60 @@
 
 package websocket
 
+import (
+	"context"
+
+	"github.com/coder/websocket"
+)
+
 type Message struct {
 	Type int
 	Data []byte
 }
 
+// Writer sends messages to one websocket connection. WriteMessage never
+// blocks: when the client falls bufferSize messages behind, the
+// connection is dropped.
 type Writer interface {
 	WriteMessage(message Message)
-	Error(message string)
 }
 
 type wsWriter struct {
-	writer chan Message
-	error  chan string
-	done   chan struct{}
+	out    chan Message
+	done   <-chan struct{}
+	cancel context.CancelCauseFunc
 }
 
-func (w wsWriter) WriteMessage(message Message) {
+func (w *wsWriter) WriteMessage(message Message) {
 	select {
-	case w.writer <- message:
 	case <-w.done:
+		return
+	default:
+	}
+	select {
+	case w.out <- message:
+	default:
+		w.cancel(errStalled)
 	}
 }
 
-func (w wsWriter) Error(message string) {
-	select {
-	case w.error <- message:
-	case <-w.done:
+func (w *wsWriter) drain(ctx context.Context, conn *websocket.Conn) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case m := <-w.out:
+			typ := websocket.MessageText
+			if m.Type == int(websocket.MessageBinary) {
+				typ = websocket.MessageBinary
+			}
+			writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := conn.Write(writeCtx, typ, m.Data)
+			cancel()
+			if err != nil {
+				w.cancel(errWriteFailed)
+				return
+			}
+		}
 	}
 }

@@ -21,17 +21,39 @@ package websocket
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 )
 
-const bufferSize = 1024
+const (
+	bufferSize = 1024
+	readLimit  = 4096
+)
+
+//nolint:gochecknoglobals
+var (
+	pingInterval = 30 * time.Second
+	pingTimeout  = 10 * time.Second
+	writeTimeout = 10 * time.Second
+)
+
+var (
+	errClientClosed = errors.New("client closed the connection")
+	errStalled      = errors.New("client does not read fast enough")
+	errPingTimeout  = errors.New("client did not answer a ping")
+	errWriteFailed  = errors.New("write to the client failed")
+	errInvalidUTF8  = errors.New("client sent a text frame that is not UTF-8")
+)
 
 type Websocket interface {
 	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
@@ -42,113 +64,118 @@ type Websocket interface {
 }
 
 type WSHandler struct {
-	wsUpgrader websocket.Upgrader
-	handler    Websocket
+	config  *config.Config
+	handler Websocket
 }
 
 func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
-	handler := &WSHandler{
-		wsUpgrader: websocket.Upgrader{
-			HandshakeTimeout: 0,
-			ReadBufferSize:   bufferSize,
-			WriteBufferSize:  bufferSize,
-			WriteBufferPool:  nil,
-			Subprotocols:     []string{},
-			Error: func(w http.ResponseWriter, r *http.Request, status int, reason error) {
-			},
-			CheckOrigin: func(r *http.Request) bool {
-				origin := r.Header.Get("Origin")
-				if origin == "" {
-					return false
-				}
-				// If CORS is disabled, allow all origins
-				if !config.HTTP.CORS.Enabled {
-					return true
-				}
-				for _, host := range config.HTTP.CORS.Hosts {
-					if strings.HasSuffix(host, ":443") && strings.HasPrefix(origin, "https://") {
-						host = strings.TrimSuffix(host, ":443")
-					}
-					if strings.HasSuffix(host, ":80") && strings.HasPrefix(origin, "http://") {
-						host = strings.TrimSuffix(host, ":80")
-					}
-					if strings.Contains(origin, host) {
-						return true
-					}
-				}
-				return false
-			},
-			EnableCompression: true,
-		},
-		handler: ws,
-	}
+	handler := &WSHandler{config: config, handler: ws}
 
 	return func(c *gin.Context) {
-		session := sessions.Default(c)
-		conn, err := handler.wsUpgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			slog.Error("Failed to set websocket upgrade", "error", err)
+		if !handler.originAllowed(c.Request) {
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-
-		defer func() {
-			err := conn.Close()
-			if err != nil {
-				slog.Error("Failed to close websocket", "error", err)
-			}
-		}()
-		handler.handle(c.Request.Context(), session, c.Request, conn)
+		session := sessions.Default(c)
+		conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			slog.Error("Failed to accept websocket", "error", err)
+			return
+		}
+		conn.SetReadLimit(readLimit)
+		handler.serve(session, c.Request, conn)
 	}
 }
 
-func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Request, conn *websocket.Conn) {
-	writer := wsWriter{
-		writer: make(chan Message, bufferSize),
-		// Buffered so the reader goroutine can always send without blocking,
-		// even if the main select loop has already exited (e.g. context cancelled).
-		error: make(chan string, 1),
-		done:  make(chan struct{}),
+func (h *WSHandler) originAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
 	}
-	defer close(writer.done)
-	onDisconnect := h.handler.OnConnect(c, r, writer, s)
+	if !h.config.HTTP.CORS.Enabled {
+		return true
+	}
+	for _, host := range h.config.HTTP.CORS.Hosts {
+		if strings.HasSuffix(host, ":443") && strings.HasPrefix(origin, "https://") {
+			host = strings.TrimSuffix(host, ":443")
+		}
+		if strings.HasSuffix(host, ":80") && strings.HasPrefix(origin, "http://") {
+			host = strings.TrimSuffix(host, ":80")
+		}
+		if strings.Contains(origin, host) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	writer := &wsWriter{out: make(chan Message, bufferSize), done: ctx.Done(), cancel: cancel}
+
+	onDisconnect := h.handler.OnConnect(ctx, r, writer, s)
 	if onDisconnect != nil {
 		defer onDisconnect()
 	}
 
-	go func() {
-		for {
-			t, msg, err := conn.ReadMessage()
-			if err != nil {
-				writer.Error("read failed")
-				return
-			}
-			switch {
-			case t == websocket.PingMessage:
-				writer.WriteMessage(Message{
-					Type: websocket.PongMessage,
-				})
-			case strings.EqualFold(string(msg), "ping"):
-				writer.WriteMessage(Message{
-					Type: websocket.TextMessage,
-					Data: []byte("PONG"),
-				})
-			default:
-				h.handler.OnMessage(c, r, writer, s, msg, t)
-			}
-		}
-	}()
+	go h.read(ctx, cancel, s, r, conn, writer)
+	go keepalive(ctx, cancel, conn)
+	writer.drain(ctx, conn)
 
+	closeConn(conn, context.Cause(ctx))
+}
+
+func (h *WSHandler) read(ctx context.Context, cancel context.CancelCauseFunc, s sessions.Session, r *http.Request, conn *websocket.Conn, w *wsWriter) {
+	for {
+		typ, msg, err := conn.Read(ctx)
+		if err != nil {
+			cancel(errClientClosed)
+			return
+		}
+		if typ == websocket.MessageText && !utf8.Valid(msg) {
+			cancel(errInvalidUTF8)
+			return
+		}
+		if typ == websocket.MessageText && strings.EqualFold(string(msg), "ping") {
+			w.WriteMessage(Message{Type: int(websocket.MessageText), Data: []byte("PONG")})
+			continue
+		}
+		h.handler.OnMessage(ctx, r, w, s, msg, int(typ))
+	}
+}
+
+func keepalive(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn) {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-c.Done():
+		case <-ctx.Done():
 			return
-		case <-writer.error:
-			return
-		case msg := <-writer.writer:
-			err := conn.WriteMessage(msg.Type, msg.Data)
-			if err != nil {
-				return
-			}
+		case <-ticker.C:
 		}
+		pingCtx, pingCancel := context.WithTimeout(context.WithoutCancel(ctx), pingTimeout)
+		err := conn.Ping(pingCtx)
+		pingCancel()
+		if err != nil {
+			cancel(errPingTimeout)
+			return
+		}
+	}
+}
+
+func closeConn(conn *websocket.Conn, cause error) {
+	var err error
+	switch {
+	case errors.Is(cause, errInvalidUTF8):
+		err = conn.Close(websocket.StatusInvalidFramePayloadData, "invalid UTF-8")
+	case errors.Is(cause, errClientClosed):
+		err = conn.Close(websocket.StatusNormalClosure, "")
+	default:
+		slog.Debug("Dropping websocket client", "reason", cause)
+		err = conn.CloseNow()
+	}
+	if err != nil && !errors.Is(err, net.ErrClosed) {
+		slog.Debug("Websocket close", "error", err)
 	}
 }

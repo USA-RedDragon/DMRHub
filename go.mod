@@ -7,6 +7,7 @@ require (
 	github.com/USA-RedDragon/configulator/v2 v2.5.0
 	github.com/USA-RedDragon/dmrgo/v2 v2.0.0-20261022230539-1f22504946fb
 	github.com/biter777/countries v1.7.5
+	github.com/coder/websocket v1.8.15
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.25.0
 	github.com/gin-contrib/cors v1.7.9
@@ -18,7 +19,6 @@ require (
 	github.com/go-gormigrate/gormigrate/v2 v2.1.7
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/kachit/gorm-seeder v0.0.3
 	github.com/lmittmann/tint v1.2.1

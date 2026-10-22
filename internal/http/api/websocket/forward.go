@@ -25,7 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	gorillaWebsocket "github.com/gorilla/websocket"
+	coderWebsocket "github.com/coder/websocket"
 )
 
 func forward(ctx context.Context, subscription pubsub.Subscription, w websocket.Writer) {
@@ -39,7 +39,7 @@ func forward(ctx context.Context, subscription pubsub.Subscription, w websocket.
 				return
 			}
 			w.WriteMessage(websocket.Message{
-				Type: gorillaWebsocket.TextMessage,
+				Type: int(coderWebsocket.MessageText),
 				Data: msg,
 			})
 		}

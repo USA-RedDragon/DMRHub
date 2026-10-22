@@ -30,10 +30,10 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	coderWS "github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	gorillaWS "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,7 +114,7 @@ func (n *noopWebsocket) Disconnects() int {
 	return n.disconnN
 }
 
-func setupTestServer(t *testing.T, ws *noopWebsocket) *httptest.Server {
+func setupTestServer(t *testing.T, ws websocket.Websocket) *httptest.Server {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -128,15 +128,16 @@ func setupTestServer(t *testing.T, ws *noopWebsocket) *httptest.Server {
 	return httptest.NewServer(router)
 }
 
-func dialWS(t *testing.T, serverURL string) *gorillaWS.Conn {
+func dialWS(t *testing.T, serverURL string) *coderWS.Conn {
 	t.Helper()
 	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
-	dialer := gorillaWS.Dialer{}
 	header := http.Header{}
 	header.Set("Origin", serverURL)
-	conn, resp, err := dialer.Dial(wsURL, header)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, resp, err := coderWS.Dial(ctx, wsURL, &coderWS.DialOptions{HTTPHeader: header})
 	require.NoError(t, err)
-	if resp != nil {
+	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
 	return conn
@@ -155,7 +156,7 @@ func TestConcurrentWebSocketUpgrades(t *testing.T) {
 
 	const numClients = 5
 	var wg sync.WaitGroup
-	conns := make([]*gorillaWS.Conn, numClients)
+	conns := make([]*coderWS.Conn, numClients)
 
 	// Open all connections concurrently
 	for i := 0; i < numClients; i++ {
@@ -180,7 +181,7 @@ func TestConcurrentWebSocketUpgrades(t *testing.T) {
 
 	// Close all connections
 	for _, conn := range conns {
-		_ = conn.Close()
+		_ = conn.CloseNow()
 	}
 
 	// Wait for all OnDisconnect callbacks
@@ -217,7 +218,7 @@ func TestReaderGoroutineDoesNotLeak(t *testing.T) {
 	// Close the connection from the client side. This causes the server's
 	// ReadMessage to return an error. With the fix, the reader goroutine
 	// sends on the buffered error channel and exits without blocking.
-	_ = conn.Close()
+	_ = conn.CloseNow()
 
 	select {
 	case <-ws.disconnCh:
@@ -238,7 +239,7 @@ func (f *floodWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websock
 func (f *floodWebsocket) OnConnect(_ context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
 	go func() {
 		for range 10 * 1024 {
-			w.WriteMessage(websocket.Message{Type: gorillaWS.TextMessage, Data: []byte("x")})
+			w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: []byte("x")})
 		}
 		close(f.finished)
 	}()
@@ -256,11 +257,160 @@ func TestWriterDoesNotBlockAfterClose(t *testing.T) {
 	defer server.Close()
 
 	conn := dialWS(t, server.URL)
-	_ = conn.Close()
+	_ = conn.CloseNow()
 
 	select {
 	case <-ws.finished:
 	case <-time.After(5 * time.Second):
 		t.Fatal("a writer stayed blocked after the connection closed")
+	}
+}
+
+type captureWebsocket struct {
+	writers  chan websocket.Writer
+	messages chan []byte
+	closed   chan struct{}
+}
+
+func newCaptureWebsocket() *captureWebsocket {
+	return &captureWebsocket{
+		writers:  make(chan websocket.Writer, 10),
+		messages: make(chan []byte, 10),
+		closed:   make(chan struct{}, 10),
+	}
+}
+
+func (c *captureWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, msg []byte, _ int) {
+	c.messages <- msg
+}
+
+func (c *captureWebsocket) OnConnect(_ context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+	c.writers <- w
+	return func() { c.closed <- struct{}{} }
+}
+
+func waitClosed(t *testing.T, ws *captureWebsocket, within time.Duration, what string) {
+	t.Helper()
+	select {
+	case <-ws.closed:
+	case <-time.After(within):
+		t.Fatalf("the server did not drop %s", what)
+	}
+}
+
+func TestStalledReaderIsDroppedWithoutDelayingOthers(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	stalled := dialWS(t, server.URL)
+	defer func() { _ = stalled.CloseNow() }()
+	stalledW := <-ws.writers
+	healthy := dialWS(t, server.URL)
+	defer func() { _ = healthy.CloseNow() }()
+	healthyW := <-ws.writers
+
+	big := make([]byte, 16*1024)
+	start := time.Now()
+	for range 4000 {
+		stalledW.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: big})
+	}
+	assert.Less(t, time.Since(start), time.Second, "a publisher waited on a stalled client")
+	waitClosed(t, ws, 15*time.Second, "the stalled client")
+
+	healthyW.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: []byte("hello")})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, msg, err := healthy.Read(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(msg))
+}
+
+func TestConcurrentPublishers(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	conn := dialWS(t, server.URL)
+	defer func() { _ = conn.CloseNow() }()
+	w := <-ws.writers
+
+	const publishers, each = 20, 40
+	var wg sync.WaitGroup
+	for range publishers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range each {
+				w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: []byte("m")})
+			}
+		}()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for i := range publishers * each {
+		_, msg, err := conn.Read(ctx)
+		require.NoError(t, err, "message %d", i)
+		require.Equal(t, "m", string(msg))
+	}
+	wg.Wait()
+}
+
+func TestCloseHandshake(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	conn := dialWS(t, server.URL)
+	<-ws.writers
+	assert.NoError(t, conn.Close(coderWS.StatusNormalClosure, ""), "the server must answer the close frame")
+	waitClosed(t, ws, 5*time.Second, "the closed client")
+
+	bad := dialWS(t, server.URL)
+	defer func() { _ = bad.CloseNow() }()
+	<-ws.writers
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, bad.Write(ctx, coderWS.MessageText, []byte{0xff, 0xfe}))
+	_, _, err := bad.Read(ctx)
+	assert.Equal(t, coderWS.StatusInvalidFramePayloadData, coderWS.CloseStatus(err), "invalid UTF-8 in a text frame must close the connection with 1007")
+	select {
+	case msg := <-ws.messages:
+		t.Fatalf("invalid UTF-8 reached the handler: %x", msg)
+	default:
+	}
+}
+
+func TestPingTimeoutDropsSilentClient(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	conn := dialWS(t, server.URL)
+	defer func() { _ = conn.CloseNow() }()
+	<-ws.writers
+	waitClosed(t, ws, 3*websocket.PingInterval(), "a client that does not answer pings")
+}
+
+func TestPingKeepsLiveClient(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	conn := dialWS(t, server.URL)
+	defer func() { _ = conn.CloseNow() }()
+	<-ws.writers
+	ctx := conn.CloseRead(context.Background())
+	select {
+	case <-ws.closed:
+		t.Fatal("the server dropped a client that answers pings")
+	case <-ctx.Done():
+		t.Fatal("the connection closed")
+	case <-time.After(3 * websocket.PingInterval()):
 	}
 }

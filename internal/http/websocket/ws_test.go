@@ -89,18 +89,17 @@ func newNoopWebsocket() *noopWebsocket {
 func (n *noopWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (n *noopWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) {
+func (n *noopWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) func() {
 	n.mu.Lock()
 	n.connectN++
 	n.mu.Unlock()
 	n.connectCh <- struct{}{}
-}
-
-func (n *noopWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
-	n.mu.Lock()
-	n.disconnN++
-	n.mu.Unlock()
-	n.disconnCh <- struct{}{}
+	return func() {
+		n.mu.Lock()
+		n.disconnN++
+		n.mu.Unlock()
+		n.disconnCh <- struct{}{}
+	}
 }
 
 func (n *noopWebsocket) Connects() int {

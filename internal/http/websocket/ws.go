@@ -35,8 +35,10 @@ const bufferSize = 1024
 
 type Websocket interface {
 	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
-	OnConnect(ctx context.Context, r *http.Request, w Writer, session sessions.Session)
-	OnDisconnect(ctx context.Context, r *http.Request, session sessions.Session)
+	// OnConnect starts the work of one connection. It keeps the state of
+	// the connection in the returned function, which the handler calls
+	// once when the connection closes.
+	OnConnect(ctx context.Context, r *http.Request, w Writer, session sessions.Session) (onDisconnect func())
 }
 
 type WSHandler struct {
@@ -90,7 +92,6 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 		}
 
 		defer func() {
-			handler.handler.OnDisconnect(c, c.Request, session)
 			err := conn.Close()
 			if err != nil {
 				slog.Error("Failed to close websocket", "error", err)
@@ -107,7 +108,10 @@ func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Reques
 		// even if the main select loop has already exited (e.g. context cancelled).
 		error: make(chan string, 1),
 	}
-	h.handler.OnConnect(c, r, writer, s)
+	onDisconnect := h.handler.OnConnect(c, r, writer, s)
+	if onDisconnect != nil {
+		defer onDisconnect()
+	}
 
 	go func() {
 		for {

@@ -22,24 +22,19 @@ package websocket
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
-	gorillaWebsocket "github.com/gorilla/websocket"
 )
 
 // NetsWebsocket streams net start/stop events and optionally check-in
 // events to connected clients.
 type NetsWebsocket struct {
 	websocket.Websocket
-	pubsub              pubsub.PubSub
-	eventSubscription   pubsub.Subscription
-	checkInSubscription pubsub.Subscription
-	cancel              context.CancelFunc
+	pubsub pubsub.PubSub
 }
 
 // CreateNetsWebsocket creates a new NetsWebsocket.
@@ -52,77 +47,25 @@ func CreateNetsWebsocket(ps pubsub.PubSub) *NetsWebsocket {
 func (n *NetsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (n *NetsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session) {
+func (n *NetsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
-	n.cancel = cancel
 
-	// Always subscribe to net lifecycle events.
-	n.eventSubscription = n.pubsub.Subscribe("net:events")
+	eventSubscription := n.pubsub.Subscribe("net:events")
+	go forward(newCtx, eventSubscription, w)
 
-	go func() {
-		channel := n.eventSubscription.Channel()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-newCtx.Done():
-				return
-			case msg, ok := <-channel:
-				if !ok {
-					return
-				}
-				w.WriteMessage(websocket.Message{
-					Type: gorillaWebsocket.TextMessage,
-					Data: msg,
-				})
-			}
-		}
-	}()
-
-	// If a net_id query param is provided, also subscribe to that net's
-	// check-in topic so the client gets live check-in events.
-	netIDStr := r.URL.Query().Get("net_id")
-	if netIDStr != "" {
-		netID, err := strconv.ParseUint(netIDStr, 10, 32)
-		if err == nil {
-			topic := fmt.Sprintf("net:checkins:%d", netID)
-			n.checkInSubscription = n.pubsub.Subscribe(topic)
-
-			go func() {
-				ch := n.checkInSubscription.Channel()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-newCtx.Done():
-						return
-					case msg, ok := <-ch:
-						if !ok {
-							return
-						}
-						w.WriteMessage(websocket.Message{
-							Type: gorillaWebsocket.TextMessage,
-							Data: msg,
-						})
-					}
-				}
-			}()
+	var checkInSubscription pubsub.Subscription
+	if netIDStr := r.URL.Query().Get("net_id"); netIDStr != "" {
+		if netID, err := strconv.ParseUint(netIDStr, 10, 32); err == nil {
+			checkInSubscription = n.pubsub.Subscribe(fmt.Sprintf("net:checkins:%d", netID))
+			go forward(newCtx, checkInSubscription, w)
 		}
 	}
-}
 
-func (n *NetsWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
-	if n.eventSubscription != nil {
-		if err := n.eventSubscription.Close(); err != nil {
-			slog.Error("Failed to close nets event pubsub subscription", "error", err)
+	return func() {
+		closeSubscription(eventSubscription, "nets event")
+		if checkInSubscription != nil {
+			closeSubscription(checkInSubscription, "nets checkin")
 		}
-	}
-	if n.checkInSubscription != nil {
-		if err := n.checkInSubscription.Close(); err != nil {
-			slog.Error("Failed to close nets checkin pubsub subscription", "error", err)
-		}
-	}
-	if n.cancel != nil {
-		n.cancel()
+		cancel()
 	}
 }

@@ -45,8 +45,6 @@ func CreateRepeatersWebsocket(db *gorm.DB, pubsub pubsub.PubSub) *RepeatersWebso
 func (c *RepeatersWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *RepeatersWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) {
-}
-
-func (c *RepeatersWebsocket) OnDisconnect(_ context.Context, _ *http.Request, _ sessions.Session) {
+func (c *RepeatersWebsocket) OnConnect(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session) func() {
+	return func() {}
 }

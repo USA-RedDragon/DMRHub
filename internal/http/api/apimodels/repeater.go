@@ -36,4 +36,8 @@ type RepeaterTalkgroupsPost struct {
 
 type RepeaterPatch struct {
 	SimplexRepeater *bool `json:"simplex_repeater"`
+	// Trusted lets the hub route private traffic to a radio from where this
+	// repeater last heard it, whoever owns the radio. Only an admin may set
+	// it.
+	Trusted *bool `json:"trusted"`
 }

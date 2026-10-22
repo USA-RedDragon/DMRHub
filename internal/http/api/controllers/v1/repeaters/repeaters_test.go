@@ -579,3 +579,42 @@ func TestPOSTRepeaterIPSCDisabledAllowsMMDVM(t *testing.T) {
 	assert.Equal(t, "Repeater created", resp.Message)
 	assert.NotEmpty(t, resp.Password)
 }
+
+func TestPATCHRepeaterTrustedNeedsAdmin(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807}
+	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	trusted := true
+	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, userJar, apimodels.RepeaterPatch{Trusted: &trusted})
+	assert.Equal(t, http.StatusForbidden, w.Code, "an owner must not mark their own repeater trusted")
+	var dbRepeater models.Repeater
+	require.NoError(t, tdb.DB().First(&dbRepeater, repeaterPost.RadioID).Error)
+	assert.False(t, dbRepeater.Trusted)
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, adminJar, apimodels.RepeaterPatch{Trusted: &trusted})
+	assert.Equal(t, http.StatusOK, w.Code)
+	rpt, w := testutils.GetRepeater(t, router, repeaterPost.RadioID, adminJar)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, rpt.Trusted)
+
+	simplex := true
+	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, userJar, apimodels.RepeaterPatch{SimplexRepeater: &simplex})
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, tdb.DB().First(&dbRepeater, repeaterPost.RadioID).Error)
+	assert.True(t, dbRepeater.Trusted, "an owner's PATCH must keep the admin's trust")
+}

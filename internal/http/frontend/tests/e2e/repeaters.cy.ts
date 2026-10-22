@@ -220,3 +220,48 @@ describe('Repeater CRUD', () => {
     cy.get('#radioID').should('have.attr', 'aria-invalid', 'true');
   });
 });
+
+describe('Admin repeater trust', () => {
+  beforeEach(() => {
+    cy.stubCommonEndpoints();
+    cy.loginAsAdmin();
+    cy.intercept('GET', '/api/v1/talkgroups?limit=none', {
+      statusCode: 200,
+      body: { talkgroups: [{ id: 1, name: 'World' }] },
+    });
+    cy.intercept('GET', '/api/v1/repeaters?*', {
+      statusCode: 200,
+      fixture: 'repeaters.json',
+    }).as('getRepeaters');
+    cy.intercept('POST', '/api/v1/repeaters/311001/talkgroups', { statusCode: 200, body: {} });
+  });
+
+  it('lets an admin mark a repeater trusted', () => {
+    cy.intercept('PATCH', '/api/v1/repeaters/311001', { statusCode: 200, body: {} }).as('patchRepeater');
+    cy.visit('/admin/repeaters');
+    cy.wait('@getRepeaters');
+    cy.contains('th', 'Trusted').should('be.visible');
+
+    cy.contains('tr', '311001').find('button').contains('Edit').click();
+    cy.contains('tr', '311001').find('input[type="checkbox"]').last().check();
+    cy.contains('tr', '311001').find('button').contains('Save').click();
+    cy.wait('@patchRepeater').its('request.body').should('deep.include', { trusted: true });
+  });
+});
+
+describe('Owner repeater page', () => {
+  it('does not show or send the trusted setting', () => {
+    cy.stubCommonEndpoints();
+    cy.login();
+    cy.intercept('GET', '/api/v1/talkgroups?limit=none', { statusCode: 200, body: { talkgroups: [] } });
+    cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, fixture: 'repeaters.json' }).as('getRepeaters');
+    cy.intercept('POST', '/api/v1/repeaters/311001/talkgroups', { statusCode: 200, body: {} });
+    cy.intercept('PATCH', '/api/v1/repeaters/311001', { statusCode: 200, body: {} }).as('patchRepeater');
+    cy.visit('/repeaters');
+    cy.wait('@getRepeaters');
+    cy.contains('th', 'Trusted').should('not.exist');
+    cy.contains('tr', '311001').find('button').contains('Edit').click();
+    cy.contains('tr', '311001').find('button').contains('Save').click();
+    cy.wait('@patchRepeater').its('request.body').should('not.have.property', 'trusted');
+  });
+});

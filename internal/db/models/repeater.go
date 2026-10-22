@@ -66,6 +66,7 @@ type Repeater struct {
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID               uint           `json:"-" msg:"-"`
 	SimplexRepeater       bool           `json:"simplex_repeater" msg:"simplex_repeater"`
+	Trusted               bool           `json:"trusted" gorm:"default:false" msg:"-"`
 	City                  string         `json:"city" msg:"-"`
 	State                 string         `json:"state" msg:"-"`
 	Country               string         `json:"country" msg:"-"`

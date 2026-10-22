@@ -75,6 +75,7 @@ type RepeaterRow = {
   ts2_dynamic_talkgroup: Talkgroup;
   hotspot: boolean;
   simplex_repeater: boolean;
+  trusted: boolean;
   editable: boolean;
 };
 
@@ -385,6 +386,23 @@ export default {
             });
           },
         },
+        ...(this.admin ? [{
+          accessorKey: 'trusted',
+          header: 'Trusted',
+          cell: ({ row }: { row: { original: RepeaterRow } }) => {
+            const repeater = row.original;
+            if (!repeater.editable) {
+              return `${repeater.trusted}`;
+            }
+            return h('input', {
+              type: 'checkbox',
+              checked: repeater.trusted,
+              onChange: (e: Event) => {
+                repeater.trusted = (e.target as HTMLInputElement).checked;
+              },
+            });
+          },
+        }] : []),
         {
           accessorKey: 'created_at',
           header: 'Created',
@@ -533,6 +551,7 @@ export default {
       });
       const settingsPromise = API.patch(`/repeaters/${repeater.id}`, {
         simplex_repeater: repeater.simplex_repeater,
+        ...(this.admin ? { trusted: repeater.trusted } : {}),
       });
       Promise.all([talkgroupsPromise, settingsPromise])
         .then(() => {

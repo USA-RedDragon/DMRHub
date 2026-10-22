@@ -812,6 +812,13 @@ func PATCHRepeater(c *gin.Context) {
 	if json.SimplexRepeater != nil {
 		repeater.SimplexRepeater = *json.SimplexRepeater
 	}
+	if json.Trusted != nil {
+		if !requesterIsAdmin(c, db) {
+			c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a repeater is trusted"})
+			return
+		}
+		repeater.Trusted = *json.Trusted
+	}
 
 	err = db.Save(repeater).Error
 	if err != nil {
@@ -828,4 +835,16 @@ func PATCHRepeater(c *gin.Context) {
 	}
 	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater updated"})
+}
+
+func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {
+	userID, ok := sessions.Default(c).Get("user_id").(uint)
+	if !ok {
+		return false
+	}
+	user, err := models.FindUserByID(db, userID)
+	if err != nil {
+		return false
+	}
+	return user.Admin && user.Approved && !user.Suspended
 }

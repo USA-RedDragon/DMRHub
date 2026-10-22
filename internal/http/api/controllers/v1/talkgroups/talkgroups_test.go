@@ -181,9 +181,12 @@ func TestGETTalkgroupByIDReturnsAdminsAndNCOs(t *testing.T) {
 	assert.Equal(t, uint(12345), tg.ID)
 	assert.Equal(t, "Test TG", tg.Name)
 	assert.Len(t, tg.Admins, 1, "Admins should be populated in GET response")
-	assert.Equal(t, "Admin", tg.Admins[0].Username)
+	assert.Equal(t, adminUser.ID, tg.Admins[0].ID)
+	assert.Equal(t, adminUser.Callsign, tg.Admins[0].Callsign)
+	assert.Empty(t, tg.Admins[0].Username)
 	assert.Len(t, tg.NCOs, 1, "NCOs should be populated in GET response")
-	assert.Equal(t, "Admin", tg.NCOs[0].Username)
+	assert.Equal(t, adminUser.ID, tg.NCOs[0].ID)
+	assert.Empty(t, tg.NCOs[0].Username)
 }
 
 func TestGETTalkgroupInvalidID(t *testing.T) {

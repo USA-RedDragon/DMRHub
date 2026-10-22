@@ -38,6 +38,9 @@ type Metrics struct {
 
 	// TrackerDroppedTotal counts packets that the call tracker dropped.
 	TrackerDroppedTotal prometheus.Counter
+
+	// MessagesDroppedTotal counts data messages that the message store dropped.
+	MessagesDroppedTotal prometheus.Counter
 }
 
 var (
@@ -81,6 +84,10 @@ func NewMetrics() *Metrics {
 				Name: "call_tracker_dropped_packets_total",
 				Help: "The total number of packets that the call tracker did not record because its queue was full",
 			}),
+			MessagesDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "message_store_dropped_total",
+				Help: "The total number of data messages that the message store did not save because its queue was full",
+			}),
 		}
 		metricsInstance.register()
 	})
@@ -95,6 +102,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.KVCleanupDuration)
 	prometheus.MustRegister(m.UndeliverableBurstsTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
+	prometheus.MustRegister(m.MessagesDroppedTotal)
 }
 
 // KV Store metrics methods
@@ -123,4 +131,10 @@ func (m *Metrics) IncrementUndeliverable(target string) {
 // IncrementTrackerDropped counts a packet that the call tracker dropped.
 func (m *Metrics) IncrementTrackerDropped() {
 	m.TrackerDroppedTotal.Inc()
+}
+
+// IncrementMessagesDropped counts a data message that the message store
+// dropped.
+func (m *Metrics) IncrementMessagesDropped() {
+	m.MessagesDroppedTotal.Inc()
 }

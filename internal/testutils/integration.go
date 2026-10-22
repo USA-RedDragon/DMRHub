@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,7 @@ type IntegrationStack struct {
 	PubSub           pubsub.PubSub
 	KV               kv.KV
 	CallTracker      *calltracker.CallTracker
+	MessageStore     *messages.Store
 	MMDVMServer      *mmdvm.Server
 	IPSCServer       *ipsc.IPSCServer
 	OpenBridgeServer *openbridge.Server
@@ -100,6 +102,8 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	require.NoError(t, err)
 
 	ct := calltracker.NewCallTracker(database, ps)
+	store := messages.NewStore(database)
+	ct.SetDataObserver(store)
 
 	h := hub.NewHub(database, kvStore, ps, ct)
 
@@ -119,6 +123,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		PubSub:           ps,
 		KV:               kvStore,
 		CallTracker:      ct,
+		MessageStore:     store,
 		MMDVMServer:      &mmdvmServer,
 		IPSCServer:       ipscServer,
 		OpenBridgeServer: &obServer,
@@ -130,6 +135,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		_ = mmdvmServer.Stop(context.Background())
 		h.Stop(context.Background())
 		ct.Stop()
+		store.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()
@@ -155,6 +161,8 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 
 	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub)
+	store2 := messages.NewStore(s.DB)
+	ct2.SetDataObserver(store2)
 	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
 
 	cfg2 := *s.Config
@@ -179,6 +187,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 		_ = mmdvm2.Stop(context.Background())
 		hub2.Stop(context.Background())
 		ct2.Stop()
+		store2.Stop()
 	})
 
 	return Replica{

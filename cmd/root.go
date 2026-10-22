@@ -42,6 +42,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -137,6 +138,8 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	}
 
 	callTracker := calltracker.NewCallTracker(database, pubsubClient)
+	messageStore := messages.NewStore(database)
+	callTracker.SetDataObserver(messageStore)
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
 
@@ -144,6 +147,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	servers.messageStore = messageStore
 	defer servers.shutdown(ctx)
 
 	setupShutdownHandlers(ctx, scheduler, dmrHub, servers, cleanup)
@@ -306,6 +310,7 @@ type serverManager struct {
 	httpServer   *http.Server
 	netScheduler *netscheduler.NetScheduler
 	callTracker  *calltracker.CallTracker
+	messageStore *messages.Store
 	kv           kv.KV
 	pubsub       pubsub.PubSub
 	database     *gorm.DB
@@ -359,6 +364,9 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 func (sm *serverManager) closeResources(ctx context.Context) {
 	if sm.callTracker != nil {
 		sm.callTracker.Stop()
+	}
+	if sm.messageStore != nil {
+		sm.messageStore.Stop()
 	}
 	if sm.netScheduler != nil {
 		sm.netScheduler.Stop()

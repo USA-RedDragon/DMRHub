@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -203,6 +204,12 @@ func TestCallTrackerIsCallActive(t *testing.T) {
 // that tests can seed data.
 func makeTestCallTrackerWithDB(t *testing.T) (*calltracker.CallTracker, *gorm.DB) {
 	t.Helper()
+	ct, database, _ := makeTestCallTrackerWithPubSub(t)
+	return ct, database
+}
+
+func makeTestCallTrackerWithPubSub(t *testing.T) (*calltracker.CallTracker, *gorm.DB, pubsub.PubSub) {
+	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -224,7 +231,65 @@ func makeTestCallTrackerWithDB(t *testing.T) (*calltracker.CallTracker, *gorm.DB
 		_ = ps.Close()
 	})
 
-	return ct, database
+	return ct, database, ps
+}
+
+func TestCallUpdatesPublishInOrder(t *testing.T) {
+	t.Parallel()
+	ct, database, ps := makeTestCallTrackerWithPubSub(t)
+
+	require.NoError(t, database.Create(&models.User{ID: 1000001, Callsign: "U1", Username: "U1", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: 100001, Callsign: "RPT1"},
+		OwnerID:               1000001,
+		Type:                  models.RepeaterTypeMMDVM,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{ID: 42, Name: "TG42"}).Error)
+
+	sub := ps.Subscribe("calls")
+	defer func() { _ = sub.Close() }()
+
+	packet := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         42,
+		Repeater:    100001,
+		GroupCall:   true,
+		StreamID:    70009,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		BER:         -1,
+		RSSI:        -1,
+	}
+	ct.StartCall(context.Background(), packet)
+	time.Sleep(150 * time.Millisecond)
+
+	const count = 40
+	for i := range count {
+		packet.Seq = uint(i + 1)
+		packet.DTypeOrVSeq = uint(i % 6)
+		ct.ProcessCallPacket(context.Background(), packet)
+	}
+	ct.EndCall(context.Background(), packet)
+
+	var calls []models.Call
+	for len(calls) < count+1 {
+		select {
+		case msg := <-sub.Channel():
+			var c models.Call
+			require.NoError(t, json.Unmarshal(msg, &c))
+			calls = append(calls, c)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("got %d of %d call updates", len(calls), count+1)
+		}
+	}
+	for i := 1; i < len(calls); i++ {
+		assert.GreaterOrEqual(t, calls[i].Duration, calls[i-1].Duration, "update %d", i)
+	}
+	for _, c := range calls[:count] {
+		assert.True(t, c.Active)
+	}
+	assert.False(t, calls[count].Active, "the last update must end the call")
 }
 
 // TestStartCallGroupCallToTalkgroup verifies StartCall works for a group

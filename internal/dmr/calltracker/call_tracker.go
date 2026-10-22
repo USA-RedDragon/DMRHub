@@ -511,11 +511,8 @@ func (c *CallTracker) updateCall(ctx context.Context, ifc *inFlightCall, packet 
 
 	call.CallData = append(call.CallData, packet.DMRData[:]...)
 
-	// Snapshot the call to avoid a data race between the publish goroutine
-	// (which reads fields via json.Marshal) and EndCall (which writes fields).
-	callCopy := *call
+	c.publishCall(ctx, call)
 	ifc.mu.Unlock()
-	go c.publishCall(ctx, &callCopy)
 }
 
 func calcSequenceLoss(call *models.Call, packet models.Packet) {

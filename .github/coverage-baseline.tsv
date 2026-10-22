@@ -29,11 +29,11 @@ internal/db/models/talkgroup.go	61	53
 internal/db/models/user.go	52	30
 internal/dmr/calltracker/call_tracker.go	293	238
 internal/dmr/dmrconst/const.go	13	13
-internal/dmr/hub/hub.go	93	72
+internal/dmr/hub/hub.go	93	71
 internal/dmr/hub/parrot_handler.go	43	35
 internal/dmr/hub/publishing.go	48	35
 internal/dmr/hub/routing.go	80	72
-internal/dmr/hub/subscription_manager.go	264	215
+internal/dmr/hub/subscription_manager.go	264	216
 internal/dmr/hub/talkgroup.go	60	55
 internal/dmr/netscheduler/scheduler.go	100	20
 internal/dmr/parrot/parrot.go	34	29

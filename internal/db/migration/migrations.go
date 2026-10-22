@@ -54,5 +54,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_scheduled_net_showcase_column_migration_202602170300(db, cfg),
 		add_repeater_trusted_column_migration_202610221900(db, cfg),
 		add_call_kind_columns_migration_202610221910(db, cfg),
+		add_messages_migration_202610222000(db, cfg),
 	}
 }

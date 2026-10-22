@@ -31,19 +31,25 @@ import (
 )
 
 type User struct {
-	ID         uint           `json:"id" gorm:"primaryKey" binding:"required"`
-	Callsign   string         `json:"callsign" gorm:"uniqueIndex" binding:"required"`
-	Username   string         `json:"username" gorm:"uniqueIndex" binding:"required"`
-	Password   string         `json:"-"`
-	Admin      bool           `json:"admin"`
-	SuperAdmin bool           `json:"superAdmin"`
-	Email      string         `json:"email"`
-	Approved   bool           `json:"approved" binding:"required"`
-	Suspended  bool           `json:"suspended"`
-	Repeaters  []Repeater     `json:"repeaters" gorm:"foreignKey:OwnerID"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"-"`
-	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
+	ID         uint       `json:"id" gorm:"primaryKey" binding:"required"`
+	Callsign   string     `json:"callsign" gorm:"uniqueIndex" binding:"required"`
+	Username   string     `json:"username" gorm:"uniqueIndex" binding:"required"`
+	Password   string     `json:"-"`
+	Admin      bool       `json:"admin"`
+	SuperAdmin bool       `json:"superAdmin"`
+	Email      string     `json:"email"`
+	Approved   bool       `json:"approved" binding:"required"`
+	Suspended  bool       `json:"suspended"`
+	Repeaters  []Repeater `json:"repeaters" gorm:"foreignKey:OwnerID"`
+	// SMSStorageEnabled reports that the user chose to see the stored
+	// messages of the radio IDs that they own. Only SetSMSStorage writes
+	// it, so a Save of a stale User cannot undo a change.
+	SMSStorageEnabled bool `json:"-" gorm:"<-:create;not null;default:false"`
+	// SMSStorageSince is when the user last turned SMS Storage on.
+	SMSStorageSince *time.Time     `json:"-" gorm:"<-:create"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"-"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {
@@ -152,6 +158,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			tx.Unscoped().Table("talkgroup_admins").Where("user_id = ?", id).Delete(&Talkgroup{})
 			tx.Unscoped().Table("talkgroup_ncos").Where("user_id = ?", id).Delete(&Talkgroup{})
 		}
+		tx.Where("user_id = ?", id).Delete(&UserRadioID{})
 		tx.Unscoped().Select(clause.Associations, "Repeaters").Delete(&User{ID: id})
 		return nil
 	})

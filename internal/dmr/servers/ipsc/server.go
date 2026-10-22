@@ -58,11 +58,18 @@ type IPSCServer struct {
 	keyFor func(peerID uint32) (key [20]byte, useAuth bool, err error)
 
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
+	bursts       []burst
 
 	wg       sync.WaitGroup
 	done     chan struct{}
 	stopped  atomic.Bool
 	stopOnce sync.Once
+}
+
+type burst struct {
+	op   byte
+	data []byte
+	addr *net.UDPAddr
 }
 
 // peerState is what DMRHub keeps for a registered peer.
@@ -211,10 +218,12 @@ func (s *IPSCServer) tick(ctx context.Context, now time.Duration) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if at, ok := s.m.Deadline(); ok && now >= at {
 		s.apply(ctx, s.m.Tick(now, s.out[:0]))
 	}
+	bursts := s.takeBursts()
+	s.mu.Unlock()
+	s.runBursts(bursts)
 }
 
 func (s *IPSCServer) handler(ctx context.Context) {
@@ -232,13 +241,9 @@ func (s *IPSCServer) handler(ctx context.Context) {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		s.wg.Add(1)
-		go func(packetData []byte, packetAddr *net.UDPAddr) {
-			defer s.wg.Done()
-			if err := s.handlePacket(ctx, packetData, packetAddr); err != nil && !errors.Is(err, ErrPacketIgnored) {
-				slog.Warn("error handling IPSC packet", "peer", packetAddr, "error", err, "length", len(packetData))
-			}
-		}(data, addr)
+		if err := s.handlePacket(ctx, data, addr); err != nil && !errors.Is(err, ErrPacketIgnored) {
+			slog.Warn("error handling IPSC packet", "peer", addr, "error", err, "length", len(data))
+		}
 	}
 }
 
@@ -270,7 +275,6 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := s.now()
 	out := s.m.Packet(now, from, data, kp, s.out[:0])
 	if kp == nil && unregistered(out) && raw.Opcode != ipscwire.OpDeregisterRequest {
@@ -283,6 +287,9 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	if p, ok := s.peers[raw.ID]; ok {
 		s.updateRepeaterDBTimes(p, uint(raw.ID), false)
 	}
+	bursts := s.takeBursts()
+	s.mu.Unlock()
+	s.runBursts(bursts)
 	if ignored {
 		return ErrPacketIgnored
 	}
@@ -322,11 +329,21 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			if !isUserPacket(op) || s.burstHandler == nil {
 				continue
 			}
-			packetCopy := make([]byte, len(o.Packet))
-			copy(packetCopy, o.Packet)
-			go s.burstHandler(byte(op), packetCopy, toUDPAddr(o.Addr))
+			s.bursts = append(s.bursts, burst{op: byte(op), data: append([]byte(nil), o.Packet...), addr: toUDPAddr(o.Addr)})
 		case ipscsession.OutputPeers:
 		}
+	}
+}
+
+func (s *IPSCServer) takeBursts() []burst {
+	b := s.bursts
+	s.bursts = nil
+	return b
+}
+
+func (s *IPSCServer) runBursts(bursts []burst) {
+	for _, b := range bursts {
+		s.burstHandler(b.op, b.data, b.addr)
 	}
 }
 

@@ -480,6 +480,41 @@ func TestHandlerLoop(t *testing.T) {
 	}
 }
 
+func TestHandlerLoopKeepsBurstOrder(t *testing.T) {
+	t.Parallel()
+	s, srv := newTestServerWithUDP(t)
+	const count = 60
+	got := make(chan byte, count)
+	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr) { got <- data[53] })
+	s.wg.Add(1)
+	go s.handler(context.Background())
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	client, _ := dialServer(t, srv)
+	if _, err := client.Write(signTestPacket(t, control(t, ipscwire.OpRegisterRequest, 78))); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if r := readUDP(t, client); ipscwire.Opcode(r[0]) != ipscwire.OpRegisterReply {
+		t.Fatalf("reply opcode 0x%02x", r[0])
+	}
+	for i := range count {
+		p := voicePacket(78)
+		p[53] = byte(i)
+		if _, err := client.Write(signTestPacket(t, p)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	for i := range count {
+		select {
+		case b := <-got:
+			if b != byte(i) {
+				t.Fatalf("burst %d carried index %d", i, b)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("got %d of %d bursts", i, count)
+		}
+	}
+}
+
 func FuzzHandlePacket(f *testing.F) {
 	f.Add([]byte{0x90, 0x00, 0x04, 0xC2, 0x34})
 	f.Add([]byte{})

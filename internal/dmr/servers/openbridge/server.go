@@ -47,7 +47,6 @@ const largestMessageSize = 73
 const bufferSize = 1000000 // 1MB
 
 const (
-	ingressWorkers   = 8
 	ingressQueueSize = 500
 )
 
@@ -167,7 +166,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
-	s.ingress = streamorder.New(ingressWorkers, ingressQueueSize, s.done)
+	s.ingress = streamorder.New(ingressQueueSize, s.done)
 
 	s.wg.Add(2)
 	go s.consumeHubPackets(ctx)
@@ -185,7 +184,10 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
-			s.ingress.Do(ctx, streamOf(data), func() { s.handlePacket(ctx, remoteaddr, data) })
+			stream := streamOf(data)
+			if !s.ingress.Do(ctx, stream, func() { s.handlePacket(ctx, remoteaddr, data) }) {
+				slog.Warn("Dropping OpenBridge packet of a backed-up stream", "stream", stream)
+			}
 		}
 	}()
 

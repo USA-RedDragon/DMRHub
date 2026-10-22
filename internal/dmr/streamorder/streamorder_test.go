@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,7 @@ func TestQueueKeepsOrderPerStream(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
 	defer close(done)
-	q := streamorder.New(4, 8, done)
+	q := streamorder.New(200, done)
 
 	const streams, count = 6, 200
 	var mu sync.Mutex
@@ -62,14 +63,57 @@ func TestQueueKeepsOrderPerStream(t *testing.T) {
 func TestQueueRefusesAfterStop(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
-	q := streamorder.New(1, 1, done)
+	q := streamorder.New(1, done)
 	close(done)
 	assert.False(t, q.Do(context.Background(), 1, func() { t.Error("ran after stop") }))
 
 	liveDone := make(chan struct{})
 	defer close(liveDone)
-	live := streamorder.New(1, 1, liveDone)
+	live := streamorder.New(1, liveDone)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	assert.False(t, live.Do(ctx, 1, func() { t.Error("ran after cancel") }))
+}
+
+func TestSlowStreamDoesNotDelayOthers(t *testing.T) {
+	t.Parallel()
+	done := make(chan struct{})
+	defer close(done)
+	q := streamorder.New(4, done)
+
+	release := make(chan struct{})
+	defer close(release)
+	assert.True(t, q.Do(context.Background(), 1, func() { <-release }))
+
+	ran := make(chan struct{})
+	for _, s := range []uint{9, 17, 2} {
+		assert.True(t, q.Do(context.Background(), s, func() { ran <- struct{}{} }))
+		select {
+		case <-ran:
+		case <-time.After(time.Second):
+			t.Fatalf("stream %d waited behind a slow stream", s)
+		}
+	}
+}
+
+func TestDoNeverBlocks(t *testing.T) {
+	t.Parallel()
+	done := make(chan struct{})
+	defer close(done)
+	q := streamorder.New(4, done)
+
+	release := make(chan struct{})
+	defer close(release)
+	returned := make(chan struct{})
+	go func() {
+		for range 100 {
+			q.Do(context.Background(), 1, func() { <-release })
+		}
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("Do blocked on a full stream")
+	}
 }

@@ -56,7 +56,9 @@ func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
 		return
 	}
 
-	h.peerEgress.Do(ctx, packet.StreamID, func() { h.egressToPeers(ctx, packet) })
+	if !h.peerEgress.Do(ctx, packet.StreamID, func() { h.egressToPeers(ctx, packet) }) {
+		slog.Warn("Dropping peer egress of a backed-up stream", "stream", packet.StreamID)
+	}
 }
 
 func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {

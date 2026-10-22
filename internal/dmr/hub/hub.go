@@ -88,7 +88,6 @@ type serverEntry struct {
 const serverChannelSize = 500
 
 const (
-	peerEgressShards    = 8
 	peerEgressQueueSize = 500
 )
 
@@ -153,7 +152,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		activeStreams: xsync.NewMap[uint, struct{}](),
 		done:          make(chan struct{}),
 	}
-	h.peerEgress = streamorder.New(peerEgressShards, peerEgressQueueSize, h.done)
+	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h
 }

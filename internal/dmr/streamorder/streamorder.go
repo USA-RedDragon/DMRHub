@@ -21,29 +21,30 @@
 // while the work of different streams runs in parallel.
 package streamorder
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
-// Queue runs queued work on a fixed set of workers. All work for one stream
-// goes to one worker, which runs it in the order it was queued.
+// Queue runs the work of each stream on a worker of its own, in the order
+// it was queued. A slow stream never delays another stream, and Do never
+// blocks.
 type Queue struct {
-	shards []chan func()
-	done   <-chan struct{}
+	mu      sync.Mutex
+	streams map[uint]chan func()
+	depth   int
+	done    <-chan struct{}
 }
 
-// New starts a Queue with the given number of workers, each with room for
-// depth queued jobs. The workers stop when done is closed.
-func New(workers, depth int, done <-chan struct{}) *Queue {
-	q := &Queue{shards: make([]chan func(), max(workers, 1)), done: done}
-	for i := range q.shards {
-		q.shards[i] = make(chan func(), depth)
-		go q.run(q.shards[i])
-	}
-	return q
+// New makes a Queue that holds up to depth jobs for each stream. The
+// workers stop when done is closed.
+func New(depth int, done <-chan struct{}) *Queue {
+	return &Queue{streams: map[uint]chan func(){}, depth: max(depth, 1), done: done}
 }
 
-// Do queues fn on the worker of stream. It blocks while that worker is full.
-// It returns false, without queueing fn, when ctx is done or the Queue is
-// stopped first.
+// Do queues fn on the worker of stream. It returns false, without queueing
+// fn, when the stream already holds depth jobs, when ctx is done, or when
+// the Queue is stopped.
 func (q *Queue) Do(ctx context.Context, stream uint, fn func()) bool {
 	select {
 	case <-ctx.Done():
@@ -52,23 +53,38 @@ func (q *Queue) Do(ctx context.Context, stream uint, fn func()) bool {
 		return false
 	default:
 	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	jobs, ok := q.streams[stream]
+	if !ok {
+		jobs = make(chan func(), q.depth)
+		q.streams[stream] = jobs
+		go q.run(stream, jobs)
+	}
 	select {
-	case q.shards[stream%uint(len(q.shards))] <- fn:
+	case jobs <- fn:
 		return true
-	case <-ctx.Done():
-		return false
-	case <-q.done:
+	default:
 		return false
 	}
 }
 
-func (q *Queue) run(shard <-chan func()) {
+func (q *Queue) run(stream uint, jobs chan func()) {
 	for {
 		select {
 		case <-q.done:
 			return
-		case fn := <-shard:
+		case fn := <-jobs:
 			fn()
+			continue
+		default:
 		}
+		q.mu.Lock()
+		if len(jobs) == 0 {
+			delete(q.streams, stream)
+			q.mu.Unlock()
+			return
+		}
+		q.mu.Unlock()
 	}
 }

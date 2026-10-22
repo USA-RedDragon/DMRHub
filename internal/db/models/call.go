@@ -151,14 +151,14 @@ func CountRepeaterCalls(db *gorm.DB, repeaterID uint) (int, error) {
 func FindUserCalls(db *gorm.DB, userID uint) ([]Call, error) {
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
-		Where("(is_to_user = ? AND to_user_id = ?) OR user_id = ?", true, userID, userID).
+		Where("source_id = ? OR (group_call = ? AND destination_id = ?)", userID, false, userID).
 		Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
 
 func CountUserCalls(db *gorm.DB, userID uint) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("(is_to_user = ? AND to_user_id = ?) OR user_id = ?", true, userID, userID).Count(&count).Error
+	err := db.Model(&Call{}).Where("source_id = ? OR (group_call = ? AND destination_id = ?)", userID, false, userID).Count(&count).Error
 	return int(count), err
 }
 

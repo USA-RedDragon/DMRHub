@@ -19,9 +19,12 @@
 package apimodels
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"gorm.io/gorm"
 )
 
 type WSCallResponseUser struct {
@@ -43,13 +46,13 @@ type WSCallResponseTalkgroup struct {
 type WSCallResponse struct {
 	ID            uint                    `json:"id"`
 	User          WSCallResponseUser      `json:"user"`
-	Repeater      WSCallResponseRepeater  `json:"repeater"`
 	StartTime     time.Time               `json:"start_time"`
 	Duration      time.Duration           `json:"duration"`
 	Active        bool                    `json:"active"`
 	TimeSlot      bool                    `json:"time_slot"`
 	GroupCall     bool                    `json:"group_call"`
 	RepeaterID    uint                    `json:"repeater_id"`
+	Repeater      WSCallResponseRepeater  `json:"repeater"`
 	IsToTalkgroup bool                    `json:"is_to_talkgroup"`
 	ToTalkgroup   WSCallResponseTalkgroup `json:"to_talkgroup"`
 	IsToUser      bool                    `json:"is_to_user"`
@@ -61,10 +64,34 @@ type WSCallResponse struct {
 	Jitter        float32                 `json:"jitter"`
 	BER           float32                 `json:"ber"`
 	RSSI          float32                 `json:"rssi"`
+	Kind          models.CallKind         `json:"kind"`
+	SubKind       string                  `json:"sub_kind"`
+	SourceID      uint                    `json:"source_id"`
+	Transport     string                  `json:"transport"`
+	Bursts        uint                    `json:"bursts"`
+	FID           *uint8                  `json:"fid"`
+	Opcode        *uint8                  `json:"opcode"`
+	SAP           *uint8                  `json:"sap"`
+	DataFormat    string                  `json:"data_format"`
+	Confirmed     bool                    `json:"confirmed"`
+	Blocks        uint                    `json:"blocks"`
+	Octets        uint                    `json:"octets"`
+	BadCRC        uint                    `json:"bad_crc"`
+	LostBlocks    uint                    `json:"lost_blocks"`
+	Response      models.CallResponse     `json:"response"`
+	TalkerAlias   string                  `json:"talker_alias"`
+	AliasFormat   string                  `json:"alias_format"`
+	Grid          string                  `json:"grid"`
+	Latitude      *float64                `json:"latitude"`
+	Longitude     *float64                `json:"longitude"`
+	PositionError *uint8                  `json:"position_error"`
+	Partial       bool                    `json:"partial"`
+	Undeliverable []string                `json:"undeliverable"`
 }
 
 // NewWSCallResponseFromCall converts a models.Call into a WSCallResponse suitable
-// for JSON serialisation over WebSocket, pubsub channels or REST.
+// for JSON serialisation over WebSocket or pubsub channels. It shows every
+// field; NewWSCallResponsesFor shows the fields that a viewer may see.
 func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 	resp := WSCallResponse{
 		ID:            call.ID,
@@ -76,17 +103,57 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		IsToTalkgroup: call.IsToTalkgroup,
 		IsToUser:      call.IsToUser,
 		IsToRepeater:  call.IsToRepeater,
+		DestinationID: call.DestinationID,
 		Loss:          call.Loss,
 		Jitter:        call.Jitter,
 		BER:           call.BER,
 		RSSI:          call.RSSI,
 		RepeaterID:    call.IngressID,
-		DestinationID: call.DestinationID,
+		Kind:          call.Kind,
+		SubKind:       call.SubKind,
+		SourceID:      call.SourceID,
+		Transport:     call.Transport,
+		Bursts:        call.Bursts,
+		FID:           call.FID,
+		Opcode:        call.Opcode,
+		SAP:           call.SAP,
+		DataFormat:    call.DataFormat,
+		Confirmed:     call.Confirmed,
+		Blocks:        call.Blocks,
+		Octets:        call.Octets,
+		BadCRC:        call.BadCRC,
+		LostBlocks:    call.LostBlocks,
+		Response:      call.Response,
+		TalkerAlias:   call.TalkerAlias,
+		AliasFormat:   call.AliasFormat,
+		Latitude:      call.Latitude,
+		Longitude:     call.Longitude,
+		PositionError: call.PositionError,
+		Partial:       call.Partial,
+		Undeliverable: call.Undeliverable,
 	}
-	resp.Repeater.RadioID = call.IngressID
-	resp.Repeater.Callsign = call.Repeater.Callsign
+	if resp.Kind == "" {
+		resp.Kind = models.CallKindVoice
+	}
 	resp.User.ID = call.User.ID
 	resp.User.Callsign = call.User.Callsign
+	if resp.User.ID == 0 {
+		resp.User.ID = call.SourceID
+	}
+	if resp.SourceID == 0 {
+		resp.SourceID = resp.User.ID
+	}
+	resp.Repeater.RadioID = call.Repeater.ID
+	resp.Repeater.Callsign = call.Repeater.Callsign
+	if resp.Repeater.RadioID == 0 {
+		resp.Repeater.RadioID = call.IngressID
+	}
+	if resp.RepeaterID == 0 {
+		resp.RepeaterID = resp.Repeater.RadioID
+	}
+	if call.Latitude != nil && call.Longitude != nil {
+		resp.Grid = Maidenhead(*call.Latitude, *call.Longitude)
+	}
 	if call.IsToTalkgroup {
 		resp.ToTalkgroup.ID = call.ToTalkgroup.ID
 		resp.ToTalkgroup.Name = call.ToTalkgroup.Name
@@ -101,4 +168,68 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		resp.ToRepeater.Callsign = call.ToRepeater.Callsign
 	}
 	return resp
+}
+
+// MaskSMS shows an SMS row as plain data: it drops the sub kind, the SAP,
+// the format, the size and the response, which would tell that the row
+// carried a message.
+func (r *WSCallResponse) MaskSMS() {
+	if r.Kind != models.CallKindData || r.SubKind != models.SubKindSMS {
+		return
+	}
+	r.SubKind, r.SAP, r.DataFormat, r.Confirmed, r.Response = "", nil, "", false, models.CallResponseNone
+	r.Bursts, r.Blocks, r.Octets, r.BadCRC, r.LostBlocks = 0, 0, 0, 0, 0
+}
+
+// HidePosition drops the coordinates of a GPS row and keeps its grid
+// square.
+func (r *WSCallResponse) HidePosition() {
+	r.Latitude, r.Longitude = nil, nil
+}
+
+// Maidenhead returns the 4-character Maidenhead grid square of a position,
+// such as EM12, or "" for a position out of range.
+func Maidenhead(lat, lon float64) string {
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return ""
+	}
+	const fields, squares = "ABCDEFGHIJKLMNOPQR", "0123456789"
+	x := math.Min(lon+180, 359.999999)
+	y := math.Min(lat+90, 179.999999)
+	return string([]byte{
+		fields[int(x/20)],
+		fields[int(y/10)],
+		squares[int(math.Mod(x, 20)/2)],
+		squares[int(math.Mod(y, 10))],
+	})
+}
+
+// NewWSCallResponsesFor returns the rows of calls as viewer may see them. A
+// nil viewer is a visitor who is not logged in. An admin sees every field.
+// Another viewer sees an SMS outside the SMS window of window as plain
+// data, and the coordinates only of their own GPS rows.
+func NewWSCallResponsesFor(db *gorm.DB, viewer *models.User, window models.SMSWindow, calls []models.Call) ([]WSCallResponse, error) {
+	out := make([]WSCallResponse, 0, len(calls))
+	var sms []uint
+	for i := range calls {
+		if calls[i].Kind == models.CallKindData && calls[i].SubKind == models.SubKindSMS {
+			sms = append(sms, calls[i].ID)
+		}
+	}
+	visible, err := models.VisibleSMSIDs(db, viewer, window, sms)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find the SMS that the viewer may see: %w", err)
+	}
+	admin := models.IsAdmin(viewer)
+	for i := range calls {
+		resp := NewWSCallResponseFromCall(&calls[i])
+		if !visible[resp.ID] {
+			resp.MaskSMS()
+		}
+		if !admin && (viewer == nil || viewer.ID != resp.SourceID) {
+			resp.HidePosition()
+		}
+		out = append(out, resp)
+	}
+	return out, nil
 }

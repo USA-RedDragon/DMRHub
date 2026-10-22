@@ -252,7 +252,7 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			if msg == nil {
 				continue
 			}
-			slog.Info("Received call message for websocket", "userID", userID, "message", string(msg))
+			slog.Debug("Received call message for websocket", "userID", userID)
 			var call models.Call
 			err := json.Unmarshal(msg, &call)
 			if err != nil {
@@ -260,24 +260,47 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 				continue
 			}
 
-			for _, p := range user.Repeaters {
-				want, _ := p.WantRXCall(call)
-				if want || call.User.ID == userID || call.DestinationID == p.OwnerID {
-					jsonCall := apimodels.NewWSCallResponseFromCall(&call)
-					callJSON, err := json.Marshal(jsonCall)
-					if err != nil {
-						slog.Error("Error marshalling call JSON", "error", err)
-						break
-					}
-					if err := h.pubsub.Publish(fmt.Sprintf("calls:%d", userID), callJSON); err != nil {
-						slog.Error("Error publishing call", "userID", userID, "error", err)
-						continue
-					}
-					break
-				}
+			if !wantsCall(&user, &call) {
+				continue
+			}
+			rows, err := apimodels.NewWSCallResponsesFor(h.db, &user, models.CurrentSMSWindow(), []models.Call{call})
+			if err != nil || len(rows) != 1 {
+				slog.Error("Error showing call", "userID", userID, "error", err)
+				continue
+			}
+			callJSON, err := json.Marshal(rows[0])
+			if err != nil {
+				slog.Error("Error marshalling call JSON", "error", err)
+				continue
+			}
+			if err := h.pubsub.Publish(fmt.Sprintf("calls:%d", userID), callJSON); err != nil {
+				slog.Error("Error publishing call", "userID", userID, "error", err)
 			}
 		}
 	}
+}
+
+func wantsCall(user *models.User, call *models.Call) bool {
+	if call.SourceID == user.ID || call.User.ID == user.ID {
+		return true
+	}
+	if !call.GroupCall {
+		if call.DestinationID == user.ID {
+			return true
+		}
+		for i := range user.Repeaters {
+			if call.DestinationID == user.Repeaters[i].ID {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range user.Repeaters {
+		if want, _ := user.Repeaters[i].WantRXCall(*call); want {
+			return true
+		}
+	}
+	return false
 }
 
 // unmarshalRawPacket decodes a pubsub message containing a serialized

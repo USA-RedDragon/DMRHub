@@ -183,8 +183,8 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 	require.NoError(t, db.Create(&rpt).Error)
 	tgID, dstID, srcID, rptID := tg.ID, dst.ID, src.ID, rpt.ID
 	start := time.Now()
-	require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID}).Error)
-	require.NoError(t, db.Create(&models.Call{StreamID: 2, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, IsToUser: true, ToUserID: &dstID, DestinationID: dst.ID}).Error)
+	require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, SourceID: src.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID}).Error)
+	require.NoError(t, db.Create(&models.Call{StreamID: 2, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, SourceID: src.ID, IsToUser: true, ToUserID: &dstID, DestinationID: dst.ID}).Error)
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
 	paths := []string{
@@ -198,6 +198,10 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 		"time_slot": true, "group_call": true, "repeater_id": true, "is_to_talkgroup": true, "to_talkgroup": true,
 		"is_to_user": true, "to_user": true, "is_to_repeater": true, "to_repeater": true, "destination_id": true,
 		"loss": true, "jitter": true, "ber": true, "rssi": true,
+		"kind": true, "sub_kind": true, "source_id": true, "transport": true, "bursts": true, "fid": true,
+		"opcode": true, "sap": true, "data_format": true, "confirmed": true, "blocks": true, "octets": true,
+		"bad_crc": true, "lost_blocks": true, "response": true, "talker_alias": true, "alias_format": true,
+		"grid": true, "latitude": true, "longitude": true, "position_error": true, "partial": true, "undeliverable": true,
 		"user.id": true, "user.callsign": true, "repeater.id": true, "repeater.callsign": true,
 		"to_user.id": true, "to_user.callsign": true, "to_repeater.id": true, "to_repeater.callsign": true,
 		"to_talkgroup.id": true, "to_talkgroup.name": true, "to_talkgroup.description": true,

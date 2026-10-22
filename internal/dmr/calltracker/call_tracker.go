@@ -389,8 +389,12 @@ func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func
 
 func (c *CallTracker) publishCall(call *models.Call) {
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
-		jsonCall := apimodels.NewWSCallResponseFromCall(call)
-		callJSON, err := json.Marshal(jsonCall)
+		rows, err := apimodels.NewWSCallResponsesFor(c.db, nil, models.CurrentSMSWindow(), []models.Call{*call})
+		if err != nil || len(rows) != 1 {
+			slog.Error("Error showing call", "error", err)
+			return
+		}
+		callJSON, err := json.Marshal(rows[0])
 		if err != nil {
 			slog.Error("Error marshalling call JSON", "error", err)
 			return

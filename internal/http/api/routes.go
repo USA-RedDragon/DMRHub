@@ -139,9 +139,9 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	// Paginated
 	v1Lastheard.GET("", v1LastheardControllers.GETLastheard)
 	// Paginated
-	v1Lastheard.GET("/user/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardUser)
+	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardUser)
 	// Paginated
-	v1Lastheard.GET("/repeater/:id", middleware.RequireLogin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
+	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", v1LastheardControllers.GETLastheardTalkgroup)
 

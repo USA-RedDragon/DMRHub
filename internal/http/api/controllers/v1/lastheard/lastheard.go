@@ -27,7 +27,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -37,132 +39,125 @@ const (
 	callsKey         = "calls"
 )
 
-func GETLastheard(c *gin.Context) {
+type query struct {
+	db     *gorm.DB
+	count  *gorm.DB
+	viewer *models.User
+}
+
+func viewerOf(c *gin.Context, db *gorm.DB) *models.User {
+	id, ok := sessions.Default(c).Get("user_id").(uint)
+	if !ok {
+		return nil
+	}
+	user, err := models.FindUserByID(db, id)
+	if err != nil {
+		return nil
+	}
+	return &user
+}
+
+func start(c *gin.Context) (query, bool) {
 	db, ok := utils.GetPaginatedDB(c)
 	if !ok {
+		return query{}, false
+	}
+	cDb, ok := utils.GetDB(c)
+	if !ok {
+		return query{}, false
+	}
+	idle, _ := strconv.ParseBool(c.Query("idle"))
+	filter, err := models.ParseCallFilter(c.Query("types"), idle)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid transmission type"})
+		return query{}, false
+	}
+	viewer := viewerOf(c, cDb)
+	scope := filter.Scope(cDb, viewer, models.CurrentSMSWindow())
+	return query{db: db.Scopes(scope), count: cDb.Scopes(scope), viewer: viewer}, true
+}
+
+func (q query) respond(c *gin.Context, calls []models.Call, findErr error, count int, countErr error) {
+	if findErr != nil {
+		slog.Error("Unable to find calls", "error", findErr)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	if countErr != nil {
+		slog.Error("Unable to count calls", "error", countErr)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	cDb, ok := utils.GetDB(c)
 	if !ok {
 		return
 	}
-	var calls []models.Call
-	var count int
-
-	var err error
-	calls, err = models.FindCalls(db)
+	rows, err := apimodels.NewWSCallResponsesFor(cDb, q.viewer, models.CurrentSMSWindow(), calls)
 	if err != nil {
-		slog.Error("Unable to find calls", "error", err)
+		slog.Error("Unable to show calls", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	count, err = models.CountCalls(cDb)
+	c.JSON(http.StatusOK, gin.H{callsKey: rows, totalKey: count})
+}
+
+func parseID(c *gin.Context, what string) (uint, bool) {
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		slog.Error("Unable to count calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid " + what + " ID"})
+		return 0, false
+	}
+	return uint(id64), true
+}
+
+func GETLastheard(c *gin.Context) {
+	q, ok := start(c)
+	if !ok {
 		return
 	}
-
-	if len(calls) == 0 {
-		c.JSON(http.StatusOK, make([]string, 0))
-	} else {
-		c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
-	}
+	calls, findErr := models.FindCalls(q.db)
+	count, countErr := models.CountCalls(q.count)
+	q.respond(c, calls, findErr, count, countErr)
 }
 
 func GETLastheardUser(c *gin.Context) {
-	db, ok := utils.GetPaginatedDB(c)
+	userID, ok := parseID(c, "User")
 	if !ok {
 		return
 	}
-	cDb, ok := utils.GetDB(c)
+	q, ok := start(c)
 	if !ok {
 		return
 	}
-	id := c.Param("id")
-	userID64, err := strconv.ParseUint(id, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid User ID"})
-		return
-	}
-	userID := uint(userID64)
-	calls, err := models.FindUserCalls(db, userID)
-	if err != nil {
-		slog.Error("Unable to find user calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	count, err := models.CountUserCalls(cDb, userID)
-	if err != nil {
-		slog.Error("Unable to count user calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
+	calls, findErr := models.FindUserCalls(q.db, userID)
+	count, countErr := models.CountUserCalls(q.count, userID)
+	q.respond(c, calls, findErr, count, countErr)
 }
 
 func GETLastheardRepeater(c *gin.Context) {
-	db, ok := utils.GetPaginatedDB(c)
+	repeaterID, ok := parseID(c, "Repeater")
 	if !ok {
 		return
 	}
-	cDb, ok := utils.GetDB(c)
+	q, ok := start(c)
 	if !ok {
 		return
 	}
-	id := c.Param("id")
-	repeaterID64, err := strconv.ParseUint(id, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid Repeater ID"})
-		return
-	}
-	repeaterID := uint(repeaterID64)
-	calls, err := models.FindRepeaterCalls(db, repeaterID)
-	if err != nil {
-		slog.Error("Unable to find repeater calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	count, err := models.CountRepeaterCalls(cDb, repeaterID)
-	if err != nil {
-		slog.Error("Unable to count repeater calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
+	calls, findErr := models.FindRepeaterCalls(q.db, repeaterID)
+	count, countErr := models.CountRepeaterCalls(q.count, repeaterID)
+	q.respond(c, calls, findErr, count, countErr)
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
-	db, ok := utils.GetPaginatedDB(c)
+	talkgroupID, ok := parseID(c, "Talkgroup")
 	if !ok {
 		return
 	}
-	id := c.Param("id")
-	talkgroupID64, err := strconv.ParseUint(id, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid Talkgroup ID"})
+	q, ok := start(c)
+	if !ok {
 		return
 	}
-	talkgroupID := uint(talkgroupID64)
-	calls, err := models.FindTalkgroupCalls(db, talkgroupID)
-	if err != nil {
-		slog.Error("Unable to find talkgroup calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	count, err := models.CountTalkgroupCalls(db, talkgroupID)
-	if err != nil {
-		slog.Error("Unable to count talkgroup calls", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
-}
-
-func callResponses(calls []models.Call) []apimodels.WSCallResponse {
-	resp := make([]apimodels.WSCallResponse, len(calls))
-	for i := range calls {
-		resp[i] = apimodels.NewWSCallResponseFromCall(&calls[i])
-	}
-	return resp
+	calls, findErr := models.FindTalkgroupCalls(q.db, talkgroupID)
+	count, countErr := models.CountTalkgroupCalls(q.count, talkgroupID)
+	q.respond(c, calls, findErr, count, countErr)
 }

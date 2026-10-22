@@ -726,3 +726,26 @@ func TestTrackPosition(t *testing.T) {
 	assert.True(t, short.Partial)
 	assert.Nil(t, short.Latitude, "a short DMRG has no coordinates")
 }
+
+func TestPublicCallsMaskSMS(t *testing.T) {
+	t.Parallel()
+	ct, database, ps := newTracker(t)
+	sub := ps.Subscribe("calls:public")
+	defer func() { _ = sub.Close() }()
+
+	s := newSender(t, ct, userB, tgID, true, 7036)
+	s.data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(tgID), Group: true, Body: []byte("net at 8")})...)
+	c := waitDone(t, ct, database, 1)[0]
+	require.Equal(t, "sms", c.SubKind)
+
+	select {
+	case msg := <-sub.Channel():
+		var row map[string]any
+		require.NoError(t, json.Unmarshal(msg, &row))
+		assert.Equal(t, "data", row["kind"])
+		assert.Empty(t, row["sub_kind"])
+		assert.InDelta(t, 0, row["octets"], 0)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no public row")
+	}
+}

@@ -55,8 +55,16 @@ func (h *Hub) trackCall(ctx context.Context, packet models.Packet, isVoice bool)
 
 // RoutePacket is the central routing method for all incoming DMR packets.
 // sourceName identifies the originating server (matches ServerConfig.Name)
-// to prevent echo/loop back to the source.
+// to prevent echo/loop back to the source. It queues the packet on the
+// worker of its stream and returns at once, so the read loop of a server
+// never waits on routing, and one stream never waits on another.
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
+	if !h.routing.Do(ctx, packet.StreamID, func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
+		slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
+	}
+}
+
+func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName string) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.RoutePacket")
 	defer span.End()
 

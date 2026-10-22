@@ -54,9 +54,10 @@ func TestRoutePacketUnlink(t *testing.T) {
 	h.RoutePacket(context.Background(), unlinkPkt, models.RepeaterTypeMMDVM)
 
 	// Verify the dynamic talkgroup was cleared
-	rpt, err := models.FindRepeaterByID(database, 100001)
-	require.NoError(t, err)
-	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "expected TS1 dynamic talkgroup to be unlinked")
+	assert.Eventually(t, func() bool {
+		rpt, err := models.FindRepeaterByID(database, 100001)
+		return err == nil && rpt.TS1DynamicTalkgroupID == nil
+	}, 2*time.Second, 10*time.Millisecond, "expected TS1 dynamic talkgroup to be unlinked")
 }
 
 func TestRoutePacketDynamicTalkgroupLinking(t *testing.T) {
@@ -132,9 +133,10 @@ func TestRoutePacketUnlinkTS2(t *testing.T) {
 	unlinkPkt := makeVoicePacket(4000, 88887, true, true)
 	h.RoutePacket(context.Background(), unlinkPkt, models.RepeaterTypeMMDVM)
 
-	rpt, err := models.FindRepeaterByID(database, 100001)
-	require.NoError(t, err)
-	assert.Nil(t, rpt.TS2DynamicTalkgroupID, "expected TS2 dynamic talkgroup to be unlinked")
+	assert.Eventually(t, func() bool {
+		rpt, err := models.FindRepeaterByID(database, 100001)
+		return err == nil && rpt.TS2DynamicTalkgroupID == nil
+	}, 2*time.Second, 10*time.Millisecond, "expected TS2 dynamic talkgroup to be unlinked")
 }
 
 func TestRoutePacketDynamicTalkgroupLinkingNonexistentTalkgroup(t *testing.T) {

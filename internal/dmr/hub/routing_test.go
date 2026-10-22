@@ -366,3 +366,41 @@ func TestVoiceTerminatorEndsCall(t *testing.T) {
 		h.RoutePacket(context.Background(), termPkt, models.RepeaterTypeMMDVM)
 	})
 }
+
+func TestRoutePacketDoesNotWaitOnAnotherStream(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100002, 1000001)
+	seedTalkgroup(t, database, 1, "TG1")
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100002).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	release := h.HoldStream(7001)
+	defer release()
+	returned := make(chan struct{})
+	go func() {
+		for range 50 {
+			h.RoutePacket(context.Background(), makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
+		}
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("RoutePacket waited on a busy stream")
+	}
+
+	h.RoutePacket(context.Background(), makeVoicePacket(1, 7002, true, false), models.RepeaterTypeMMDVM)
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(7002), rp.Packet.StreamID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("a stream waited behind a busy stream")
+	}
+}

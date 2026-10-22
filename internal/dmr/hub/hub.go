@@ -89,6 +89,7 @@ const serverChannelSize = 500
 
 const (
 	peerEgressQueueSize = 500
+	routingQueueSize    = 500
 )
 
 // peerOwnerKeyPrefix is the KV key prefix for tracking which instance owns
@@ -138,6 +139,7 @@ type Hub struct {
 	stopOnce sync.Once
 
 	peerEgress *streamorder.Queue
+	routing    *streamorder.Queue
 }
 
 // NewHub creates a new Hub.
@@ -153,6 +155,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 	}
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
+	h.routing = streamorder.New(routingQueueSize, h.done)
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h
 }

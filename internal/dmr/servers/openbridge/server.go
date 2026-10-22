@@ -169,39 +169,23 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.ingress = streamorder.New(ingressWorkers, ingressQueueSize, s.done)
 
-	s.wg.Add(3)
-	go s.listen(ctx)
+	s.wg.Add(2)
 	go s.consumeHubPackets(ctx)
 
 	go func() {
 		defer s.wg.Done()
 		for {
 			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-			slog.Debug("Read from UDP", "length", length, "remoteaddr", remoteaddr, "err", err)
 			if err != nil {
-				// When the socket is closed during shutdown, stop the loop quietly.
 				if errors.Is(err, net.ErrClosed) {
 					return
 				}
 				slog.Error("Error reading from UDP Socket, swallowing error", "error", err)
 				continue
 			}
-			// Copy the buffer data since s.Buffer will be reused for the next read
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
-			p := models.RawDMRPacket{
-				Data:       data,
-				RemoteIP:   remoteaddr.IP.String(),
-				RemotePort: remoteaddr.Port,
-			}
-			packedBytes, err := p.MarshalMsg(nil)
-			if err != nil {
-				slog.Error("Error marshalling packet", "error", err)
-				continue
-			}
-			if err := s.pubsub.Publish("openbridge:incoming", packedBytes); err != nil {
-				slog.Error("Error publishing packet to openbridge:incoming", "error", err)
-			}
+			s.ingress.Do(ctx, streamOf(data), func() { s.handlePacket(ctx, remoteaddr, data) })
 		}
 	}()
 
@@ -223,44 +207,6 @@ func (s *Server) Stop(_ context.Context) error {
 
 	s.wg.Wait()
 	return nil
-}
-
-func (s *Server) listen(ctx context.Context) {
-	defer s.wg.Done()
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.listen")
-	defer span.End()
-
-	subscription := s.pubsub.Subscribe("openbridge:incoming")
-	defer func() {
-		err := subscription.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub", "error", err)
-		}
-	}()
-	// The Redis subscription makes a new channel and goroutine on each
-	// Channel call, so read from one.
-	channel := subscription.Channel()
-	for {
-		select {
-		case <-s.done:
-			return
-		case msg, ok := <-channel:
-			if !ok {
-				return
-			}
-			var packet models.RawDMRPacket
-			_, err := packet.UnmarshalMsg(msg)
-			if err != nil {
-				slog.Error("Error unmarshalling packet", "error", err)
-				continue
-			}
-			addr := &net.UDPAddr{
-				IP:   net.ParseIP(packet.RemoteIP),
-				Port: packet.RemotePort,
-			}
-			s.ingress.Do(ctx, streamOf(packet.Data), func() { s.handlePacket(ctx, addr, packet.Data) })
-		}
-	}
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.

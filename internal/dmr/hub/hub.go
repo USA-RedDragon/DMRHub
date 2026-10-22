@@ -174,9 +174,6 @@ func (h *Hub) RegisterServer(cfg ServerConfig) *ServerHandle {
 	if cfg.Broadcast {
 		go h.subscriptionMgr.subscribeBroadcast(cfg.Name)
 	}
-	if cfg.Role == RolePeer {
-		go h.subscriptionMgr.subscribePeers(cfg.Name)
-	}
 
 	return &ServerHandle{
 		Name:    cfg.Name,
@@ -272,6 +269,20 @@ func (h *Hub) getServerRole(name string) ServerRole {
 		return -1
 	}
 	return entry.config.Role
+}
+
+// peerServers returns the names of the registered servers with RolePeer.
+func (h *Hub) peerServers() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var names []string
+	for name, entry := range h.servers {
+		if entry.config.Role == RolePeer {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // hasPeerServers returns true if any registered server has RolePeer.

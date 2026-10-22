@@ -139,33 +139,54 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	return stack
 }
 
-// SpawnSecondReplica creates a second Hub + MMDVM server that shares the same
-// DB, pubsub, and KV as the original stack — simulating two replicas of the app.
-// The second replica's Hub is started; repeater subscriptions are activated
-// when repeaters connect via the MMDVM handshake.
-// Returns the second MMDVM server's listen address.
-func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) string {
+// Replica is a second running copy of the app made by SpawnSecondReplica.
+type Replica struct {
+	Hub            *hub.Hub
+	MMDVMAddr      string
+	IPSCAddr       string
+	OpenBridgeAddr string
+}
+
+// SpawnSecondReplica creates a second Hub with MMDVM, IPSC and OpenBridge
+// servers that share the same DB, pubsub, and KV as the original stack,
+// simulating two replicas of the app. The servers listen on new ports and
+// are started; repeater subscriptions are activated when repeaters connect.
+func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 
 	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub)
 	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
 
-	// Use a separate config with port=0 for the second server
 	cfg2 := *s.Config
 	cfg2.DMR.MMDVM.Port = 0
+	cfg2.DMR.IPSC.Port = 0
+	cfg2.DMR.OpenBridge.Port = 0
 
 	mmdvm2, err := mmdvm.MakeServer(&cfg2, hub2, s.DB, s.PubSub, s.KV, "test", "test")
 	require.NoError(t, err)
+	require.NoError(t, mmdvm2.Start(context.Background()))
 
-	err = mmdvm2.Start(context.Background())
+	ipsc2 := ipsc.NewIPSCServer(&cfg2, hub2, s.DB)
+	require.NoError(t, ipsc2.Start(context.Background()))
+
+	ob2, err := openbridge.MakeServer(&cfg2, hub2, s.DB, s.PubSub)
 	require.NoError(t, err)
+	require.NoError(t, ob2.Start(context.Background()))
 
 	t.Cleanup(func() {
+		_ = ob2.Stop(context.Background())
+		_ = ipsc2.Stop(context.Background())
 		_ = mmdvm2.Stop(context.Background())
 		hub2.Stop(context.Background())
+		ct2.Stop()
 	})
 
-	return mmdvm2.Server.LocalAddr().String()
+	return Replica{
+		Hub:            hub2,
+		MMDVMAddr:      mmdvm2.Server.LocalAddr().String(),
+		IPSCAddr:       ipsc2.Addr().String(),
+		OpenBridgeAddr: ob2.Server.LocalAddr().String(),
+	}
 }
 
 // StartServers starts the Hub and the MMDVM, IPSC, and OpenBridge servers.

@@ -501,26 +501,3 @@ func (m *subscriptionManager) subscribeBroadcast(serverName string) {
 		m.hub.deliverToServer(serverName, RoutedPacket{RepeaterID: 0, Packet: packet})
 	}
 }
-
-// subscribePeers listens on the hub:packets:peers topic and delivers
-// packets to the named peer server.
-func (m *subscriptionManager) subscribePeers(serverName string) {
-	slog.Debug("Subscribing to peers for server", "server", serverName)
-	subscription := m.hub.pubsub.Subscribe("hub:packets:peers")
-	defer func() {
-		err := subscription.Close()
-		if err != nil {
-			slog.Error("Error closing peers pubsub connection", "error", err)
-		}
-	}()
-	pubsubChannel := subscription.Channel()
-	for msg := range pubsubChannel {
-		packet, ok := unmarshalRawPacket(msg)
-		if !ok {
-			continue
-		}
-
-		// The packet.Repeater field holds the peer ID
-		m.hub.deliverToServer(serverName, RoutedPacket{RepeaterID: packet.Repeater, Packet: packet})
-	}
-}

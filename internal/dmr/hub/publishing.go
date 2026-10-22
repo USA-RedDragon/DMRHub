@@ -48,7 +48,7 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	return nil
 }
 
-// publishForPeers queues a packet for egress to all peer servers via pubsub.
+// publishForPeers queues a packet for egress to all peer servers.
 // Packets of one stream run in order, so peers get them in the order the hub
 // routed them. The context is used to abort the work early during shutdown.
 func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
@@ -88,17 +88,18 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 	}
 }
 
-// publishToPeer publishes a packet to the peer delivery pubsub topic.
+// publishToPeer hands a packet to the local peer servers for one peer. The
+// replica that routes a packet sends it to the peers, so each peer gets it
+// once whatever the number of replicas.
 func (h *Hub) publishToPeer(peerID uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type for peer delivery", "signature", packet.Signature)
 		return
 	}
 
-	// Set the repeater field to the peer ID for routing on the receiving end
 	packet.Repeater = peerID
-	if err := h.marshalAndPublish(packet, "hub:packets:peers"); err != nil {
-		slog.Error("Error publishing packet to peers", "error", err)
+	for _, name := range h.peerServers() {
+		h.deliverToServer(name, RoutedPacket{RepeaterID: peerID, Packet: packet})
 	}
 }
 

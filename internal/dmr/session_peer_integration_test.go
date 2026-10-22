@@ -127,7 +127,7 @@ func TestSessionPeerMovesToSecondReplica(t *testing.T) {
 		require.NoError(t, rpt.WaitReady(handshakeWait))
 		time.Sleep(settleDuration)
 
-		require.NoError(t, gw.Retarget(second))
+		require.NoError(t, gw.Retarget(second.MMDVMAddr))
 		time.Sleep(settleDuration)
 
 		require.NoError(t, gw.SendDMRD(makeGroupVoicePacket(1000001, 1, 7101, false)))

@@ -444,3 +444,45 @@ func TestOpenBridgeCrossProtocolIPSCToOpenBridge(t *testing.T) {
 		assert.NotEmpty(t, ipscPkts, "IPSC client should receive packets from OpenBridge peer")
 	})
 }
+
+// TestOpenBridgeOncePerPacketAcrossReplicas runs two replicas. Each packet
+// from an OpenBridge peer must reach the local repeater and the other peer
+// once, and each packet from a repeater must reach the peer once.
+func TestOpenBridgeOncePerPacketAcrossReplicas(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100001, 1)
+		_ = stack.SpawnSecondReplica(t)
+		stack.StartServers(t)
+
+		obcB := testutils.NewOpenBridgeClient(500002, obPassword)
+		defer obcB.Close()
+		require.NoError(t, obcB.Connect(stack.OpenBridgeAddr))
+		addrB := obcB.LocalAddr()
+		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeerRule(t, 500001, true, 1, 1)
+		stack.SeedPeer(t, 500002, 1000001, obPassword, addrB.IP.String(), addrB.Port, false, true)
+		stack.SeedPeerRule(t, 500002, false, 1000001, 1000001)
+
+		mc := testutils.NewMMDVMClient(100001, "", testPassword)
+		defer mc.Close()
+		require.NoError(t, mc.Connect(stack.MMDVMAddr))
+		require.NoError(t, mc.WaitReady(handshakeWait))
+
+		obcA := testutils.NewOpenBridgeClient(500001, obPassword)
+		defer obcA.Close()
+		require.NoError(t, obcA.Connect(stack.OpenBridgeAddr))
+		time.Sleep(settleDuration)
+
+		require.NoError(t, obcA.SendGroupVoice(1000001, 1, 9101))
+		assert.Len(t, mc.Drain(drainWait), 3, "the repeater must get each peer packet once")
+		assert.Len(t, obcB.Drain(drainWait), 3, "the other peer must get each peer packet once")
+
+		require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9102, false)))
+		require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 9102, false)))
+		assert.Len(t, obcB.Drain(drainWait), 2, "the peer must get each repeater packet once")
+	})
+}

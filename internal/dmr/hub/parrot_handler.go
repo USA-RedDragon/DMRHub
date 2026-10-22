@@ -34,6 +34,8 @@ import (
 
 const parrotDelay = 3 * time.Second
 
+const parrotSource = "parrot"
+
 // doParrot handles parrot (echo) service. Records packets and plays them back
 // to the source repeater.
 func (h *Hub) doParrot(ctx context.Context, packet models.Packet) {
@@ -107,7 +109,7 @@ func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []mod
 		} else {
 			h.publishToRepeater(repeaterID, pkt)
 		}
-		h.trackCall(ctx, pkt, true)
+		h.trackCall(ctx, pkt, parrotSource)
 
 		elapsed := time.Since(startedTime)
 		const packetTiming = 60 * time.Millisecond

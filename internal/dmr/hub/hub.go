@@ -166,6 +166,11 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.undeliverableLogged = xsync.NewMap[uint, time.Time]()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
+	if ct != nil {
+		h.SetUndeliverableFunc(func(p models.Packet, target, _ string) {
+			ct.Undeliverable(p, fmt.Sprintf("%s:%d", target, p.Repeater))
+		})
+	}
 	return h
 }
 

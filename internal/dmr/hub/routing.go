@@ -32,25 +32,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// trackCall centralizes call tracking for all protocols.
-func (h *Hub) trackCall(ctx context.Context, packet models.Packet, isVoice bool) {
+// trackCall queues the packet for the call tracker, which records every
+// kind of transmission.
+func (h *Hub) trackCall(ctx context.Context, packet models.Packet, sourceName string) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.TrackCall")
 	defer span.End()
 
-	// Don't track unlink
-	if packet.Dst == 4000 || !isVoice {
-		return
-	}
-
-	if !h.callTracker.IsCallActive(ctx, packet) {
-		h.callTracker.StartCall(ctx, packet)
-	}
-	if h.callTracker.IsCallActive(ctx, packet) {
-		h.callTracker.ProcessCallPacket(ctx, packet)
-		if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-			h.callTracker.EndCall(ctx, packet)
-		}
-	}
+	h.callTracker.Track(ctx, packet, sourceName, h.getServerRole(sourceName) == RolePeer)
 }
 
 // RoutePacket is the central routing method for all incoming DMR packets.
@@ -75,7 +63,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		defer h.streamEnded(packet.StreamID)
 	}
 
-	defer h.trackCall(ctx, packet, isVoice)
+	h.trackCall(ctx, packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice) {

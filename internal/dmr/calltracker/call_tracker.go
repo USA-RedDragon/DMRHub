@@ -17,130 +17,268 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+// Package calltracker records every transmission that the hub hears, of
+// every kind, as a row of the calls table.
 package calltracker
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/mitchellh/hashstructure/v2"
+	"github.com/USA-RedDragon/dmrgo/v2/data"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/puzpuzpuz/xsync/v4"
-	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// netEventPayload mirrors the fields we need from WSNetEventResponse
-// for decoding pubsub messages without importing the apimodels cycle.
 type netEventPayload struct {
 	NetID       uint   `json:"net_id"`
 	TalkgroupID uint   `json:"talkgroup_id"`
 	Event       string `json:"event"`
 }
 
-// Assuming +/-7ms of jitter, we'll wait 2 seconds before we consider a call to be over
-// This equates out to about 30 lost voice packets.
-const timerDelay = 2 * time.Second
-const packetTimingMs = 60
-const pct = 100
+const (
+	voiceHang       = 2 * time.Second
+	controlHang     = time.Second
+	dataHang        = time.Second
+	dataRowHang     = 3 * time.Second
+	responseWindow  = 10 * time.Second
+	keyUp           = 100 * time.Millisecond
+	sweepInterval   = 50 * time.Millisecond
+	channelIdle     = 5 * time.Minute
+	peerChannelIdle = 30 * time.Second
+	streamIdle      = time.Minute
+	shardCount      = 8
+	shardDepth      = 1024
+	maxCallData     = 33 * 10000
+	packetTimingMs  = 60
+	pct             = 100
+)
 
-// These are the keys that we use to create a consistent hash
-type callMapStruct struct {
-	Active        bool
-	StreamID      uint
-	UserID        uint
-	DestinationID uint
-	TimeSlot      bool
-	GroupCall     bool
+// DataObserver is told of each data packet and each response that the
+// tracker hears. Its methods run on the worker of the logical channel, in
+// burst order, and must not block. ev.Message.Payload is valid only until
+// the method returns.
+type DataObserver interface {
+	// DataPacket is called for each EventDelivered and EventReassembled.
+	// call is the row of the data call; its ID is set.
+	DataPacket(call *models.Call, ev *data.Event, at time.Time)
+	// DataResponse is called for each EventResponse. call is the row of
+	// the response.
+	DataResponse(call *models.Call, ev *data.Event, at time.Time)
 }
 
-func getCallHashFromPacket(packet models.Packet) (uint64, error) {
-	v := callMapStruct{
-		Active:        true,
-		StreamID:      packet.StreamID,
-		UserID:        packet.Src,
-		DestinationID: packet.Dst,
-		TimeSlot:      packet.Slot,
-		GroupCall:     packet.GroupCall,
-	}
-
-	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
-	if err != nil {
-		slog.Error("CallTracker: Error hashing call", "error", err)
-		return hash, fmt.Errorf("failed to hash call from packet: %w", err)
-	}
-	return hash, nil
-}
-
-func getCallHash(call models.Call) (uint64, error) {
-	v := callMapStruct{
-		Active:        true, // Always true: calls are only hashed while active
-		StreamID:      call.StreamID,
-		UserID:        call.SourceID,
-		DestinationID: call.DestinationID,
-		TimeSlot:      call.TimeSlot,
-		GroupCall:     call.GroupCall,
-	}
-
-	hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
-	if err != nil {
-		slog.Error("CallTracker: Error hashing call", "error", err)
-		return hash, fmt.Errorf("failed to hash call: %w", err)
-	}
-	return hash, nil
-}
-
-// CallTracker is a struct that holds the state of the calls that are currently in progress.
+// CallTracker records the transmissions that the hub hears. Track queues
+// each packet on the worker of its logical channel, so tracking never
+// blocks routing, and one worker owns each data.Receiver.
 type CallTracker struct {
-	db            *gorm.DB
-	pubsub        pubsub.PubSub
-	callEndTimers *xsync.Map[uint64, *time.Timer]
-	inFlightCalls *xsync.Map[uint64, *inFlightCall]
-	// activeNets maps talkgroup ID → net ID for currently active nets.
+	db     *gorm.DB
+	pubsub pubsub.PubSub
+	epoch  time.Time
+	// activeNets maps talkgroup ID to net ID for currently active nets.
 	// Updated via pubsub subscription to avoid a DB query per call end.
 	activeNets *xsync.Map[uint, uint]
 	cancelNets context.CancelFunc
+
+	shards   []*shard
+	done     chan struct{}
+	stopOnce sync.Once
+	stopped  atomic.Bool
+	wg       sync.WaitGroup
+
+	streams  *xsync.Map[uint, streamRef]
+	recentMu sync.Mutex
+	recent   map[pair][]recentRow
+
+	observer atomic.Pointer[observerBox]
+	dropped  atomic.Uint64
+	metrics  *metrics.Metrics
 }
 
-// inFlightCall wraps a models.Call with a mutex to prevent data races between
-// the packet-processing goroutine (updateCall) and timer-fired goroutine (EndCall).
-type inFlightCall struct {
-	mu    sync.Mutex
-	call  *models.Call
-	ended bool
+type observerBox struct{ o DataObserver }
+
+type streamRef struct {
+	shard int
+	at    time.Time
 }
 
-// NewCallTracker creates a new CallTracker.
+type pair struct{ src, dst uint }
+
+type recentRow struct {
+	shard int
+	row   *row
+	kind  models.CallKind
+	sub   string
+	at    time.Time
+}
+
+// NewCallTracker creates a new CallTracker and starts its workers.
 func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 	ct := &CallTracker{
-		db:            db,
-		pubsub:        pubsub,
-		callEndTimers: xsync.NewMap[uint64, *time.Timer](),
-		inFlightCalls: xsync.NewMap[uint64, *inFlightCall](),
-		activeNets:    xsync.NewMap[uint, uint](),
+		db:         db,
+		pubsub:     pubsub,
+		epoch:      time.Now(),
+		activeNets: xsync.NewMap[uint, uint](),
+		streams:    xsync.NewMap[uint, streamRef](),
+		recent:     map[pair][]recentRow{},
+		done:       make(chan struct{}),
+		metrics:    metrics.NewMetrics(),
 	}
 	ct.loadActiveNets()
 	ct.subscribeNetEvents()
+	ct.shards = make([]*shard, shardCount)
+	for i := range ct.shards {
+		ct.shards[i] = newShard(ct, i)
+		ct.wg.Add(1)
+		go ct.shards[i].run()
+	}
 	return ct
 }
 
-// Stop cancels the net-events subscription goroutine.
+// SetDataObserver sets the observer of data packets and responses. Set it
+// before the first Track.
+func (c *CallTracker) SetDataObserver(o DataObserver) {
+	c.observer.Store(&observerBox{o: o})
+}
+
+func (c *CallTracker) dataObserver() DataObserver {
+	if b := c.observer.Load(); b != nil {
+		return b.o
+	}
+	return nil
+}
+
+// Stop ends every open transmission, stops the workers and cancels the
+// net-events subscription.
 func (c *CallTracker) Stop() {
-	if c.cancelNets != nil {
-		c.cancelNets()
+	c.stopOnce.Do(func() {
+		c.stopped.Store(true)
+		for _, s := range c.shards {
+			s.in <- task{stop: true}
+		}
+		c.wg.Wait()
+		close(c.done)
+		if c.cancelNets != nil {
+			c.cancelNets()
+		}
+	})
+}
+
+// Dropped returns the number of packets that Track dropped because the
+// queue of their worker was full.
+func (c *CallTracker) Dropped() uint64 {
+	return c.dropped.Load()
+}
+
+// Track queues the packet p, which the server named server got, to be
+// recorded. peer reports a server of network peers, such as OpenBridge,
+// whose Repeater field is a peer ID and which carries many streams on one
+// slot. Track never blocks: when the queue of the worker is full, the
+// packet is not recorded and Dropped counts it.
+func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, peer bool) {
+	if c.stopped.Load() {
+		return
+	}
+	key := chanKey{server: server, repeater: p.Repeater, slot: p.Slot}
+	if peer {
+		key.stream = p.StreamID
+	}
+	idx := key.shard()
+	c.streams.Store(p.StreamID, streamRef{shard: idx, at: time.Now()})
+	c.enqueue(idx, task{key: key, p: p, peer: peer, at: time.Now()})
+}
+
+// Undeliverable records that target, such as "ipsc:311304200", could not
+// take the burst of p, a packet that Track got, on the transmission that
+// holds the burst. Call it after Track for the same packet. The hub
+// counts the burst in its metrics.
+func (c *CallTracker) Undeliverable(p models.Packet, target string) {
+	ref, ok := c.streams.Load(p.StreamID)
+	if !ok || c.stopped.Load() {
+		return
+	}
+	c.enqueue(ref.shard, task{fn: func(s *shard) { s.undeliverable(p.StreamID, target) }})
+}
+
+// Flush waits until the workers handled every packet queued before it.
+func (c *CallTracker) Flush() {
+	barriers := make([]chan struct{}, len(c.shards))
+	for i := range c.shards {
+		barriers[i] = make(chan struct{})
+		b := barriers[i]
+		select {
+		case c.shards[i].in <- task{fn: func(*shard) { close(b) }}:
+		case <-c.done:
+			return
+		}
+	}
+	for _, b := range barriers {
+		select {
+		case <-b:
+		case <-c.done:
+			return
+		}
 	}
 }
 
-// loadActiveNets populates the activeNets cache from the database at startup.
+func (c *CallTracker) enqueue(idx int, t task) {
+	select {
+	case c.shards[idx].in <- t:
+	default:
+		c.metrics.IncrementTrackerDropped()
+		n := c.dropped.Add(1)
+		if n&(n-1) == 0 {
+			slog.Warn("CallTracker: queue full, packets not recorded", "dropped", n)
+		}
+	}
+}
+
+func (c *CallTracker) now() time.Duration {
+	return time.Since(c.epoch)
+}
+
+type chanKey struct {
+	server   string
+	repeater uint
+	slot     bool
+	stream   uint
+}
+
+func (k chanKey) shard() int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(k.server))
+	var b [17]byte
+	binary.LittleEndian.PutUint64(b[:8], uint64(k.repeater))
+	binary.LittleEndian.PutUint64(b[8:16], uint64(k.stream))
+	if k.slot {
+		b[16] = 1
+	}
+	_, _ = h.Write(b[:])
+	return int(h.Sum32() % shardCount)
+}
+
+type task struct {
+	key  chanKey
+	p    models.Packet
+	peer bool
+	at   time.Time
+	fn   func(*shard)
+	stop bool
+}
+
 func (c *CallTracker) loadActiveNets() {
 	var nets []models.Net
 	if err := c.db.Where("active = ?", true).Find(&nets).Error; err != nil {
@@ -155,7 +293,6 @@ func (c *CallTracker) loadActiveNets() {
 	}
 }
 
-// subscribeNetEvents subscribes to net:events pubsub and keeps activeNets in sync.
 func (c *CallTracker) subscribeNetEvents() {
 	sub := c.pubsub.Subscribe("net:events")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -171,7 +308,6 @@ func (c *CallTracker) subscribeNetEvents() {
 				return
 			case msg, ok := <-ch:
 				if !ok {
-					// Channel closed (pubsub shutdown) — exit silently.
 					return
 				}
 				if len(msg) == 0 {
@@ -193,240 +329,63 @@ func (c *CallTracker) subscribeNetEvents() {
 	}()
 }
 
-// callDestination holds the resolved destination for a call.
-type callDestination struct {
-	isToRepeater  bool
-	isToTalkgroup bool
-	isToUser      bool
-	talkgroup     models.Talkgroup
-	repeater      models.Repeater
-	user          models.User
-}
-
-// lookupSourceUser checks that the source user exists and returns it.
-func (c *CallTracker) lookupSourceUser(srcID uint) (models.User, error) {
-	user, err := models.FindUserByID(c.db, srcID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.User{}, fmt.Errorf("user %d does not exist", srcID)
+func (c *CallTracker) remember(s *shard, r *row) {
+	if r.call.GroupCall {
+		return
+	}
+	k := pair{src: r.call.SourceID, dst: r.call.DestinationID}
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	cut := time.Now().Add(-responseWindow)
+	keep := c.recent[k][:0]
+	for _, e := range c.recent[k] {
+		if e.at.After(cut) {
+			keep = append(keep, e)
 		}
-		return models.User{}, fmt.Errorf("error finding user %d: %w", srcID, err)
 	}
-	return user, nil
+	c.recent[k] = append(keep, recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, at: time.Now()})
 }
 
-// lookupSourceRepeater checks that the source repeater exists and returns it.
-func (c *CallTracker) lookupSourceRepeater(repeaterID uint) (models.Repeater, error) {
-	repeater, err := models.FindRepeaterByID(c.db, repeaterID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Repeater{}, fmt.Errorf("repeater %d does not exist", repeaterID)
+func (c *CallTracker) pruneRecent() {
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+	cut := time.Now().Add(-responseWindow)
+	for k, rows := range c.recent {
+		if len(rows) == 0 || !rows[len(rows)-1].at.After(cut) {
+			delete(c.recent, k)
 		}
-		return models.Repeater{}, fmt.Errorf("error finding repeater %d: %w", repeaterID, err)
 	}
-	return repeater, nil
 }
 
-// resolveDestination determines the target of a call (talkgroup, repeater, or user).
-func (c *CallTracker) resolveDestination(packet models.Packet) (*callDestination, error) {
-	dest := &callDestination{}
-
-	if packet.GroupCall {
-		return c.resolveGroupCallDestination(packet.Dst, dest)
-	}
-
-	// Private call — destination is a user.
-	user, err := models.FindUserByID(c.db, packet.Dst)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("cannot find packet destination %d", packet.Dst)
+func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func(models.CallKind, string) bool) bool {
+	c.recentMu.Lock()
+	rows := c.recent[pair{src: dst, dst: src}]
+	cut := time.Now().Add(-responseWindow)
+	var found *recentRow
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].at.After(cut) && match(rows[i].kind, rows[i].sub) {
+			e := rows[i]
+			found = &e
+			break
 		}
-		return nil, fmt.Errorf("error finding destination user %d: %w", packet.Dst, err)
 	}
-	dest.isToUser = true
-	dest.user = user
-	return dest, nil
-}
-
-// resolveGroupCallDestination resolves the destination for a group call (talkgroup or repeater).
-func (c *CallTracker) resolveGroupCallDestination(dstID uint, dest *callDestination) (*callDestination, error) {
-	// Try talkgroup first (most common case for group calls).
-	talkgroup, err := models.FindTalkgroupByID(c.db, dstID)
-	if err == nil {
-		dest.isToTalkgroup = true
-		dest.talkgroup = talkgroup
-		return dest, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("error finding talkgroup %d: %w", dstID, err)
-	}
-
-	// Fall back to repeater.
-	repeater, err := models.FindRepeaterByID(c.db, dstID)
-	if err == nil {
-		dest.isToRepeater = true
-		dest.repeater = repeater
-		return dest, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("error finding repeater %d: %w", dstID, err)
-	}
-
-	return nil, fmt.Errorf("cannot find packet destination %d", dstID)
-}
-
-// newCallFromPacket builds a models.Call from the packet, source entities, and resolved destination.
-func newCallFromPacket(packet models.Packet, sourceUser models.User, sourceRepeater models.Repeater, dest *callDestination) models.Call {
-	now := time.Now()
-	call := models.Call{
-		StreamID:       packet.StreamID,
-		StartTime:      now,
-		Active:         true,
-		UserID:         &sourceUser.ID,
-		RepeaterID:     &sourceRepeater.ID,
-		Kind:           models.CallKindVoice,
-		SourceID:       packet.Src,
-		IngressID:      packet.Repeater,
-		TimeSlot:       packet.Slot,
-		GroupCall:      packet.GroupCall,
-		DestinationID:  packet.Dst,
-		TotalPackets:   0,
-		LostSequences:  0,
-		LastPacketTime: now,
-		Loss:           0.0,
-		Jitter:         0.0,
-		LastFrameNum:   dmrconst.VoiceA,
-		LastSeq:        256, // 256 is 1+ the max sequence number
-		RSSI:           0,
-		BER:            0.0,
-		TotalBits:      0,
-		HasHeader:      false,
-		HasTerm:        false,
-		IsToRepeater:   dest.isToRepeater,
-		IsToUser:       dest.isToUser,
-		IsToTalkgroup:  dest.isToTalkgroup,
-	}
-
-	switch {
-	case dest.isToRepeater:
-		call.ToRepeaterID = &dest.repeater.ID
-	case dest.isToUser:
-		call.ToUserID = &dest.user.ID
-	case dest.isToTalkgroup:
-		call.ToTalkgroupID = &dest.talkgroup.ID
-	}
-
-	return call
-}
-
-// setCallAssociations populates the in-memory association fields on a call
-// (used for logging, publishing, etc.) without persisting back to the DB.
-func setCallAssociations(call *models.Call, sourceUser models.User, sourceRepeater models.Repeater, dest *callDestination) {
-	call.User = sourceUser
-	call.Repeater = sourceRepeater
-	switch {
-	case dest.isToRepeater:
-		call.ToRepeater = dest.repeater
-	case dest.isToUser:
-		call.ToUser = dest.user
-	case dest.isToTalkgroup:
-		call.ToTalkgroup = dest.talkgroup
-	}
-}
-
-// persistAndTrackCall saves the call to the database, stores it in the
-// in-flight map, and starts the call-end timer.
-func (c *CallTracker) persistAndTrackCall(_ context.Context, call *models.Call, packet models.Packet) error {
-	// Create the call in the database.
-	// Omit associations to prevent GORM from cascade-saving related records.
-	// Omit CallData — it's always empty at creation time.
-	if err := c.db.Omit(clause.Associations, "CallData").Create(call).Error; err != nil {
-		return fmt.Errorf("error creating call: %w", err)
-	}
-
-	callHash, err := getCallHash(*call)
-	if err != nil {
-		return err
-	}
-
-	// Add the call to the active calls map
-	c.inFlightCalls.Store(callHash, &inFlightCall{call: call})
-
-	// Add a timer that will end the call if we haven't seen a packet in 2 seconds.
-	c.callEndTimers.Store(callHash, time.AfterFunc(timerDelay, endCallHandler(c, packet))) //nolint:contextcheck // Timer fires after request context is done; intentionally uses background context
-
-	return nil
-}
-
-// StartCall starts tracking a new call.
-func (c *CallTracker) StartCall(ctx context.Context, packet models.Packet) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.StartCall")
-	defer span.End()
-
-	sourceUser, err := c.lookupSourceUser(packet.Src)
-	if err != nil {
-		slog.Error("StartCall: source user lookup failed", "error", err)
-		return
-	}
-
-	sourceRepeater, err := c.lookupSourceRepeater(packet.Repeater)
-	if err != nil {
-		slog.Error("StartCall: source repeater lookup failed", "error", err)
-		return
-	}
-
-	dest, err := c.resolveDestination(packet)
-	if err != nil {
-		slog.Error("StartCall: destination resolution failed", "error", err)
-		return
-	}
-
-	slog.Debug("Starting call", "src", packet.Src, "dst", packet.Dst)
-
-	call := newCallFromPacket(packet, sourceUser, sourceRepeater, dest)
-
-	if err := c.persistAndTrackCall(ctx, &call, packet); err != nil {
-		slog.Error("StartCall: persist failed", "error", err)
-		return
-	}
-
-	setCallAssociations(&call, sourceUser, sourceRepeater, dest)
-
-	slog.Debug("Started call", "streamID", call.StreamID, "src", call.User.Callsign, "dst", call.DestinationID, "repeater", call.Repeater.Callsign)
-}
-
-// IsCallActive checks if a call is active.
-func (c *CallTracker) IsCallActive(ctx context.Context, packet models.Packet) bool {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.IsCallActive")
-	defer span.End()
-
-	callHash, err := getCallHashFromPacket(packet)
-	if err != nil {
+	c.recentMu.Unlock()
+	if found == nil {
 		return false
 	}
-
-	ifc, ok := c.inFlightCalls.Load(callHash)
-	if !ok {
-		return false
-	}
-	ifc.mu.Lock()
-	defer ifc.mu.Unlock()
-	return !ifc.ended
+	r := found.row
+	c.enqueue(found.shard, task{fn: func(s *shard) { s.setResponse(r, resp) }})
+	return true
 }
 
-func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
-	_, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.publishCall")
-	defer span.End()
-
+func (c *CallTracker) publishCall(call *models.Call) {
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
 		jsonCall := apimodels.NewWSCallResponseFromCall(call)
-		// Publish the call JSON to pubsub
 		callJSON, err := json.Marshal(jsonCall)
 		if err != nil {
 			slog.Error("Error marshalling call JSON", "error", err)
 			return
 		}
-
 		if err = c.pubsub.Publish("calls:public", callJSON); err != nil {
 			slog.Error("Error publishing call JSON", "error", err)
 			return
@@ -440,242 +399,12 @@ func (c *CallTracker) publishCall(ctx context.Context, call *models.Call) {
 	}
 	if err = c.pubsub.Publish("calls", origCallJSON); err != nil {
 		slog.Error("Error publishing call JSON", "error", err)
-		return
 	}
-}
-
-func (c *CallTracker) updateCall(ctx context.Context, ifc *inFlightCall, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.updateCall")
-	defer span.End()
-
-	ifc.mu.Lock()
-	if ifc.ended {
-		ifc.mu.Unlock()
-		return
-	}
-	call := ifc.call
-
-	hash, err := getCallHash(*call)
-	if err != nil {
-		ifc.mu.Unlock()
-		return
-	}
-
-	timer, ok := c.callEndTimers.Load(hash)
-	if !ok {
-		ifc.mu.Unlock()
-		return
-	}
-
-	// Reset call end timer
-	timer.Reset(timerDelay)
-
-	if call.LastSeq == packet.Seq {
-		// This is a dup
-		ifc.mu.Unlock()
-		return
-	}
-
-	call.LastSeq = packet.Seq
-
-	elapsed := time.Since(call.LastPacketTime)
-	call.LastPacketTime = time.Now()
-	// call.Jitter is a float32 that represents how many ms off from 60ms elapsed
-	// time the last packet was. We'll use this to calculate the average jitter.
-	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2
-
-	call.Duration = time.Since(call.StartTime)
-
-	lastTotalPackets := call.TotalPackets
-	lastLostSequences := call.LostSequences
-	calcSequenceLoss(call, packet)
-
-	lastLoss := call.Loss
-	call.Loss = float32(call.LostSequences) / float32(call.TotalPackets)
-
-	// Safety net: If the loss underflows, set it to the last value
-	if call.Loss > 1 {
-		call.Loss = lastLoss
-		call.TotalPackets = lastTotalPackets
-		call.LostSequences = lastLostSequences
-	}
-
-	call.TotalBits += 141
-	if packet.BER > 0 {
-		call.TotalErrors += packet.BER
-	}
-
-	call.BER = float32(call.TotalErrors) / float32(call.TotalBits)
-
-	call.Active = true
-	if packet.RSSI > 0 {
-		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
-	}
-
-	call.CallData = append(call.CallData, packet.DMRData[:]...)
-
-	c.publishCall(ctx, call)
-	ifc.mu.Unlock()
-}
-
-func calcSequenceLoss(call *models.Call, packet models.Packet) {
-	// Here we check the sequence number of the packet
-	// If the sequence number is not what we expect, we increment the lost counter
-	// We also increment the total counter
-
-	// If the packet is a voice header, we reset the sequence number
-	switch packet.FrameType {
-	case dmrconst.FrameDataSync:
-		// This is either a voice header or a voice terminator
-		switch packet.DTypeOrVSeq {
-		case uint(dmrconst.DTypeVoiceHead):
-			// Voice header, this is the start of a voice superframe
-			call.HasHeader = true
-			call.TotalPackets++
-			call.LastFrameNum = 0
-		case uint(dmrconst.DTypeVoiceTerm):
-			// Voice terminator
-			if call.LastFrameNum != dmrconst.VoiceF {
-				// We lost some number of packets
-				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum
-				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum
-			}
-			call.TotalPackets++
-			call.LastFrameNum = 0
-		}
-	case dmrconst.FrameVoiceSync:
-		// This is a voice sync
-		if !call.HasHeader && call.LastFrameNum == 0 {
-			// We lost the header
-			call.LostSequences++
-			call.TotalPackets++
-			call.HasHeader = true
-		}
-		// The previous packet should be either the header or the VoiceF frame
-		// If it is the header, the sequence number should be 0
-		// If it is the VoiceF frame, the sequence number should be VoiceF
-		// If it is anything else, we lost some number of packets
-		if call.LastFrameNum != 0 && call.LastFrameNum != dmrconst.VoiceF {
-			call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
-			call.TotalPackets += packet.DTypeOrVSeq - call.LastFrameNum - 1
-		}
-		call.TotalPackets++
-		call.LastFrameNum = packet.DTypeOrVSeq
-	case dmrconst.FrameVoice:
-		// This is a voice packet
-		if !call.HasHeader {
-			// We lost the header and any sequences between the header and this packet
-			call.LostSequences += 1 + packet.DTypeOrVSeq
-			call.TotalPackets += 1 + packet.DTypeOrVSeq
-			call.HasHeader = true
-		} else if packet.DTypeOrVSeq != call.LastFrameNum+1 {
-			// We lost some number of packets
-			// We need to be careful here as the sequence number can wrap around and cause us to get a negative number
-			if packet.DTypeOrVSeq < call.LastFrameNum {
-				// We wrapped around.
-				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq
-				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq
-			} else {
-				call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
-				call.TotalPackets += packet.DTypeOrVSeq - call.LastFrameNum - 1
-			}
-		}
-		// We got the packet we expected
-		call.TotalPackets++
-		call.LastFrameNum = packet.DTypeOrVSeq
-	}
-}
-
-// ProcessCallPacket processes a packet and updates the call.
-func (c *CallTracker) ProcessCallPacket(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.ProcessCallPacket")
-	defer span.End()
-
-	hash, err := getCallHashFromPacket(packet)
-	if err != nil {
-		slog.Error("Error getting call hash from packet", "error", err)
-		return
-	}
-
-	ifc, ok := c.inFlightCalls.Load(hash)
-	if !ok {
-		slog.Error("Active call not found")
-		return
-	}
-
-	c.updateCall(ctx, ifc, packet)
-}
-
-func endCallHandler(c *CallTracker, packet models.Packet) func() {
-	return func() {
-		// Use a fresh background context because the original request context
-		// from StartCall is canceled by the time the timer fires.
-		ctx := context.Background()
-		slog.Error("Call timed out", "streamID", packet.StreamID)
-		c.EndCall(ctx, packet)
-	}
-}
-
-// EndCall ends a call.
-func (c *CallTracker) EndCall(ctx context.Context, packet models.Packet) {
-	ctx, span := otel.Tracer("DMRHub").Start(ctx, "CallTracker.EndCall")
-	defer span.End()
-
-	hash, err := getCallHashFromPacket(packet)
-	if err != nil {
-		slog.Error("Error getting call hash from packet", "error", err)
-		return
-	}
-
-	ifc, ok := c.inFlightCalls.LoadAndDelete(hash)
-	if !ok {
-		slog.Error("Active call not found")
-		return
-	}
-
-	ifc.mu.Lock()
-	if ifc.ended {
-		ifc.mu.Unlock()
-		return
-	}
-	ifc.ended = true
-	call := ifc.call
-
-	timer, ok := c.callEndTimers.LoadAndDelete(hash)
-	if !ok {
-		slog.Error("Call end timer not found")
-	} else {
-		timer.Stop()
-	}
-
-	if time.Since(call.StartTime) < 100*time.Millisecond {
-		ifc.mu.Unlock()
-		// This is probably a key-up, so delete the call from the db
-		c.db.Unscoped().Delete(call)
-		return
-	}
-
-	call.Duration = time.Since(call.StartTime)
-	call.Active = false
-	ifc.mu.Unlock()
-
-	err = c.db.Omit(clause.Associations).Save(call).Error
-	if err != nil {
-		slog.Error("Error saving call", "error", err)
-		return
-	}
-
-	c.publishCall(ctx, call)
-
-	// If this call's talkgroup has an active net, publish a check-in event.
-	c.publishNetCheckIn(call)
-
-	slog.Info("Call ended", "streamID", packet.StreamID, "src", packet.Src, "dst", packet.Dst, "repeater", packet.Repeater, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
 }
 
 // publishNetCheckIn publishes a check-in event if the call's talkgroup has an active net.
 func (c *CallTracker) publishNetCheckIn(call *models.Call) {
-	if !call.GroupCall || call.ToTalkgroupID == nil {
+	if call.Kind != models.CallKindVoice || !call.GroupCall || call.ToTalkgroupID == nil {
 		return
 	}
 
@@ -704,5 +433,268 @@ func (c *CallTracker) publishNetCheckIn(call *models.Call) {
 	topic := fmt.Sprintf("net:checkins:%d", netID)
 	if err := c.pubsub.Publish(topic, data); err != nil {
 		slog.Error("CallTracker: failed to publish net check-in", "error", err)
+	}
+}
+
+func (c *CallTracker) resolve(call *models.Call, peer bool) {
+	if user, err := models.FindUserByID(c.db, call.SourceID); err == nil {
+		call.UserID, call.User = &user.ID, user
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("CallTracker: error finding source user", "userID", call.SourceID, "error", err)
+	}
+	if !peer {
+		if repeater, err := models.FindRepeaterByID(c.db, call.IngressID); err == nil {
+			call.RepeaterID, call.Repeater = &repeater.ID, repeater
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("CallTracker: error finding source repeater", "repeaterID", call.IngressID, "error", err)
+		}
+	}
+	dst := call.DestinationID
+	if call.GroupCall {
+		if tg, err := models.FindTalkgroupByID(c.db, dst); err == nil {
+			call.IsToTalkgroup, call.ToTalkgroupID, call.ToTalkgroup = true, &tg.ID, tg
+			return
+		}
+	} else if user, err := models.FindUserByID(c.db, dst); err == nil {
+		call.IsToUser, call.ToUserID, call.ToUser = true, &user.ID, user
+		return
+	}
+	if repeater, err := models.FindRepeaterByID(c.db, dst); err == nil {
+		call.IsToRepeater, call.ToRepeaterID, call.ToRepeater = true, &repeater.ID, repeater
+	}
+}
+
+type row struct {
+	call     *models.Call
+	ch       *channel
+	key      any
+	last     time.Time
+	hang     time.Duration
+	finished bool
+}
+
+type channel struct {
+	key     chanKey
+	peer    bool
+	rx      *data.Receiver
+	data    *row
+	last    time.Time
+	stream  uint
+	started bool
+	offset  uint16
+	outSeq  uint16
+}
+
+type shard struct {
+	t        *CallTracker
+	idx      int
+	in       chan task
+	channels map[chanKey]*channel
+	rows     map[any]*row
+	streams  map[uint]*row
+	burst    *layer2.Burst
+	events   []data.Event
+}
+
+func newShard(t *CallTracker, idx int) *shard {
+	return &shard{
+		t:        t,
+		idx:      idx,
+		in:       make(chan task, shardDepth),
+		channels: map[chanKey]*channel{},
+		rows:     map[any]*row{},
+		streams:  map[uint]*row{},
+		burst:    layer2.NewBurst(),
+		events:   make([]data.Event, 0, data.MaxEvents),
+	}
+}
+
+func (s *shard) run() {
+	defer s.t.wg.Done()
+	ticker := time.NewTicker(sweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case t := <-s.in:
+			switch {
+			case t.stop:
+				s.finishAll()
+				return
+			case t.fn != nil:
+				t.fn(s)
+			default:
+				s.handle(&t)
+			}
+		case <-ticker.C:
+			s.sweep(time.Now())
+		}
+	}
+}
+
+func (s *shard) channel(key chanKey, peer bool) *channel {
+	ch, ok := s.channels[key]
+	if !ok {
+		ch = &channel{key: key, peer: peer}
+		s.channels[key] = ch
+	}
+	return ch
+}
+
+func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub string, hang time.Duration) *row {
+	p := &t.p
+	call := &models.Call{
+		StreamID:       p.StreamID,
+		StartTime:      t.at,
+		Active:         true,
+		Kind:           kind,
+		SubKind:        sub,
+		SourceID:       p.Src,
+		Transport:      t.key.server,
+		IngressID:      p.Repeater,
+		TimeSlot:       p.Slot,
+		GroupCall:      p.GroupCall,
+		DestinationID:  p.Dst,
+		LastPacketTime: t.at,
+		LastSeq:        256,
+	}
+	s.t.resolve(call, t.peer)
+	if err := s.t.db.Omit(clause.Associations, "CallData").Create(call).Error; err != nil {
+		slog.Error("CallTracker: error creating call", "kind", kind, "error", err)
+		return nil
+	}
+	r := &row{call: call, ch: ch, key: key, last: t.at, hang: hang}
+	if key != nil {
+		s.rows[key] = r
+	}
+	s.streams[p.StreamID] = r
+	s.t.remember(s, r)
+	slog.Debug("CallTracker: transmission started", "kind", kind, "sub", sub, "streamID", p.StreamID, "src", p.Src, "dst", p.Dst)
+	return r
+}
+
+func (s *shard) touch(r *row, t *task) {
+	r.last = t.at
+	r.call.LastPacketTime = t.at
+	if len(r.call.CallData)+len(t.p.DMRData) <= maxCallData {
+		r.call.CallData = append(r.call.CallData, t.p.DMRData[:]...)
+	}
+	s.streams[t.p.StreamID] = r
+}
+
+func (s *shard) finish(r *row, at time.Time) {
+	if r == nil || r.finished {
+		return
+	}
+	r.finished = true
+	if r.key != nil && s.rows[r.key] == r {
+		delete(s.rows, r.key)
+	}
+	if r.ch != nil && r.ch.data == r {
+		r.ch.data = nil
+	}
+	call := r.call
+	call.Active = false
+	call.Duration = r.last.Sub(call.StartTime)
+	if !at.IsZero() && call.Kind == models.CallKindVoice {
+		call.Duration = at.Sub(call.StartTime)
+	}
+	if call.Kind == models.CallKindVoice && !at.IsZero() && call.Duration < keyUp {
+		s.t.db.Unscoped().Delete(call)
+		return
+	}
+	if err := s.t.db.Omit(clause.Associations).Save(call).Error; err != nil {
+		slog.Error("CallTracker: error saving call", "error", err)
+		return
+	}
+	s.t.publishCall(call)
+	s.t.publishNetCheckIn(call)
+	slog.Info("Transmission ended", "kind", call.Kind, "sub", call.SubKind, "streamID", call.StreamID, "src", call.SourceID, "dst", call.DestinationID, "repeater", call.IngressID, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
+}
+
+func (s *shard) finishAll() {
+	for _, ch := range s.channels {
+		if ch.rx != nil {
+			s.events = ch.rx.Lost(s.t.now(), s.events[:0])
+			s.apply(ch, nil, nil, s.events)
+		}
+		s.finish(ch.data, time.Time{})
+	}
+	for _, r := range s.rows {
+		s.finish(r, time.Time{})
+	}
+}
+
+func (s *shard) sweep(now time.Time) {
+	mono := s.t.now()
+	for _, r := range s.rows {
+		if now.Sub(r.last) >= r.hang {
+			if r.call.Kind == models.CallKindVoice {
+				slog.Debug("Call timed out", "streamID", r.call.StreamID)
+			}
+			s.finish(r, time.Time{})
+		}
+	}
+	for key, ch := range s.channels {
+		if ch.rx != nil {
+			if at, ok := ch.rx.Deadline(); ok && mono >= at {
+				s.events = ch.rx.Tick(mono, s.events[:0])
+				s.apply(ch, nil, nil, s.events)
+			}
+		}
+		if ch.data != nil && now.Sub(ch.data.last) >= dataRowHang && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+			s.finish(ch.data, time.Time{})
+		}
+		idle := channelIdle
+		if ch.peer {
+			idle = peerChannelIdle
+		}
+		if ch.data == nil && now.Sub(ch.last) >= idle && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+			delete(s.channels, key)
+		}
+	}
+	for id, r := range s.streams {
+		if r.finished && now.Sub(r.last) >= streamIdle {
+			delete(s.streams, id)
+		}
+	}
+	if s.idx == 0 {
+		s.t.pruneRecent()
+		s.t.streams.Range(func(id uint, ref streamRef) bool {
+			if now.Sub(ref.at) >= streamIdle {
+				s.t.streams.Delete(id)
+			}
+			return true
+		})
+	}
+}
+
+func (s *shard) setResponse(r *row, resp models.CallResponse) {
+	r.call.Response = resp
+	if !r.finished {
+		return
+	}
+	if err := s.t.db.Omit(clause.Associations).Save(r.call).Error; err != nil {
+		slog.Error("CallTracker: error saving response", "error", err)
+		return
+	}
+	s.t.publishCall(r.call)
+}
+
+func (s *shard) undeliverable(stream uint, target string) {
+	r, ok := s.streams[stream]
+	if !ok {
+		return
+	}
+	for _, t := range r.call.Undeliverable {
+		if t == target {
+			return
+		}
+	}
+	r.call.Undeliverable = append(r.call.Undeliverable, target)
+	if !r.finished {
+		return
+	}
+	if err := s.t.db.Omit(clause.Associations).Save(r.call).Error; err != nil {
+		slog.Error("CallTracker: error saving undeliverable targets", "error", err)
 	}
 }

@@ -35,6 +35,9 @@ type Metrics struct {
 
 	// UndeliverableBurstsTotal counts bursts that a target could not carry.
 	UndeliverableBurstsTotal *prometheus.CounterVec
+
+	// TrackerDroppedTotal counts packets that the call tracker dropped.
+	TrackerDroppedTotal prometheus.Counter
 }
 
 var (
@@ -74,6 +77,10 @@ func NewMetrics() *Metrics {
 				Name: "dmr_undeliverable_bursts_total",
 				Help: "The total number of bursts that a target could not carry",
 			}, []string{"target"}),
+			TrackerDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "call_tracker_dropped_packets_total",
+				Help: "The total number of packets that the call tracker did not record because its queue was full",
+			}),
 		}
 		metricsInstance.register()
 	})
@@ -87,6 +94,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.KVExpiredKeysTotal)
 	prometheus.MustRegister(m.KVCleanupDuration)
 	prometheus.MustRegister(m.UndeliverableBurstsTotal)
+	prometheus.MustRegister(m.TrackerDroppedTotal)
 }
 
 // KV Store metrics methods
@@ -110,4 +118,9 @@ func (m *Metrics) RecordKVCleanup(duration float64) {
 // IncrementUndeliverable counts a burst that target could not carry.
 func (m *Metrics) IncrementUndeliverable(target string) {
 	m.UndeliverableBurstsTotal.WithLabelValues(target).Inc()
+}
+
+// IncrementTrackerDropped counts a packet that the call tracker dropped.
+func (m *Metrics) IncrementTrackerDropped() {
+	m.TrackerDroppedTotal.Inc()
 }

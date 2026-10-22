@@ -107,7 +107,9 @@ func (h *WSHandler) handle(c context.Context, s sessions.Session, r *http.Reques
 		// Buffered so the reader goroutine can always send without blocking,
 		// even if the main select loop has already exited (e.g. context cancelled).
 		error: make(chan string, 1),
+		done:  make(chan struct{}),
 	}
+	defer close(writer.done)
 	onDisconnect := h.handler.OnConnect(c, r, writer, s)
 	if onDisconnect != nil {
 		defer onDisconnect()

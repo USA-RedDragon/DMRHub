@@ -227,3 +227,40 @@ func TestReaderGoroutineDoesNotLeak(t *testing.T) {
 
 	assert.Equal(t, 1, ws.Disconnects())
 }
+
+type floodWebsocket struct {
+	finished chan struct{}
+}
+
+func (f *floodWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
+}
+
+func (f *floodWebsocket) OnConnect(_ context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+	go func() {
+		for range 10 * 1024 {
+			w.WriteMessage(websocket.Message{Type: gorillaWS.TextMessage, Data: []byte("x")})
+		}
+		close(f.finished)
+	}()
+	return nil
+}
+
+func TestWriterDoesNotBlockAfterClose(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("sessions", cookie.NewStore([]byte("test-secret"))))
+	ws := &floodWebsocket{finished: make(chan struct{})}
+	router.GET("/ws", websocket.CreateHandler(&config.Config{}, ws))
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	conn := dialWS(t, server.URL)
+	_ = conn.Close()
+
+	select {
+	case <-ws.finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a writer stayed blocked after the connection closed")
+	}
+}

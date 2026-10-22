@@ -32,12 +32,19 @@ type Writer interface {
 type wsWriter struct {
 	writer chan Message
 	error  chan string
+	done   chan struct{}
 }
 
 func (w wsWriter) WriteMessage(message Message) {
-	w.writer <- message
+	select {
+	case w.writer <- message:
+	case <-w.done:
+	}
 }
 
 func (w wsWriter) Error(message string) {
-	w.error <- message
+	select {
+	case w.error <- message:
+	case <-w.done:
+	}
 }

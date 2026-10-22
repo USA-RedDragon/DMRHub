@@ -73,6 +73,12 @@ type iPSCShadow struct {
 	NetworkID *uint32 `json:"network-id" toml:"network-id" yaml:"network-id"`
 }
 
+type retentionShadow struct {
+	Messages      *int `json:"messages"      toml:"messages"      yaml:"messages"`
+	Transmissions *int `json:"transmissions" toml:"transmissions" yaml:"transmissions"`
+	Bursts        *int `json:"bursts"        toml:"bursts"        yaml:"bursts"`
+}
+
 type dMRShadow struct {
 	MMDVM                    *mMDVMShadow      `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
 	OpenBridge               *openBridgeShadow `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
@@ -80,6 +86,7 @@ type dMRShadow struct {
 	DisableRadioIDValidation *bool             `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
 	RadioIDURL               *string           `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
 	RepeaterIDURL            *string           `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
+	Retention                *retentionShadow  `json:"retention"                   toml:"retention"                   yaml:"retention"`
 }
 
 type sMTPShadow struct {
@@ -178,6 +185,12 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.radio-id-url", configulator.LayerDefault, "default tag")
 	cfg.DMR.RepeaterIDURL = "https://www.radioid.net/static/rptrs.json"
 	set("dmr.repeater-id-url", configulator.LayerDefault, "default tag")
+	cfg.DMR.Retention.Messages = 0
+	set("dmr.retention.messages", configulator.LayerDefault, "default tag")
+	cfg.DMR.Retention.Transmissions = 0
+	set("dmr.retention.transmissions", configulator.LayerDefault, "default tag")
+	cfg.DMR.Retention.Bursts = 0
+	set("dmr.retention.bursts", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
 	set("smtp.enabled", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Port = 25
@@ -367,6 +380,20 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 		if s.DMR.RepeaterIDURL != nil {
 			cfg.DMR.RepeaterIDURL = *s.DMR.RepeaterIDURL
 			set("dmr.repeater-id-url", configulator.LayerFile, file)
+		}
+		if s.DMR.Retention != nil {
+			if s.DMR.Retention.Messages != nil {
+				cfg.DMR.Retention.Messages = *s.DMR.Retention.Messages
+				set("dmr.retention.messages", configulator.LayerFile, file)
+			}
+			if s.DMR.Retention.Transmissions != nil {
+				cfg.DMR.Retention.Transmissions = *s.DMR.Retention.Transmissions
+				set("dmr.retention.transmissions", configulator.LayerFile, file)
+			}
+			if s.DMR.Retention.Bursts != nil {
+				cfg.DMR.Retention.Bursts = *s.DMR.Retention.Bursts
+				set("dmr.retention.bursts", configulator.LayerFile, file)
+			}
 		}
 	}
 	if s.SMTP != nil {
@@ -702,6 +729,45 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.RepeaterIDURL = v
 		set("dmr.repeater-id-url", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "retention", "messages"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.messages",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Retention.Messages = int(p)
+		set("dmr.retention.messages", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "retention", "transmissions"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.transmissions",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Retention.Transmissions = int(p)
+		set("dmr.retention.transmissions", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "retention", "bursts"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.bursts",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Retention.Bursts = int(p)
+		set("dmr.retention.bursts", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -881,6 +947,9 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "disable-radio-id-validation",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
+		"dmr" + o.Separator + "retention" + o.Separator + "messages",
+		"dmr" + o.Separator + "retention" + o.Separator + "transmissions",
+		"dmr" + o.Separator + "retention" + o.Separator + "bursts",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
 		"smtp" + o.Separator + "port",
@@ -950,25 +1019,28 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[31], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
 	fs.String(names[32], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
 	fs.String(names[33], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Bool(names[34], false, "Enable SMTP support for sending emails")
-	fs.String(names[35], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[36], "SMTP server port")
-	fs.String(names[37], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[38], "", "SMTP server username")
-	fs.String(names[39], "", "SMTP server password")
-	fs.String(names[40], "", "Email address to use as the sender")
-	fs.String(names[41], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[42], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[43], false, "Enable metrics collection and export")
-	fs.String(names[44], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[45], "Metrics server port")
-	fs.StringSlice(names[46], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[47], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[48], false, "Enable PProf profiling and debugging support")
-	fs.String(names[49], "[::]", "PProf server listen address")
-	fs.StringSlice(names[50], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[51], "PProf server port")
-	fs.String(names[52], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Var(impl.NewInt(0), names[34], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[35], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[36], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Bool(names[37], false, "Enable SMTP support for sending emails")
+	fs.String(names[38], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[39], "SMTP server port")
+	fs.String(names[40], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[41], "", "SMTP server username")
+	fs.String(names[42], "", "SMTP server password")
+	fs.String(names[43], "", "Email address to use as the sender")
+	fs.String(names[44], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[45], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[46], false, "Enable metrics collection and export")
+	fs.String(names[47], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[48], "Metrics server port")
+	fs.StringSlice(names[49], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[50], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[51], false, "Enable PProf profiling and debugging support")
+	fs.String(names[52], "[::]", "PProf server listen address")
+	fs.StringSlice(names[53], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[54], "PProf server port")
+	fs.String(names[55], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1380,6 +1452,42 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.RepeaterIDURL = v
 		set("dmr.repeater-id-url", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "retention" + o.Separator + "messages"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.messages",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Retention.Messages = v
+		set("dmr.retention.messages", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "retention" + o.Separator + "transmissions"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.transmissions",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Retention.Transmissions = v
+		set("dmr.retention.transmissions", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "retention" + o.Separator + "bursts"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.retention.bursts",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Retention.Bursts = v
+		set("dmr.retention.bursts", configulator.LayerCLI, "--"+n)
 	}
 	if n := "smtp" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -2420,6 +2528,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".repeater-id-url", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
+		case "retention":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".retention", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub retentionShadow
+				if err := sub.decodeJSON(dec, path+".retention"); err != nil {
+					return err
+				}
+				s.Retention = &sub
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -2633,6 +2760,89 @@ func (s *iPSCShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				s.NetworkID = &num
 			default:
 				return configJSONError(path+".network-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *retentionShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "messages":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".messages", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".messages", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Messages = &num
+			default:
+				return configJSONError(path+".messages", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "transmissions":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".transmissions", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".transmissions", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Transmissions = &num
+			default:
+				return configJSONError(path+".transmissions", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "bursts":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".bursts", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".bursts", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Bursts = &num
+			default:
+				return configJSONError(path+".bursts", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -3038,6 +3248,9 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)
+	fmt.Fprintf(&b, "dmr.retention.messages = %v\n", c.DMR.Retention.Messages)
+	fmt.Fprintf(&b, "dmr.retention.transmissions = %v\n", c.DMR.Retention.Transmissions)
+	fmt.Fprintf(&b, "dmr.retention.bursts = %v\n", c.DMR.Retention.Bursts)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
 	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)

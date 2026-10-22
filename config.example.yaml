@@ -85,6 +85,14 @@ dmr:
   radio-id-url: "https://www.radioid.net/static/users.json"
   # URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.
   repeater-id-url: "https://www.radioid.net/static/rptrs.json"
+  # How long DMRHub keeps its records
+  retention:
+    # Days to keep text and data messages, with their raw bytes. 0 keeps them forever
+    messages: 0
+    # Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever
+    transmissions: 0
+    # Days to keep the raw DMR bursts of each transmission. 0 keeps them forever
+    bursts: 0
 # SMTP configuration for sending emails
 smtp:
   # Enable SMTP support for sending emails

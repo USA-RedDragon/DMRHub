@@ -47,6 +47,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
+	"github.com/USA-RedDragon/DMRHub/internal/retention"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
@@ -311,6 +312,7 @@ type serverManager struct {
 	netScheduler *netscheduler.NetScheduler
 	callTracker  *calltracker.CallTracker
 	messageStore *messages.Store
+	purger       *retention.Purger
 	kv           kv.KV
 	pubsub       pubsub.PubSub
 	database     *gorm.DB
@@ -370,6 +372,9 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	}
 	if sm.netScheduler != nil {
 		sm.netScheduler.Stop()
+	}
+	if sm.purger != nil {
+		sm.purger.Stop()
 	}
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
@@ -443,6 +448,9 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	ns.Start()
 
 	sm.netScheduler = ns
+
+	sm.purger = retention.NewPurger(cfg, database, kvStore)
+	sm.purger.Start(ctx)
 
 	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit)
 	err = httpServer.Start()

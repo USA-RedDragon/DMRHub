@@ -121,6 +121,15 @@ type DMR struct {
 	DisableRadioIDValidation bool       `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
 	RadioIDURL               string     `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
 	RepeaterIDURL            string     `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
+	Retention                Retention  `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+}
+
+// Retention holds how many days DMRHub keeps each kind of record. 0 keeps
+// the records forever.
+type Retention struct {
+	Messages      int `json:"messages" name:"messages" description:"Days to keep text and data messages, with their raw bytes. 0 keeps them forever" default:"0"`
+	Transmissions int `json:"transmissions" name:"transmissions" description:"Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever" default:"0"`
+	Bursts        int `json:"bursts" name:"bursts" description:"Days to keep the raw DMR bursts of each transmission. 0 keeps them forever" default:"0"`
 }
 
 // MMDVM holds the configuration for the MMDVM server.

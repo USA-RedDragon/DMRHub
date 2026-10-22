@@ -38,6 +38,9 @@ const (
 	fieldLogLevel          = "log-level"
 	fieldSecret            = "secret"
 	fieldPasswordSalt      = "password-salt"
+	fieldRetentionMessages = "dmr.retention.messages"
+	fieldRetentionTransm   = "dmr.retention.transmissions"
+	fieldRetentionBursts   = "dmr.retention.bursts"
 )
 
 // isValidURL checks that s is a parseable URL with both a scheme and host.
@@ -116,6 +119,8 @@ var (
 	ErrInvalidIPSCNetworkID = errors.New("IPSC network ID is required when IPSC is enabled")
 	// ErrInvalidDMRRadioIDURL indicates that the provided DMR radio ID URL is not valid.
 	ErrInvalidDMRRadioIDURL = errors.New("invalid DMR radio ID URL provided")
+	// ErrInvalidRetention indicates that a retention period is not 0 or a number of days up to MaxRetentionDays.
+	ErrInvalidRetention = errors.New("retention must be 0 (keep forever) or a number of days up to 36500")
 	// ErrInvalidDMRRepeaterIDURL indicates that the provided DMR repeater ID URL is not valid.
 	ErrInvalidDMRRepeaterIDURL = errors.New("invalid DMR repeater ID URL provided")
 )
@@ -324,6 +329,30 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// MaxRetentionDays is the longest retention period, in days.
+const MaxRetentionDays = 36500
+
+// Validate validates the Retention configuration.
+func (r Retention) Validate() error {
+	return firstValidationError(r.ValidateWithFields())
+}
+
+func (r Retention) ValidateWithFields() (errs []ValidationError) {
+	for _, f := range []struct {
+		field string
+		days  int
+	}{
+		{fieldRetentionMessages, r.Messages},
+		{fieldRetentionTransm, r.Transmissions},
+		{fieldRetentionBursts, r.Bursts},
+	} {
+		if f.days < 0 || f.days > MaxRetentionDays {
+			errs = append(errs, ValidationError{Field: f.field, Err: ErrInvalidRetention})
+		}
+	}
+	return
+}
+
 // Validate validates the DMR configuration.
 func (d DMR) Validate() error {
 	return firstValidationError(d.ValidateWithFields())
@@ -340,6 +369,10 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 
 	if ipscErrs := d.IPSC.ValidateWithFields(); len(ipscErrs) > 0 {
 		errs = append(errs, ipscErrs...)
+	}
+
+	if retentionErrs := d.Retention.ValidateWithFields(); len(retentionErrs) > 0 {
+		errs = append(errs, retentionErrs...)
 	}
 
 	if !isValidURL(d.RadioIDURL) {

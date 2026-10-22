@@ -127,7 +127,7 @@ func TestTranslateToIPSCRate34Undecodable(t *testing.T) {
 	if len(got) != 68 || got[30] != ipscBurstRaw || hex.EncodeToString(got[32:38]) != "0011800a00c4" {
 		t.Fatalf("IPSC packet %x", got)
 	}
-	info := infoBits(burst)
+	info := burst.Info()
 	if !bytes.Equal(got[38:63], info[:]) || got[63] != 0 {
 		t.Fatalf("info bits %x, want %x", got[38:64], info)
 	}
@@ -144,7 +144,7 @@ func TestInfoBits(t *testing.T) {
 	burst[20] = 0x20  // burst bit 162, in the slot type
 	burst[20] |= 0x02 // burst bit 166, info bit 98
 	burst[32] = 0x01  // burst bit 263, info bit 195
-	got := infoBits(burst)
+	got := burst.Info()
 	var want [25]byte
 	want[0] = 0x80
 	want[12] = 0x40 | 0x20

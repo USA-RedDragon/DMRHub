@@ -324,57 +324,28 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 // buildIPSCDataPacket builds an IPSC data packet for CSBK, Data Header, etc.
 // A BPTC(196,96) burst carries its 12 decoded octets and a rate 3/4 burst
 // its 18. A rate 3/4 burst that does not decode goes out as ipscBurstRaw
-// with its 196 info bits, as a MOTOTRBO repeater sends it. It returns nil
-// when the BPTC(196,96) payload cannot be corrected.
+// with its 196 info bits, as a MOTOTRBO repeater sends it and SetRawBurst
+// builds it. It returns nil when the BPTC(196,96) payload cannot be
+// corrected.
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
-	raw := layer2.RawBurst(pkt.DMRData)
-	// transport/ipsc SetRawBurst drops the FEC result of the payload, so
-	// check it here first.
-	if dataType == enums.DataTypeRate34 {
-		if _, res := raw.Rate34Payload(); res.Uncorrectable {
-			u := t.user(pkt, ss, true, false, ss.firstPacket)
-			u.Burst, u.Data = ipscwire.BurstRaw, rawPayload(raw, pkt.Slot)
-			ss.ipscSeq++
-			return encodeUser(&u)
-		}
-	} else if _, res := raw.BPTCPayload(); res.Uncorrectable {
-		slog.Debug("IPSCTranslator: uncorrectable data burst", "dtype", dataType)
-		return nil
+	slot := enums.Slot1
+	if pkt.Slot {
+		slot = enums.Slot2
 	}
-
-	u := t.user(pkt, ss, true, false, ss.firstPacket)
-	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dataType, HasDataType: true}); err != nil {
+	var b ipscwire.User
+	res, err := b.SetRawBurst(layer2.RawBurst(pkt.DMRData), layer2.Hint{Slot: slot, Kind: layer2.KindData, DataType: dataType, HasDataType: true})
+	if err != nil {
 		slog.Debug("IPSCTranslator: cannot build data packet", "dtype", dataType, "error", err)
 		return nil
 	}
+	if res.Uncorrectable && dataType != enums.DataTypeRate34 {
+		slog.Debug("IPSCTranslator: uncorrectable data burst", "dtype", dataType)
+		return nil
+	}
+	u := t.user(pkt, ss, true, false, ss.firstPacket)
+	u.Burst, u.Data = b.Burst, b.Data
 	ss.ipscSeq++
 	return encodeUser(&u)
-}
-
-// rawPayload returns the ipscBurstRaw payload of the data burst b: its 196
-// info bits before FEC, padded to 13 words, as an XPR 8400 sends a block it
-// cannot decode. transport/ipsc has no builder for this form.
-func rawPayload(b layer2.RawBurst, slot2 bool) ipscwire.Payload {
-	d := ipscwire.Payload{Status: 0x40, Words: 0x11, HasBody: true, Flags: [2]byte{0x80, 0x0A}, Bits: 196, TrailerLen: 4}
-	if slot2 {
-		d.Status |= 0x80
-	}
-	info := infoBits(b)
-	copy(d.Octets[:], info[:])
-	return d
-}
-
-// infoBits returns the 196 info bits of a data burst (burst bits 0-97 and
-// 166-263) packed most significant bit first, before any FEC decode.
-func infoBits(b layer2.RawBurst) (info [25]byte) {
-	for i := 0; i < 196; i++ {
-		j := i
-		if i >= 98 {
-			j = i + 68
-		}
-		info[i/8] |= ((b[j/8] >> (7 - j%8)) & 1) << (7 - i%8)
-	}
-	return info
 }
 
 // buildVoiceBurst builds an IPSC voice burst packet: the 52-octet form for
@@ -506,7 +477,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	case u.IsVoice():
 		results = t.voiceToMMDVM(&u, base, rss)
 	case u.Burst == ipscwire.BurstRaw:
-		// An undecodable block cannot be rebuilt as a burst.
+		// An undecodable block is not relayed.
 		slog.Debug("IPSCTranslator: dropping undecodable IPSC data block")
 	case u.Burst == ipscwire.BurstSyncLost:
 		t.events = rss.rx.Lost(time.Since(t.epoch), t.events[:0])

@@ -32,7 +32,7 @@ import (
 
 // marshalAndPublish encodes a packet, marshals it as a RawDMRPacket, and publishes
 // to the given pubsub topic. This is the shared encode → marshal → publish pipeline
-// used by publishToPeer, publishToRepeater, and handleGroupCallVoice.
+// used by publishToRepeater and handleGroupCall.
 func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	rawPacket := models.RawDMRPacket{
 		Data: packet.Encode(),

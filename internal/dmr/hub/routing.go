@@ -68,7 +68,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.RoutePacket")
 	defer span.End()
 
-	isVoice, isData := utils.CheckPacketType(packet)
+	isVoice, _ := utils.CheckPacketType(packet)
 
 	if isVoice {
 		if _, alreadyActive := h.activeStreams.Load(packet.StreamID); !alreadyActive {
@@ -85,25 +85,25 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		}
 	}
 
-	h.trackCall(ctx, packet, isVoice)
+	defer h.trackCall(ctx, packet, isVoice)
 
-	// Handle special destinations first (parrot, unlink)
 	if h.handleSpecialDestinations(ctx, packet, isVoice) {
 		return
 	}
 
-	// Handle dynamic talkgroup linking for group voice calls
 	if packet.GroupCall && isVoice {
 		h.switchDynamicTalkgroup(ctx, packet)
 	}
 
-	// Forward to peer servers (skip if source is a peer server — it handles its own peer forwarding)
 	if h.getServerRole(sourceName) != RolePeer {
 		h.publishForPeers(ctx, packet)
 	}
 
-	// Route to repeater servers
-	h.routePacket(ctx, packet, isVoice, isData, sourceName)
+	if packet.GroupCall {
+		h.handleGroupCall(packet, sourceName)
+	} else {
+		h.handlePrivateCall(packet)
+	}
 }
 
 // handleSpecialDestinations handles parrot (TG 9990) and unlink (TG 4000).
@@ -122,22 +122,9 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 	return false
 }
 
-// routePacket routes a packet to repeater and broadcast servers.
-func (h *Hub) routePacket(_ context.Context, packet models.Packet, isVoice, isData bool, sourceName string) {
-	switch {
-	case packet.GroupCall && isVoice:
-		h.handleGroupCallVoice(packet, sourceName)
-	case !packet.GroupCall && isVoice:
-		h.handlePrivateCallVoice(packet)
-	case isData:
-		slog.Debug("Unhandled data packet type in hub")
-	default:
-		slog.Debug("Unhandled packet type in hub")
-	}
-}
-
-// handleGroupCallVoice routes a group voice call to all subscribed repeaters.
-func (h *Hub) handleGroupCallVoice(packet models.Packet, sourceName string) {
+// handleGroupCall routes a group burst of any kind to all subscribed
+// repeaters.
+func (h *Hub) handleGroupCall(packet models.Packet, sourceName string) {
 	exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if talkgroup exists", "error", err)
@@ -161,8 +148,9 @@ func (h *Hub) handleGroupCallVoice(packet models.Packet, sourceName string) {
 	h.publishForBroadcastServers(packet, sourceName)
 }
 
-// handlePrivateCallVoice routes a private voice call to the target repeater or user.
-func (h *Hub) handlePrivateCallVoice(packet models.Packet) {
+// handlePrivateCall routes a private burst of any kind to the target
+// repeater or user.
+func (h *Hub) handlePrivateCall(packet models.Packet) {
 	if isRepeaterID(packet.Dst) {
 		h.routeToRepeater(packet)
 	} else if isUserID(packet.Dst) {

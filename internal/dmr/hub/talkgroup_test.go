@@ -189,3 +189,28 @@ func TestRoutePacketDynamicTalkgroupLinkingNonexistentRepeater(t *testing.T) {
 		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	})
 }
+
+func TestDataDoesNotLinkTalkgroup(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 2, "TG2")
+
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+	h.ActivateRepeater(context.Background(), 100001)
+
+	for _, dt := range []uint{3, 6, 7, 8, 10} {
+		pkt := makeVoicePacket(2, 99990+dt, true, false)
+		pkt.FrameType = dmrconst.FrameDataSync
+		pkt.DTypeOrVSeq = dt
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	rpt, err := models.FindRepeaterByID(database, 100001)
+	require.NoError(t, err)
+	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "data and CSBK must not link a talkgroup")
+}

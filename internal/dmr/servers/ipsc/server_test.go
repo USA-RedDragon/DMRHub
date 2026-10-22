@@ -313,6 +313,30 @@ func TestAutoRegisterNeedsGoodTrailer(t *testing.T) {
 	}
 }
 
+func TestAutoRegisterKeylessPeerOnData(t *testing.T) {
+	t.Parallel()
+	s, srv := newTestServerWithUDP(t)
+	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
+	client, addr := dialServer(t, srv)
+	got := make(chan []byte, 1)
+	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr) { got <- data })
+	if err := s.handlePacket(context.Background(), voicePacket(3191868), addr); err != nil {
+		t.Fatalf("voice: %v", err)
+	}
+	if peers(s, 3191868) != 1 {
+		t.Fatal("expected the keyless peer to register")
+	}
+	select {
+	case d := <-got:
+		if len(d) != 54 {
+			t.Fatalf("burst handler got %d octets, want 54", len(d))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected the burst handler to run")
+	}
+	expectNoUDP(t, client)
+}
+
 func TestDeregistrationFromUnregisteredPeerIsIgnored(t *testing.T) {
 	t.Parallel()
 	s, srv := newTestServerWithUDP(t)

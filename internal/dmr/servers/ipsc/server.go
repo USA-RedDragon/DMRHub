@@ -96,7 +96,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		done:       make(chan struct{}),
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 	}
-	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{ID: s.localID, MaxPeers: ipscsession.MaxPeersLimit})
+	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{ID: s.localID, MaxPeers: ipscsession.MaxPeersLimit, AdoptKnown: true})
 	if err != nil {
 		slog.Error("error creating IPSC session", "error", err)
 	} else {
@@ -273,8 +273,8 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	defer s.mu.Unlock()
 	now := s.now()
 	out := s.m.Packet(now, from, data, kp, s.out[:0])
-	if unregistered(out) && raw.Opcode != ipscwire.OpDeregisterRequest {
-		slog.Info("adopting authenticated peer", "peerID", raw.ID, "peer", addr, "packetType", byte(raw.Opcode))
+	if kp == nil && unregistered(out) && raw.Opcode != ipscwire.OpDeregisterRequest {
+		slog.Info("adopting keyless peer", "peerID", raw.ID, "peer", addr, "packetType", byte(raw.Opcode))
 		s.apply(ctx, s.m.Adopt(now, from, raw.ID, kp, s.out[:0]))
 		out = s.m.Packet(now, from, data, kp, s.out[:0])
 	}

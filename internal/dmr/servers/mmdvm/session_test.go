@@ -33,7 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -80,14 +80,14 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 		kvClient:  servers.MakeKVClient(kvStore),
 		connected: xsync.NewMap[uint, net.UDPAddr](),
 	}
-	rptl, err := dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}.AppendBinary(nil, dmrd.DialectMMDVM)
+	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
 	from := net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 62031}
 	s.handlePacket(context.Background(), from, rptl)
 	require.Len(t, s.links, 1)
-	require.Equal(t, session.StateAuth, s.links[from.String()].m.State())
+	require.Equal(t, dmrdsession.StateAuth, s.links[from.String()].m.State())
 
-	s.epoch = s.epoch.Add(-(session.LoginTimeoutDefault - time.Second))
+	s.epoch = s.epoch.Add(-(dmrdsession.LoginTimeoutDefault - time.Second))
 	s.tick(context.Background())
 	require.Len(t, s.links, 1, "the login should still be open before LoginTimeout")
 

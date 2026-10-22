@@ -78,7 +78,7 @@ var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 
 // ParseConfig reads the 302-octet RPTC configuration message data.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
-	cfg, err := dmrd.ConfigOf(data)
+	cfg, err := dmrd.MMDVMConfigOf(data)
 	if err != nil {
 		slog.Error("Error reading RPTC packet", "error", err)
 		return ErrInvalidConfig

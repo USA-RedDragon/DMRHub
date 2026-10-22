@@ -32,8 +32,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
-	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/auth"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/session"
+	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
+	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
@@ -139,7 +139,7 @@ func expectNoUDP(t *testing.T, conn *net.UDPConn) {
 
 func control(t *testing.T, op ipscwire.Opcode, id uint32) []byte {
 	t.Helper()
-	p, err := ipscwire.Control{Opcode: op, ID: id, Mode: session.ModeDefault}.AppendBinary(nil)
+	p, err := (&ipscwire.Control{Opcode: op, ID: id, Mode: ipscsession.ModeDefault}).AppendBinary(nil)
 	if err != nil {
 		t.Fatalf("AppendBinary: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestTimeoutDropsPeer(t *testing.T) {
 	if peers(s, 6) != 1 {
 		t.Fatal("expected the peer to stay before the timeout")
 	}
-	s.tick(context.Background(), s.now()+session.TimeoutDefault)
+	s.tick(context.Background(), s.now()+ipscsession.TimeoutDefault)
 	if peers(s, 6) != 0 {
 		t.Fatal("expected the peer to time out")
 	}

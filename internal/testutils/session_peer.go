@@ -28,7 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 )
 
 // ErrSessionPeerTimeout is the error of SessionPeer.WaitReady when the
@@ -41,7 +41,7 @@ type SessionPeer struct {
 	ID uint32
 
 	mu     sync.Mutex
-	peer   *session.Peer
+	peer   *dmrdsession.Peer
 	conn   *net.UDPConn
 	target *net.UDPAddr
 	start  time.Time
@@ -58,7 +58,7 @@ type SessionPeer struct {
 // NewSessionPeer returns a SessionPeer for the repeater id with the
 // password and the RPTO options, which may be empty.
 func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
-	var cfg dmrd.Config
+	var cfg dmrd.MMDVMConfig
 	cfg.Reset()
 	cfg.SetID(id)
 	err := errors.Join(
@@ -79,7 +79,7 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building RPTC: %w", err)
 	}
-	peer, err := session.NewPeer(&session.PeerConfig{
+	peer, err := dmrdsession.NewPeer(&dmrdsession.PeerConfig{
 		Dialect:  dmrd.DialectMMDVM,
 		ID:       id,
 		Password: []byte(password),
@@ -141,7 +141,7 @@ func (p *SessionPeer) WaitReady(timeout time.Duration) error {
 }
 
 // State returns the state of the session.
-func (p *SessionPeer) State() session.State {
+func (p *SessionPeer) State() dmrdsession.State {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.peer.State()
@@ -185,8 +185,8 @@ func (p *SessionPeer) Drain(timeout time.Duration) []models.Packet {
 func (p *SessionPeer) Close() {
 	p.stopOnce.Do(func() {
 		p.mu.Lock()
-		var buf [session.MaxOutputs]session.Output
-		p.run(p.peer.Close(buf[:0]))
+		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+		p.run(p.peer.Close(time.Since(p.start), buf[:0]))
 		p.mu.Unlock()
 		close(p.done)
 		_ = p.conn.Close()
@@ -194,16 +194,16 @@ func (p *SessionPeer) Close() {
 	p.wg.Wait()
 }
 
-func (p *SessionPeer) run(out []session.Output) {
+func (p *SessionPeer) run(out []dmrdsession.Output) {
 	for _, o := range out {
 		switch o.Kind {
-		case session.OutputSend:
+		case dmrdsession.OutputSend:
 			_, _ = p.conn.WriteToUDP(o.Packet, p.target)
-		case session.OutputUp:
+		case dmrdsession.OutputUp:
 			p.upOnce.Do(func() { close(p.ready) })
-		case session.OutputDown:
+		case dmrdsession.OutputDown:
 			p.downs++
-		case session.OutputData:
+		case dmrdsession.OutputData:
 			if o.Command != dmrd.CommandDMRD {
 				continue
 			}
@@ -215,21 +215,21 @@ func (p *SessionPeer) run(out []session.Output) {
 			case p.packets <- models.PacketFromData(&d, d.Size > 53):
 			default:
 			}
-		case session.OutputLogin, session.OutputConfig, session.OutputOptions, session.OutputMessage, session.OutputPong:
+		case dmrdsession.OutputLogin, dmrdsession.OutputConfig, dmrdsession.OutputOptions, dmrdsession.OutputMessage, dmrdsession.OutputPong:
 		}
 	}
 }
 
 func (p *SessionPeer) rx() {
 	defer p.wg.Done()
-	buf := make([]byte, session.MaxPacket)
+	buf := make([]byte, dmrdsession.MaxPacket)
 	for {
 		n, _, err := p.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
 		}
 		p.mu.Lock()
-		var out [session.MaxOutputs]session.Output
+		var out [dmrdsession.MaxOutputs]dmrdsession.Output
 		p.run(p.peer.Packet(time.Since(p.start), buf[:n], out[:0]))
 		p.mu.Unlock()
 	}
@@ -245,7 +245,7 @@ func (p *SessionPeer) ticks() {
 			return
 		case <-ticker.C:
 			p.mu.Lock()
-			var out [session.MaxOutputs]session.Output
+			var out [dmrdsession.MaxOutputs]dmrdsession.Output
 			p.run(p.peer.Tick(time.Since(p.start), out[:0]))
 			p.mu.Unlock()
 		}

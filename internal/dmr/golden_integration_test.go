@@ -32,7 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
+	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -145,10 +145,10 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 		// RPTK: the token of the capture is that of its salt; send the token
 		// of the salt DMRHub picked.
 		capturedSalt := binary.BigEndian.Uint32(capture[1].p[6:])
-		token, err := auth.Token(dmrd.DialectMMDVM, capturedSalt, []byte("passw0rd"))
+		token, err := dmrdauth.Token(dmrd.DialectMMDVM, capturedSalt, []byte("passw0rd"))
 		require.NoError(t, err)
 		require.Equal(t, capture[2].p[8:40], token[:])
-		token, err = auth.Token(dmrd.DialectMMDVM, salt, []byte("passw0rd"))
+		token, err = dmrdauth.Token(dmrd.DialectMMDVM, salt, []byte("passw0rd"))
 		require.NoError(t, err)
 		rptk := append([]byte(nil), capture[2].p...)
 		copy(rptk[8:], token[:])

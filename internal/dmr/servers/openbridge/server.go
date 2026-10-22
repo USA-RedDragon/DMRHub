@@ -35,7 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -71,7 +71,7 @@ type Server struct {
 type bridge struct {
 	mu       sync.Mutex
 	password string
-	b        *session.Bridge
+	b        *dmrdsession.Bridge
 }
 
 func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
@@ -80,7 +80,7 @@ func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
 	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password {
 		return b, nil
 	}
-	sb, err := session.NewBridge(&session.BridgeConfig{Key: []byte(peer.Password)})
+	sb, err := dmrdsession.NewBridge(&dmrdsession.BridgeConfig{Key: []byte(peer.Password)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to make OpenBridge link: %w", err)
 	}
@@ -96,9 +96,9 @@ func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
 func (b *bridge) verified(now time.Duration, data []byte) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	var buf [session.MaxOutputs]session.Output
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	for _, o := range b.b.Packet(now, data, buf[:0]) {
-		if o.Kind == session.OutputData && o.Command == dmrd.CommandDMRD {
+		if o.Kind == dmrdsession.OutputData && o.Command == dmrd.CommandDMRD {
 			return true
 		}
 	}
@@ -108,7 +108,7 @@ func (b *bridge) verified(now time.Duration, data []byte) bool {
 func (b *bridge) sign(p []byte) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if err := b.b.Sign(p); err != nil {
+	if err := b.b.SignInPlace(p); err != nil {
 		return fmt.Errorf("failed to sign OpenBridge packet: %w", err)
 	}
 	return nil

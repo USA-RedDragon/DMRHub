@@ -29,7 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
+	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 )
 
 const openbridgePacketLength = 73
@@ -205,7 +205,7 @@ func (c *OpenBridgeClient) sendPacket(pkt models.Packet) error {
 	if err != nil {
 		return fmt.Errorf("encoding packet: %w", err)
 	}
-	if _, err := auth.NewBridgeKey([]byte(c.Password)).Sign(outbound); err != nil {
+	if err := dmrdauth.NewBridgeKey([]byte(c.Password)).SignInPlace(outbound); err != nil {
 		return fmt.Errorf("signing packet: %w", err)
 	}
 
@@ -251,7 +251,7 @@ func (c *OpenBridgeClient) rx() {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		if _, ok := auth.NewBridgeKey([]byte(c.Password)).Verify(data); !ok {
+		if _, ok := dmrdauth.NewBridgeKey([]byte(c.Password)).Verify(data); !ok {
 			continue // Invalid HMAC, skip
 		}
 		bridge, err := dmrd.DecodeBridge(data)

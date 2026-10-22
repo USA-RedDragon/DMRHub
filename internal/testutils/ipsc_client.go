@@ -31,8 +31,8 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/layer3"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
-	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/auth"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/session"
+	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
+	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 )
 
@@ -58,7 +58,7 @@ type IPSCClient struct {
 	useAuth bool
 
 	mu      sync.Mutex
-	peer    *session.Peer
+	peer    *ipscsession.Peer
 	conn    *net.UDPConn
 	master  *net.UDPAddr
 	start   time.Time
@@ -102,10 +102,11 @@ func (c *IPSCClient) dial(addr string) error {
 	if master.IP == nil || master.IP.IsUnspecified() {
 		master.IP = net.IPv4(127, 0, 0, 1)
 	}
-	var to session.Addr
-	copy(to.IP[:], master.IP.To4())
-	to.Port = uint16(master.Port) //nolint:gosec // a UDP port fits
-	peer, err := session.NewPeer(&session.PeerConfig{
+	to, ok := ipscsession.AddrOf(master.IP, master.Port)
+	if !ok {
+		return fmt.Errorf("master address %v is not IPv4: %w", master, ErrIPSCNotConnected)
+	}
+	peer, err := ipscsession.NewPeer(&ipscsession.PeerConfig{
 		ID:     c.PeerID,
 		Master: to,
 		Auth:   c.useAuth,
@@ -214,7 +215,11 @@ func (c *IPSCClient) sendVoice(op ipscwire.Opcode, src, dst uint, groupCall, slo
 		c.mu.Lock()
 		p := c.buildVoicePacket(op, src, dst, groupCall, slot, streamID, burst, i == 2)
 		if p != nil {
-			p = c.peer.Sign(p)
+			var err error
+			if p, err = c.peer.Sign(p); err != nil {
+				c.mu.Unlock()
+				return fmt.Errorf("signing voice packet %d: %w", i, err)
+			}
 		}
 		c.mu.Unlock()
 		if p == nil {
@@ -233,7 +238,7 @@ func (c *IPSCClient) Close() {
 		close(c.done)
 		if c.conn != nil {
 			c.mu.Lock()
-			c.run(c.peer.Close(make([]session.Output, 0, c.peer.MaxOutputs())))
+			c.run(c.peer.Close(time.Since(c.start), make([]ipscsession.Output, 0, c.peer.MaxOutputs())))
 			c.mu.Unlock()
 			_ = c.conn.Close()
 		}
@@ -241,17 +246,17 @@ func (c *IPSCClient) Close() {
 	c.wg.Wait()
 }
 
-func (c *IPSCClient) run(out []session.Output) {
+func (c *IPSCClient) run(out []ipscsession.Output) {
 	for _, o := range out {
 		switch o.Kind {
-		case session.OutputSend:
+		case ipscsession.OutputSend:
 			to := &net.UDPAddr{IP: net.IPv4(o.Addr.IP[0], o.Addr.IP[1], o.Addr.IP[2], o.Addr.IP[3]), Port: int(o.Addr.Port)}
 			_, _ = c.conn.WriteToUDP(o.Packet, to)
-		case session.OutputUp:
+		case ipscsession.OutputUp:
 			c.upOnce.Do(func() { close(c.ready) })
-		case session.OutputData:
+		case ipscsession.OutputData:
 			c.receive(o.Packet)
-		case session.OutputDown, session.OutputPeers, session.OutputDropped:
+		case ipscsession.OutputDown, ipscsession.OutputPeers, ipscsession.OutputDropped:
 		}
 	}
 }
@@ -279,17 +284,18 @@ func (c *IPSCClient) receive(p []byte) {
 
 func (c *IPSCClient) rx() {
 	defer c.wg.Done()
-	buf := make([]byte, session.MaxPacket)
+	buf := make([]byte, ipscsession.MaxPacket)
 	for {
 		n, from, err := c.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
 		}
-		var addr session.Addr
-		copy(addr.IP[:], from.IP.To4())
-		addr.Port = uint16(from.Port) //nolint:gosec // a UDP port fits
+		addr, ok := ipscsession.AddrOf(from.IP, from.Port)
+		if !ok {
+			continue
+		}
 		c.mu.Lock()
-		c.run(c.peer.Packet(addr, buf[:n], make([]session.Output, 0, c.peer.MaxOutputs())))
+		c.run(c.peer.Packet(time.Since(c.start), addr, buf[:n], make([]ipscsession.Output, 0, c.peer.MaxOutputs())))
 		c.mu.Unlock()
 	}
 }
@@ -304,7 +310,7 @@ func (c *IPSCClient) ticks() {
 			return
 		case <-ticker.C:
 			c.mu.Lock()
-			c.run(c.peer.Tick(time.Since(c.start), make([]session.Output, 0, c.peer.MaxOutputs())))
+			c.run(c.peer.Tick(time.Since(c.start), make([]ipscsession.Output, 0, c.peer.MaxOutputs())))
 			c.mu.Unlock()
 		}
 	}

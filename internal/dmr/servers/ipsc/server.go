@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -34,12 +33,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
-	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/auth"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/session"
+	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
+	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
 	"gorm.io/gorm"
 )
 
-// IPSCServer is the IPSC master of DMRHub. One session.Master serves every
+// IPSCServer is the IPSC master of DMRHub. One ipscsession.Master serves every
 // repeater, each with its own key.
 type IPSCServer struct {
 	cfg        *config.Config
@@ -51,8 +50,8 @@ type IPSCServer struct {
 
 	localID uint32
 	mu      sync.Mutex
-	m       *session.Master
-	out     []session.Output
+	m       *ipscsession.Master
+	out     []ipscsession.Output
 	peers   map[uint32]*peerState
 	epoch   time.Time
 
@@ -97,12 +96,12 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		done:       make(chan struct{}),
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 	}
-	m, err := session.NewMaster(&session.MasterConfig{ID: s.localID, MaxPeers: session.MaxPeersLimit})
+	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{ID: s.localID, MaxPeers: ipscsession.MaxPeersLimit})
 	if err != nil {
 		slog.Error("error creating IPSC session", "error", err)
 	} else {
 		s.m = m
-		s.out = make([]session.Output, 0, m.MaxOutputs())
+		s.out = make([]ipscsession.Output, 0, m.MaxOutputs())
 	}
 	s.keyFor = s.lookupPeerAuthKey
 	return s
@@ -220,7 +219,7 @@ func (s *IPSCServer) tick(ctx context.Context, now time.Duration) {
 
 func (s *IPSCServer) handler(ctx context.Context) {
 	defer s.wg.Done()
-	buf := make([]byte, session.MaxPacket)
+	buf := make([]byte, ipscsession.MaxPacket)
 	for {
 		n, addr, err := s.udp.ReadFromUDP(buf)
 		if err != nil {
@@ -254,7 +253,10 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	if err != nil {
 		return fmt.Errorf("packet too short for peer ID: %w", err)
 	}
-	from, ok := toAddr(addr)
+	if addr == nil {
+		return fmt.Errorf("no peer address: %w", ErrPacketIgnored)
+	}
+	from, ok := ipscsession.AddrOf(addr.IP, addr.Port)
 	if !ok {
 		return fmt.Errorf("peer address %v is not IPv4: %w", addr, ErrPacketIgnored)
 	}
@@ -262,21 +264,21 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	if err != nil {
 		return fmt.Errorf("peer %d: %w", raw.ID, err)
 	}
+	var kp *[20]byte
+	if useAuth {
+		kp = &key
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	out := s.receive(now, from, key, useAuth, data)
+	out := s.m.Packet(now, from, data, kp, s.out[:0])
 	if unregistered(out) && raw.Opcode != ipscwire.OpDeregisterRequest {
 		slog.Info("adopting authenticated peer", "peerID", raw.ID, "peer", addr, "packetType", byte(raw.Opcode))
-		if useAuth {
-			s.apply(ctx, s.m.AdoptWithKey(now, from, raw.ID, session.ModeDefault, ipscwire.Flags{}, key, s.out[:0]))
-		} else {
-			s.apply(ctx, s.m.Adopt(now, from, raw.ID, session.ModeDefault, ipscwire.Flags{}, s.out[:0]))
-		}
-		out = s.receive(now, from, key, useAuth, data)
+		s.apply(ctx, s.m.Adopt(now, from, raw.ID, kp, s.out[:0]))
+		out = s.m.Packet(now, from, data, kp, s.out[:0])
 	}
-	ignored := len(out) == 0 || out[0].Kind == session.OutputDropped
+	ignored := len(out) == 0 || out[0].Kind == ipscsession.OutputDropped
 	s.apply(ctx, out)
 	if p, ok := s.peers[raw.ID]; ok {
 		s.updateRepeaterDBTimes(p, uint(raw.ID), false)
@@ -287,26 +289,19 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	return nil
 }
 
-func (s *IPSCServer) receive(now time.Duration, from session.Addr, key [20]byte, useAuth bool, data []byte) []session.Output {
-	if useAuth {
-		return s.m.PacketWithKey(now, from, key, data, s.out[:0])
-	}
-	return s.m.Packet(now, from, data, s.out[:0])
-}
-
-func unregistered(out []session.Output) bool {
-	return len(out) == 1 && out[0].Kind == session.OutputDropped && out[0].Reason == session.ReasonUnregistered
+func unregistered(out []ipscsession.Output) bool {
+	return len(out) == 1 && out[0].Kind == ipscsession.OutputDropped && out[0].Reason == ipscsession.ReasonUnregistered
 }
 
 // apply carries out the outputs of the Master. The caller holds s.mu.
-func (s *IPSCServer) apply(ctx context.Context, out []session.Output) {
+func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 	for _, o := range out {
 		switch o.Kind {
-		case session.OutputSend:
+		case ipscsession.OutputSend:
 			if _, err := s.udp.WriteToUDP(o.Packet, toUDPAddr(o.Addr)); err != nil {
 				slog.Warn("error sending IPSC packet", "peer", toUDPAddr(o.Addr), "error", err)
 			}
-		case session.OutputUp:
+		case ipscsession.OutputUp:
 			slog.Info("IPSC peer registered", "peerID", o.ID)
 			p := &peerState{}
 			s.peers[o.ID] = p
@@ -314,15 +309,15 @@ func (s *IPSCServer) apply(ctx context.Context, out []session.Output) {
 			if s.hub != nil {
 				s.hub.ActivateRepeater(ctx, uint(o.ID))
 			}
-		case session.OutputDown:
+		case ipscsession.OutputDown:
 			slog.Info("IPSC peer down", "peerID", o.ID, "reason", o.Reason)
 			delete(s.peers, o.ID)
 			if s.hub != nil {
 				s.hub.DeactivateRepeater(ctx, uint(o.ID))
 			}
-		case session.OutputDropped:
+		case ipscsession.OutputDropped:
 			slog.Debug("IPSC packet dropped", "peerID", o.ID, "peer", toUDPAddr(o.Addr), "reason", o.Reason)
-		case session.OutputData:
+		case ipscsession.OutputData:
 			op := ipscwire.Opcode(o.Packet[0])
 			if !isUserPacket(op) || s.burstHandler == nil {
 				continue
@@ -330,7 +325,7 @@ func (s *IPSCServer) apply(ctx context.Context, out []session.Output) {
 			packetCopy := make([]byte, len(o.Packet))
 			copy(packetCopy, o.Packet)
 			go s.burstHandler(byte(op), packetCopy, toUDPAddr(o.Addr))
-		case session.OutputPeers:
+		case ipscsession.OutputPeers:
 		}
 	}
 }
@@ -374,20 +369,7 @@ func (s *IPSCServer) updateRepeaterDBTimes(p *peerState, repeaterID uint, isConn
 	p.lastDBWrite = now
 }
 
-func toAddr(a *net.UDPAddr) (session.Addr, bool) {
-	if a == nil || a.Port < 0 || a.Port > math.MaxUint16 {
-		return session.Addr{}, false
-	}
-	ip4 := a.IP.To4()
-	if ip4 == nil {
-		return session.Addr{}, false
-	}
-	out := session.Addr{Port: uint16(a.Port)}
-	copy(out.IP[:], ip4)
-	return out, true
-}
-
-func toUDPAddr(a session.Addr) *net.UDPAddr {
+func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {
 	return &net.UDPAddr{IP: net.IPv4(a.IP[0], a.IP[1], a.IP[2], a.IP[3]), Port: int(a.Port)}
 }
 
@@ -416,14 +398,17 @@ func (s *IPSCServer) sendPacketInternal(data []byte) {
 		return
 	}
 	s.mu.Lock()
-	dests := make([]destination, 0, s.m.Peers())
-	for i := range s.m.Peers() {
-		info := s.m.PeerAt(i)
-		state, ok := s.peers[info.ID]
+	dests := make([]destination, 0, len(s.peers))
+	for id, state := range s.peers {
+		info, ok := s.m.Peer(id)
 		if !ok {
 			continue
 		}
-		packet := s.m.SignFor(info.ID, append(make([]byte, 0, len(data)+ipscauth.TrailerLen), data...))
+		packet, err := s.m.SignFor(info.ID, append(make([]byte, 0, len(data)+ipscauth.TrailerLen), data...))
+		if err != nil {
+			slog.Warn("failed signing IPSC user packet", "peerID", info.ID, "error", err)
+			continue
+		}
 		dests = append(dests, destination{id: info.ID, to: toUDPAddr(info.Addr), state: state, packet: packet})
 	}
 	s.mu.Unlock()

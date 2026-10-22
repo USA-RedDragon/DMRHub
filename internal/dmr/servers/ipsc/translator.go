@@ -399,7 +399,8 @@ func ipscFullLC(pkt models.Packet, dataType enums.DataType) [12]byte {
 	if cw, ok := layer2.RawBurst(pkt.DMRData).MMDVMHostPayload(dataType); ok && fullLCMatchesPacket(cw, pkt) {
 		return cw
 	}
-	cw, err := extractFullLCBytes(pkt).Codeword(dataType)
+	lc := extractFullLCBytes(pkt)
+	cw, err := lc.Codeword(dataType)
 	if err != nil {
 		slog.Error("Failed to encode Full LC codeword", "error", err)
 	}
@@ -409,9 +410,8 @@ func ipscFullLC(pkt models.Packet, dataType enums.DataType) [12]byte {
 // fullLCMatchesPacket reports whether a voice Full LC names the same call as pkt.
 func fullLCMatchesPacket(cw [12]byte, pkt models.Packet) bool {
 	lc := pdu.LCBytes(cw[:9])
-	group, okGroup := lc.Group()
-	target, source, okAddr := lc.Addresses()
-	return okGroup && okAddr && group == pkt.GroupCall && uint(target) == pkt.Dst && uint(source) == pkt.Src
+	group, target, source, ok := lc.Call()
+	return ok && group == pkt.GroupCall && uint(target) == pkt.Dst && uint(source) == pkt.Src
 }
 
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.

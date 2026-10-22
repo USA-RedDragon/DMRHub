@@ -93,8 +93,7 @@ func TestParrotReplyNamesTheReply(t *testing.T) {
 			t.Fatalf("packet %d: Full LC does not decode", i)
 		}
 		lc := pdu.LCBytes(cw[:9])
-		group, _ := lc.Group()
-		target, source, ok := lc.Addresses()
+		group, target, source, ok := lc.Call()
 		if !ok || group || target != 3191868 || source != 91 {
 			t.Fatalf("packet %d: LC %x, want a private call from 91 to 3191868", i, cw)
 		}

@@ -26,7 +26,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -89,7 +89,7 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 					assert.Equal(t, uint(100001), p.Repeater)
 				}
 
-				assert.Equal(t, session.StateRunning, gw.State())
+				assert.Equal(t, dmrdsession.StateRunning, gw.State())
 				assert.Zero(t, gw.Downs(), "the session should not have ended")
 				rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
 				require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestSessionPeerMovesToSecondReplica(t *testing.T) {
 		require.NoError(t, gw.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7101, false)))
 		pkts := rpt.Drain(drainWait)
 		assert.NotEmpty(t, pkts, "repeater should receive the call that the second replica took")
-		assert.Equal(t, session.StateRunning, gw.State())
+		assert.Equal(t, dmrdsession.StateRunning, gw.State())
 		assert.Zero(t, gw.Downs(), "the second replica should not refuse the session")
 	})
 }

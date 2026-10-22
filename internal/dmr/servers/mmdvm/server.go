@@ -34,7 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/session"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -105,7 +105,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 	}
 
 	return Server{
-		Buffer:        make([]byte, session.MaxPacket),
+		Buffer:        make([]byte, dmrdsession.MaxPacket),
 		config:        config,
 		SocketAddress: socketAddr,
 		Server:        server,

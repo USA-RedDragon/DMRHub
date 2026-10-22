@@ -29,7 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/auth"
+	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 )
 
 // MMDVMClient is a simulated MMDVM repeater client for integration testing.
@@ -189,8 +189,8 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 	switch c.state.Load() {
 	case mmdvmStateSentLogin:
 		// Expecting RPTACK with the salt
-		if command == dmrd.CommandRPTACK {
-			c.sendRPTK(msg.ID)
+		if salt, ok := msg.LoginSalt(); ok {
+			c.sendRPTK(salt)
 			c.state.Store(mmdvmStateSentAuth)
 		}
 
@@ -228,7 +228,7 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 }
 
 func (c *MMDVMClient) sendControl(command dmrd.Command, id uint32, token [32]byte) {
-	data, err := dmrd.Control{Command: command, ID: id, Token: token}.AppendBinary(nil, dmrd.DialectMMDVM)
+	data, err := (&dmrd.Control{Command: command, ID: id, Token: token}).AppendBinary(nil, dmrd.DialectMMDVM)
 	if err != nil {
 		return
 	}
@@ -240,7 +240,7 @@ func (c *MMDVMClient) sendLogin() {
 }
 
 func (c *MMDVMClient) sendRPTK(salt uint32) {
-	token, err := auth.Token(dmrd.DialectMMDVM, salt, []byte(c.Password))
+	token, err := dmrdauth.Token(dmrd.DialectMMDVM, salt, []byte(c.Password))
 	if err != nil {
 		return
 	}
@@ -253,7 +253,7 @@ func (c *MMDVMClient) sendRPTC() {
 		callsign = fmt.Sprintf("T%04dST", c.RepeaterID%10000)
 	}
 
-	var cfg dmrd.Config
+	var cfg dmrd.MMDVMConfig
 	cfg.Reset()
 	cfg.SetID(c.RepeaterID)
 	err := errors.Join(

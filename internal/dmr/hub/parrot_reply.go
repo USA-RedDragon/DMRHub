@@ -73,7 +73,7 @@ func parrotReply(packets []models.Packet, colorCode enums.ColorCode) []models.Pa
 	stopped := false
 	for {
 		for len(slots) > 0 && tx.Room() > 0 {
-			if err := tx.Slot(slots[0]); err != nil {
+			if err := tx.VocoderSlot(slots[0]); err != nil {
 				slog.Error("Parrot: cannot queue voice", "error", err)
 				return packets
 			}

@@ -137,6 +137,14 @@ func (c *MMDVMClient) SendDMRD(pkt models.Packet) error {
 	return nil
 }
 
+// SendRaw sends data to the server as it is.
+func (c *MMDVMClient) SendRaw(data []byte) error {
+	if _, err := c.conn.Write(data); err != nil {
+		return fmt.Errorf("writing raw packet: %w", err)
+	}
+	return nil
+}
+
 // Close shuts down the client.
 func (c *MMDVMClient) Close() {
 	c.stopOnce.Do(func() {

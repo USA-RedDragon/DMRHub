@@ -126,7 +126,8 @@ func TestTrustedRepeaterMovesRadio(t *testing.T) {
 func TestUntrustedCallRowDoesNotLocateRadio(t *testing.T) {
 	t.Parallel()
 	h, database, srv := lastSeenHub(t)
-	require.NoError(t, database.Create(&models.Call{UserID: 1000002, RepeaterID: 100004, CreatedAt: time.Now()}).Error)
+	userID, repeaterID := uint(1000002), uint(100004)
+	require.NoError(t, database.Create(&models.Call{UserID: &userID, RepeaterID: &repeaterID, IngressID: repeaterID, CreatedAt: time.Now()}).Error)
 
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 1), models.RepeaterTypeMMDVM)
 	expectNone(t, srv, "a call on another user's untrusted hotspot must not locate the radio")

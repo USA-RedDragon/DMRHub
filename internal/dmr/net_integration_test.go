@@ -113,12 +113,13 @@ func TestNetSeedEndedNetHasCheckIns(t *testing.T) {
 
 		// Insert a call that falls within the net's time range
 		toTgID := uint(200)
+		userID, repeaterID := uint(1000002), uint(2000)
 		call := models.Call{
 			StreamID:      999,
 			StartTime:     net.StartTime.Add(1 * time.Minute),
 			Active:        false,
-			UserID:        1000002,
-			RepeaterID:    2000,
+			UserID:        &userID,
+			RepeaterID:    &repeaterID,
 			GroupCall:     true,
 			DestinationID: 200,
 			TimeSlot:      false,
@@ -134,7 +135,7 @@ func TestNetSeedEndedNetHasCheckIns(t *testing.T) {
 		)
 		require.NoError(t, err)
 		assert.Len(t, calls, 1)
-		assert.Equal(t, uint(1000002), calls[0].UserID)
+		assert.Equal(t, &userID, calls[0].UserID)
 
 		count, err := models.CountTalkgroupCallsInTimeRange(
 			stack.DB, 200, net.StartTime, *net.EndTime,

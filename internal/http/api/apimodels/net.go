@@ -94,7 +94,7 @@ func NewNetCheckInResponseFromCall(call *models.Call) NetCheckInResponse {
 			ID:       call.User.ID,
 			Callsign: call.User.Callsign,
 		},
-		RepeaterID: call.RepeaterID,
+		RepeaterID: call.IngressID,
 		StartTime:  call.StartTime,
 	}
 }

@@ -181,10 +181,10 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 	require.NoError(t, db.Create(&tg).Error)
 	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "KI5VMF"}, OwnerID: src.ID, Type: models.RepeaterTypeMMDVM}
 	require.NoError(t, db.Create(&rpt).Error)
-	tgID, dstID := tg.ID, dst.ID
+	tgID, dstID, srcID, rptID := tg.ID, dst.ID, src.ID, rpt.ID
 	start := time.Now()
-	require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: start, UserID: src.ID, RepeaterID: rpt.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID}).Error)
-	require.NoError(t, db.Create(&models.Call{StreamID: 2, StartTime: start, UserID: src.ID, RepeaterID: rpt.ID, IsToUser: true, ToUserID: &dstID, DestinationID: dst.ID}).Error)
+	require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID}).Error)
+	require.NoError(t, db.Create(&models.Call{StreamID: 2, StartTime: start, UserID: &srcID, RepeaterID: &rptID, IngressID: rpt.ID, IsToUser: true, ToUserID: &dstID, DestinationID: dst.ID}).Error)
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
 	paths := []string{

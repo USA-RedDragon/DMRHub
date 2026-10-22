@@ -361,13 +361,13 @@ func seedCallsForBenchmark(b *testing.B, database *gorm.DB, tgID uint, count int
 	database.Create(&models.Talkgroup{ID: tgID, Name: "BenchTG"})
 
 	toTgID := tgID
+	userID := uint(1)
 	for i := 0; i < count; i++ {
 		call := models.Call{
 			StreamID:      uint(i + 1),
 			StartTime:     baseTime.Add(time.Duration(i) * time.Second),
 			Active:        false,
-			UserID:        1,
-			RepeaterID:    0,
+			UserID:        &userID,
 			GroupCall:     true,
 			DestinationID: tgID,
 			TimeSlot:      false,

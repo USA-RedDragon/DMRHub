@@ -80,10 +80,10 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		Jitter:        call.Jitter,
 		BER:           call.BER,
 		RSSI:          call.RSSI,
-		RepeaterID:    call.RepeaterID,
+		RepeaterID:    call.IngressID,
 		DestinationID: call.DestinationID,
 	}
-	resp.Repeater.RadioID = call.RepeaterID
+	resp.Repeater.RadioID = call.IngressID
 	resp.Repeater.Callsign = call.Repeater.Callsign
 	resp.User.ID = call.User.ID
 	resp.User.Callsign = call.User.Callsign

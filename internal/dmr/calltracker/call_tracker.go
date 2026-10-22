@@ -85,7 +85,7 @@ func getCallHash(call models.Call) (uint64, error) {
 	v := callMapStruct{
 		Active:        true, // Always true: calls are only hashed while active
 		StreamID:      call.StreamID,
-		UserID:        call.UserID,
+		UserID:        call.SourceID,
 		DestinationID: call.DestinationID,
 		TimeSlot:      call.TimeSlot,
 		GroupCall:     call.GroupCall,
@@ -282,8 +282,11 @@ func newCallFromPacket(packet models.Packet, sourceUser models.User, sourceRepea
 		StreamID:       packet.StreamID,
 		StartTime:      now,
 		Active:         true,
-		UserID:         sourceUser.ID,
-		RepeaterID:     sourceRepeater.ID,
+		UserID:         &sourceUser.ID,
+		RepeaterID:     &sourceRepeater.ID,
+		Kind:           models.CallKindVoice,
+		SourceID:       packet.Src,
+		IngressID:      packet.Repeater,
 		TimeSlot:       packet.Slot,
 		GroupCall:      packet.GroupCall,
 		DestinationID:  packet.Dst,

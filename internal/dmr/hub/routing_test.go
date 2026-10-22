@@ -136,9 +136,11 @@ func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
 	seedRepeater(t, database, 100003, 1000002)
 
 	// Record a last call for the target user on repeater 100003
+	userID, repeaterID := uint(1000002), uint(100003)
 	lastCall := models.Call{
-		UserID:     1000002,
-		RepeaterID: 100003,
+		UserID:     &userID,
+		RepeaterID: &repeaterID,
+		IngressID:  repeaterID,
 		CreatedAt:  time.Now(),
 	}
 	require.NoError(t, database.Create(&lastCall).Error)
@@ -236,9 +238,11 @@ func TestRoutePacketPrivateCallTo8DigitUserID(t *testing.T) {
 	seedRepeater(t, database, 100002, 10000001)
 
 	// Record a last call for the 8-digit user on repeater 100002
+	userID, repeaterID := uint(10000001), uint(100002)
 	lastCall := models.Call{
-		UserID:     10000001,
-		RepeaterID: 100002,
+		UserID:     &userID,
+		RepeaterID: &repeaterID,
+		IngressID:  repeaterID,
 		CreatedAt:  time.Now(),
 	}
 	require.NoError(t, database.Create(&lastCall).Error)

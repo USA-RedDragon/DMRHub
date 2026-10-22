@@ -25,6 +25,39 @@ import (
 	"gorm.io/gorm"
 )
 
+// CallKind is what the bursts of a transmission carry.
+type CallKind string
+
+// The CallKind values.
+const (
+	CallKindVoice   CallKind = "voice"
+	CallKindData    CallKind = "data"
+	CallKindUDT     CallKind = "udt"
+	CallKindCSBK    CallKind = "csbk"
+	CallKindMBC     CallKind = "mbc"
+	CallKindUSBD    CallKind = "usbd"
+	CallKindIdle    CallKind = "idle"
+	CallKindAlias   CallKind = "alias"
+	CallKindGPS     CallKind = "gps"
+	CallKindUnknown CallKind = "unknown"
+)
+
+// CallResponse is the response that a confirmed transmission got.
+type CallResponse string
+
+// The CallResponse values. CallResponseNone is a transmission without a
+// response.
+const (
+	CallResponseNone CallResponse = ""
+	CallResponseACK  CallResponse = "ack"
+	CallResponseNACK CallResponse = "nack"
+	CallResponseSACK CallResponse = "sack"
+)
+
+// Call is one transmission of any kind: a voice call, a data call, a
+// control block, a talker alias or a GPS position. UserID and RepeaterID
+// are set only when the source and the ingress repeater are registered;
+// SourceID and IngressID always hold the IDs that the packets carried.
 type Call struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
 	CallData       []byte         `json:"-" gorm:"type:bytea"`
@@ -33,9 +66,9 @@ type Call struct {
 	Duration       time.Duration  `json:"duration"`
 	Active         bool           `json:"active"`
 	User           User           `json:"user" gorm:"foreignKey:UserID"`
-	UserID         uint           `json:"-"`
+	UserID         *uint          `json:"-"`
 	Repeater       Repeater       `json:"repeater" gorm:"foreignKey:RepeaterID"`
-	RepeaterID     uint           `json:"-"`
+	RepeaterID     *uint          `json:"-"`
 	TimeSlot       bool           `json:"time_slot"`
 	GroupCall      bool           `json:"group_call"`
 	IsToTalkgroup  bool           `json:"is_to_talkgroup"`
@@ -61,6 +94,29 @@ type Call struct {
 	LastPacketTime time.Time      `json:"-"`
 	HasHeader      bool           `json:"-"`
 	HasTerm        bool           `json:"-"`
+	Kind           CallKind       `json:"kind" gorm:"size:16;not null;default:'voice';index"`
+	SubKind        string         `json:"sub_kind" gorm:"size:64"`
+	SourceID       uint           `json:"source_id" gorm:"index"`
+	Transport      string         `json:"transport" gorm:"size:16"`
+	IngressID      uint           `json:"ingress_id"`
+	Bursts         uint           `json:"bursts"`
+	FID            *uint8         `json:"fid"`
+	Opcode         *uint8         `json:"opcode"`
+	SAP            *uint8         `json:"sap"`
+	DataFormat     string         `json:"data_format" gorm:"size:16"`
+	Confirmed      bool           `json:"confirmed"`
+	Blocks         uint           `json:"blocks"`
+	Octets         uint           `json:"octets"`
+	BadCRC         uint           `json:"bad_crc"`
+	LostBlocks     uint           `json:"lost_blocks"`
+	Response       CallResponse   `json:"response" gorm:"size:8"`
+	TalkerAlias    string         `json:"talker_alias" gorm:"size:64"`
+	AliasFormat    string         `json:"alias_format" gorm:"size:16"`
+	Latitude       *float64       `json:"latitude"`
+	Longitude      *float64       `json:"longitude"`
+	PositionError  *uint8         `json:"position_error"`
+	Partial        bool           `json:"partial"`
+	Undeliverable  []string       `json:"undeliverable" gorm:"serializer:json;type:text"`
 	CreatedAt      time.Time      `json:"-"`
 	UpdatedAt      time.Time      `json:"-"`
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
@@ -140,7 +196,7 @@ func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool,
 func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) ([]Call, error) {
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
-		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).
+		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
@@ -148,14 +204,14 @@ func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, end
 // CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window.
 func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).Count(&count).Error
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).Count(&count).Error
 	return int(count), err
 }
 
 // CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window.
 func CountUniqueUsersInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ?", true, talkgroupID, startTime, endTime).
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Distinct("user_id").Count(&count).Error
 	return int(count), err
 }

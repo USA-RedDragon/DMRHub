@@ -205,7 +205,7 @@ func (c *OpenBridgeClient) sendPacket(pkt models.Packet) error {
 	if err != nil {
 		return fmt.Errorf("encoding packet: %w", err)
 	}
-	if err := auth.NewBridge([]byte(c.Password)).Sign(outbound); err != nil {
+	if _, err := auth.NewBridgeKey([]byte(c.Password)).Sign(outbound); err != nil {
 		return fmt.Errorf("signing packet: %w", err)
 	}
 
@@ -251,7 +251,7 @@ func (c *OpenBridgeClient) rx() {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		if !auth.NewBridge([]byte(c.Password)).Verify(data) {
+		if _, ok := auth.NewBridgeKey([]byte(c.Password)).Verify(data); !ok {
 			continue // Invalid HMAC, skip
 		}
 		bridge, err := dmrd.DecodeBridge(data)

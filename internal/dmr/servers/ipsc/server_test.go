@@ -64,7 +64,16 @@ func testKey(t *testing.T) [20]byte {
 
 func signTestPacket(t *testing.T, data []byte) []byte {
 	t.Helper()
-	return ipscauth.NewKey(testKey(t)).Sign(append([]byte(nil), data...))
+	return signWith(t, testKey(t), append([]byte(nil), data...))
+}
+
+func signWith(t *testing.T, key [20]byte, data []byte) []byte {
+	t.Helper()
+	out, err := ipscauth.NewKey(key).Sign(data)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	return out
 }
 
 // newTestServerWithUDP returns a server on a loopback socket whose peers
@@ -477,7 +486,7 @@ func TestPeersWithOwnKeys(t *testing.T) {
 		id  uint32
 		key [20]byte
 	}{{cA, aA, 201, keyA}, {cB, aB, 202, keyB}} {
-		req := ipscauth.NewKey(p.key).Sign(control(t, ipscwire.OpRegisterRequest, p.id))
+		req := signWith(t, p.key, control(t, ipscwire.OpRegisterRequest, p.id))
 		if err := s.handlePacket(context.Background(), req, p.a); err != nil {
 			t.Fatalf("register %d: %v", p.id, err)
 		}
@@ -485,7 +494,7 @@ func TestPeersWithOwnKeys(t *testing.T) {
 			t.Fatalf("reply to %d is not signed with its key", p.id)
 		}
 	}
-	bad := ipscauth.NewKey(keyA).Sign(control(t, ipscwire.OpAliveRequest, 202))
+	bad := signWith(t, keyA, control(t, ipscwire.OpAliveRequest, 202))
 	if err := s.handlePacket(context.Background(), bad, aB); !errors.Is(err, ErrPacketIgnored) {
 		t.Fatalf("a packet of 202 signed with the key of 201: err %v", err)
 	}

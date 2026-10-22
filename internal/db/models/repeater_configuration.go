@@ -106,11 +106,12 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		return ErrInvalidInt
 	}
 
-	c.ColorCode, err = cfg.ColorCode()
+	cc, err := cfg.ColorCode()
 	if err != nil {
 		slog.Error("Error parsing color code", "error", err)
 		return ErrInvalidInt
 	}
+	c.ColorCode = uint8(cc)
 	if c.ColorCode > maxColorCode {
 		slog.Error("Invalid color code: out of range", "colorCode", c.ColorCode)
 		return ErrInvalidInt

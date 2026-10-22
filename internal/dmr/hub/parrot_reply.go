@@ -96,7 +96,7 @@ func parrotReply(packets []models.Packet, colorCode enums.ColorCode) []models.Pa
 			pkt := first
 			pkt.Seq = uint(len(reply) & 0xFF)
 			pkt.DMRData = out.Burst
-			if idx, ok := out.Position.Index(); ok {
+			if idx, ok := out.Hint.VoiceBurst.Index(); out.Hint.Kind == layer2.KindVoice && ok {
 				pkt.FrameType = dmrconst.FrameVoice
 				if idx == 0 {
 					pkt.FrameType = dmrconst.FrameVoiceSync
@@ -104,7 +104,7 @@ func parrotReply(packets []models.Packet, colorCode enums.ColorCode) []models.Pa
 				pkt.DTypeOrVSeq = uint(idx) //nolint:gosec // idx is 0 to 5
 			} else {
 				pkt.FrameType = dmrconst.FrameDataSync
-				pkt.DTypeOrVSeq = uint(out.DataType)
+				pkt.DTypeOrVSeq = uint(out.Hint.DataType)
 			}
 			reply = append(reply, pkt)
 		}

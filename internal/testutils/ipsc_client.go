@@ -339,7 +339,7 @@ func (c *IPSCClient) buildVoicePacket(op ipscwire.Opcode, src, dst uint, groupCa
 	if burstType == ipscwire.BurstVoice {
 		raw, err = layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{}, enums.VoiceBurstA, pdu.EmbeddedSignalling{}, [4]byte{}, layer2.SyncSourceMS)
 		if err == nil {
-			err = u.SetRawBurst(raw, layer2.KindVoice, enums.VoiceBurstA, 0)
+			_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: enums.VoiceBurstA})
 		}
 	} else {
 		dt := enums.DataType(burstType)
@@ -353,7 +353,7 @@ func (c *IPSCClient) buildVoicePacket(op ipscwire.Opcode, src, dst uint, groupCa
 			raw, err = layer2.BuildDataBurst(cw, dt, 1, layer2.SyncSourceMS)
 		}
 		if err == nil {
-			err = u.SetRawBurst(raw, layer2.KindData, enums.VoiceBurstUnknown, dt)
+			_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dt, HasDataType: true})
 		}
 	}
 	if err != nil {

@@ -306,14 +306,17 @@ func encodeUser(u *ipscwire.User) []byte {
 // the Full LC of the call.
 func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enums.DataType, marker bool) []byte {
 	u := t.user(pkt, ss, false, dt == enums.DataTypeTerminatorWithLC, marker)
-	if err := u.SetRawBurst(layer2.RawBurst(pkt.DMRData), layer2.KindData, enums.VoiceBurstUnknown, dt); err != nil {
+	// The LC comes from ipscFullLC, which checks it, so the packet carries
+	// a burst rebuilt from it with the color code of the burst.
+	cw := ipscFullLC(pkt, dt)
+	raw, err := layer2.BuildDataBurst(cw, dt, layer2.RawBurst(pkt.DMRData).SlotType().ColorCode, layer2.SyncSourceBS)
+	if err == nil {
+		_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dt, HasDataType: true})
+	}
+	if err != nil {
 		slog.Debug("IPSCTranslator: cannot build voice LC packet", "dtype", dt, "error", err)
 		return nil
 	}
-	// SetRawBurst copies the BPTC payload without its FEC result, so the
-	// LC comes from ipscFullLC, which checks it.
-	cw := ipscFullLC(pkt, dt)
-	copy(u.Data.Octets[:12], cw[:])
 	ss.lc, ss.haveLC = [9]byte(cw[:9]), true
 	return encodeUser(&u)
 }
@@ -340,7 +343,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	}
 
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
-	if err := u.SetRawBurst(raw, layer2.KindData, enums.VoiceBurstUnknown, dataType); err != nil {
+	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dataType, HasDataType: true}); err != nil {
 		slog.Debug("IPSCTranslator: cannot build data packet", "dtype", dataType, "error", err)
 		return nil
 	}
@@ -352,7 +355,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 // info bits before FEC, padded to 13 words, as an XPR 8400 sends a block it
 // cannot decode. transport/ipsc has no builder for this form.
 func rawPayload(b layer2.RawBurst, slot2 bool) ipscwire.Payload {
-	d := ipscwire.Payload{Status: 0x40, Words: 0x11, HasBody: true, Flags: [2]byte{0x80, 0x0A}, Bits: 196, TrailerLen: 5}
+	d := ipscwire.Payload{Status: 0x40, Words: 0x11, HasBody: true, Flags: [2]byte{0x80, 0x0A}, Bits: 196, TrailerLen: 4}
 	if slot2 {
 		d.Status |= 0x80
 	}
@@ -397,7 +400,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	}
 	u := t.user(pkt, ss, false, false, false)
 	u.Voice.LC = ss.lc
-	if err := u.SetRawBurst(raw, layer2.KindVoice, pos, 0); err != nil {
+	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: pos}); err != nil {
 		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
 		return nil
 	}

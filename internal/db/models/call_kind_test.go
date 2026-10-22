@@ -124,6 +124,11 @@ func TestNetCallsCountVoiceOnly(t *testing.T) {
 		}).Error)
 	}
 
+	require.NoError(t, database.Create(&models.Call{
+		StreamID: 9, StartTime: start.Add(time.Minute), Kind: models.CallKindVoice, SourceID: 3999999,
+		GroupCall: true, DestinationID: tg, IsToTalkgroup: true, ToTalkgroupID: &toTG,
+	}).Error)
+
 	end := time.Now()
 	calls, err := models.FindTalkgroupCallsInTimeRange(database, tg, start, end)
 	require.NoError(t, err)

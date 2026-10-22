@@ -196,7 +196,7 @@ func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool,
 func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) ([]Call, error) {
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
-		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).
+		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
@@ -204,14 +204,14 @@ func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, end
 // CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window.
 func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).Count(&count).Error
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).Count(&count).Error
 	return int(count), err
 }
 
 // CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window.
 func CountUniqueUsersInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ?", true, talkgroupID, startTime, endTime, CallKindVoice).
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Distinct("user_id").Count(&count).Error
 	return int(count), err
 }

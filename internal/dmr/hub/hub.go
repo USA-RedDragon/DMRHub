@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -86,6 +87,11 @@ type serverEntry struct {
 
 const serverChannelSize = 500
 
+const (
+	peerEgressShards    = 8
+	peerEgressQueueSize = 500
+)
+
 // peerOwnerKeyPrefix is the KV key prefix for tracking which instance owns
 // (has a live connection to) each repeater/peer. Written on ActivateRepeater,
 // read during parrot playback to detect peer migration.
@@ -131,6 +137,8 @@ type Hub struct {
 	// sends to unblock during shutdown.
 	done     chan struct{}
 	stopOnce sync.Once
+
+	peerEgress *streamorder.Queue
 }
 
 // NewHub creates a new Hub.
@@ -145,6 +153,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		activeStreams: xsync.NewMap[uint, struct{}](),
 		done:          make(chan struct{}),
 	}
+	h.peerEgress = streamorder.New(peerEgressShards, peerEgressQueueSize, h.done)
 	h.subscriptionMgr = newSubscriptionManager(h)
 	return h
 }

@@ -163,6 +163,51 @@ func TestPeerPublishRespectsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestPeerEgressKeepsStreamOrder(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 1, "TG1")
+
+	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+	require.NoError(t, database.Create(&owner).Error)
+	peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
+	require.NoError(t, database.Create(&peer).Error)
+	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
+	require.NoError(t, database.Create(&rule).Error)
+
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	defer h.UnregisterServer("peer-srv")
+	time.Sleep(100 * time.Millisecond)
+
+	const count = 90
+	for i := range count {
+		pkt := makeVoicePacket(1, 88888, true, false)
+		pkt.Seq = uint(i)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	}
+
+	got := make([]uint, 0, count)
+	for len(got) < count {
+		select {
+		case rp := <-peerHandle.Packets:
+			got = append(got, rp.Packet.Seq)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("got %d of %d peer packets", len(got), count)
+		}
+	}
+	want := make([]uint, count)
+	for i := range want {
+		want[i] = uint(i)
+	}
+	assert.Equal(t, want, got)
+}
+
 // --- Benchmarks ---
 // These benchmark the end-to-end publish pipeline: Packet.Encode → RawDMRPacket.MarshalMsg → pubsub.Publish
 // which is what publishToRepeater and publishForBroadcastServers do internally.

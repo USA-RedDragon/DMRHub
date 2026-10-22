@@ -48,45 +48,44 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	return nil
 }
 
-// publishForPeers forwards a packet to all peer servers via pubsub.
-// Queries the database for peers and checks egress rules.
-// The context is used to abort the work early during shutdown.
+// publishForPeers queues a packet for egress to all peer servers via pubsub.
+// Packets of one stream run in order, so peers get them in the order the hub
+// routed them. The context is used to abort the work early during shutdown.
 func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
 	if !h.hasPeerServers() {
 		return
 	}
 
-	go func() {
-		// Check for cancellation before doing DB work.
+	h.peerEgress.Do(ctx, packet.StreamID, func() { h.egressToPeers(ctx, packet) })
+}
+
+func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+	peers, err := models.ListPeers(h.db)
+	if err != nil {
+		slog.Error("Failed to list peers for publishing", "error", err)
+		return
+	}
+	for _, p := range peers {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-
-		peers, err := models.ListPeers(h.db)
+		should, err := rules.PeerShouldEgress(h.db, p, &packet)
 		if err != nil {
-			slog.Error("Failed to list peers for publishing", "error", err)
-			return
+			slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
+			continue
 		}
-		for _, p := range peers {
-			// Re-check cancellation between iterations to avoid
-			// unnecessary work when the hub is shutting down.
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			should, err := rules.PeerShouldEgress(h.db, p, &packet)
-			if err != nil {
-				slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
-				continue
-			}
-			if should {
-				h.publishToPeer(p.ID, packet)
-			}
+		if should {
+			h.publishToPeer(p.ID, packet)
 		}
-	}()
+	}
 }
 
 // publishToPeer publishes a packet to the peer delivery pubsub topic.

@@ -88,6 +88,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/auth/RegisterPage.vue'),
     },
     {
+      path: '/settings',
+      name: 'Settings',
+      component: () => import('@/views/users/SettingsPage.vue'),
+    },
+    {
       path: '/repeaters',
       name: 'Repeaters',
       sitemap: {

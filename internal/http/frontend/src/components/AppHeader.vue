@@ -237,15 +237,25 @@
                 Login
               </router-link>
             </template>
-            <a
-              v-else
-              href="#"
-              class="mobile-nav-link"
-              @click.prevent="logout(); mobileOpen = false"
-            >
-              <LogOut class="h-4 w-4" />
-              Logout
-            </a>
+            <template v-else>
+              <router-link
+                to="/settings"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/settings' }"
+                @click="mobileOpen = false"
+              >
+                <Settings class="h-4 w-4" />
+                Settings
+              </router-link>
+              <a
+                href="#"
+                class="mobile-nav-link"
+                @click.prevent="logout(); mobileOpen = false"
+              >
+                <LogOut class="h-4 w-4" />
+                Logout
+              </a>
+            </template>
           </nav>
         </SheetContent>
       </Sheet>
@@ -465,14 +475,22 @@
             Login
           </router-link>
         </template>
-        <a
-          v-else
-          href="#"
-          class="desktop-nav-link"
-          @click.prevent="logout()"
-        >
-          Logout
-        </a>
+        <template v-else>
+          <router-link
+            to="/settings"
+            class="desktop-nav-link"
+            :class="{ active: route.path === '/settings' }"
+          >
+            Settings
+          </router-link>
+          <a
+            href="#"
+            class="desktop-nav-link"
+            @click.prevent="logout()"
+          >
+            Logout
+          </a>
+        </template>
       </div>
     </div>
   </header>

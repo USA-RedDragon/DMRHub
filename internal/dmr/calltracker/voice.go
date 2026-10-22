@@ -79,6 +79,7 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 			return
 		}
 		r.call.LastFrameNum = dmrconst.VoiceA
+		s.t.remember(s, r)
 	}
 	if encrypted {
 		r.call.SubKind = "encrypted"
@@ -92,11 +93,13 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 func (s *shard) updateVoice(r *row, t *task) {
 	call := r.call
 	packet := t.p
-	elapsed := t.at.Sub(call.LastPacketTime)
-	s.touch(r, t)
+	r.last = t.at
+	s.streams[packet.StreamID] = r
 	if call.LastSeq == packet.Seq {
 		return
 	}
+	elapsed := t.at.Sub(call.LastPacketTime)
+	s.touch(r, t)
 	call.LastSeq = packet.Seq
 	call.Jitter = (call.Jitter + float32(elapsed.Milliseconds()-packetTimingMs)) / 2
 	call.Duration = t.at.Sub(call.StartTime)

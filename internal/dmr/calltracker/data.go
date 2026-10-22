@@ -64,6 +64,14 @@ type class struct {
 	sap       *uint8
 	resp      models.CallResponse
 	answers   string
+	ns        uint8
+	hasNS     bool
+	fragment  bool
+}
+
+type dataKey struct {
+	src, dst uint
+	group    bool
 }
 
 type singleKey struct {
@@ -167,8 +175,8 @@ func (s *shard) dataBurst(t *task, ch *channel, h *layer2.Hint) {
 		return
 	}
 	cls := classify(b)
-	if cls.block && ch.data != nil && !ch.data.finished {
-		cls.kind = ch.data.call.Kind
+	if r := ch.data[dataKey{src: t.p.Src, dst: t.p.Dst, group: t.p.GroupCall}]; cls.block && r != nil && !r.finished {
+		cls.kind = r.call.Kind
 	}
 	s.feed(t, ch, h, &cls)
 	s.place(t, ch, &cls)
@@ -271,8 +279,11 @@ func classifyHeader(d *pdu.DataHeader) class {
 		}
 		return c
 	}
-	if _, ok := d.AsConfirmed(); ok {
-		c.confirmed = true
+	if ch, ok := d.AsConfirmed(); ok {
+		c.confirmed, c.ns, c.hasNS = true, ch.SendSequenceNumber, true
+		c.fragment = ch.FragmentSequenceNumber&0x7 != 0
+	} else if u, ok := d.AsUnconfirmed(); ok {
+		c.fragment = u.FragmentSequenceNumber&0x7 != 0
 	} else if dd, ok := d.AsDefinedData(); ok {
 		c.confirmed = dd.ResponseRequested
 	} else if rd, ok := d.AsRawData(); ok {
@@ -297,8 +308,8 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 	p := &t.p
 	if cls.answers != "" {
 		want := cls.answers
-		if s.t.answer(p.Src, p.Dst, models.CallResponseACK, func(kind models.CallKind, sub string) bool {
-			return kind == models.CallKindCSBK && sub == want
+		if s.t.answer(p.Src, p.Dst, models.CallResponseACK, func(e *recentRow) bool {
+			return e.kind == models.CallKindCSBK && e.sub == want
 		}) {
 			return
 		}
@@ -315,6 +326,7 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 			return
 		}
 		r.call.FID, r.call.Opcode = cls.fid, cls.opcode
+		s.t.remember(s, r)
 	}
 	s.touch(r, t)
 	r.call.Bursts++
@@ -329,25 +341,31 @@ func (s *shard) place(t *task, ch *channel, cls *class) {
 		}
 		s.touch(r, t)
 		r.call.Bursts++
-		if !cls.header {
+		if cls.block {
+			r.call.Blocks++
 			return
 		}
 		if cls.sap != nil && r.call.SAP == nil {
 			r.call.SAP = cls.sap
 		}
 		r.call.Confirmed = r.call.Confirmed || cls.confirmed
+		r.ns, r.hasNS = cls.ns, cls.hasNS
 		if cls.sub == subResponse {
 			r.call.SubKind = subResponse
+			r.delivered = true
 			if cls.resp != models.CallResponseNone {
 				r.call.Response = cls.resp
 				s.t.answer(t.p.Src, t.p.Dst, cls.resp, answersData)
 			}
 		}
+		if !r.remembered {
+			r.remembered = true
+			s.t.remember(s, r)
+		}
 	case cls.cont:
-		key := singleKey{ch: ch.key, src: t.p.Src, dst: t.p.Dst, group: t.p.GroupCall, kind: models.CallKindMBC}
 		for k, r := range s.rows {
 			sk, ok := k.(singleKey)
-			if ok && sk.ch == key.ch && sk.src == key.src && sk.dst == key.dst && sk.kind == models.CallKindMBC {
+			if ok && sk.ch == ch.key && sk.src == t.p.Src && sk.dst == t.p.Dst && sk.kind == models.CallKindMBC {
 				s.touch(r, t)
 				r.call.Bursts++
 				return
@@ -359,17 +377,32 @@ func (s *shard) place(t *task, ch *channel, cls *class) {
 	}
 }
 
-func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
-	r := ch.data
-	if r != nil && r.finished {
-		r = nil
+func newPacket(r *row, cls *class) bool {
+	switch {
+	case cls == nil || !cls.header:
+		return false
+	case cls.kind != r.call.Kind:
+		return true
+	case (cls.sub == subResponse) != (r.call.SubKind == subResponse):
+		return true
+	case !r.delivered:
+		return false
+	case cls.fragment:
+		return false
+	case cls.hasNS && r.hasNS && cls.ns == r.ns:
+		return false
 	}
+	return true
+}
+
+func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 	if t == nil {
-		return r
+		return nil
 	}
 	p := &t.p
-	if r != nil && (r.call.SourceID != p.Src || r.call.DestinationID != p.Dst || r.call.GroupCall != p.GroupCall ||
-		(cls != nil && cls.header && cls.kind != r.call.Kind)) {
+	key := dataKey{src: p.Src, dst: p.Dst, group: p.GroupCall}
+	r := ch.data[key]
+	if r != nil && (r.finished || newPacket(r, cls)) {
 		s.finish(r, t.at)
 		r = nil
 	}
@@ -383,9 +416,29 @@ func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 			sub = subResponse
 		}
 		r = s.open(t, ch, nil, kind, sub, dataRowHang)
-		ch.data = r
+		if r == nil {
+			return nil
+		}
+		r.dataKey = &key
+		ch.data[key] = r
 	}
 	return r
+}
+
+func (s *shard) messageRow(ch *channel, t *task, cls *class, m *data.Message) *row {
+	if t != nil {
+		return s.dataRow(ch, t, cls)
+	}
+	dst, src, ok := m.Header.Addresses()
+	if !ok {
+		return nil
+	}
+	for _, group := range []bool{false, true} {
+		if r := ch.data[dataKey{src: uint(src), dst: uint(dst), group: group}]; r != nil && !r.finished {
+			return r
+		}
+	}
+	return nil
 }
 
 func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
@@ -393,7 +446,7 @@ func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
 		ev := &events[i]
 		switch ev.Kind {
 		case data.EventDelivered, data.EventReassembled:
-			r := s.dataRow(ch, t, cls)
+			r := s.messageRow(ch, t, cls, &ev.Message)
 			if r == nil {
 				continue
 			}
@@ -406,34 +459,33 @@ func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
 			if r == nil {
 				continue
 			}
-			resp := responseOf(ev.Response)
-			r.call.SubKind, r.call.Response = subResponse, resp
-			if resp != models.CallResponseNone {
-				s.t.answer(uint(ev.Call.Source), uint(ev.Call.Target), resp, answersData)
-			}
 			if o := s.t.dataObserver(); o != nil {
 				o.DataResponse(r.call, ev, r.last)
 			}
 		case data.EventCallEnd:
-			r := ch.data
-			if r == nil || r.finished {
-				continue
+			if r := ch.data[dataKey{src: uint(ev.Call.Source), dst: uint(ev.Call.Target), group: ev.Call.Group}]; r != nil && !r.finished {
+				r.call.LostBlocks = uint(ev.Stats.Lost)
 			}
-			r.call.Blocks = uint(ev.Stats.Blocks)
-			r.call.LostBlocks = uint(ev.Stats.Lost)
-			r.call.BadCRC = uint(ev.Stats.BadCRC)
-			s.finish(r, r.last)
+			for _, r := range ch.data {
+				s.finish(r, r.last)
+			}
 		case data.EventCallStart, data.EventRespond:
 		}
 	}
 }
 
-func answersData(kind models.CallKind, sub string) bool {
-	return (kind == models.CallKindData || kind == models.CallKindUDT) && sub != subResponse
+func answersData(e *recentRow) bool {
+	return (e.kind == models.CallKindData || e.kind == models.CallKindUDT) && e.sub != subResponse && e.confirmed
 }
 
 func (s *shard) delivered(r *row, ev *data.Event) {
 	m := &ev.Message
+	if ev.Kind == data.EventDelivered {
+		r.delivered = true
+		if m.BadCRC {
+			r.call.BadCRC++
+		}
+	}
 	if sap, ok := m.Header.SAP(); ok {
 		v := uint8(sap)
 		r.call.SAP = &v

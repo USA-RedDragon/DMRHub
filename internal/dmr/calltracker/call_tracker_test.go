@@ -374,6 +374,87 @@ func TestTrackConfirmedSMSWithACK(t *testing.T) {
 	assert.Equal(t, models.CallKindData, resp.Kind)
 	assert.Equal(t, "response", resp.SubKind)
 	assert.Equal(t, models.CallResponseACK, resp.Response)
+	assert.Equal(t, uint(len(bursts)-1), msg.Blocks, "the message row counts its own blocks")
+	assert.Zero(t, resp.Blocks, "an ACK has no blocks")
+}
+
+func confirmedACK(t *testing.T, bursts []layer2.RawBurst) []layer2.RawBurst {
+	t.Helper()
+	radio, err := data.NewReceiver(&data.ReceiverConfig{Respond: true, Source: layer2.SyncSourceMS})
+	require.NoError(t, err)
+	var acks []layer2.RawBurst
+	var events []data.Event
+	for i := range bursts {
+		events = radio.Burst(time.Duration(i)*60*time.Millisecond, &bursts[i], layer2.Hint{}, events[:0])
+		for _, ev := range events {
+			if ev.Kind == data.EventRespond {
+				acks = append(acks, ev.Burst)
+			}
+		}
+	}
+	require.NotEmpty(t, acks)
+	return acks
+}
+
+func TestTrackResponseAnswersOnlyItsConfirmedMessage(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	newSender(t, ct, userA, userB, false, 7030).data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userA), Destination: uint32(userB), Body: []byte("one")})...)
+	waitDone(t, ct, database, 1)
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Confirmed: true, Body: []byte("two")})
+	newSender(t, ct, userB, userA, false, 7031).data(bursts...)
+	newSender(t, ct, userA, userB, false, 7032).data(confirmedACK(t, bursts)...)
+
+	calls := waitDone(t, ct, database, 3)
+	assert.Equal(t, models.CallResponseNone, calls[0].Response, "an unconfirmed message gets no response")
+	assert.Equal(t, models.CallResponseACK, calls[1].Response)
+	assert.Equal(t, "response", calls[2].SubKind)
+}
+
+func TestTrackTwoMessagesMakeTwoRows(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userB, userA, false, 7033)
+	s.data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("first")})...)
+	s.data(smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Body: []byte("second")})...)
+
+	calls := waitDone(t, ct, database, 2)
+	assert.Equal(t, "ip", calls[0].DataFormat)
+	assert.Equal(t, "tms", calls[1].DataFormat)
+}
+
+func TestUndeliverableDoesNotBringBackAKeyUp(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userA, tgID, true, 7034)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+	term := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+	ct.Undeliverable(term, "ipsc:1")
+	ct.Flush()
+	ct.Flush()
+	time.Sleep(300 * time.Millisecond)
+	ct.Flush()
+	assert.Empty(t, rows(t, database))
+}
+
+func TestDuplicateVoicePacketsAreNotStored(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userA, tgID, true, 7035)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+	dup := s.packet(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+	for range 3 {
+		ct.Track(context.Background(), dup, models.RepeaterTypeMMDVM, false)
+	}
+	time.Sleep(150 * time.Millisecond)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	c := waitDone(t, ct, database, 1)[0]
+	assert.Len(t, c.CallData, 3*layer2.RawBurstSize)
 }
 
 func TestTrackControlKinds(t *testing.T) {

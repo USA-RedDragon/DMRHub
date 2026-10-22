@@ -70,8 +70,10 @@ const (
 
 // DataObserver is told of each data packet and each response that the
 // tracker hears. Its methods run on the worker of the logical channel, in
-// burst order, and must not block. ev.Message.Payload is valid only until
-// the method returns.
+// burst order, and must not block or call Flush or Stop. ev.Message.Payload
+// is valid only until the method returns. Take the addresses from the row
+// or the message header, not from ev.Call, which is the call that the
+// receiver follows and can be the other direction of a reply.
 type DataObserver interface {
 	// DataPacket is called for each EventDelivered and EventReassembled.
 	// call is the row of the data call; its ID is set.
@@ -119,11 +121,12 @@ type streamRef struct {
 type pair struct{ src, dst uint }
 
 type recentRow struct {
-	shard int
-	row   *row
-	kind  models.CallKind
-	sub   string
-	at    time.Time
+	shard     int
+	row       *row
+	kind      models.CallKind
+	sub       string
+	confirmed bool
+	at        time.Time
 }
 
 // NewCallTracker creates a new CallTracker and starts its workers.
@@ -349,7 +352,7 @@ func (c *CallTracker) remember(s *shard, r *row) {
 			keep = append(keep, e)
 		}
 	}
-	c.recent[k] = append(keep, recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, at: time.Now()})
+	c.recent[k] = append(keep, recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: time.Now()})
 }
 
 func (c *CallTracker) pruneRecent() {
@@ -363,13 +366,13 @@ func (c *CallTracker) pruneRecent() {
 	}
 }
 
-func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func(models.CallKind, string) bool) bool {
+func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func(*recentRow) bool) bool {
 	c.recentMu.Lock()
 	rows := c.recent[pair{src: dst, dst: src}]
 	cut := time.Now().Add(-responseWindow)
 	var found *recentRow
 	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].at.After(cut) && match(rows[i].kind, rows[i].sub) {
+		if rows[i].at.After(cut) && match(&rows[i]) {
 			e := rows[i]
 			found = &e
 			break
@@ -410,7 +413,7 @@ func (c *CallTracker) publishCall(call *models.Call) {
 
 // publishNetCheckIn publishes a check-in event if the call's talkgroup has an active net.
 func (c *CallTracker) publishNetCheckIn(call *models.Call) {
-	if call.Kind != models.CallKindVoice || !call.GroupCall || call.ToTalkgroupID == nil {
+	if call.Kind != models.CallKindVoice || call.UserID == nil || !call.GroupCall || call.ToTalkgroupID == nil {
 		return
 	}
 
@@ -471,19 +474,25 @@ func (c *CallTracker) resolve(call *models.Call, peer bool) {
 }
 
 type row struct {
-	call     *models.Call
-	ch       *channel
-	key      any
-	last     time.Time
-	hang     time.Duration
-	finished bool
+	call       *models.Call
+	ch         *channel
+	key        any
+	dataKey    *dataKey
+	last       time.Time
+	hang       time.Duration
+	finished   bool
+	deleted    bool
+	delivered  bool
+	remembered bool
+	ns         uint8
+	hasNS      bool
 }
 
 type channel struct {
 	key     chanKey
 	peer    bool
 	rx      *data.Receiver
-	data    *row
+	data    map[dataKey]*row
 	last    time.Time
 	stream  uint
 	started bool
@@ -542,7 +551,7 @@ func (s *shard) run() {
 func (s *shard) channel(key chanKey, peer bool) *channel {
 	ch, ok := s.channels[key]
 	if !ok {
-		ch = &channel{key: key, peer: peer}
+		ch = &channel{key: key, peer: peer, data: map[dataKey]*row{}}
 		s.channels[key] = ch
 	}
 	return ch
@@ -575,7 +584,6 @@ func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub st
 		s.rows[key] = r
 	}
 	s.streams[p.StreamID] = r
-	s.t.remember(s, r)
 	slog.Debug("CallTracker: transmission started", "kind", kind, "sub", sub, "streamID", p.StreamID, "src", p.Src, "dst", p.Dst)
 	return r
 }
@@ -597,8 +605,8 @@ func (s *shard) finish(r *row, at time.Time) {
 	if r.key != nil && s.rows[r.key] == r {
 		delete(s.rows, r.key)
 	}
-	if r.ch != nil && r.ch.data == r {
-		r.ch.data = nil
+	if r.ch != nil && r.dataKey != nil && r.ch.data[*r.dataKey] == r {
+		delete(r.ch.data, *r.dataKey)
 	}
 	call := r.call
 	call.Active = false
@@ -607,6 +615,10 @@ func (s *shard) finish(r *row, at time.Time) {
 		call.Duration = at.Sub(call.StartTime)
 	}
 	if call.Kind == models.CallKindVoice && !at.IsZero() && call.Duration < keyUp {
+		r.deleted = true
+		if s.streams[call.StreamID] == r {
+			delete(s.streams, call.StreamID)
+		}
 		s.t.db.Unscoped().Delete(call)
 		return
 	}
@@ -625,7 +637,9 @@ func (s *shard) finishAll() {
 			s.events = ch.rx.Lost(s.t.now(), s.events[:0])
 			s.apply(ch, nil, nil, s.events)
 		}
-		s.finish(ch.data, time.Time{})
+		for _, r := range ch.data {
+			s.finish(r, time.Time{})
+		}
 	}
 	for _, r := range s.rows {
 		s.finish(r, time.Time{})
@@ -649,14 +663,16 @@ func (s *shard) sweep(now time.Time) {
 				s.apply(ch, nil, nil, s.events)
 			}
 		}
-		if ch.data != nil && now.Sub(ch.data.last) >= dataRowHang && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
-			s.finish(ch.data, time.Time{})
+		for _, r := range ch.data {
+			if now.Sub(r.last) >= dataRowHang && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+				s.finish(r, time.Time{})
+			}
 		}
 		idle := channelIdle
 		if ch.peer {
 			idle = peerChannelIdle
 		}
-		if ch.data == nil && now.Sub(ch.last) >= idle && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+		if len(ch.data) == 0 && now.Sub(ch.last) >= idle && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
 			delete(s.channels, key)
 		}
 	}
@@ -684,11 +700,14 @@ func (s *shard) sweep(now time.Time) {
 }
 
 func (s *shard) setResponse(r *row, resp models.CallResponse) {
+	if r.deleted {
+		return
+	}
 	r.call.Response = resp
 	if !r.finished {
 		return
 	}
-	if err := s.t.db.Omit(clause.Associations).Save(r.call).Error; err != nil {
+	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Update("response", resp).Error; err != nil {
 		slog.Error("CallTracker: error saving response", "error", err)
 		return
 	}
@@ -697,7 +716,7 @@ func (s *shard) setResponse(r *row, resp models.CallResponse) {
 
 func (s *shard) undeliverable(stream uint, target string) {
 	r, ok := s.streams[stream]
-	if !ok {
+	if !ok || r.deleted {
 		return
 	}
 	for _, t := range r.call.Undeliverable {
@@ -709,7 +728,7 @@ func (s *shard) undeliverable(stream uint, target string) {
 	if !r.finished {
 		return
 	}
-	if err := s.t.db.Omit(clause.Associations).Save(r.call).Error; err != nil {
+	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Select("undeliverable").Updates(&models.Call{Undeliverable: r.call.Undeliverable}).Error; err != nil {
 		slog.Error("CallTracker: error saving undeliverable targets", "error", err)
 	}
 }

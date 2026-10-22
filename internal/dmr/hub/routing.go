@@ -86,6 +86,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 
 	defer h.trackCall(ctx, packet, isVoice)
+	defer h.noteSighting(packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice) {
 		return
@@ -102,7 +103,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	if packet.GroupCall {
 		h.handleGroupCall(packet, sourceName)
 	} else {
-		h.handlePrivateCall(packet)
+		h.handlePrivateCall(ctx, packet)
 	}
 }
 
@@ -150,11 +151,11 @@ func (h *Hub) handleGroupCall(packet models.Packet, sourceName string) {
 
 // handlePrivateCall routes a private burst of any kind to the target
 // repeater or user.
-func (h *Hub) handlePrivateCall(packet models.Packet) {
+func (h *Hub) handlePrivateCall(ctx context.Context, packet models.Packet) {
 	if isRepeaterID(packet.Dst) {
 		h.routeToRepeater(packet)
 	} else if isUserID(packet.Dst) {
-		h.routeToUser(packet)
+		h.routeToUser(ctx, packet)
 	}
 }
 
@@ -174,29 +175,22 @@ func (h *Hub) routeToRepeater(packet models.Packet) {
 	h.publishToRepeater(packet.Dst, packet)
 }
 
-// routeToUser sends a private call to a user's repeaters via pubsub.
-func (h *Hub) routeToUser(packet models.Packet) {
+// routeToUser sends private traffic to the repeater where the registered
+// radio was last heard. Traffic to a radio that is not a user is dropped.
+func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) {
 	user, err := models.FindUserByID(h.db, packet.Dst)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			slog.Error("User does not exist", "userID", packet.Dst)
-		} else {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Error finding user", "error", err)
 		}
 		return
 	}
-
-	// Find user's last call to determine their most recent repeater
-	var lastCall models.Call
-	err = h.db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&lastCall).Error
-	switch {
-	case err != nil:
-		slog.Error("Error querying last call for user", "userID", user.ID, "error", err)
-	case lastCall.ID != 0:
-		h.publishToRepeater(lastCall.RepeaterID, packet)
-	default:
-		slog.Warn("Dropping private call to user: no previous call found to determine repeater", "userID", user.ID, "src", packet.Src)
+	repeaterID, ok := h.locateRadio(ctx, user.ID)
+	if !ok {
+		slog.Debug("Dropping private traffic to a radio with no known location", "userID", user.ID, "src", packet.Src)
+		return
 	}
+	h.publishToRepeater(repeaterID, packet)
 }
 
 // isRepeaterID checks if an ID looks like a repeater (6-digit or 9-digit)

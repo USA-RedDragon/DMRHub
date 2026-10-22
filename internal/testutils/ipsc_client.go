@@ -333,10 +333,10 @@ func (c *IPSCClient) buildVoicePacket(op ipscwire.Opcode, src, dst uint, groupCa
 		RTP:         ipscwire.RTP{Flags: 0x80, PayloadType: 0x5D, Seq: seq, Timestamp: 480 * uint32(seq)},
 	}
 	if slot {
-		u.Info |= 0x20
+		_ = u.Info.SetSlot(enums.Slot2)
 	}
 	if isEnd {
-		u.Info |= 0x40
+		u.Info.SetEnd(true)
 		u.RTP.PayloadType = 0x5E
 	}
 

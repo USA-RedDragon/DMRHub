@@ -281,10 +281,10 @@ func (t *IPSCTranslator) user(pkt models.Packet, ss *streamState, isData, isEnd,
 		u.Opcode, u.Priority = ipscwire.OpPrivateVoice, ipscPriorityVoice
 	}
 	if pkt.Slot { // true = TS2
-		u.Info |= 0x20
+		_ = u.Info.SetSlot(enums.Slot2)
 	}
 	if isEnd {
-		u.Info |= 0x40
+		u.Info.SetEnd(true)
 		u.RTP.PayloadType = rtpPayloadTypeEnd
 	}
 	ss.rtpSeq++

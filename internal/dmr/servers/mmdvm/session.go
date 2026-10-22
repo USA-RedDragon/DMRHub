@@ -342,6 +342,19 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
 			return
 		}
 		slog.Debug("Talk alias", "repeaterID", alias.Repeater, "type", alias.Type, "data", string(alias.Data[:]))
+		if s.hub != nil {
+			s.hub.RecordTalkerAlias(alias, models.RepeaterTypeMMDVM, uint(o.ID))
+		}
+	case dmrd.CommandDMRG:
+		pos, err := dmrd.DecodePosition(o.Packet)
+		if err != nil {
+			slog.Error("Invalid DMRG packet", "length", len(o.Packet), "error", err)
+			return
+		}
+		slog.Debug("GPS position", "repeaterID", pos.Repeater, "source", pos.Source)
+		if s.hub != nil {
+			s.hub.RecordPosition(pos, models.RepeaterTypeMMDVM, uint(o.ID))
+		}
 	default:
 		slog.Debug("Repeater data", "repeaterID", o.ID, "command", o.Command)
 	}

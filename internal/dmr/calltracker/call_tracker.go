@@ -100,6 +100,7 @@ type CallTracker struct {
 	wg       sync.WaitGroup
 
 	streams  *xsync.Map[uint, streamRef]
+	sources  *xsync.Map[sourceKey, streamRef]
 	recentMu sync.Mutex
 	recent   map[pair][]recentRow
 
@@ -133,6 +134,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 		epoch:      time.Now(),
 		activeNets: xsync.NewMap[uint, uint](),
 		streams:    xsync.NewMap[uint, streamRef](),
+		sources:    xsync.NewMap[sourceKey, streamRef](),
 		recent:     map[pair][]recentRow{},
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
@@ -197,8 +199,12 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 		key.stream = p.StreamID
 	}
 	idx := key.shard()
-	c.streams.Store(p.StreamID, streamRef{shard: idx, at: time.Now()})
-	c.enqueue(idx, task{key: key, p: p, peer: peer, at: time.Now()})
+	now := time.Now()
+	c.streams.Store(p.StreamID, streamRef{shard: idx, at: now})
+	if !peer {
+		c.sources.Store(sourceKey{server: server, repeater: p.Repeater, src: p.Src}, streamRef{shard: idx, at: now})
+	}
+	c.enqueue(idx, task{key: key, p: p, peer: peer, at: now})
 }
 
 // Undeliverable records that target, such as "ipsc:311304200", could not
@@ -492,6 +498,7 @@ type shard struct {
 	channels map[chanKey]*channel
 	rows     map[any]*row
 	streams  map[uint]*row
+	aliases  map[sourceKey]*sourceState
 	burst    *layer2.Burst
 	events   []data.Event
 }
@@ -504,6 +511,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		channels: map[chanKey]*channel{},
 		rows:     map[any]*row{},
 		streams:  map[uint]*row{},
+		aliases:  map[sourceKey]*sourceState{},
 		burst:    layer2.NewBurst(),
 		events:   make([]data.Event, 0, data.MaxEvents),
 	}
@@ -657,8 +665,15 @@ func (s *shard) sweep(now time.Time) {
 			delete(s.streams, id)
 		}
 	}
+	s.pruneSources(now)
 	if s.idx == 0 {
 		s.t.pruneRecent()
+		s.t.sources.Range(func(k sourceKey, ref streamRef) bool {
+			if now.Sub(ref.at) >= streamIdle {
+				s.t.sources.Delete(k)
+			}
+			return true
+		})
 		s.t.streams.Range(func(id uint, ref streamRef) bool {
 			if now.Sub(ref.at) >= streamIdle {
 				s.t.streams.Delete(id)

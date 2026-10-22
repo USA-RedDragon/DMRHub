@@ -39,7 +39,9 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/layer3"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -563,4 +565,83 @@ func TestCallUpdatesPublishInOrder(t *testing.T) {
 		assert.True(t, c.Active)
 	}
 	assert.False(t, calls[len(calls)-1].Active, "the last update must end the call")
+}
+
+func aliasBlocks(t *testing.T, src uint, alias string) []dmrd.TalkerAlias {
+	t.Helper()
+	lcs, err := pdu.EncodeTalkerAlias(alias, layer3.TalkerAliasSevenBit)
+	require.NoError(t, err)
+	out := make([]dmrd.TalkerAlias, 0, len(lcs))
+	for i := range lcs {
+		out = append(out, dmrd.TalkerAlias{Repeater: uint32(repeaterA), Source: uint32(src), Type: uint8(i), Data: lcs[i].RawPayload, Size: 19})
+	}
+	return out
+}
+
+func TestTrackTalkerAlias(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userA, tgID, true, 7023)
+	s.voiceCall(1, false)
+	for _, b := range aliasBlocks(t, userA, "KI5VMF Jacob") {
+		ct.TalkerAlias(b, models.RepeaterTypeMMDVM, repeaterA)
+	}
+	time.Sleep(150 * time.Millisecond)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	calls := waitDone(t, ct, database, 2)
+	byKind := map[models.CallKind]models.Call{}
+	for _, c := range calls {
+		byKind[c.Kind] = c
+	}
+	alias := byKind[models.CallKindAlias]
+	assert.Equal(t, "KI5VMF Jacob", alias.TalkerAlias)
+	assert.Equal(t, "7-bit", alias.AliasFormat)
+	assert.Equal(t, userA, alias.SourceID)
+	assert.Equal(t, tgID, alias.DestinationID, "an alias row takes the destination of the call of its source")
+	assert.True(t, alias.IsToTalkgroup)
+	assert.False(t, alias.Partial)
+	assert.Equal(t, "KI5VMF Jacob", byKind[models.CallKindVoice].TalkerAlias, "the alias names the voice call")
+}
+
+func TestTrackShortTalkerAliasIsPartial(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	b := aliasBlocks(t, userA, "KI5VMF")[0]
+	b.Size = 15
+	ct.TalkerAlias(b, models.RepeaterTypeMMDVM, repeaterA)
+
+	c := waitDone(t, ct, database, 1)[0]
+	assert.Equal(t, models.CallKindAlias, c.Kind)
+	assert.True(t, c.Partial)
+	assert.Empty(t, c.TalkerAlias)
+}
+
+func TestTrackPosition(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	var lc pdu.FullLinkControl
+	require.NoError(t, lc.SetGPSInfo(pdu.FLCGPSInfo{Latitude: 32.75, Longitude: -97.25, PositionError: layer3.PositionLessThan2M}))
+	ct.Position(dmrd.Position{Repeater: uint32(repeaterA), Source: uint32(userA), Data: lc.RawPayload, Size: 18}, models.RepeaterTypeMMDVM, repeaterA)
+	ct.Position(dmrd.Position{Repeater: uint32(repeaterA), Source: uint32(userB), Size: 14}, models.RepeaterTypeMMDVM, repeaterA)
+
+	calls := waitDone(t, ct, database, 2)
+	bySrc := map[uint]models.Call{}
+	for _, c := range calls {
+		assert.Equal(t, models.CallKindGPS, c.Kind)
+		bySrc[c.SourceID] = c
+	}
+	full := bySrc[userA]
+	require.NotNil(t, full.Latitude)
+	require.NotNil(t, full.Longitude)
+	assert.InDelta(t, 32.75, *full.Latitude, 0.001)
+	assert.InDelta(t, -97.25, *full.Longitude, 0.001)
+	require.NotNil(t, full.PositionError)
+	assert.Equal(t, uint8(layer3.PositionLessThan2M), *full.PositionError)
+	short := bySrc[userB]
+	assert.True(t, short.Partial)
+	assert.Nil(t, short.Latitude, "a short DMRG has no coordinates")
 }

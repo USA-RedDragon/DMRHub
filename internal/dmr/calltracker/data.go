@@ -77,6 +77,7 @@ type singleKey struct {
 func (s *shard) handle(t *task) {
 	ch := s.channel(t.key, t.peer)
 	ch.last = t.at
+	s.heard(t)
 	pc := t.p
 	d := pc.Data()
 	h := d.Hint(s.t.now())

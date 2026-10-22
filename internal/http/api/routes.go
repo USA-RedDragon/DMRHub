@@ -145,10 +145,12 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", v1LastheardControllers.GETLastheardTalkgroup)
 
-	group.PUT("/config", v1ConfigControllers.PUTConfig)
-	group.GET("/config", v1ConfigControllers.GETConfig)
-	group.GET("/config/validate", v1ConfigControllers.GETConfigValidate)
-	group.POST("/config/validate", v1ConfigControllers.POSTConfigValidate)
+	v1Config := group.Group("/config")
+	v1Config.Use(middleware.RequireAdmin(), userSuspension)
+	v1Config.PUT("", v1ConfigControllers.PUTConfig)
+	v1Config.GET("", v1ConfigControllers.GETConfig)
+	v1Config.GET("/validate", v1ConfigControllers.GETConfigValidate)
+	v1Config.POST("/validate", v1ConfigControllers.POSTConfigValidate)
 
 	v1Nets := group.Group("/nets")
 	// Paginated
@@ -173,6 +175,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1UserDB.GET("/:id", v1UserDBControllers.GETUserDBEntry)
 
 	group.GET("/network/name", v1Controllers.GETNetworkName)
+	group.GET("/network/features", v1Controllers.GETNetworkFeatures)
 	group.GET("/version", v1Controllers.GETVersion)
 	group.GET("/ping", v1Controllers.GETPing)
 	group.GET("/healthcheck", v1Controllers.GETHealthcheck)

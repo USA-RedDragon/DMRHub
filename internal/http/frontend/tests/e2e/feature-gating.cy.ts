@@ -21,14 +21,9 @@ describe('Feature Gating: IPSC & OpenBridge', () => {
   describe('OpenBridge enabled', () => {
     beforeEach(() => {
       cy.stubCommonEndpoints();
-      cy.intercept('GET', '/api/v1/config', {
+      cy.intercept('GET', '/api/v1/network/features', {
         statusCode: 200,
-        body: {
-          dmr: {
-            openbridge: { enabled: true },
-            ipsc: { enabled: false },
-          },
-        },
+        body: { openbridge: true, ipsc: false },
       });
     });
 
@@ -58,14 +53,9 @@ describe('Feature Gating: IPSC & OpenBridge', () => {
   describe('OpenBridge disabled', () => {
     beforeEach(() => {
       cy.stubCommonEndpoints();
-      cy.intercept('GET', '/api/v1/config', {
+      cy.intercept('GET', '/api/v1/network/features', {
         statusCode: 200,
-        body: {
-          dmr: {
-            openbridge: { enabled: false },
-            ipsc: { enabled: false },
-          },
-        },
+        body: { openbridge: false, ipsc: false },
       });
     });
 
@@ -94,14 +84,9 @@ describe('Feature Gating: IPSC & OpenBridge', () => {
   describe('IPSC enabled', () => {
     beforeEach(() => {
       cy.stubCommonEndpoints();
-      cy.intercept('GET', '/api/v1/config', {
+      cy.intercept('GET', '/api/v1/network/features', {
         statusCode: 200,
-        body: {
-          dmr: {
-            openbridge: { enabled: false },
-            ipsc: { enabled: true },
-          },
-        },
+        body: { openbridge: false, ipsc: true },
       });
     });
 
@@ -127,14 +112,9 @@ describe('Feature Gating: IPSC & OpenBridge', () => {
   describe('IPSC disabled', () => {
     beforeEach(() => {
       cy.stubCommonEndpoints();
-      cy.intercept('GET', '/api/v1/config', {
+      cy.intercept('GET', '/api/v1/network/features', {
         statusCode: 200,
-        body: {
-          dmr: {
-            openbridge: { enabled: false },
-            ipsc: { enabled: false },
-          },
-        },
+        body: { openbridge: false, ipsc: false },
       });
     });
 

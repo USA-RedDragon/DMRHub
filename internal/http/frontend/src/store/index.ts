@@ -63,9 +63,9 @@ export const useSettingsStore = defineStore('settings', {
       if (this.loaded) return;
       try {
         const { default: API } = await import('@/services/API');
-        const res = await API.get('/config');
-        this.ipscEnabled = res.data?.dmr?.ipsc?.enabled ?? false;
-        this.openBridgeEnabled = res.data?.dmr?.openbridge?.enabled ?? false;
+        const res = await API.get('/network/features');
+        this.ipscEnabled = res.data?.ipsc ?? false;
+        this.openBridgeEnabled = res.data?.openbridge ?? false;
         this.loaded = true;
       } catch {
         // Config endpoint unavailable; leave defaults

@@ -46,6 +46,20 @@ func GETNetworkName(c *gin.Context) {
 	}
 }
 
+// GETNetworkFeatures answers which optional servers are on, for the
+// frontend to show their pages without the admin-only config.
+func GETNetworkFeatures(c *gin.Context) {
+	config, ok := utils.GetConfig(c)
+	if !ok {
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ipsc":       config.DMR.IPSC.Enabled,
+		"openbridge": config.DMR.OpenBridge.Enabled,
+	})
+}
+
 func GETVersion(c *gin.Context) {
 	version, ok := c.MustGet("Version").(string)
 	if !ok {

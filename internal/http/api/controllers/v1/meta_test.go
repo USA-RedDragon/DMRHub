@@ -21,12 +21,14 @@ package v1_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 )
@@ -99,4 +101,30 @@ func TestVersionRoute(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 	assert.NotEmpty(t, w.Body.String())
+}
+
+func TestNetworkFeaturesRoute(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ ipsc, openbridge bool }{{true, false}, {false, true}} {
+		router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
+			c.DMR.IPSC.Enabled = tc.ipsc
+			c.DMR.OpenBridge.Enabled = tc.openbridge
+		})
+		if err != nil {
+			t.Fatalf("Failed to create test DB router: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/network/features", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		cancel()
+		tdb.CloseDB()
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var got map[string]any
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, map[string]any{"ipsc": tc.ipsc, "openbridge": tc.openbridge}, got)
+	}
 }

@@ -23,57 +23,106 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testTimeout = 1 * time.Minute
 
-func TestGETConfig(t *testing.T) {
-	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	assert.NoError(t, err)
-	defer tdb.CloseDB()
-
-	w := httptest.NewRecorder()
+func serve(t *testing.T, router *gin.Engine, method, path string, body []byte, jar *testutils.CookieJar) *httptest.ResponseRecorder {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/config", nil)
-	assert.NoError(t, err)
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewBuffer(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, path, r)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if jar != nil {
+		for _, cookie := range jar.Cookies() {
+			req.AddCookie(&cookie)
+		}
+	}
+	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
+	return w
+}
 
+func adminRouter(t *testing.T) (*gin.Engine, *testutils.CookieJar) {
+	t.Helper()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	_, w, jar := testutils.LoginAdmin(t, router)
+	require.Equal(t, http.StatusOK, w.Code)
+	return router, &jar
+}
+
+func TestConfigRoutesRequireAdmin(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	})
+
+	routes := []struct {
+		method, path string
+		body         []byte
+	}{
+		{http.MethodGet, "/api/v1/config", nil},
+		{http.MethodPut, "/api/v1/config", []byte("{}")},
+		{http.MethodGet, "/api/v1/config/validate", nil},
+		{http.MethodPost, "/api/v1/config/validate", []byte("{}")},
+	}
+	for _, r := range routes {
+		w := serve(t, router, r.method, r.path, r.body, nil)
+		assert.Equal(t, http.StatusUnauthorized, w.Code, "%s %s without a session", r.method, r.path)
+		w = serve(t, router, r.method, r.path, r.body, &userJar)
+		assert.Equal(t, http.StatusUnauthorized, w.Code, "%s %s as a user", r.method, r.path)
+	}
+}
+
+func TestGETConfig(t *testing.T) {
+	t.Parallel()
+	router, jar := adminRouter(t)
+
+	w := serve(t, router, http.MethodGet, "/api/v1/config", nil, jar)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var result map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &result)
+	err := json.Unmarshal(w.Body.Bytes(), &result)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
 
 func TestGETConfigValidate(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	assert.NoError(t, err)
-	defer tdb.CloseDB()
+	router, jar := adminRouter(t)
 
-	w := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/config/validate", nil)
-	assert.NoError(t, err)
-	router.ServeHTTP(w, req)
-
+	w := serve(t, router, http.MethodGet, "/api/v1/config/validate", nil, jar)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var result map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &result)
+	err := json.Unmarshal(w.Body.Bytes(), &result)
 	assert.NoError(t, err)
 	_, hasValid := result["valid"]
 	assert.True(t, hasValid)
@@ -83,24 +132,13 @@ func TestGETConfigValidate(t *testing.T) {
 
 func TestPOSTConfigValidateEmptyBody(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	assert.NoError(t, err)
-	defer tdb.CloseDB()
+	router, jar := adminRouter(t)
 
-	w := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	body := []byte("{}")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/config/validate", bytes.NewBuffer(body))
-	assert.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(w, req)
-
+	w := serve(t, router, http.MethodPost, "/api/v1/config/validate", []byte("{}"), jar)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var result map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &result)
+	err := json.Unmarshal(w.Body.Bytes(), &result)
 	assert.NoError(t, err)
 	_, hasValid := result["valid"]
 	assert.True(t, hasValid)
@@ -108,38 +146,16 @@ func TestPOSTConfigValidateEmptyBody(t *testing.T) {
 
 func TestPOSTConfigValidateInvalidJSON(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	assert.NoError(t, err)
-	defer tdb.CloseDB()
+	router, jar := adminRouter(t)
 
-	w := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	body := []byte("not json")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/config/validate", bytes.NewBuffer(body))
-	assert.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(w, req)
-
+	w := serve(t, router, http.MethodPost, "/api/v1/config/validate", []byte("not json"), jar)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestPUTConfigInvalidJSON(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	assert.NoError(t, err)
-	defer tdb.CloseDB()
+	router, jar := adminRouter(t)
 
-	w := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	body := []byte("not json")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "/api/v1/config", bytes.NewBuffer(body))
-	assert.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(w, req)
-
+	w := serve(t, router, http.MethodPut, "/api/v1/config", []byte("not json"), jar)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

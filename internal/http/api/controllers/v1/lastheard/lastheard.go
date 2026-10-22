@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -65,7 +66,7 @@ func GETLastheard(c *gin.Context) {
 	if len(calls) == 0 {
 		c.JSON(http.StatusOK, make([]string, 0))
 	} else {
-		c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
+		c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
 	}
 }
 
@@ -97,7 +98,7 @@ func GETLastheardUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
+	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
 }
 
 func GETLastheardRepeater(c *gin.Context) {
@@ -128,7 +129,7 @@ func GETLastheardRepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
+	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
 }
 
 func GETLastheardTalkgroup(c *gin.Context) {
@@ -155,5 +156,13 @@ func GETLastheardTalkgroup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{callsKey: calls, totalKey: count})
+	c.JSON(http.StatusOK, gin.H{callsKey: callResponses(calls), totalKey: count})
+}
+
+func callResponses(calls []models.Call) []apimodels.WSCallResponse {
+	resp := make([]apimodels.WSCallResponse, len(calls))
+	for i := range calls {
+		resp[i] = apimodels.NewWSCallResponseFromCall(&calls[i])
+	}
+	return resp
 }

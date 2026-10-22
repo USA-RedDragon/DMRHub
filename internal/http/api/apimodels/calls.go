@@ -43,6 +43,7 @@ type WSCallResponseTalkgroup struct {
 type WSCallResponse struct {
 	ID            uint                    `json:"id"`
 	User          WSCallResponseUser      `json:"user"`
+	Repeater      WSCallResponseRepeater  `json:"repeater"`
 	StartTime     time.Time               `json:"start_time"`
 	Duration      time.Duration           `json:"duration"`
 	Active        bool                    `json:"active"`
@@ -55,6 +56,7 @@ type WSCallResponse struct {
 	ToUser        WSCallResponseUser      `json:"to_user"`
 	IsToRepeater  bool                    `json:"is_to_repeater"`
 	ToRepeater    WSCallResponseRepeater  `json:"to_repeater"`
+	DestinationID uint                    `json:"destination_id"`
 	Loss          float32                 `json:"loss"`
 	Jitter        float32                 `json:"jitter"`
 	BER           float32                 `json:"ber"`
@@ -62,7 +64,7 @@ type WSCallResponse struct {
 }
 
 // NewWSCallResponseFromCall converts a models.Call into a WSCallResponse suitable
-// for JSON serialisation over WebSocket or pubsub channels.
+// for JSON serialisation over WebSocket, pubsub channels or REST.
 func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 	resp := WSCallResponse{
 		ID:            call.ID,
@@ -79,7 +81,10 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		BER:           call.BER,
 		RSSI:          call.RSSI,
 		RepeaterID:    call.RepeaterID,
+		DestinationID: call.DestinationID,
 	}
+	resp.Repeater.RadioID = call.RepeaterID
+	resp.Repeater.Callsign = call.Repeater.Callsign
 	resp.User.ID = call.User.ID
 	resp.User.Callsign = call.User.Callsign
 	if call.IsToTalkgroup {

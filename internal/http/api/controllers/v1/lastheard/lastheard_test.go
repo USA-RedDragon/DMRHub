@@ -21,13 +21,16 @@ package lastheard_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testTimeout = 1 * time.Minute
@@ -146,4 +149,88 @@ func TestGETLastheardRepeaterInvalidID(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func collectKeys(v any, path string, out map[string]bool) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, child := range x {
+			out[path+"."+k] = true
+			collectKeys(child, path+"."+k, out)
+		}
+	case []any:
+		for _, child := range x {
+			collectKeys(child, path+"[]", out)
+		}
+	}
+}
+
+func TestLastheardAnswersCallDTOs(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+	db := tdb.DB()
+
+	src := models.User{ID: 3191868, Callsign: "KI5VMF", Username: "src", Email: "src@example.com", Approved: true}
+	dst := models.User{ID: 3191869, Callsign: "KI5VMG", Username: "dst", Email: "dst@example.com", Approved: true}
+	require.NoError(t, db.Create(&src).Error)
+	require.NoError(t, db.Create(&dst).Error)
+	tg := models.Talkgroup{ID: 91, Name: "TG91", Description: "World"}
+	require.NoError(t, db.Create(&tg).Error)
+	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "KI5VMF"}, OwnerID: src.ID, Type: models.RepeaterTypeMMDVM}
+	require.NoError(t, db.Create(&rpt).Error)
+	tgID, dstID := tg.ID, dst.ID
+	start := time.Now()
+	require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: start, UserID: src.ID, RepeaterID: rpt.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID}).Error)
+	require.NoError(t, db.Create(&models.Call{StreamID: 2, StartTime: start, UserID: src.ID, RepeaterID: rpt.ID, IsToUser: true, ToUserID: &dstID, DestinationID: dst.ID}).Error)
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	paths := []string{
+		"/api/v1/lastheard",
+		"/api/v1/lastheard/user/3191868",
+		"/api/v1/lastheard/repeater/311860",
+		"/api/v1/lastheard/talkgroup/91",
+	}
+	allowed := map[string]bool{
+		"id": true, "user": true, "repeater": true, "start_time": true, "duration": true, "active": true,
+		"time_slot": true, "group_call": true, "repeater_id": true, "is_to_talkgroup": true, "to_talkgroup": true,
+		"is_to_user": true, "to_user": true, "is_to_repeater": true, "to_repeater": true, "destination_id": true,
+		"loss": true, "jitter": true, "ber": true, "rssi": true,
+		"user.id": true, "user.callsign": true, "repeater.id": true, "repeater.callsign": true,
+		"to_user.id": true, "to_user.callsign": true, "to_repeater.id": true, "to_repeater.callsign": true,
+		"to_talkgroup.id": true, "to_talkgroup.name": true, "to_talkgroup.description": true,
+	}
+	for _, path := range paths {
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+		for _, cookie := range adminJar.Cookies() {
+			req.Header.Add("Cookie", cookie.String())
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		cancel()
+		require.Equal(t, http.StatusOK, w.Code, path)
+
+		var body struct {
+			Calls []map[string]any `json:"calls"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body), path)
+		require.NotEmpty(t, body.Calls, path)
+		for _, call := range body.Calls {
+			keys := map[string]bool{}
+			collectKeys(call, "", keys)
+			for k := range keys {
+				assert.True(t, allowed[k[1:]], "%s returns %s", path, k[1:])
+			}
+			user, ok := call["user"].(map[string]any)
+			require.True(t, ok, path)
+			assert.EqualValues(t, src.ID, user["id"], path)
+			assert.Equal(t, src.Callsign, user["callsign"], path)
+			repeater, ok := call["repeater"].(map[string]any)
+			require.True(t, ok, path)
+			assert.EqualValues(t, rpt.ID, repeater["id"], path)
+		}
+	}
 }

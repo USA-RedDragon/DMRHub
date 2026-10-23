@@ -48,8 +48,11 @@ This is the living handoff for the next session. It assumes you have nothing but
 ## Next, in order
 
 **Owner's order from 2026-10-23 (overrides the numbering below):**
-1. Finish IPSC pacing (`internal/dmr/servers/ipsc/pacer.go`): per peer and timeslot, 60 ms apart, one call at a time per slot with later calls queued whole; a call that waited over 30 s is discarded and counted as `slot_busy` (owner decision, as ipsc2hbrp does). Never drop otherwise.
-2. LRRP location server, without the request endpoint (item 5 below), built directly in the hub for now. Mockup approved: https://claude.ai/artifact/SifPRetFvfAWNsHFS9gAVa
+1. DONE. Finish IPSC pacing (`internal/dmr/servers/ipsc/pacer.go`): per peer and timeslot, 60 ms apart, one call at a time per slot with later calls queued whole; a call that waited over 30 s is discarded and counted as `slot_busy` (owner decision, as ipsc2hbrp does). Never drop otherwise.
+2. DONE, waiting on CI and the owner's live check. LRRP location server, without the request endpoint (item 5 below), built directly in the hub for now. Mockup approved: https://claude.ai/artifact/SifPRetFvfAWNsHFS9gAVa
+   - Landed: locator (`internal/dmr/locator`), settings API, share setting, websocket push, hourly pruning, APRS-IS encoder, client and gateway (`internal/aprs`, `internal/positions`), Setup card, Positions pages on the Squallar map from the owner's bundle, docs (`doc/positions.md`, Admin Guide).
+   - Verified: every symbol, both hemispheres, the date line and the poles parse in Ham::APRS::FAP 1.21 and aprslib 0.7.2; the gateway logged in to aprsc 2.1.23 on loopback with no uplink, which passed the packets on unchanged. Nothing was sent to the real APRS-IS.
+   - Left for the owner: the first live check with one radio on aprs.fi's raw packets page; the permanent tocall.
    - APRS-IS verification plan (owner asked): never send to the real APRS-IS from tests; test against a fake loopback server and a local aprsc; check every built packet with Ham::APRS::FAP (aprs.fi's parser) and aprslib; send only real decoded fixes (no fix, 0,0, out of range, stale, unmoved, over rate, or no licensed callsign: nothing sent, each with a test); first live check is the owner with one radio on aprs.fi's raw packets page.
 3. Plugin architecture, issue #68 (ID range ownership, inbound and outbound queues, outbound source limited to the plugin's range).
 4. Make the parrot the first plugin to prove it out.
@@ -94,6 +97,8 @@ This is the living handoff for the next session. It assumes you have nothing but
      - a shutdown hang behind `deliverToServer`, which live-config `9531226a` may have fixed
      - a burst held 125 s under Postgres load (rule: traffic is never held)
      - no clock-injection point, so clock jumps are untested
+     - `TestUserChangeDuringAWriteStillSendsTheCloseFrame` (`internal/http/websocket`) fails about 3 runs in 40 under `-race -count=20`, on the old code too (observed 2026-10-23); it relies on 200 ms sleeps
+   - **Branches:** `claude/trusting-pasteur-kg1twg` holds a pre-rebase copy of two commits (`c647036`, the basemap), so matching it to the PR head needs a force-push, which needs the owner's OK. The PR head is `claude/optimistic-bell-pw9v4m`.
    - **Then:** rerun every area on `sqlite` and `postgres-redis` (`DMRHUB_STRESS_BACKENDS`), and write the results doc with tables and PNG graphs.
 4. **Approved by the owner on 2026-10-23; do after the stress battery and before LRRP.**
    - **Live config.** Approved as proposed:

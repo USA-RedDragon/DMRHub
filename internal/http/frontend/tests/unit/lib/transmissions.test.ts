@@ -135,6 +135,7 @@ describe('undeliverableLabel', () => {
     expect(undeliverableLabel('ipsc:311304200:fec_uncorrectable', r).reason).toBe('the burst was too damaged to repair');
     expect(undeliverableLabel('ipsc:311304200:slot_type', r).reason).toBe('the burst could not be rebuilt for the IPSC link');
     expect(undeliverableLabel('ipsc:311304200:data_in_voice', r).reason).toBe('a data burst came in the middle of a voice call');
+    expect(undeliverableLabel('ipsc:311304200:slot_busy', r).reason).toBe('the timeslot stayed busy with other calls for 30 seconds');
     expect(undeliverableLabel('ipsc:311304200:undecodable', r).reason).toBe('the burst could not be read');
     expect(undeliverableLabel('ipsc:311304200:stream_id_range', r).reason).toBe('the call ID does not fit the IPSC link');
   });

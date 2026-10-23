@@ -137,6 +137,7 @@ const (
 	reasonEncode          = "encode_failed"
 	reasonDataInVoice     = "data_in_voice"
 	reasonUndecodable     = "undecodable"
+	reasonSlotBusy        = "slot_busy"
 )
 
 // undeliverable reports a burst that cannot go to IPSC peers. The caller

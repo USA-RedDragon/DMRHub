@@ -129,6 +129,7 @@ const UNDELIVERABLE_REASONS: Record<string, (link: string) => string> = {
   data_in_voice: () => 'a data burst came in the middle of a voice call',
   undecodable: () => 'the burst could not be read',
   stream_id_range: (link) => `the call ID does not fit the ${link}`,
+  slot_busy: () => 'the timeslot stayed busy with other calls for 30 seconds',
 };
 
 const SERVER_NAMES: Record<string, string> = {

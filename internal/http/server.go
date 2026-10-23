@@ -139,12 +139,14 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 		r.Use(middleware.Provider(v1ConfigControllers.ApplierKey, o.applier))
 	}
 	// CORS
+	var configuredCORS gin.HandlerFunc
 	if config.HTTP.CORS.Enabled {
 		corsConfig := cors.DefaultConfig()
 		corsConfig.AllowCredentials = true
 		corsConfig.AllowOrigins = config.HTTP.CORS.Hosts
-		r.Use(cors.New(corsConfig))
+		configuredCORS = cors.New(corsConfig)
 	}
+	r.Use(publicCORS(configuredCORS))
 
 	// Sessions
 	sessionStore := sessionstore.New(db, config.GetDerivedSecret())
@@ -255,4 +257,31 @@ func (s *Server) Start() error {
 		s.shutdownChannel <- true
 	}()
 	return nil
+}
+
+// isPublicPath reports whether any web page may read the API route path.
+// Such a route answers any origin, without credentials, so that no browser
+// sends a session cookie with a request from another site.
+func isPublicPath(path string) bool {
+	return path == "/api/v1/lastheard"
+}
+
+// publicCORS answers the CORS requests of the public routes for any origin
+// and hands every other request to configured, when it is set.
+func publicCORS(configured gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !isPublicPath(c.Request.URL.Path) || c.GetHeader("Origin") == "" {
+			if configured != nil {
+				configured(c)
+			}
+			return
+		}
+		h := c.Writer.Header()
+		h.Set("Access-Control-Allow-Origin", "*")
+		if c.Request.Method == http.MethodOptions {
+			h.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			h.Set("Access-Control-Max-Age", "43200")
+			c.AbortWithStatus(http.StatusNoContent)
+		}
+	}
 }

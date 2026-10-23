@@ -76,6 +76,16 @@ func newReplicas(t *testing.T) (*calltracker.CallTracker, *calltracker.CallTrack
 	return one, two, database
 }
 
+func memKV(t *testing.T) kv.KV {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = kvStore.Close() })
+	return kvStore
+}
+
 func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()

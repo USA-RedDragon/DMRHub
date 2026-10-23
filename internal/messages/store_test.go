@@ -52,6 +52,16 @@ const (
 	tgID      = uint(3100)
 )
 
+func memKV(t *testing.T) kv.KV {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = kvStore.Close() })
+	return kvStore
+}
+
 func openDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -86,7 +96,7 @@ func newRig(t *testing.T) *rig {
 	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
 	require.NoError(t, err)
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, kvStore)
 	ct.SetDataObserver(store)
 	t.Cleanup(func() {
 		ct.Stop()
@@ -285,7 +295,7 @@ func responseRow(id uint) *models.Call {
 func storeOnly(t *testing.T) (*messages.Store, *gorm.DB) {
 	t.Helper()
 	database := openDB(t)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, memKV(t))
 	t.Cleanup(store.Stop)
 	return store, database
 }
@@ -356,6 +366,46 @@ func TestStoreAttachesAResponseHeardFirst(t *testing.T) {
 	assert.Equal(t, models.CallResponseACK, msgs[0].Response)
 }
 
+// storeReplicas returns two stores that share a database and a KV, as the
+// stores of two replicas of the hub do.
+func storeReplicas(t *testing.T) (*messages.Store, *messages.Store, *gorm.DB) {
+	t.Helper()
+	database := openDB(t)
+	kvStore := memKV(t)
+	one := messages.NewStore(database, kvStore)
+	t.Cleanup(one.Stop)
+	two := messages.NewStore(database, kvStore)
+	t.Cleanup(two.Stop)
+	return one, two, database
+}
+
+func TestStoreSetsAResponseHeardOnAnotherReplica(t *testing.T) {
+	t.Parallel()
+	one, two, database := storeReplicas(t)
+	now := time.Now()
+	h, payload := confirmed(t, "over there", 2)
+	one.DataPacket(&models.Call{ID: 1}, delivered(h, payload, false), now)
+	one.Flush()
+	two.DataResponse(responseRow(2), responseEvent(packet.ResponseACK), now.Add(300*time.Millisecond))
+	two.Flush()
+	msgs := all(t, one, database)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, models.CallResponseACK, msgs[0].Response)
+}
+
+func TestStoreAttachesAResponseHeardFirstOnAnotherReplica(t *testing.T) {
+	t.Parallel()
+	one, two, database := storeReplicas(t)
+	now := time.Now()
+	h, payload := confirmed(t, "late over there", 2)
+	two.DataResponse(responseRow(2), responseEvent(packet.ResponseACK), now.Add(300*time.Millisecond))
+	two.Flush()
+	one.DataPacket(&models.Call{ID: 1}, delivered(h, payload, false), now)
+	msgs := all(t, one, database)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, models.CallResponseACK, msgs[0].Response)
+}
+
 func TestStoreReplacesTheFirstFragmentWithTheWholeMessage(t *testing.T) {
 	t.Parallel()
 	store, database := storeOnly(t)
@@ -378,7 +428,7 @@ func TestStoreNeverBlocksTheTracker(t *testing.T) {
 	database := openDB(t)
 	release := make(chan struct{})
 	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("block", func(*gorm.DB) { <-release }))
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, memKV(t))
 	t.Cleanup(func() {
 		close(release)
 		store.Stop()

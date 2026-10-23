@@ -23,7 +23,10 @@ package messages
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"log/slog"
 	"strings"
@@ -33,6 +36,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
@@ -49,14 +53,22 @@ const (
 	responseWindow = 10 * time.Second
 	fragmentWindow = time.Minute
 	headerOctets   = 12
+	kvTimeout      = time.Second
+	pendingPrefix  = "dmrhub:messages:pending:"
 )
 
 // Store is a calltracker.DataObserver that writes each data message to the
 // messages table. DataPacket and DataResponse copy what they need and
 // queue it, so they never wait for the database; when the queue is full
 // the message is dropped and counted.
+//
+// A response is set on the message that it answers whichever replica of
+// the hub stored it: the Store finds the message in the database, and keeps
+// a response heard before its message in the KV until the message is
+// stored.
 type Store struct {
 	db      *gorm.DB
+	kv      kv.KV
 	in      chan job
 	stop    chan struct{}
 	done    chan struct{}
@@ -65,8 +77,7 @@ type Store struct {
 	metrics *metrics.Metrics
 	notify  atomic.Pointer[notifyBox]
 
-	recent  []recent
-	pending []pendingResponse
+	recent []recent
 }
 
 type notifyBox struct{ fn func(*models.Message) }
@@ -107,15 +118,16 @@ type recent struct {
 }
 
 type pendingResponse struct {
-	src, dst uint
-	resp     models.CallResponse
-	at       time.Time
+	Response models.CallResponse `json:"response"`
+	At       time.Time           `json:"at"`
 }
 
-// NewStore starts a Store that writes to db.
-func NewStore(db *gorm.DB) *Store {
+// NewStore starts a Store that writes to db and keeps the responses that
+// wait for their message in kv, which the replicas of the hub share.
+func NewStore(db *gorm.DB, kv kv.KV) *Store {
 	s := &Store{
 		db:      db,
+		kv:      kv,
 		in:      make(chan job, queueDepth),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
@@ -263,13 +275,6 @@ func (s *Store) prune(now time.Time) {
 		}
 	}
 	s.recent = keep
-	pend := s.pending[:0]
-	for _, p := range s.pending {
-		if now.Sub(p.at) < responseWindow {
-			pend = append(pend, p)
-		}
-	}
-	s.pending = pend
 }
 
 func (s *Store) packet(j *job) {
@@ -301,15 +306,19 @@ func (s *Store) packet(j *job) {
 		return
 	}
 
-	if p := s.takePending(msg); p != nil {
-		msg.Response = p.resp
-	}
 	if err := s.db.Omit(clause.Associations).Create(msg).Error; err != nil {
 		slog.Error("Message store: cannot store a data message", "src", msg.SourceID, "dst", msg.DestinationID, "error", err)
 		return
 	}
 	r.id = msg.ID
 	s.recent = append(s.recent, r)
+	if p := s.takePending(msg); p != nil {
+		if err := s.db.Model(&models.Message{}).Where("id = ?", msg.ID).Update("response", p.Response).Error; err != nil {
+			slog.Error("Message store: cannot set a response", "id", msg.ID, "error", err)
+		} else {
+			msg.Response = p.Response
+		}
+	}
 	s.changed(msg)
 }
 
@@ -373,48 +382,90 @@ func (s *Store) replace(i int, r *recent, msg *models.Message) {
 	s.changed(&row)
 }
 
+// response sets the response of j on the message that it answers. The
+// response is kept as pending before the search, and a message is searched
+// for pending responses after it is stored, so that when the message and
+// its response are on two replicas at once, at least one of them sees the
+// other.
 func (s *Store) response(j *job) {
 	resp := responseOf(j.resp)
 	if resp == models.CallResponseNone {
 		return
 	}
 	src, dst := j.rowDst, j.rowSrc
+	s.setPending(src, dst, pendingResponse{Response: resp, At: j.at})
 	if s.answer(j, src, dst, resp) {
-		return
+		s.deletePending(src, dst)
 	}
-	s.pending = append(s.pending, pendingResponse{src: src, dst: dst, resp: resp, at: j.at})
 }
 
 func (s *Store) answer(j *job, src, dst uint, resp models.CallResponse) bool {
-	for i := len(s.recent) - 1; i >= 0; i-- {
-		e := &s.recent[i]
-		if e.src != src || e.dst != dst || e.group || !e.conf || j.at.Before(e.at) || j.at.Sub(e.at) >= responseWindow {
-			continue
-		}
-		res := s.db.Model(&models.Message{}).Where("id = ?", e.id).Update("response", resp)
-		if res.Error != nil {
-			slog.Error("Message store: cannot set a response", "id", e.id, "error", res.Error)
-			return true
-		}
-		var row models.Message
-		if err := s.db.First(&row, e.id).Error; err == nil {
-			s.changed(&row)
-		}
+	var row models.Message
+	err := s.db.Where("source_id = ? AND destination_id = ? AND is_group = ? AND confirmed = ?", src, dst, false, true).
+		Where("received_at <= ? AND received_at > ?", j.at.UTC(), j.at.Add(-responseWindow).UTC()).
+		Order("received_at DESC").Order("id DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false
+	}
+	if err != nil {
+		slog.Error("Message store: cannot find the message of a response", "src", src, "dst", dst, "error", err)
+		return false
+	}
+	if err := s.db.Model(&models.Message{}).Where("id = ?", row.ID).Update("response", resp).Error; err != nil {
+		slog.Error("Message store: cannot set a response", "id", row.ID, "error", err)
 		return true
 	}
-	return false
+	row.Response = resp
+	s.changed(&row)
+	return true
+}
+
+func pendingKey(src, dst uint) string {
+	return fmt.Sprintf("%s%d:%d", pendingPrefix, src, dst)
+}
+
+func (s *Store) setPending(src, dst uint, p pendingResponse) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		slog.Error("Message store: cannot marshal a pending response", "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	key := pendingKey(src, dst)
+	if err := s.kv.Set(ctx, key, b); err != nil {
+		slog.Error("Message store: cannot keep a pending response", "error", err)
+		return
+	}
+	if err := s.kv.Expire(ctx, key, responseWindow); err != nil {
+		slog.Error("Message store: cannot expire a pending response", "error", err)
+	}
+}
+
+func (s *Store) deletePending(src, dst uint) {
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	if err := s.kv.Delete(ctx, pendingKey(src, dst)); err != nil {
+		slog.Error("Message store: cannot delete a pending response", "error", err)
+	}
 }
 
 func (s *Store) takePending(msg *models.Message) *pendingResponse {
-	for i := len(s.pending) - 1; i >= 0; i-- {
-		p := s.pending[i]
-		if p.src != msg.SourceID || p.dst != msg.DestinationID || msg.IsGroup || !msg.Confirmed || p.at.Before(msg.ReceivedAt) || p.at.Sub(msg.ReceivedAt) >= responseWindow {
-			continue
-		}
-		s.pending = append(s.pending[:i], s.pending[i+1:]...)
-		return &p
+	if msg.IsGroup || !msg.Confirmed {
+		return nil
 	}
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	b, err := s.kv.Get(ctx, pendingKey(msg.SourceID, msg.DestinationID))
+	if err != nil {
+		return nil
+	}
+	var p pendingResponse
+	if err := json.Unmarshal(b, &p); err != nil || p.At.Before(msg.ReceivedAt) || p.At.Sub(msg.ReceivedAt) >= responseWindow {
+		return nil
+	}
+	s.deletePending(msg.SourceID, msg.DestinationID)
+	return &p
 }
 
 func (s *Store) changed(msg *models.Message) {

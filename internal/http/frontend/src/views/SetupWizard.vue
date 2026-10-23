@@ -37,7 +37,7 @@
     <form @submit.prevent="submit()">
       <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
       <br />
-      <DMRSettings v-model="config.dmr" :errors="errors.dmr" />
+      <DMRSettings v-model="config.dmr" :errors="errors.dmr" :secret-status="secretStatus" />
       <br />
       <HTTPSettings v-model="config.http" :errors="errors.http" />
       <br />
@@ -102,6 +102,7 @@ type SecretStatus = {
   secretSet: boolean;
   passwordSaltSet: boolean;
   smtpPasswordSet: boolean;
+  aprsPasscodeSet: boolean;
 };
 
 const createInitialConfig = (): SetupConfig => ({
@@ -198,6 +199,7 @@ export default defineComponent({
         secretSet: false,
         passwordSaltSet: false,
         smtpPasswordSet: false,
+        aprsPasscodeSet: false,
       } as SecretStatus,
     };
   },
@@ -261,6 +263,13 @@ export default defineComponent({
       const redis = asRecord(payload.redis);
       if (redis && redis.password === '') {
         delete redis.password;
+      }
+      const aprs = asRecord(asRecord(asRecord(payload.dmr)?.positions)?.['aprs-is']);
+      if (aprs && 'passcode' in aprs) {
+        if (aprs.passcode !== '') {
+          payload['aprs-is-passcode'] = aprs.passcode;
+        }
+        delete aprs.passcode;
       }
       return payload;
     },

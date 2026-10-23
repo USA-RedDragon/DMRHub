@@ -76,6 +76,8 @@
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" />
         <br />
         <RetentionSettings v-model="retention" :errors="errors.retention" />
+        <br />
+        <PositionsSettings v-model="positions" :errors="errors.positions" :passcode-set="!!secretStatus.aprsPasscodeSet" />
       </CardContent>
     </Card>
   </div>
@@ -86,6 +88,7 @@ import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 import IPSCSettings from './DMR/IPSCSettings.vue';
 import RetentionSettings from './DMR/RetentionSettings.vue';
+import PositionsSettings from './DMR/PositionsSettings.vue';
 import {
   Card,
   CardContent,
@@ -100,6 +103,7 @@ export default {
     OpenBridgeSettings,
     IPSCSettings,
     RetentionSettings,
+    PositionsSettings,
     Card,
     CardContent,
     CardHeader,
@@ -114,6 +118,11 @@ export default {
     errors: {
       type: Object,
       required: true,
+      default: () => ({}),
+    },
+    secretStatus: {
+      type: Object,
+      required: false,
       default: () => ({}),
     },
   },
@@ -149,6 +158,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'retention': value,
+        });
+      },
+    },
+    positions: {
+      get() {
+        return (this.modelValue && this.modelValue['positions']) || {};
+      },
+      set(value: Record<string, unknown>) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'positions': value,
         });
       },
     },

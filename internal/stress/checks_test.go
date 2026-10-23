@@ -126,10 +126,11 @@ func (r *rig) checkRows(calls []*callRec) {
 			rows[g.StreamID] = append(rows[g.StreamID], g)
 		}
 	}
-	bad := map[string]int{}
+	bad, byLabel := map[string]int{}, map[string]int{}
 	var samples []string
 	note := func(why string, c *callRec, detail string) {
 		bad[why]++
+		byLabel[why+": "+c.label]++
 		if len(samples) < 10 {
 			samples = append(samples, fmt.Sprintf("%s: %s stream %d from %d: %s", why, c.label, c.stream, c.ingress, detail))
 		}
@@ -164,6 +165,7 @@ func (r *rig) checkRows(calls []*callRec) {
 	r.res.set("rows_checked", float64(len(want)))
 	r.res.set("rows_bad", float64(n))
 	r.res.extra("rows_bad_by_reason", bad)
+	r.res.extra("rows_bad_by_kind", byLabel)
 	if n > 0 {
 		r.res.fail(r.t, "%d of %d transmissions have a bad or missing row: %v; first: %v", n, len(want), bad, samples)
 	}

@@ -76,6 +76,7 @@ func (h *Hub) runSightings() {
 			pruneStreams(h.parrotEnded, now)
 			pruneStreams(h.loopLogged, now)
 			h.pruneStreamClaims(now)
+			h.pruneSlotBuckets(now)
 			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {
 				if now.Sub(v.at) > sightedStreamTTL {
 					h.streamTargets.Delete(k)

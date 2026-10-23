@@ -24,6 +24,7 @@
 package locator
 
 import (
+	"encoding/binary"
 	"errors"
 	"log/slog"
 	"math"
@@ -33,9 +34,15 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/ip"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/location"
+	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/ars"
+	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/lrrp"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -58,8 +65,11 @@ type linkKey struct {
 
 type link struct {
 	rx       *data.Receiver
+	tx       *data.Sender
+	queue    []data.Message
 	repeater uint
 	slot     bool
+	cc       enums.ColorCode
 	last     time.Time
 }
 
@@ -72,6 +82,9 @@ type Locator struct {
 	links  map[linkKey]*link
 	dec    location.Decoder
 	events []data.Event
+	outs   []data.Output
+	lrrp   lrrp.Message
+	reqID  uint32
 	stream uint
 	done   chan struct{}
 	wg     sync.WaitGroup
@@ -127,6 +140,7 @@ func (l *Locator) Handle(p models.Packet) {
 		l.links[k] = ln
 	}
 	ln.repeater, ln.slot, ln.last = p.Repeater, p.Slot, time.Now()
+	ln.cc = layer2.RawBurst(p.DMRData).SlotType().ColorCode
 	now := l.now()
 	d := p.Data()
 	l.events = ln.rx.Burst(now, (*layer2.RawBurst)(&p.DMRData), d.Hint(now), l.events[:0])
@@ -171,6 +185,12 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 	if m.BadCRC {
 		return
 	}
+	if sap, ok := m.Header.SAP(); ok {
+		if d, err := ip.Decode(sap, m.Payload); err == nil && d.DestinationPort == ip.PortARS {
+			l.registration(k, ln, d.Payload)
+			return
+		}
+	}
 	f, err := l.dec.Decode(&m.Header, m.Payload)
 	if err != nil {
 		if !errors.Is(err, location.ErrNoFix) && !errors.Is(err, location.ErrNoPosition) {
@@ -184,6 +204,146 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 	}
 	if _, err := models.StorePosition(l.db, pos); err != nil {
 		slog.Error("Locator: cannot store a position", "radio", k.radio, "error", err)
+	}
+}
+
+func (l *Locator) registration(k linkKey, ln *link, payload []byte) {
+	m, err := ars.DecodeMessage(payload)
+	if err != nil {
+		slog.Debug("Locator: an ARS message does not decode", "radio", k.radio, "error", err)
+		return
+	}
+	switch m.Header.Type { //nolint:exhaustive
+	case ars.TypeDeviceRegistration:
+		ack, err := ars.NewAck(0)
+		if err != nil {
+			return
+		}
+		buf, err := ack.AppendBinary(nil)
+		if err != nil {
+			slog.Error("Locator: cannot build an ARS ack", "error", err)
+			return
+		}
+		l.queue(k, ln, ip.PortARS, buf)
+		l.startTracking(k, ln)
+	case ars.TypeDeviceDeregistration:
+		l.stopTracking(k, ln)
+	}
+}
+
+func (l *Locator) startTracking(k linkKey, ln *link) {
+	s, ok, err := models.FindPositionSetting(l.db, k.radio)
+	if err != nil {
+		slog.Error("Locator: cannot read a position setting", "radio", k.radio, "error", err)
+		return
+	}
+	if !ok || !s.Tracking {
+		return
+	}
+	l.reqID++
+	var rid [4]byte
+	binary.BigEndian.PutUint32(rid[:], l.reqID)
+	l.lrrp = lrrp.Message{Document: lrrp.DocumentTriggeredRequest}
+	r := &l.lrrp.Request
+	r.RequestID, r.HasRequestID = rid[:], true
+	r.Periodic = true
+	r.Interval, r.HasInterval = uint32(s.IntervalSeconds), true //nolint:gosec
+	r.AccuracyAndTime, r.Speed, r.Direction = true, true, true
+	buf, err := l.lrrp.AppendBinary(nil)
+	if err != nil {
+		slog.Error("Locator: cannot build an LRRP request", "error", err)
+		return
+	}
+	l.queue(k, ln, ip.PortLRRP, buf)
+	slot := uint8(1)
+	if ln.slot {
+		slot = 2
+	}
+	row := models.LocationRequest{
+		RadioID: k.radio, ServiceID: k.service, RequestID: rid[:], IntervalSeconds: s.IntervalSeconds,
+		SentAt: time.Now(), RepeaterID: ln.repeater, Slot: slot,
+	}
+	if err := l.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&row).Error; err != nil {
+		slog.Error("Locator: cannot store a location request", "radio", k.radio, "error", err)
+	}
+}
+
+func (l *Locator) stopTracking(k linkKey, ln *link) {
+	var rows []models.LocationRequest
+	if err := l.db.Where("radio_id = ?", k.radio).Limit(1).Find(&rows).Error; err != nil {
+		slog.Error("Locator: cannot read a location request", "radio", k.radio, "error", err)
+		return
+	}
+	if len(rows) == 0 {
+		return
+	}
+	l.lrrp = lrrp.Message{Document: lrrp.DocumentStopRequest}
+	l.lrrp.Request.RequestID, l.lrrp.Request.HasRequestID = rows[0].RequestID, true
+	buf, err := l.lrrp.AppendBinary(nil)
+	if err != nil {
+		slog.Error("Locator: cannot build an LRRP stop request", "error", err)
+		return
+	}
+	l.queue(k, ln, ip.PortLRRP, buf)
+	if err := l.db.Where("radio_id = ?", k.radio).Delete(&models.LocationRequest{}).Error; err != nil {
+		slog.Error("Locator: cannot delete a location request", "radio", k.radio, "error", err)
+	}
+}
+
+func (l *Locator) queue(k linkKey, ln *link, port ip.Port, payload []byte) {
+	d := ip.Datagram{
+		Source:          ip.RadioAddress(ip.DefaultNetwork, uint32(k.service)), //nolint:gosec
+		Destination:     ip.RadioAddress(ip.DefaultNetwork, uint32(k.radio)),   //nolint:gosec
+		SourcePort:      port,
+		DestinationPort: port,
+		TTL:             64,
+		Payload:         payload,
+	}
+	packet, err := ip.AppendIPv4(nil, &d)
+	if err != nil {
+		slog.Error("Locator: cannot build a datagram", "error", err)
+		return
+	}
+	var h pdu.DataHeader
+	err = h.SetUnconfirmed(pdu.UnconfirmedDataHeader{
+		SAP:             enums.SAPIPBasedPacketData,
+		LLIDDestination: uint32(k.radio),   //nolint:gosec
+		LLIDSource:      uint32(k.service), //nolint:gosec
+		FullMessageFlag: true,
+	})
+	if err != nil {
+		slog.Error("Locator: cannot build a data header", "error", err)
+		return
+	}
+	ln.queue = append(ln.queue, data.Message{Header: h, Rate: enums.DataTypeRate12, Payload: packet})
+	l.pump(k, ln, l.now())
+}
+
+func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
+	if ln.tx == nil {
+		slot := enums.Slot1
+		if ln.slot {
+			slot = enums.Slot2
+		}
+		tx, err := data.NewSender(&data.SenderConfig{ColorCode: ln.cc, Source: layer2.SyncSourceBS, Slot: slot})
+		if err != nil {
+			slog.Error("Locator: cannot make a data sender", "error", err)
+			return
+		}
+		ln.tx = tx
+	}
+	if ln.tx.State() == data.SenderIdle && len(ln.queue) > 0 {
+		m := ln.queue[0]
+		ln.queue = ln.queue[1:]
+		if err := ln.tx.Send(now, &m); err != nil {
+			slog.Error("Locator: cannot send a message", "radio", k.radio, "error", err)
+		}
+	}
+	l.outs = ln.tx.Tick(now, l.outs[:0])
+	for i := range l.outs {
+		if o := &l.outs[i]; o.Kind == data.OutputBurst {
+			l.respond(k, ln, o.Burst, o.Due-now)
+		}
 	}
 }
 
@@ -255,7 +415,12 @@ func (l *Locator) expire() {
 			l.events = ln.rx.Tick(now, l.events[:0])
 			l.apply(k, ln, now)
 		}
-		if time.Since(ln.last) > linkIdle {
+		if ln.tx != nil {
+			if at, ok := ln.tx.Deadline(); (ok && now >= at) || (ln.tx.State() == data.SenderIdle && len(ln.queue) > 0) {
+				l.pump(k, ln, now)
+			}
+		}
+		if time.Since(ln.last) > linkIdle && len(ln.queue) == 0 && (ln.tx == nil || ln.tx.State() == data.SenderIdle) {
 			delete(l.links, k)
 		}
 	}

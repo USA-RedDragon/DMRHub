@@ -148,7 +148,7 @@ type IPSC struct {
 
 // OpenBridge holds the configuration for the OpenBridge server.
 type OpenBridge struct {
-	Enabled bool   `json:"enabled,omitempty" name:"enabled" description:"Enable experimental OpenBridge server support" default:"false"`
+	Enabled bool   `json:"enabled,omitempty" name:"enabled" description:"Enable OpenBridge server support" default:"false"`
 	Bind    string `json:"bind,omitempty" name:"bind" description:"OpenBridge server listen address" default:"[::]"`
 	Port    int    `json:"port,omitempty" name:"port" description:"OpenBridge server port" default:"62035"`
 	// ServerID is the source server that DMRHub names in the DMRE packets

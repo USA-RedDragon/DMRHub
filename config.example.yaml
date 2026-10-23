@@ -63,7 +63,7 @@ dmr:
     port: 62031
   # OpenBridge server configuration for DMR
   openbridge:
-    # Enable experimental OpenBridge server support
+    # Enable OpenBridge server support
     enabled: false
     # OpenBridge server listen address
     bind: "[::]"

@@ -67,6 +67,14 @@ To register a repeater:
 
 For MMDVM-based repeaters, you'll receive a [DMRGateway](https://github.com/g4klx/DMRGateway) configuration snippet with the address, port, and password needed to connect.
 
+### HBRP Repeaters
+
+DMRHub also accepts repeaters that speak the HomeBrew Repeater Protocol (HBRP), the protocol of the published Homebrew specification. It is a different protocol from the MMDVM network protocol that MMDVMHost and DMRGateway speak: HBRP sends repeater IDs, salts and tokens as hex text and has its own login and keepalive messages.
+
+Register an HBRP repeater as **MMDVM** and point it at the same address, port and password. DMRHub tells the two protocols apart by the login of the repeater and answers in the protocol it logged in with.
+
+HBRP has no options message, so an HBRP repeater cannot set its static talkgroups when it connects; set them on the repeaters page. HBRP has no talker alias or GPS messages either.
+
 ### Motorola IPSC Repeaters
 
 For Motorola DMR repeaters (DR3000, SLR5500, etc.), you'll receive an IPSC HMAC-SHA1 auth key. Configure your repeater's IPSC network settings:

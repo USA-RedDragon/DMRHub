@@ -82,6 +82,7 @@ func TestSaveRoundTrip(t *testing.T) {
 	want.Metrics = defaults.Metrics
 	want.PProf = defaults.PProf
 	want.DMR.OpenBridge = defaults.DMR.OpenBridge
+	want.DMR.MMDVM.WebTransport = defaults.DMR.MMDVM.WebTransport
 
 	if diff := cmp.Diff(want, *got); diff != "" {
 		t.Errorf("saved config did not round-trip (-want +got):\n%s", diff)

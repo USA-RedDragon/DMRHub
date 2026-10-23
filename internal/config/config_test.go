@@ -562,3 +562,27 @@ func TestOpenBridgeValidateServerID(t *testing.T) {
 		}
 	}
 }
+
+func TestMMDVMWebTransportValidate(t *testing.T) {
+	t.Parallel()
+	base := config.MMDVM{Bind: "[::]", Port: 62031}
+	for _, tc := range []struct {
+		name string
+		wt   config.MMDVMWebTransport
+		want error
+	}{
+		{"off ignores its settings", config.MMDVMWebTransport{Port: -1, CertFile: "a"}, nil},
+		{"own certificate", config.MMDVMWebTransport{Enabled: true, Port: 62032}, nil},
+		{"mounted certificate", config.MMDVMWebTransport{Enabled: true, Port: 443, CertFile: "/tls/tls.crt", KeyFile: "/tls/tls.key"}, nil},
+		{"bad port", config.MMDVMWebTransport{Enabled: true, Port: 70000}, config.ErrInvalidDMRMMDVMWebTransportPort},
+		{"the MMDVM port", config.MMDVMWebTransport{Enabled: true, Port: 62031}, config.ErrInvalidDMRMMDVMWebTransportPort},
+		{"certificate without key", config.MMDVMWebTransport{Enabled: true, Port: 443, CertFile: "/tls/tls.crt"}, config.ErrDMRMMDVMWebTransportKeyPair},
+		{"key without certificate", config.MMDVMWebTransport{Enabled: true, Port: 443, KeyFile: "/tls/tls.key"}, config.ErrDMRMMDVMWebTransportKeyPair},
+	} {
+		m := base
+		m.WebTransport = tc.wt
+		if err := m.Validate(); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
+			t.Errorf("%s: got %v, want %v", tc.name, err, tc.want)
+		}
+	}
+}

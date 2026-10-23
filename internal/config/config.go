@@ -136,6 +136,18 @@ type Retention struct {
 type MMDVM struct {
 	Bind string `json:"bind,omitempty" name:"bind" description:"MMDVM server listen address" default:"[::]"`
 	Port int    `json:"port,omitempty" name:"port" description:"MMDVM server port" default:"62031"`
+	// WebTransport is the listener of browser hotspots and radios, which
+	// speak the MMDVM network protocol in WebTransport datagrams.
+	WebTransport MMDVMWebTransport `json:"webtransport,omitempty" name:"webtransport" description:"WebTransport listener for browser hotspots and radios"`
+}
+
+// MMDVMWebTransport holds the configuration of the WebTransport listener of
+// the MMDVM server. It listens on the bind address of the MMDVM server.
+type MMDVMWebTransport struct {
+	Enabled  bool   `json:"enabled,omitempty" name:"enabled" description:"Accept browser hotspots and radios over WebTransport" default:"false"`
+	Port     int    `json:"port,omitempty" name:"port" description:"UDP port of the WebTransport listener" default:"62032"`
+	CertFile string `json:"cert-file,omitempty" yaml:"cert-file" name:"cert-file" description:"TLS certificate file, such as the one that cert-manager mounts. Empty makes DMRHub use short-lived certificates of its own, which browsers accept through the hashes that DMRHub publishes"`
+	KeyFile  string `json:"key-file,omitempty" yaml:"key-file" name:"key-file" description:"TLS key file of the certificate file"`
 }
 
 // IPSC holds the configuration for the IPSC server.

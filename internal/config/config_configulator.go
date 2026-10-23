@@ -55,9 +55,17 @@ type hTTPShadow struct {
 	CanonicalHost  *string          `json:"canonical-host"  toml:"canonical-host"  yaml:"canonical-host"`
 }
 
+type mMDVMWebTransportShadow struct {
+	Enabled  *bool   `json:"enabled"   toml:"enabled"   yaml:"enabled"`
+	Port     *int    `json:"port"      toml:"port"      yaml:"port"`
+	CertFile *string `json:"cert-file" toml:"cert-file" yaml:"cert-file"`
+	KeyFile  *string `json:"key-file"  toml:"key-file"  yaml:"key-file"`
+}
+
 type mMDVMShadow struct {
-	Bind *string `json:"bind" toml:"bind" yaml:"bind"`
-	Port *int    `json:"port" toml:"port" yaml:"port"`
+	Bind         *string                  `json:"bind"         toml:"bind"         yaml:"bind"`
+	Port         *int                     `json:"port"         toml:"port"         yaml:"port"`
+	WebTransport *mMDVMWebTransportShadow `json:"webtransport" toml:"webtransport" yaml:"webtransport"`
 }
 
 type openBridgeShadow struct {
@@ -168,6 +176,10 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.mmdvm.bind", configulator.LayerDefault, "default tag")
 	cfg.DMR.MMDVM.Port = 62031
 	set("dmr.mmdvm.port", configulator.LayerDefault, "default tag")
+	cfg.DMR.MMDVM.WebTransport.Enabled = false
+	set("dmr.mmdvm.webtransport.enabled", configulator.LayerDefault, "default tag")
+	cfg.DMR.MMDVM.WebTransport.Port = 62032
+	set("dmr.mmdvm.webtransport.port", configulator.LayerDefault, "default tag")
 	cfg.DMR.OpenBridge.Enabled = false
 	set("dmr.openbridge.enabled", configulator.LayerDefault, "default tag")
 	cfg.DMR.OpenBridge.Bind = "[::]"
@@ -336,6 +348,24 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.MMDVM.Port != nil {
 				cfg.DMR.MMDVM.Port = *s.DMR.MMDVM.Port
 				set("dmr.mmdvm.port", configulator.LayerFile, file)
+			}
+			if s.DMR.MMDVM.WebTransport != nil {
+				if s.DMR.MMDVM.WebTransport.Enabled != nil {
+					cfg.DMR.MMDVM.WebTransport.Enabled = *s.DMR.MMDVM.WebTransport.Enabled
+					set("dmr.mmdvm.webtransport.enabled", configulator.LayerFile, file)
+				}
+				if s.DMR.MMDVM.WebTransport.Port != nil {
+					cfg.DMR.MMDVM.WebTransport.Port = *s.DMR.MMDVM.WebTransport.Port
+					set("dmr.mmdvm.webtransport.port", configulator.LayerFile, file)
+				}
+				if s.DMR.MMDVM.WebTransport.CertFile != nil {
+					cfg.DMR.MMDVM.WebTransport.CertFile = *s.DMR.MMDVM.WebTransport.CertFile
+					set("dmr.mmdvm.webtransport.cert-file", configulator.LayerFile, file)
+				}
+				if s.DMR.MMDVM.WebTransport.KeyFile != nil {
+					cfg.DMR.MMDVM.WebTransport.KeyFile = *s.DMR.MMDVM.WebTransport.KeyFile
+					set("dmr.mmdvm.webtransport.key-file", configulator.LayerFile, file)
+				}
 			}
 		}
 		if s.DMR.OpenBridge != nil {
@@ -639,6 +669,40 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		}
 		cfg.DMR.MMDVM.Port = int(p)
 		set("dmr.mmdvm.port", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.enabled",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.Enabled = p
+		set("dmr.mmdvm.webtransport.enabled", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.port",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.Port = int(p)
+		set("dmr.mmdvm.webtransport.port", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "cert-file"); ok {
+		cfg.DMR.MMDVM.WebTransport.CertFile = v
+		set("dmr.mmdvm.webtransport.cert-file", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "key-file"); ok {
+		cfg.DMR.MMDVM.WebTransport.KeyFile = v
+		set("dmr.mmdvm.webtransport.key-file", configulator.LayerEnv, n)
 	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
@@ -955,6 +1019,10 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"http" + o.Separator + "canonical-host",
 		"dmr" + o.Separator + "mmdvm" + o.Separator + "bind",
 		"dmr" + o.Separator + "mmdvm" + o.Separator + "port",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "enabled",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "port",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "cert-file",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "key-file",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "enabled",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "bind",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "port",
@@ -1028,39 +1096,43 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[21], "", "URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required")
 	fs.String(names[22], "[::]", "MMDVM server listen address")
 	fs.Var(impl.NewInt(62031), names[23], "MMDVM server port")
-	fs.Bool(names[24], false, "Enable OpenBridge server support")
-	fs.String(names[25], "[::]", "OpenBridge server listen address")
-	fs.Var(impl.NewInt(62035), names[26], "OpenBridge server port")
-	fs.Uint32(names[27], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")
-	fs.Bool(names[28], false, "Enable IPSC server support")
-	fs.String(names[29], "[::]", "IPSC server listen address")
-	fs.Var(impl.NewInt(50000), names[30], "IPSC server port")
-	fs.Uint32(names[31], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
-	fs.Bool(names[32], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[33], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[34], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[35], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[36], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[37], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Bool(names[38], false, "Enable SMTP support for sending emails")
-	fs.String(names[39], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[40], "SMTP server port")
-	fs.String(names[41], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[42], "", "SMTP server username")
-	fs.String(names[43], "", "SMTP server password")
-	fs.String(names[44], "", "Email address to use as the sender")
-	fs.String(names[45], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[46], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[47], false, "Enable metrics collection and export")
-	fs.String(names[48], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[49], "Metrics server port")
-	fs.StringSlice(names[50], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[51], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[52], false, "Enable PProf profiling and debugging support")
-	fs.String(names[53], "[::]", "PProf server listen address")
-	fs.StringSlice(names[54], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[55], "PProf server port")
-	fs.String(names[56], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[24], false, "Accept browser hotspots and radios over WebTransport")
+	fs.Var(impl.NewInt(62032), names[25], "UDP port of the WebTransport listener")
+	fs.String(names[26], "", "TLS certificate file, such as the one that cert-manager mounts. Empty makes DMRHub use short-lived certificates of its own, which browsers accept through the hashes that DMRHub publishes")
+	fs.String(names[27], "", "TLS key file of the certificate file")
+	fs.Bool(names[28], false, "Enable OpenBridge server support")
+	fs.String(names[29], "[::]", "OpenBridge server listen address")
+	fs.Var(impl.NewInt(62035), names[30], "OpenBridge server port")
+	fs.Uint32(names[31], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")
+	fs.Bool(names[32], false, "Enable IPSC server support")
+	fs.String(names[33], "[::]", "IPSC server listen address")
+	fs.Var(impl.NewInt(50000), names[34], "IPSC server port")
+	fs.Uint32(names[35], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
+	fs.Bool(names[36], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[37], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[38], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[39], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[40], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[41], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Bool(names[42], false, "Enable SMTP support for sending emails")
+	fs.String(names[43], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[44], "SMTP server port")
+	fs.String(names[45], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[46], "", "SMTP server username")
+	fs.String(names[47], "", "SMTP server password")
+	fs.String(names[48], "", "Email address to use as the sender")
+	fs.String(names[49], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[50], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[51], false, "Enable metrics collection and export")
+	fs.String(names[52], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[53], "Metrics server port")
+	fs.StringSlice(names[54], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[55], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[56], false, "Enable PProf profiling and debugging support")
+	fs.String(names[57], "[::]", "PProf server listen address")
+	fs.StringSlice(names[58], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[59], "PProf server port")
+	fs.String(names[60], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1352,6 +1424,54 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.MMDVM.Port = v
 		set("dmr.mmdvm.port", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "enabled"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.enabled",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.Enabled = v
+		set("dmr.mmdvm.webtransport.enabled", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "port"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.port",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.Port = v
+		set("dmr.mmdvm.webtransport.port", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "cert-file"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.cert-file",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.CertFile = v
+		set("dmr.mmdvm.webtransport.cert-file", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "key-file"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.key-file",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.KeyFile = v
+		set("dmr.mmdvm.webtransport.key-file", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -2635,6 +2755,107 @@ func (s *mMDVMShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
+		case "webtransport":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".webtransport", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub mMDVMWebTransportShadow
+				if err := sub.decodeJSON(dec, path+".webtransport"); err != nil {
+					return err
+				}
+				s.WebTransport = &sub
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *mMDVMWebTransportShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "enabled":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Enabled = &b
+			default:
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "port":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".port", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
+			default:
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "cert-file":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.CertFile = &str
+			default:
+				return configJSONError(path+".cert-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "key-file":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.KeyFile = &str
+			default:
+				return configJSONError(path+".key-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -3290,6 +3511,10 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "http.canonical-host = %v\n", c.HTTP.CanonicalHost)
 	fmt.Fprintf(&b, "dmr.mmdvm.bind = %v\n", c.DMR.MMDVM.Bind)
 	fmt.Fprintf(&b, "dmr.mmdvm.port = %v\n", c.DMR.MMDVM.Port)
+	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.enabled = %v\n", c.DMR.MMDVM.WebTransport.Enabled)
+	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.port = %v\n", c.DMR.MMDVM.WebTransport.Port)
+	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.cert-file = %v\n", c.DMR.MMDVM.WebTransport.CertFile)
+	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.key-file = %v\n", c.DMR.MMDVM.WebTransport.KeyFile)
 	fmt.Fprintf(&b, "dmr.openbridge.enabled = %v\n", c.DMR.OpenBridge.Enabled)
 	fmt.Fprintf(&b, "dmr.openbridge.bind = %v\n", c.DMR.OpenBridge.Bind)
 	fmt.Fprintf(&b, "dmr.openbridge.port = %v\n", c.DMR.OpenBridge.Port)

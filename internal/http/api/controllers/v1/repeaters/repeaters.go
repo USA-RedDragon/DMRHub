@@ -32,6 +32,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -170,6 +172,13 @@ func DELETERepeater(c *gin.Context) {
 		return
 	}
 
+	var owners []uint
+	if err := db.Model(&models.Repeater{}).Where("id = ?", repeaterID).Pluck("owner_id", &owners).Error; err != nil {
+		slog.Error("Error finding the owner of a repeater", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting repeater"})
+		return
+	}
+
 	err = models.DeleteRepeater(db, repeaterID)
 	if err != nil {
 		slog.Error("Error deleting repeater", "error", err)
@@ -178,6 +187,9 @@ func DELETERepeater(c *gin.Context) {
 	}
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
 		dmrHub.ReloadRepeater(c.Request.Context(), repeaterID)
+	}
+	for _, owner := range owners {
+		publishOwnerChanged(c, owner)
 	}
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater deleted"})
 }
@@ -493,6 +505,7 @@ func POSTRepeater(c *gin.Context) {
 		if ok {
 			dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 		}
+		publishOwnerChanged(c, repeater.OwnerID)
 		c.JSON(http.StatusOK, gin.H{messageKey: "Repeater created", "password": repeater.Password})
 	}
 }
@@ -875,6 +888,17 @@ func PATCHRepeater(c *gin.Context) {
 	}
 	dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater updated"})
+}
+
+func publishOwnerChanged(c *gin.Context, ownerID uint) {
+	ps, ok := c.Value("PubSub").(pubsub.PubSub)
+	if !ok {
+		slog.Error("PubSub not found in context, the websockets of a repeater owner stay open", "user", ownerID)
+		return
+	}
+	if err := websocket.PublishUserChanged(ps, ownerID); err != nil {
+		slog.Error("Failed to close the websockets of a repeater owner", "user", ownerID, "error", err)
+	}
 }
 
 func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {

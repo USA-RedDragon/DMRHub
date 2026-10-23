@@ -76,6 +76,12 @@ func (h *Hub) runSightings() {
 			pruneStreams(h.parrotEnded, now)
 			pruneStreams(h.loopLogged, now)
 			pruneStreams(h.streamTalkgroups, now)
+			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
+				if now.Sub(v.at) > sightedStreamTTL {
+					h.streamPeers.Delete(k)
+				}
+				return true
+			})
 			h.pruneStreamClaims(now)
 			h.pruneSlotBuckets(now)
 			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {

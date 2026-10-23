@@ -247,3 +247,23 @@ func TestGroupStreamChecksItsTalkgroupOnce(t *testing.T) {
 	}
 	assert.Zero(t, talkgroups.Load(), "talkgroup checks after the first burst of a group stream")
 }
+
+func TestStreamListsPeersOnce(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	seedTalkgroup(t, database, 1, "TG1")
+	h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
+	t.Cleanup(func() { h.UnregisterServer("openbridge") })
+	peers := countTableQueries(t, database, "peers")
+	burst := makeVoicePacket(1, 55555, true, false)
+	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+	require.Eventually(t, func() bool { return peers.Load() > 0 }, 2*time.Second, 10*time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	first := peers.Load()
+	for seq := uint(1); seq < 10; seq++ {
+		burst.Seq = seq
+		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+	}
+	time.Sleep(500 * time.Millisecond)
+	assert.Equal(t, first, peers.Load(), "peer lookups after the first burst of a stream")
+}

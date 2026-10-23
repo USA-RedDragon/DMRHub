@@ -150,6 +150,7 @@ type Hub struct {
 	parrotEnded           *xsync.Map[uint, time.Time]
 	streamTargets         *xsync.Map[streamTarget, targetAt]
 	streamTalkgroups      *xsync.Map[streamTarget, time.Time]
+	streamPeers           *xsync.Map[streamTarget, streamPeerSet]
 	streamClaims          *xsync.Map[claimKey, streamClaim]
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
@@ -180,6 +181,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.parrotEnded = xsync.NewMap[uint, time.Time]()
 	h.streamTargets = xsync.NewMap[streamTarget, targetAt]()
 	h.streamTalkgroups = xsync.NewMap[streamTarget, time.Time]()
+	h.streamPeers = xsync.NewMap[streamTarget, streamPeerSet]()
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()

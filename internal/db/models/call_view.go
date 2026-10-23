@@ -21,6 +21,7 @@ package models
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"gorm.io/gorm"
@@ -30,29 +31,103 @@ import (
 // message.
 const SubKindSMS = "sms"
 
-// SMSWindow decides which transmissions a user may see as an SMS in last
-// heard. Outside the window, a user sees an SMS transmission as plain data,
-// so that last heard tells nothing about messages that the Messages page
-// does not show.
+// SMSWindow decides which transmissions a user may see as a message in
+// last heard. Outside the window, a user sees a transmission that carried a
+// message as plain data, so that last heard tells nothing about messages
+// that the Messages page does not show.
 type SMSWindow interface {
 	// VisibleSMS returns a query that selects the id column of the calls
-	// whose SMS is inside the visible window of viewer, or nil when no SMS
-	// is. A nil viewer is a visitor who is not logged in.
+	// whose message is inside the visible window of viewer, or nil when no
+	// message is. A nil viewer is a visitor who is not logged in.
 	VisibleSMS(db *gorm.DB, viewer *User) *gorm.DB
+	// Visible returns which of the calls ids carried a message inside the
+	// visible window of viewer, who is not an admin.
+	Visible(db *gorm.DB, viewer *User, ids []uint) (map[uint]bool, error)
 }
 
-// MaskedSMSWindow shows no SMS to any user.
+// MaskedSMSWindow shows no message to any user.
 type MaskedSMSWindow struct{}
 
-// VisibleSMS returns nil: no SMS is visible.
+// VisibleSMS returns nil: no message is visible.
 func (MaskedSMSWindow) VisibleSMS(*gorm.DB, *User) *gorm.DB {
 	return nil
 }
 
-// CurrentSMSWindow returns the SMS window of the hub. Until message storage
-// gives each user a window, it is MaskedSMSWindow.
+// Visible returns an empty map: no message is visible.
+func (MaskedSMSWindow) Visible(*gorm.DB, *User, []uint) (map[uint]bool, error) {
+	return map[uint]bool{}, nil
+}
+
+// MessageSMSWindow shows a user the transmissions of the messages in their
+// capped inbox and outbox windows, as VisibleMessageIDs finds them.
+type MessageSMSWindow struct{}
+
+// VisibleSMS returns a query of the calls that carried a message in the
+// boxes of viewer, or nil when the boxes are empty.
+func (MessageSMSWindow) VisibleSMS(db *gorm.DB, viewer *User) *gorm.DB {
+	ids, err := visibleMessages(db, nonAdmin(viewer))
+	if err != nil {
+		slog.Error("Could not find the visible messages of a user", "error", err)
+		return nil
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return db.Model(&Message{}).Select("transmission_id").Where("transmission_id IS NOT NULL AND id IN ?", ids)
+}
+
+// Visible returns VisibleTransmissions of viewer.
+func (MessageSMSWindow) Visible(db *gorm.DB, viewer *User, ids []uint) (map[uint]bool, error) {
+	return VisibleTransmissions(db, nonAdmin(viewer), ids)
+}
+
+func nonAdmin(viewer *User) *User {
+	if viewer == nil || !viewer.Admin {
+		return viewer
+	}
+	u := *viewer
+	u.Admin = false
+	return &u
+}
+
+// CurrentSMSWindow returns the SMS window of the hub: the message boxes of
+// each user.
 func CurrentSMSWindow() SMSWindow {
-	return MaskedSMSWindow{}
+	return MessageSMSWindow{}
+}
+
+// CallIDsIn returns which of the calls ids the query visible selects. A nil
+// query selects none.
+func CallIDsIn(db *gorm.DB, ids []uint, visible *gorm.DB) (map[uint]bool, error) {
+	out := map[uint]bool{}
+	if visible == nil || len(ids) == 0 {
+		return out, nil
+	}
+	var got []uint
+	if err := db.Session(&gorm.Session{NewDB: true}).Model(&Call{}).Where("id IN ?", ids).Where("id IN (?)", visible).Pluck("id", &got).Error; err != nil {
+		return nil, fmt.Errorf("failed to find visible calls: %w", err)
+	}
+	for _, id := range got {
+		out[id] = true
+	}
+	return out, nil
+}
+
+// TransmissionsWithMessages returns which of the calls ids carried a
+// stored message.
+func TransmissionsWithMessages(db *gorm.DB, ids []uint) (map[uint]bool, error) {
+	out := map[uint]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var got []uint
+	if err := db.Session(&gorm.Session{NewDB: true}).Model(&Message{}).Where("transmission_id IN ?", ids).Distinct().Pluck("transmission_id", &got).Error; err != nil {
+		return nil, fmt.Errorf("failed to find the transmissions of messages: %w", err)
+	}
+	for _, id := range got {
+		out[id] = true
+	}
+	return out, nil
 }
 
 // IsAdmin reports whether viewer is an approved admin who is not suspended.
@@ -167,8 +242,8 @@ func (f CallFilter) Scope(db *gorm.DB, viewer *User, window SMSWindow) func(*gor
 	}
 }
 
-// VisibleSMSIDs returns the IDs among ids of the SMS transmissions that
-// viewer may see as SMS. An admin sees every SMS, and a visitor who is not
+// VisibleSMSIDs returns the IDs among ids of the transmissions that viewer
+// may see as messages. An admin sees every one, and a visitor who is not
 // logged in sees none.
 func VisibleSMSIDs(db *gorm.DB, viewer *User, window SMSWindow, ids []uint) (map[uint]bool, error) {
 	out := map[uint]bool{}
@@ -184,16 +259,9 @@ func VisibleSMSIDs(db *gorm.DB, viewer *User, window SMSWindow, ids []uint) (map
 	if viewer == nil || window == nil {
 		return out, nil
 	}
-	visible := window.VisibleSMS(db.Session(&gorm.Session{NewDB: true}), viewer)
-	if visible == nil {
-		return out, nil
+	visible, err := window.Visible(db.Session(&gorm.Session{NewDB: true}), viewer, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find visible messages: %w", err)
 	}
-	var got []uint
-	if err := db.Session(&gorm.Session{NewDB: true}).Model(&Call{}).Where("id IN ?", ids).Where("id IN (?)", visible).Pluck("id", &got).Error; err != nil {
-		return nil, fmt.Errorf("failed to find visible SMS: %w", err)
-	}
-	for _, id := range got {
-		out[id] = true
-	}
-	return out, nil
+	return visible, nil
 }

@@ -20,6 +20,7 @@
 package models_test
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -34,6 +35,14 @@ type idWindow struct{ ids []uint }
 
 func (w idWindow) VisibleSMS(db *gorm.DB, _ *models.User) *gorm.DB {
 	return db.Model(&models.Call{}).Select("id").Where("id IN ?", w.ids)
+}
+
+func (w idWindow) Visible(db *gorm.DB, viewer *models.User, ids []uint) (map[uint]bool, error) {
+	visible, err := models.CallIDsIn(db, ids, w.VisibleSMS(db, viewer))
+	if err != nil {
+		return nil, fmt.Errorf("finding visible calls: %w", err)
+	}
+	return visible, nil
 }
 
 func seedKinds(t *testing.T, database *gorm.DB) map[string]uint {

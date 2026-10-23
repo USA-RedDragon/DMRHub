@@ -181,6 +181,16 @@ func (r *WSCallResponse) MaskSMS() {
 	r.Bursts, r.Blocks, r.Octets, r.BadCRC, r.LostBlocks = 0, 0, 0, 0, 0
 }
 
+// MaskData shows a data row as plain data, as MaskSMS does, whatever its
+// sub kind.
+func (r *WSCallResponse) MaskData() {
+	if r.Kind != models.CallKindData {
+		return
+	}
+	r.SubKind, r.SAP, r.DataFormat, r.Confirmed, r.Response = "", nil, "", false, models.CallResponseNone
+	r.Bursts, r.Blocks, r.Octets, r.BadCRC, r.LostBlocks = 0, 0, 0, 0, 0
+}
+
 // HidePosition drops the coordinates of a GPS row and keeps its grid
 // square.
 func (r *WSCallResponse) HidePosition() {
@@ -206,25 +216,42 @@ func Maidenhead(lat, lon float64) string {
 
 // NewWSCallResponsesFor returns the rows of calls as viewer may see them. A
 // nil viewer is a visitor who is not logged in. An admin sees every field.
-// Another viewer sees an SMS outside the SMS window of window as plain
-// data, and the coordinates only of their own GPS rows.
+// Another viewer sees an SMS, or any data row that carried a stored
+// message, as plain data unless the message is inside the window of
+// window, and the coordinates only of their own GPS rows.
 func NewWSCallResponsesFor(db *gorm.DB, viewer *models.User, window models.SMSWindow, calls []models.Call) ([]WSCallResponse, error) {
 	out := make([]WSCallResponse, 0, len(calls))
-	var sms []uint
-	for i := range calls {
-		if calls[i].Kind == models.CallKindData && calls[i].SubKind == models.SubKindSMS {
-			sms = append(sms, calls[i].ID)
+	admin := models.IsAdmin(viewer)
+	masked := map[uint]bool{}
+	if !admin {
+		var dataIDs []uint
+		for i := range calls {
+			if calls[i].Kind == models.CallKindData {
+				dataIDs = append(dataIDs, calls[i].ID)
+			}
+		}
+		carried, err := models.TransmissionsWithMessages(db, dataIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find the data rows of messages: %w", err)
+		}
+		var candidates []uint
+		for i := range calls {
+			if calls[i].Kind == models.CallKindData && (calls[i].SubKind == models.SubKindSMS || carried[calls[i].ID]) {
+				candidates = append(candidates, calls[i].ID)
+			}
+		}
+		visible, err := models.VisibleSMSIDs(db, viewer, window, candidates)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find the messages that the viewer may see: %w", err)
+		}
+		for _, id := range candidates {
+			masked[id] = !visible[id]
 		}
 	}
-	visible, err := models.VisibleSMSIDs(db, viewer, window, sms)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find the SMS that the viewer may see: %w", err)
-	}
-	admin := models.IsAdmin(viewer)
 	for i := range calls {
 		resp := NewWSCallResponseFromCall(&calls[i])
-		if !visible[resp.ID] {
-			resp.MaskSMS()
+		if masked[resp.ID] {
+			resp.MaskData()
 		}
 		if !admin && (viewer == nil || viewer.ID != resp.SourceID) {
 			resp.HidePosition()

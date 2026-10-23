@@ -37,8 +37,16 @@ import (
 
 type allSMS struct{}
 
-func (allSMS) VisibleSMS(db *gorm.DB, _ *models.User) *gorm.DB {
+func (w allSMS) VisibleSMS(db *gorm.DB, _ *models.User) *gorm.DB {
 	return db.Model(&models.Call{}).Select("id")
+}
+
+func (w allSMS) Visible(db *gorm.DB, viewer *models.User, ids []uint) (map[uint]bool, error) {
+	visible, err := models.CallIDsIn(db, ids, w.VisibleSMS(db, viewer))
+	if err != nil {
+		return nil, fmt.Errorf("finding visible calls: %w", err)
+	}
+	return visible, nil
 }
 
 func smsCall() models.Call {

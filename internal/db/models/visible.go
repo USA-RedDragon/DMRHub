@@ -116,6 +116,18 @@ func MessageBoxes(db *gorm.DB, user *User, id uint) ([]MessageBox, error) {
 	return boxes, nil
 }
 
+func visibleMessages(db *gorm.DB, user *User) ([]uint, error) {
+	var visible []uint
+	for _, box := range []MessageBox{MessageInbox, MessageOutbox} {
+		ids, err := VisibleMessageIDs(db, user, box)
+		if err != nil {
+			return nil, err
+		}
+		visible = append(visible, ids...)
+	}
+	return visible, nil
+}
+
 // VisibleTransmissions returns which of the transmissions callIDs carried a
 // message that user sees in a box. An admin sees every transmission. Last
 // heard uses it to hide the kind and size of the data rows of messages that
@@ -131,13 +143,9 @@ func VisibleTransmissions(db *gorm.DB, user *User, callIDs []uint) (map[uint]boo
 		}
 		return out, nil
 	}
-	var visible []uint
-	for _, box := range []MessageBox{MessageInbox, MessageOutbox} {
-		ids, err := VisibleMessageIDs(db, user, box)
-		if err != nil {
-			return nil, err
-		}
-		visible = append(visible, ids...)
+	visible, err := visibleMessages(db, user)
+	if err != nil {
+		return nil, err
 	}
 	if len(visible) == 0 {
 		return out, nil

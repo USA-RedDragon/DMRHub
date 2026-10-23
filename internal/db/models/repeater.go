@@ -57,6 +57,7 @@ type Repeater struct {
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
 	Password              string         `json:"-" msg:"-"`
 	Type                  string         `json:"type" gorm:"default:'mmdvm'" msg:"-"`
+	Dialect               string         `json:"dialect" msg:"dialect"`
 	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
 	TS2StaticTalkgroups   []Talkgroup    `json:"ts2_static_talkgroups" gorm:"many2many:repeater_ts2_static_talkgroups;" msg:"-"`
 	TS1DynamicTalkgroupID *uint          `json:"-" msg:"-"`
@@ -156,6 +157,7 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 func (p *Repeater) UpdateFrom(repeater Repeater) {
 	p.Connected = repeater.Connected
 	p.LastPing = repeater.LastPing
+	p.Dialect = repeater.Dialect
 	p.Callsign = repeater.Callsign
 	p.RXFrequency = repeater.RXFrequency
 	p.TXFrequency = repeater.TXFrequency

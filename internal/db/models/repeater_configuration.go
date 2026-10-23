@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 )
 
@@ -76,14 +77,52 @@ const (
 
 var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 
-// ParseConfig reads the 302-octet RPTC configuration message data.
+// ParseConfig reads the 302-octet RPTC configuration message data of the
+// MMDVM network protocol.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
 	cfg, err := dmrd.MMDVMConfigOf(data)
 	if err != nil {
 		slog.Error("Error reading RPTC packet", "error", err)
 		return ErrInvalidConfig
 	}
+	slots, err := cfg.Slots()
+	if err != nil {
+		slog.Error("Error parsing slots", "error", err)
+		return ErrInvalidInt
+	}
+	c.Slots = uint(slots)
+	return c.parse(cfg, version, commit)
+}
 
+// ParseHBRPConfig reads the 306-octet RPTC configuration message data of
+// HBRP, which has no slots field.
+func (c *RepeaterConfiguration) ParseHBRPConfig(data []byte, version, commit string) error {
+	cfg, err := dmrd.HBRPConfigOf(data)
+	if err != nil {
+		slog.Error("Error reading RPTC packet", "error", err)
+		return ErrInvalidConfig
+	}
+	c.Slots = 0
+	return c.parse(cfg, version, commit)
+}
+
+type rptcFields interface {
+	Callsign() []byte
+	RXFrequency() (uint32, error)
+	TXFrequency() (uint32, error)
+	Power() (uint8, error)
+	ColorCode() (enums.ColorCode, error)
+	Latitude() []byte
+	Longitude() []byte
+	Height() (uint16, error)
+	Location() []byte
+	Description() []byte
+	URL() []byte
+	SoftwareID() []byte
+	PackageID() []byte
+}
+
+func (c *RepeaterConfiguration) parse(cfg rptcFields, version, commit string) error {
 	c.Callsign = strings.ToUpper(string(cfg.Callsign()))
 
 	rxFreq, err := cfg.RXFrequency()
@@ -137,14 +176,6 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 
 	c.Location = string(cfg.Location())
 	c.Description = string(cfg.Description())
-
-	slots, err := cfg.Slots()
-	if err != nil {
-		slog.Error("Error parsing slots", "error", err)
-		return ErrInvalidInt
-	}
-	c.Slots = uint(slots)
-
 	c.URL = string(cfg.URL())
 
 	c.SoftwareID = string(cfg.SoftwareID())

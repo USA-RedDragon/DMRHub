@@ -135,6 +135,14 @@ func POSTUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 			return
 		}
+		if !exists {
+			_, exists, err = models.RadioIDOwner(db, json.DMRId)
+			if err != nil {
+				slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
+				return
+			}
+		}
 		if exists {
 			c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is already registered"})
 			return

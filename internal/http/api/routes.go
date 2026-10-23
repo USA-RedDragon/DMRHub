@@ -104,6 +104,11 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.GET("", middleware.RequireAdminOrTGOwner(), userSuspension, v1UsersControllers.GETUsers)
 	v1Users.POST("", v1UsersControllers.POSTUser)
 	v1Users.GET("/me", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSelf)
+	v1Users.GET("/me/settings", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSettings)
+	v1Users.PUT("/me/settings/sms-storage", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserSMSStorage)
+	v1Users.GET("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyRadioIDs)
+	v1Users.POST("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.POSTMyRadioID)
+	v1Users.DELETE("/me/radio-ids/:radio_id", middleware.RequireLogin(), userSuspension, v1UsersControllers.DELETEMyRadioID)
 	// Paginated
 	v1Users.GET("/admins", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.GETUserAdmins)
 	// Paginated
@@ -115,6 +120,9 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.POST("/unsuspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserUnsuspend)
 	v1Users.POST("/suspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserSuspend)
 	v1Users.GET("/:id/profile", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserProfile)
+	v1Users.GET("/:id/radio-ids", middleware.RequireAdmin(), userSuspension, v1UsersControllers.GETUserRadioIDs)
+	v1Users.POST("/:id/radio-ids", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserRadioID)
+	v1Users.DELETE("/:id/radio-ids/:radio_id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.DELETEUserRadioID)
 	v1Users.GET("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.GETUser)
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.PATCHUser)
 	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.DELETEUser)

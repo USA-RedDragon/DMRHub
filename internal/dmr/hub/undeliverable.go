@@ -36,14 +36,24 @@ func (h *Hub) SetUndeliverableFunc(f UndeliverableFunc) {
 	h.undeliverable.Store(&f)
 }
 
+const undeliverableLogEvery = time.Second
+
 // ReportUndeliverable counts and logs a burst that target could not carry,
-// and tells the UndeliverableFunc. It logs once per stream.
+// and tells the UndeliverableFunc. It logs once per stream and at most
+// once a second, with the number of streams it did not log since.
 func (h *Hub) ReportUndeliverable(packet models.Packet, target, reason string) {
-	metrics.NewMetrics().IncrementUndeliverable(target)
+	metrics.NewMetrics().IncrementUndeliverable(target, reason)
 	if _, logged := h.undeliverableLogged.LoadOrStore(packet.StreamID, time.Now()); !logged {
-		slog.Info("Burst cannot go to its target",
-			"target", target, "repeaterID", packet.Repeater, "stream", packet.StreamID,
-			"src", packet.Src, "dst", packet.Dst, "reason", reason)
+		now := time.Now().UnixNano()
+		next := h.undeliverableLogNext.Load()
+		if now >= next && h.undeliverableLogNext.CompareAndSwap(next, now+int64(undeliverableLogEvery)) {
+			slog.Info("Burst cannot go to its target",
+				"target", target, "repeaterID", packet.Repeater, "stream", packet.StreamID,
+				"src", packet.Src, "dst", packet.Dst, "reason", reason,
+				"unloggedStreams", h.undeliverableUnlogged.Swap(0))
+		} else {
+			h.undeliverableUnlogged.Add(1)
+		}
 	}
 	if f := h.undeliverable.Load(); f != nil {
 		(*f)(packet, target, reason)

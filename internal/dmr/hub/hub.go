@@ -143,10 +143,12 @@ type Hub struct {
 	sightings      chan sighting
 	sightedStreams *xsync.Map[sightingKey, time.Time]
 
-	undeliverable       atomic.Pointer[UndeliverableFunc]
-	undeliverableLogged *xsync.Map[uint, time.Time]
-	parrotEnded         *xsync.Map[uint, time.Time]
-	streamTargets       *xsync.Map[streamTarget, targetAt]
+	undeliverable         atomic.Pointer[UndeliverableFunc]
+	undeliverableLogged   *xsync.Map[uint, time.Time]
+	undeliverableLogNext  atomic.Int64
+	undeliverableUnlogged atomic.Uint64
+	parrotEnded           *xsync.Map[uint, time.Time]
+	streamTargets         *xsync.Map[streamTarget, targetAt]
 }
 
 // NewHub creates a new Hub.

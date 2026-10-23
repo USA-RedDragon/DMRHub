@@ -153,6 +153,37 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 	return nil
 }
 
+// SetRepeaterStaticTalkgroups replaces the static talkgroups of the
+// repeater id on TS1 with ts1 and on TS2 with ts2, in one transaction. A nil
+// list leaves its slot as it is, and an empty one clears it. Each talkgroup
+// must exist.
+func SetRepeaterStaticTalkgroups(db *gorm.DB, id uint, ts1, ts2 []Talkgroup) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		repeater := Repeater{RepeaterConfiguration: RepeaterConfiguration{ID: id}}
+		for _, slot := range []struct {
+			name string
+			tgs  []Talkgroup
+		}{{"TS1StaticTalkgroups", ts1}, {"TS2StaticTalkgroups", ts2}} {
+			switch {
+			case slot.tgs == nil:
+			case len(slot.tgs) == 0:
+				if err := tx.Model(&repeater).Association(slot.name).Clear(); err != nil {
+					return fmt.Errorf("clear %s: %w", slot.name, err)
+				}
+			default:
+				if err := tx.Model(&repeater).Association(slot.name).Replace(slot.tgs); err != nil {
+					return fmt.Errorf("replace %s: %w", slot.name, err)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("error setting static talkgroups of repeater %d: %w", id, err)
+	}
+	return nil
+}
+
 func (p *Repeater) UpdateFrom(repeater Repeater) {
 	p.Connected = repeater.Connected
 	p.LastPing = repeater.LastPing

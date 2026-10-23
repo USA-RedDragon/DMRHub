@@ -40,6 +40,7 @@ import (
 
 type TestDB struct {
 	database *gorm.DB
+	pubsub   pubsub.PubSub
 }
 
 func (t *TestDB) CloseDB() {
@@ -48,6 +49,11 @@ func (t *TestDB) CloseDB() {
 		_ = sqlDB.Close()
 	}
 	t.database = nil
+}
+
+// PubSub returns the pubsub of the router of CreateTestDBRouterWithOptions.
+func (t *TestDB) PubSub() pubsub.PubSub {
+	return t.pubsub
 }
 
 func (t *TestDB) DB() *gorm.DB {
@@ -226,6 +232,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
 
+	t.pubsub = ps
 	ct := calltracker.NewCallTracker(t.database, ps)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 

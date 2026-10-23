@@ -28,6 +28,7 @@ import (
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
+	v1MessagesControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/messages"
 	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
@@ -141,6 +142,13 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 		v1Peers.POST("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRule)
 		v1Peers.DELETE("/:id/rules/:ruleId", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeerRule)
 	}
+
+	v1Messages := group.Group("/messages")
+	v1Messages.Use(middleware.RequireLogin(), userSuspension)
+	v1Messages.GET("/inbox", v1MessagesControllers.GETInbox)
+	v1Messages.GET("/outbox", v1MessagesControllers.GETOutbox)
+	v1Messages.GET("/stats", v1MessagesControllers.GETStats)
+	v1Messages.GET("/:id", v1MessagesControllers.GETMessage)
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in

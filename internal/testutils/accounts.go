@@ -83,3 +83,27 @@ func Do(t *testing.T, router *gin.Engine, jar CookieJar, method, path string, bo
 	router.ServeHTTP(w, req)
 	return w
 }
+
+// JSONKeys returns every object key in the JSON document b, at any depth.
+func JSONKeys(t *testing.T, b []byte) map[string]bool {
+	t.Helper()
+	var v any
+	require.NoError(t, json.Unmarshal(b, &v))
+	keys := map[string]bool{}
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, e := range x {
+				keys[k] = true
+				walk(e)
+			}
+		case []any:
+			for _, e := range x {
+				walk(e)
+			}
+		}
+	}
+	walk(v)
+	return keys
+}

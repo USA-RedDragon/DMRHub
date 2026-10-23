@@ -126,6 +126,9 @@ const UNDELIVERABLE_REASONS: Record<string, (link: string) => string> = {
   frame_type_3: () => 'the burst has an unknown frame type',
   fec_uncorrectable: () => 'the burst was too damaged to repair',
   slot_type: (link) => `the burst could not be rebuilt for the ${link}`,
+  data_in_voice: () => 'a data burst came in the middle of a voice call',
+  undecodable: () => 'the burst could not be read',
+  stream_id_range: (link) => `the call ID does not fit the ${link}`,
 };
 
 const SERVER_NAMES: Record<string, string> = {

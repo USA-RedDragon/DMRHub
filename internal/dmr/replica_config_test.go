@@ -82,6 +82,7 @@ func TestStaticTalkgroupEditOnOneReplicaRoutesOnAnother(t *testing.T) {
 		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
 		require.NoError(t, stack.DB.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 2}}))
 		stack.Hub.ReloadRepeater(context.Background(), 100002)
+		time.Sleep(settleDuration)
 
 		sendGroupBursts(t, c1, 1, 7002, 8)
 		assert.Zero(t, countDst(c2.Drain(drainWait), 1), "TG1 was removed on replica A and must stop on replica B")

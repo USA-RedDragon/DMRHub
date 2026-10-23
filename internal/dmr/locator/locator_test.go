@@ -456,3 +456,62 @@ func TestStopTrackingSendsAStopWhereTheRequestWent(t *testing.T) {
 	require.NoError(t, database.Model(&models.LocationRequest{}).Where("radio_id = ?", radio).Count(&n).Error)
 	assert.Zero(t, n)
 }
+
+func TestRetrackSendsAStopAndARequestWithTheNewInterval(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	waitAnswers(t, &out, 2)
+	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", radio).Update("interval_seconds", 1800).Error)
+	l.Retrack(radio)
+	got := waitAnswers(t, &out, 4)
+	require.Len(t, got, 4)
+	require.NotNil(t, got[2].lrrp)
+	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+	require.NotNil(t, got[3].lrrp)
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
+	assert.Equal(t, uint32(1800), got[3].lrrp.Request.Interval)
+	var row models.LocationRequest
+	require.NoError(t, database.Where("radio_id = ?", radio).Take(&row).Error)
+	assert.Equal(t, uint(1800), row.IntervalSeconds)
+}
+
+func TestRetrackOfARadioWithNoOpenRequestSendsNothing(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+	l.Retrack(radio)
+	l.StopTracking(radio)
+	time.Sleep(300 * time.Millisecond)
+	assert.Empty(t, out.all())
+}
+
+func TestARestartedLocatorUsesNewRequestIDs(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	ids := map[string]bool{}
+	for range 2 {
+		var out sent
+		l := locator.New(database, out.send)
+		for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+			l.Handle(p)
+		}
+		got := waitAnswers(t, &out, 2)
+		l.Stop()
+		require.Len(t, got, 2)
+		require.NotNil(t, got[1].lrrp)
+		ids[string(got[1].lrrp.Request.RequestID)] = true
+	}
+	assert.Len(t, ids, 2)
+}

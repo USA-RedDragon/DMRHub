@@ -24,6 +24,7 @@
 package locator
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"log/slog"
@@ -110,6 +111,9 @@ func New(db *gorm.DB, send func(models.Packet)) *Locator {
 		stream:  0x10C0_0000,
 		done:    make(chan struct{}),
 	}
+	var seed [4]byte
+	_, _ = rand.Read(seed[:])
+	l.reqID = binary.BigEndian.Uint32(seed[:])
 	l.wg.Add(1)
 	go l.tick()
 	return l
@@ -151,7 +155,7 @@ func (l *Locator) Handle(p models.Packet) {
 	ln, ok := l.links[k]
 	if !ok {
 		rx, err := data.NewReceiver(&data.ReceiverConfig{
-			Address: uint32(p.Dst), //nolint:gosec
+			Address: uint32(p.Dst), //nolint:gosec // DMR IDs are 24 bits
 			Respond: true,
 			Source:  layer2.SyncSourceBS,
 			Lost:    networkLost,
@@ -272,7 +276,7 @@ func (l *Locator) startTracking(k linkKey, ln *link) {
 	r := &l.lrrp.Request
 	r.RequestID, r.HasRequestID = rid[:], true
 	r.Periodic = true
-	r.Interval, r.HasInterval = uint32(s.IntervalSeconds), true //nolint:gosec
+	r.Interval, r.HasInterval = uint32(s.IntervalSeconds), true //nolint:gosec // at most 3600 seconds
 	r.AccuracyAndTime, r.Speed, r.Direction = true, true, true
 	buf, err := l.lrrp.AppendBinary(nil)
 	if err != nil {
@@ -298,22 +302,40 @@ func (l *Locator) startTracking(k linkKey, ln *link) {
 func (l *Locator) StopTracking(radioID uint) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if k, ln, ok := l.requestLink(radioID); ok {
+		l.stopTracking(k, ln)
+	}
+}
+
+// Retrack replaces the open location request of radioID with one that
+// follows its current setting, on the repeater and slot where the open
+// request went.
+func (l *Locator) Retrack(radioID uint) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if k, ln, ok := l.requestLink(radioID); ok {
+		l.stopTracking(k, ln)
+		l.startTracking(k, ln)
+	}
+}
+
+func (l *Locator) requestLink(radioID uint) (linkKey, *link, bool) {
 	var rows []models.LocationRequest
 	if err := l.db.Where("radio_id = ?", radioID).Limit(1).Find(&rows).Error; err != nil || len(rows) == 0 {
-		return
+		return linkKey{}, nil, false
 	}
 	r := rows[0]
 	k := linkKey{radio: radioID, service: r.ServiceID}
-	ln, ok := l.links[k]
-	if !ok {
-		rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec
-		if err != nil {
-			return
-		}
-		ln = &link{rx: rx, repeater: r.RepeaterID, slot: r.Slot == 2, cc: l.colorCode(r.RepeaterID), last: time.Now()}
-		l.links[k] = ln
+	if ln, ok := l.links[k]; ok {
+		return k, ln, true
 	}
-	l.stopTracking(k, ln)
+	rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec // service IDs are 5050 to 5059
+	if err != nil {
+		return linkKey{}, nil, false
+	}
+	ln := &link{rx: rx, repeater: r.RepeaterID, slot: r.Slot == 2, cc: l.colorCode(r.RepeaterID), last: time.Now()}
+	l.links[k] = ln
+	return k, ln, true
 }
 
 func (l *Locator) stopTracking(k linkKey, ln *link) {
@@ -340,8 +362,8 @@ func (l *Locator) stopTracking(k linkKey, ln *link) {
 
 func (l *Locator) queue(k linkKey, ln *link, port ip.Port, payload []byte) {
 	d := ip.Datagram{
-		Source:          ip.RadioAddress(ip.DefaultNetwork, uint32(k.service)), //nolint:gosec
-		Destination:     ip.RadioAddress(ip.DefaultNetwork, uint32(k.radio)),   //nolint:gosec
+		Source:          ip.RadioAddress(ip.DefaultNetwork, uint32(k.service)), //nolint:gosec // DMR IDs are 24 bits
+		Destination:     ip.RadioAddress(ip.DefaultNetwork, uint32(k.radio)),   //nolint:gosec // DMR IDs are 24 bits
 		SourcePort:      port,
 		DestinationPort: port,
 		TTL:             64,
@@ -355,8 +377,8 @@ func (l *Locator) queue(k linkKey, ln *link, port ip.Port, payload []byte) {
 	var h pdu.DataHeader
 	err = h.SetUnconfirmed(pdu.UnconfirmedDataHeader{
 		SAP:             enums.SAPIPBasedPacketData,
-		LLIDDestination: uint32(k.radio),   //nolint:gosec
-		LLIDSource:      uint32(k.service), //nolint:gosec
+		LLIDDestination: uint32(k.radio),   //nolint:gosec // DMR IDs are 24 bits
+		LLIDSource:      uint32(k.service), //nolint:gosec // DMR IDs are 24 bits
 		FullMessageFlag: true,
 	})
 	if err != nil {
@@ -404,7 +426,7 @@ func (l *Locator) askSilent() {
 	for _, r := range rows {
 		interval := maxInterval
 		if r.IntervalSeconds < uint(maxInterval/time.Second) {
-			interval = time.Duration(r.IntervalSeconds) * time.Second //nolint:gosec
+			interval = time.Duration(r.IntervalSeconds) * time.Second //nolint:gosec // at most 3600 seconds
 		}
 		h, ok := l.heard[r.RadioID]
 		if !ok || l.retried[r.RadioID] || !h.at.After(r.SentAt.Add(interval)) {
@@ -427,7 +449,7 @@ func (l *Locator) askSilent() {
 		ln, ok := l.links[k]
 		if !ok {
 			ln = &link{cc: l.colorCode(h.repeater)}
-			rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec
+			rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec // service IDs are 5050 to 5059
 			if err != nil {
 				continue
 			}
@@ -446,7 +468,7 @@ func (l *Locator) colorCode(repeater uint) enums.ColorCode {
 	if err := l.db.Model(&models.Repeater{}).Where("id = ?", repeater).Limit(1).Pluck("color_code", &cc).Error; err != nil || len(cc) == 0 {
 		return 1
 	}
-	return enums.ColorCode(cc[0] & 0xF) //nolint:gosec
+	return enums.ColorCode(cc[0] & 0xF) //nolint:gosec // masked to 4 bits
 }
 
 func positionOf(f *location.Fix, k linkKey, ln *link) (models.Position, bool) {

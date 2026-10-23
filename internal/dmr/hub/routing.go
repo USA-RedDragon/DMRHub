@@ -231,6 +231,17 @@ func isUserID(id uint) bool {
 
 const locatorSource = "locator"
 
+// StopTracking stops the open location request of radioID.
+func (h *Hub) StopTracking(radioID uint) {
+	h.locator.StopTracking(radioID)
+}
+
+// Retrack replaces the open location request of radioID with one that
+// follows its current setting.
+func (h *Hub) Retrack(radioID uint) {
+	h.locator.Retrack(radioID)
+}
+
 // sendFromLocator sends a packet of the location server to the repeater
 // that the radio it answers was heard on.
 func (h *Hub) sendFromLocator(p models.Packet) {

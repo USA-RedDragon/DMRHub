@@ -72,7 +72,7 @@ func TestMakeServer(t *testing.T) {
 	defer func() { _ = server.Server.Close() }()
 
 	assert.NotNil(t, server.Buffer)
-	assert.Len(t, server.Buffer, 73) // largestMessageSize
+	assert.Greater(t, len(server.Buffer), 89, "the buffer must hold an 89-octet DMRE packet")
 	assert.NotNil(t, server.DB)
 }
 

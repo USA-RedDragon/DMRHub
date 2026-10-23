@@ -36,18 +36,21 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
 
 const packetLength = 73
-const largestMessageSize = 73
 const bufferSize = 1000000 // 1MB
 
 const (
 	ingressQueueSize = 500
+	quenchTTL        = 30 * time.Second
+	quenchPruneSize  = 1024
 )
 
 // OpenBridge is the same as HBRP, but with a single packet type.
@@ -70,6 +73,14 @@ type Server struct {
 	bridgesMu sync.Mutex
 	bridges   map[uint]*bridge
 	epoch     time.Time
+
+	quenched *xsync.Map[quench, time.Time]
+}
+
+// quench is a stream that a peer asked with a BCSQ not to get.
+type quench struct {
+	peer   uint
+	stream uint
 }
 
 // bridge is the OpenBridge link of one peer, for the passphrase it was made
@@ -78,6 +89,7 @@ type bridge struct {
 	mu       sync.Mutex
 	password string
 	b        *dmrdsession.Bridge
+	key      *dmrdauth.BridgeKey
 }
 
 func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
@@ -93,22 +105,30 @@ func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
 	if s.bridges == nil {
 		s.bridges = map[uint]*bridge{}
 	}
-	b := &bridge{password: peer.Password, b: sb}
+	b := &bridge{password: peer.Password, b: sb, key: dmrdauth.NewBridgeKey([]byte(peer.Password))}
 	s.bridges[peer.ID] = b
 	return b, nil
 }
 
-// verified reports whether data is a DMRD packet with a good signature.
+// verified reports whether data is a DMRD or DMRE packet with a good
+// signature.
 func (b *bridge) verified(now time.Duration, data []byte) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	for _, o := range b.b.Packet(now, data, buf[:0]) {
-		if o.Kind == dmrdsession.OutputData && o.Command == dmrd.CommandDMRD {
+		if o.Kind == dmrdsession.OutputData && (o.Command == dmrd.CommandDMRD || o.Command == dmrd.CommandDMRE) {
 			return true
 		}
 	}
 	return false
+}
+
+// verifiedControl reports whether data is a control packet with a good
+// signature.
+func (b *bridge) verifiedControl(data []byte) bool {
+	_, ok := b.key.Verify(data)
+	return ok
 }
 
 func (b *bridge) sign(p []byte) error {
@@ -141,7 +161,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 	}
 
 	return Server{
-		Buffer:        make([]byte, largestMessageSize),
+		Buffer:        make([]byte, dmrdsession.MaxPacket+1),
 		SocketAddress: socketAddress,
 		hub:           hub,
 		Server:        server,
@@ -150,6 +170,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
+		quenched:      xsync.NewMap[quench, time.Time](),
 	}, nil
 }
 
@@ -235,6 +256,9 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 		return
 	}
 
+	if s.isQuenched(peerID, packet.StreamID) {
+		return
+	}
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
 	peer, err := models.FindPeerByID(s.DB, peerID)
 	if err != nil {
@@ -282,14 +306,13 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
-	if len(data) != packetLength {
-		slog.Error("Invalid OpenBridge packet length", "length", len(data), "expected", packetLength)
-		return
-	}
-
 	bridge, err := dmrd.DecodeBridge(data)
 	if err != nil {
-		slog.Error("Invalid OpenBridge packet", "error", err)
+		if control, cerr := dmrd.DecodeBridgeControl(data); cerr == nil {
+			s.handleControl(remoteAddr, data, control)
+			return
+		}
+		slog.Debug("Dropping a packet that is not OpenBridge", "length", len(data), "error", err)
 		return
 	}
 
@@ -378,4 +401,58 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	if err := s.pubsub.Publish("hub:events:peers", []byte(peerEvent)); err != nil {
 		slog.Error("Error publishing peer event", "error", err)
 	}
+}
+
+// handleControl takes a control packet of FreeDMR's enhanced OpenBridge.
+// It carries no peer ID, so the peer is the one at the source address
+// whose key signed it. A BCSQ asks not to get a stream; BCKA, BCST and BCVE
+// change nothing here.
+func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
+	peers, err := models.ListPeers(s.DB)
+	if err != nil {
+		slog.Error("Failed to list peers", "error", err)
+		return
+	}
+	for _, p := range peers {
+		if remoteAddr == nil || p.IP != remoteAddr.IP.String() || (p.Port != 0 && p.Port != remoteAddr.Port) {
+			continue
+		}
+		b, err := s.bridgeFor(p)
+		if err != nil || !b.verifiedControl(data) {
+			continue
+		}
+		if control.Command == dmrd.CommandBCSQ {
+			slog.Debug("OpenBridge peer quenched a stream", "peerID", p.ID, "talkgroup", control.TalkGroup, "stream", control.Stream)
+			s.quenchStream(p.ID, uint(control.Stream))
+			return
+		}
+		slog.Debug("OpenBridge control packet", "peerID", p.ID, "command", string(control.Command), "version", control.Version)
+		return
+	}
+	slog.Debug("Dropping an OpenBridge control packet of no known peer", "remote", remoteAddr)
+}
+
+func (s *Server) quenchStream(peer, stream uint) {
+	now := time.Now()
+	s.quenched.Store(quench{peer: peer, stream: stream}, now)
+	if s.quenched.Size() > quenchPruneSize {
+		s.quenched.Range(func(q quench, at time.Time) bool {
+			if now.Sub(at) > quenchTTL {
+				s.quenched.Delete(q)
+			}
+			return true
+		})
+	}
+}
+
+func (s *Server) isQuenched(peer, stream uint) bool {
+	at, ok := s.quenched.Load(quench{peer: peer, stream: stream})
+	if !ok {
+		return false
+	}
+	if time.Since(at) > quenchTTL {
+		s.quenched.Delete(quench{peer: peer, stream: stream})
+		return false
+	}
+	return true
 }

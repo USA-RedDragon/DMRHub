@@ -266,3 +266,37 @@ func (c *OpenBridgeClient) rx() {
 		}
 	}
 }
+
+// SendEnhancedPacket sends pkt as a signed DMRE packet of FreeDMR's
+// enhanced OpenBridge, version 4 or 5.
+func (c *OpenBridgeClient) SendEnhancedPacket(pkt models.Packet, version uint8) error {
+	bridge := dmrd.Bridge{Version: version, Data: pkt.Data(), SourceServer: c.PeerID, SourceRepeater: uint32(pkt.Repeater), Hops: 1} //nolint:gosec
+	bridge.Data.Size = dmrconst.MMDVMMaxPacketLength
+	out, err := bridge.AppendBinary(nil)
+	if err != nil {
+		return fmt.Errorf("encoding packet: %w", err)
+	}
+	return c.sendSigned(out)
+}
+
+// SendControl sends a signed OpenBridge control packet.
+func (c *OpenBridgeClient) SendControl(control dmrd.BridgeControl) error {
+	out, err := control.AppendBinary(nil)
+	if err != nil {
+		return fmt.Errorf("encoding control packet: %w", err)
+	}
+	return c.sendSigned(out)
+}
+
+func (c *OpenBridgeClient) sendSigned(p []byte) error {
+	if c.conn == nil {
+		return ErrOpenBridgeNotConnected
+	}
+	if err := dmrdauth.NewBridgeKey([]byte(c.Password)).SignInPlace(p); err != nil {
+		return fmt.Errorf("signing packet: %w", err)
+	}
+	if _, err := c.conn.Write(p); err != nil {
+		return fmt.Errorf("writing packet: %w", err)
+	}
+	return nil
+}

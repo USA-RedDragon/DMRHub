@@ -97,12 +97,17 @@ type settings struct {
 	bind    string
 	port    int
 	id      uint32
+	wt      config.MMDVMWebTransport
 }
 
 func settingsOf(k Kind, c *config.Config) settings {
 	switch k {
 	case MMDVM:
-		return settings{enabled: true, bind: c.DMR.MMDVM.Bind, port: c.DMR.MMDVM.Port}
+		s := settings{enabled: true, bind: c.DMR.MMDVM.Bind, port: c.DMR.MMDVM.Port}
+		if c.DMR.MMDVM.WebTransport.Enabled {
+			s.wt = c.DMR.MMDVM.WebTransport
+		}
+		return s
 	case IPSC:
 		return settings{enabled: c.DMR.IPSC.Enabled, bind: c.DMR.IPSC.Bind, port: c.DMR.IPSC.Port, id: c.DMR.IPSC.NetworkID}
 	case OpenBridge:
@@ -242,6 +247,12 @@ func (m *Manager) Apply(next *config.Config) []ApplyError {
 	return errs
 }
 
+// holdsAPortOf reports whether a server with the settings cur holds a port
+// that a server with the settings next binds.
+func holdsAPortOf(cur, next settings) bool {
+	return cur.port == next.port || (cur.wt.Enabled && next.wt.Enabled && cur.wt.Port == next.wt.Port)
+}
+
 // restart replaces server k, if any, with one made with next. It binds
 // the new socket while the old server still runs, so that an address in
 // use leaves the old server alone. Only when the new address overlaps the
@@ -251,7 +262,7 @@ func (m *Manager) restart(k Kind, next *config.Config) *ApplyError {
 	cur := m.servers[k]
 	r, err := m.build(k, next)
 	switch {
-	case err != nil && cur != nil && errors.Is(err, syscall.EADDRINUSE) && cur.settings.port == settingsOf(k, next).port:
+	case err != nil && cur != nil && errors.Is(err, syscall.EADDRINUSE) && holdsAPortOf(cur.settings, settingsOf(k, next)):
 		m.stop(m.ctx, k)
 		r, err = m.build(k, next)
 		if err != nil {

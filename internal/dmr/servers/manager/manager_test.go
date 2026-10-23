@@ -21,6 +21,7 @@ package manager_test
 
 import (
 	"context"
+	"net"
 	"runtime"
 	"strings"
 	"sync"
@@ -28,8 +29,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,4 +145,45 @@ func TestStopEndsEveryServerAndApplyAfterStopDoesNothing(t *testing.T) {
 	next.DMR.MMDVM.Port = testutils.FreeUDPPort(t)
 	assert.Empty(t, l.Manager.Apply(&next))
 	assert.Nil(t, l.Manager.Server(manager.MMDVM))
+}
+
+func webTransportAddr(t *testing.T, m *manager.Manager) net.Addr {
+	t.Helper()
+	s, ok := m.Server(manager.MMDVM).(*mmdvm.Server)
+	require.True(t, ok)
+	return s.WebTransportAddr()
+}
+
+func webTransportPort(t *testing.T, m *manager.Manager) int {
+	t.Helper()
+	a, ok := webTransportAddr(t, m).(*net.UDPAddr)
+	require.True(t, ok, "the WebTransport listener is not running")
+	return a.Port
+}
+
+func TestApplyTurnsWebTransportOnMovesItAndTurnsItOff(t *testing.T) {
+	t.Parallel()
+	l := testutils.SetupLiveStack(t)
+	require.Nil(t, webTransportAddr(t, l.Manager))
+
+	next := *l.Config
+	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: testutils.FreeUDPPort(t)}
+	require.Empty(t, l.Manager.Apply(&next))
+	require.NotNil(t, webTransportAddr(t, l.Manager), "turning WebTransport on starts its listener")
+	assert.Equal(t, next.DMR.MMDVM.WebTransport.Port, webTransportPort(t, l.Manager))
+
+	moved := next
+	moved.DMR.MMDVM.WebTransport.Port = testutils.FreeUDPPort(t)
+	require.Empty(t, l.Manager.Apply(&moved))
+	assert.Equal(t, moved.DMR.MMDVM.WebTransport.Port, webTransportPort(t, l.Manager), "a new port moves the listener")
+
+	both := moved
+	both.DMR.MMDVM.Port = testutils.FreeUDPPort(t)
+	require.Empty(t, l.Manager.Apply(&both), "a new MMDVM port with the same WebTransport port restarts the server")
+	assert.Equal(t, moved.DMR.MMDVM.WebTransport.Port, webTransportPort(t, l.Manager))
+
+	off := both
+	off.DMR.MMDVM.WebTransport.Enabled = false
+	require.Empty(t, l.Manager.Apply(&off))
+	assert.Nil(t, webTransportAddr(t, l.Manager), "turning WebTransport off stops its listener")
 }

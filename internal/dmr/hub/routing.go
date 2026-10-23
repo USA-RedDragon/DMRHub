@@ -66,7 +66,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	h.trackCall(ctx, packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 
-	if h.handleSpecialDestinations(ctx, packet, isVoice) {
+	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {
 		return
 	}
 
@@ -87,7 +87,12 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 // handleSpecialDestinations handles parrot (TG 9990) and unlink (TG 4000).
 // Returns true if the packet was consumed (no further routing needed).
-func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool) bool {
+// Packets from network peers are not handled: their Repeater field is a
+// peer ID, not a repeater to play back to or unlink.
+func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string) bool {
+	if h.getServerRole(sourceName) == RolePeer {
+		return false
+	}
 	if packet.Dst == dmrconst.ParrotUser && isVoice {
 		h.doParrot(ctx, packet)
 		return true

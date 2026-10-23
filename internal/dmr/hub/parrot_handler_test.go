@@ -142,3 +142,25 @@ func TestParrotDoesNotRecordFromATerminator(t *testing.T) {
 	h.RoutePacket(context.Background(), makeVoiceTermPacket(dmrconst.ParrotUser, 77002, false, true), models.RepeaterTypeMMDVM)
 	assert.Empty(t, drainParrot(srv, 4*time.Second), "a lone terminator is not a call to play back")
 }
+
+func TestParrotIgnoresNetworkPeers(t *testing.T) {
+	t.Parallel()
+	h, srv := parrotHub(t)
+	peer := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	t.Cleanup(func() { h.UnregisterServer("peer-srv") })
+
+	header := makeVoiceTermPacket(dmrconst.ParrotUser, 77003, false, false)
+	header.DTypeOrVSeq = uint(dmrconst.DTypeVoiceHead)
+	header.Repeater = testRepeaterID
+	h.RoutePacket(context.Background(), header, "peer-srv")
+	term := makeVoiceTermPacket(dmrconst.ParrotUser, 77003, false, false)
+	term.Repeater = testRepeaterID
+	h.RoutePacket(context.Background(), term, "peer-srv")
+
+	assert.Empty(t, drainParrot(srv, 4*time.Second), "a call to the parrot from a network peer is not played back")
+	select {
+	case rp := <-peer.Packets:
+		t.Fatalf("the peer got %v", rp.Packet)
+	default:
+	}
+}

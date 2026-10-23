@@ -46,8 +46,12 @@ func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName s
 // sourceName identifies the originating server (matches ServerConfig.Name)
 // to prevent echo/loop back to the source. It queues the packet on the
 // worker of its stream and returns at once, so the read loop of a server
-// never waits on routing, and one stream never waits on another.
+// never waits on routing, and one stream never waits on another. A stream
+// that another source is already sending is dropped (see AdmitStream).
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
+	if !h.AdmitStream(packet, sourceName) {
+		return
+	}
 	if !h.routing.Do(ctx, packet.StreamID, func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
 		slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
 	}

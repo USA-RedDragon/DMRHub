@@ -36,12 +36,20 @@ type Metrics struct {
 	// UndeliverableBurstsTotal counts bursts that a target could not carry.
 	UndeliverableBurstsTotal *prometheus.CounterVec
 
+	// IngressDroppedBurstsTotal counts bursts that the hub took in and did
+	// not route, by reason.
+	IngressDroppedBurstsTotal *prometheus.CounterVec
+
 	// TrackerDroppedTotal counts packets that the call tracker dropped.
 	TrackerDroppedTotal prometheus.Counter
 
 	// MessagesDroppedTotal counts data messages that the message store dropped.
 	MessagesDroppedTotal prometheus.Counter
 }
+
+// DropReasonStreamFromOtherSource is the IngressDroppedBurstsTotal reason
+// for a burst of a stream that another source is already sending.
+const DropReasonStreamFromOtherSource = "stream_from_other_source"
 
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
@@ -80,6 +88,10 @@ func NewMetrics() *Metrics {
 				Name: "dmr_undeliverable_bursts_total",
 				Help: "The total number of bursts that a target could not carry",
 			}, []string{"target", "reason"}),
+			IngressDroppedBurstsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dmr_ingress_dropped_bursts_total",
+				Help: "The total number of incoming bursts that were not routed, by reason",
+			}, []string{"reason"}),
 			TrackerDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "call_tracker_dropped_packets_total",
 				Help: "The total number of packets that the call tracker did not record because its queue was full",
@@ -101,6 +113,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.KVExpiredKeysTotal)
 	prometheus.MustRegister(m.KVCleanupDuration)
 	prometheus.MustRegister(m.UndeliverableBurstsTotal)
+	prometheus.MustRegister(m.IngressDroppedBurstsTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
 }
@@ -127,6 +140,11 @@ func (m *Metrics) RecordKVCleanup(duration float64) {
 // reason.
 func (m *Metrics) IncrementUndeliverable(target, reason string) {
 	m.UndeliverableBurstsTotal.WithLabelValues(target, reason).Inc()
+}
+
+// IncrementIngressDropped counts an incoming burst that was not routed.
+func (m *Metrics) IncrementIngressDropped(reason string) {
+	m.IngressDroppedBurstsTotal.WithLabelValues(reason).Inc()
 }
 
 // IncrementTrackerDropped counts a packet that the call tracker dropped.

@@ -31,6 +31,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,8 +49,6 @@ var (
 	ErrReadDB       = errors.New("error reading database")
 	ErrDecodingDB   = errors.New("error decoding database")
 )
-
-const waitTime = 100 * time.Millisecond
 
 type dbMetadata struct {
 	Count int
@@ -82,7 +81,8 @@ type DB[T any] struct {
 	updatingMap *xsync.Map[uint, T]
 
 	builtInDate time.Time
-	isInited    atomic.Bool
+	unpackMu    sync.Mutex
+	unpackErr   error
 	isDone      atomic.Bool
 
 	config Config[T]
@@ -96,50 +96,47 @@ func NewDB[T any](cfg Config[T]) *DB[T] {
 }
 
 // UnpackDB decompresses the embedded database and loads it into memory.
-// It is safe for concurrent use; only the first caller performs the actual unpack.
+// It is safe for concurrent use; only the first caller performs the actual
+// unpack, the others wait for it and get its result.
 func (db *DB[T]) UnpackDB() error {
-	lastInit := db.isInited.Swap(true)
-	if !lastInit {
-		db.updatingMap = xsync.NewMap[uint, T](xsync.WithPresize(db.config.Presize), xsync.WithGrowOnly())
+	db.unpackMu.Lock()
+	defer db.unpackMu.Unlock()
+	if db.isDone.Load() {
+		return nil
+	}
+	if db.unpackErr != nil {
+		return db.unpackErr
+	}
+	db.unpackErr = db.unpack()
+	return db.unpackErr
+}
 
-		var err error
-		db.builtInDate, err = time.Parse(time.RFC3339, db.config.BuiltInDateStr)
-		if err != nil {
-			return ErrParsingDate
-		}
-		dbReader, err := xz.NewReader(bytes.NewReader(db.config.CompressedData))
-		if err != nil {
-			return ErrXZReader
-		}
+func (db *DB[T]) unpack() error {
+	updating := xsync.NewMap[uint, T](xsync.WithPresize(db.config.Presize), xsync.WithGrowOnly())
 
-		count, err := db.config.Decode(json.NewDecoder(dbReader), db.updatingMap)
-		if err != nil {
-			return err
-		}
-		if count == 0 {
-			slog.Error("No entries found in database", "entity", db.config.EntityName)
-			return ErrNoEntries
-		}
-
-		db.metadata.Store(dbMetadata{Count: count, Date: db.builtInDate})
-		db.dataMap = db.updatingMap
-		db.updatingMap = xsync.NewMap[uint, T]()
-		db.isDone.Store(true)
+	var err error
+	db.builtInDate, err = time.Parse(time.RFC3339, db.config.BuiltInDateStr)
+	if err != nil {
+		return ErrParsingDate
+	}
+	dbReader, err := xz.NewReader(bytes.NewReader(db.config.CompressedData))
+	if err != nil {
+		return ErrXZReader
 	}
 
-	for !db.isDone.Load() {
-		time.Sleep(waitTime)
+	count, err := db.config.Decode(json.NewDecoder(dbReader), updating)
+	if err != nil {
+		return err
 	}
-
-	meta, ok := db.metadata.Load().(dbMetadata)
-	if !ok {
-		slog.Error("Error loading database", "entity", db.config.EntityName)
-		return ErrLoading
-	}
-	if meta.Count == 0 {
+	if count == 0 {
 		slog.Error("No entries found in database", "entity", db.config.EntityName)
 		return ErrNoEntries
 	}
+
+	db.metadata.Store(dbMetadata{Count: count, Date: db.builtInDate})
+	db.dataMap = updating
+	db.updatingMap = xsync.NewMap[uint, T]()
+	db.isDone.Store(true)
 	return nil
 }
 
@@ -248,7 +245,9 @@ func (db *DB[T]) GetBuiltInDate() time.Time {
 // ResetForBenchmark resets internal state so UnpackDB can be called again.
 // This is intended for benchmark use only.
 func (db *DB[T]) ResetForBenchmark() {
-	db.isInited.Store(false)
+	db.unpackMu.Lock()
+	defer db.unpackMu.Unlock()
+	db.unpackErr = nil
 	db.isDone.Store(false)
 	db.metadata.Store(dbMetadata{})
 }

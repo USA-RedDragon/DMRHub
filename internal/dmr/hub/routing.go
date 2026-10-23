@@ -117,14 +117,18 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 // handleGroupCall routes a group burst of any kind to all subscribed
 // repeaters.
 func (h *Hub) handleGroupCall(packet models.Packet) {
-	exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
-	if err != nil {
-		slog.Error("Error checking if talkgroup exists", "error", err)
-		return
-	}
-	if !exists {
-		slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
-		return
+	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
+	if _, ok := h.streamTalkgroups.Load(key); !ok {
+		exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
+		if err != nil {
+			slog.Error("Error checking if talkgroup exists", "error", err)
+			return
+		}
+		if !exists {
+			slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
+			return
+		}
+		h.streamTalkgroups.Store(key, time.Now())
 	}
 
 	// talkgroupTopicPrefix is the fixed prefix for talkgroup pubsub topics.

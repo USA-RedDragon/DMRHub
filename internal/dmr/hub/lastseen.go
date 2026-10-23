@@ -75,6 +75,7 @@ func (h *Hub) runSightings() {
 			pruneStreams(h.undeliverableLogged, now)
 			pruneStreams(h.parrotEnded, now)
 			pruneStreams(h.loopLogged, now)
+			pruneStreams(h.streamTalkgroups, now)
 			h.pruneStreamClaims(now)
 			h.pruneSlotBuckets(now)
 			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {

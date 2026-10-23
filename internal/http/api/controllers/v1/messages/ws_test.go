@@ -133,3 +133,17 @@ func TestMessagesWebsocketPushesOnlyVisibleMessagesToEachUser(t *testing.T) {
 	require.NoError(t, e.db.Model(&models.Message{}).Count(&n).Error)
 	assert.Equal(t, int64(6), n)
 }
+
+func TestWebsocketsRefuseCrossSiteOrigins(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"/ws/calls", "/ws/messages"} {
+		e := newEnv(t)
+		server := httptest.NewServer(e.router)
+		defer server.Close()
+		conn, resp := testutils.DialWSFrom(t, server.URL, path, e.jar, "https://evil.example")
+		assert.Nil(t, conn, path)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, path)
+		conn, resp = testutils.DialWS(t, server.URL, path, e.jar)
+		assert.NotNil(t, conn, "%s from DMRHub's own origin: status %d", path, resp.StatusCode)
+	}
+}

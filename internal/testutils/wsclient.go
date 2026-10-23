@@ -63,6 +63,15 @@ func DialWS(t *testing.T, serverURL, path string, jar CookieJar) (*WSConn, *http
 	t.Helper()
 	u, err := url.Parse(serverURL)
 	require.NoError(t, err)
+	return DialWSFrom(t, serverURL, path, jar, "http://"+u.Host)
+}
+
+// DialWSFrom opens the websocket path as DialWS does, from a page at
+// origin.
+func DialWSFrom(t *testing.T, serverURL, path string, jar CookieJar, origin string) (*WSConn, *http.Response) {
+	t.Helper()
+	u, err := url.Parse(serverURL)
+	require.NoError(t, err)
 	dialer := net.Dialer{Timeout: 5 * time.Second}
 	conn, err := dialer.DialContext(t.Context(), "tcp", u.Host)
 	require.NoError(t, err)
@@ -75,7 +84,7 @@ func DialWS(t *testing.T, serverURL, path string, jar CookieJar) (*WSConn, *http
 	req.Header.Set("Connection", "Upgrade")
 	req.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(key[:]))
 	req.Header.Set("Sec-WebSocket-Version", "13")
-	req.Header.Set("Origin", "http://"+u.Host)
+	req.Header.Set("Origin", origin)
 	for _, c := range jar.Cookies() {
 		req.Header.Add("Cookie", c.String())
 	}

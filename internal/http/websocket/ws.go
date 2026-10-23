@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -87,26 +88,68 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 	}
 }
 
+// originAllowed reports whether the browser page at the Origin of r may
+// open a websocket: DMRHub's own origin, the host that r was sent to, or,
+// with CORS on, one of the configured CORS origins. A request without an
+// Origin is refused.
 func (h *WSHandler) originAllowed(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
+	origin, ok := parseOrigin(r.Header.Get("Origin"))
+	if !ok {
 		return false
 	}
-	if !h.config.HTTP.CORS.Enabled {
+	if origin.host == hostOf(origin.scheme, r.Host) {
 		return true
 	}
-	for _, host := range h.config.HTTP.CORS.Hosts {
-		if strings.HasSuffix(host, ":443") && strings.HasPrefix(origin, "https://") {
-			host = strings.TrimSuffix(host, ":443")
-		}
-		if strings.HasSuffix(host, ":80") && strings.HasPrefix(origin, "http://") {
-			host = strings.TrimSuffix(host, ":80")
-		}
-		if strings.Contains(origin, host) {
+	if !h.config.HTTP.CORS.Enabled {
+		return false
+	}
+	for _, allowed := range h.config.HTTP.CORS.Hosts {
+		if originMatches(origin, allowed) {
 			return true
 		}
 	}
 	return false
+}
+
+type webOrigin struct {
+	scheme string
+	host   string
+}
+
+func parseOrigin(s string) (webOrigin, bool) {
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return webOrigin{}, false
+	}
+	return webOrigin{scheme: u.Scheme, host: hostOf(u.Scheme, u.Host)}, true
+}
+
+// hostOf returns host in lower case, without the default port of scheme.
+func hostOf(scheme, host string) string {
+	host = strings.ToLower(host)
+	switch {
+	case scheme == "https" && strings.HasSuffix(host, ":443"):
+		return strings.TrimSuffix(host, ":443")
+	case scheme == "http" && strings.HasSuffix(host, ":80"):
+		return strings.TrimSuffix(host, ":80")
+	}
+	return host
+}
+
+// originMatches reports whether origin is the configured CORS origin
+// allowed, which is a full origin such as https://example.com or a host
+// such as example.com:443. The match is exact, so evil-example.com does not
+// match example.com.
+func originMatches(origin webOrigin, allowed string) bool {
+	allowed = strings.TrimSuffix(strings.TrimSpace(allowed), "/")
+	if allowed == "*" {
+		return true
+	}
+	if strings.Contains(allowed, "://") {
+		a, ok := parseOrigin(allowed)
+		return ok && a == origin
+	}
+	return hostOf(origin.scheme, allowed) == origin.host
 }
 
 func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn) {

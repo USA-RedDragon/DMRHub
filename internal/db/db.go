@@ -170,8 +170,8 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	if err != nil {
 		return db, fmt.Errorf("failed to open database: %w", err)
 	}
-	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0))
 	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
 	sqlDB.SetConnMaxIdleTime(consts.MaxIdleTime)
 
 	return

@@ -61,7 +61,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	v1(config, apiV1, userSuspension)
 
 	ws := router.Group("/ws")
-	ws.Use(ratelimit)
+	ws.Use(ratelimit, websocket.WatchUser(pubsub))
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
 	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
 	if config.DMR.OpenBridge.Enabled {

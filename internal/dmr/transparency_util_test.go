@@ -65,7 +65,6 @@ func pendingCommits() map[string]string {
 		"hub-b commit 11": "mmdvm: record talker alias and GPS",
 		"hub-c commit 14": "db: add messages, SMS Storage fields and owned radio IDs",
 		"hub-c commit 15": "calltracker: store and decode every data message",
-		"parrot fix":      "hub: a second terminator of a parrot call starts a new recording, whose reply plays in the middle of the first (no lane has it)",
 	}
 }
 

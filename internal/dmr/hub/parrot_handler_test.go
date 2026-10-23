@@ -80,3 +80,65 @@ func TestRoutePacketParrot(t *testing.T) {
 		t.Fatal("Timed out waiting for parrot playback")
 	}
 }
+
+func parrotHub(t *testing.T) (*hub.Hub, *hub.ServerHandle) {
+	t.Helper()
+	h, database := makeTestHub(t)
+	seedUser(t, database, testSrcID, "TESTUSER")
+	seedRepeater(t, database, testRepeaterID, testSrcID)
+	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
+	h.ActivateRepeater(context.Background(), testRepeaterID)
+	time.Sleep(100 * time.Millisecond)
+	return h, srv
+}
+
+func drainParrot(srv *hub.ServerHandle, wait time.Duration) []models.Packet {
+	var got []models.Packet
+	deadline := time.After(wait)
+	for {
+		select {
+		case rp := <-srv.Packets:
+			got = append(got, rp.Packet)
+		case <-deadline:
+			return got
+		}
+	}
+}
+
+func TestParrotIgnoresARepeatedTerminator(t *testing.T) {
+	t.Parallel()
+	h, srv := parrotHub(t)
+
+	header := makeVoiceTermPacket(dmrconst.ParrotUser, 77001, false, false)
+	header.DTypeOrVSeq = uint(dmrconst.DTypeVoiceHead)
+	h.RoutePacket(context.Background(), header, models.RepeaterTypeMMDVM)
+	for i := uint(0); i < 3; i++ {
+		v := makeVoicePacket(dmrconst.ParrotUser, 77001, false, false)
+		v.DTypeOrVSeq = i
+		h.RoutePacket(context.Background(), v, models.RepeaterTypeMMDVM)
+	}
+	for range 2 {
+		h.RoutePacket(context.Background(), makeVoiceTermPacket(dmrconst.ParrotUser, 77001, false, false), models.RepeaterTypeMMDVM)
+	}
+
+	got := drainParrot(srv, 5*time.Second)
+	var terms int
+	for _, p := range got {
+		if p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+			terms++
+		}
+	}
+	assert.Equal(t, 1, terms, "one reply, which ends with its one terminator")
+	if assert.NotEmpty(t, got) {
+		assert.Equal(t, uint(dmrconst.DTypeVoiceHead), got[0].DTypeOrVSeq, "the reply starts with the header")
+	}
+}
+
+func TestParrotDoesNotRecordFromATerminator(t *testing.T) {
+	t.Parallel()
+	h, srv := parrotHub(t)
+
+	h.RoutePacket(context.Background(), makeVoiceTermPacket(dmrconst.ParrotUser, 77002, false, true), models.RepeaterTypeMMDVM)
+	assert.Empty(t, drainParrot(srv, 4*time.Second), "a lone terminator is not a call to play back")
+}

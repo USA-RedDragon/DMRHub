@@ -73,6 +73,7 @@ func (h *Hub) runSightings() {
 		case now := <-ticker.C:
 			pruneStreams(h.sightedStreams, now)
 			pruneStreams(h.undeliverableLogged, now)
+			pruneStreams(h.parrotEnded, now)
 		}
 	}
 }

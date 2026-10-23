@@ -37,19 +37,29 @@ const parrotDelay = 3 * time.Second
 const parrotSource = "parrot"
 
 // doParrot handles parrot (echo) service. Records packets and plays them back
-// to the source repeater.
+// to the source repeater. A terminator never starts a recording, and the
+// packets of a stream whose recording ended, such as a repeated terminator,
+// are ignored.
 func (h *Hub) doParrot(ctx context.Context, packet models.Packet) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.doParrot")
 	defer span.End()
 
+	if _, ended := h.parrotEnded.Load(packet.StreamID); ended {
+		return
+	}
 	repeaterID := packet.Repeater
+	isTerm := packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm
 	if !h.parrot.IsStarted(ctx, packet.StreamID) {
+		if isTerm {
+			return
+		}
 		h.parrot.StartStream(ctx, packet.StreamID, repeaterID)
 		slog.Debug("Parrot started for stream", "streamID", packet.StreamID, "repeaterID", repeaterID)
 	}
 	h.parrot.RecordPacket(ctx, packet.StreamID, packet)
 
-	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+	if isTerm {
+		h.parrotEnded.Store(packet.StreamID, time.Now())
 		packets := h.parrot.GetStream(ctx, packet.StreamID)
 		h.parrot.StopStream(ctx, packet.StreamID)
 		h.calls.Add()

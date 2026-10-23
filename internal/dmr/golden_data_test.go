@@ -392,12 +392,22 @@ func TestGoldenParrotCall(t *testing.T) {
 			g := reply[i+1]
 			assert.Equal(t, w.FrameType, g.FrameType, "voice burst %d frame type", i)
 			assert.Equal(t, w.DTypeOrVSeq, g.DTypeOrVSeq, "voice burst %d position", i)
-			assert.Equal(t, hex.EncodeToString(w.DMRData[:]), hex.EncodeToString(g.DMRData[:]), "voice burst %d", i)
+			assert.Equal(t, ambeBits(w.DMRData), ambeBits(g.DMRData), "voice burst %d", i)
 		}
 		last := reply[len(reply)-1]
 		assert.Equal(t, dmrconst.FrameDataSync, last.FrameType)
 		assert.Equal(t, uint(dmrconst.DTypeVoiceTerm), last.DTypeOrVSeq, "the reply must end with the terminator")
 	})
+}
+
+// ambeBits returns the 216 voice bits of a voice burst in hex: the burst
+// without the 48 bits of sync or embedded signalling at bits 108 to 155,
+// which a parrot reply rebuilds to name the reply.
+func ambeBits(b [33]byte) string {
+	out := append([]byte{}, b[:13]...)
+	out = append(out, b[13]&0xF0, b[19]&0x0F)
+	out = append(out, b[20:]...)
+	return hex.EncodeToString(out)
 }
 
 type appGolden struct {

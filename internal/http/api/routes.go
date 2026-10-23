@@ -150,6 +150,11 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Messages.GET("/stats", v1MessagesControllers.GETStats)
 	v1Messages.GET("/:id", v1MessagesControllers.GETMessage)
 
+	v1Admin := group.Group("/admin")
+	v1Admin.Use(middleware.RequireAdmin(), userSuspension)
+	v1Admin.GET("/messages", v1MessagesControllers.GETAdminMessages)
+	v1Admin.GET("/messages/:id", v1MessagesControllers.GETAdminMessage)
+
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in
 	// Paginated

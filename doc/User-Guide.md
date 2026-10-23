@@ -71,7 +71,7 @@ For MMDVM-based repeaters, you'll receive a [DMRGateway](https://github.com/g4kl
 
 DMRHub also accepts repeaters that speak the HomeBrew Repeater Protocol (HBRP), the protocol of the published Homebrew specification. It is a different protocol from the MMDVM network protocol that MMDVMHost and DMRGateway speak: HBRP sends repeater IDs, salts and tokens as hex text and has its own login and keepalive messages.
 
-Register an HBRP repeater as **MMDVM** and point it at the same address, port and password. DMRHub tells the two protocols apart by the login of the repeater and answers in the protocol it logged in with.
+Register an HBRP repeater as **MMDVM** and point it at the same address, port and password. DMRHub tells the two protocols apart by the login of the repeater and answers in the protocol it logged in with. The repeater page shows which protocol a repeater last connected with.
 
 HBRP has no options message, so an HBRP repeater cannot set its static talkgroups when it connects; set them on the repeaters page. HBRP has no talker alias or GPS messages either.
 

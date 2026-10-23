@@ -61,7 +61,7 @@
                 {{ isOnline ? 'Online' : 'Offline' }}
               </span>
               <span class="inline-flex items-center rounded-md bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                {{ (repeater.type || 'mmdvm').toUpperCase() }}
+                {{ protocol || (repeater.type || 'mmdvm').toUpperCase() }}
               </span>
               <span v-if="repeater.simplex_repeater"
                 class="inline-flex items-center rounded-md bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -81,6 +81,10 @@
           </CardHeader>
           <CardContent>
             <dl class="detail-list">
+              <div v-if="protocol" class="detail-row">
+                <dt class="detail-label">Protocol</dt>
+                <dd class="detail-value">{{ protocol }}</dd>
+              </div>
               <div class="detail-row">
                 <dt class="detail-label">RX Frequency</dt>
                 <dd class="detail-value">{{ formatFrequency(repeater.rx_frequency) }}</dd>
@@ -97,7 +101,7 @@
                 <dt class="detail-label">Color Code</dt>
                 <dd class="detail-value">{{ repeater.color_code }}</dd>
               </div>
-              <div class="detail-row">
+              <div v-if="repeater.slots" class="detail-row">
                 <dt class="detail-label">Timeslots</dt>
                 <dd class="detail-value">{{ repeater.slots }}</dd>
               </div>
@@ -289,6 +293,7 @@ type RepeaterData = {
   id: number;
   callsign: string;
   type: string;
+  dialect: string;
   connected_time: string;
   last_ping_time: string;
   created_at: string;
@@ -380,6 +385,10 @@ export default {
     isOnline(): boolean {
       if (!this.repeater) return false;
       return this.hasTimestamp(this.repeater.last_ping_time);
+    },
+    protocol(): string {
+      if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';
+      return this.repeater.dialect === 'HBRP' ? 'HBRP' : 'MMDVM';
     },
     hasCoordinates(): boolean {
       if (!this.repeater) return false;

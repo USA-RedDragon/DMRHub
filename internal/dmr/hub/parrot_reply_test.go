@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/layer3"
 )
 
 // recordedParrotCall returns the call of DMRGateway in
@@ -119,5 +120,99 @@ func TestParrotReplyKeepsRecordingWithoutVoice(t *testing.T) {
 	rec := []models.Packet{{Signature: "DMRD", Src: 9990, Dst: 1000001, FrameType: dmrconst.FrameDataSync, DTypeOrVSeq: uint(enums.DataTypeCSBK), StreamID: 1}}
 	if got := parrotReply(rec, 1); len(got) != 1 || !got[0].Equal(rec[0]) {
 		t.Fatalf("got %v, want the recording", got)
+	}
+}
+
+// recordedCodec2Call returns a Codec2 call from 3191868 to the parrot 9990
+// (FID 0xC2, Service Options that are not zero, 2400 bit/s frames of 6
+// octets and 3 zero octets in each slot) that ends after burst C of its
+// third superframe, as the parrot records it, with its slots.
+func recordedCodec2Call(t *testing.T) ([]models.Packet, pdu.LCBytes, [][9]byte) {
+	t.Helper()
+	lc, err := pdu.NewVoiceLCBytes(false, 9990, 3191868, layer3.ServiceOptions{IsOpenVoiceCallMode: true, PriorityLevel: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lc.SetFID(0xC2)
+	vt, err := layer2.NewVoiceTransmitter(&layer2.VoiceTransmitterOptions{LC: pdu.DecodeFullLinkControlBytes(lc), ColorCode: 1, Source: layer2.SyncSourceMS})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slots := make([][9]byte, 15*layer2.VoiceSlotsPerBurst)
+	for i := range slots {
+		for j := range 6 {
+			slots[i][j] = byte(i*13 + j*29 + 1)
+		}
+	}
+	bursts, err := vt.AddSlots(slots...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkt := func(raw layer2.RawBurst, frame dmrconst.FrameType, value uint) models.Packet {
+		return models.Packet{Signature: "DMRD", Src: 9990, Dst: 3191868, Repeater: 100001, FrameType: frame, DTypeOrVSeq: value, StreamID: 0xC2, DMRData: raw, BER: -1, RSSI: -1}
+	}
+	rec := make([]models.Packet, 0, len(bursts)+2)
+	rec = append(rec, pkt(vt.Header(), dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader)))
+	for i, raw := range bursts {
+		frame := dmrconst.FrameVoice
+		if i%6 == 0 {
+			frame = dmrconst.FrameVoiceSync
+		}
+		rec = append(rec, pkt(raw, frame, uint(i%6)))
+	}
+	rec = append(rec, pkt(vt.Terminator(), dmrconst.FrameDataSync, uint(enums.DataTypeTerminatorWithLC)))
+	for i := range rec {
+		rec[i].Seq = uint(i)
+	}
+	return rec, lc, slots
+}
+
+// TestParrotReplyKeepsTheCodec2Call checks that the reply to a Codec2 call
+// carries the LC of the caller, with its FID and Service Options and the
+// addresses of the reply, and the recorded voice, and that the last
+// superframe is padded with the last recorded slot, not with AMBE+2
+// silence, which is noise to Codec2.
+func TestParrotReplyKeepsTheCodec2Call(t *testing.T) {
+	t.Parallel()
+	rec, lc, slots := recordedCodec2Call(t)
+	want := lc
+	if err := want.SetCall(false, 3191868, 9990); err != nil {
+		t.Fatal(err)
+	}
+	reply := parrotReply(rec, 1)
+	if len(reply) != 1+18+1 {
+		t.Fatalf("reply has %d packets, want 20", len(reply))
+	}
+	for _, i := range []int{0, len(reply) - 1} {
+		dt := enums.DataType(reply[i].DTypeOrVSeq)
+		cw, ok := layer2.RawBurst(reply[i].DMRData).MMDVMHostPayload(dt)
+		if !ok {
+			t.Fatalf("packet %d: Full LC does not decode", i)
+		}
+		if got := pdu.LCBytes(cw[:9]); got != want {
+			t.Fatalf("packet %d (%s): LC % X, want % X", i, dt, got[:], want[:])
+		}
+	}
+	for v := range 18 {
+		got := layer2.RawBurst(reply[1+v].DMRData).VoiceSlots()
+		for k, s := range got {
+			j := v*layer2.VoiceSlotsPerBurst + k
+			exp := slots[len(slots)-1]
+			if j < len(slots) {
+				exp = slots[j]
+			}
+			if s != exp {
+				t.Fatalf("slot %d: % X, want % X", j, s, exp)
+			}
+		}
+	}
+	for sf := range 3 {
+		var f [4][4]byte
+		for k := range 4 {
+			f[k] = layer2.RawBurst(reply[2+sf*6+k].DMRData).EmbeddedData()
+		}
+		if got, res := layer2.DecodeEmbeddedLC(f); res.Uncorrectable || pdu.LCBytes(got) != want {
+			t.Fatalf("superframe %d: embedded LC % X, want % X", sf, got, want[:])
+		}
 	}
 }

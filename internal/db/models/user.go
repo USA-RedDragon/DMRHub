@@ -46,10 +46,14 @@ type User struct {
 	// it, so a Save of a stale User cannot undo a change.
 	SMSStorageEnabled bool `json:"-" gorm:"<-:create;not null;default:false"`
 	// SMSStorageSince is when the user last turned SMS Storage on.
-	SMSStorageSince *time.Time     `json:"-" gorm:"<-:create"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"-"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	SMSStorageSince *time.Time `json:"-" gorm:"<-:create"`
+	// SharePositions reports that the user shows the positions of their
+	// radios to the other users who share theirs. Only SetSharePositions
+	// writes it.
+	SharePositions bool           `json:"-" gorm:"<-:create;not null;default:false"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"-"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {

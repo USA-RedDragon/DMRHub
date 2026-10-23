@@ -238,6 +238,7 @@ func (r *rig) heard(t *testing.T) {
 	}
 	wg.Wait()
 	time.Sleep(3 * time.Second)
+	r.waitQuiet(time.Minute)
 	r.led.finish(0, true)
 	r.led.reset()
 }
@@ -294,6 +295,27 @@ func (r *rig) drain() {
 	r.res.fail(r.t, "the hub still had %d packets queued to its servers and %d in the call tracker %s after the traffic stopped; stopping the hub before its servers",
 		serverQueues(r.stack), trackerQueue(r.stack), limit)
 	r.stack.Hub.Stop(context.Background())
+}
+
+// waitQuiet waits until the hub has no packet queued and has written no
+// transmission row for two seconds.
+func (r *rig) waitQuiet(limit time.Duration) {
+	start := time.Now()
+	var last int64 = -1
+	quietSince := time.Now()
+	for time.Since(start) < limit {
+		var n int64
+		quiet(r.stack.DB).Table("calls").Count(&n)
+		busy := serverQueues(r.stack)+max(trackerQueue(r.stack), 0) > 0 || n != last
+		if busy {
+			last, quietSince = n, time.Now()
+		} else if time.Since(quietSince) >= 2*time.Second {
+			r.res.set("settle_s", time.Since(start).Seconds())
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	r.res.set("settle_s", -1)
 }
 
 // script is a transmission that a lane plays.

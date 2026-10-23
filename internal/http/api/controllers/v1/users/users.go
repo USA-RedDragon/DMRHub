@@ -32,6 +32,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
@@ -274,6 +276,7 @@ func POSTUserDemote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
+	publishUserChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "User demoted"})
 
 	if config.SMTP.Enabled {
@@ -335,6 +338,7 @@ func POSTUserPromote(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
+	publishUserChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "User promoted"})
 
 	if config.SMTP.Enabled {
@@ -389,6 +393,7 @@ func POSTUserUnsuspend(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
+	publishUserChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "User unsuspended"})
 }
 
@@ -431,6 +436,7 @@ func POSTUserApprove(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
+	publishUserChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "User approved"})
 }
 
@@ -686,6 +692,7 @@ func DELETEUser(c *gin.Context) {
 			dmrHub.ReloadRepeater(c.Request.Context(), r.ID)
 		}
 	}
+	publishUserChanged(c, uint(idUint64))
 	c.JSON(http.StatusOK, gin.H{messageKey: "User deleted"})
 }
 
@@ -738,6 +745,7 @@ func POSTUserSuspend(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingUser})
 		return
 	}
+	publishUserChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "User suspended"})
 }
 
@@ -769,4 +777,15 @@ func GETUserSelf(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, user)
+}
+
+func publishUserChanged(c *gin.Context, userID uint) {
+	ps, ok := c.Value("PubSub").(pubsub.PubSub)
+	if !ok {
+		slog.Error("PubSub not found in context, the websockets of a changed user stay open", "user", userID)
+		return
+	}
+	if err := websocket.PublishUserChanged(ps, userID); err != nil {
+		slog.Error("Failed to close the websockets of a changed user", "user", userID, "error", err)
+	}
 }

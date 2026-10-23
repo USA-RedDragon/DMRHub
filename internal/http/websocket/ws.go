@@ -31,6 +31,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,7 @@ var (
 	errPingTimeout  = errors.New("client did not answer a ping")
 	errWriteFailed  = errors.New("write to the client failed")
 	errInvalidUTF8  = errors.New("client sent a text frame that is not UTF-8")
+	errUserChanged  = errors.New("the user of the connection changed")
 )
 
 type Websocket interface {
@@ -84,7 +86,9 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 			return
 		}
 		conn.SetReadLimit(readLimit)
-		handler.serve(session, c.Request, conn)
+		userWatch, _ := c.Get(userWatchKey)
+		subscription, _ := userWatch.(pubsub.Subscription)
+		handler.serve(session, c.Request, conn, subscription)
 	}
 }
 
@@ -152,9 +156,12 @@ func originMatches(origin webOrigin, allowed string) bool {
 	return hostOf(origin.scheme, allowed) == origin.host
 }
 
-func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn) {
+func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn, userWatch pubsub.Subscription) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
+	if userWatch != nil {
+		go watchUser(ctx, cancel, userWatch)
+	}
 	writer := &wsWriter{out: make(chan Message, bufferSize), done: ctx.Done(), cancel: cancel}
 
 	onDisconnect := h.handler.OnConnect(ctx, r, writer, s)

@@ -87,10 +87,21 @@ type WSHandler struct {
 }
 
 func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
+	return createHandler(config, ws, false)
+}
+
+// CreatePublicHandler serves ws, a websocket of public data, to pages of
+// any site. ws must not read the session: a page of another site can
+// make the browser send the cookie of a user.
+func CreatePublicHandler(config *config.Config, ws Websocket) func(*gin.Context) {
+	return createHandler(config, ws, true)
+}
+
+func createHandler(config *config.Config, ws Websocket, public bool) func(*gin.Context) {
 	handler := &WSHandler{config: config, handler: ws}
 
 	return func(c *gin.Context) {
-		if !utils.ViaToken(c) && !handler.originAllowed(c.Request) {
+		if !public && !utils.ViaToken(c) && !handler.originAllowed(c.Request) {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

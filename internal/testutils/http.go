@@ -120,6 +120,7 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
+	t.pubsub = pubsub
 
 	ready := &atomic.Bool{}
 	ready.Store(true)

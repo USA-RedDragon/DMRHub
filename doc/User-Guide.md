@@ -27,7 +27,7 @@ The list updates in real-time. The table includes:
 
 ## Messages and Settings
 
-When you are logged in, the **Messages** page shows the text messages sent to and from your radio IDs, and the **Settings** page lets you turn on SMS Storage and add the other radio IDs that you own. See [Messages and SMS Storage](messages.md#for-users).
+When you are logged in, the **Messages** page shows the text messages sent to and from your radio IDs, and the **Settings** page lets you turn on SMS Storage and add the other radio IDs that you own. See [Messages and SMS Storage](messages.md).
 
 ## Registration
 

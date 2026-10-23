@@ -105,6 +105,20 @@ dmr:
     transmissions: 0
     # Days to keep the raw DMR bursts of each transmission. 0 keeps them forever
     bursts: 0
+  # Position tracking of the radios whose owners turn it on
+  positions:
+    # Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60
+    min-interval: 5
+    # Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365
+    max-retention: 30
+    # APRS-IS login of the hub, which sends the positions of the radios whose owners turn it on
+    aprs-is:
+      # Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS
+      # callsign: ""
+      # APRS-IS passcode of the callsign
+      # passcode: ""
+      # APRS-IS server, as host:port
+      server: "rotate.aprs2.net:14580"
 # SMTP configuration for sending emails
 smtp:
   # Enable SMTP support for sending emails

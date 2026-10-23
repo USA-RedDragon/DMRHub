@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -82,13 +83,16 @@ func newRig(t *testing.T) *rig {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
 	require.NoError(t, err)
-	ct := calltracker.NewCallTracker(database, ps)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	require.NoError(t, err)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database)
 	ct.SetDataObserver(store)
 	t.Cleanup(func() {
 		ct.Stop()
 		store.Stop()
 		_ = ps.Close()
+		_ = kvStore.Close()
 	})
 	return &rig{t: t, db: database, ct: ct, store: store}
 }

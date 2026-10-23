@@ -66,7 +66,7 @@ func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)
 
-	ct := calltracker.NewCallTracker(database, ps)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 
 	h := hub.NewHub(database, kvStore, ps, ct)
 

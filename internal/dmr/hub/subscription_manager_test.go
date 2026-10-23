@@ -22,6 +22,8 @@ package hub_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestActivateRepeaterWithDynamicTG verifies that starting the hub with a
@@ -700,10 +703,9 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 	}
 }
 
-// TestStopAllRepeatersDeactivatesEveryRepeater is a regression test for a bug
-// where stopAllRepeaters (called by Hub.Stop) modified the subscriptions map
-// during Range iteration, which could cause entries to be skipped. After Stop,
-// no repeater should receive packets.
+// TestStopAllRepeatersDeactivatesEveryRepeater verifies that once Stop
+// returns no repeater receives anything, even a burst that each subscription
+// was already handling when Stop began.
 func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	t.Parallel()
 	h, database := makeTestHub(t)
@@ -711,58 +713,105 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedTalkgroup(t, database, 200, "TG200")
 
-	// Create and activate many repeaters to increase the likelihood of
-	// exposing skipped entries during map iteration.
-	const numRepeaters = 20
-	for i := uint(0); i < numRepeaters; i++ {
-		id := 200001 + i
+	const firstID, numRepeaters = uint(200001), 20
+	for id := firstID; id < firstID+numRepeaters; id++ {
 		seedRepeater(t, database, id, 1000001)
 		var rpt models.Repeater
 		require.NoError(t, database.First(&rpt, id).Error)
 		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 200}))
 	}
 
+	gate := gateRepeaterLookups(t, database, firstID, firstID+numRepeaters-1)
+
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	for i := uint(0); i < numRepeaters; i++ {
-		h.ActivateRepeater(context.Background(), 200001+i)
+	for id := firstID; id < firstID+numRepeaters; id++ {
+		h.ActivateRepeater(context.Background(), id)
 	}
-	time.Sleep(200 * time.Millisecond)
+	waitAllReceive(t, h, srvHandle, 200, numRepeaters, 90000)
 
-	// Verify at least one repeater receives packets before Stop
-	pkt := makeVoicePacket(200, 90000, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-
-	received := false
-	for {
-		select {
-		case <-srvHandle.Packets:
-			received = true
-			continue
-		case <-time.After(500 * time.Millisecond):
-		}
-		break
+	gate.armed.Store(true)
+	h.RoutePacket(context.Background(), makeVoicePacket(200, 90100, true, false), models.RepeaterTypeMMDVM)
+	gate.waitHeld(t, numRepeaters)
+	for len(srvHandle.Packets) > 0 {
+		<-srvHandle.Packets
 	}
-	require.True(t, received, "At least one repeater should receive packets before Stop")
 
-	// Stop should cancel ALL subscriptions — none should be skipped.
 	h.Stop(context.Background())
-	time.Sleep(200 * time.Millisecond)
+	t.Logf("Stop returned with %d subscriptions holding a burst in their repeater lookup", numRepeaters)
+	gate.release()
 
-	// Send another packet — no repeater should receive it.
-	pkt2 := makeVoicePacket(200, 90001, true, false)
-	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
+	select {
+	case rp := <-srvHandle.Packets:
+		t.Fatalf("repeater %d received stream %d after Stop returned", rp.RepeaterID, rp.Packet.StreamID)
+	case <-time.After(time.Second):
+	}
+}
 
-	deadline := time.After(500 * time.Millisecond)
-	for {
-		select {
-		case rp := <-srvHandle.Packets:
-			if rp.Packet.StreamID == pkt2.StreamID {
-				t.Fatalf("After Stop, no repeater should receive packets, but repeater %d did", rp.RepeaterID)
+// waitAllReceive routes bursts to tg until each of want repeaters has
+// received one, so that every subscription is known to be live.
+func waitAllReceive(t *testing.T, h *hub.Hub, srv *hub.ServerHandle, tg uint, want int, stream uint) {
+	t.Helper()
+	seen := map[uint]bool{}
+	for round := uint(0); round < 20 && len(seen) < want; round++ {
+		h.RoutePacket(context.Background(), makeVoicePacket(tg, stream+round, true, false), models.RepeaterTypeMMDVM)
+		quiet := time.After(time.Second)
+	collect:
+		for len(seen) < want {
+			select {
+			case rp := <-srv.Packets:
+				seen[rp.RepeaterID] = true
+			case <-quiet:
+				break collect
 			}
-		case <-deadline:
+		}
+	}
+	require.Len(t, seen, want, "not every repeater subscription received traffic")
+}
+
+type lookupGate struct {
+	armed   atomic.Bool
+	held    chan uint
+	open    chan struct{}
+	release func()
+}
+
+// gateRepeaterLookups holds every query for a repeater with an ID in
+// [lo, hi], once armed, until release is called, and reports each held ID on
+// held. It must be set up before the database is used concurrently, because
+// gorm callbacks cannot be registered while queries run.
+func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGate {
+	t.Helper()
+	g := &lookupGate{held: make(chan uint, 1000), open: make(chan struct{})}
+	var once sync.Once
+	g.release = func() { once.Do(func() { close(g.open) }) }
+	t.Cleanup(g.release)
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:gate_repeaters", func(tx *gorm.DB) {
+		if !g.armed.Load() || tx.Statement.Table != "repeaters" {
 			return
+		}
+		for _, v := range tx.Statement.Vars {
+			if id, ok := v.(uint); ok && id >= lo && id <= hi {
+				g.held <- id
+				<-g.open
+				return
+			}
+		}
+	}))
+	return g
+}
+
+func (g *lookupGate) waitHeld(t *testing.T, want int) {
+	t.Helper()
+	ids := map[uint]bool{}
+	timeout := time.After(10 * time.Second)
+	for len(ids) < want {
+		select {
+		case id := <-g.held:
+			ids[id] = true
+		case <-timeout:
+			t.Fatalf("only %d of %d repeater lookups reached the gate", len(ids), want)
 		}
 	}
 }

@@ -43,17 +43,50 @@ const userCacheRefreshInterval = 30 * time.Second
 // All methods are internal to the hub package — external callers use
 // Hub.Start(), Hub.Stop(), and Hub.ReloadRepeater().
 type subscriptionManager struct {
-	// subscriptions stores per-repeater maps of talkgroup/repeater → cancel func
-	subscriptions *xsync.Map[uint, *xsync.Map[uint, *context.CancelFunc]]
+	// subscriptions stores per-repeater maps of talkgroup/repeater → subscription
+	subscriptions *xsync.Map[uint, *xsync.Map[uint, *subscription]]
 	hub           *Hub
 	mu            sync.Mutex
 }
 
 func newSubscriptionManager(h *Hub) *subscriptionManager {
 	return &subscriptionManager{
-		subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *context.CancelFunc]](),
+		subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *subscription]](),
 		hub:           h,
 	}
+}
+
+// subscription is one fan-out goroutine of a repeater. Once stop returns,
+// the goroutine delivers nothing more, even a packet it was already handling.
+type subscription struct {
+	done    <-chan struct{}
+	cancel  context.CancelFunc
+	mu      sync.RWMutex
+	stopped bool
+}
+
+func newSubscription() *subscription {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &subscription{done: ctx.Done(), cancel: cancel}
+}
+
+// stop cancels the subscription and waits for a delivery in progress, which
+// the cancel unblocks.
+func (s *subscription) stop() {
+	s.cancel()
+	s.mu.Lock()
+	s.stopped = true
+	s.mu.Unlock()
+}
+
+// deliver hands rp to the server unless the subscription is stopped.
+func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.stopped {
+		return
+	}
+	h.deliverToServerUnless(s.done, serverName, rp)
 }
 
 // activateRepeater sets up all pubsub subscriptions for a repeater
@@ -72,7 +105,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 
 	_, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
-		h.subscriptionMgr.subscriptions.Store(repeaterID, xsync.NewMap[uint, *context.CancelFunc]())
+		h.subscriptionMgr.subscriptions.Store(repeaterID, xsync.NewMap[uint, *subscription]())
 	}
 
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
@@ -90,29 +123,26 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	// Subscribe to private calls for this repeater
 	_, ok = radioSubs.Load(repeaterID)
 	if !ok {
-		newCtx, cancel := context.WithCancel(context.Background())
-		radioSubs.Store(repeaterID, &cancel)
-		//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-		go h.subscriptionMgr.subscribeRepeater(newCtx, repeaterID)
+		sub := newSubscription()
+		radioSubs.Store(repeaterID, sub)
+		go h.subscriptionMgr.subscribeRepeater(sub, repeaterID)
 	}
 
 	// Subscribe to each static talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
 		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
-			newCtx, cancel := context.WithCancel(context.Background())
-			radioSubs.Store(tg.ID, &cancel)
-			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, tg.ID)
+			sub := newSubscription()
+			radioSubs.Store(tg.ID, sub)
+			go h.subscriptionMgr.subscribeTG(sub, repeaterID, tg.ID)
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
 		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
-			newCtx, cancel := context.WithCancel(context.Background())
-			radioSubs.Store(tg.ID, &cancel)
-			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, tg.ID)
+			sub := newSubscription()
+			radioSubs.Store(tg.ID, sub)
+			go h.subscriptionMgr.subscribeTG(sub, repeaterID, tg.ID)
 		}
 	}
 
@@ -120,19 +150,17 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	if p.TS1DynamicTalkgroupID != nil {
 		_, ok := radioSubs.Load(*p.TS1DynamicTalkgroupID)
 		if !ok {
-			newCtx, cancel := context.WithCancel(context.Background())
-			radioSubs.Store(*p.TS1DynamicTalkgroupID, &cancel)
-			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, *p.TS1DynamicTalkgroupID)
+			sub := newSubscription()
+			radioSubs.Store(*p.TS1DynamicTalkgroupID, sub)
+			go h.subscriptionMgr.subscribeTG(sub, repeaterID, *p.TS1DynamicTalkgroupID)
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
 		_, ok := radioSubs.Load(*p.TS2DynamicTalkgroupID)
 		if !ok {
-			newCtx, cancel := context.WithCancel(context.Background())
-			radioSubs.Store(*p.TS2DynamicTalkgroupID, &cancel)
-			//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-			go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, *p.TS2DynamicTalkgroupID)
+			sub := newSubscription()
+			radioSubs.Store(*p.TS2DynamicTalkgroupID, sub)
+			go h.subscriptionMgr.subscribeTG(sub, repeaterID, *p.TS2DynamicTalkgroupID)
 		}
 	}
 }
@@ -157,14 +185,13 @@ func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 	// Collect all keys first to avoid modifying the map during Range,
 	// which can cause entries to be skipped.
 	var keys []uint
-	radioSubs.Range(func(key uint, _ *context.CancelFunc) bool {
+	radioSubs.Range(func(key uint, _ *subscription) bool {
 		keys = append(keys, key)
 		return true
 	})
 	for _, key := range keys {
-		cancelPtr, ok := radioSubs.LoadAndDelete(key)
-		if ok && cancelPtr != nil {
-			(*cancelPtr)()
+		if sub, ok := radioSubs.LoadAndDelete(key); ok {
+			sub.stop()
 		}
 	}
 	h.subscriptionMgr.subscriptions.Delete(repeaterID)
@@ -176,7 +203,7 @@ func (h *Hub) stopAllRepeaters(ctx context.Context) {
 	// Collect all repeater IDs first to avoid modifying the map during
 	// Range iteration, which can cause entries to be skipped.
 	var ids []uint
-	h.subscriptionMgr.subscriptions.Range(func(radioID uint, _ *xsync.Map[uint, *context.CancelFunc]) bool {
+	h.subscriptionMgr.subscriptions.Range(func(radioID uint, _ *xsync.Map[uint, *subscription]) bool {
 		ids = append(ids, radioID)
 		return true
 	})
@@ -198,10 +225,9 @@ func (h *Hub) subscribeTalkgroup(ctx context.Context, repeaterID uint, talkgroup
 	}
 	_, ok = radioSubs.Load(talkgroupID)
 	if !ok {
-		newCtx, cancel := context.WithCancel(context.Background())
-		radioSubs.Store(talkgroupID, &cancel)
-		//nolint:contextcheck // subscription goroutine outlives the caller; must not inherit caller's context
-		go h.subscriptionMgr.subscribeTG(newCtx, repeaterID, talkgroupID)
+		sub := newSubscription()
+		radioSubs.Store(talkgroupID, sub)
+		go h.subscriptionMgr.subscribeTG(sub, repeaterID, talkgroupID)
 	}
 }
 
@@ -358,17 +384,16 @@ func (m *subscriptionManager) cancelSubscription(repeaterID uint, talkgroupID ui
 			return
 		}
 	}
-	cancelPtr, ok := radioSubscriptions.LoadAndDelete(talkgroupID)
+	sub, ok := radioSubscriptions.LoadAndDelete(talkgroupID)
 	if !ok {
 		return
 	}
-	cancel := *cancelPtr
-	cancel()
+	sub.stop()
 }
 
 // subscribeRepeater listens for private calls destined to a specific repeater
 // and delivers them to the appropriate server via deliverToServer.
-func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID uint) {
+func (m *subscriptionManager) subscribeRepeater(sub *subscription, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
 	subscription := m.hub.pubsub.Subscribe(fmt.Sprintf("hub:packets:repeater:%d", repeaterID))
 	defer func() {
@@ -380,7 +405,7 @@ func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID 
 	pubsubChannel := subscription.Channel()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-sub.done:
 			slog.Debug("Context canceled, stopping subscription to hub:packets:repeater", "repeaterID", repeaterID)
 			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
@@ -403,14 +428,14 @@ func (m *subscriptionManager) subscribeRepeater(ctx context.Context, repeaterID 
 				slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
 				continue
 			}
-			m.hub.deliverToServer(p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+			sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 		}
 	}
 }
 
 // subscribeTG listens for group calls on a talkgroup and delivers matching
 // packets to the repeater via the appropriate server.
-func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, tg uint) {
+func (m *subscriptionManager) subscribeTG(sub *subscription, repeaterID uint, tg uint) {
 	if tg == 0 {
 		return
 	}
@@ -426,7 +451,7 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-sub.done:
 			slog.Debug("Context canceled, stopping subscription to hub:packets:talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
 			radioSubs, ok := m.subscriptions.Load(repeaterID)
 			if ok {
@@ -457,7 +482,7 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 				packet.Repeater = p.ID
 				packet.Slot = !packet.Slot
 
-				m.hub.deliverToServer(p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 				continue
 			}
 
@@ -466,15 +491,14 @@ func (m *subscriptionManager) subscribeTG(ctx context.Context, repeaterID uint, 
 				packet.Repeater = p.ID
 				packet.Slot = slot
 
-				m.hub.deliverToServer(p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 			} else {
 				// Clean up the subscription map entry and cancel the context
 				// to avoid leaking resources.
 				radioSubs, ok := m.subscriptions.Load(repeaterID)
 				if ok {
-					cancelPtr, loaded := radioSubs.LoadAndDelete(tg)
-					if loaded && cancelPtr != nil {
-						(*cancelPtr)()
+					if loaded, ok := radioSubs.LoadAndDelete(tg); ok {
+						loaded.stop()
 					}
 				}
 				err = subscription.Close()

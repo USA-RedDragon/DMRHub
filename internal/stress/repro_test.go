@@ -47,7 +47,7 @@ func TestReproUnregisterServerWithBackedUpEgress(t *testing.T) { //nolint:parall
 	stack.SeedUser(t, 1000001, "N0CALL")
 	stack.SeedPeer(t, 3100100, 1000001, "x", "127.0.0.1", 1, false, true)
 	stack.SeedPeerRule(t, 3100100, false, 1, dmrconst.MaxDMRAddress)
-	ct := calltracker.NewCallTracker(stack.DB, stack.PubSub)
+	ct := calltracker.NewCallTracker(stack.DB, stack.PubSub, stack.KV)
 	t.Cleanup(ct.Stop)
 	h := hub.NewHub(stack.DB, stack.KV, stack.PubSub, ct)
 	peers := h.RegisterServer(hub.ServerConfig{Name: "peers", Role: hub.RolePeer})

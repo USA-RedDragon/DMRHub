@@ -70,7 +70,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps))
+	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps, kvStore))
 	t.Cleanup(func() {
 		h.Stop(context.Background())
 		_ = ps.Close()

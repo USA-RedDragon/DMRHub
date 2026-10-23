@@ -70,7 +70,7 @@ func TestLostNoticeHealsAfterTheCacheExpires(t *testing.T) {
 	require.NoError(t, err)
 	kvA, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
-	ctA := calltracker.NewCallTracker(database, ps)
+	ctA := calltracker.NewCallTracker(database, ps, kvA)
 	hubA := hub.NewHub(database, kvA, noticeDropper{ps}, ctA)
 	t.Cleanup(func() {
 		hubA.Stop(context.Background())

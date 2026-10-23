@@ -32,7 +32,12 @@ import (
 	"gorm.io/gorm"
 )
 
-const topicPrefix = "positions:"
+const (
+	topicPrefix = "positions:"
+	// AllTopic is the pubsub topic of every stored position, as JSON of
+	// models.Position, for the APRS-IS gateway.
+	AllTopic = "positions:all"
+)
 
 // Topic is the pubsub topic of the positions pushed to the user userID.
 func Topic(userID uint) string {
@@ -51,8 +56,13 @@ func NewPusher(db *gorm.DB, ps pubsub.PubSub) *Pusher {
 	return &Pusher{db: db, pubsub: ps}
 }
 
-// Push publishes p to the users who see it.
+// Push publishes p on AllTopic and to the users who see it.
 func (p *Pusher) Push(pos models.Position) {
+	if data, err := json.Marshal(pos); err != nil {
+		slog.Error("Position push: cannot encode a position", "error", err)
+	} else if err := p.pubsub.Publish(AllTopic, data); err != nil {
+		slog.Error("Position push: cannot publish a position", "error", err)
+	}
 	ownerID, ok, err := models.PositionOwner(p.db, pos.RadioID)
 	if err != nil {
 		slog.Error("Position push: cannot find the owner of a radio", "radio", pos.RadioID, "error", err)

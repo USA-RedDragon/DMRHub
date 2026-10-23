@@ -133,3 +133,25 @@ func TestAPositionOfAnUntrackedRadioGoesNowhere(t *testing.T) {
 	p.Push(position())
 	assert.Empty(t, frames(t, sub))
 }
+
+func TestEveryPositionGoesOnTheTopicOfAll(t *testing.T) {
+	t.Parallel()
+	_, ps, p := rig(t)
+	sub := ps.Subscribe(positions.AllTopic)
+	defer func() { _ = sub.Close() }()
+	pos := position()
+	acc := 12.5
+	pos.AccuracyM = &acc
+	p.Push(pos)
+	select {
+	case b := <-sub.Channel():
+		var got models.Position
+		require.NoError(t, json.Unmarshal(b, &got))
+		assert.Equal(t, owner, got.RadioID)
+		assert.Equal(t, uint(5057), got.ServiceID)
+		require.NotNil(t, got.AccuracyM)
+		assert.InDelta(t, 12.5, *got.AccuracyM, 1e-9)
+	case <-time.After(time.Second):
+		t.Fatal("no position on the topic of all")
+	}
+}

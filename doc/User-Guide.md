@@ -101,7 +101,7 @@ Once your repeater is registered and connecting, the repeaters page shows:
 - Last connected time
 - Last ping time (updated every 5 seconds)
 
-Click a repeater's icon to edit its dynamic and static talkgroup assignments. The dropdown boxes are searchable by talkgroup name and ID.
+Click a repeater's icon to edit its dynamic and static talkgroup assignments. The dropdown boxes are searchable by talkgroup name and ID. If a talkgroup is deleted while you edit, saving fails with "talkgroup N does not exist" and nothing changes.
 
 ## Talkgroups
 

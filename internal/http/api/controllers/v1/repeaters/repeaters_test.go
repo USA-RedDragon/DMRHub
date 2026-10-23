@@ -652,3 +652,62 @@ func TestStaleRepeaterSaveKeepsTrust(t *testing.T) {
 	assert.True(t, fresh.SimplexRepeater)
 	assert.True(t, fresh.Trusted, "a save of a stale repeater must not undo the admin's trust")
 }
+
+func TestPOSTRepeaterTalkgroupsRejectsUnknownTalkgroup(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807, Type: "mmdvm"}
+	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+	require.Equal(t, http.StatusOK, w.Code)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	for _, id := range []uint{50001, 50002} {
+		_, w = testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{ID: id, Name: "Test TG", Description: "Test talkgroup"})
+		require.Equal(t, http.StatusOK, w.Code)
+	}
+	before := apimodels.RepeaterTalkgroupsPost{
+		TS1StaticTalkgroups: []models.Talkgroup{{ID: 50001}},
+		TS2StaticTalkgroups: []models.Talkgroup{{ID: 50002}},
+		TS1DynamicTalkgroup: models.Talkgroup{ID: 50002},
+	}
+	resp, w := testutils.SetRepeaterTalkgroups(t, router, repeaterPost.RadioID, userJar, before)
+	require.Equal(t, http.StatusOK, w.Code, resp.Error)
+
+	const unknown = 777
+	for _, tc := range []struct {
+		name string
+		post apimodels.RepeaterTalkgroupsPost
+	}{
+		{name: "ts1 static", post: apimodels.RepeaterTalkgroupsPost{TS1StaticTalkgroups: []models.Talkgroup{{ID: 50002}, {ID: unknown}}}},
+		{name: "ts2 static", post: apimodels.RepeaterTalkgroupsPost{TS2StaticTalkgroups: []models.Talkgroup{{ID: unknown}}}},
+		{name: "ts1 dynamic", post: apimodels.RepeaterTalkgroupsPost{TS1DynamicTalkgroup: models.Talkgroup{ID: unknown}}},
+		{name: "ts2 dynamic", post: apimodels.RepeaterTalkgroupsPost{TS2DynamicTalkgroup: models.Talkgroup{ID: unknown}}},
+	} {
+		resp, w := testutils.SetRepeaterTalkgroups(t, router, repeaterPost.RadioID, userJar, tc.post)
+		assert.Equal(t, http.StatusBadRequest, w.Code, tc.name)
+		assert.Equal(t, "talkgroup 777 does not exist", resp.Error, tc.name)
+
+		exists, err := models.TalkgroupIDExists(tdb.DB(), unknown)
+		require.NoError(t, err)
+		assert.False(t, exists, "%s: no talkgroup may be created", tc.name)
+		rpt, err := models.FindRepeaterByID(tdb.DB(), repeaterPost.RadioID)
+		require.NoError(t, err)
+		require.Len(t, rpt.TS1StaticTalkgroups, 1, tc.name)
+		assert.Equal(t, uint(50001), rpt.TS1StaticTalkgroups[0].ID, "%s: nothing may change", tc.name)
+		require.Len(t, rpt.TS2StaticTalkgroups, 1, tc.name)
+		assert.Equal(t, uint(50002), rpt.TS2StaticTalkgroups[0].ID, "%s: nothing may change", tc.name)
+		require.NotNil(t, rpt.TS1DynamicTalkgroupID, tc.name)
+		assert.Equal(t, uint(50002), *rpt.TS1DynamicTalkgroupID, "%s: nothing may change", tc.name)
+		assert.Nil(t, rpt.TS2DynamicTalkgroupID, "%s: nothing may change", tc.name)
+	}
+}

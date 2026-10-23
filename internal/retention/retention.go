@@ -101,14 +101,12 @@ func (p *Purger) Stop() {
 	})
 }
 
-// Run purges the records older than the retention periods at now, if this
-// replica takes the lock.
+// Run purges the records older than the retention periods at now, and the
+// positions older than the retention of their radio, if this replica takes
+// the lock.
 func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 	r := p.cfg.DMR.Retention
 	var res Result
-	if r.Messages <= 0 && r.Transmissions <= 0 && r.Bursts <= 0 {
-		return res, nil
-	}
 	ok, err := p.kv.SetNX(ctx, lockKey, "1", lockTTL)
 	if err != nil {
 		return res, fmt.Errorf("retention: cannot take the lock: %w", err)
@@ -118,6 +116,9 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 	}
 	res.Ran = true
 	db := p.db.WithContext(ctx)
+	if err := models.PrunePositions(db, now, time.Duration(p.cfg.DMR.Positions.Retention())*day); err != nil {
+		return res, fmt.Errorf("retention: %w", err)
+	}
 	if r.Messages > 0 {
 		if res.Messages, err = purgeMessages(db, now.Add(-time.Duration(r.Messages)*day)); err != nil {
 			return res, err

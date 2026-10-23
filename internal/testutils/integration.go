@@ -105,7 +105,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	require.NoError(t, err)
 
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, kvStore)
 	store.SetNotify(messages.NewPusher(database, ps).Push)
 	ct.SetDataObserver(store)
 
@@ -170,7 +170,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 
 	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub, s.KV)
-	store2 := messages.NewStore(s.DB)
+	store2 := messages.NewStore(s.DB, s.KV)
 	store2.SetNotify(messages.NewPusher(s.DB, s.PubSub).Push)
 	ct2.SetDataObserver(store2)
 	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)

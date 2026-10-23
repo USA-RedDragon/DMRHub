@@ -218,6 +218,7 @@ func TestRPTODialLinksDynamicTalkgroup(t *testing.T) {
 		time.Sleep(callHoldTime)
 		sendGroupCall(t, c2.SendDMRD, 11, 9302, true)
 		waitDynamic(t, stack, 100002, 0, 11)
+		time.Sleep(settleDuration)
 
 		require.NoError(t, c2.SendOptions("DIAL=0;"))
 		waitDynamic(t, stack, 100002, 0, 0)

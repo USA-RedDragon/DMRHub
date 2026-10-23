@@ -131,6 +131,67 @@ func (h *Hub) listenRepeaterChanges(sub pubsub.Subscription) {
 	}
 }
 
+// resyncRepeaters reloads, every repeaterCacheTTL, the subscriptions of
+// each repeater connected here whose talkgroups differ from the database,
+// so a lost change notice heals.
+func (h *Hub) resyncRepeaters() {
+	ticker := time.NewTicker(repeaterCacheTTL)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-h.done:
+			return
+		case <-ticker.C:
+			var ids []uint
+			h.subscriptionMgr.subscriptions.Range(func(id uint, _ *xsync.Map[uint, *subscription]) bool {
+				ids = append(ids, id)
+				return true
+			})
+			for _, id := range ids {
+				h.resyncRepeater(id)
+			}
+		}
+	}
+}
+
+func (h *Hub) resyncRepeater(id uint) {
+	rpt, err := models.FindRepeaterByID(h.db, id)
+	if err != nil {
+		slog.Error("Failed to find repeater to resync", "repeaterID", id, "error", err)
+		return
+	}
+	want := map[uint]bool{id: true}
+	for _, tg := range rpt.TS1StaticTalkgroups {
+		want[tg.ID] = true
+	}
+	for _, tg := range rpt.TS2StaticTalkgroups {
+		want[tg.ID] = true
+	}
+	if rpt.TS1DynamicTalkgroupID != nil {
+		want[*rpt.TS1DynamicTalkgroupID] = true
+	}
+	if rpt.TS2DynamicTalkgroupID != nil {
+		want[*rpt.TS2DynamicTalkgroupID] = true
+	}
+	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(id)
+	if !ok {
+		return
+	}
+	have := 0
+	same := true
+	radioSubs.Range(func(key uint, _ *subscription) bool {
+		have++
+		same = want[key]
+		return same
+	})
+	if same && have == len(want) {
+		return
+	}
+	slog.Info("Repeater subscriptions differ from the database, reloading", "repeaterID", id)
+	h.repeaters.invalidate(id)
+	h.reloadLocal(context.Background(), id)
+}
+
 func newOrigin() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)

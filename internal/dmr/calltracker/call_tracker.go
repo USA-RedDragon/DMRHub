@@ -742,6 +742,10 @@ type channel struct {
 	started bool
 	offset  uint16
 	outSeq  uint16
+	// streamID is the stream of the latest packet, which on a repeater
+	// slot names its one transmission.
+	streamID    uint
+	hasStreamID bool
 }
 
 type shard struct {

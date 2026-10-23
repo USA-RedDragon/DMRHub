@@ -865,3 +865,40 @@ func TestSubKindNamesComeFromDMRGo(t *testing.T) {
 		assert.Equal(t, want, calltracker.SubKindName(name), name)
 	}
 }
+
+func TestBackToBackTransmissionsOnOneSlotEachGetTheirOwnRow(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	var check pdu.CSBK
+	check.LastBlock = true
+	require.NoError(t, check.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{RequesterAddress: uint32(userB), CheckedAddress: uint32(userA)}))
+	text := func(body string) []layer2.RawBurst {
+		return smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte(body)})
+	}
+	sends := []struct {
+		stream uint
+		bursts []layer2.RawBurst
+		kind   models.CallKind
+	}{
+		{65600, burstsOf(burstOf(t, &check)), models.CallKindCSBK},
+		{65601, text("ONE"), models.CallKindData},
+		{65602, append(preambles(t, userB, userA, 2), text("TWO")...), models.CallKindData},
+		{65603, burstsOf(burstOf(t, &check)), models.CallKindCSBK},
+		{65604, text("THREE"), models.CallKindData},
+	}
+	for _, s := range sends {
+		newSender(t, ct, userB, userA, false, s.stream).data(s.bursts...)
+	}
+
+	calls := waitDone(t, ct, database, len(sends))
+	for i, s := range sends {
+		assert.Equal(t, s.stream, calls[i].StreamID, "row %d", i)
+		assert.Equal(t, s.kind, calls[i].Kind, "stream %d", s.stream)
+		assert.Equal(t, uint(len(s.bursts)), calls[i].Bursts, "stream %d", s.stream)
+	}
+}
+
+func burstsOf(b ...layer2.RawBurst) []layer2.RawBurst {
+	return b
+}

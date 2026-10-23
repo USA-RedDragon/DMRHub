@@ -85,6 +85,10 @@ type singleKey struct {
 
 func (s *shard) handle(t *task) {
 	ch := s.channel(t.key, t.peer)
+	if !ch.peer && ch.hasStreamID && ch.streamID != t.p.StreamID {
+		s.newStream(ch, t)
+	}
+	ch.streamID, ch.hasStreamID = t.p.StreamID, true
 	ch.last = t.at
 	s.heard(t)
 	pc := t.p
@@ -106,6 +110,27 @@ func (s *shard) handle(t *task) {
 		}
 	default:
 		s.single(t, ch, &class{kind: models.CallKindUnknown, sub: subFrameType3})
+	}
+}
+
+// newStream ends the data and control rows of the previous stream on the
+// repeater slot ch, where a new stream starts with t. A repeater slot
+// carries one transmission at a time, so a new stream right after another
+// is a new transmission, not more of the last one. Voice rows end on their
+// own key and hang.
+func (s *shard) newStream(ch *channel, t *task) {
+	if ch.rx != nil {
+		s.events = ch.rx.Lost(s.t.now(), s.events[:0])
+		s.apply(ch, nil, nil, s.events)
+		ch.rx = nil
+	}
+	for _, r := range ch.data {
+		s.finish(r, t.at)
+	}
+	for k, r := range s.rows {
+		if sk, ok := k.(singleKey); ok && sk.ch == ch.key && r.call.StreamID != t.p.StreamID {
+			s.finish(r, t.at)
+		}
 	}
 }
 

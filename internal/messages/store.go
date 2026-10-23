@@ -369,6 +369,10 @@ func (s *Store) replace(i int, r *recent, msg *models.Message) {
 	if row.SendSequence == nil {
 		row.SendSequence = msg.SendSequence
 	}
+	row.Response = models.CallResponseNone
+	if p := s.takePending(&row); p != nil {
+		row.Response = p.Response
+	}
 	if err := s.db.Omit(clause.Associations).Save(&row).Error; err != nil {
 		slog.Error("Message store: cannot replace a message", "id", row.ID, "error", err)
 		return
@@ -403,6 +407,7 @@ func (s *Store) answer(j *job, src, dst uint, resp models.CallResponse) bool {
 	var row models.Message
 	err := s.db.Where("source_id = ? AND destination_id = ? AND is_group = ? AND confirmed = ?", src, dst, false, true).
 		Where("received_at <= ? AND received_at > ?", j.at.UTC(), j.at.Add(-responseWindow).UTC()).
+		Where("response IN ?", []models.CallResponse{models.CallResponseNone, models.CallResponseSACK}).
 		Order("received_at DESC").Order("id DESC").First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false

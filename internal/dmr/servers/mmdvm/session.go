@@ -54,10 +54,11 @@ var errTooManyPending = errors.New("too many sessions that are not logged in")
 
 // link is the session of the repeater at one address.
 type link struct {
-	key    string
-	addr   net.UDPAddr
-	m      *dmrdsession.Master
-	beacon *time.Timer
+	key     string
+	addr    net.UDPAddr
+	dialect dmrd.Dialect
+	m       *dmrdsession.Master
+	beacon  *time.Timer
 }
 
 func (s *Server) now() time.Duration {
@@ -67,7 +68,70 @@ func (s *Server) now() time.Duration {
 	return time.Since(s.epoch)
 }
 
-func (s *Server) linkFor(addr net.UDPAddr) (*link, error) {
+// packetDialect returns the dialect of the packet p from a repeater: the
+// MMDVM network protocol or HBRP. ok is false for a packet that is valid in
+// both, which only DMRD is, and for one that is valid in neither. Every
+// other message that the two share has a different length in each: an ID
+// is 4 binary octets in the MMDVM network protocol and 8 hex digits in
+// HBRP, and the RPTC is 302 octets in one and 306 in the other.
+func packetDialect(p []byte) (d dmrd.Dialect, ok bool) {
+	_, mmdvm := dmrd.RepeaterID(p, dmrd.DialectMMDVM)
+	_, hbrp := dmrd.RepeaterID(p, dmrd.DialectHBRP)
+	switch {
+	case mmdvm && !hbrp:
+		return dmrd.DialectMMDVM, true
+	case hbrp && !mmdvm:
+		return dmrd.DialectHBRP, true
+	}
+	return dmrd.DialectUnknown, false
+}
+
+// loginDialect returns the dialect of p when p is an RPTL.
+func loginDialect(p []byte) (dmrd.Dialect, bool) {
+	d, ok := packetDialect(p)
+	return d, ok && dmrd.Classify(p, d) == dmrd.CommandRPTL
+}
+
+// storedDialect returns the dialect that the KV record of a repeater names.
+// A record without one is from a DMRHub that spoke only the MMDVM network
+// protocol.
+func storedDialect(repeater models.Repeater) dmrd.Dialect {
+	if repeater.Dialect == dmrd.DialectHBRP.String() {
+		return dmrd.DialectHBRP
+	}
+	return dmrd.DialectMMDVM
+}
+
+// dialectFor returns the dialect of the session that the packet p from
+// addr starts: the dialect of p, or for a DMRD the dialect of the session
+// that the KV store records for its repeater at addr, or else the MMDVM
+// network protocol.
+func (s *Server) dialectFor(ctx context.Context, addr net.UDPAddr, p []byte) dmrd.Dialect {
+	if d, ok := packetDialect(p); ok {
+		return d
+	}
+	if id, ok := dmrd.RepeaterID(p, dmrd.DialectMMDVM); ok && s.kvClient != nil {
+		repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+		if err == nil && repeater.IP == addr.IP.String() && repeater.Port == addr.Port {
+			return storedDialect(repeater)
+		}
+	}
+	return dmrd.DialectMMDVM
+}
+
+func newMaster(d dmrd.Dialect) (*dmrdsession.Master, error) {
+	m, err := dmrdsession.NewMaster(&dmrdsession.MasterConfig{
+		Dialect:      d,
+		LoginTimeout: dmrdsession.LoginTimeoutDefault,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to make %s session: %w", d, err)
+	}
+	return m, nil
+}
+
+// linkFor returns the session at addr, or a new one in dialect d.
+func (s *Server) linkFor(addr net.UDPAddr, d dmrd.Dialect) (*link, error) {
 	if s.links == nil {
 		s.links = map[string]*link{}
 		s.byID = map[uint32]*link{}
@@ -79,16 +143,30 @@ func (s *Server) linkFor(addr net.UDPAddr) (*link, error) {
 	if len(s.links)-len(s.byID) >= maxPending {
 		return nil, errTooManyPending
 	}
-	m, err := dmrdsession.NewMaster(&dmrdsession.MasterConfig{
-		Dialect:      dmrd.DialectMMDVM,
-		LoginTimeout: dmrdsession.LoginTimeoutDefault,
-	})
+	m, err := newMaster(d)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make MMDVM session: %w", err)
+		return nil, err
 	}
-	l := &link{key: key, addr: addr, m: m}
+	l := &link{key: key, addr: addr, dialect: d, m: m}
 	s.links[key] = l
 	return l, nil
+}
+
+// redial ends the session of l, as a new RPTL ends it, and gives l a new
+// session in dialect d, for a repeater that logs in again in the other
+// dialect from the same address.
+func (s *Server) redial(ctx context.Context, l *link, d dmrd.Dialect) error {
+	m, err := newMaster(d)
+	if err != nil {
+		return err
+	}
+	if st := l.m.State(); st != dmrdsession.StateIdle {
+		id := l.m.ID()
+		l.m.Reset()
+		s.down(ctx, l, dmrdsession.Output{Kind: dmrdsession.OutputDown, ID: id, Reason: dmrdsession.ReasonLogin, State: st})
+	}
+	l.m, l.dialect = m, d
+	return nil
 }
 
 func (s *Server) forget(l *link) {
@@ -110,10 +188,18 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 	if s.stopped.Load() {
 		return
 	}
-	l, err := s.linkFor(remoteAddr)
-	if err != nil {
-		slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
-		return
+	l, ok := s.links[remoteAddr.String()]
+	if !ok {
+		var err error
+		if l, err = s.linkFor(remoteAddr, s.dialectFor(ctx, remoteAddr, data)); err != nil {
+			slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
+			return
+		}
+	} else if d, ok := loginDialect(data); ok && d != l.dialect {
+		if err := s.redial(ctx, l, d); err != nil {
+			slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
+			return
+		}
 	}
 	now := s.now()
 	if l.m.State() == dmrdsession.StateIdle {
@@ -242,7 +328,11 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
 		return false
 	}
-	if err := repeater.ParseConfig(data, s.Version, s.Commit); err != nil {
+	parse := repeater.ParseConfig
+	if l.dialect == dmrd.DialectHBRP {
+		parse = repeater.ParseHBRPConfig
+	}
+	if err := parse(data, s.Version, s.Commit); err != nil {
 		slog.Error("Invalid RPTC packet", "repeaterID", repeaterID, "error", err)
 		return false
 	}
@@ -252,6 +342,7 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 	repeater.Connected = now
 	repeater.LastPing = now
 	repeater.Connection = models.RepeaterStateConnected
+	repeater.Dialect = l.dialect.String()
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
@@ -277,18 +368,22 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 	s.byID[id] = l
 	s.connected.Store(uint(id), l.addr)
 	s.stopBeacon(l)
-	addr := l.addr
-	l.beacon = time.AfterFunc(beaconDelay, func() {
-		if a, ok := s.connected.Load(uint(id)); !ok || a.String() != addr.String() {
-			return
-		}
-		p, err := (&dmrd.Control{Command: dmrd.CommandRPTSBKN, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
-		if err == nil {
-			s.write(addr, p)
-		}
-	})
+	addr, d := l.addr, l.dialect
+	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, addr, d) })
 	if s.hub != nil {
 		s.hub.ActivateRepeater(ctx, uint(id))
+	}
+}
+
+// sendBeacon asks the repeater id for a beacon in dialect d when it is
+// still connected at addr.
+func (s *Server) sendBeacon(id uint32, addr net.UDPAddr, d dmrd.Dialect) {
+	if a, ok := s.connected.Load(uint(id)); !ok || a.String() != addr.String() {
+		return
+	}
+	p, err := (&dmrd.Control{Command: dmrd.CommandRPTSBKN, ID: id}).AppendBinary(nil, d)
+	if err == nil {
+		s.write(addr, p)
 	}
 }
 
@@ -394,18 +489,18 @@ func (s *Server) ping(ctx context.Context, l *link) {
 // DMRHub replica from the same address, as the KV store records it, so
 // that a rolling restart does not make the repeater log in again.
 func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte) {
-	switch dmrd.Classify(data, dmrd.DialectMMDVM) { //nolint:exhaustive
-	case dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTPING, dmrd.CommandRPTO:
+	switch dmrd.Classify(data, l.dialect) { //nolint:exhaustive
+	case dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTPING, dmrd.CommandMSTPING, dmrd.CommandRPTO:
 	default:
 		return
 	}
-	id, ok := dmrd.RepeaterID(data, dmrd.DialectMMDVM)
+	id, ok := dmrd.RepeaterID(data, l.dialect)
 	if !ok {
 		return
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
 	if err != nil || repeater.Connection != models.RepeaterStateConnected ||
-		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port {
+		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port || storedDialect(repeater) != l.dialect {
 		return
 	}
 	s.resumeLink(ctx, now, l, id)
@@ -440,8 +535,8 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (net.UDPAddr, boo
 	if a, ok := s.connected.Load(id); ok {
 		return a, true
 	}
-	l, err := s.linkFor(addr)
-	if err != nil || l.m.State() != dmrdsession.StateIdle {
+	l, err := s.linkFor(addr, storedDialect(repeater))
+	if err != nil || l.m.State() != dmrdsession.StateIdle || l.dialect != storedDialect(repeater) {
 		s.egressMiss.Store(id, time.Now())
 		return net.UDPAddr{}, false
 	}

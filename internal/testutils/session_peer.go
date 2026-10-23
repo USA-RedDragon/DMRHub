@@ -35,17 +35,21 @@ import (
 // login does not complete in time.
 var ErrSessionPeerTimeout = errors.New("session peer login timed out")
 
-// SessionPeer is a repeater that logs in with the dmrgo session Peer, as
-// DMRGateway does, with RPTO options when it has them.
+// SessionPeer is a repeater that logs in with the dmrgo session Peer: in
+// the MMDVM network protocol as DMRGateway does, with RPTO options when it
+// has them, or in HBRP.
 type SessionPeer struct {
-	ID uint32
+	ID      uint32
+	Dialect dmrd.Dialect
 
-	mu     sync.Mutex
-	peer   *dmrdsession.Peer
-	conn   *net.UDPConn
-	target *net.UDPAddr
-	start  time.Time
-	downs  int
+	mu      sync.Mutex
+	peer    *dmrdsession.Peer
+	conn    *net.UDPConn
+	target  *net.UDPAddr
+	start   time.Time
+	downs   int
+	ups     int
+	noTicks bool
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -79,11 +83,42 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building RPTC: %w", err)
 	}
+	return newSessionPeer(dmrd.DialectMMDVM, id, password, cfg[:], options)
+}
+
+// NewHBRPSessionPeer returns a SessionPeer for the repeater id that speaks
+// HBRP, with the 306-octet RPTC and no RPTO.
+func NewHBRPSessionPeer(id uint32, password string) (*SessionPeer, error) {
+	var cfg dmrd.HBRPConfig
+	cfg.Reset()
+	cfg.SetID(id)
+	err := errors.Join(
+		cfg.SetCallsign([]byte(fmt.Sprintf("H%04dHB", id%10000))),
+		cfg.SetRXFrequency(438000000),
+		cfg.SetTXFrequency(430400000),
+		cfg.SetPower(25),
+		cfg.SetColorCode(1),
+		cfg.SetLatitude([]byte("+52.5200")),
+		cfg.SetLongitude([]byte("+013.4050")),
+		cfg.SetHeight(30),
+		cfg.SetLocation([]byte("Berlin")),
+		cfg.SetDescription([]byte("HBRP peer")),
+		cfg.SetURL([]byte("https://example.org")),
+		cfg.SetSoftwareID([]byte("20261023")),
+		cfg.SetPackageID([]byte("HBRP")),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("building RPTC: %w", err)
+	}
+	return newSessionPeer(dmrd.DialectHBRP, id, password, cfg[:], "")
+}
+
+func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, options string) (*SessionPeer, error) {
 	peer, err := dmrdsession.NewPeer(&dmrdsession.PeerConfig{
-		Dialect:  dmrd.DialectMMDVM,
+		Dialect:  d,
 		ID:       id,
 		Password: []byte(password),
-		Config:   cfg[:],
+		Config:   cfg,
 		Options:  []byte(options),
 		Retry:    200 * time.Millisecond,
 		Timeout:  5 * time.Second,
@@ -93,6 +128,7 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 	}
 	return &SessionPeer{
 		ID:      id,
+		Dialect: d,
 		peer:    peer,
 		ready:   make(chan struct{}),
 		done:    make(chan struct{}),
@@ -154,6 +190,44 @@ func (p *SessionPeer) Downs() int {
 	return p.downs
 }
 
+// Ups returns how many times the login completed.
+func (p *SessionPeer) Ups() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ups
+}
+
+// PausePings stops the timers of the Peer, so that it sends no ping and
+// nothing else that it is not told to send.
+func (p *SessionPeer) PausePings() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.noTicks = true
+}
+
+// ResumePings starts the timers of the Peer again after PausePings.
+func (p *SessionPeer) ResumePings() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.noTicks = false
+}
+
+// ReceivedPackets returns the channel of the DMRD packets from the master.
+func (p *SessionPeer) ReceivedPackets() <-chan models.Packet {
+	return p.packets
+}
+
+// SendRaw sends b to the master as it is.
+func (p *SessionPeer) SendRaw(b []byte) error {
+	p.mu.Lock()
+	target := p.target
+	p.mu.Unlock()
+	if _, err := p.conn.WriteToUDP(b, target); err != nil {
+		return fmt.Errorf("writing raw packet: %w", err)
+	}
+	return nil
+}
+
 // SendDMRD sends a DMRD packet with the repeater ID of the peer.
 func (p *SessionPeer) SendDMRD(pkt models.Packet) error {
 	pkt.Repeater = uint(p.ID)
@@ -200,6 +274,7 @@ func (p *SessionPeer) run(out []dmrdsession.Output) {
 		case dmrdsession.OutputSend:
 			_, _ = p.conn.WriteToUDP(o.Packet, p.target)
 		case dmrdsession.OutputUp:
+			p.ups++
 			p.upOnce.Do(func() { close(p.ready) })
 		case dmrdsession.OutputDown:
 			p.downs++
@@ -245,8 +320,10 @@ func (p *SessionPeer) ticks() {
 			return
 		case <-ticker.C:
 			p.mu.Lock()
-			var out [dmrdsession.MaxOutputs]dmrdsession.Output
-			p.run(p.peer.Tick(time.Since(p.start), out[:0]))
+			if !p.noTicks {
+				var out [dmrdsession.MaxOutputs]dmrdsession.Output
+				p.run(p.peer.Tick(time.Since(p.start), out[:0]))
+			}
 			p.mu.Unlock()
 		}
 	}

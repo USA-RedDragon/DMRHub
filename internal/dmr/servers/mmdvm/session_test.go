@@ -43,15 +43,15 @@ func TestPendingSessionsAreCapped(t *testing.T) {
 	t.Parallel()
 	var s Server
 	for i := range maxPending {
-		_, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, byte(i>>8), byte(i)), Port: 62031})
+		_, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, byte(i>>8), byte(i)), Port: 62031}, dmrd.DialectMMDVM)
 		if err != nil {
 			t.Fatalf("link %d: %v", i, err)
 		}
 	}
-	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 1, 0, 0), Port: 62031}); !errors.Is(err, errTooManyPending) {
+	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 1, 0, 0), Port: 62031}, dmrd.DialectMMDVM); !errors.Is(err, errTooManyPending) {
 		t.Fatalf("got %v, want errTooManyPending", err)
 	}
-	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, 0, 0), Port: 62031}); err != nil {
+	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, 0, 0), Port: 62031}, dmrd.DialectMMDVM); err != nil {
 		t.Fatalf("known address: %v", err)
 	}
 }

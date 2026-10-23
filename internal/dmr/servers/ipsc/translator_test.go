@@ -22,6 +22,7 @@ package ipsc
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -423,27 +424,42 @@ func TestTranslateToMMDVMSlotTS2(t *testing.T) {
 	}
 }
 
-func TestTranslateToMMDVMEndFlagCleansUp(t *testing.T) {
+// TestTranslateToMMDVMKeepsARawBlockAfterTheEnd translates a rate 1 data
+// call that an XPR 8400 relayed on 2026-10-15 (internal/dmr/testdata,
+// tag raw1f): the data header, a block, the packet with the end bit, then
+// the raw block (0x1F) of the same call control. All must be one stream.
+func TestTranslateToMMDVMKeepsARawBlockAfterTheEnd(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
+	var streams []uint
+	for _, h := range []string{
+		"840004ce2e0230b43c30b43c0100002c290080dd57932c935972000000000640000a800a006043a230b43c30b43c8100d06d00764646",
+		"840004ce2e0230b43c30b43c0100002c2940805e57942c935b52000000000642000d804a006099a202000c7c2a20f62895890066c5a6f20fc616464d",
+		"840004ce2e0230b43c30b43c0100002c2940805e57952c935d320000000013000000",
+		"840004ce2e0230b43c30b43c0100002c2900805d57962c935f12000000001f400011800a00c42e3c2a3cb259b259198542ed82efea72e2fdcb784bf8fae4f000006c4643",
+	} {
+		p, err := hex.DecodeString(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, out := range tr.TranslateToMMDVM(p[0], p) {
+			streams = append(streams, out.StreamID)
+		}
+	}
+	if len(streams) != 3 {
+		t.Fatalf("%d MMDVM packets, want 3", len(streams))
+	}
+	if streams[2] != streams[0] {
+		t.Fatalf("streams %v: the raw block after the end packet is on another stream", streams)
+	}
 
-	// Send header
-	header := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
-	binary.BigEndian.PutUint32(header[13:17], 0xCCCC)
-	tr.TranslateToMMDVM(0x80, header)
-
-	// Send another packet with end flag set (but not a terminator burst type)
-	endPkt := makeTestIPSCPacket(0x80, ipscBurstVoiceHead, true, false)
-	binary.BigEndian.PutUint32(endPkt[13:17], 0xCCCC)
-	endPkt[17] |= 0x40 // set end flag
-	tr.TranslateToMMDVM(0x80, endPkt)
-
-	// Verify the stream was cleaned up
 	tr.mu.Lock()
-	_, exists := tr.reverseStreams[0xCCCC]
+	for _, rss := range tr.reverseStreams {
+		rss.lastActivity = time.Now().Add(-2 * endedCallHold)
+	}
 	tr.mu.Unlock()
-	if exists {
-		t.Fatal("expected reverse stream to be cleaned up after end flag")
+	if n := tr.CleanupStaleStreams(endedCallHold); n == 0 {
+		t.Fatal("the ended stream is cleaned up when it goes stale")
 	}
 }
 

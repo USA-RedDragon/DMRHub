@@ -483,6 +483,7 @@ func fullLCMatchesPacket(cw [12]byte, pkt models.Packet) bool {
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
 type reverseStreamState struct {
 	streamID     uint32
+	ended        bool
 	seq          uint8
 	burstIndex   int             // 0-5 → A-F, when the Receiver cannot place a burst
 	started      bool            // whether we've seen a voice header
@@ -509,6 +510,9 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 
 	// Use call control as the stream identifier
 	rss, ok := t.reverseStreams[u.CallControl]
+	if ok && rss.ended && time.Since(rss.lastActivity) > endedCallHold {
+		ok = false
+	}
 	if !ok {
 		t.nextStreamID++
 		if t.nextStreamID == 0 {
@@ -555,11 +559,16 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	}
 
 	if u.Info.End() || (isData && dt == enums.DataTypeTerminatorWithLC) {
-		delete(t.reverseStreams, u.CallControl)
+		rss.ended = true
 	}
 
 	return results
 }
+
+// endedCallHold is how long a block with the call control of an ended call
+// stays on the stream of that call. An XPR 8400 sends the raw block
+// (0x1F) of a rate 1 data call after the packet with the end bit.
+const endedCallHold = 2 * time.Second
 
 // dataToMMDVM builds the MMDVM packet of an IPSC voice header, terminator
 // or data burst. Only the first of the voice headers that IPSC repeats goes

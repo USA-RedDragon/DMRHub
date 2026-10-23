@@ -50,6 +50,7 @@ const (
 	subUndecodable      = "undecodable"
 	subReserved         = "reserved"
 	subFrameType3       = "frame_type_3"
+	answerData          = "data"
 )
 
 type class struct {
@@ -332,10 +333,7 @@ func responseOf(r packet.Response) models.CallResponse {
 func (s *shard) single(t *task, ch *channel, cls *class) {
 	p := &t.p
 	if cls.answers != "" {
-		want := cls.answers
-		if s.t.answer(p.Src, p.Dst, models.CallResponseACK, func(e *recentRow) bool {
-			return e.kind == models.CallKindCSBK && e.sub == want
-		}) {
+		if s.t.answer(p.Src, p.Dst, models.CallResponseACK, cls.answers) {
 			return
 		}
 	}
@@ -380,7 +378,7 @@ func (s *shard) place(t *task, ch *channel, cls *class) {
 			r.delivered = true
 			if cls.resp != models.CallResponseNone {
 				r.call.Response = cls.resp
-				s.t.answer(t.p.Src, t.p.Dst, cls.resp, answersData)
+				s.t.answer(t.p.Src, t.p.Dst, cls.resp, answerData)
 			}
 		}
 		if !r.remembered {
@@ -519,10 +517,6 @@ func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
 		case data.EventCallStart, data.EventRespond:
 		}
 	}
-}
-
-func answersData(e *recentRow) bool {
-	return (e.kind == models.CallKindData || e.kind == models.CallKindUDT) && e.sub != subResponse && e.confirmed
 }
 
 func (s *shard) delivered(r *row, ev *data.Event) {

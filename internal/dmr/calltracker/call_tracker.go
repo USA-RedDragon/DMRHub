@@ -36,6 +36,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
@@ -69,6 +70,9 @@ const (
 	maxCallData     = 33 * 10000
 	packetTimingMs  = 60
 	pct             = 100
+	kvTimeout       = time.Second
+	recentKeyPrefix = "dmrhub:calltracker:recent:"
+	responsesTopic  = "calltracker:responses"
 )
 
 // DataObserver is told of each data packet and each response that the
@@ -92,11 +96,12 @@ type DataObserver interface {
 type CallTracker struct {
 	db     *gorm.DB
 	pubsub pubsub.PubSub
+	kv     kv.KV
 	epoch  time.Time
 	// activeNets maps talkgroup ID to net ID for currently active nets.
 	// Updated via pubsub subscription to avoid a DB query per call end.
 	activeNets *xsync.Map[uint, uint]
-	cancelNets context.CancelFunc
+	cancels    []context.CancelFunc
 
 	shards   []*shard
 	done     chan struct{}
@@ -133,11 +138,14 @@ type recentRow struct {
 	at        time.Time
 }
 
-// NewCallTracker creates a new CallTracker and starts its workers.
-func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
+// NewCallTracker creates a new CallTracker and starts its workers. The
+// replicas of the hub share kv and pubsub, so that an answer heard on one
+// replica is set on the row of the transmission that another one heard.
+func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct := &CallTracker{
 		db:         db,
 		pubsub:     pubsub,
+		kv:         kv,
 		epoch:      time.Now(),
 		activeNets: xsync.NewMap[uint, uint](),
 		streams:    xsync.NewMap[uint, streamRef](),
@@ -150,7 +158,8 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 	_, _ = rand.Read(seed[:])
 	ct.bursts.Store(binary.LittleEndian.Uint64(seed[:]) >> (shardBits + 2))
 	ct.loadActiveNets()
-	ct.subscribeNetEvents()
+	ct.subscribe("net:events", ct.netEvent)
+	ct.subscribe(responsesTopic, ct.remoteResponse)
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -174,7 +183,7 @@ func (c *CallTracker) dataObserver() DataObserver {
 }
 
 // Stop ends every open transmission, stops the workers and cancels the
-// net-events subscription.
+// pubsub subscriptions.
 func (c *CallTracker) Stop() {
 	c.stopOnce.Do(func() {
 		c.stopped.Store(true)
@@ -183,8 +192,8 @@ func (c *CallTracker) Stop() {
 		}
 		c.wg.Wait()
 		close(c.done)
-		if c.cancelNets != nil {
-			c.cancelNets()
+		for _, cancel := range c.cancels {
+			cancel()
 		}
 	})
 }
@@ -322,40 +331,43 @@ func (c *CallTracker) loadActiveNets() {
 	}
 }
 
-func (c *CallTracker) subscribeNetEvents() {
-	sub := c.pubsub.Subscribe("net:events")
+func (c *CallTracker) subscribe(topic string, handle func([]byte)) {
+	sub := c.pubsub.Subscribe(topic)
 	ctx, cancel := context.WithCancel(context.Background())
-	c.cancelNets = cancel
+	c.cancels = append(c.cancels, cancel)
 	go func() {
 		ch := sub.Channel()
 		for {
 			select {
 			case <-ctx.Done():
 				if err := sub.Close(); err != nil {
-					slog.Error("CallTracker: failed to close net events subscription", "error", err)
+					slog.Error("CallTracker: failed to close a subscription", "topic", topic, "error", err)
 				}
 				return
 			case msg, ok := <-ch:
 				if !ok {
 					return
 				}
-				if len(msg) == 0 {
-					continue
-				}
-				var evt netEventPayload
-				if err := json.Unmarshal(msg, &evt); err != nil {
-					slog.Error("CallTracker: failed to unmarshal net event", "error", err)
-					continue
-				}
-				switch evt.Event {
-				case "started":
-					c.activeNets.Store(evt.TalkgroupID, evt.NetID)
-				case "stopped":
-					c.activeNets.Delete(evt.TalkgroupID)
+				if len(msg) > 0 {
+					handle(msg)
 				}
 			}
 		}
 	}()
+}
+
+func (c *CallTracker) netEvent(msg []byte) {
+	var evt netEventPayload
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		slog.Error("CallTracker: failed to unmarshal net event", "error", err)
+		return
+	}
+	switch evt.Event {
+	case "started":
+		c.activeNets.Store(evt.TalkgroupID, evt.NetID)
+	case "stopped":
+		c.activeNets.Delete(evt.TalkgroupID)
+	}
 }
 
 func (c *CallTracker) remember(s *shard, r *row) {
@@ -363,16 +375,71 @@ func (c *CallTracker) remember(s *shard, r *row) {
 		return
 	}
 	k := pair{src: r.call.SourceID, dst: r.call.DestinationID}
+	e := recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: time.Now()}
 	c.recentMu.Lock()
-	defer c.recentMu.Unlock()
-	cut := time.Now().Add(-responseWindow)
+	cut := e.at.Add(-responseWindow)
 	keep := c.recent[k][:0]
-	for _, e := range c.recent[k] {
-		if e.at.After(cut) {
-			keep = append(keep, e)
+	for _, old := range c.recent[k] {
+		if old.at.After(cut) {
+			keep = append(keep, old)
 		}
 	}
-	c.recent[k] = append(keep, recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: time.Now()})
+	c.recent[k] = append(keep, e)
+	c.recentMu.Unlock()
+	if what := answerable(e.kind, e.sub, e.confirmed); what != "" {
+		c.share(k, what, sharedRow{ID: r.call.ID, At: e.at})
+	}
+}
+
+// sharedRow is the newest row of a pair of radios that an answer of one
+// kind can be set on, in the KV, for the replicas that hear the answer.
+type sharedRow struct {
+	ID uint      `json:"id"`
+	At time.Time `json:"at"`
+}
+
+// remoteAnswer asks the replica that holds the row ID, of Src to Dst, to set
+// Response on it.
+type remoteAnswer struct {
+	ID       uint                `json:"id"`
+	Src      uint                `json:"src"`
+	Dst      uint                `json:"dst"`
+	Response models.CallResponse `json:"response"`
+}
+
+func recentKey(k pair, what string) string {
+	return fmt.Sprintf("%s%d:%d:%s", recentKeyPrefix, k.src, k.dst, what)
+}
+
+func (c *CallTracker) share(k pair, what string, sr sharedRow) {
+	b, err := json.Marshal(sr)
+	if err != nil {
+		slog.Error("CallTracker: cannot marshal a shared row", "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	key := recentKey(k, what)
+	if err := c.kv.Set(ctx, key, b); err != nil {
+		slog.Error("CallTracker: cannot share a row", "error", err)
+		return
+	}
+	if err := c.kv.Expire(ctx, key, responseWindow); err != nil {
+		slog.Error("CallTracker: cannot expire a shared row", "error", err)
+	}
+}
+
+// answerable returns the kind of answer that can be set on a row of kind
+// and sub, and "" when none can: answerData for a confirmed data packet,
+// and the sub kind for a CSBK that a radio answers.
+func answerable(kind models.CallKind, sub string, confirmed bool) string {
+	switch {
+	case (kind == models.CallKindData || kind == models.CallKindUDT) && sub != subResponse && confirmed:
+		return answerData
+	case kind == models.CallKindCSBK && (sub == subRadioCheck || sub == subCallAlert):
+		return sub
+	}
+	return ""
 }
 
 func (c *CallTracker) pruneRecent() {
@@ -386,9 +453,39 @@ func (c *CallTracker) pruneRecent() {
 	}
 }
 
-func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func(*recentRow) bool) bool {
+// answer sets resp on the newest row from dst to src within the response
+// window that an answer of kind what can be set on, and reports whether
+// there is one. The row can be on another replica.
+func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, what string) bool {
+	k := pair{src: dst, dst: src}
+	if c.answerLocal(k, resp, func(r *recentRow) bool { return answerable(r.kind, r.sub, r.confirmed) == what }) {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	b, err := c.kv.Get(ctx, recentKey(k, what))
+	if err != nil {
+		return false
+	}
+	var sr sharedRow
+	if err := json.Unmarshal(b, &sr); err != nil || time.Since(sr.At) >= responseWindow {
+		return false
+	}
+	msg, err := json.Marshal(remoteAnswer{ID: sr.ID, Src: k.src, Dst: k.dst, Response: resp})
+	if err != nil {
+		slog.Error("CallTracker: cannot marshal an answer", "error", err)
+		return false
+	}
+	if err := c.pubsub.Publish(responsesTopic, msg); err != nil {
+		slog.Error("CallTracker: cannot publish an answer", "error", err)
+		return false
+	}
+	return true
+}
+
+func (c *CallTracker) answerLocal(k pair, resp models.CallResponse, match func(*recentRow) bool) bool {
 	c.recentMu.Lock()
-	rows := c.recent[pair{src: dst, dst: src}]
+	rows := c.recent[k]
 	cut := time.Now().Add(-responseWindow)
 	var found *recentRow
 	for i := len(rows) - 1; i >= 0; i-- {
@@ -405,6 +502,15 @@ func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, match func
 	r := found.row
 	c.enqueue(found.shard, task{fn: func(s *shard) { s.setResponse(r, resp) }})
 	return true
+}
+
+func (c *CallTracker) remoteResponse(msg []byte) {
+	var a remoteAnswer
+	if err := json.Unmarshal(msg, &a); err != nil {
+		slog.Error("CallTracker: failed to unmarshal an answer", "error", err)
+		return
+	}
+	c.answerLocal(pair{src: a.Src, dst: a.Dst}, a.Response, func(r *recentRow) bool { return r.row.call.ID == a.ID })
 }
 
 func (c *CallTracker) publishCall(call *models.Call) {

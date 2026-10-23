@@ -97,7 +97,7 @@ func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)
 
-	ct := calltracker.NewCallTracker(database, ps)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 
 	h := hub.NewHub(database, kvStore, ps, ct)
 

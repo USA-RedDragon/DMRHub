@@ -348,6 +348,7 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
 		}
 		slog.Debug("Talk alias", "repeaterID", alias.Repeater, "type", alias.Type, "data", string(alias.Data[:]))
 		if s.hub != nil {
+			//nolint:contextcheck // the call tracker records on its own workers, which outlive the caller
 			s.hub.RecordTalkerAlias(alias, models.RepeaterTypeMMDVM, uint(o.ID))
 		}
 	case dmrd.CommandDMRG:
@@ -358,6 +359,7 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
 		}
 		slog.Debug("GPS position", "repeaterID", pos.Repeater, "source", pos.Source)
 		if s.hub != nil {
+			//nolint:contextcheck // the call tracker records on its own workers, which outlive the caller
 			s.hub.RecordPosition(pos, models.RepeaterTypeMMDVM, uint(o.ID))
 		}
 	default:

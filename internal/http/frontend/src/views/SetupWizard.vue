@@ -186,6 +186,12 @@ export default defineComponent({
         })
         .catch((error: unknown) => {
           console.log(error);
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Failed to load configuration',
+            life: 3000,
+          });
         });
     },
     buildConfigPayload(): Record<string, unknown> {

@@ -127,4 +127,16 @@ describe('Setup page form', { timeout: 20000 }, () => {
     }));
     wrapper.unmount();
   });
+
+  it('shows an error when the settings cannot be loaded', async () => {
+    mockAPI.get.mockRejectedValue(new Error('Request failed with status code 500'));
+    const toast = { add: vi.fn() };
+    const wrapper = mountWizard(toast);
+    await flushPromises();
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'error',
+      detail: 'Failed to load configuration',
+    }));
+    wrapper.unmount();
+  });
 });

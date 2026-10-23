@@ -86,6 +86,16 @@
               <Mail class="h-4 w-4" />
               Messages
             </router-link>
+            <router-link
+              v-if="userStore.loggedIn"
+              to="/positions"
+              class="mobile-nav-link"
+              :class="{ active: route.path.startsWith('/positions') }"
+              @click="mobileOpen = false"
+            >
+              <MapPin class="h-4 w-4" />
+              Positions
+            </router-link>
 
             <!-- Talkgroups link (anon) -->
             <template v-if="!userStore.loggedIn">
@@ -387,6 +397,14 @@
         >
           Messages
         </router-link>
+        <router-link
+          v-if="userStore.loggedIn"
+          to="/positions"
+          class="desktop-nav-link"
+          :class="{ active: route.path.startsWith('/positions') }"
+        >
+          Positions
+        </router-link>
 
         <!-- OpenBridge Peers -->
         <router-link
@@ -550,6 +568,7 @@ import {
   LogIn,
   LogOut,
   Mail,
+  MapPin,
   Menu,
   MessageSquare,
   Radio,

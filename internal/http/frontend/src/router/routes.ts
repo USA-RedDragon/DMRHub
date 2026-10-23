@@ -93,6 +93,16 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/messages/MessagesPage.vue'),
     },
     {
+      path: '/positions',
+      name: 'Positions',
+      component: () => import('@/views/positions/PositionsPage.vue'),
+    },
+    {
+      path: '/positions/:id(\\d+)',
+      name: 'RadioPositions',
+      component: () => import('@/views/positions/RadioPositionsPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'Settings',
       component: () => import('@/views/users/SettingsPage.vue'),

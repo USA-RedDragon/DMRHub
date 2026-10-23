@@ -28,7 +28,7 @@ import {
   typeLines,
   typeOf,
   undeliverableLabel,
-  undeliverableSummary,
+  undeliverableLines,
   type CallRow,
 } from '@/lib/transmissions';
 
@@ -123,83 +123,81 @@ describe('typeLines', () => {
 
 describe('undeliverableLabel', () => {
   const r = row({});
+  const ipsc = 'IPSC repeater 311304200';
 
   it('words each known IPSC reason', () => {
-    const short = 'Not sent to IPSC repeater 311304200';
     expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', r)).toEqual({
-      short,
-      detail: `${short}: the IPSC link cannot carry this kind of burst`,
+      target: ipsc,
+      reason: 'the IPSC link cannot carry this kind of burst',
     });
-    expect(undeliverableLabel('ipsc:311304200:invalid_data_type', r).detail).toBe(`${short}: the burst has an invalid data type`);
-    expect(undeliverableLabel('ipsc:311304200:frame_type_3', r).detail).toBe(`${short}: the burst has an unknown frame type`);
-    expect(undeliverableLabel('ipsc:311304200:fec_uncorrectable', r).detail).toBe(`${short}: the burst was too damaged to repair`);
-    expect(undeliverableLabel('ipsc:311304200:slot_type', r).detail).toBe(`${short}: the burst could not be rebuilt for the IPSC link`);
+    expect(undeliverableLabel('ipsc:311304200:invalid_data_type', r).reason).toBe('the burst has an invalid data type');
+    expect(undeliverableLabel('ipsc:311304200:frame_type_3', r).reason).toBe('the burst has an unknown frame type');
+    expect(undeliverableLabel('ipsc:311304200:fec_uncorrectable', r).reason).toBe('the burst was too damaged to repair');
+    expect(undeliverableLabel('ipsc:311304200:slot_type', r).reason).toBe('the burst could not be rebuilt for the IPSC link');
   });
 
-  it('gives an unknown reason a generic detail without the raw code', () => {
-    const l = undeliverableLabel('ipsc:311304200:encode_failed', r);
-    expect(l).toEqual({
-      short: 'Not sent to IPSC repeater 311304200',
-      detail: 'Not sent to IPSC repeater 311304200: the burst could not be prepared for the IPSC link',
+  it('gives an unknown reason a generic wording without the raw code', () => {
+    expect(undeliverableLabel('ipsc:311304200:encode_failed', r)).toEqual({
+      target: ipsc,
+      reason: 'the burst could not be prepared for the IPSC link',
     });
-    expect(l.detail).not.toContain('encode');
   });
 
   it('names the repeater when the row already has its callsign', () => {
     const withName = row({ is_to_repeater: true, to_repeater: { id: 311304200, callsign: 'W1XPR' } });
-    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', withName).short).toBe('Not sent to IPSC repeater W1XPR (311304200)');
+    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', withName).target).toBe('IPSC repeater W1XPR (311304200)');
     const source = row({ repeater: { id: 311304200, callsign: 'W1XPR' } });
-    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', source).short).toBe('Not sent to IPSC repeater W1XPR (311304200)');
+    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', source).target).toBe('IPSC repeater W1XPR (311304200)');
   });
 
   it('copes with entries that miss parts', () => {
     expect(undeliverableLabel('ipsc:311304200', r)).toEqual({
-      short: 'Not sent to IPSC repeater 311304200',
-      detail: 'Not sent to IPSC repeater 311304200: the burst could not be prepared for the IPSC link',
+      target: ipsc,
+      reason: 'the burst could not be prepared for the IPSC link',
     });
-    expect(undeliverableLabel('ipsc', r).short).toBe('Not sent to an IPSC repeater');
+    expect(undeliverableLabel('ipsc', r).target).toBe('an IPSC repeater');
     expect(undeliverableLabel('ipsc::no_ipsc_form', r)).toEqual({
-      short: 'Not sent to an IPSC repeater',
-      detail: 'Not sent to an IPSC repeater: the IPSC link cannot carry this kind of burst',
+      target: 'an IPSC repeater',
+      reason: 'the IPSC link cannot carry this kind of burst',
     });
     expect(undeliverableLabel('', r)).toEqual({
-      short: 'Not sent to a repeater',
-      detail: 'Not sent to a repeater: the burst could not be prepared for the link',
+      target: 'a repeater',
+      reason: 'the burst could not be prepared for the link',
     });
   });
 
   it('handles a target that is not IPSC', () => {
     expect(undeliverableLabel('mmdvm:311000:build_failed', r)).toEqual({
-      short: 'Not sent to MMDVM repeater 311000',
-      detail: 'Not sent to MMDVM repeater 311000: the burst could not be prepared for the MMDVM link',
+      target: 'MMDVM repeater 311000',
+      reason: 'the burst could not be prepared for the MMDVM link',
     });
     expect(undeliverableLabel('newproto:42:build_failed', r)).toEqual({
-      short: 'Not sent to repeater 42',
-      detail: 'Not sent to repeater 42: the burst could not be prepared for the link',
+      target: 'repeater 42',
+      reason: 'the burst could not be prepared for the link',
     });
   });
 });
 
-describe('undeliverableSummary', () => {
-  it('is null when every target took the call', () => {
-    expect(undeliverableSummary(row({}))).toBeNull();
-    expect(undeliverableSummary(row({ undeliverable: null }))).toBeNull();
-    expect(undeliverableSummary(row({ undeliverable: [] }))).toBeNull();
+describe('undeliverableLines', () => {
+  it('is empty when every target took the call', () => {
+    expect(undeliverableLines(row({}))).toEqual([]);
+    expect(undeliverableLines(row({ undeliverable: null }))).toEqual([]);
+    expect(undeliverableLines(row({ undeliverable: [] }))).toEqual([]);
   });
 
-  it('shows a single target as its label', () => {
-    expect(undeliverableSummary(row({ undeliverable: ['ipsc:311304200:no_ipsc_form'] }))).toEqual({
-      short: 'Not sent to IPSC repeater 311304200',
-      detail: 'Not sent to IPSC repeater 311304200: the IPSC link cannot carry this kind of burst',
-    });
+  it('shows a single target with its reason on the next line', () => {
+    expect(undeliverableLines(row({ undeliverable: ['ipsc:311304200:no_ipsc_form'] }))).toEqual([
+      'Not sent to IPSC repeater 311304200',
+      'The IPSC link cannot carry this kind of burst',
+    ]);
   });
 
-  it('counts several targets and lists each in the detail', () => {
-    expect(undeliverableSummary(row({ undeliverable: ['ipsc:311304200:no_ipsc_form', 'ipsc:311304201:fec_uncorrectable'] }))).toEqual({
-      short: 'Not sent to 2 repeaters',
-      detail: 'Not sent to IPSC repeater 311304200: the IPSC link cannot carry this kind of burst\n'
-        + 'Not sent to IPSC repeater 311304201: the burst was too damaged to repair',
-    });
+  it('counts several targets, then gives each with its reason', () => {
+    expect(undeliverableLines(row({ undeliverable: ['ipsc:311304200:no_ipsc_form', 'ipsc::fec_uncorrectable'] }))).toEqual([
+      'Not sent to 2 repeaters',
+      'IPSC repeater 311304200: the IPSC link cannot carry this kind of burst',
+      'An IPSC repeater: the burst was too damaged to repair',
+    ]);
   });
 });
 

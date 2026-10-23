@@ -132,7 +132,8 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	// Sessions
 	sessionStore := sessionstore.New(db, config.GetDerivedSecret())
 	go sessionStore.PeriodicCleanup(ctx, time.Hour)
-	r.Use(sessions.Sessions("sessions", sessionStore))
+	r.Use(middleware.Provider("SessionStore", sessionStore))
+	r.Use(sessions.Sessions(sessionstore.CookieName, sessionStore))
 }
 
 func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {

@@ -23,6 +23,8 @@ package stress_test
 
 import (
 	"context"
+	"math/rand/v2"
+	"net/http"
 	"testing"
 	"time"
 
@@ -72,4 +74,78 @@ func TestReproUnregisterServerWithBackedUpEgress(t *testing.T) { //nolint:parall
 		require.Fail(t, "UnregisterServer blocked for 5s on a server whose channel from the hub is full; it returned only after Hub.Stop")
 	}
 	h.Stop(context.Background())
+}
+
+// TestReproBackToBackKindsOnOneSlot sends, on an idle hub, one
+// transmission of each kind on a slot of one repeater, first 4 s apart and
+// then right after another, each with its own stream, and checks that
+// each gets its own row of its kind and each SMS its message.
+func TestReproBackToBackKindsOnOneSlot(t *testing.T) { //nolint:paralleltest
+	s, res, logs := area(t, "repro-backtoback")
+	s.Repeaters = 3
+	r := newRig(t, s, res, logs, rigOptions{noSample: true})
+	col := &collector{}
+	r.led.onDone = col.add
+	rnd := rand.New(rand.NewPCG(4, 4)) //nolint:gosec
+	for _, k := range kindMakers() {
+		sc := k.make(r.pickAddr(rnd, 1, false, true), rnd)
+		sc.label = "spaced-" + sc.label
+		r.play(1, false, sc)
+		time.Sleep(4 * time.Second)
+	}
+	for _, k := range kindMakers() {
+		sc := k.make(r.pickAddr(rnd, 0, false, true), rnd)
+		sc.label = "back-to-back-" + sc.label
+		r.play(0, false, sc)
+	}
+	time.Sleep(8 * time.Second)
+	r.led.finish(0, true)
+	r.checkDelivery()
+	r.checkRows(col.all())
+	r.checkMessages(col.all())
+}
+
+// TestReproRateLimitUnderConcurrency sends 120 requests at once from one
+// address to a cheap API endpoint. The limit is 50 a second, so most must
+// get 429. The GORM store reads the hit count and writes it back without
+// a transaction, so concurrent requests overwrite each other's count.
+func TestReproRateLimitUnderConcurrency(t *testing.T) { //nolint:paralleltest
+	s, res, logs := area(t, "repro-ratelimit")
+	s.Repeaters = 2
+	r := newRig(t, s, res, logs, rigOptions{noSample: true})
+	w := r.web(t)
+	const n = 120
+	codes := make(chan int, n)
+	start := make(chan struct{})
+	for range n {
+		go func() {
+			<-start
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, w.srv.URL+"/api/v1/ping", nil)
+			if err != nil {
+				codes <- 0
+				return
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				codes <- 0
+				return
+			}
+			_ = resp.Body.Close()
+			codes <- resp.StatusCode
+		}()
+	}
+	t0 := time.Now()
+	close(start)
+	limited := 0
+	for range n {
+		if <-codes == http.StatusTooManyRequests {
+			limited++
+		}
+	}
+	res.set("requests", n)
+	res.set("limited", float64(limited))
+	res.set("elapsed_s", time.Since(t0).Seconds())
+	if limited < n-50 {
+		res.fail(t, "%d of %d concurrent requests from one address got 429 in %s; the limit is 50 a second", limited, n, time.Since(t0))
+	}
 }

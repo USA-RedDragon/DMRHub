@@ -61,6 +61,16 @@ dmr:
     bind: "[::]"
     # MMDVM server port
     port: 62031
+    # WebTransport listener for browser hotspots and radios
+    webtransport:
+      # Accept browser hotspots and radios over WebTransport
+      enabled: false
+      # UDP port of the WebTransport listener
+      port: 62032
+      # TLS certificate file, such as the one that cert-manager mounts. Empty makes DMRHub use short-lived certificates of its own, which browsers accept through the hashes that DMRHub publishes
+      # cert-file: ""
+      # TLS key file of the certificate file
+      # key-file: ""
   # OpenBridge server configuration for DMR
   openbridge:
     # Enable OpenBridge server support

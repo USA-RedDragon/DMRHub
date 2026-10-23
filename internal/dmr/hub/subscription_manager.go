@@ -433,7 +433,7 @@ func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.S
 			}
 			packet.Repeater = repeaterID
 
-			p, err := models.FindRepeaterByID(m.hub.db, repeaterID)
+			p, err := m.hub.routingRepeater(repeaterID)
 			if err != nil {
 				slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
 				continue
@@ -477,7 +477,7 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscri
 				continue
 			}
 
-			p, err := models.FindRepeaterByID(m.hub.db, repeaterID)
+			p, err := m.hub.routingRepeater(repeaterID)
 			if err != nil {
 				slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 				continue

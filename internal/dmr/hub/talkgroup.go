@@ -80,6 +80,7 @@ func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool) {
 		if err != nil {
 			slog.Error("Error deleting dynamic talkgroup association", "association", assocName, "error", err)
 		}
+		h.repeaterChanged(repeater.ID)
 		h.unsubscribeTalkgroup(repeater.ID, oldTGID, ts)
 	}
 }
@@ -97,9 +98,17 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 // timeslot of the repeater, as a voice call on the talkgroup on that
 // timeslot does. slot true is TS2.
 func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool) {
-	repeater, err := models.FindRepeaterByID(h.db, repeaterID)
+	repeater, err := h.routingRepeater(repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
+		return
+	}
+
+	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
+	if slot {
+		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
+	}
+	if currentDynTGID != nil && *currentDynTGID == talkgroupID {
 		return
 	}
 
@@ -109,16 +118,11 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 		return
 	}
 
-	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
-	if slot {
-		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
+	slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", repeaterID, "talkgroupID", talkgroupID)
+	if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
+		slog.Error("Error saving repeater", "error", err)
+		return
 	}
-
-	if currentDynTGID == nil || *currentDynTGID != talkgroup.ID {
-		slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", repeaterID, "talkgroupID", talkgroupID)
-		h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
-		if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
-			slog.Error("Error saving repeater", "error", err)
-		}
-	}
+	h.repeaterChanged(repeater.ID)
+	h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
 }

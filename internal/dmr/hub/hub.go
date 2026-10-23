@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/locator"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -159,6 +160,8 @@ type Hub struct {
 
 	repeaters *repeaterCache
 	origin    string
+
+	locator *locator.Locator
 }
 
 // NewHub creates a new Hub.
@@ -173,6 +176,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		activeStreams: make(map[uint]*activeStream),
 		done:          make(chan struct{}),
 	}
+	h.locator = locator.New(db, h.sendFromLocator)
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.routing = streamorder.New(routingQueueSize, h.done)
 	h.sightings = make(chan sighting, sightingQueueSize)
@@ -371,6 +375,7 @@ func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
+		h.locator.Stop()
 		close(h.done)
 	})
 }

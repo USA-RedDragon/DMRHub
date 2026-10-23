@@ -28,6 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/locator"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -100,6 +101,10 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string) bool {
 	if h.getServerRole(sourceName) == RolePeer {
 		return false
+	}
+	if !packet.GroupCall && locator.IsService(packet.Dst) {
+		h.locator.Handle(packet)
+		return true
 	}
 	if packet.Dst == dmrconst.ParrotUser && isVoice {
 		h.doParrot(ctx, packet)
@@ -222,4 +227,14 @@ func isUserID(id uint) bool {
 		userIDMax = 99999999
 	)
 	return id >= userIDMin && id <= userIDMax
+}
+
+const locatorSource = "locator"
+
+// sendFromLocator sends a packet of the location server to the repeater
+// that the radio it answers was heard on.
+func (h *Hub) sendFromLocator(p models.Packet) {
+	ctx := context.Background()
+	h.trackCall(ctx, &p, locatorSource)
+	h.publishToRepeater(p.Repeater, p)
 }

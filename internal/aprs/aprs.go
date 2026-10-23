@@ -72,3 +72,12 @@ func validCallsign(call string) bool {
 	}
 	return true
 }
+
+// Licensed reports whether call looks like the callsign of a licensed
+// amateur: letters and digits with at least one of each, without an SSID.
+func Licensed(call string) bool {
+	if strings.Contains(call, "-") || !validCallsign(call) {
+		return false
+	}
+	return strings.ContainsAny(call, "0123456789") && strings.ContainsAny(call, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+}

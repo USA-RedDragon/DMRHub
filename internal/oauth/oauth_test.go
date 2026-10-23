@@ -271,3 +271,36 @@ func TestSummaryNamesWhatAnAppCanUse(t *testing.T) {
 	assert.Equal(t, "Talkgroups, last heard, messages, hotspots", oauth.Summary("hotspots:register messages:read talkgroups:read hotspots:read lastheard:read"))
 	assert.Equal(t, "Hotspot talkgroups", oauth.Summary("hotspots:talkgroups"))
 }
+
+func TestPruneDropsWhatCanNoLongerWork(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	kept := e.login(t, 7, "talkgroups:read")
+	gone := e.login(t, 8, "talkgroups:read")
+	grants, err := e.srv.Grants(8)
+	require.NoError(t, err)
+	require.NoError(t, e.srv.RemoveGrant(8, grants[0].ID))
+	req, err := e.srv.ParseAuthorize(app, callback, "talkgroups:read", challenge(), "S256")
+	require.NoError(t, err)
+	_, err = e.srv.Approve(7, req)
+	require.NoError(t, err)
+
+	e.now = e.now.Add(oauth.SpentTokenLifetime + time.Minute)
+	next, err := e.srv.Refresh(kept.Refresh, app)
+	require.NoError(t, err)
+	e.now = e.now.Add(oauth.SpentTokenLifetime + time.Minute)
+	require.NoError(t, e.srv.Prune())
+
+	var codes, refreshes, revoked int64
+	require.NoError(t, e.db.Model(&models.OAuthCode{}).Count(&codes).Error)
+	require.NoError(t, e.db.Model(&models.OAuthRefreshToken{}).Count(&refreshes).Error)
+	require.NoError(t, e.db.Model(&models.OAuthGrant{}).Where("revoked_at IS NOT NULL").Count(&revoked).Error)
+	assert.Zero(t, codes, "expired codes go")
+	assert.Equal(t, int64(1), refreshes, "only the live refresh token stays")
+	assert.Zero(t, revoked, "removed grants go")
+
+	_, err = e.srv.Refresh(next.Refresh, app)
+	require.NoError(t, err)
+	_, err = e.srv.Refresh(gone.Refresh, app)
+	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
+}

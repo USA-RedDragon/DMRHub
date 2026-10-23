@@ -49,6 +49,9 @@ const (
 	RefreshLifetime = 30 * 24 * time.Hour
 	// CodeLifetime is how long an authorization code works.
 	CodeLifetime = 2 * time.Minute
+	// RefreshGrace is how long a spent refresh token still works, so that
+	// two tabs of an app that refresh at once both keep their access.
+	RefreshGrace = 10 * time.Second
 	// SpentTokenLifetime is how long a spent refresh token is kept, so that
 	// spending it again ends its grant.
 	SpentTokenLifetime = 24 * time.Hour
@@ -258,8 +261,8 @@ func (s *Server) grantFor(tx *gorm.DB, code models.OAuthCode, now time.Time) (mo
 }
 
 // Refresh spends the refresh token of the app clientID for new tokens. A
-// refresh token works once: spending it again ends the grant, since one of
-// the two holders is not the app.
+// refresh token works once, or again within RefreshGrace: spending it
+// later ends the grant, since one of the two holders is not the app.
 func (s *Server) Refresh(refresh, clientID string) (Tokens, error) {
 	var tokens Tokens
 	var reused string
@@ -276,20 +279,16 @@ func (s *Server) Refresh(refresh, clientID string) (Tokens, error) {
 		if grant.ClientID != clientID {
 			return ErrInvalidGrant
 		}
-		if row.UsedAt != nil {
-			reused = grant.ID
-			return ErrInvalidGrant
-		}
 		if !now.Before(row.ExpiresAt) {
 			return ErrInvalidGrant
 		}
-		res := tx.Model(&models.OAuthRefreshToken{}).Where("hash = ? AND used_at IS NULL", row.Hash).Update("used_at", now)
-		if res.Error != nil {
-			return fmt.Errorf("failed to spend the refresh token: %w", res.Error)
-		}
-		if res.RowsAffected != 1 {
-			reused = grant.ID
-			return ErrInvalidGrant
+		if row.UsedAt != nil {
+			if now.Sub(*row.UsedAt) >= RefreshGrace {
+				reused = grant.ID
+				return ErrInvalidGrant
+			}
+		} else if err := tx.Model(&models.OAuthRefreshToken{}).Where("hash = ? AND used_at IS NULL", row.Hash).Update("used_at", now).Error; err != nil {
+			return fmt.Errorf("failed to spend the refresh token: %w", err)
 		}
 		if err := tx.Model(&grant).Update("last_used_at", now).Error; err != nil {
 			return fmt.Errorf("failed to update the grant: %w", err)

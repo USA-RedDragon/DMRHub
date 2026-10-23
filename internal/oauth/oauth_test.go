@@ -205,12 +205,33 @@ func TestRefreshRotatesAndReuseEndsTheGrant(t *testing.T) {
 	_, err = e.srv.Refresh(second.Refresh, "https://other.example")
 	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
 
+	e.now = e.now.Add(oauth.RefreshGrace + time.Second)
 	_, err = e.srv.Refresh(first.Refresh, app)
 	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
 	_, err = e.srv.Refresh(second.Refresh, app)
 	require.ErrorIs(t, err, oauth.ErrInvalidGrant, "reuse of a spent refresh token ends the grant")
 	_, err = e.srv.Authenticate(second.Access)
 	require.ErrorIs(t, err, oauth.ErrInvalidToken)
+}
+
+func TestTwoTabsRefreshingAtOnceBothKeepAccess(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	tok := e.login(t, 7, "talkgroups:read")
+
+	one, err := e.srv.Refresh(tok.Refresh, app)
+	require.NoError(t, err)
+	e.now = e.now.Add(oauth.RefreshGrace - time.Second)
+	two, err := e.srv.Refresh(tok.Refresh, app)
+	require.NoError(t, err, "a refresh within the grace of the first is the other tab, not a thief")
+	assert.NotEqual(t, one.Refresh, two.Refresh)
+
+	_, err = e.srv.Authenticate(one.Access)
+	require.NoError(t, err)
+	_, err = e.srv.Refresh(one.Refresh, app)
+	require.NoError(t, err)
+	_, err = e.srv.Refresh(two.Refresh, app)
+	require.NoError(t, err)
 }
 
 func TestRefreshTokenExpires(t *testing.T) {

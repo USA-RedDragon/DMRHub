@@ -22,7 +22,6 @@
 package stress_test
 
 import (
-	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"sort"
@@ -245,8 +244,8 @@ func (l *ledger) receive(target uint, p *models.Packet) {
 // or its payload, and LC headers and terminators are rebuilt.
 func (l *ledger) deliver(target uint, c *callRec, raw layer2.RawBurst, now int64, ipsc bool) {
 	k := -1
-	if raw[0] == tagMagic0 && raw[1] == tagMagic1 {
-		k = int(binary.BigEndian.Uint32(raw[2:6]))
+	if v, ok := voiceTag(raw); ok {
+		k = v
 	} else if v, ok := c.byLoad[payloadHash(raw)]; ok {
 		k = v
 	}

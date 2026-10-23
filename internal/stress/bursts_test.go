@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
+	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -33,13 +34,16 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
+	"github.com/stretchr/testify/require"
 )
 
 // A voice burst carries its identity in the first six octets of its first
-// AMBE slot: tagMagic and the index of the burst in its stream. The hub
-// does not decode voice for routing, so the tag reaches every target
-// unchanged. Other bursts are told apart by their sequence number.
+// AMBE+2 frame: tagMagic and the index of the burst in its stream. The tag
+// is in the vocoder bits, under the frame FEC, so it survives IPSC, which
+// decodes and encodes the frames again. Other bursts are told apart by
+// their sequence number.
 const (
 	tagMagic0 = 0xD5
 	tagMagic1 = 0x7E
@@ -79,13 +83,13 @@ func voiceLC(group bool, dst, src uint, dt enums.DataType) (layer2.RawBurst, err
 func voiceFrameBurst(pos int, k uint32) (layer2.RawBurst, error) {
 	vb, _ := enums.VoiceBurstAt(pos)
 	silence := vocoder.AMBESilence()
-	raw, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{silence, silence, silence}, vb,
+	tag := vocoder.AMBEFrame{tagMagic0, tagMagic1}
+	binary.BigEndian.PutUint32(tag[2:6], k)
+	raw, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{tag, silence, silence}, vb,
 		pdu.EmbeddedSignalling{ColorCode: colorCode}, [4]byte{}, layer2.SyncSourceMS)
 	if err != nil {
 		return layer2.RawBurst{}, fmt.Errorf("voice burst: %w", err)
 	}
-	raw[0], raw[1] = tagMagic0, tagMagic1
-	binary.BigEndian.PutUint32(raw[2:6], k)
 	return raw, nil
 }
 
@@ -267,8 +271,39 @@ func packetOf(b burst, k int, src, dst, stream uint, group, slot2 bool) models.P
 // burstIndex is the index in its stream of a received packet: the tag of a
 // tagged voice burst, or else -1 and the sequence number.
 func burstIndex(p *models.Packet) (int, bool) {
-	if (p.FrameType == dmrconst.FrameVoice || p.FrameType == dmrconst.FrameVoiceSync) && p.DMRData[0] == tagMagic0 && p.DMRData[1] == tagMagic1 {
-		return int(binary.BigEndian.Uint32(p.DMRData[2:6])), true
+	if p.FrameType == dmrconst.FrameVoice || p.FrameType == dmrconst.FrameVoiceSync {
+		if k, ok := voiceTag(layer2.RawBurst(p.DMRData)); ok {
+			return k, true
+		}
 	}
 	return int(p.Seq & 0xFF), false
+}
+
+// voiceTag is the index that voiceFrameBurst put in raw.
+func voiceTag(raw layer2.RawBurst) (int, bool) {
+	f, _ := raw.AMBEFrames()
+	if f[0][0] != tagMagic0 || f[0][1] != tagMagic1 {
+		return 0, false
+	}
+	return int(binary.BigEndian.Uint32(f[0][2:6])), true
+}
+
+// TestHarnessVoiceTagSurvivesIPSC checks the harness itself: the tag of a
+// voice burst reads back after the burst goes into an IPSC user packet and
+// out again, as on the IPSC paths of the hub.
+func TestHarnessVoiceTagSurvivesIPSC(t *testing.T) {
+	t.Parallel()
+	for pos := range 6 {
+		raw, err := voiceFrameBurst(pos, uint32(1000+pos)) //nolint:gosec
+		require.NoError(t, err)
+		vb, _ := enums.VoiceBurstAt(pos)
+		var u ipscwire.User
+		_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: vb})
+		require.NoError(t, err)
+		back, err := u.RawBurst(0, layer2.SyncSourceBS)
+		require.NoError(t, err)
+		k, ok := voiceTag(back)
+		require.True(t, ok, "burst %d lost its tag", pos)
+		require.Equal(t, 1000+pos, k)
+	}
 }

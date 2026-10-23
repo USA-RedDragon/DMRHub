@@ -77,3 +77,14 @@ func TestLimitCountsAndResets(t *testing.T) {
 	require.NoError(t, database.Exec("UPDATE ratelimits SET timestamp = ? WHERE key = ?", time.Now().Add(-2*time.Minute), "10.0.0.2").Error)
 	assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "the count resets after the rate")
 }
+
+func TestSteadyHitsGetANewWindowEachRate(t *testing.T) {
+	t.Parallel()
+	_, database := newStore(t, 3)
+	store := ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: 300 * time.Millisecond, Limit: 3})
+	for range 3 {
+		require.False(t, store.Limit("10.0.0.2", nil).RateLimited)
+		time.Sleep(120 * time.Millisecond)
+	}
+	assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "300 ms after the first hit a new window starts, however steady the hits")
+}

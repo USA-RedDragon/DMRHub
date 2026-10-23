@@ -49,9 +49,10 @@ func NewGORMStore(options *GORMOptions) *GORMStore {
 	}
 }
 
-// Limit counts a request of key and reports whether it is over the limit.
-// The count is read and written by one statement, so concurrent requests
-// of one key each see their own count.
+// Limit counts a request of key and reports whether it is over the limit
+// of its window, which starts with the first request after the last window
+// ended and lasts the rate. The count is read and written by one statement,
+// so concurrent requests of one key each see their own count.
 func (s *GORMStore) Limit(key string, _ *gin.Context) (ret ratelimit.Info) {
 	ret.Limit = s.limit
 	now := time.Now()
@@ -59,8 +60,8 @@ func (s *GORMStore) Limit(key string, _ *gin.Context) (ret ratelimit.Info) {
 	err := s.db.Raw(`INSERT INTO ratelimits (key, hits, timestamp) VALUES (?, 1, ?)
 ON CONFLICT (key) DO UPDATE SET
 	hits = CASE WHEN ratelimits.timestamp < ? THEN 1 ELSE ratelimits.hits + 1 END,
-	timestamp = CASE WHEN ratelimits.timestamp < ? OR ratelimits.hits < ? THEN excluded.timestamp ELSE ratelimits.timestamp END
-RETURNING key, hits, timestamp`, key, now, now.Add(-s.rate), now.Add(-s.rate), s.limit).Scan(&rl).Error
+	timestamp = CASE WHEN ratelimits.timestamp < ? THEN excluded.timestamp ELSE ratelimits.timestamp END
+RETURNING key, hits, timestamp`, key, now, now.Add(-s.rate), now.Add(-s.rate)).Scan(&rl).Error
 	if err != nil {
 		slog.Error("Failed to count a ratelimit hit", "error", err)
 		ret.RemainingHits = s.limit

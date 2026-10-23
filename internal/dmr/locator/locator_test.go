@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/ars"
 	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/lrrp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -234,4 +235,152 @@ func TestTrafficToOtherIDsIsNotTheLocators(t *testing.T) {
 	for id := uint(5050); id <= 5059; id++ {
 		assert.True(t, locator.IsService(id), "%d", id)
 	}
+}
+
+func registration(t *testing.T, typ ars.Type) []byte {
+	t.Helper()
+	m := ars.NewRegistration(ars.EventInitial)
+	m.Header.Type = typ
+	buf, err := m.SetDeviceID(nil, radio)
+	require.NoError(t, err)
+	n := len(buf)
+	buf, err = m.AppendBinary(buf)
+	require.NoError(t, err)
+	d := ip.Datagram{
+		Source:          ip.RadioAddress(ip.DefaultNetwork, radio),
+		Destination:     ip.RadioAddress(ip.DefaultNetwork, service),
+		SourcePort:      ip.PortARS,
+		DestinationPort: ip.PortARS,
+		TTL:             64,
+		Payload:         buf[n:],
+	}
+	out, err := ip.AppendIPv4(nil, &d)
+	require.NoError(t, err)
+	return out
+}
+
+type answer struct {
+	port ip.Port
+	ars  *ars.Message
+	lrrp *lrrp.Message
+}
+
+func answers(t *testing.T, pkts []models.Packet) []answer {
+	t.Helper()
+	rx, err := data.NewReceiver(&data.ReceiverConfig{Address: radio, Lost: -1})
+	require.NoError(t, err)
+	var out []answer
+	var events []data.Event
+	for i, p := range pkts {
+		require.Equal(t, uint(service), p.Src)
+		require.Equal(t, uint(radio), p.Dst)
+		events = rx.Burst(time.Duration(i)*60*time.Millisecond, (*layer2.RawBurst)(&p.DMRData), layer2.Hint{Kind: layer2.KindData}, events[:0])
+		for _, e := range events {
+			if e.Kind != data.EventDelivered && e.Kind != data.EventReassembled {
+				continue
+			}
+			sap, ok := e.Message.Header.SAP()
+			require.True(t, ok)
+			d, err := ip.Decode(sap, e.Message.Payload)
+			require.NoError(t, err)
+			a := answer{port: d.DestinationPort}
+			switch d.DestinationPort { //nolint:exhaustive
+			case ip.PortARS:
+				m, err := ars.DecodeMessage(d.Payload)
+				require.NoError(t, err)
+				a.ars = &m
+			case ip.PortLRRP:
+				var m lrrp.Message
+				require.NoError(t, lrrp.DecodeMessageInto(&m, d.Payload))
+				a.lrrp = &m
+			}
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func waitAnswers(t *testing.T, out *sent, n int) []answer {
+	t.Helper()
+	var got []answer
+	require.Eventually(t, func() bool {
+		got = answers(t, out.all())
+		return len(got) >= n
+	}, 5*time.Second, 50*time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
+	return answers(t, out.all())
+}
+
+func TestARSRegistrationIsAcknowledged(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	got := waitAnswers(t, &out, 1)
+	require.Len(t, got, 1, "an untracked radio gets the ack only")
+	require.NotNil(t, got[0].ars)
+	assert.Equal(t, ars.TypeAck, got[0].ars.Header.Type)
+	assert.False(t, got[0].ars.Header.AckRequired, "a successful registration")
+}
+
+func TestARSRegistrationOfATrackedRadioStartsATriggeredRequest(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", radio).Update("interval_seconds", 900).Error)
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	got := waitAnswers(t, &out, 2)
+	require.Len(t, got, 2)
+	require.NotNil(t, got[0].ars, "the ack comes first")
+	req := got[1].lrrp
+	require.NotNil(t, req)
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, req.Document)
+	assert.True(t, req.Request.Periodic)
+	assert.True(t, req.Request.HasInterval)
+	assert.Equal(t, uint32(900), req.Request.Interval)
+	assert.True(t, req.Request.HasRequestID)
+
+	var row models.LocationRequest
+	require.NoError(t, database.First(&row, radio).Error)
+	assert.Equal(t, uint(service), row.ServiceID)
+	assert.Equal(t, uint(900), row.IntervalSeconds)
+	assert.Equal(t, req.Request.RequestID, row.RequestID)
+	assert.Equal(t, uint(repeater), row.RepeaterID)
+	assert.Equal(t, uint8(2), row.Slot)
+}
+
+func TestARSDeregistrationStopsTheTriggeredRequest(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	waitAnswers(t, &out, 2)
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceDeregistration), false) {
+		p.StreamID++
+		l.Handle(p)
+	}
+	got := waitAnswers(t, &out, 3)
+	require.Len(t, got, 3)
+	require.NotNil(t, got[2].lrrp)
+	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+	var n int64
+	require.NoError(t, database.Model(&models.LocationRequest{}).Where("radio_id = ?", radio).Count(&n).Error)
+	assert.Zero(t, n)
 }

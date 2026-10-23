@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testTimeout = 1 * time.Minute
@@ -1014,4 +1015,37 @@ func TestPromoteUserPreservesSuspended(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, userResp.Suspended, "Promote should not change suspended status")
 	assert.True(t, userResp.Admin)
+}
+
+func TestDeleteUserStopsTrafficToTheirRepeaters(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	const id = uint(319186811)
+	_, w := testutils.CreateRepeater(t, router, userJar, apimodels.RepeaterPost{RadioID: id})
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
+
+	delivery := testutils.NewHubDelivery(t, tdb.Hub())
+	tdb.Hub().ActivateRepeater(context.Background(), id)
+	_, w = testutils.SetRepeaterTalkgroups(t, router, id, userJar, apimodels.RepeaterTalkgroupsPost{
+		TS1StaticTalkgroups: []models.Talkgroup{{ID: 91}},
+	})
+	require.Equal(t, http.StatusOK, w.Code)
+	require.True(t, delivery.GroupBurstReaches(t, 91, id))
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	_, w = testutils.DeleteUser(t, router, user.DMRId, adminJar)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, delivery.GroupBurstReaches(t, 91, id))
 }

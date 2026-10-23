@@ -20,13 +20,17 @@
 package http
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleMimeServesMapAssets(t *testing.T) {
@@ -45,4 +49,23 @@ func TestHandleMimeServesMapAssets(t *testing.T) {
 		assert.Equal(t, tc.contentType, w.Header().Get("Content-Type"), tc.path)
 		assert.Equal(t, tc.cacheControl, w.Header().Get("Cache-Control"), tc.path)
 	}
+}
+
+func TestEveryBuiltFrontendFileIsEmbedded(t *testing.T) {
+	t.Parallel()
+	const root = "frontend/dist"
+	if _, err := os.Stat(root); err != nil {
+		t.Skip("the frontend is not built")
+	}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		f, err := FS.Open(filepath.ToSlash(path))
+		if assert.NoError(t, err, "%s is built but not embedded", path) {
+			_ = f.Close()
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }

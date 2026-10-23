@@ -117,7 +117,7 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 // FS is the embedded frontend files
 //
 //go:generate sh -c "cd ./frontend && npm ci && npm run build"
-//go:embed frontend/dist/*
+//go:embed all:frontend/dist
 var FS embed.FS
 
 func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, o options) {

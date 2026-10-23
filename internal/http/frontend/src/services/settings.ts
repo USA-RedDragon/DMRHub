@@ -21,6 +21,7 @@ import API from '@/services/API';
 
 export type UserSettings = {
   sms_storage: boolean;
+  share_positions?: boolean;
 };
 
 export type RadioID = {
@@ -64,4 +65,9 @@ export function errorText(err: unknown, fallback: string): string {
 
 export function errorStatus(err: unknown): number {
   return (err as { response?: { status?: number } })?.response?.status ?? 0;
+}
+
+export async function setSharePositions(enabled: boolean): Promise<UserSettings> {
+  const res = await API.put('/users/me/settings/share-positions', { enabled });
+  return res.data;
 }

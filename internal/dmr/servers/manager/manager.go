@@ -169,7 +169,7 @@ func (m *Manager) Start(ctx context.Context, cfg *config.Config) error {
 		if !settingsOf(k, cfg).enabled {
 			continue
 		}
-		r, err := m.launch(k, cfg)
+		r, err := m.launch(k, cfg) //nolint:contextcheck // a server outlives Start; Stop ends it
 		if err != nil {
 			m.stopAll(ctx)
 			return fmt.Errorf("failed to start the %s server: %w", k, err)

@@ -89,11 +89,17 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 // NewHBRPSessionPeer returns a SessionPeer for the repeater id that speaks
 // HBRP, with the 306-octet RPTC and no RPTO.
 func NewHBRPSessionPeer(id uint32, password string) (*SessionPeer, error) {
+	return NewHBRPSessionPeerCalled(id, password, fmt.Sprintf("H%04dHB", id%10000))
+}
+
+// NewHBRPSessionPeerCalled is NewHBRPSessionPeer with the callsign that
+// the RPTC carries.
+func NewHBRPSessionPeerCalled(id uint32, password, callsign string) (*SessionPeer, error) {
 	var cfg dmrd.HBRPConfig
 	cfg.Reset()
 	cfg.SetID(id)
 	err := errors.Join(
-		cfg.SetCallsign([]byte(fmt.Sprintf("H%04dHB", id%10000))),
+		cfg.SetCallsign([]byte(callsign)),
 		cfg.SetRXFrequency(438000000),
 		cfg.SetTXFrequency(430400000),
 		cfg.SetPower(25),

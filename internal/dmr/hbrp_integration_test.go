@@ -67,6 +67,26 @@ func TestHBRPLogin(t *testing.T) {
 	})
 }
 
+func TestHBRPLoginWithCallsignStartingWithL(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.StartServers(t)
+
+		hb, err := testutils.NewHBRPSessionPeerCalled(100001, testPassword, "LU1ABC")
+		require.NoError(t, err)
+		require.NoError(t, hb.Connect(stack.MMDVMAddr))
+		defer hb.Close()
+		require.NoError(t, hb.WaitReady(handshakeWait))
+
+		var row models.Repeater
+		require.NoError(t, stack.DB.First(&row, 100001).Error)
+		assert.Equal(t, "LU1ABC", row.Callsign)
+		assert.Equal(t, "HBRP", row.Dialect)
+	})
+}
+
 // hbrpPair logs in the HBRP repeater 100001 and the MMDVM repeater 100002,
 // both on TG1 TS1.
 func hbrpPair(t *testing.T, stack *testutils.IntegrationStack) (*testutils.SessionPeer, *testutils.MMDVMClient) {

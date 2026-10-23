@@ -781,7 +781,14 @@ func GETUserSelf(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, userSelf{User: user, SMSStorage: user.SMSStorageEnabled})
+}
+
+// userSelf is the logged-in user, with whether SMS Storage is on, so that
+// an app can tell why the inbox is empty.
+type userSelf struct {
+	models.User
+	SMSStorage bool `json:"sms_storage"`
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {

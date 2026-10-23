@@ -19,6 +19,8 @@
 
 package models
 
+import "net"
+
 // RawDMRPacket is a raw DMR packet
 //
 //go:generate go run github.com/tinylib/msgp
@@ -28,4 +30,9 @@ type RawDMRPacket struct {
 	RemotePort int    `msg:"remote_port"`
 	// TrackID is the Packet.TrackID of the packet in Data.
 	TrackID uint64 `msg:"track_id"`
+	// Transport names the transport of a packet that a server received or
+	// sends on another transport than its UDP socket, and Addr is its
+	// address there. Neither is encoded.
+	Transport string   `msg:"-"`
+	Addr      net.Addr `msg:"-"`
 }

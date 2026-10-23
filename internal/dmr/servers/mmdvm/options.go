@@ -43,7 +43,7 @@ import (
 // text that cannot be read.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 	if s.byID[o.ID] != l || l.m.ID() != o.ID {
-		slog.Info("Ignoring options that are not from the session of the repeater", "repeaterID", o.ID, "remoteAddr", l.addr.String())
+		slog.Info("Ignoring options that are not from the session of the repeater", "repeaterID", o.ID, "remoteAddr", l.ep.String())
 		return
 	}
 	text := o.Packet

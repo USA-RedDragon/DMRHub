@@ -53,7 +53,7 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 
 	s := Server{
 		kvClient:     kvClient,
-		connected:    xsync.NewMap[uint, net.UDPAddr](),
+		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan: make(chan models.RawDMRPacket, channelBufferSize),
 	}
@@ -102,7 +102,7 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 
 	s := Server{
 		kvClient:     kvClient,
-		connected:    xsync.NewMap[uint, net.UDPAddr](),
+		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan: make(chan models.RawDMRPacket, channelBufferSize),
 	}

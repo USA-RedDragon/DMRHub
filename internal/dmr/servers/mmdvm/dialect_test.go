@@ -184,7 +184,7 @@ func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 			DB:         database,
 			Server:     conn,
 			kvClient:   kvc,
-			connected:  xsync.NewMap[uint, net.UDPAddr](),
+			connected:  xsync.NewMap[uint, endpoint](),
 			egressMiss: xsync.NewMap[uint, time.Time](),
 			newSalt:    func() (uint32, error) { return testSalt, nil },
 		},
@@ -271,7 +271,7 @@ func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandMSTPING, ID: 311860})
 	assert.Equal(t, uint32(311860), r.expect(dmrd.DialectHBRP, dmrd.CommandRPTPONG).ID)
 
-	r.s.sendBeacon(311860, r.from, r.s.links[r.from.String()].dialect)
+	r.s.sendBeacon(311860, udpEndpoint(r.from), r.s.links[r.from.String()].dialect)
 	r.expect(dmrd.DialectHBRP, dmrd.CommandRPTSBKN)
 
 	r.s.closeSessions(context.Background())
@@ -286,7 +286,7 @@ func TestMMDVMLoginRecordsItsDialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "MMDVM", rec.Dialect)
 	assert.Equal(t, uint(3), rec.Slots)
-	r.s.sendBeacon(311861, r.from, r.s.links[r.from.String()].dialect)
+	r.s.sendBeacon(311861, udpEndpoint(r.from), r.s.links[r.from.String()].dialect)
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTSBKN)
 	r.s.closeSessions(context.Background())
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)

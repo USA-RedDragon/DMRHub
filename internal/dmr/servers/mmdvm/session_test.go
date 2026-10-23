@@ -79,7 +79,7 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 		DB:        database,
 		Server:    conn,
 		kvClient:  servers.MakeKVClient(kvStore),
-		connected: xsync.NewMap[uint, net.UDPAddr](),
+		connected: xsync.NewMap[uint, endpoint](),
 	}
 	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 				DB:        database,
 				Server:    conn,
 				kvClient:  servers.MakeKVClient(kvStore),
-				connected: xsync.NewMap[uint, net.UDPAddr](),
+				connected: xsync.NewMap[uint, endpoint](),
 				newSalt:   func() (uint32, error) { return 0x01020304, nil },
 			}
 			read := func() dmrd.Command {

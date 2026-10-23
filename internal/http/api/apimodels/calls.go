@@ -181,14 +181,16 @@ func (r *WSCallResponse) MaskSMS() {
 	r.Bursts, r.Blocks, r.Octets, r.BadCRC, r.LostBlocks = 0, 0, 0, 0, 0
 }
 
-// MaskData shows a data row as plain data, as MaskSMS does, whatever its
-// sub kind.
+// MaskData shows a data or UDT row as plain data with no size: it drops
+// what MaskSMS drops, whatever the sub kind, and the duration, which tells
+// the number of bursts.
 func (r *WSCallResponse) MaskData() {
-	if r.Kind != models.CallKindData {
+	if r.Kind != models.CallKindData && r.Kind != models.CallKindUDT {
 		return
 	}
 	r.SubKind, r.SAP, r.DataFormat, r.Confirmed, r.Response = "", nil, "", false, models.CallResponseNone
 	r.Bursts, r.Blocks, r.Octets, r.BadCRC, r.LostBlocks = 0, 0, 0, 0, 0
+	r.Duration = 0
 }
 
 // HidePosition drops the coordinates of a GPS row and keeps its grid
@@ -216,41 +218,29 @@ func Maidenhead(lat, lon float64) string {
 
 // NewWSCallResponsesFor returns the rows of calls as viewer may see them. A
 // nil viewer is a visitor who is not logged in. An admin sees every field.
-// Another viewer sees an SMS, or any data row that carried a stored
-// message, as plain data unless the message is inside the window of
-// window, and the coordinates only of their own GPS rows.
+// Another viewer sees a data or UDT row as plain data with no size unless
+// it carried a message inside the window of window, and the coordinates
+// only of their own GPS rows. A data row is masked by default, so that a
+// response, a retry, or a row published before its message was stored
+// tells nothing either.
 func NewWSCallResponsesFor(db *gorm.DB, viewer *models.User, window models.SMSWindow, calls []models.Call) ([]WSCallResponse, error) {
 	out := make([]WSCallResponse, 0, len(calls))
 	admin := models.IsAdmin(viewer)
-	masked := map[uint]bool{}
+	var candidates []uint
 	if !admin {
-		var dataIDs []uint
 		for i := range calls {
-			if calls[i].Kind == models.CallKindData {
-				dataIDs = append(dataIDs, calls[i].ID)
-			}
-		}
-		carried, err := models.TransmissionsWithMessages(db, dataIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find the data rows of messages: %w", err)
-		}
-		var candidates []uint
-		for i := range calls {
-			if calls[i].Kind == models.CallKindData && (calls[i].SubKind == models.SubKindSMS || carried[calls[i].ID]) {
+			if calls[i].Kind == models.CallKindData || calls[i].Kind == models.CallKindUDT {
 				candidates = append(candidates, calls[i].ID)
 			}
 		}
-		visible, err := models.VisibleSMSIDs(db, viewer, window, candidates)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find the messages that the viewer may see: %w", err)
-		}
-		for _, id := range candidates {
-			masked[id] = !visible[id]
-		}
+	}
+	visible, err := models.VisibleSMSIDs(db, viewer, window, candidates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find the messages that the viewer may see: %w", err)
 	}
 	for i := range calls {
 		resp := NewWSCallResponseFromCall(&calls[i])
-		if masked[resp.ID] {
+		if !admin && !visible[resp.ID] {
 			resp.MaskData()
 		}
 		if !admin && (viewer == nil || viewer.ID != resp.SourceID) {

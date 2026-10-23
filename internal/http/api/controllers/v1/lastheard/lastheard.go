@@ -51,7 +51,7 @@ func viewerOf(c *gin.Context, db *gorm.DB) *models.User {
 		return nil
 	}
 	user, err := models.FindUserByID(db, id)
-	if err != nil {
+	if err != nil || !user.Approved || user.Suspended {
 		return nil
 	}
 	return &user

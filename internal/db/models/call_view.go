@@ -113,23 +113,6 @@ func CallIDsIn(db *gorm.DB, ids []uint, visible *gorm.DB) (map[uint]bool, error)
 	return out, nil
 }
 
-// TransmissionsWithMessages returns which of the calls ids carried a
-// stored message.
-func TransmissionsWithMessages(db *gorm.DB, ids []uint) (map[uint]bool, error) {
-	out := map[uint]bool{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	var got []uint
-	if err := db.Session(&gorm.Session{NewDB: true}).Model(&Message{}).Where("transmission_id IN ?", ids).Distinct().Pluck("transmission_id", &got).Error; err != nil {
-		return nil, fmt.Errorf("failed to find the transmissions of messages: %w", err)
-	}
-	for _, id := range got {
-		out[id] = true
-	}
-	return out, nil
-}
-
 // IsAdmin reports whether viewer is an approved admin who is not suspended.
 // A nil viewer is not.
 func IsAdmin(viewer *User) bool {

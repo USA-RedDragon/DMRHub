@@ -54,7 +54,10 @@ This is the living handoff for the next session. It assumes you have nothing but
    - Verified: every symbol, both hemispheres, the date line and the poles parse in Ham::APRS::FAP 1.21 and aprslib 0.7.2; the gateway logged in to aprsc 2.1.23 on loopback with no uplink, which passed the packets on unchanged. Nothing was sent to the real APRS-IS.
    - Left for the owner: the first live check with one radio on aprs.fi's raw packets page; the permanent tocall.
    - APRS-IS verification plan (owner asked): never send to the real APRS-IS from tests; test against a fake loopback server and a local aprsc; check every built packet with Ham::APRS::FAP (aprs.fi's parser) and aprslib; send only real decoded fixes (no fix, 0,0, out of range, stale, unmoved, over rate, or no licensed callsign: nothing sent, each with a test); first live check is the owner with one radio on aprs.fi's raw packets page.
-3. Plugin architecture, issue #68 (ID range ownership, inbound and outbound queues, outbound source limited to the plugin's range).
+3. Plugin architecture, issue #68 (ID range ownership, inbound and outbound queues, outbound source limited to the plugin's range). Owner decisions, 2026-10-23:
+   - Out-of-process from the start; plugins dial in to the hub (the hub never launches them).
+   - One bidirectional gRPC stream per plugin over TLS.
+   - An admin adds each plugin in the Admin pages, assigns all of its ID ranges (no built-in defaults) and gets a token shown once; ranges come from the hub, never from the plugin. The admin UI needs an approved mockup first.
 4. Make the parrot the first plugin to prove it out.
 5. Improve the plugin architecture from what the parrot taught.
 6. Move LRRP onto it.

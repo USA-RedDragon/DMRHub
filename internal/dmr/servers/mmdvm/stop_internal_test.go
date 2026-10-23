@@ -52,7 +52,9 @@ func TestStopUnderAFlood(t *testing.T) {
 	require.NoError(t, s.Start(context.Background()))
 
 	s.mu.Lock()
-	c, err := net.DialUDP("udp", nil, s.Server.LocalAddr().(*net.UDPAddr))
+	addr, ok := s.Server.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	c, err := net.DialUDP("udp", nil, addr)
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 	for range 4 * channelBufferSize {

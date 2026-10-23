@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
+	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
@@ -61,8 +62,21 @@ const defTimeout = 10 * time.Second
 const rateLimitRate = time.Second
 const rateLimitLimit = 50
 
-func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) Server {
-	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit)
+// Option changes what CreateRouter puts into the router.
+type Option func(*options)
+
+type options struct {
+	applier v1ConfigControllers.Applier
+}
+
+// WithConfigApplier makes the config API put a saved config into effect
+// with a.
+func WithConfigApplier(a v1ConfigControllers.Applier) Option {
+	return func(o *options) { o.applier = a }
+}
+
+func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, opts ...Option) Server {
+	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit, opts...)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
@@ -103,7 +117,7 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) {
+func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, o options) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))
@@ -121,6 +135,9 @@ func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub,
 	r.Use(middleware.Provider("NetScheduler", ns))
 	r.Use(middleware.Provider("Version", version))
 	r.Use(middleware.Provider("Commit", commit))
+	if o.applier != nil {
+		r.Use(middleware.Provider(v1ConfigControllers.ApplierKey, o.applier))
+	}
 	// CORS
 	if config.HTTP.CORS.Enabled {
 		corsConfig := cors.DefaultConfig()
@@ -171,7 +188,12 @@ func CreateSetupWizardRouter(config *configPkg.Config, token string, configCompl
 	return r
 }
 
-func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) *gin.Engine {
+func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, opts ...Option) *gin.Engine {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
@@ -182,7 +204,7 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 		slog.Error("Failed setting trusted proxies", "error", err)
 	}
 
-	addMiddleware(ctx, config, dmrHub, r, db, pubsub, ready, ns, version, commit)
+	addMiddleware(ctx, config, dmrHub, r, db, pubsub, ready, ns, version, commit, o)
 
 	ratelimitStore := gormRateLimit.NewGORMStore(&gormRateLimit.GORMOptions{
 		DB:    db,

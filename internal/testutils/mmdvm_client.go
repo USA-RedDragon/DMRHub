@@ -51,6 +51,7 @@ type MMDVMClient struct {
 	readyVal atomic.Bool
 	pongs    atomic.Uint64
 	noPings  atomic.Bool
+	mstcls   atomic.Uint64
 }
 
 const (
@@ -163,6 +164,11 @@ func (c *MMDVMClient) Ping(timeout time.Duration) bool {
 	return false
 }
 
+// MSTCLs returns the number of MSTCLs the client got after its login.
+func (c *MMDVMClient) MSTCLs() uint64 {
+	return c.mstcls.Load()
+}
+
 // Close shuts down the client.
 func (c *MMDVMClient) Close() {
 	c.stopOnce.Do(func() {
@@ -242,6 +248,9 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 		if command == dmrd.CommandMSTPONG {
 			c.pongs.Add(1)
 		}
+		if command == dmrd.CommandMSTCL {
+			c.mstcls.Add(1)
+		}
 		if command == dmrd.CommandDMRD {
 			pkt, ok := models.UnpackPacket(data)
 			if ok {
@@ -252,7 +261,7 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 				}
 			}
 		}
-		// MSTPONG, MSTCL, RPTSBKN and the rest are ignored.
+		// RPTSBKN and the rest are ignored.
 	}
 }
 

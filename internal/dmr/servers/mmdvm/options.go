@@ -35,10 +35,12 @@ import (
 // FreeDMR, a text with static talkgroups defines both slots: the list of
 // each slot replaces the static talkgroups the repeater has, and a slot
 // that the text does not name is cleared. A text with no static talkgroup
-// key changes nothing. FreeDMR and DMR+ texts are both read as FreeDMR
-// reads them, since FreeDMR takes the DMR+ keys too. DMRHub has no feature
-// for the other options, so they are logged and ignored, as is a text that
-// cannot be read.
+// key leaves them. The default dial of a slot (DIAL and its aliases) links
+// its talkgroup as the dynamic talkgroup of the slot, as a voice call on
+// it does, and 0 unlinks the slot. FreeDMR and DMR+ texts are both read as
+// FreeDMR reads them, since FreeDMR takes the DMR+ keys too. DMRHub has no
+// feature for the other options, so they are logged and ignored, as is a
+// text that cannot be read.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 	if s.byID[o.ID] != l || l.m.ID() != o.ID {
 		slog.Info("Ignoring options that are not from the session of the repeater", "repeaterID", o.ID, "remoteAddr", l.addr.String())
@@ -51,27 +53,80 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 		return
 	}
 	id := uint(o.ID)
-	logIgnoredOptions(id, text)
+	parsed, err := dmrd.ParseFreeDMROptions(text)
+	if err != nil {
+		slog.Info("Repeater options have a value that is not valid", "repeaterID", id, "error", err)
+	}
+	logIgnoredOptions(id, text, &parsed)
+	statics := s.applyStatics(ctx, id, text)
+	dial1 := s.dial(ctx, id, false, parsed.DialTS1)
+	dial2 := s.dial(ctx, id, true, parsed.DialTS2)
+	if !statics && !dial1 && !dial2 {
+		slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
+	}
+}
+
+// applyStatics saves the static talkgroups that text sets and reloads the
+// subscriptions of the repeater. It reports whether it changed them.
+func (s *Server) applyStatics(ctx context.Context, id uint, text []byte) bool {
 	set1, bad1 := staticOption(text, enums.Slot1)
 	set2, bad2 := staticOption(text, enums.Slot2)
 	if !set1 && !set2 {
-		slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
-		return
+		return false
 	}
 	ts1 := s.staticTalkgroups(id, text, enums.Slot1, set1, bad1)
 	ts2 := s.staticTalkgroups(id, text, enums.Slot2, set2, bad2)
 	if ts1 == nil && ts2 == nil {
-		slog.Info("No static talkgroups in repeater options that DMRHub applies", "repeaterID", id)
-		return
+		return false
 	}
 	if err := models.SetRepeaterStaticTalkgroups(s.DB, id, ts1, ts2); err != nil {
 		slog.Error("Error saving the static talkgroups of the repeater options", "repeaterID", id, "error", err)
-		return
+		return false
 	}
-	slog.Info("Applied repeater options", "repeaterID", id, "ts1Static", talkgroupIDs(ts1), "ts2Static", talkgroupIDs(ts2))
+	slog.Info("Applied static talkgroups of repeater options", "repeaterID", id, "ts1Static", talkgroupIDs(ts1), "ts2Static", talkgroupIDs(ts2))
 	if s.hub != nil {
 		s.hub.ReloadRepeater(ctx, id)
 	}
+	return true
+}
+
+// dial applies the default dial v of a slot, slot2 true for TS2: a
+// talkgroup that exists is linked as the dynamic talkgroup of the slot, and
+// 0, an empty value or a value that FreeDMR refuses as a default dial
+// unlinks the slot, as FreeDMR resets the dial of the slot then. It
+// reports whether it applied v.
+func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionValue) bool {
+	if v.State == dmrd.OptionAbsent || s.hub == nil {
+		return false
+	}
+	slot := 1
+	if slot2 {
+		slot = 2
+	}
+	if v.State == dmrd.OptionClear || !dialable(v.Value) {
+		slog.Info("Unlinking the dynamic talkgroup for the default dial of repeater options", "repeaterID", id, "slot", slot, "dial", v.Value)
+		s.hub.UnlinkDynamicTalkgroup(ctx, id, slot2)
+		return true
+	}
+	exists, err := models.TalkgroupIDExists(s.DB, uint(v.Value))
+	if err != nil {
+		slog.Error("Error finding the default dial talkgroup of repeater options", "repeaterID", id, "error", err)
+		return false
+	}
+	if !exists {
+		slog.Info("Ignoring a default dial in repeater options that does not exist", "repeaterID", id, "slot", slot, "talkgroupID", v.Value)
+		return false
+	}
+	slog.Info("Linking the default dial of repeater options", "repeaterID", id, "slot", slot, "talkgroupID", v.Value)
+	s.hub.LinkDynamicTalkgroup(ctx, id, uint(v.Value), slot2)
+	return true
+}
+
+// dialable reports whether FreeDMR takes tg as a default dial: above 0, at
+// most 999999, and not 1 to 9 or 9990 to 9999.
+// (FreeDMR 546165eb bridge_master.py valid_dial_a_tg_reflector)
+func dialable(tg uint32) bool {
+	return tg > 9 && tg <= 999999 && (tg < 9990 || tg > 9999)
 }
 
 // staticTalkgroups returns the talkgroups that text sets as the static
@@ -197,17 +252,13 @@ func talkgroupEntry(entry []byte) bool {
 
 // logIgnoredOptions logs the options in text that DMRHub has no feature
 // for.
-func logIgnoredOptions(id uint, text []byte) {
-	o, err := dmrd.ParseFreeDMROptions(text)
-	if err != nil {
-		slog.Info("Repeater options have a value that is not valid", "repeaterID", id, "error", err)
-	}
+func logIgnoredOptions(id uint, text []byte, o *dmrd.FreeDMROptions) {
 	var names []string
 	for _, opt := range []struct {
 		name string
 		v    dmrd.OptionValue
 	}{
-		{"DialTS1", o.DialTS1}, {"DialTS2", o.DialTS2}, {"Timer", o.Timer},
+		{"Timer", o.Timer},
 		{"TS1Timer", o.TS1Timer}, {"TS2Timer", o.TS2Timer}, {"TGTimer", o.TGTimer},
 		{"DialTimer", o.DialTimer}, {"TS1TGTimer", o.TS1TGTimer}, {"TS2TGTimer", o.TS2TGTimer},
 		{"TS1DialTimer", o.TS1DialTimer}, {"TS2DialTimer", o.TS2DialTimer}, {"Voice", o.Voice},

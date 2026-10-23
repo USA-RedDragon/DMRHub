@@ -33,13 +33,20 @@ func (h *Hub) doUnlink(ctx context.Context, packet models.Packet) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.doUnlink")
 	defer span.End()
 
-	dbRepeater, err := models.FindRepeaterByID(h.db, packet.Repeater)
+	h.UnlinkDynamicTalkgroup(ctx, packet.Repeater, packet.Slot)
+}
+
+// UnlinkDynamicTalkgroup clears the dynamic talkgroup of a timeslot of the
+// repeater, as a voice call to TG 4000 on that timeslot does. slot true is
+// TS2.
+func (h *Hub) UnlinkDynamicTalkgroup(_ context.Context, repeaterID uint, slot bool) {
+	dbRepeater, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater for unlink", "error", err)
 		return
 	}
 
-	h.unlinkTimeslot(&dbRepeater, packet.Slot)
+	h.unlinkTimeslot(&dbRepeater, slot)
 }
 
 // unlinkTimeslot clears the dynamic talkgroup for the given timeslot on a repeater.
@@ -83,26 +90,33 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.switchDynamicTalkgroup")
 	defer span.End()
 
-	repeater, err := models.FindRepeaterByID(h.db, packet.Repeater)
+	h.LinkDynamicTalkgroup(ctx, packet.Repeater, packet.Dst, packet.Slot)
+}
+
+// LinkDynamicTalkgroup links the talkgroup as the dynamic talkgroup of a
+// timeslot of the repeater, as a voice call on the talkgroup on that
+// timeslot does. slot true is TS2.
+func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool) {
+	repeater, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
-		slog.Error("Error finding repeater", "repeaterID", packet.Repeater, "error", err)
+		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
 		return
 	}
 
-	talkgroup, err := models.FindTalkgroupByID(h.db, packet.Dst)
+	talkgroup, err := models.FindTalkgroupByID(h.db, talkgroupID)
 	if err != nil {
-		slog.Error("Error finding talkgroup", "talkgroupID", packet.Dst, "error", err)
+		slog.Error("Error finding talkgroup", "talkgroupID", talkgroupID, "error", err)
 		return
 	}
 
 	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
-	if packet.Slot {
+	if slot {
 		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
 	}
 
 	if currentDynTGID == nil || *currentDynTGID != talkgroup.ID {
-		slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
-		h.subscribeTalkgroup(ctx, repeater.ID, packet.Dst)
+		slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", repeaterID, "talkgroupID", talkgroupID)
+		h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
 		if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
 			slog.Error("Error saving repeater", "error", err)
 		}

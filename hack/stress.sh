@@ -45,7 +45,7 @@ declare -A tests=(
     [callmix]=TestCallMix [kinds]=TestEveryKind [transports]=TestTransports
     [ramp]=TestLoadRamp [latency]=TestLatency [soak]=TestSoak [chaos]=TestChaos
     [hostile]=TestHostileInput [webclients]=TestSlowWebClients [database]=TestDatabase
-    [repro]=TestRepro
+    [repro]='TestRepro.*'
 )
 
 mkdir -p "$results"

@@ -902,3 +902,57 @@ func TestBackToBackTransmissionsOnOneSlotEachGetTheirOwnRow(t *testing.T) {
 func burstsOf(b ...layer2.RawBurst) []layer2.RawBurst {
 	return b
 }
+
+func TestAnotherStreamOnTheSlotDoesNotSplitAMessage(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("split me not")})
+	var check pdu.CSBK
+	check.LastBlock = true
+	require.NoError(t, check.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{RequesterAddress: uint32(userA), CheckedAddress: uint32(userB)}))
+
+	msg := newSender(t, ct, userB, userA, false, 65700)
+	other := newSender(t, ct, userA, userB, false, 65701)
+	half := len(bursts) / 2
+	msg.data(bursts[:half]...)
+	other.data(burstOf(t, &check))
+	msg.data(bursts[half:]...)
+
+	calls := waitDone(t, ct, database, 2)
+	byStream := map[uint]models.Call{}
+	for _, c := range calls {
+		byStream[c.StreamID] = c
+	}
+	require.Len(t, byStream, 2, "one row for each stream")
+	assert.Equal(t, models.CallKindData, byStream[65700].Kind)
+	assert.Equal(t, "sms", byStream[65700].SubKind)
+	assert.Equal(t, uint(len(bursts)), byStream[65700].Bursts, "the message keeps all its bursts")
+	assert.Equal(t, models.CallKindCSBK, byStream[65701].Kind)
+}
+
+func TestVoiceRowRecordsTheFIDOfItsLC(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	header := burstOf(t, &pdu.FullLinkControl{
+		BurstDataType: enums.DataTypeVoiceLCHeader,
+		FLCO:          enums.FLCOGroupVoiceChannelUser,
+		FID:           enums.FIDMotorola,
+	})
+	s := newSender(t, ct, userA, 9, true, 65800)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), header)
+	time.Sleep(150 * time.Millisecond)
+	for range 3 {
+		s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+		for v := uint(1); v <= 5; v++ {
+			s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
+		}
+	}
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	c := waitDone(t, ct, database, 1)[0]
+	assert.Equal(t, models.CallKindVoice, c.Kind)
+	require.NotNil(t, c.FID, "the voice row records the FID of its LC")
+	assert.Equal(t, uint8(enums.FIDMotorola), *c.FID)
+}

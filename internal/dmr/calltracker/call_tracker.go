@@ -733,19 +733,13 @@ type row struct {
 }
 
 type channel struct {
-	key     chanKey
-	peer    bool
-	rx      *data.Receiver
-	data    map[dataKey]*row
-	last    time.Time
-	stream  uint
-	started bool
-	offset  uint16
-	outSeq  uint16
-	// streamID is the stream of the latest packet, which on a repeater
-	// slot names its one transmission.
-	streamID    uint
-	hasStreamID bool
+	key  chanKey
+	peer bool
+	// rxs holds a data receiver for each stream, so that the blocks of two
+	// streams on one slot never make one message.
+	rxs  map[uint]*data.Receiver
+	data map[dataKey]*row
+	last time.Time
 }
 
 type shard struct {
@@ -799,7 +793,7 @@ func (s *shard) run() {
 func (s *shard) channel(key chanKey, peer bool) *channel {
 	ch, ok := s.channels[key]
 	if !ok {
-		ch = &channel{key: key, peer: peer, data: map[dataKey]*row{}}
+		ch = &channel{key: key, peer: peer, data: map[dataKey]*row{}, rxs: map[uint]*data.Receiver{}}
 		s.channels[key] = ch
 	}
 	return ch
@@ -919,10 +913,21 @@ func (s *shard) finish(r *row, at time.Time) {
 	slog.Info("Transmission ended", "kind", call.Kind, "sub", call.SubKind, "streamID", call.StreamID, "src", call.SourceID, "dst", call.DestinationID, "repeater", call.IngressID, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
 }
 
+// idle reports whether no data receiver of ch is in the middle of a
+// message.
+func (ch *channel) idle() bool {
+	for _, rx := range ch.rxs {
+		if rx.State() != data.StateIdle {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *shard) finishAll() {
 	for _, ch := range s.channels {
-		if ch.rx != nil {
-			s.events = ch.rx.Lost(s.t.now(), s.events[:0])
+		for _, rx := range ch.rxs {
+			s.events = rx.Lost(s.t.now(), s.events[:0])
 			s.apply(ch, nil, nil, s.events)
 		}
 		for _, r := range ch.data {
@@ -945,14 +950,17 @@ func (s *shard) sweep(now time.Time) {
 		}
 	}
 	for key, ch := range s.channels {
-		if ch.rx != nil {
-			if at, ok := ch.rx.Deadline(); ok && mono >= at {
-				s.events = ch.rx.Tick(mono, s.events[:0])
+		for stream, rx := range ch.rxs {
+			if at, ok := rx.Deadline(); ok && mono >= at {
+				s.events = rx.Tick(mono, s.events[:0])
 				s.apply(ch, nil, nil, s.events)
+			}
+			if _, waiting := rx.Deadline(); !waiting && rx.State() == data.StateIdle {
+				delete(ch.rxs, stream)
 			}
 		}
 		for _, r := range ch.data {
-			if now.Sub(r.last) >= dataRowHang && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+			if now.Sub(r.last) >= dataRowHang && ch.idle() {
 				s.finish(r, time.Time{})
 			}
 		}
@@ -960,7 +968,7 @@ func (s *shard) sweep(now time.Time) {
 		if ch.peer {
 			idle = peerChannelIdle
 		}
-		if len(ch.data) == 0 && now.Sub(ch.last) >= idle && (ch.rx == nil || ch.rx.State() == data.StateIdle) {
+		if len(ch.data) == 0 && now.Sub(ch.last) >= idle && ch.idle() {
 			delete(s.channels, key)
 		}
 	}

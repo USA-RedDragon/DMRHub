@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -70,6 +71,46 @@ func TestActivateRepeaterWithDynamicTG(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timed out waiting for dynamic TG delivery")
 	}
+}
+
+// TestActivateRepeaterReceivesAtOnce verifies that a repeater receives
+// traffic routed right after ActivateRepeater returns, however long the
+// pubsub subscription takes to set up.
+func TestActivateRepeaterReceivesAtOnce(t *testing.T) {
+	t.Parallel()
+	h, database, _ := makeTestHubWrapping(t, func(ps pubsub.PubSub) pubsub.PubSub {
+		return slowSubscribe{PubSub: ps, delay: 300 * time.Millisecond}
+	})
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100002, 1000001)
+	seedTalkgroup(t, database, 60, "TG60")
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100002).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 60}))
+
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	h.ActivateRepeater(context.Background(), 100002)
+	h.RoutePacket(context.Background(), makeVoicePacket(60, 60001, true, false), models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srvHandle.Packets:
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+	case <-time.After(5 * time.Second):
+		t.Fatal("a burst routed right after ActivateRepeater was lost")
+	}
+}
+
+type slowSubscribe struct {
+	pubsub.PubSub
+	delay time.Duration
+}
+
+func (s slowSubscribe) Subscribe(topic string) pubsub.Subscription {
+	time.Sleep(s.delay)
+	return s.PubSub.Subscribe(topic)
 }
 
 // TestActivateRepeaterBothTimeslotStaticTGs verifies that subscriptions are set
@@ -749,25 +790,21 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	}
 }
 
-// waitAllReceive routes bursts to tg until each of want repeaters has
-// received one, so that every subscription is known to be live.
+// waitAllReceive routes a burst to tg and waits until each of want
+// repeaters has received it.
 func waitAllReceive(t *testing.T, h *hub.Hub, srv *hub.ServerHandle, tg uint, want int, stream uint) {
 	t.Helper()
+	h.RoutePacket(context.Background(), makeVoicePacket(tg, stream, true, false), models.RepeaterTypeMMDVM)
 	seen := map[uint]bool{}
-	for round := uint(0); round < 20 && len(seen) < want; round++ {
-		h.RoutePacket(context.Background(), makeVoicePacket(tg, stream+round, true, false), models.RepeaterTypeMMDVM)
-		quiet := time.After(time.Second)
-	collect:
-		for len(seen) < want {
-			select {
-			case rp := <-srv.Packets:
-				seen[rp.RepeaterID] = true
-			case <-quiet:
-				break collect
-			}
+	timeout := time.After(time.Minute)
+	for len(seen) < want {
+		select {
+		case rp := <-srv.Packets:
+			seen[rp.RepeaterID] = true
+		case <-timeout:
+			t.Fatalf("only %d of %d repeaters received the burst", len(seen), want)
 		}
 	}
-	require.Len(t, seen, want, "not every repeater subscription received traffic")
 }
 
 type lookupGate struct {
@@ -805,7 +842,7 @@ func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGa
 func (g *lookupGate) waitHeld(t *testing.T, want int) {
 	t.Helper()
 	ids := map[uint]bool{}
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(time.Minute)
 	for len(ids) < want {
 		select {
 		case id := <-g.held:

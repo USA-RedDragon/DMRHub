@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+
+vi.mock('@/services/API', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+  },
+}));
+
+import API from '@/services/API';
+import SetupWizard from '@/views/SetupWizard.vue';
+
+const mockAPI = API as unknown as { get: Mock; post: Mock; put: Mock };
+
+const everythingOn = () => ({
+  data: {
+    dmr: {
+      mmdvm: { bind: '[::]', port: 62031 },
+      ipsc: { enabled: true, bind: '[::]', port: 50000, 'network-id': 311860 },
+      openbridge: { enabled: true, bind: '[::]', port: 62035 },
+      retention: { messages: 0, transmissions: 0, bursts: 0 },
+    },
+    http: { bind: '[::]', port: 3005, cors: { enabled: true }, 'robots-txt': { mode: 'custom' } },
+    database: { driver: 'postgres', host: 'db', port: 5432 },
+    smtp: { enabled: true, port: 25 },
+    redis: { enabled: true, port: 6379 },
+    metrics: { enabled: true, port: 9000 },
+    pprof: { enabled: true, port: 6060 },
+  },
+});
+
+const mountWizard = (toast = { add: vi.fn() }) => mount(SetupWizard, {
+  attachTo: document.body,
+  global: {
+    mocks: { $route: { path: '/admin/setup', query: {} }, $router: { push: vi.fn() }, $toast: toast },
+  },
+});
+
+describe('Setup page form', { timeout: 20000 }, () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('gives every field its own id, and each label points at a field in its own card', async () => {
+    mockAPI.get.mockResolvedValue(everythingOn());
+    const wrapper = mountWizard();
+    await flushPromises();
+    const ids = Array.from(document.querySelectorAll('form [id]')).map((e) => e.id);
+    const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+    expect(dupes).toEqual([]);
+    const misplaced = Array.from(document.querySelectorAll('form label[for]')).filter((label) => {
+      const target = document.getElementById(label.getAttribute('for')!);
+      return !target || target.closest('[data-slot="card"]') !== label.closest('[data-slot="card"]');
+    }).map((label) => label.getAttribute('for'));
+    expect(misplaced).toEqual([]);
+    wrapper.unmount();
+  });
+});

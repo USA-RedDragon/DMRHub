@@ -30,23 +30,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="ipsc-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enabled</label>
+          <label for="ipsc-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="bind" v-if="enabled">Bind Address</label>
-        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="ipsc-bind" v-if="enabled">Bind Address</label>
+        <ShadInput id="ipsc-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the IPSC server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <label class="field-label" for="ipsc-port" v-if="enabled">Port</label>
         <ShadInput
-          id="port"
+          id="ipsc-port"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -57,9 +57,9 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="network-id" v-if="enabled">Network ID</label>
+        <label class="field-label" for="ipsc-network-id" v-if="enabled">Network ID</label>
         <ShadInput
-          id="network-id"
+          id="ipsc-network-id"
           type="number"
           v-model="networkId"
           v-if="enabled"

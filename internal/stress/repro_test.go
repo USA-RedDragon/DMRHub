@@ -50,16 +50,22 @@ func TestReproUnregisterServerWithBackedUpEgress(t *testing.T) { //nolint:parall
 	ct := calltracker.NewCallTracker(stack.DB, stack.PubSub)
 	t.Cleanup(ct.Stop)
 	h := hub.NewHub(stack.DB, stack.KV, stack.PubSub, ct)
-	h.RegisterServer(hub.ServerConfig{Name: "peers", Role: hub.RolePeer})
+	peers := h.RegisterServer(hub.ServerConfig{Name: "peers", Role: hub.RolePeer})
 	h.RegisterServer(hub.ServerConfig{Name: "repeaters", Role: hub.RoleRepeater})
 
-	for i := range 520 {
+	for i := range 700 {
+		time.Sleep(2 * time.Millisecond)
 		h.RoutePacket(context.Background(), models.Packet{
 			Signature: string(dmrconst.CommandDMRD), Seq: uint(i & 0xFF), Src: 1000001, Dst: 91, GroupCall: true,
 			FrameType: dmrconst.FrameVoice, StreamID: 0xABC, Repeater: 310000,
 		}, "repeaters")
 	}
-	time.Sleep(3 * time.Second)
+	full := time.Now().Add(2 * time.Minute)
+	for len(peers.Packets) < cap(peers.Packets) && time.Now().Before(full) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.Equal(t, cap(peers.Packets), len(peers.Packets), "the channel of the peer server never filled")
+	time.Sleep(500 * time.Millisecond)
 
 	done := make(chan struct{})
 	go func() {

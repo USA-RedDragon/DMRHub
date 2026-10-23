@@ -29,6 +29,10 @@ The list updates in real-time. The table includes:
 
 When you are logged in, the **Messages** page shows the text messages sent to and from your radio IDs, and the **Settings** page lets you turn on SMS Storage and add the other radio IDs that you own. See [Messages and SMS Storage](messages.md).
 
+## Positions
+
+When you are logged in, the **Positions** page shows a map of where your radios reported from. You can turn on position tracking for each radio, share your positions with other users, and send them to APRS-IS. See [Positions](positions.md).
+
 ## Registration
 
 Visit `<siteurl>/register` to create an account. You'll need:

@@ -45,7 +45,7 @@ func pushRig(t *testing.T) (*messages.Store, pubsub.PubSub) {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
 	require.NoError(t, err)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, memKV(t))
 	store.SetNotify(messages.NewPusher(database, ps).Push)
 	t.Cleanup(func() {
 		store.Stop()

@@ -40,7 +40,7 @@ import (
 func TestMaskedSMSHidesItsResponseAndDuration(t *testing.T) {
 	t.Parallel()
 	ct, database, _ := newTracker(t)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, memKV(t))
 	ct.SetDataObserver(store)
 	t.Cleanup(store.Stop)
 
@@ -98,7 +98,7 @@ func TestPublicDataRowIsMaskedBeforeItsMessageIsStored(t *testing.T) {
 		t.Run(delay.String(), func(t *testing.T) {
 			t.Parallel()
 			ct, database, ps := newTracker(t)
-			store := messages.NewStore(database)
+			store := messages.NewStore(database, memKV(t))
 			if delay == 0 {
 				ct.SetDataObserver(store)
 			} else {
@@ -148,7 +148,7 @@ func confirmedShortData(t *testing.T) []layer2.RawBurst {
 func TestRetryRowOfAStoredMessageIsMasked(t *testing.T) {
 	t.Parallel()
 	ct, database, _ := newTracker(t)
-	store := messages.NewStore(database)
+	store := messages.NewStore(database, memKV(t))
 	ct.SetDataObserver(store)
 	t.Cleanup(store.Stop)
 

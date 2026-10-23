@@ -121,6 +121,10 @@ func TestSlowWebClients(t *testing.T) { //nolint:paralleltest
 		if k%2 == 1 {
 			path = "/ws/messages"
 		}
+		if k%4 == 3 {
+			all = append(all, &wsClient{conn: testutils.DialWSStalled(t, w.srv.URL, path, jar)})
+			continue
+		}
 		conn, resp := testutils.DialWS(t, w.srv.URL, path, jar)
 		if conn == nil {
 			res.fail(t, "websocket %s refused: %d", path, resp.StatusCode)
@@ -128,9 +132,6 @@ func TestSlowWebClients(t *testing.T) { //nolint:paralleltest
 		}
 		c := &wsClient{conn: conn}
 		all = append(all, c)
-		if k%4 == 3 {
-			continue
-		}
 		readers.Add(1)
 		go func() {
 			defer readers.Done()

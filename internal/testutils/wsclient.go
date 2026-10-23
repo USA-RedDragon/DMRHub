@@ -81,6 +81,7 @@ type WSConn struct {
 	end       error
 	closed    chan struct{}
 	closeOnce sync.Once
+	readOnce  sync.Once
 }
 
 type wsFrame struct {
@@ -102,17 +103,29 @@ func DialWS(t *testing.T, serverURL, path string, jar CookieJar) (*WSConn, *http
 // origin.
 func DialWSFrom(t *testing.T, serverURL, path string, jar CookieJar, origin string) (*WSConn, *http.Response) {
 	t.Helper()
-	return dialWS(t, serverURL, path, jar, origin, nil)
+	return dialWS(t, serverURL, path, jar, origin, nil, false)
+}
+
+// DialWSStalled opens the websocket path as DialWS does, for a client that
+// has stopped reading: it reads nothing, and answers no ping, until its
+// first ReadText.
+func DialWSStalled(t *testing.T, serverURL, path string, jar CookieJar) *WSConn {
+	t.Helper()
+	u, err := url.Parse(serverURL)
+	require.NoError(t, err)
+	conn, resp := dialWS(t, serverURL, path, jar, "http://"+u.Host, nil, true)
+	require.NotNil(t, conn, "status %d", resp.StatusCode)
+	return conn
 }
 
 // DialWSProtocols opens the websocket path from a page at origin, without
 // cookies, offering the subprotocols protocols.
 func DialWSProtocols(t *testing.T, serverURL, path, origin string, protocols ...string) (*WSConn, *http.Response) {
 	t.Helper()
-	return dialWS(t, serverURL, path, CookieJar{}, origin, protocols)
+	return dialWS(t, serverURL, path, CookieJar{}, origin, protocols, false)
 }
 
-func dialWS(t *testing.T, serverURL, path string, jar CookieJar, origin string, protocols []string) (*WSConn, *http.Response) {
+func dialWS(t *testing.T, serverURL, path string, jar CookieJar, origin string, protocols []string, stalled bool) (*WSConn, *http.Response) {
 	t.Helper()
 	u, err := url.Parse(serverURL)
 	require.NoError(t, err)
@@ -151,7 +164,9 @@ func dialWS(t *testing.T, serverURL, path string, jar CookieJar, origin string, 
 		ended:  make(chan struct{}),
 		closed: make(chan struct{}),
 	}
-	go w.readLoop()
+	if !stalled {
+		w.startReading()
+	}
 	t.Cleanup(w.Close)
 	return w, resp
 }
@@ -202,6 +217,7 @@ func (w *WSConn) WriteText(t *testing.T, s string) {
 // once the server closed the connection, and the read error once the
 // connection broke.
 func (w *WSConn) ReadText(timeout time.Duration) (string, error) {
+	w.startReading()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
@@ -217,6 +233,10 @@ func (w *WSConn) ReadText(timeout time.Duration) (string, error) {
 	case <-timer.C:
 		return "", fmt.Errorf("read: %w", os.ErrDeadlineExceeded)
 	}
+}
+
+func (w *WSConn) startReading() {
+	w.readOnce.Do(func() { go w.readLoop() })
 }
 
 func (w *WSConn) readLoop() {

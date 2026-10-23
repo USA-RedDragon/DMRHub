@@ -61,7 +61,7 @@ type IPSCServer struct {
 	bursts       []burst
 
 	egressMu sync.Mutex
-	egress   map[uint32]*IPSCTranslator
+	egress   map[uint32]*peerTranslator
 
 	wg       sync.WaitGroup
 	done     chan struct{}
@@ -106,7 +106,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		epoch:      time.Now(),
 		done:       make(chan struct{}),
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
-		egress:     map[uint32]*IPSCTranslator{},
+		egress:     map[uint32]*peerTranslator{},
 	}
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
 		ID:              s.localID,
@@ -415,23 +415,32 @@ func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
 	}
 }
 
+// peerTranslator is the translator of one IPSC peer, with the time it
+// was last handed out.
+type peerTranslator struct {
+	t    *IPSCTranslator
+	used time.Time
+}
+
 func (s *IPSCServer) egressTranslator(repeaterID uint32) *IPSCTranslator {
 	s.egressMu.Lock()
 	defer s.egressMu.Unlock()
-	t, ok := s.egress[repeaterID]
+	e, ok := s.egress[repeaterID]
 	if !ok {
 		if s.egress == nil {
-			s.egress = map[uint32]*IPSCTranslator{}
+			s.egress = map[uint32]*peerTranslator{}
 		}
-		t = NewIPSCTranslator(s.localID)
+		t := NewIPSCTranslator(s.localID)
 		if s.hub != nil {
 			t.onUndeliverable = func(pkt models.Packet, reason string) {
 				s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reason)
 			}
 		}
-		s.egress[repeaterID] = t
+		e = &peerTranslator{t: t}
+		s.egress[repeaterID] = e
 	}
-	return t
+	e.used = time.Now()
+	return e.t
 }
 
 func (s *IPSCServer) cleanupStaleStreams() {
@@ -440,9 +449,9 @@ func (s *IPSCServer) cleanupStaleStreams() {
 	}
 	s.egressMu.Lock()
 	defer s.egressMu.Unlock()
-	for id, t := range s.egress {
-		t.CleanupStaleStreams(staleStreamAge)
-		if forward, reverse := t.StreamCount(); forward == 0 && reverse == 0 {
+	for id, e := range s.egress {
+		e.t.CleanupStaleStreams(staleStreamAge)
+		if forward, reverse := e.t.StreamCount(); forward == 0 && reverse == 0 && time.Since(e.used) > staleStreamAge {
 			delete(s.egress, id)
 		}
 	}

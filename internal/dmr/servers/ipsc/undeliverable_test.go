@@ -123,3 +123,13 @@ func TestTranslateToIPSCRawBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanupKeepsATranslatorInUse(t *testing.T) {
+	t.Parallel()
+	s := &IPSCServer{localID: 12345}
+	first := s.egressTranslator(200001)
+	s.cleanupStaleStreams()
+	if s.egressTranslator(200001) != first {
+		t.Fatal("cleanup dropped the translator of a peer that was just given it")
+	}
+}

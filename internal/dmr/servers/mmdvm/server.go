@@ -248,7 +248,11 @@ func (s *Server) Start(ctx context.Context) error {
 				RemoteIP:   remoteaddr.IP.String(),
 				RemotePort: remoteaddr.Port,
 			}
-			s.incomingChan <- p
+			select {
+			case s.incomingChan <- p:
+			case <-s.done:
+				return
+			}
 		}
 	}()
 
@@ -267,9 +271,12 @@ func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.
 		}
 	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
-	s.outgoingChan <- models.RawDMRPacket{
+	select {
+	case s.outgoingChan <- models.RawDMRPacket{
 		Data:       packet.Encode(),
 		RemoteIP:   addr.IP.String(),
 		RemotePort: addr.Port,
+	}:
+	case <-s.done:
 	}
 }

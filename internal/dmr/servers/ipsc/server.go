@@ -424,6 +424,11 @@ func (s *IPSCServer) egressTranslator(repeaterID uint32) *IPSCTranslator {
 			s.egress = map[uint32]*IPSCTranslator{}
 		}
 		t = NewIPSCTranslator(s.localID)
+		if s.hub != nil {
+			t.onUndeliverable = func(pkt models.Packet, reason string) {
+				s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reason)
+			}
+		}
 		s.egress[repeaterID] = t
 	}
 	return t

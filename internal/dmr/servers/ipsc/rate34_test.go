@@ -112,6 +112,7 @@ func TestTranslateToIPSCRate34(t *testing.T) {
 func TestTranslateToIPSCRate34Undecodable(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
+	tr.rawBlocks = true
 	var burst layer2.RawBurst
 	for i := range burst {
 		burst[i] = byte(i*37 + 11)

@@ -52,7 +52,20 @@ type IPSCTranslator struct {
 
 	nextCallControl uint32
 	nextStreamID    uint32
+
+	rawBlocks       bool
+	onUndeliverable func(pkt models.Packet, reason string)
 }
+
+// sendRawBlocksToIPSC turns on the raw block path: a burst that IPSC has no
+// layout for, or whose FEC does not correct, goes to IPSC peers as an
+// undecodable block (burst type 0x1F) with its 196 information bits and
+// slot type, as an XPR 8400 sends such blocks. Turn it on only after a rig
+// test shows that an XPR 8400 transmits the raw blocks that it gets over
+// IPSC. Until then those bursts are reported undeliverable.
+//
+//nolint:gochecknoglobals
+var sendRawBlocksToIPSC = false
 
 // streamState tracks RTP sequencing and call framing for one voice stream.
 type streamState struct {
@@ -104,6 +117,15 @@ func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 		burst:          layer2.NewBurst(),
 		events:         make([]voice.Event, 0, voice.MaxEvents),
 		epoch:          time.Now(),
+		rawBlocks:      sendRawBlocksToIPSC,
+	}
+}
+
+// undeliverable reports a burst that cannot go to IPSC peers. The caller
+// holds t.mu.
+func (t *IPSCTranslator) undeliverable(pkt models.Packet, reason string) {
+	if t.onUndeliverable != nil {
+		t.onUndeliverable(pkt, reason)
 	}
 }
 
@@ -142,7 +164,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 	switch pkt.FrameType {
 	case dmrconst.FrameDataSync:
 		if dtypeOrVSeq > 255 {
-			slog.Debug("IPSCTranslator: invalid dtype", "dtype", dtypeOrVSeq)
+			t.undeliverable(pkt, "invalid data type")
 			return nil
 		}
 		// Voice LC Header, Terminator, or Data
@@ -175,18 +197,22 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			}
 			results = [][]byte{data}
 			ss.firstPacket = false
-		case enums.DataTypeRate1:
-			// Rate 1 blocks are dropped: IPSC has no known rate 1 layout. An
-			// XPR 8400 sent clean rate 1 blocks to IPSC as burst type 0x06 with
-			// a BPTC(196,96) decode of the uncoded bits, or as an undecodable
-			// block (0x1F), so its firmware does not carry rate 1 either.
-			slog.Debug("IPSCTranslator: unsupported data dtype", "dtype", dtypeOrVSeq)
-			return nil
-		case enums.DataTypeIdle, enums.DataTypeUnifiedSingleBlock, enums.DataTypeReserved:
-			return nil
+		case enums.DataTypeRate1, enums.DataTypeIdle, enums.DataTypeUnifiedSingleBlock, enums.DataTypeReserved:
+			fallthrough
 		default:
-			slog.Debug("IPSCTranslator: unhandled data sync dtype", "dtype", dtypeOrVSeq)
-			return nil
+			// IPSC has no layout for rate 1 data, idle, USBD or a reserved
+			// data type. An XPR 8400 sent rate 1 blocks as an undecodable
+			// block (0x1F) or a BPTC decode of the uncoded bits.
+			if !t.rawBlocks {
+				t.undeliverable(pkt, "IPSC has no layout for data type "+dt.String())
+				return nil
+			}
+			data := t.buildRawBlock(pkt, ss, dt)
+			if data == nil {
+				return nil
+			}
+			results = [][]byte{data}
+			ss.firstPacket = false
 		}
 
 	case dmrconst.FrameVoice, dmrconst.FrameVoiceSync:
@@ -195,7 +221,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		}
 
 	default:
-		slog.Debug("IPSCTranslator: unknown frame type", "frameType", pkt.FrameType)
+		t.undeliverable(pkt, "IPSC has no form for DMRD frame type 3")
 		return nil
 	}
 
@@ -323,10 +349,10 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 
 // buildIPSCDataPacket builds an IPSC data packet for CSBK, Data Header, etc.
 // A BPTC(196,96) burst carries its 12 decoded octets and a rate 3/4 burst
-// its 18. A rate 3/4 burst that does not decode goes out as ipscBurstRaw
-// with its 196 info bits, as a MOTOTRBO repeater sends it and SetRawBurst
-// builds it. It returns nil when the BPTC(196,96) payload cannot be
-// corrected.
+// its 18. A burst whose FEC does not correct goes out as ipscBurstRaw with
+// its 196 info bits, as a MOTOTRBO repeater sends it and SetRawBurst builds
+// it, when the raw block path is on; otherwise it is reported undeliverable
+// and it returns nil.
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
 	slot := enums.Slot1
 	if pkt.Slot {
@@ -338,12 +364,36 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 		slog.Debug("IPSCTranslator: cannot build data packet", "dtype", dataType, "error", err)
 		return nil
 	}
-	if res.Uncorrectable && dataType != enums.DataTypeRate34 {
-		slog.Debug("IPSCTranslator: uncorrectable data burst", "dtype", dataType)
+	if res.Uncorrectable && !t.rawBlocks {
+		t.undeliverable(pkt, "the FEC of the "+dataType.String()+" burst does not correct")
 		return nil
 	}
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
 	u.Burst, u.Data = b.Burst, b.Data
+	ss.ipscSeq++
+	return encodeUser(&u)
+}
+
+// buildRawBlock builds an undecodable block (0x1F) of the 196 information
+// bits of pkt, with the slot type of dataType.
+func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
+	raw := layer2.RawBurst(pkt.DMRData)
+	d := ipscwire.Payload{Status: 0x40, HasBody: true, Flags: [2]byte{0x80, 0x0A}, TrailerLen: 4, Words: 17, Bits: 196}
+	if pkt.Slot {
+		d.Status |= 0x80
+	}
+	info := raw.Info()
+	copy(d.Octets[:], info[:])
+	st := raw.SlotType()
+	st.DataType = dataType
+	sti, err := st.Info()
+	if err != nil {
+		t.undeliverable(pkt, "the slot type does not encode")
+		return nil
+	}
+	d.Trailer[1] = byte(sti)
+	u := t.user(pkt, ss, true, false, ss.firstPacket)
+	u.Burst, u.Data = ipscwire.BurstRaw, d
 	ss.ipscSeq++
 	return encodeUser(&u)
 }

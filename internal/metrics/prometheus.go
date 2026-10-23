@@ -32,6 +32,9 @@ type Metrics struct {
 	KVKeysTotal         prometheus.Gauge
 	KVExpiredKeysTotal  prometheus.Counter
 	KVCleanupDuration   prometheus.Histogram
+
+	// UndeliverableBurstsTotal counts bursts that a target could not carry.
+	UndeliverableBurstsTotal *prometheus.CounterVec
 }
 
 var (
@@ -67,6 +70,10 @@ func NewMetrics() *Metrics {
 				Help:    "Duration of KV cleanup operations",
 				Buckets: prometheus.DefBuckets,
 			}),
+			UndeliverableBurstsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dmr_undeliverable_bursts_total",
+				Help: "The total number of bursts that a target could not carry",
+			}, []string{"target"}),
 		}
 		metricsInstance.register()
 	})
@@ -79,6 +86,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.KVKeysTotal)
 	prometheus.MustRegister(m.KVExpiredKeysTotal)
 	prometheus.MustRegister(m.KVCleanupDuration)
+	prometheus.MustRegister(m.UndeliverableBurstsTotal)
 }
 
 // KV Store metrics methods
@@ -97,4 +105,9 @@ func (m *Metrics) IncrementKVExpiredKeys(count float64) {
 
 func (m *Metrics) RecordKVCleanup(duration float64) {
 	m.KVCleanupDuration.Observe(duration)
+}
+
+// IncrementUndeliverable counts a burst that target could not carry.
+func (m *Metrics) IncrementUndeliverable(target string) {
+	m.UndeliverableBurstsTotal.WithLabelValues(target).Inc()
 }

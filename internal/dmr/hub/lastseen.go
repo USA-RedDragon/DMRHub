@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 const (
@@ -66,12 +67,8 @@ func (h *Hub) runSightings() {
 		case s := <-h.sightings:
 			h.recordSighting(context.Background(), s)
 		case now := <-ticker.C:
-			h.sightedStreams.Range(func(stream uint, at time.Time) bool {
-				if now.Sub(at) > sightedStreamTTL {
-					h.sightedStreams.Delete(stream)
-				}
-				return true
-			})
+			pruneStreams(h.sightedStreams, now)
+			pruneStreams(h.undeliverableLogged, now)
 		}
 	}
 }
@@ -130,4 +127,13 @@ func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
 		return 0, false
 	}
 	return repeaterID, repeaterID != 0
+}
+
+func pruneStreams(m *xsync.Map[uint, time.Time], now time.Time) {
+	m.Range(func(stream uint, at time.Time) bool {
+		if now.Sub(at) > sightedStreamTTL {
+			m.Delete(stream)
+		}
+		return true
+	})
 }

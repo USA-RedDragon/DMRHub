@@ -233,12 +233,11 @@ export default defineComponent({
       }
     },
     async submit() {
-      console.error('submit');
       const payload = this.buildConfigPayload();
-      if (!await this.checkConfig(payload, true)) {
-        return;
-      }
       try {
+        if (!await this.checkConfig(payload, true)) {
+          return;
+        }
         await API.put('/config', payload, { headers: this.setupWizardHeaders() });
         this.$toast.add({
           severity: 'success',

@@ -111,4 +111,20 @@ describe('Setup page form', { timeout: 20000 }, () => {
     });
     wrapper.unmount();
   });
+
+  it('shows an error when the server refuses the settings', async () => {
+    mockAPI.get.mockResolvedValue(everythingOn());
+    mockAPI.post.mockRejectedValue(new Error('Request failed with status code 400'));
+    const toast = { add: vi.fn() };
+    const wrapper = mountWizard(toast);
+    await flushPromises();
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(mockAPI.put).not.toHaveBeenCalled();
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'error',
+      detail: 'Failed to save configuration',
+    }));
+    wrapper.unmount();
+  });
 });

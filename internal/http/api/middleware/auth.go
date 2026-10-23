@@ -184,7 +184,7 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		}
 
 		var peer models.Peer
-		db.Find(&peer, "radio_id = ?", id)
+		db.Find(&peer, "id = ?", id)
 		if peer.OwnerID == user.ID && !user.Suspended && user.Approved {
 			return
 		}

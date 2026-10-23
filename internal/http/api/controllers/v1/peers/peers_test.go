@@ -801,3 +801,31 @@ func TestGETMyPeersOpenBridgeDisabledReturns404(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestPeerOwnerCanReadTheirPeer(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
+	testutils.SeedAccount(t, tdb.DB(), 3140598, "KD5SMP", "other")
+	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{ID: 200003, OwnerID: 3191868, IP: "10.0.0.3", Port: 62035})
+	require.Equal(t, http.StatusOK, w.Code)
+
+	get := func(jar testutils.CookieJar) int {
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/peers/200003", nil)
+		for _, cookie := range jar.Cookies() {
+			req.Header.Add("Cookie", cookie.String())
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+	assert.Equal(t, http.StatusOK, get(testutils.Login(t, router, "owner")), "the owner reads their peer")
+	assert.Equal(t, http.StatusUnauthorized, get(testutils.Login(t, router, "other")), "another user does not")
+}

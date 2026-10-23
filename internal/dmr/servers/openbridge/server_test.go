@@ -67,7 +67,7 @@ func TestMakeServer(t *testing.T) {
 
 	defConfig.DMR.OpenBridge.Port = 0
 
-	server, err := openbridge.MakeServer(&defConfig, nil, database, ps)
+	server, err := openbridge.MakeServer(&defConfig, nil, database, ps, nil)
 	assert.NoError(t, err)
 	defer func() { _ = server.Server.Close() }()
 
@@ -101,7 +101,7 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	assert.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
-	server, err := openbridge.MakeServer(&defConfig, nil, database, ps)
+	server, err := openbridge.MakeServer(&defConfig, nil, database, ps, nil)
 	assert.NoError(t, err)
 	defer func() { _ = server.Server.Close() }()
 
@@ -141,7 +141,7 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	ct := calltracker.NewCallTracker(database, ps)
 	dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
-	server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps)
+	server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -230,7 +230,7 @@ func FuzzHandleOpenBridgePacket(f *testing.F) {
 		ct := calltracker.NewCallTracker(database, ps)
 		dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
-		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps)
+		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -304,7 +304,7 @@ func FuzzValidateOpenBridgeHMAC(f *testing.F) {
 		ct := calltracker.NewCallTracker(database, ps)
 		dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
-		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps)
+		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())

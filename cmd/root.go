@@ -427,7 +427,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	sm.addServer(&mmdvmServer)
 
 	if cfg.DMR.OpenBridge.Enabled {
-		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient)
+		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient, kvStore)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OpenBridge server: %w", err)
 		}

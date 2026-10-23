@@ -72,6 +72,8 @@ Turn on **Enhanced** for a FreeDMR server whose link to this hub has `ENHANCED_O
 
 The source server of a call from a local repeater is the **Server ID** in the OpenBridge settings, or the network ID of the peer when the server ID is 0. FreeDMR wants a source server of 4 to 7 digits, and it checks a 4 or 5-digit one against its list of server IDs. Other peers keep getting OpenBridge version 1.
 
+With several replicas, one replica sends all OpenBridge traffic, so that peers see one source address. It holds a lease in Redis. When it stops, another replica takes over at once, and when it dies, within 2 seconds. Traffic in that gap is dropped, not delayed. A BCSQ from a peer applies on every replica, whichever replica got it.
+
 ## Transmission kinds
 
 Each Last Heard entry has a `kind` and a `sub_kind`. The API and the websocket give them in these fields, and the values stay the same between releases. A sub kind that names a CSBK opcode, a SAP, a port, a USBD service type or a text format is the dmrgo name of that value in lower case, without "PDU", with `_` between the words. For example, the BS outbound activation CSBK is `bs_outbound_activation_or_td_grant_mi`.

@@ -117,7 +117,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 
 	ipscServer := ipsc.NewIPSCServer(&defConfig, h, database)
 
-	obServer, err := openbridge.MakeServer(&defConfig, h, database, ps)
+	obServer, err := openbridge.MakeServer(&defConfig, h, database, ps, kvStore)
 	require.NoError(t, err)
 
 	stack := &IntegrationStack{
@@ -187,7 +187,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	ipsc2 := ipsc.NewIPSCServer(&cfg2, hub2, s.DB)
 	require.NoError(t, ipsc2.Start(context.Background()))
 
-	ob2, err := openbridge.MakeServer(&cfg2, hub2, s.DB, s.PubSub)
+	ob2, err := openbridge.MakeServer(&cfg2, hub2, s.DB, s.PubSub, s.KV)
 	require.NoError(t, err)
 	require.NoError(t, ob2.Start(context.Background()))
 

@@ -67,8 +67,8 @@ func startFBPStack(t *testing.T, stack *testutils.IntegrationStack) fbpStack {
 	return s
 }
 
-func dataOf(bs []dmrd.Bridge, stream uint32) []dmrd.Bridge {
-	var out []dmrd.Bridge
+func dataOf(bs []testutils.ReceivedBridge, stream uint32) []testutils.ReceivedBridge {
+	var out []testutils.ReceivedBridge
 	for _, b := range bs {
 		if b.Data.Stream == stream {
 			out = append(out, b)

@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -34,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -93,7 +95,12 @@ type Server struct {
 	bridges   map[uint]*bridge
 	epoch     time.Time
 
-	quenched *xsync.Map[quench, time.Time]
+	quenched      *xsync.Map[quench, time.Time]
+	quenchChecked *xsync.Map[quench, time.Time]
+
+	kv     kv.KV
+	id     string
+	leader atomic.Bool
 }
 
 // quench is a stream that a peer asked with a BCSQ not to get.
@@ -184,8 +191,10 @@ func (b *bridge) sign(p []byte) error {
 	return nil
 }
 
-// MakeServer creates a new DMR server.
-func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub) (Server, error) {
+// MakeServer creates a new DMR server. kvStore holds the egress lease and
+// the source quenches that replicas share; with a nil kvStore the server
+// works alone.
+func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kvStore kv.KV) (Server, error) {
 	socketAddress := net.UDPAddr{
 		IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
 		Port: config.DMR.OpenBridge.Port,
@@ -216,6 +225,9 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
+		quenchChecked: xsync.NewMap[quench, time.Time](),
+		kv:            kvStore,
+		id:            newReplicaID(),
 	}, nil
 }
 
@@ -234,9 +246,12 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.ingress = streamorder.New(ingressQueueSize, s.done)
 
-	s.wg.Add(3)
+	s.leader.Store(s.holdLease(ctx))
+	s.wg.Add(5)
 	go s.consumeHubPackets(ctx)
 	go s.keepalive()
+	go s.runLease(context.WithoutCancel(ctx))
+	go s.consumeEgress(ctx)
 
 	go func() {
 		defer s.wg.Done()
@@ -262,11 +277,12 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // Stop stops the DMR server.
-func (s *Server) Stop(_ context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping OpenBridge server")
 
 		close(s.done)
+		s.releaseLease(ctx)
 		s.hub.UnregisterServer("openbridge")
 
 		if err := s.Server.Close(); err != nil {
@@ -305,6 +321,9 @@ func (s *Server) keepalive() {
 		case <-s.done:
 			return
 		case <-ticker.C:
+		}
+		if !s.leader.Load() {
+			continue
 		}
 		peers, err := models.ListPeers(s.DB)
 		if err != nil {
@@ -366,14 +385,22 @@ func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]b
 	return out, nil
 }
 
-// sendPacketToPeer sends a packet to a specific OpenBridge peer.
-func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.Packet, org origin) {
+// sendPacketToPeer sends a packet to a specific OpenBridge peer, from this
+// replica when it holds the egress lease and from the holder otherwise.
+func (s *Server) sendPacketToPeer(ctx context.Context, peerID uint, packet models.Packet, org origin) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
+	if !s.leader.Load() {
+		s.handOff(peerID, packet, org)
+		return
+	}
+	s.sendNow(ctx, peerID, packet, org)
+}
 
-	if s.isQuenched(peerID, packet.StreamID) {
+func (s *Server) sendNow(ctx context.Context, peerID uint, packet models.Packet, org origin) {
+	if s.isQuenched(ctx, peerID, packet.StreamID) {
 		return
 	}
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
@@ -424,7 +451,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	bridge, err := dmrd.DecodeBridge(data)
 	if err != nil {
 		if control, cerr := dmrd.DecodeBridgeControl(data); cerr == nil {
-			s.handleControl(remoteAddr, data, control)
+			s.handleControl(ctx, remoteAddr, data, control)
 			return
 		}
 		slog.Debug("Dropping a packet that is not OpenBridge", "length", len(data), "error", err)
@@ -532,7 +559,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 // It carries no peer ID, so the peer is the one at the source address
 // whose key signed it. A BCSQ asks not to get a stream; BCKA, BCST and BCVE
 // change nothing here.
-func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
+func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
 	peers, err := models.ListPeers(s.DB)
 	if err != nil {
 		slog.Error("Failed to list peers", "error", err)
@@ -548,7 +575,7 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 		}
 		if control.Command == dmrd.CommandBCSQ {
 			slog.Debug("OpenBridge peer quenched a stream", "peerID", p.ID, "talkgroup", control.TalkGroup, "stream", control.Stream)
-			s.quenchStream(p.ID, uint(control.Stream))
+			s.quenchStream(ctx, p.ID, uint(control.Stream))
 			return
 		}
 		slog.Debug("OpenBridge control packet", "peerID", p.ID, "command", string(control.Command), "version", control.Version)
@@ -576,9 +603,10 @@ func (s *Server) sendQuench(peer models.Peer, b *bridge, talkgroup, stream uint3
 	}
 }
 
-func (s *Server) quenchStream(peer, stream uint) {
+func (s *Server) quenchStream(ctx context.Context, peer, stream uint) {
 	now := time.Now()
 	s.quenched.Store(quench{peer: peer, stream: stream}, now)
+	s.shareQuench(ctx, quench{peer: peer, stream: stream})
 	if s.quenched.Size() > quenchPruneSize {
 		s.quenched.Range(func(q quench, at time.Time) bool {
 			if now.Sub(at) > quenchTTL {
@@ -589,10 +617,10 @@ func (s *Server) quenchStream(peer, stream uint) {
 	}
 }
 
-func (s *Server) isQuenched(peer, stream uint) bool {
+func (s *Server) isQuenched(ctx context.Context, peer, stream uint) bool {
 	at, ok := s.quenched.Load(quench{peer: peer, stream: stream})
 	if !ok {
-		return false
+		return s.sharedQuench(ctx, quench{peer: peer, stream: stream})
 	}
 	if time.Since(at) > quenchTTL {
 		s.quenched.Delete(quench{peer: peer, stream: stream})

@@ -46,7 +46,7 @@ type OpenBridgeClient struct {
 	stopOnce sync.Once
 	wg       sync.WaitGroup
 	packets  chan models.Packet
-	bridges  chan dmrd.Bridge
+	bridges  chan ReceivedBridge
 	controls chan dmrd.BridgeControl
 }
 
@@ -59,15 +59,22 @@ func NewOpenBridgeClient(peerID uint32, password string) *OpenBridgeClient {
 		Password: password,
 		done:     make(chan struct{}),
 		packets:  make(chan models.Packet, clientBuffer),
-		bridges:  make(chan dmrd.Bridge, clientBuffer),
+		bridges:  make(chan ReceivedBridge, clientBuffer),
 		controls: make(chan dmrd.BridgeControl, clientBuffer),
 	}
 }
 
+// ReceivedBridge is an OpenBridge data packet that the client got, and the
+// address it came from.
+type ReceivedBridge struct {
+	dmrd.Bridge
+	From net.UDPAddr
+}
+
 // DrainBridges collects the OpenBridge data packets, of any version, that
 // arrive with a good signature within timeout.
-func (c *OpenBridgeClient) DrainBridges(timeout time.Duration) []dmrd.Bridge {
-	var out []dmrd.Bridge
+func (c *OpenBridgeClient) DrainBridges(timeout time.Duration) []ReceivedBridge {
+	var out []ReceivedBridge
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
@@ -276,7 +283,7 @@ func (c *OpenBridgeClient) rx() {
 		default:
 		}
 		_ = c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		n, _, err := c.conn.ReadFromUDP(buf)
+		n, from, err := c.conn.ReadFromUDP(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -301,7 +308,7 @@ func (c *OpenBridgeClient) rx() {
 			continue
 		}
 		select {
-		case c.bridges <- bridge:
+		case c.bridges <- ReceivedBridge{Bridge: bridge, From: *from}:
 		default:
 		}
 		if n != openbridgePacketLength {
@@ -343,14 +350,32 @@ func (c *OpenBridgeClient) SendControl(control dmrd.BridgeControl) error {
 	return c.sendSigned(out)
 }
 
+// SendControlTo sends a signed control packet to the OpenBridge server at
+// addr, such as another replica, from the same socket.
+func (c *OpenBridgeClient) SendControlTo(addr string, control dmrd.BridgeControl) error {
+	to, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return fmt.Errorf("resolve addr: %w", err)
+	}
+	out, err := control.AppendBinary(nil)
+	if err != nil {
+		return fmt.Errorf("encoding control packet: %w", err)
+	}
+	return c.sendSignedTo(out, to)
+}
+
 func (c *OpenBridgeClient) sendSigned(p []byte) error {
+	return c.sendSignedTo(p, c.server)
+}
+
+func (c *OpenBridgeClient) sendSignedTo(p []byte, to *net.UDPAddr) error {
 	if c.conn == nil {
 		return ErrOpenBridgeNotConnected
 	}
 	if err := dmrdauth.NewBridgeKey([]byte(c.Password)).SignInPlace(p); err != nil {
 		return fmt.Errorf("signing packet: %w", err)
 	}
-	if _, err := c.conn.WriteToUDP(p, c.server); err != nil {
+	if _, err := c.conn.WriteToUDP(p, to); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil

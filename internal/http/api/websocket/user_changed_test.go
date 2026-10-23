@@ -259,3 +259,30 @@ func TestEveryUserChangeIsPublished(t *testing.T) {
 		require.NoError(t, sub.Close())
 	}
 }
+
+func TestRepeaterOwnershipChangesArePublished(t *testing.T) {
+	t.Parallel()
+	e := newUserEnv(t, testutils.SQLiteMemoryBackend())
+	id, jar := e.user(t, false)
+	repeaterID := id*100 + 1
+	changes := []struct {
+		name   string
+		jar    testutils.CookieJar
+		method string
+		path   string
+		body   any
+	}{
+		{"create repeater", jar, http.MethodPost, "/api/v1/repeaters", map[string]any{"id": repeaterID}},
+		{"delete repeater", e.admin, http.MethodDelete, fmt.Sprintf("/api/v1/repeaters/%d", repeaterID), nil},
+	}
+	for _, change := range changes {
+		sub := e.ps.Subscribe(websocket.UserTopic(id))
+		require.Equal(t, http.StatusOK, e.request(t, change.jar, change.method, change.path, change.body), change.name)
+		select {
+		case <-sub.Channel():
+		case <-time.After(2 * time.Second):
+			assert.Fail(t, "no user change was published", change.name)
+		}
+		require.NoError(t, sub.Close())
+	}
+}

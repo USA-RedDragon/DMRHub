@@ -53,6 +53,9 @@ function serve(smsStorage: boolean, ids = [accountID, addedID]) {
     if (url === '/users/me/radio-ids') {
       return Promise.resolve({ data: { radio_ids: ids } });
     }
+    if (url === '/oauth/apps') {
+      return Promise.resolve({ data: [] });
+    }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
 }
@@ -75,6 +78,13 @@ describe('SettingsPage', () => {
     expect(wrapper.text()).toContain('Log in to change your settings');
     expect(wrapper.find('[data-test="sms-storage-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="apps-card"]').exists()).toBe(false);
+  });
+
+  it('shows the apps that can use the account', async () => {
+    serve(false);
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="apps-card"]').text()).toContain('No apps can use your account.');
   });
 
   it('shows SMS Storage off with the privacy text and no dates or config keys', async () => {

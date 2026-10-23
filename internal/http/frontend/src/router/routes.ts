@@ -98,6 +98,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/users/SettingsPage.vue'),
     },
     {
+      path: '/oauth/authorize',
+      name: 'OAuthAuthorize',
+      component: () => import('@/views/auth/OAuthAuthorizePage.vue'),
+    },
+    {
       path: '/repeaters',
       name: 'Repeaters',
       sitemap: {

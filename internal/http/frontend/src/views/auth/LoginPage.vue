@@ -72,6 +72,7 @@
 
 <script lang="ts">
 import API from '@/services/API';
+import { safeNext } from '@/lib/next';
 import { Button as ShadButton } from '@/components/ui/button';
 import {
   Card,
@@ -142,7 +143,7 @@ export default {
             this.userStore.superAdmin = res.data.superAdmin;
             this.userStore.created_at = res.data.created_at;
             this.userStore.loggedIn = true;
-            this.$router.push('/');
+            this.$router.push(safeNext(this.$route.query.next));
           });
         })
         .catch((err) => {

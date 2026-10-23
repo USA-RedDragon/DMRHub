@@ -22,6 +22,18 @@
 <template>
   <div>
     <h1>Setup</h1>
+    <div
+      v-if="applyErrors.length > 0"
+      role="alert"
+      class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+      data-test="apply-errors"
+    >
+      <b class="font-semibold">The settings were saved, but some could not be put into effect.</b>
+      <p v-for="(e, i) in applyErrors" :key="i">
+        {{ e.summary }}<br />
+        <span class="text-muted-foreground">{{ e.detail }}</span>
+      </p>
+    </div>
     <form @submit.prevent="submit()">
       <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
       <br />
@@ -120,6 +132,41 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => {
   return undefined;
 };
 
+type ApplyError = {
+  server: string;
+  running: boolean;
+  error: string;
+};
+
+type ShownApplyError = {
+  summary: string;
+  detail: string;
+};
+
+const serverNames: Record<string, string> = {
+  mmdvm: 'MMDVM',
+  ipsc: 'IPSC',
+  openbridge: 'OpenBridge',
+};
+
+const applyErrorsOf = (error: unknown): ApplyError[] | undefined => {
+  const response = asRecord(asRecord(error)?.response);
+  const data = asRecord(response?.data);
+  if (response?.status !== 409 || !Array.isArray(data?.applyErrors)) {
+    return undefined;
+  }
+  return data.applyErrors as ApplyError[];
+};
+
+const showApplyError = (e: ApplyError): ShownApplyError => {
+  const name = serverNames[e.server] ?? 'DMR';
+  const state = e.running ? 'It keeps running with its previous settings.' : 'It is not running.';
+  return {
+    summary: `The ${name} server could not start with the new settings. ${state}`,
+    detail: e.error,
+  };
+};
+
 export default defineComponent({
   components: {
     ShadButton,
@@ -146,6 +193,7 @@ export default defineComponent({
     return {
       config: createInitialConfig() as SetupConfig,
       errors: createInitialErrors() as SetupErrors,
+      applyErrors: [] as ShownApplyError[],
       secretStatus: {
         secretSet: false,
         passwordSaltSet: false,
@@ -240,6 +288,7 @@ export default defineComponent({
       }
       try {
         await API.put('/config', payload, { headers: this.setupWizardHeaders() });
+        this.applyErrors = [];
         this.$toast.add({
           severity: 'success',
           summary: 'Success',
@@ -258,6 +307,17 @@ export default defineComponent({
           }, 500);
         }
       } catch (error: unknown) {
+        const applyErrors = applyErrorsOf(error);
+        if (applyErrors) {
+          this.applyErrors = applyErrors.map(showApplyError);
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Configuration saved, but some settings could not be put into effect',
+            life: 5000,
+          });
+          return;
+        }
         console.log(error);
         this.$toast.add({
           severity: 'error',

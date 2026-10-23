@@ -41,6 +41,7 @@ type Position struct {
 	ReceivedAt time.Time  `json:"received_at"`
 	RepeaterID uint       `json:"repeater_id"`
 	Slot       uint8      `json:"slot"`
+	ServiceID  uint       `json:"service_id"`
 }
 
 // NewPosition returns the API form of p.
@@ -49,6 +50,7 @@ func NewPosition(p *models.Position) Position {
 		RadioID: p.RadioID, Latitude: p.Latitude, Longitude: p.Longitude, Format: string(p.Format),
 		AccuracyM: p.AccuracyM, SpeedMPS: p.SpeedMPS, HeadingDeg: p.HeadingDeg, AltitudeM: p.AltitudeM,
 		FixTime: p.FixTime, ReceivedAt: p.ReceivedAt, RepeaterID: p.RepeaterID, Slot: p.Slot,
+		ServiceID: p.ServiceID,
 	}
 }
 

@@ -45,13 +45,30 @@ const (
 	window      = 24 * time.Hour
 )
 
+// windowParam returns the time from which positions are shown: the hours
+// query of 24, 168 or 720, a day by default.
+func windowParam(c *gin.Context) (time.Time, bool) {
+	hours := window
+	if v := c.Query("hours"); v != "" {
+		switch v {
+		case "24", "168", "720":
+			n, _ := strconv.Atoi(v)
+			hours = time.Duration(n) * time.Hour
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "hours is 24, 168 or 720"})
+			return time.Time{}, false
+		}
+	}
+	return time.Now().Add(-hours), true
+}
+
 func failed(c *gin.Context, what string, err error) {
 	slog.Error("Positions: "+what, "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
 }
 
-// GETPositions returns the newest position of the last 24 hours of each
-// radio that the user sees.
+// GETPositions returns the newest position of each radio that the user
+// sees, of the last 24 hours or the hours query.
 func GETPositions(c *gin.Context) {
 	db, ok := utils.GetDB(c)
 	if !ok {
@@ -61,7 +78,11 @@ func GETPositions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	latest, err := models.LatestPositions(db, user.ID, time.Now().Add(-window))
+	since, ok := windowParam(c)
+	if !ok {
+		return
+	}
+	latest, err := models.LatestPositions(db, user.ID, since)
 	if err != nil {
 		failed(c, "cannot list positions", err)
 		return
@@ -106,8 +127,8 @@ func radioParam(c *gin.Context) (uint, bool) {
 	return uint(id), true
 }
 
-// GETRadioPositions returns the newest position and the track of the last
-// 24 hours of one radio that the user sees.
+// GETRadioPositions returns the newest position and the track of one radio
+// that the user sees, of the last 24 hours or the hours query.
 func GETRadioPositions(c *gin.Context) {
 	db, ok := utils.GetDB(c)
 	if !ok {
@@ -121,6 +142,10 @@ func GETRadioPositions(c *gin.Context) {
 	if !ok {
 		return
 	}
+	since, ok := windowParam(c)
+	if !ok {
+		return
+	}
 	sees, err := models.SeesPositions(db, user.ID, radio)
 	if err != nil {
 		failed(c, "cannot check who sees a radio", err)
@@ -130,7 +155,7 @@ func GETRadioPositions(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: msgNotFound})
 		return
 	}
-	track, err := models.Track(db, radio, time.Now().Add(-window), time.Now())
+	track, err := models.Track(db, radio, since, time.Now())
 	if err != nil {
 		failed(c, "cannot read a track", err)
 		return

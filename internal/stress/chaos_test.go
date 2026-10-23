@@ -221,7 +221,9 @@ func docker(args ...string) error {
 // again, a lossy, duplicating and reordering path, a restart of the MMDVM
 // server, a Redis and a Postgres outage, and the failover of a replica.
 // After each it checks that the hub recovers without a restart and that
-// nothing stalls.
+// nothing stalls. The background load is DMRHUB_STRESS_CHAOS_BUSY busy
+// repeaters (default 3), below the point where the load ramp degrades, so
+// that what goes wrong is the fault's doing.
 func TestChaos(t *testing.T) { //nolint:paralleltest
 	s, res, logs := area(t, "chaos")
 	r := newRig(t, s, res, logs, rigOptions{})
@@ -230,7 +232,9 @@ func TestChaos(t *testing.T) { //nolint:paralleltest
 	lossy, dropper, prober := n-1, n-2, n-3
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	r.runLanes(ctx, 10*time.Hour, callMix(), s.Duty*0.7, n-3, nil)
+	busy := min(n-3, envInt("DMRHUB_STRESS_CHAOS_BUSY", 3))
+	res.set("busy_repeaters", float64(busy))
+	r.runLanes(ctx, 10*time.Hour, callMix(), s.Duty*0.7, busy, nil)
 	recovery := map[string]float64{}
 
 	step(t, "peer-drop", func(t *testing.T) {

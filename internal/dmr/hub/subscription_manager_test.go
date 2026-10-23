@@ -772,6 +772,9 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	}
 	waitAllReceive(t, h, srvHandle, 200, numRepeaters, 90000)
 
+	for id := firstID; id < firstID+numRepeaters; id++ {
+		h.ForgetCachedRepeater(id)
+	}
 	gate.armed.Store(true)
 	h.RoutePacket(context.Background(), makeVoicePacket(200, 90100, true, false), models.RepeaterTypeMMDVM)
 	gate.waitHeld(t, numRepeaters)

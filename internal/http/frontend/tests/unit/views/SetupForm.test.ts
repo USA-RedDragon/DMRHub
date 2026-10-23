@@ -77,4 +77,38 @@ describe('Setup page form', { timeout: 20000 }, () => {
     expect(misplaced).toEqual([]);
     wrapper.unmount();
   });
+
+  it('sends every port and the IPSC network ID as numbers, also when a field is cleared', async () => {
+    mockAPI.get.mockResolvedValue(everythingOn());
+    mockAPI.post.mockResolvedValue({ data: { valid: true, errors: {} } });
+    mockAPI.put.mockResolvedValue({ data: {} });
+    const wrapper = mountWizard();
+    await flushPromises();
+    const numbers = wrapper.findAll('form input[type="number"]');
+    expect(numbers.length).toBe(11);
+    for (const input of numbers) {
+      await input.setValue('');
+    }
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    const payload = mockAPI.post.mock.calls[0]![1] as Record<string, Record<string, Record<string, unknown>>>;
+    const sent = {
+      mmdvm: payload.dmr!.mmdvm!.port,
+      ipscPort: payload.dmr!.ipsc!.port,
+      ipscNetworkID: payload.dmr!.ipsc!['network-id'],
+      openbridgePort: payload.dmr!.openbridge!.port,
+      openbridgeServerID: payload.dmr!.openbridge!['server-id'],
+      http: payload.http!.port,
+      database: payload.database!.port,
+      smtp: payload.smtp!.port,
+      redis: payload.redis!.port,
+      metrics: payload.metrics!.port,
+      pprof: payload.pprof!.port,
+    };
+    expect(sent).toEqual({
+      mmdvm: 0, ipscPort: 0, ipscNetworkID: 0, openbridgePort: 0, openbridgeServerID: 0,
+      http: 0, database: 0, smtp: 0, redis: 0, metrics: 0, pprof: 0,
+    });
+    wrapper.unmount();
+  });
 });

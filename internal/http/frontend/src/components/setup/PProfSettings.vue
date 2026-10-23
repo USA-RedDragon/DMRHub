@@ -139,7 +139,7 @@ export default {
       set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'port': value,
+          'port': Number(value) || 0,
         });
       },
     },

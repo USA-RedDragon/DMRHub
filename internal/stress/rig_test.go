@@ -87,27 +87,31 @@ func (t topology) groupTargets(src, g int) []uint {
 // rig is a running hub with its repeaters connected, a ledger and a
 // sampler.
 type rig struct {
-	t       *testing.T
-	s       settings
-	res     *result
-	logs    *logCounter
-	stack   *testutils.IntegrationStack
-	ctr     *testutils.Containers
-	top     topology
-	clients []*testutils.MMDVMClient
-	ob      *testutils.OpenBridgeClient
-	led     *ledger
-	samp    *sampler
-	queries *queryCounter
-	streams atomic.Uint32
-	stop    chan struct{}
-	wg      sync.WaitGroup
-	recvWG  sync.WaitGroup
-	lanes   atomic.Int32
-	laneMu  []sync.Mutex
-	lossyMu sync.Mutex
-	lossy   map[uint]bool
-	extra   map[int][]uint
+	t *testing.T
+	s settings
+	// optional holds the repeaters that a step takes down on purpose, so
+	// that what they miss is not counted as missing. Set it before the
+	// lanes run.
+	optional map[uint]bool
+	res      *result
+	logs     *logCounter
+	stack    *testutils.IntegrationStack
+	ctr      *testutils.Containers
+	top      topology
+	clients  []*testutils.MMDVMClient
+	ob       *testutils.OpenBridgeClient
+	led      *ledger
+	samp     *sampler
+	queries  *queryCounter
+	streams  atomic.Uint32
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	recvWG   sync.WaitGroup
+	lanes    atomic.Int32
+	laneMu   []sync.Mutex
+	lossyMu  sync.Mutex
+	lossy    map[uint]bool
+	extra    map[int][]uint
 }
 
 // lane is the lock of a slot of a repeater: a repeater carries one
@@ -332,7 +336,10 @@ type script struct {
 	text    string
 	confirm bool
 	noPace  bool
-	err     error
+	// shed marks a flood that the hub may drop: its missing deliveries
+	// count as shed, not missing.
+	shed bool
+	err  error
 }
 
 func voiceCall(label string, group bool, dst, src uint, frames int, want []uint) script {
@@ -361,6 +368,8 @@ func (r *rig) playOn(send func(models.Packet) error, ingress uint, slot2 bool, s
 		c.kind = "parrot"
 	}
 	c.loose = map[uint]bool{ipscRptID: true}
+	c.shed = s.shed
+	c.optional = r.optional
 	r.lossyMu.Lock()
 	if r.lossy[ingress] {
 		c.copies = make([]atomic.Int32, len(s.bursts))

@@ -62,9 +62,12 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 	r := newRig(t, s, res, logs, rigOptions{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	spare := r.top.n - 1
+	r.optional = map[uint]bool{rptID(spare): true}
 	r.runLanes(ctx, 10*time.Hour, loadMix(), s.Duty*0.6, r.top.n-1, nil)
 	rnd := rand.New(rand.NewPCG(5, 5)) //nolint:gosec
-	spare := r.top.n - 1
+	var floodStart time.Time
+	var floodTime time.Duration
 
 	step(t, "malformed", func(t *testing.T) {
 		n := 0
@@ -151,13 +154,16 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 		quiet(r.stack.DB).Table("messages").Count(&rows0)
 		j := 0
 		sent := 0
-		deadline := time.Now().Add(10 * time.Second)
+		floodStart = time.Now()
+		deadline := floodStart.Add(10 * time.Second)
 		for time.Now().Before(deadline) {
 			sc := smsScript("sms-flood", false, userID(j), userID(spare), r.privateWant(rptID(j)), sms.FormatIP, enums.DataTypeRate12)
 			sc.noPace = true
+			sc.shed = true
 			r.play(spare, false, sc)
 			sent++
 		}
+		floodTime = time.Since(floodStart)
 		time.Sleep(5 * time.Second)
 		var rows1 int64
 		quiet(r.stack.DB).Table("messages").Count(&rows1)
@@ -222,9 +228,21 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 	r.waitLanes()
 	time.Sleep(6 * time.Second)
 	r.led.finish(0, true)
-	r.checkDelivery()
+	tot := r.checkDelivery()
+	res.set("flood_deliveries_shed", float64(tot.Shed))
+	res.set("flood_deliveries_ok", float64(tot.ShedOK))
+	if most := int(floodTime.Seconds()*slotRate*1.2) + slotBurst; tot.ShedOK > most {
+		res.fail(t, "a flood from one repeater slot got %d deliveries in %s, more than a slot can carry (%d)", tot.ShedOK, floodTime, most)
+	}
 	r.checkNoStuckStreams(15 * time.Second)
 }
+
+// slotRate and slotBurst are the bursts a second and at once that the hub
+// takes from one repeater slot.
+const (
+	slotRate  = 50
+	slotBurst = 50
+)
 
 // malformed returns hostile packets: random octets of any length, every
 // truncation of a DMRD packet and of the login messages, and oversized

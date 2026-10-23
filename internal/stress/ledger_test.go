@@ -58,6 +58,8 @@ type callRec struct {
 	lcBurst  []bool
 	loose    map[uint]bool
 	foreign  bool
+	shed     bool
+	optional map[uint]bool
 	copies   []atomic.Int32
 	sentAt   []int64
 	hash     []uint32
@@ -103,6 +105,8 @@ type ledgerTotals struct {
 	Duplicates int            `json:"duplicates"`
 	Wrong      int            `json:"wrong_target"`
 	Altered    int            `json:"altered"`
+	Shed       int            `json:"shed"`
+	ShedOK     int            `json:"shed_delivered"`
 	ByLabel    map[string]int `json:"calls_by_label"`
 	MissingBy  map[string]int `json:"missing_by_label"`
 	DupBy      map[string]int `json:"duplicates_by_label"`
@@ -371,6 +375,7 @@ func (l *ledger) tally(c *callRec) {
 				continue
 			}
 			switch {
+			case n == 0 && c.optional[c.want[i]]:
 			case n == 0:
 				missing++
 			case n > 1:
@@ -396,6 +401,11 @@ func (l *ledger) tally(c *callRec) {
 		}
 	} else {
 		t.Expected += int(c.sent.Load()) * len(c.want)
+	}
+	if c.shed {
+		t.Shed += missing
+		t.ShedOK += deliv
+		missing = 0
 	}
 	t.Delivered += deliv
 	t.Missing += missing
@@ -459,7 +469,7 @@ func (c *callRec) missingTargets() map[uint]int {
 			continue
 		}
 		for i, n := range c.got[k] {
-			if n == 0 {
+			if n == 0 && !c.optional[c.want[i]] {
 				out[c.want[i]]++
 			}
 		}

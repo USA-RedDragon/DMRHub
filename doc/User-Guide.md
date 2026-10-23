@@ -122,11 +122,12 @@ A repeater or hotspot can send its static talkgroups when it connects, in the `O
 - `TS1=91,3100;TS2=9;` (or `TS1_STATIC=` and `TS2_STATIC=`) set the static talkgroups of each timeslot.
 - `TS1_1=91;TS1_2=3100;TS2_1=9;` (the DMR+ form) do the same, with up to nine talkgroups per timeslot.
 
-What the repeater sends replaces the static talkgroups of that timeslot on the Repeaters page, takes effect at once, and is saved, so the Repeaters page shows what is active. If you change them on the Repeaters page later, the repeater puts its own back the next time it connects.
+As in FreeDMR, options with static talkgroups set both timeslots. They replace the static talkgroups on the Repeaters page, take effect at once, and are saved, so the Repeaters page shows what is active. If you change them on the Repeaters page later, the repeater puts its own back the next time it connects.
 
-- A timeslot that the options do not mention keeps the talkgroups it has.
-- An empty list, such as `TS2=;`, removes all static talkgroups of that timeslot.
-- If a list names a talkgroup that DMRHub does not have, or has something that is not a talkgroup number, DMRHub leaves that timeslot as it is.
+- A timeslot that the options do not mention loses its static talkgroups. `TS2=9;` alone leaves TS1 with none.
+- An empty list, such as `TS2=;`, also removes all static talkgroups of that timeslot.
+- Talkgroups that DMRHub does not have are left out. If none of the talkgroups in a list exist, or the list has something that is not a talkgroup number, DMRHub leaves that timeslot as it is.
+- Options with no static talkgroups at all, such as `DIAL=0;`, change nothing.
 
 DMRHub has no reflectors, timers, voice announcements or single mode, so it ignores the other FreeDMR and DMR+ options, such as `DIAL`, `StartRef`, `TIMER`, `RelinkTime`, `VOICE` and `SINGLE`. The DMRHub log lists what it applied and what it ignored.
 

@@ -31,11 +31,13 @@ import (
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 )
 
-// options applies the RPTO options text of the repeater of l: the static
-// talkgroups of each slot that the text names replace the ones the
-// repeater has. FreeDMR and DMR+ texts are both read as FreeDMR reads
-// them, since FreeDMR takes the DMR+ keys too. DMRHub has no feature for
-// the other options, so they are logged and ignored, as is a text that
+// options applies the RPTO options text of the repeater of l. As in
+// FreeDMR, a text with static talkgroups defines both slots: the list of
+// each slot replaces the static talkgroups the repeater has, and a slot
+// that the text does not name is cleared. A text with no static talkgroup
+// key changes nothing. FreeDMR and DMR+ texts are both read as FreeDMR
+// reads them, since FreeDMR takes the DMR+ keys too. DMRHub has no feature
+// for the other options, so they are logged and ignored, as is a text that
 // cannot be read.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 	if s.byID[o.ID] != l || l.m.ID() != o.ID {
@@ -50,10 +52,16 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 	}
 	id := uint(o.ID)
 	logIgnoredOptions(id, text)
-	ts1 := s.staticTalkgroups(id, text, enums.Slot1)
-	ts2 := s.staticTalkgroups(id, text, enums.Slot2)
-	if ts1 == nil && ts2 == nil {
+	set1, bad1 := staticOption(text, enums.Slot1)
+	set2, bad2 := staticOption(text, enums.Slot2)
+	if !set1 && !set2 {
 		slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
+		return
+	}
+	ts1 := s.staticTalkgroups(id, text, enums.Slot1, set1, bad1)
+	ts2 := s.staticTalkgroups(id, text, enums.Slot2, set2, bad2)
+	if ts1 == nil && ts2 == nil {
+		slog.Info("No static talkgroups in repeater options that DMRHub applies", "repeaterID", id)
 		return
 	}
 	if err := models.SetRepeaterStaticTalkgroups(s.DB, id, ts1, ts2); err != nil {
@@ -67,14 +75,15 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 }
 
 // staticTalkgroups returns the talkgroups that text sets as the static
-// talkgroups of slot, nil when it sets none, and an empty list when it
-// clears them. A list with an entry that is not a talkgroup ID, or with a
-// talkgroup that DMRHub does not have, sets none, as the repeater API
-// refuses to link a talkgroup that does not exist.
-func (s *Server) staticTalkgroups(id uint, text []byte, slot enums.Slot) []models.Talkgroup {
-	set, bad := staticOption(text, slot)
+// talkgroups of slot, nil when it leaves them as they are, and an empty
+// list when it clears them. set and bad are what staticOption reports for
+// slot. A slot that the text does not name is cleared. A list with an entry
+// that is not a talkgroup ID leaves the slot. Talkgroups that DMRHub does
+// not have are left out, and a list of only such talkgroups leaves the
+// slot.
+func (s *Server) staticTalkgroups(id uint, text []byte, slot enums.Slot, set, bad bool) []models.Talkgroup {
 	if !set {
-		return nil
+		return []models.Talkgroup{}
 	}
 	if bad {
 		slog.Info("Ignoring malformed static talkgroups in repeater options", "repeaterID", id, "slot", slot)
@@ -94,8 +103,10 @@ func (s *Server) staticTalkgroups(id uint, text []byte, slot enums.Slot) []model
 	if len(tgs) < len(ids) {
 		found := talkgroupIDs(tgs)
 		missing := slices.DeleteFunc(ids, func(tg uint) bool { return slices.Contains(found, tg) })
-		slog.Info("Ignoring static talkgroups in repeater options that name talkgroups that do not exist", "repeaterID", id, "slot", slot, "talkgroups", missing)
-		return nil
+		slog.Info("Ignoring static talkgroups in repeater options that do not exist", "repeaterID", id, "slot", slot, "talkgroups", missing)
+		if len(tgs) == 0 {
+			return nil
+		}
 	}
 	return tgs
 }

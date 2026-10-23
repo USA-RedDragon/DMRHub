@@ -37,11 +37,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
+	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
-	gormSessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gorm.io/gorm"
@@ -103,7 +103,7 @@ func MakeSetupWizardServer(config *configPkg.Config, token string, configComplet
 //go:embed frontend/dist/*
 var FS embed.FS
 
-func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) {
+func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, r *gin.Engine, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("api"))
@@ -130,7 +130,8 @@ func addMiddleware(_ context.Context, config *configPkg.Config, dmrHub *hub.Hub,
 	}
 
 	// Sessions
-	sessionStore := gormSessions.NewStore(db, true, config.GetDerivedSecret())
+	sessionStore := sessionstore.New(db, config.GetDerivedSecret())
+	go sessionStore.PeriodicCleanup(ctx, time.Hour)
 	r.Use(sessions.Sessions("sessions", sessionStore))
 }
 

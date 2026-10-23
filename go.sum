@@ -313,8 +313,6 @@ github.com/uptrace/opentelemetry-go-extra/otelgorm v0.4.0 h1:Sy2ZD/mvW2JOAO0zcAa
 github.com/uptrace/opentelemetry-go-extra/otelgorm v0.4.0/go.mod h1:26kz7bDHwyA4u+gNV3TGDjMhw2zW8QSVRWIG8+FY0qE=
 github.com/uptrace/opentelemetry-go-extra/otelsql v0.4.0 h1:ogBkT6xk6ruB2rPCQvJCV48CuDkFK+zazsvsJEPKCVY=
 github.com/uptrace/opentelemetry-go-extra/otelsql v0.4.0/go.mod h1:2W+3XKCmxD/+Yxh7NZbO/jTT007ODSOo9xhIWxO75r8=
-github.com/wader/gormstore/v2 v2.0.5 h1:3yygh/bM+YPt/NQ20P9J6Kz7wi70oWyl3mVRapW7a10=
-github.com/wader/gormstore/v2 v2.0.5/go.mod h1:RRsu5liObsTU+9YD+eKN3OQjn13VLjBDoAP44G8Kuw4=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=
 github.com/zeebo/xxh3 v1.1.0/go.mod h1:IisAie1LELR4xhVinxWS5+zf1lA4p0MW4T+w+W07F5s=
 github.com/zenazn/goji v0.9.0/go.mod h1:7S9M489iMyHBNxwZnk9/EHS098H4/F6TATF2mIxtB1Q=

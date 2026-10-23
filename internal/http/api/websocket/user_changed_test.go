@@ -133,6 +133,10 @@ func (e *userEnv) requireClosed(t *testing.T, conn *testutils.WSConn, id uint, w
 		got, _ := conn.ReadText(2 * time.Second)
 		require.Failf(t, "socket still open", "%s: 3 s after the change the socket is open (first frame %q) and still gets %q", what, text, got)
 	}
+	var closed *testutils.WSCloseError
+	require.ErrorAs(t, err, &closed, "%s: the server dropped the socket without a close frame", what)
+	assert.Equal(t, 1008, closed.Code, what)
+	assert.Equal(t, "user changed", closed.Reason, what)
 }
 
 func requireOpen(t *testing.T, conn *testutils.WSConn, what string) {

@@ -135,6 +135,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.GET("/me", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSelf)
 	v1Users.GET("/me/settings", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSettings)
 	v1Users.PUT("/me/settings/sms-storage", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserSMSStorage)
+	v1Users.PUT("/me/settings/share-positions", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserSharePositions)
 	v1Users.GET("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyRadioIDs)
 	v1Users.POST("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.POSTMyRadioID)
 	v1Users.DELETE("/me/radio-ids/:radio_id", middleware.RequireLogin(), userSuspension, v1UsersControllers.DELETEMyRadioID)
@@ -175,6 +176,8 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Positions := group.Group("/positions")
 	v1Positions.Use(middleware.RequireLogin(), userSuspension)
 	v1Positions.GET("", v1PositionsControllers.GETPositions)
+	v1Positions.GET("/radios", v1PositionsControllers.GETPositionRadios)
+	v1Positions.PUT("/:id/settings", v1PositionsControllers.PUTPositionRadio)
 	v1Positions.GET("/:id", v1PositionsControllers.GETRadioPositions)
 	v1Positions.GET("/:id/track", v1PositionsControllers.GETTrack)
 

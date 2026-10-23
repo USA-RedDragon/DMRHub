@@ -24,11 +24,17 @@ import "time"
 // UserSettings is the settings of the logged-in user. It never holds the
 // time SMS Storage was turned on.
 type UserSettings struct {
-	SMSStorage bool `json:"sms_storage"`
+	SMSStorage     bool `json:"sms_storage"`
+	SharePositions bool `json:"share_positions"`
 }
 
 // SMSStoragePut turns SMS Storage on or off.
 type SMSStoragePut struct {
+	Enabled *bool `json:"enabled" binding:"required"`
+}
+
+// SharePositionsPut turns sharing of the user's positions on or off.
+type SharePositionsPut struct {
 	Enabled *bool `json:"enabled" binding:"required"`
 }
 

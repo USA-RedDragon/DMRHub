@@ -47,7 +47,7 @@ func GETUserSettings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, apimodels.UserSettings{SMSStorage: user.SMSStorageEnabled})
+	c.JSON(http.StatusOK, settingsOf(&user))
 }
 
 // PUTUserSMSStorage turns SMS Storage of the logged-in user on or off.
@@ -70,7 +70,36 @@ func PUTUserSMSStorage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
 		return
 	}
-	c.JSON(http.StatusOK, apimodels.UserSettings{SMSStorage: user.SMSStorageEnabled})
+	c.JSON(http.StatusOK, settingsOf(&user))
+}
+
+func settingsOf(user *models.User) apimodels.UserSettings {
+	return apimodels.UserSettings{SMSStorage: user.SMSStorageEnabled, SharePositions: user.SharePositions}
+}
+
+// PUTUserSharePositions turns sharing of the positions of the logged-in
+// user's radios on or off.
+func PUTUserSharePositions(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	user, ok := utils.GetSessionUser(c, db)
+	if !ok {
+		return
+	}
+	var req apimodels.SharePositionsPut
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Send enabled as true or false"})
+		return
+	}
+	if err := models.SetSharePositions(db, user.ID, *req.Enabled); err != nil {
+		slog.Error("Error saving position sharing", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
+		return
+	}
+	user.SharePositions = *req.Enabled
+	c.JSON(http.StatusOK, settingsOf(&user))
 }
 
 // GETMyRadioIDs lists the radio IDs of the logged-in user.

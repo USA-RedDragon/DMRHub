@@ -51,9 +51,9 @@ type env struct {
 	jar    testutils.CookieJar
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...testutils.ConfigOption) *env {
 	t.Helper()
-	router, tdb, err := testutils.CreateTestDBRouterWithOptions()
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(opts...)
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	db := tdb.DB()

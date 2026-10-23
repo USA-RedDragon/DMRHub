@@ -74,6 +74,8 @@
         <IPSCSettings v-model="ipsc" :errors="errors.ipsc" />
         <br v-if="false" />
         <OpenBridgeSettings v-model="openbridge" :errors="errors.openbridge" v-if="false"/>
+        <br />
+        <RetentionSettings v-model="retention" :errors="errors.retention" />
       </CardContent>
     </Card>
   </div>
@@ -83,6 +85,7 @@
 import MMDVMSettings from './DMR/MMDVMSettings.vue';
 import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 import IPSCSettings from './DMR/IPSCSettings.vue';
+import RetentionSettings from './DMR/RetentionSettings.vue';
 import {
   Card,
   CardContent,
@@ -96,6 +99,7 @@ export default {
     MMDVMSettings,
     OpenBridgeSettings,
     IPSCSettings,
+    RetentionSettings,
     Card,
     CardContent,
     CardHeader,
@@ -134,6 +138,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'openbridge': value,
+        });
+      },
+    },
+    retention: {
+      get() {
+        return (this.modelValue && this.modelValue['retention']) || {};
+      },
+      set(value: Record<string, unknown>) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'retention': value,
         });
       },
     },

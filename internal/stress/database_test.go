@@ -108,7 +108,8 @@ func TestDatabase(t *testing.T) { //nolint:paralleltest
 		r.play(i, false, to)
 		r.play(i, true, from)
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
+	r.waitQuiet(2 * time.Minute)
 	r.led.finish(0, true)
 	for _, box := range []string{"inbox", "outbox"} {
 		var all int64

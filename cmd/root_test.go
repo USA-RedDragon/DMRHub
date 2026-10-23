@@ -20,9 +20,12 @@
 package cmd
 
 import (
+	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 )
 
 func TestSetupTracing_EmptyEndpoint_ReturnsNoopCleanup(t *testing.T) {
@@ -71,5 +74,19 @@ func TestSetupTracing_WithEndpoint_ReturnsCleanupAndNoError(t *testing.T) {
 	}
 	if cleanup == nil {
 		t.Fatal("expected non-nil cleanup function when OTLP endpoint is set")
+	}
+}
+
+func TestLiveConfigAppliesTheLogLevel(t *testing.T) { //nolint:paralleltest // sets the default logger of the process
+	defer slog.SetDefault(slog.Default())
+	l := liveConfig{dmr: manager.New(manager.Deps{})}
+
+	l.Apply(&config.Config{LogLevel: config.LogLevelDebug})
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("debug logs are off after a change of the log level to debug")
+	}
+	l.Apply(&config.Config{LogLevel: config.LogLevelError})
+	if slog.Default().Enabled(context.Background(), slog.LevelWarn) {
+		t.Fatal("warnings are on after a change of the log level to error")
 	}
 }

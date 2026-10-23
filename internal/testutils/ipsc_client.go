@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -65,6 +66,7 @@ type IPSCClient struct {
 	started bool
 	rtpSeq  uint16
 
+	downs    atomic.Int32
 	ready    chan struct{}
 	upOnce   sync.Once
 	done     chan struct{}
@@ -294,6 +296,11 @@ func (c *IPSCClient) sendVoice(op ipscwire.Opcode, src, dst uint, groupCall, slo
 	return nil
 }
 
+// Downs returns the number of times the registration of the client ended.
+func (c *IPSCClient) Downs() int {
+	return int(c.downs.Load())
+}
+
 // Close shuts down the client.
 func (c *IPSCClient) Close() {
 	c.stopOnce.Do(func() {
@@ -318,7 +325,9 @@ func (c *IPSCClient) run(out []ipscsession.Output) {
 			c.upOnce.Do(func() { close(c.ready) })
 		case ipscsession.OutputData:
 			c.receive(o.Packet)
-		case ipscsession.OutputDown, ipscsession.OutputPeers, ipscsession.OutputDropped:
+		case ipscsession.OutputDown:
+			c.downs.Add(1)
+		case ipscsession.OutputPeers, ipscsession.OutputDropped:
 		}
 	}
 }

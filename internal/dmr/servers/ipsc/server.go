@@ -143,15 +143,26 @@ func (s *IPSCServer) lookupPeerAuthKey(peerID uint32) ([20]byte, bool, error) {
 	return key, true, nil
 }
 
-func (s *IPSCServer) Start(ctx context.Context) error {
-	var err error
-	s.udp, err = net.ListenUDP("udp", &net.UDPAddr{
+// Listen opens the socket of the server. Start calls it when it was not
+// called before.
+func (s *IPSCServer) Listen() error {
+	if s.udp != nil {
+		return nil
+	}
+	udp, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP(s.cfg.DMR.IPSC.Bind),
 		Port: s.cfg.DMR.IPSC.Port,
 	})
-
 	if err != nil {
 		return fmt.Errorf("error starting UDP listener: %w", err)
+	}
+	s.udp = udp
+	return nil
+}
+
+func (s *IPSCServer) Start(ctx context.Context) error {
+	if err := s.Listen(); err != nil {
+		return err
 	}
 
 	s.hubHandle = s.hub.RegisterServer(hub.ServerConfig{

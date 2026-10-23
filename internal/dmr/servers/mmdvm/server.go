@@ -22,6 +22,7 @@ package mmdvm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"sync"
@@ -90,19 +91,16 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 	}
 	server, err := net.ListenUDP("udp", &socketAddr)
 	if err != nil {
-		slog.Error("Error opening UDP Socket", "error", err)
-		return Server{}, ErrOpenSocket
+		return Server{}, fmt.Errorf("%w: %w", ErrOpenSocket, err)
 	}
 
-	err = server.SetReadBuffer(bufferSize)
-	if err != nil {
-		slog.Error("Error setting read buffer on UDP Socket", "error", err)
-		return Server{}, ErrSocketBuffer
+	if err := server.SetReadBuffer(bufferSize); err != nil {
+		_ = server.Close()
+		return Server{}, fmt.Errorf("%w: %w", ErrSocketBuffer, err)
 	}
-	err = server.SetWriteBuffer(bufferSize)
-	if err != nil {
-		slog.Error("Error setting write buffer on UDP Socket", "error", err)
-		return Server{}, ErrSocketBuffer
+	if err := server.SetWriteBuffer(bufferSize); err != nil {
+		_ = server.Close()
+		return Server{}, fmt.Errorf("%w: %w", ErrSocketBuffer, err)
 	}
 
 	return Server{
@@ -122,6 +120,11 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		egressMiss:    xsync.NewMap[uint, time.Time](),
 		done:          make(chan struct{}),
 	}, nil
+}
+
+// Addr returns the address of the socket of the server.
+func (s *Server) Addr() net.Addr {
+	return s.Server.LocalAddr()
 }
 
 // Stop stops the DMR server.

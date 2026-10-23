@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -35,12 +36,14 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 type TestDB struct {
 	database *gorm.DB
 	pubsub   pubsub.PubSub
+	config   *config.Config
 }
 
 func (t *TestDB) CloseDB() {
@@ -233,6 +236,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	}
 
 	t.pubsub = ps
+	t.config = &defConfig
 	ct := calltracker.NewCallTracker(t.database, ps)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 
@@ -240,4 +244,33 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	ready.Store(true)
 
 	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef"), &t, nil
+}
+
+// ReplicaRouter returns the router of a second copy of the app on the
+// database of the router of CreateTestDBRouterWithOptions, with a Hub of its
+// own. With Redis on it has its own pubsub, so the two routers reach each
+// other only through Redis; with the in-memory pubsub it shares the first
+// router's, as SpawnSecondReplica does.
+func (t *TestDB) ReplicaRouter(tb testing.TB) *gin.Engine {
+	tb.Helper()
+	require.NotNil(tb, t.config, "ReplicaRouter needs the router of CreateTestDBRouterWithOptions")
+	ps := t.pubsub
+	if t.config.Redis.Enabled {
+		var err error
+		ps, err = pubsub.MakePubSub(context.TODO(), t.config)
+		require.NoError(tb, err)
+		tb.Cleanup(func() { _ = ps.Close() })
+	}
+	kvStore, err := kv.MakeKV(context.TODO(), t.config)
+	require.NoError(tb, err)
+	ct := calltracker.NewCallTracker(t.database, ps)
+	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
+	tb.Cleanup(func() {
+		dmrHub.Stop(context.Background())
+		ct.Stop()
+		_ = kvStore.Close()
+	})
+	ready := &atomic.Bool{}
+	ready.Store(true)
+	return http.CreateRouter(context.TODO(), t.config, dmrHub, t.database, ps, ready, nil, "test", "deadbeef")
 }

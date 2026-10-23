@@ -81,6 +81,7 @@ type streamState struct {
 	lastActivity time.Time // tracks when this stream was last active
 	lc           [9]byte   // the Full LC of the call, for burst E
 	haveLC       bool      // whether lc is set
+	embedded     layer2.EmbeddedLCAssembler
 }
 
 // IPSC burst types (byte 30 of an IPSC user packet).
@@ -432,16 +433,37 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	idx, _ := pos.Index()
 	ss.burstIndex = (idx + 1) % 6
 
+	lc := ss.lc
 	if !ss.haveLC {
-		ss.lc, ss.haveLC = extractFullLCBytes(pkt), true
+		lc = lateEntryLC(pkt, ss, raw, idx)
 	}
 	u := t.user(pkt, ss, false, false, false)
-	u.Voice.LC = ss.lc
+	u.Voice.LC = lc
 	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: pos}); err != nil {
 		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
 		return nil
 	}
 	return encodeUser(&u)
+}
+
+// lateEntryLC returns the Full LC for burst E of a call whose Voice LC
+// Header the translator did not see. It is the embedded LC of bursts B to
+// E once one decodes and names the call of pkt, so that the FID and the
+// Service Options of the call pass, and until then one built from the
+// packet fields.
+func lateEntryLC(pkt models.Packet, ss *streamState, raw layer2.RawBurst, idx int) [9]byte {
+	if idx == 0 {
+		return extractFullLCBytes(pkt)
+	}
+	if lc, _, done, err := ss.embedded.Add(raw.EmbeddedData(), raw.EMB().LCSS); done && err == nil {
+		var cw [12]byte
+		copy(cw[:], lc[:])
+		if fullLCMatchesPacket(cw, pkt) {
+			ss.lc, ss.haveLC = lc, true
+			return lc
+		}
+	}
+	return extractFullLCBytes(pkt)
 }
 
 // extractFullLCBytes builds the 9 Full Link Control octets of a group or

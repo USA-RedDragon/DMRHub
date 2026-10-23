@@ -31,7 +31,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -66,7 +65,7 @@ func (e policyCloseError) Error() string {
 }
 
 //nolint:gochecknoglobals
-var errUserChanged = policyCloseError{reason: "user changed"}
+var errUserChanged = policyCloseError{reason: reasonUserChanged}
 
 type Websocket interface {
 	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
@@ -96,9 +95,9 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 			return
 		}
 		conn.SetReadLimit(readLimit)
-		userWatch, _ := c.Get(userWatchKey)
-		subscription, _ := userWatch.(pubsub.Subscription)
-		handler.serve(session, c.Request, conn, subscription)
+		value, _ := c.Get(userWatchKey)
+		watch, _ := value.(*userWatch)
+		handler.serve(session, c.Request, conn, watch)
 	}
 }
 
@@ -166,11 +165,11 @@ func originMatches(origin webOrigin, allowed string) bool {
 	return hostOf(origin.scheme, allowed) == origin.host
 }
 
-func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn, userWatch pubsub.Subscription) {
+func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn, watch *userWatch) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	if userWatch != nil {
-		go watchUser(ctx, cancel, userWatch)
+	if watch != nil {
+		go watch.run(ctx, cancel)
 	}
 	writer := &wsWriter{out: make(chan Message, bufferSize), done: ctx.Done(), cancel: cancel}
 

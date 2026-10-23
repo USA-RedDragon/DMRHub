@@ -28,6 +28,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -149,12 +151,23 @@ func POSTLogin(c *gin.Context) {
 
 func POSTLogout(c *gin.Context) {
 	session := sessions.Default(c)
+	userID, loggedIn := session.Get("user_id").(uint)
+	sessionID := session.ID()
 	session.Clear()
 	err := session.Save()
 	if err != nil {
 		slog.Error("Error saving session during logout", "function", "POSTLogout", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error saving session"})
 		return
+	}
+	if loggedIn {
+		if ps, ok := c.Value("PubSub").(pubsub.PubSub); ok {
+			if err := websocket.PublishLogout(ps, userID, sessionID); err != nil {
+				slog.Error("Failed to close the websockets of a logged out session", "function", "POSTLogout", "error", err)
+			}
+		} else {
+			slog.Error("PubSub not found in context, the websockets of a logged out session stay open", "function", "POSTLogout")
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
 }

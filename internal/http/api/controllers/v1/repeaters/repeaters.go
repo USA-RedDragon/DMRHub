@@ -812,15 +812,15 @@ func PATCHRepeater(c *gin.Context) {
 	if json.SimplexRepeater != nil {
 		repeater.SimplexRepeater = *json.SimplexRepeater
 	}
-	if json.Trusted != nil {
-		if !requesterIsAdmin(c, db) {
-			c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a repeater is trusted"})
-			return
-		}
-		repeater.Trusted = *json.Trusted
+	if json.Trusted != nil && !requesterIsAdmin(c, db) {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a repeater is trusted"})
+		return
 	}
 
 	err = db.Save(repeater).Error
+	if err == nil && json.Trusted != nil {
+		err = db.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", *json.Trusted, repeater.ID).Error
+	}
 	if err != nil {
 		slog.Error(msgErrSavingRepeater, "function", "PATCHRepeater", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})

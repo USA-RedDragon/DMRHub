@@ -618,3 +618,37 @@ func TestPATCHRepeaterTrustedNeedsAdmin(t *testing.T) {
 	require.NoError(t, tdb.DB().First(&dbRepeater, repeaterPost.RadioID).Error)
 	assert.True(t, dbRepeater.Trusted, "an owner's PATCH must keep the admin's trust")
 }
+
+func TestStaleRepeaterSaveKeepsTrust(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	repeaterPost := apimodels.RepeaterPost{RadioID: 319186808}
+	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stale, err := models.FindRepeaterByID(tdb.DB(), repeaterPost.RadioID)
+	require.NoError(t, err)
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	trusted := true
+	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, adminJar, apimodels.RepeaterPatch{Trusted: &trusted})
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stale.SimplexRepeater = true
+	require.NoError(t, tdb.DB().Save(&stale).Error)
+	fresh, err := models.FindRepeaterByID(tdb.DB(), repeaterPost.RadioID)
+	require.NoError(t, err)
+	assert.True(t, fresh.SimplexRepeater)
+	assert.True(t, fresh.Trusted, "a save of a stale repeater must not undo the admin's trust")
+}

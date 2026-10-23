@@ -112,7 +112,7 @@ func TestUntrustedSightingDoesNotMoveRadio(t *testing.T) {
 func TestTrustedRepeaterMovesRadio(t *testing.T) {
 	t.Parallel()
 	h, database, srv := lastSeenHub(t)
-	require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100004).Update("trusted", true).Error)
+	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
 
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
 	time.Sleep(200 * time.Millisecond)

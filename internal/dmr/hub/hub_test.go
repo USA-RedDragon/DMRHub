@@ -50,6 +50,36 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 // instance so tests can publish/subscribe to channels directly.
 func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
+	return makeTestHubWrapping(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps })
+}
+
+// makeTestHubWatching is like makeTestHubWithPubSub, and the returned
+// channel receives once for each subscription to topic.
+func makeTestHubWatching(t *testing.T, topic string) (*hub.Hub, *gorm.DB, pubsub.PubSub, <-chan struct{}) {
+	t.Helper()
+	subscribed := make(chan struct{}, 100)
+	h, database, ps := makeTestHubWrapping(t, func(ps pubsub.PubSub) pubsub.PubSub {
+		return &watchedPubSub{PubSub: ps, topic: topic, subscribed: subscribed}
+	})
+	return h, database, ps, subscribed
+}
+
+type watchedPubSub struct {
+	pubsub.PubSub
+	topic      string
+	subscribed chan struct{}
+}
+
+func (w *watchedPubSub) Subscribe(topic string) pubsub.Subscription {
+	sub := w.PubSub.Subscribe(topic)
+	if topic == w.topic {
+		w.subscribed <- struct{}{}
+	}
+	return sub
+}
+
+func makeTestHubWrapping(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -60,8 +90,9 @@ func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
-	ps, err := pubsub.MakePubSub(context.Background(), &defConfig)
+	inner, err := pubsub.MakePubSub(context.Background(), &defConfig)
 	require.NoError(t, err)
+	ps := wrap(inner)
 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)

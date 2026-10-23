@@ -206,3 +206,28 @@ func TestPositionsNeedALogin(t *testing.T) {
 	e := newEnv(t)
 	assert.Equal(t, http.StatusUnauthorized, e.get(testutils.CookieJar{}, "/api/v1/positions", nil))
 }
+
+func TestTheWindowOfThePositionsIsADayAWeekOrAMonth(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.track(owner, 20*24*time.Hour, 3*24*time.Hour, time.Hour)
+	var l apimodels.PositionList
+	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions?hours=720", &l))
+	require.Len(t, l.Positions, 1)
+	var r apimodels.RadioPositions
+	require.Equal(t, http.StatusOK, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d?hours=168", owner), &r))
+	assert.Len(t, r.Track, 2)
+	require.Equal(t, http.StatusOK, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d?hours=720", owner), &r))
+	assert.Len(t, r.Track, 3)
+	assert.Equal(t, uint(5057), r.Track[0].ServiceID)
+	require.Equal(t, http.StatusOK, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d", owner), &r))
+	assert.Len(t, r.Track, 1, "a day by default")
+
+	e.track(other, 2*24*time.Hour)
+	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions?hours=168", &l))
+	assert.Len(t, l.Positions, 1, "still only the radios the user sees")
+	for _, bad := range []string{"48", "0", "-1", "x", "8760"} {
+		assert.Equal(t, http.StatusBadRequest, e.get(e.jar, "/api/v1/positions?hours="+bad, nil), bad)
+		assert.Equal(t, http.StatusBadRequest, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d?hours=%s", owner, bad), nil), bad)
+	}
+}

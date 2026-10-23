@@ -27,7 +27,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type GORMStore struct {
@@ -50,53 +49,29 @@ func NewGORMStore(options *GORMOptions) *GORMStore {
 	}
 }
 
-func (s *GORMStore) Limit(key string, c *gin.Context) (ret ratelimit.Info) {
+// Limit counts a request of key and reports whether it is over the limit.
+// The count is read and written by one statement, so concurrent requests
+// of one key each see their own count.
+func (s *GORMStore) Limit(key string, _ *gin.Context) (ret ratelimit.Info) {
 	ret.Limit = s.limit
-
-	exists, err := models.RatelimitKeyExists(s.db, key)
+	now := time.Now()
+	var rl models.Ratelimit
+	err := s.db.Raw(`INSERT INTO ratelimits (key, hits, timestamp) VALUES (?, 1, ?)
+ON CONFLICT (key) DO UPDATE SET
+	hits = CASE WHEN ratelimits.timestamp < ? THEN 1 ELSE ratelimits.hits + 1 END,
+	timestamp = CASE WHEN ratelimits.timestamp < ? OR ratelimits.hits < ? THEN excluded.timestamp ELSE ratelimits.timestamp END
+RETURNING key, hits, timestamp`, key, now, now.Add(-s.rate), now.Add(-s.rate), s.limit).Scan(&rl).Error
 	if err != nil {
-		slog.Error("Failed to check ratelimit key existence", "error", err)
-		exists = false
+		slog.Error("Failed to count a ratelimit hit", "error", err)
+		ret.RemainingHits = s.limit
+		ret.ResetTime = now.Add(s.rate)
+		return ret
 	}
-	rl := &models.Ratelimit{
-		Key: key,
-	}
-	if !exists {
-		rl.Hits = 0
-		rl.Timestamp = time.Now()
-	} else {
-		rl, err = models.FindRatelimitByKey(s.db, key)
-		if err != nil {
-			slog.Error("Failed to find ratelimit by key", "error", err)
-		}
-	}
-
-	ret.ResetTime = time.Now().Add(s.rate - time.Since(rl.Timestamp))
-
-	if rl.Timestamp.Add(s.rate).Before(time.Now()) {
-		rl.Hits = 0
-	}
-
-	if rl.Hits >= 0 && uint64(rl.Hits) >= uint64(s.limit) {
+	ret.ResetTime = rl.Timestamp.Add(s.rate)
+	if rl.Hits < 0 || uint64(rl.Hits) > uint64(s.limit) {
 		ret.RateLimited = true
-		ret.RemainingHits = 0
-	} else {
-		rl.Timestamp = time.Now()
-		rl.Hits++
-		if rl.Hits < 0 {
-			ret.RemainingHits = s.limit
-		} else {
-			ret.RemainingHits = s.limit - uint(rl.Hits)
-		}
+		return ret
 	}
-
-	err = s.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"hits", "timestamp"}),
-	}).Create(rl).Error
-	if err != nil {
-		slog.Error("Failed to save ratelimit entry", "error", err)
-	}
-
-	return
+	ret.RemainingHits = s.limit - uint(uint64(rl.Hits))
+	return ret
 }

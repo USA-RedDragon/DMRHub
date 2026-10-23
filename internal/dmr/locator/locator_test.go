@@ -384,3 +384,51 @@ func TestARSDeregistrationStopsTheTriggeredRequest(t *testing.T) {
 	require.NoError(t, database.Model(&models.LocationRequest{}).Where("radio_id = ?", radio).Count(&n).Error)
 	assert.Zero(t, n)
 }
+
+func TestASilentTrackedRadioThatIsHeardIsAskedAgain(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", radio).Update("interval_seconds", 1).Error)
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	waitAnswers(t, &out, 2)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(200 * time.Millisecond):
+				l.Heard(radio, repeater, true)
+			}
+		}
+	}()
+	got := waitAnswers(t, &out, 3)
+	require.GreaterOrEqual(t, len(got), 3)
+	require.NotNil(t, got[2].lrrp)
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[2].lrrp.Document)
+}
+
+func TestASilentRadioThatIsNotHeardIsNotAskedAgain(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", radio).Update("interval_seconds", 1).Error)
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	waitAnswers(t, &out, 2)
+	time.Sleep(5 * time.Second)
+	assert.Len(t, answers(t, out.all()), 2)
+}

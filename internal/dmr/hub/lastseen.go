@@ -39,6 +39,7 @@ const (
 
 type sighting struct {
 	src, repeater uint
+	slot          bool
 }
 
 type sightingKey struct {
@@ -55,7 +56,7 @@ func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
 		return
 	}
 	select {
-	case h.sightings <- sighting{src: packet.Src, repeater: packet.Repeater}:
+	case h.sightings <- sighting{src: packet.Src, repeater: packet.Repeater, slot: packet.Slot}:
 	default:
 		slog.Warn("Dropping a sighting, the queue is full", "src", packet.Src, "repeater", packet.Repeater)
 	}
@@ -101,6 +102,7 @@ func (h *Hub) runSightings() {
 func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	user, err := models.FindUserByID(h.db, s.src)
 	if err != nil {
+		h.noteHeardRadio(s)
 		return
 	}
 	rpt, ok := h.routableFor(user.ID, s.repeater)
@@ -112,6 +114,7 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 			"radioID", s.src, "repeaterID", s.repeater, "repeaterOwner", rpt.OwnerID)
 		return
 	}
+	h.locator.Heard(s.src, rpt.ID, s.slot)
 	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, user.ID)
 	if prev, err := h.kv.Get(ctx, key); err == nil && string(prev) != strconv.FormatUint(uint64(rpt.ID), 10) {
 		slog.Info("Radio moved", "radioID", user.ID, "from", string(prev), "to", rpt.ID)
@@ -122,6 +125,18 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	}
 	if err := h.kv.Expire(ctx, key, lastSeenTTL); err != nil {
 		slog.Warn("Failed to expire where a radio was heard", "radioID", user.ID, "error", err)
+	}
+}
+
+// noteHeardRadio tells the location server where a radio ID that a user
+// added was heard, on the same terms as a sighting of an account ID.
+func (h *Hub) noteHeardRadio(s sighting) {
+	owner, ok, err := models.RadioIDOwner(h.db, s.src)
+	if err != nil || !ok {
+		return
+	}
+	if rpt, ok := h.routableFor(owner, s.repeater); ok {
+		h.locator.Heard(s.src, rpt.ID, s.slot)
 	}
 }
 

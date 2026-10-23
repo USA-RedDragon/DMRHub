@@ -66,6 +66,7 @@ type Server struct {
 	connected     *xsync.Map[uint, endpoint]
 	transports    *xsync.Map[string, transport]
 	egressMiss    *xsync.Map[uint, time.Time]
+	lookups       sync.WaitGroup
 	stopped       atomic.Bool
 	wg            sync.WaitGroup
 	done          chan struct{}
@@ -74,7 +75,11 @@ type Server struct {
 	mu    sync.Mutex
 	links map[string]*link
 	byID  map[uint32]*link
-	epoch time.Time
+	// known holds the IDs of the repeaters, once loaded; see login.
+	known    map[uint32]bool
+	misses   int
+	missesAt time.Duration
+	epoch    time.Time
 	// newSalt, when set, makes the login salts in place of crypto/rand.
 	newSalt func() (uint32, error)
 }
@@ -195,6 +200,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	})
 
 	s.wg.Wait()
+	s.lookups.Wait()
 	return nil
 }
 
@@ -255,6 +261,14 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
+
+	if s.DB != nil {
+		if err := s.loadKnown(); err != nil {
+			slog.Error("Error loading the repeater IDs, every login is looked up", "error", err)
+		}
+		s.wg.Add(1)
+		go s.refreshKnown()
+	}
 
 	s.wg.Add(4)
 	go s.listen(ctx)

@@ -88,12 +88,12 @@ describe('Last Heard & Main Page', () => {
       calls: page1Calls,
     };
 
-    cy.intercept('GET', '/api/v1/lastheard?page=1&limit=30', {
+    cy.intercept('GET', '/api/v1/lastheard?page=1&limit=30*', {
       statusCode: 200,
       body: page1Data,
     }).as('page1');
 
-    cy.intercept('GET', '/api/v1/lastheard?page=2&limit=30', {
+    cy.intercept('GET', '/api/v1/lastheard?page=2&limit=30*', {
       statusCode: 200,
       body: { total: 60, calls: [] },
     }).as('page2');
@@ -117,5 +117,30 @@ describe('Last Heard & Main Page', () => {
 
     // Main content should show welcome
     cy.contains('Welcome to DMRHub').should('be.visible');
+  });
+
+  it('shows the type of each transmission and filters by type', () => {
+    cy.intercept('GET', '/api/v1/lastheard*', {
+      statusCode: 200,
+      fixture: 'lastheard-kinds.json',
+    }).as('getLastHeard');
+
+    cy.visit('/lastheard');
+    cy.wait('@getLastHeard').its('request.url').should('include', 'types=voice,data,sms,gps,alias,csbk,control');
+
+    cy.get('[data-testid="type-badge"]').should('have.length', 4);
+    cy.contains('[data-testid="type-badge"]', 'Voice').should('be.visible');
+    cy.contains('[data-testid="type-badge"]', 'CSBK').should('be.visible');
+    cy.contains('Radio Check').should('be.visible');
+    cy.contains('Motorola FID 0x10').should('be.visible');
+    cy.contains('[data-testid="type-badge"]', 'SMS').should('be.visible');
+    cy.contains('ETSI IP · SAP IP (4)').should('be.visible');
+    cy.contains('[data-testid="type-badge"]', 'Data').should('be.visible');
+
+    cy.get('[data-kind="unknown"]').should('have.attr', 'aria-pressed', 'false').click();
+    cy.wait('@getLastHeard').its('request.url').should('include', 'types=voice,data,sms,gps,alias,csbk,control,unknown');
+
+    cy.get('[data-testid="type-idle"]').check();
+    cy.wait('@getLastHeard').its('request.url').should('include', 'idle=true');
   });
 });

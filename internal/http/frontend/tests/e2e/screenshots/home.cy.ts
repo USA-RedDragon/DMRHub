@@ -177,7 +177,7 @@ beforeEach(() => {
     body: '1.1.0',
   });
   cy.intercept(
-    '/api/v1/lastheard?page=1&limit=30',
+    '/api/v1/lastheard?page=1&limit=30*',
     JSON.stringify({
       total: 50,
       calls: generateCalls(50),

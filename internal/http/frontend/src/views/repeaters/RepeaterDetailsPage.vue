@@ -234,13 +234,14 @@
           <CardTitle>Last Heard</CardTitle>
           <CardDescription>Recent calls through this repeater</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent class="flex flex-col gap-4">
+          <TypeFilter v-model="filter" />
           <DataTable
             :columns="columns"
             :data="lastheard"
             :loading="lastheardLoading"
             :loading-text="'Loading...'"
-            :empty-text="'No calls found'"
+            :empty-text="'No transmissions match these types'"
             :manual-pagination="true"
             :page-index="page - 1"
             :page-size="rows"
@@ -255,15 +256,20 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
-import { h } from 'vue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
-import User from '@/components/User.vue';
-import Talkgroup from '@/components/Talkgroup.vue';
-import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import TypeFilter from '@/components/TypeFilter.vue';
+import { lastHeardColumns } from '@/lib/lastHeardColumns';
+import {
+  cleanCalls,
+  defaultFilter,
+  filterQuery,
+  matchesFilter,
+  type CallRow,
+  type TypeFilterValue,
+} from '@/lib/transmissions';
 
 import API from '@/services/API';
 import { getWebsocketURI } from '@/services/util';
@@ -310,25 +316,6 @@ type RepeaterData = {
   ts2_dynamic_talkgroup: TalkgroupRef;
 };
 
-type LastHeardRow = {
-  id: number;
-  active: boolean;
-  start_time: string | Date;
-  time_slot: boolean;
-  user: UserRef;
-  is_to_talkgroup: boolean;
-  to_talkgroup: TalkgroupRef;
-  is_to_repeater: boolean;
-  to_repeater: { id: number; callsign: string };
-  is_to_user: boolean;
-  to_user: UserRef;
-  duration: string | number;
-  ber: string | number;
-  loss: string | number;
-  jitter: string | number;
-  rssi: number;
-};
-
 export default {
   components: {
     Card,
@@ -339,9 +326,7 @@ export default {
     Separator,
     Skeleton,
     DataTable,
-    User,
-    Talkgroup,
-    RelativeTimestamp,
+    TypeFilter,
   },
   head: {
     title: 'Repeater Details',
@@ -371,8 +356,9 @@ export default {
       repeater: null as RepeaterData | null,
       loading: true,
       error: '',
-      lastheard: [] as LastHeardRow[],
+      lastheard: [] as CallRow[],
       lastheardLoading: false,
+      filter: defaultFilter() as TypeFilterValue,
       totalRecords: 0,
       page: 1,
       rows: 30,
@@ -380,6 +366,15 @@ export default {
       now: Date.now(),
       timeInterval: null as ReturnType<typeof setInterval> | null,
     };
+  },
+  watch: {
+    filter: {
+      deep: true,
+      handler() {
+        this.page = 1;
+        this.fetchLastheard(this.page, this.rows);
+      },
+    },
   },
   computed: {
     isOnline(): boolean {
@@ -392,76 +387,7 @@ export default {
     },
     columns() {
       void this.now;
-      return [
-        {
-          accessorKey: 'time',
-          header: 'Time',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            const call = row.original;
-            if (call.active) {
-              return 'Active';
-            }
-            return h(RelativeTimestamp, { time: call.start_time, active: call.active });
-          },
-        },
-        {
-          accessorKey: 'time_slot',
-          header: 'TS',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => (row.original.time_slot ? '2' : '1'),
-        },
-        {
-          accessorKey: 'user',
-          header: 'User',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            return h(User, { user: row.original.user });
-          },
-        },
-        {
-          accessorKey: 'destination',
-          header: 'Destination',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            const call = row.original;
-            if (call.is_to_talkgroup) {
-              return h(Talkgroup, { talkgroup: call.to_talkgroup });
-            }
-            if (call.is_to_repeater) {
-              return `${call.to_repeater.callsign} | ${call.to_repeater.id}`;
-            }
-            if (call.is_to_user) {
-              return h(User, { user: call.to_user });
-            }
-            return '-';
-          },
-        },
-        {
-          accessorKey: 'duration',
-          header: 'Duration',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.duration}s`,
-        },
-        {
-          accessorKey: 'ber',
-          header: 'BER',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.ber}%`,
-        },
-        {
-          accessorKey: 'loss',
-          header: 'Loss',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.loss}%`,
-        },
-        {
-          accessorKey: 'jitter',
-          header: 'Jitter',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.jitter}ms`,
-        },
-        {
-          accessorKey: 'rssi',
-          header: 'RSSI',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            const rssi = Number(row.original.rssi);
-            return rssi !== 0 ? `-${rssi}dBm` : '-';
-          },
-        },
-      ] as ColumnDef<LastHeardRow, unknown>[];
+      return lastHeardColumns({});
     },
     totalPages(): number {
       if (!this.totalRecords || this.totalRecords <= 0) {
@@ -495,40 +421,22 @@ export default {
         });
     },
     fetchLastheard(page = 1, limit = 30) {
+      if (this.filter.types.length === 0) {
+        this.lastheard = [];
+        this.totalRecords = 0;
+        return;
+      }
       this.lastheardLoading = true;
-      API.get(`/lastheard/repeater/${this.repeaterID}?page=${page}&limit=${limit}`)
+      API.get(`/lastheard/repeater/${this.repeaterID}?page=${page}&limit=${limit}&${filterQuery(this.filter)}`)
         .then((res) => {
           this.totalRecords = res.data.total;
-          this.lastheard = this.cleanData(res.data.calls);
+          this.lastheard = cleanCalls(res.data.calls);
           this.lastheardLoading = false;
         })
         .catch((err) => {
           console.error(err);
           this.lastheardLoading = false;
         });
-    },
-    cleanData(data: Record<string, unknown>[]) {
-      if (!data) return [];
-      const copyData = JSON.parse(JSON.stringify(data));
-      for (let i = 0; i < copyData.length; i++) {
-        copyData[i].start_time = new Date(copyData[i].start_time);
-        if (typeof copyData[i].duration == 'number') {
-          copyData[i].duration = (copyData[i].duration / 1000000000).toFixed(1);
-        }
-        if (typeof copyData[i].loss == 'number') {
-          copyData[i].loss = (copyData[i].loss * 100).toFixed(1);
-        }
-        if (typeof copyData[i].ber == 'number') {
-          copyData[i].ber = (copyData[i].ber * 100).toFixed(1);
-        }
-        if (typeof copyData[i].jitter == 'number') {
-          copyData[i].jitter = copyData[i].jitter.toFixed(1);
-        }
-        if (typeof copyData[i].rssi == 'number') {
-          copyData[i].rssi = copyData[i].rssi.toFixed(0);
-        }
-      }
-      return copyData;
     },
     handlePageIndexUpdate(pageIndex: number) {
       const nextPage = pageIndex + 1;
@@ -548,6 +456,9 @@ export default {
     },
     onWebsocketMessage(event: MessageEvent) {
       const call = JSON.parse(event.data);
+      if (!matchesFilter(call, this.filter) && !this.lastheard.some((c) => c.id === call.id)) {
+        return;
+      }
       // Only process calls relevant to this repeater
       if (call.repeater_id !== this.repeaterID &&
           !(call.is_to_repeater && call.to_repeater?.id === this.repeaterID)) {
@@ -568,7 +479,7 @@ export default {
       if (!found && copyLastheard.length < this.rows) {
         copyLastheard.unshift(call);
       }
-      this.lastheard = this.cleanData(copyLastheard);
+      this.lastheard = cleanCalls(copyLastheard);
     },
   },
 };

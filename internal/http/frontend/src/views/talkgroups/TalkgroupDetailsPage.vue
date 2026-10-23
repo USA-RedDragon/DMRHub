@@ -223,13 +223,14 @@
           <CardTitle>Last Heard</CardTitle>
           <CardDescription>Recent calls on this talkgroup</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent class="flex flex-col gap-4">
+          <TypeFilter v-model="filter" />
           <DataTable
             :columns="columns"
             :data="lastheard"
             :loading="lastheardLoading"
             :loading-text="'Loading...'"
-            :empty-text="'No calls found'"
+            :empty-text="'No transmissions match these types'"
             :manual-pagination="true"
             :page-index="page - 1"
             :page-size="rows"
@@ -244,16 +245,22 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
-import { h } from 'vue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
+import TypeFilter from '@/components/TypeFilter.vue';
+import { lastHeardColumns } from '@/lib/lastHeardColumns';
+import {
+  cleanCalls,
+  defaultFilter,
+  filterQuery,
+  matchesFilter,
+  type CallRow,
+  type TypeFilterValue,
+} from '@/lib/transmissions';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Input as ShadInput } from '@/components/ui/input';
-import User from '@/components/User.vue';
-import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 
 import API from '@/services/API';
 import {
@@ -273,16 +280,6 @@ type UserRef = {
   callsign: string;
 };
 
-type TalkgroupRef = {
-  id: number;
-  name?: string;
-};
-
-type RepeaterRef = {
-  id: number;
-  callsign: string;
-};
-
 type TalkgroupData = {
   id: number;
   name: string;
@@ -290,25 +287,6 @@ type TalkgroupData = {
   admins: UserRef[];
   ncos: UserRef[];
   created_at: string;
-};
-
-type LastHeardRow = {
-  id: number;
-  active: boolean;
-  start_time: string | Date;
-  time_slot: boolean;
-  user: UserRef;
-  is_to_talkgroup: boolean;
-  to_talkgroup: TalkgroupRef;
-  is_to_repeater: boolean;
-  to_repeater: RepeaterRef;
-  is_to_user: boolean;
-  to_user: UserRef;
-  duration: string | number;
-  ber: string | number;
-  loss: string | number;
-  jitter: string | number;
-  rssi: number;
 };
 
 export default {
@@ -321,10 +299,9 @@ export default {
     Separator,
     Skeleton,
     DataTable,
+    TypeFilter,
     ShadButton,
     ShadInput,
-    User,
-    RelativeTimestamp,
   },
   head: {
     title: 'Talkgroup Details',
@@ -360,8 +337,9 @@ export default {
       talkgroup: null as TalkgroupData | null,
       loading: true,
       error: '',
-      lastheard: [] as LastHeardRow[],
+      lastheard: [] as CallRow[],
       lastheardLoading: false,
+      filter: defaultFilter() as TypeFilterValue,
       totalRecords: 0,
       page: 1,
       rows: 30,
@@ -378,62 +356,19 @@ export default {
       dayNames: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     };
   },
+  watch: {
+    filter: {
+      deep: true,
+      handler() {
+        this.page = 1;
+        this.fetchLastheard(this.page, this.rows);
+      },
+    },
+  },
   computed: {
     columns() {
       void this.now;
-      return [
-        {
-          accessorKey: 'time',
-          header: 'Time',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            const call = row.original;
-            if (call.active) {
-              return 'Active';
-            }
-            return h(RelativeTimestamp, { time: call.start_time, active: call.active });
-          },
-        },
-        {
-          accessorKey: 'time_slot',
-          header: 'TS',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => (row.original.time_slot ? '2' : '1'),
-        },
-        {
-          accessorKey: 'user',
-          header: 'User',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            return h(User, { user: row.original.user });
-          },
-        },
-        {
-          accessorKey: 'duration',
-          header: 'Duration',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.duration}s`,
-        },
-        {
-          accessorKey: 'ber',
-          header: 'BER',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.ber}%`,
-        },
-        {
-          accessorKey: 'loss',
-          header: 'Loss',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.loss}%`,
-        },
-        {
-          accessorKey: 'jitter',
-          header: 'Jitter',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => `${row.original.jitter}ms`,
-        },
-        {
-          accessorKey: 'rssi',
-          header: 'RSSI',
-          cell: ({ row }: { row: { original: LastHeardRow } }) => {
-            const rssi = Number(row.original.rssi);
-            return rssi !== 0 ? `-${rssi}dBm` : '-';
-          },
-        },
-      ] as ColumnDef<LastHeardRow, unknown>[];
+      return lastHeardColumns({ destination: false });
     },
     totalPages(): number {
       if (!this.totalRecords || this.totalRecords <= 0) {
@@ -457,40 +392,22 @@ export default {
         });
     },
     fetchLastheard(page = 1, limit = 30) {
+      if (this.filter.types.length === 0) {
+        this.lastheard = [];
+        this.totalRecords = 0;
+        return;
+      }
       this.lastheardLoading = true;
-      API.get(`/lastheard/talkgroup/${this.talkgroupID}?page=${page}&limit=${limit}`)
+      API.get(`/lastheard/talkgroup/${this.talkgroupID}?page=${page}&limit=${limit}&${filterQuery(this.filter)}`)
         .then((res) => {
           this.totalRecords = res.data.total;
-          this.lastheard = this.cleanData(res.data.calls);
+          this.lastheard = cleanCalls(res.data.calls);
           this.lastheardLoading = false;
         })
         .catch((err) => {
           console.error(err);
           this.lastheardLoading = false;
         });
-    },
-    cleanData(data: Record<string, unknown>[]) {
-      if (!data) return [];
-      const copyData = JSON.parse(JSON.stringify(data));
-      for (let i = 0; i < copyData.length; i++) {
-        copyData[i].start_time = new Date(copyData[i].start_time);
-        if (typeof copyData[i].duration == 'number') {
-          copyData[i].duration = (copyData[i].duration / 1000000000).toFixed(1);
-        }
-        if (typeof copyData[i].loss == 'number') {
-          copyData[i].loss = (copyData[i].loss * 100).toFixed(1);
-        }
-        if (typeof copyData[i].ber == 'number') {
-          copyData[i].ber = (copyData[i].ber * 100).toFixed(1);
-        }
-        if (typeof copyData[i].jitter == 'number') {
-          copyData[i].jitter = copyData[i].jitter.toFixed(1);
-        }
-        if (typeof copyData[i].rssi == 'number') {
-          copyData[i].rssi = copyData[i].rssi.toFixed(0);
-        }
-      }
-      return copyData;
     },
     handlePageIndexUpdate(pageIndex: number) {
       const nextPage = pageIndex + 1;
@@ -510,6 +427,9 @@ export default {
     },
     onWebsocketMessage(event: MessageEvent) {
       const call = JSON.parse(event.data);
+      if (!matchesFilter(call, this.filter) && !this.lastheard.some((c) => c.id === call.id)) {
+        return;
+      }
       // Only process calls to this talkgroup
       if (!call.is_to_talkgroup || call.to_talkgroup?.id !== this.talkgroupID) {
         return;
@@ -529,7 +449,7 @@ export default {
       if (!found && copyLastheard.length < this.rows) {
         copyLastheard.unshift(call);
       }
-      this.lastheard = this.cleanData(copyLastheard);
+      this.lastheard = cleanCalls(copyLastheard);
     },
     onNetWebsocketMessage(event: MessageEvent) {
       const data = JSON.parse(event.data);

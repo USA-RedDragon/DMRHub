@@ -20,7 +20,7 @@
 -->
 
 <template>
-  <div>
+  <div class="flex flex-col gap-4">
     <h1>Last Heard</h1>
     <LastHeardTable />
   </div>

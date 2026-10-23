@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
@@ -61,6 +62,7 @@ type Server struct {
 	incomingChan  chan models.RawDMRPacket
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
+	wt            *webTransport
 	connected     *xsync.Map[uint, endpoint]
 	transports    *xsync.Map[string, transport]
 	egressMiss    *xsync.Map[uint, time.Time]
@@ -104,7 +106,21 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		return Server{}, fmt.Errorf("%w: %w", ErrSocketBuffer, err)
 	}
 
+	var wt *webTransport
+	if c := config.DMR.MMDVM.WebTransport; c.Enabled {
+		certs, err := wtcert.New(config.GetDerivedSecret(), c.CertFile, c.KeyFile)
+		if err != nil {
+			_ = server.Close()
+			return Server{}, fmt.Errorf("WebTransport certificate: %w", err)
+		}
+		if wt, err = listenWebTransport(config.DMR.MMDVM.Bind, c.Port, certs); err != nil {
+			_ = server.Close()
+			return Server{}, err
+		}
+	}
+
 	return Server{
+		wt:            wt,
 		Buffer:        make([]byte, dmrdsession.MaxPacket),
 		config:        config,
 		SocketAddress: socketAddr,
@@ -122,6 +138,15 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		egressMiss:    xsync.NewMap[uint, time.Time](),
 		done:          make(chan struct{}),
 	}, nil
+}
+
+// WebTransportAddr returns the address of the UDP socket of the
+// WebTransport listener, or nil when it is off.
+func (s *Server) WebTransportAddr() net.Addr {
+	if s.wt == nil {
+		return nil
+	}
+	return s.wt.Addr()
 }
 
 // Addr returns the address of the socket of the server.
@@ -153,6 +178,11 @@ func (s *Server) Stop(ctx context.Context) error {
 
 		if err := s.Server.Close(); err != nil {
 			slog.Error("Error closing MMDVM UDP socket", "error", err)
+		}
+		if s.wt != nil {
+			if err := s.wt.Close(); err != nil {
+				slog.Error("Error closing MMDVM WebTransport listener", "error", err)
+			}
 		}
 		s.transports.Range(func(name string, t transport) bool {
 			if name != udpTransport {
@@ -233,6 +263,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.transports.Store(udpTransport, s.Server)
 	go s.serve(udpTransport, s.Server, s.Buffer)
+
+	if s.wt != nil {
+		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", WebTransportPath)
+		s.transports.Store(webTransportName, s.wt)
+		s.wg.Add(1)
+		go s.serve(webTransportName, s.wt, make([]byte, dmrdsession.MaxPacket))
+	}
 
 	return nil
 }

@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+package mmdvm
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
+	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/webtransport-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func webTransportServer(t *testing.T) (*Server, *config.Config) {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	cfg.Database.Database = ""
+	cfg.Database.ExtraParameters = []string{}
+	cfg.DMR.MMDVM.Bind = "127.0.0.1"
+	cfg.DMR.MMDVM.Port = 0
+	cfg.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: 0}
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	h := hub.NewHub(database, kvStore, ps, nil)
+	t.Cleanup(func() { h.Stop(context.Background()) })
+	for _, id := range []uint{311860, 311861} {
+		require.NoError(t, database.Create(&models.Repeater{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
+			Type:                  models.RepeaterTypeMMDVM,
+			Password:              "s3cret",
+		}).Error)
+	}
+	s, err := MakeServer(&cfg, h, database, ps, kvStore, "test", "test")
+	require.NoError(t, err)
+	require.NoError(t, s.Start(context.Background()))
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	return &s, &cfg
+}
+
+// dialByHash opens a WebTransport session to the server and accepts its
+// certificate only by one of the hashes that it publishes, as a browser
+// with serverCertificateHashes does.
+func dialByHash(t *testing.T, s *Server, cfg *config.Config) *webtransport.Session {
+	t.Helper()
+	certs, err := wtcert.New(cfg.GetDerivedSecret(), "", "")
+	require.NoError(t, err)
+	hashes, err := certs.Hashes()
+	require.NoError(t, err)
+	tlsConf := &tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec
+		VerifyConnection: func(state tls.ConnectionState) error {
+			got := sha256.Sum256(state.PeerCertificates[0].Raw)
+			for _, h := range hashes {
+				if got == h {
+					return nil
+				}
+			}
+			return errors.New("the certificate has no published hash")
+		},
+	}
+	d := &webtransport.Transport{TLSClientConfig: tlsConf, QUICConfig: &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true}}
+	t.Cleanup(func() { _ = d.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rsp, sess, err := d.Dial(ctx, fmt.Sprintf("https://%s%s", s.WebTransportAddr().String(), WebTransportPath), nil)
+	require.NoError(t, err)
+	require.Equal(t, 200, rsp.StatusCode)
+	t.Cleanup(func() { _ = sess.CloseWithError(0, "") })
+	return sess
+}
+
+func rptlAck(t *testing.T, sess *webtransport.Session, id uint32) []byte {
+	t.Helper()
+	p, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	require.NoError(t, sess.SendDatagram(p))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	b, err := sess.ReceiveDatagram(ctx)
+	require.NoError(t, err)
+	return b
+}
+
+func TestWebTransportCarriesTheMMDVMLogin(t *testing.T) {
+	t.Parallel()
+	s, cfg := webTransportServer(t)
+	one := dialByHash(t, s, cfg)
+	two := dialByHash(t, s, cfg)
+
+	ack := rptlAck(t, one, 311860)
+	assert.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(ack, dmrd.DialectMMDVM), "an RPTL in a datagram gets its RPTACK in a datagram")
+	ack2 := rptlAck(t, two, 311861)
+	assert.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(ack2, dmrd.DialectMMDVM), "each session is its own peer")
+
+	s.mu.Lock()
+	n := 0
+	for key, l := range s.links {
+		if l.ep.transport == webTransportName {
+			n++
+			assert.Contains(t, key, webTransportName+"/", "a WebTransport session is keyed apart from UDP addresses")
+		}
+	}
+	s.mu.Unlock()
+	assert.Equal(t, 2, n)
+}
+
+func TestWebTransportIsOffByDefault(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	assert.False(t, cfg.DMR.MMDVM.WebTransport.Enabled)
+}

@@ -95,6 +95,9 @@ func (h *Hub) routingRepeater(id uint) (*models.Repeater, error) {
 // replicas to drop theirs and reload its subscriptions.
 func (h *Hub) repeaterChanged(id uint) {
 	h.repeaters.invalidate(id)
+	if h.pubsub == nil {
+		return
+	}
 	msg := h.origin + ":" + strconv.FormatUint(uint64(id), 10)
 	if err := h.pubsub.Publish(repeaterChangedTopic, []byte(msg)); err != nil {
 		slog.Error("Failed to announce a repeater change", "repeaterID", id, "error", err)

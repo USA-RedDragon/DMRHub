@@ -41,6 +41,7 @@ func tokenRoutes() map[string][]string {
 	return map[string][]string{
 		"GET /api/v1/users/me":                  {anyScope},
 		"GET /api/v1/network/webtransport":      {anyScope},
+		"GET /api/v1/userdb/:id":                {anyScope},
 		"GET /api/v1/talkgroups":                {oauth.ScopeTalkgroupsRead},
 		"GET /api/v1/talkgroups/my":             {oauth.ScopeTalkgroupsRead},
 		"GET /api/v1/talkgroups/:id":            {oauth.ScopeTalkgroupsRead},

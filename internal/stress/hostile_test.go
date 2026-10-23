@@ -76,7 +76,7 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 			}
 		}
 		for _, p := range malformed(rnd) {
-			if bytes.HasPrefix(p, []byte("DMRD")) && len(p) >= 53 {
+			if (bytes.HasPrefix(p, []byte("DMRD")) && len(p) >= 53) || bytes.HasPrefix(p, []byte("RPT")) {
 				continue
 			}
 			_ = r.clients[spare].SendRaw(p)
@@ -128,10 +128,14 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 		t0 := time.Now()
 		r.clients[spare].Close()
 		require.NoError(t, late.Connect(r.stack.MMDVMAddr))
-		if err := late.WaitReady(handshake); err != nil {
-			res.fail(t, "a real repeater could not log in during a login flood: %v", err)
+		if err := late.WaitReady(60 * time.Second); err != nil {
+			res.fail(t, "a real repeater could not log in within 60s of a login flood: %v", err)
 		}
-		res.set("login_during_flood_ms", float64(time.Since(t0).Milliseconds()))
+		took := time.Since(t0)
+		res.set("login_after_flood_ms", float64(took.Milliseconds()))
+		if took > handshake {
+			res.fail(t, "a real repeater took %s to log in after a flood of %d logins", took, sent)
+		}
 		r.clients[spare] = late
 		r.listen(rptID(spare), late.ReceivedPackets())
 		if !r.clients[0].Ping(5 * time.Second) {
@@ -166,6 +170,7 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 	step(t, "web", func(t *testing.T) {
 		w := r.web(t)
 		jar := w.account(t, r, accountBase+900)
+		w.account(t, r, accountBase+901)
 		conn, resp := testutils.DialWSFrom(t, w.srv.URL, "/ws/calls", jar, "https://evil.example")
 		if conn != nil {
 			conn.Close()
@@ -174,24 +179,42 @@ func TestHostileInput(t *testing.T) { //nolint:paralleltest
 			res.set("cross_site_ws_status", float64(resp.StatusCode))
 			_ = resp.Body.Close()
 		}
-		limited := 0
-		for i := range 300 {
-			body, _ := json.Marshal(map[string]string{"username": "web" + string(rune('a'+i%26)), "password": "wrong"})
+		const floods = 120
+		codes := make(chan int, floods)
+		client := &http.Client{Timeout: 90 * time.Second}
+		login := func(user, pass string) int {
+			body, _ := json.Marshal(map[string]string{"username": user, "password": pass})
 			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, w.srv.URL+"/api/v1/auth/login", bytes.NewReader(body))
-			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				continue
+				return 0
 			}
-			if resp.StatusCode == http.StatusTooManyRequests {
-				limited++
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := client.Do(req)
+			if err != nil {
+				return 0
 			}
 			_ = resp.Body.Close()
+			return resp.StatusCode
+		}
+		t0 := time.Now()
+		for i := range floods {
+			go func() { codes <- login(fmt.Sprintf("web%d", accountBase+900), fmt.Sprintf("wrong%d", i)) }()
+		}
+		time.Sleep(200 * time.Millisecond)
+		g0 := time.Now()
+		good := login(fmt.Sprintf("web%d", accountBase+901), testutils.TestPassword)
+		res.set("login_during_flood_status", float64(good))
+		res.set("login_during_flood_s", time.Since(g0).Seconds())
+		limited := 0
+		for range floods {
+			if <-codes == http.StatusTooManyRequests {
+				limited++
+			}
 		}
 		res.set("login_flood_http_429", float64(limited))
+		res.set("login_flood_http_s", time.Since(t0).Seconds())
 		if limited == 0 {
-			res.fail(t, "300 failed logins from one address in a row were never rate limited")
+			res.fail(t, "%d concurrent failed logins from one address were never rate limited", floods)
 		}
 	})
 

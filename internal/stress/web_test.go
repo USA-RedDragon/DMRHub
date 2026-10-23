@@ -32,9 +32,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
+	apiutils "github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 const accountBase = 3109500
@@ -61,6 +64,17 @@ func (w *web) account(t *testing.T, r *rig, id uint) testutils.CookieJar {
 	t.Helper()
 	name := fmt.Sprintf("web%d", id)
 	testutils.SeedAccount(t, r.stack.DB, id, fmt.Sprintf("W%dX", id%10000), name)
+	return testutils.Login(t, w.router, name)
+}
+
+// owner lets the user of rig repeater i log in, so that its websockets
+// carry the calls of its radio and its repeater.
+func (w *web) owner(t *testing.T, r *rig, i int) testutils.CookieJar {
+	t.Helper()
+	hash, err := apiutils.HashPassword(testutils.TestPassword, r.stack.Config.PasswordSalt)
+	require.NoError(t, err)
+	name := fmt.Sprintf("stress%d", i)
+	require.NoError(t, quiet(r.stack.DB).Model(&models.User{}).Where("id = ?", userID(i)).Updates(map[string]any{"password": hash, "username": name}).Error)
 	return testutils.Login(t, w.router, name)
 }
 
@@ -96,8 +110,13 @@ func TestSlowWebClients(t *testing.T) { //nolint:paralleltest
 	var readers sync.WaitGroup
 	stop := make(chan struct{})
 	start := time.Now()
+	jars := map[int]testutils.CookieJar{}
 	for k := range clients {
-		jar := w.account(t, r, uint(accountBase+k)) //nolint:gosec
+		jar, ok := jars[k%r.top.n]
+		if !ok {
+			jar = w.owner(t, r, k%r.top.n)
+			jars[k%r.top.n] = jar
+		}
 		path := "/ws/calls"
 		if k%2 == 1 {
 			path = "/ws/messages"

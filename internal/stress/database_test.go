@@ -99,6 +99,17 @@ func TestDatabase(t *testing.T) { //nolint:paralleltest
 	db.Model(&models.Message{}).Where("received_at > ?", time.Now().Add(-time.Hour)).Count(&stored)
 	res.set("messages_stored", float64(stored))
 
+	fill := envInt("DMRHUB_STRESS_CAP_FILL", 300)
+	for k := range fill {
+		i := k % r.top.n
+		to := smsScript("sms-to-cap", false, capID, userID(i), nil, sms.FormatIP, enums.DataTypeRate12)
+		from := smsScript("sms-from-cap", false, userID(i), capID, r.privateWant(rptID(i)), sms.FormatIP, enums.DataTypeRate12)
+		to.noPace, from.noPace = true, true
+		r.play(i, false, to)
+		r.play(i, true, from)
+	}
+	time.Sleep(10 * time.Second)
+	r.led.finish(0, true)
 	for _, box := range []string{"inbox", "outbox"} {
 		var all int64
 		col := "destination_id"

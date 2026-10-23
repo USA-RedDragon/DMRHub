@@ -72,7 +72,9 @@ const (
 	pct             = 100
 	kvTimeout       = time.Second
 	recentKeyPrefix = "dmrhub:calltracker:recent:"
+	answerKeyPrefix = "dmrhub:calltracker:answer:"
 	responsesTopic  = "calltracker:responses"
+	dropsTopic      = "calltracker:drops"
 )
 
 // DataObserver is told of each data packet and each response that the
@@ -160,6 +162,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct.loadActiveNets()
 	ct.subscribe("net:events", ct.netEvent)
 	ct.subscribe(responsesTopic, ct.remoteResponse)
+	ct.subscribe(dropsTopic, ct.remoteDrop)
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -386,9 +389,120 @@ func (c *CallTracker) remember(s *shard, r *row) {
 	}
 	c.recent[k] = append(keep, e)
 	c.recentMu.Unlock()
-	if what := answerable(e.kind, e.sub, e.confirmed); what != "" {
-		c.share(k, what, sharedRow{ID: r.call.ID, At: e.at})
+	what := answerable(e.kind, e.sub, e.confirmed)
+	if what == "" {
+		return
 	}
+	c.share(k, what, sharedRow{ID: r.call.ID, At: e.at})
+	if what == answerData {
+		return
+	}
+	if a := c.takeAnswer(k, what); a != nil {
+		r.call.Response = a.Response
+		c.drop(pair{src: k.dst, dst: k.src}, a.RowID)
+	}
+}
+
+// pendingAnswer is an answer that found no row to set its response on,
+// kept in the KV for the row heard after it, maybe on another replica.
+// RowID is the row the answer made of its own, which that row replaces.
+type pendingAnswer struct {
+	RowID    uint                `json:"row_id"`
+	Response models.CallResponse `json:"response"`
+}
+
+func answerKey(k pair, what string) string {
+	return fmt.Sprintf("%s%d:%d:%s", answerKeyPrefix, k.src, k.dst, what)
+}
+
+// keepAnswer keeps an answer of kind what to the row of k as pending.
+func (c *CallTracker) keepAnswer(k pair, what string, a pendingAnswer) {
+	b, err := json.Marshal(a)
+	if err != nil {
+		slog.Error("CallTracker: cannot marshal a pending answer", "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	key := answerKey(k, what)
+	if err := c.kv.Set(ctx, key, b); err != nil {
+		slog.Error("CallTracker: cannot keep a pending answer", "error", err)
+		return
+	}
+	if err := c.kv.Expire(ctx, key, responseWindow); err != nil {
+		slog.Error("CallTracker: cannot expire a pending answer", "error", err)
+	}
+}
+
+// takeAnswer returns and removes the pending answer of kind what to the
+// row of k, or nil when there is none.
+func (c *CallTracker) takeAnswer(k pair, what string) *pendingAnswer {
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	key := answerKey(k, what)
+	b, err := c.kv.Get(ctx, key)
+	if err != nil {
+		return nil
+	}
+	var a pendingAnswer
+	if err := json.Unmarshal(b, &a); err != nil {
+		return nil
+	}
+	if err := c.kv.Delete(ctx, key); err != nil {
+		slog.Error("CallTracker: cannot delete a pending answer", "error", err)
+	}
+	return &a
+}
+
+// dropRequest asks the replica that holds the row ID, of Src to Dst, to
+// delete it.
+type dropRequest struct {
+	ID  uint `json:"id"`
+	Src uint `json:"src"`
+	Dst uint `json:"dst"`
+}
+
+// drop deletes the row id of k, here or on the replica that holds it.
+func (c *CallTracker) drop(k pair, id uint) {
+	if c.dropLocal(k, id) {
+		return
+	}
+	msg, err := json.Marshal(dropRequest{ID: id, Src: k.src, Dst: k.dst})
+	if err != nil {
+		slog.Error("CallTracker: cannot marshal a drop", "error", err)
+		return
+	}
+	if err := c.pubsub.Publish(dropsTopic, msg); err != nil {
+		slog.Error("CallTracker: cannot publish a drop", "error", err)
+	}
+}
+
+func (c *CallTracker) dropLocal(k pair, id uint) bool {
+	c.recentMu.Lock()
+	var found *recentRow
+	for i := range c.recent[k] {
+		if c.recent[k][i].row.call.ID == id {
+			e := c.recent[k][i]
+			found = &e
+			break
+		}
+	}
+	c.recentMu.Unlock()
+	if found == nil {
+		return false
+	}
+	r := found.row
+	c.enqueue(found.shard, task{fn: func(s *shard) { s.drop(r) }})
+	return true
+}
+
+func (c *CallTracker) remoteDrop(msg []byte) {
+	var d dropRequest
+	if err := json.Unmarshal(msg, &d); err != nil {
+		slog.Error("CallTracker: failed to unmarshal a drop", "error", err)
+		return
+	}
+	c.dropLocal(pair{src: d.Src, dst: d.Dst}, d.ID)
 }
 
 // sharedRow is the newest row of a pair of radios that an answer of one
@@ -882,6 +996,20 @@ func (s *shard) setResponse(r *row, resp models.CallResponse) {
 		return
 	}
 	s.t.publishCall(r.call)
+}
+
+// drop deletes the row r, which another row replaces.
+func (s *shard) drop(r *row) {
+	if r.deleted {
+		return
+	}
+	r.deleted = true
+	if r.key != nil && s.rows[r.key] == r {
+		delete(s.rows, r.key)
+	}
+	if err := s.t.db.Unscoped().Delete(r.call).Error; err != nil {
+		slog.Error("CallTracker: error deleting a replaced call", "error", err)
+	}
 }
 
 func (s *shard) undeliverable(stream uint, id uint64, target string) {

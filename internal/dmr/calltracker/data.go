@@ -350,6 +350,15 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 		}
 		r.call.FID, r.call.Opcode = cls.fid, cls.opcode
 		s.t.remember(s, r)
+		if cls.answers != "" {
+			k := pair{src: p.Dst, dst: p.Src}
+			s.t.keepAnswer(k, cls.answers, pendingAnswer{RowID: r.call.ID, Response: models.CallResponseACK})
+			if s.t.answer(p.Src, p.Dst, models.CallResponseACK, cls.answers) {
+				s.t.takeAnswer(k, cls.answers)
+				s.drop(r)
+				return
+			}
+		}
 	}
 	s.touch(r, t)
 	r.call.Bursts++

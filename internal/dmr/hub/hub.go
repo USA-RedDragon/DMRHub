@@ -54,7 +54,7 @@ const (
 )
 
 // RoutedPacket is a packet delivered to a registered server.
-// RepeaterID identifies the target repeater (0 means broadcast to all).
+// RepeaterID identifies the target repeater or peer.
 type RoutedPacket struct {
 	RepeaterID uint
 	Packet     models.Packet
@@ -66,9 +66,6 @@ type ServerConfig struct {
 	Name string
 	// Role determines the delivery model (per-repeater vs per-peer).
 	Role ServerRole
-	// Broadcast, when true, means this server receives all group call packets
-	// without per-repeater talkgroup filtering (delivered via pubsub broadcast topic).
-	Broadcast bool
 }
 
 // ServerHandle is returned by RegisterServer and provides channels for receiving packets.
@@ -194,11 +191,6 @@ func (h *Hub) RegisterServer(cfg ServerConfig) *ServerHandle {
 	h.servers[cfg.Name] = &serverEntry{
 		config: cfg,
 		ch:     ch,
-	}
-
-	// Set up pubsub subscriptions for broadcast and peer servers
-	if cfg.Broadcast {
-		go h.subscriptionMgr.subscribeBroadcast(cfg.Name)
 	}
 
 	return &ServerHandle{

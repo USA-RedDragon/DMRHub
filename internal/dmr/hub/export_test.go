@@ -36,3 +36,9 @@ func (h *Hub) HoldStream(stream uint) (release func()) {
 func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) {
 	h.switchDynamicTalkgroup(ctx, packet)
 }
+
+// ForgetCachedRepeater drops the cached repeater, so that the next delivery
+// to it reads the database.
+func (h *Hub) ForgetCachedRepeater(id uint) {
+	h.repeaters.invalidate(id)
+}

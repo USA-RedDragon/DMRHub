@@ -59,6 +59,9 @@ type link struct {
 	dialect dmrd.Dialect
 	m       *dmrdsession.Master
 	beacon  *time.Timer
+	// looking reports that the password of a login of the link is being
+	// looked up.
+	looking bool
 }
 
 func (s *Server) now() time.Duration {
@@ -181,8 +184,11 @@ func (s *Server) forget(l *link) {
 	}
 }
 
+// handlePacket handles the packet data from remoteAddr as the listener
+// does, and waits for the logins that it started.
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	s.handleFrom(ctx, udpEndpoint(remoteAddr), data)
+	s.lookups.Wait()
 }
 
 func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
@@ -298,22 +304,112 @@ func (s *Server) salt() (uint32, error) {
 	return binary.BigEndian.Uint32(b[:]), nil
 }
 
+// login looks up the password of the login of id on l off the listener, so
+// that a flood of logins never holds up the packets of other repeaters or a
+// real login. Each link looks up one login at a time. Once the IDs of the
+// repeaters are loaded, a login of an ID that is not among them is looked
+// up only maxMisses times a second and refused at once otherwise, so that
+// a flood of made-up IDs never queues ahead of a real login on the
+// database.
 func (s *Server) login(ctx context.Context, now time.Duration, l *link, id uint32) {
-	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	if l.looking {
+		return
+	}
+	if s.known != nil && !s.known[id] && !s.allowMiss(now) {
+		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		return
+	}
+	l.looking = true
+	s.lookups.Add(1)
+	go s.lookup(ctx, l, id)
+}
+
+func (s *Server) lookup(ctx context.Context, l *link, id uint32) {
+	defer s.lookups.Done()
 	password, err := s.password(uint(id))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l.looking = false
+	if s.stopped.Load() || s.links[l.key] != l || l.m.State() != dmrdsession.StateLogin {
+		return
+	}
+	now := s.now()
+	if l.m.ID() != id {
+		s.login(ctx, now, l, l.m.ID())
+		return
+	}
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	if err != nil {
 		slog.Debug("Refusing login", "repeaterID", id, "remoteAddr", l.ep.String(), "error", err)
 		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		s.forget(l)
 		return
 	}
 	salt, err := s.salt()
 	if err != nil {
 		slog.Error("Error generating random salt", "error", err)
 		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		s.forget(l)
 		return
 	}
 	slog.Debug("Login from Repeater ID", "repeaterID", id)
+	if s.known != nil {
+		s.known[id] = true
+	}
 	s.run(ctx, now, l, l.m.Admit(now, salt, []byte(password), buf[:0]))
+	s.forget(l)
+}
+
+// maxMisses is how many logins of IDs that are not known repeaters are
+// looked up each second.
+const maxMisses = 5
+
+func (s *Server) allowMiss(now time.Duration) bool {
+	if now-s.missesAt >= time.Second {
+		s.missesAt, s.misses = now, 0
+	}
+	if s.misses >= maxMisses {
+		return false
+	}
+	s.misses++
+	return true
+}
+
+// knownRefresh is how often the IDs of the repeaters are loaded again.
+const knownRefresh = 30 * time.Second
+
+// loadKnown loads the IDs of the repeaters, which login checks before it
+// looks up a password.
+func (s *Server) loadKnown() error {
+	var ids []uint
+	if err := s.DB.Model(&models.Repeater{}).Pluck("id", &ids).Error; err != nil {
+		return fmt.Errorf("failed to load the repeater IDs: %w", err)
+	}
+	known := make(map[uint32]bool, len(ids))
+	for _, id := range ids {
+		known[uint32(id)] = true //nolint:gosec
+	}
+	s.mu.Lock()
+	s.known = known
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Server) refreshKnown() {
+	defer s.wg.Done()
+	ticker := time.NewTicker(knownRefresh)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+			if err := s.loadKnown(); err != nil {
+				slog.Error("Error loading the repeater IDs", "error", err)
+			}
+		}
+	}
 }
 
 var errNoPassword = errors.New("repeater has no password")

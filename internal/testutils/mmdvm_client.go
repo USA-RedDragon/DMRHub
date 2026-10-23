@@ -47,6 +47,7 @@ type MMDVMClient struct {
 	wg       sync.WaitGroup
 
 	state    atomic.Uint32
+	salt     atomic.Uint32
 	packets  chan models.Packet
 	readyVal atomic.Bool
 	pongs    atomic.Uint64
@@ -94,8 +95,32 @@ func (c *MMDVMClient) Connect(addr string) error {
 	// Send login
 	c.state.Store(mmdvmStateSentLogin)
 	c.sendLogin()
+	c.wg.Add(1)
+	go c.resendLogin()
 
 	return nil
+}
+
+// loginRetry is how often the client sends its RPTL again until the server
+// answers it, as MMDVMHost does, so that a login lost on the way does not
+// end the handshake.
+const loginRetry = 2 * time.Second
+
+func (c *MMDVMClient) resendLogin() {
+	defer c.wg.Done()
+	ticker := time.NewTicker(loginRetry)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			if c.state.Load() != mmdvmStateSentLogin {
+				return
+			}
+			c.sendLogin()
+		}
+	}
 }
 
 // WaitReady blocks until the handshake is complete or the timeout expires.
@@ -232,12 +257,18 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 	case mmdvmStateSentLogin:
 		// Expecting RPTACK with the salt
 		if salt, ok := msg.LoginSalt(); ok {
+			c.salt.Store(salt)
 			c.sendRPTK(salt)
 			c.state.Store(mmdvmStateSentAuth)
 		}
 
 	case mmdvmStateSentAuth:
-		// Expecting RPTACK to confirm auth
+		// Expecting RPTACK to confirm auth. The salt again answers an RPTL
+		// that was resent before the first answer came.
+		if salt, ok := msg.LoginSalt(); ok && salt == c.salt.Load() && salt != c.RepeaterID {
+			c.sendRPTK(salt)
+			return
+		}
 		if command == dmrd.CommandRPTACK {
 			c.sendRPTC()
 			c.state.Store(mmdvmStateSentConfig)

@@ -1,6 +1,8 @@
 # DMRHub handoff 3
 
-This is the living handoff for the next session. It assumes you have nothing but the repositories. Remove this file before PR 1827 merges.
+This is the living handoff for the next session. It assumes you have nothing but the repositories.
+
+**Before shipping, drop this file from the tree and from git history.** Every commit that adds or edits `HANDOFF.md` has a subject starting `handoff:` and touches only this file. Rebase the branch without them, for example with `git rebase -i` and `drop` (or `git filter-repo --path HANDOFF.md --invert-paths`). Then check that `git log --all -- HANDOFF.md` on the branch prints nothing, and force-push with the owner's OK.
 
 ## Start here
 
@@ -52,7 +54,7 @@ This is the living handoff for the next session. It assumes you have nothing but
    - the RPTO dial test (`b59a18e9`)
    - the rate-limit window (`7fbd47bf`)
 
-   The full `internal/dmr` suite was not rerun after `e887059a`, so run it first. Read failing logs with the GitHub tools. The per-arch "Test Linux" jobs run `make test`.
+   The full `internal/dmr` suite was not rerun after `e887059a`, so run it first. The CI lint failure on `55eee7ee` (contextcheck on the WebTransport accept loop) is fixed by the commit after this handoff was first written; run `golangci-lint run ./...` on the whole module, since contextcheck follows calls across packages. Read failing logs with the GitHub tools. The per-arch "Test Linux" jobs run `make test`.
 2. **The three items the owner asked for "asap":**
    - **Repeater ownership events, and removing the 30 s ticker** in `Hub.ListenForWebsocket` (`internal/dmr/hub/subscription_manager.go`). Nothing is committed for this yet.
      - Owner decision, verbatim from handoff 2: "A repeater ownership change must also close the affected sockets, after which the 30 s ticker is removed."

@@ -56,6 +56,19 @@ func RadioIDOwner(db *gorm.DB, radioID uint) (userID uint, ok bool, err error) {
 	return ids[0].UserID, true, nil
 }
 
+// ReloadSMSStorage reads the SMS Storage setting of the user again.
+func ReloadSMSStorage(db *gorm.DB, user *User) error {
+	var row struct {
+		SMSStorageEnabled bool
+		SMSStorageSince   *time.Time
+	}
+	if err := db.Model(&User{}).Select("sms_storage_enabled", "sms_storage_since").Where("id = ?", user.ID).Take(&row).Error; err != nil {
+		return fmt.Errorf("could not read SMS Storage: %w", err)
+	}
+	user.SMSStorageEnabled, user.SMSStorageSince = row.SMSStorageEnabled, row.SMSStorageSince
+	return nil
+}
+
 // SetSMSStorage turns SMS Storage of the user on or off. Turning it on
 // when it is off sets the start time to now; turning it on when it is on
 // changes nothing.

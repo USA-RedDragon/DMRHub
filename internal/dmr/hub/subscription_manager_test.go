@@ -1096,3 +1096,56 @@ func TestListenForWebsocketForwardsCallsToStaticTalkgroupsOfTheUsersRepeaters(t 
 		t.Fatal("a call to a static talkgroup of the user's repeater was not forwarded")
 	}
 }
+
+func TestListenForWebsocketFollowsSMSStorage(t *testing.T) {
+	t.Parallel()
+	h, database, ps, listening := makeTestHubWatching(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedUser(t, database, 1000002, "OTHER")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	userSub := ps.Subscribe("calls:1000001")
+	defer func() { _ = userSub.Close() }()
+	userCh := userSub.Channel()
+
+	go h.ListenForWebsocket(ctx, 1000001)
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ListenForWebsocket never subscribed to calls")
+	}
+
+	var user models.User
+	require.NoError(t, database.First(&user, 1000001).Error)
+	require.NoError(t, models.SetSMSStorage(database, &user, true, time.Now().Add(-time.Hour)))
+
+	toUser := uint(1000001)
+	call := models.Call{
+		StreamID: 1, StartTime: time.Now(), Kind: models.CallKindData, SubKind: models.SubKindSMS,
+		DataFormat: "ip", Octets: 44, SourceID: 1000002, DestinationID: 1000001, IsToUser: true, ToUserID: &toUser,
+	}
+	require.NoError(t, database.Create(&call).Error)
+	require.NoError(t, database.Create(&models.Message{
+		ReceivedAt: time.Now(), TransmissionID: &call.ID, SourceID: 1000002, DestinationID: 1000001,
+		Format: models.MessageFormatIP, Octets: 44,
+	}).Error)
+	callJSON, err := json.Marshal(call)
+	require.NoError(t, err)
+	require.NoError(t, ps.Publish("calls", callJSON))
+
+	select {
+	case msg := <-userCh:
+		var row struct {
+			SubKind string `json:"sub_kind"`
+			Octets  uint   `json:"octets"`
+		}
+		require.NoError(t, json.Unmarshal(msg, &row))
+		assert.Equal(t, models.SubKindSMS, row.SubKind, "an SMS after SMS Storage was turned on")
+		assert.Equal(t, uint(44), row.Octets)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the SMS was not forwarded")
+	}
+}

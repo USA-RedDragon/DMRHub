@@ -248,7 +248,8 @@ func (h *Hub) unsubscribeTalkgroup(repeaterID uint, talkgroupID uint, slot dmrco
 
 // ListenForWebsocket relays call events to a WebSocket client for a specific user.
 // It caches the user's repeater list and refreshes it periodically to avoid
-// hitting the database on every pubsub message.
+// hitting the database on every pubsub message. It reads the SMS Storage
+// setting again for each data call.
 func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	slog.Debug("Listening for websocket", "userID", userID)
 
@@ -298,6 +299,12 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 
 			if !wantsCall(&user, &call) {
 				continue
+			}
+			if call.Kind == models.CallKindData || call.Kind == models.CallKindUDT {
+				if err := models.ReloadSMSStorage(h.db, &user); err != nil {
+					slog.Error("Error reading SMS Storage for websocket", "userID", userID, "error", err)
+					continue
+				}
 			}
 			rows, err := apimodels.NewWSCallResponsesFor(h.db, &user, models.CurrentSMSWindow(), []models.Call{call})
 			if err != nil || len(rows) != 1 {

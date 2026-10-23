@@ -181,7 +181,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.subscriptionMgr = newSubscriptionManager(h)
 	h.repeaters = newRepeaterCache()
 	h.origin = newOrigin()
-	go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
+	if ps != nil {
+		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
+	}
 	go h.resyncRepeaters()
 	if ct != nil {
 		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {

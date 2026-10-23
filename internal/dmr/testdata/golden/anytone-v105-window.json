@@ -20,7 +20,7 @@
       "source_id": 3140598,
       "destination_id": 3191868,
       "confirmed": true,
-      "group": false,
+      "is_group": false,
       "text": "W1 one"
     },
     {
@@ -28,7 +28,7 @@
       "source_id": 3140598,
       "destination_id": 3191868,
       "confirmed": true,
-      "group": false,
+      "is_group": false,
       "text": "W2 two"
     },
     {
@@ -36,7 +36,7 @@
       "source_id": 3140598,
       "destination_id": 3191868,
       "confirmed": true,
-      "group": false,
+      "is_group": false,
       "text": "W3 three",
       "response": "ack"
     }

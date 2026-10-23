@@ -52,20 +52,7 @@ var updateGolden = flag.Bool("update", false, "rewrite the expected rows in test
 // A test that needs a commit of pendingCommits skips and names it. Remove
 // the entry when the commit lands; DMRHUB_RUN_PENDING=1 runs them all.
 func pendingCommits() map[string]string {
-	return map[string]string{
-		"commit 0d":       "openbridge: process each packet once across replicas",
-		"hub-a commit 2":  "hub: route data, CSBK and other non-voice bursts like voice",
-		"hub-a commit 3":  "hub: find a radio for private traffic from where it was last heard",
-		"hub-a commit 5":  "ipsc: send private traffic to its repeater only and group calls once",
-		"hub-a commit 6":  "ipsc: pass undecodable IPSC data blocks to MMDVM",
-		"hub-a commit 7":  "ipsc: report bursts that IPSC cannot carry",
-		"hub-a commit 8":  "openbridge: take DMRE and bridge control packets",
-		"hub-b commit 9":  "db: add kind and data fields to calls",
-		"hub-b commit 10": "calltracker: track every transmission by kind",
-		"hub-b commit 11": "mmdvm: record talker alias and GPS",
-		"hub-c commit 14": "db: add messages, SMS Storage fields and owned radio IDs",
-		"hub-c commit 15": "calltracker: store and decode every data message",
-	}
+	return map[string]string{}
 }
 
 func needs(t *testing.T, commits ...string) {

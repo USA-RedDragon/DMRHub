@@ -64,7 +64,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": true,
-      "group": false,
+      "is_group": false,
       "text": "THE QUICK BROWN FOX JUMPED OVER THE LAZY DOG",
       "response": "ack"
     }

@@ -148,7 +148,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -156,7 +156,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -164,7 +164,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -172,7 +172,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -180,7 +180,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -188,7 +188,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -196,7 +196,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -204,7 +204,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -212,7 +212,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     },
     {
@@ -220,7 +220,7 @@
       "source_id": 3191868,
       "destination_id": 3140598,
       "confirmed": false,
-      "group": false,
+      "is_group": false,
       "text": ""
     }
   ]

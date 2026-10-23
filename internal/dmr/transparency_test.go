@@ -64,20 +64,21 @@ const (
 )
 
 type mxPayload struct {
-	name    string
-	kind    string
-	sub     string
-	ipsc    bool
-	voice   bool
-	format  string
-	text    string
-	confirm string
-	build   func(t *testing.T, c call) []transmission
+	name         string
+	kind         string
+	sub          string
+	ipsc         bool
+	noIPSCSource bool
+	voice        bool
+	format       string
+	text         string
+	confirm      string
+	build        func(t *testing.T, c call) []transmission
 }
 
 func smsPayload(name string, f sms.Format, body string, rate enums.DataType) mxPayload {
 	return mxPayload{
-		name: name, kind: "data", ipsc: rate != enums.DataTypeRate1,
+		name: name, kind: "data", ipsc: true, noIPSCSource: rate == enums.DataTypeRate1,
 		format: formatName(f), text: body,
 		build: func(t *testing.T, c call) []transmission {
 			text := &sms.Text{Format: f, Source: c.src, Destination: c.dst, Group: c.group, Body: []byte(body)}
@@ -461,7 +462,7 @@ func TestTransparencyMatrix(t *testing.T) {
 				stream := uint(0xE0000)
 				for _, addr := range mxAddrs() {
 					for _, p := range mxPayloads() {
-						if !addr.takes(p) || (src.ipsc && !p.ipsc) {
+						if !addr.takes(p) || (src.ipsc && (!p.ipsc || p.noIPSCSource)) {
 							continue
 						}
 						stream += 16
@@ -619,7 +620,7 @@ func checkMXRows(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload,
 			needs(t, needMessages()...)
 			want := map[string]any{
 				"format": p.format, "text": p.text, "source_id": addr.c.src,
-				"destination_id": addr.c.dst, "group": addr.c.group,
+				"destination_id": addr.c.dst, "is_group": addr.c.group,
 			}
 			if p.confirm != "" {
 				want["confirmed"] = true

@@ -112,7 +112,7 @@ func TestPrunePositionsKeepsEachRadiosRetention(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, models.PrunePositions(database, time.Now()))
+	require.NoError(t, models.PrunePositions(database, time.Now(), 0))
 	count := func(radio uint) int64 {
 		var n int64
 		require.NoError(t, database.Model(&models.Position{}).Where("radio_id = ?", radio).Count(&n).Error)

@@ -256,8 +256,8 @@ func LatestPositions(db *gorm.DB, viewer uint, since time.Time) ([]Position, err
 }
 
 // PrunePositions deletes the positions older than the retention of their
-// radio.
-func PrunePositions(db *gorm.DB, now time.Time) error {
+// radio, and those older than most whatever the retention of their radio.
+func PrunePositions(db *gorm.DB, now time.Time, most time.Duration) error {
 	var settings []PositionSetting
 	if err := db.Select("radio_id", "retention_hours").Find(&settings).Error; err != nil {
 		return fmt.Errorf("could not list position settings: %w", err)
@@ -266,6 +266,9 @@ func PrunePositions(db *gorm.DB, now time.Time) error {
 		keep := DefaultPositionRetention
 		if s.RetentionHours > 0 && s.RetentionHours <= maxRetentionHours {
 			keep = time.Duration(s.RetentionHours) * time.Hour
+		}
+		if most > 0 {
+			keep = min(keep, most)
 		}
 		if err := db.Where("radio_id = ? AND received_at < ?", s.RadioID, now.Add(-keep).UTC()).Delete(&Position{}).Error; err != nil {
 			return fmt.Errorf("could not prune the positions of %d: %w", s.RadioID, err)

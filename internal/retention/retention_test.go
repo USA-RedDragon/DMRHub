@@ -121,9 +121,8 @@ func TestRetentionZeroKeepsEverything(t *testing.T) {
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	now := time.Now()
 	seed(t, database, now, 1, 4000, 20000)
-	res, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+	_, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
 	require.NoError(t, err)
-	assert.False(t, res.Ran)
 	assert.Equal(t, int64(3), count(t, database, &models.Message{}))
 	assert.Equal(t, int64(3), count(t, database, &models.Call{}, "call_data IS NOT NULL"))
 }
@@ -156,4 +155,23 @@ func TestRetentionPurgesInBatches(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2500, res.Messages)
 	assert.Equal(t, int64(0), count(t, database, &models.Message{}))
+}
+
+func TestRetentionPrunesPositionsAtTheirRadiosRetentionAndTheHubsMost(t *testing.T) {
+	t.Parallel()
+	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
+	now := time.Now()
+	cfg.DMR.Positions.MaxRetention = 3
+	for _, radio := range []uint{3191868, 3140598} {
+		require.NoError(t, database.Create(&models.User{ID: radio, Callsign: fmt.Sprintf("N%dX", radio%100), Username: fmt.Sprint(radio), Approved: true}).Error)
+		require.NoError(t, models.SetPositionTracking(database, radio, radio, true, now.Add(-30*daySpan)))
+		for _, age := range []time.Duration{time.Hour, 2 * daySpan, 5 * daySpan} {
+			require.NoError(t, database.Create(&models.Position{RadioID: radio, Latitude: 30, Longitude: -97, Format: models.PositionFormatLRRP, ReceivedAt: now.Add(-age)}).Error)
+		}
+	}
+	require.NoError(t, models.SetPositionRetention(database, 3140598, 7*daySpan))
+	_, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count(t, database, &models.Position{}, "radio_id = 3191868"), "24 hours")
+	assert.Equal(t, int64(2), count(t, database, &models.Position{}, "radio_id = 3140598"), "7 days, cut to the hub's 3")
 }

@@ -83,6 +83,9 @@ type serverEntry struct {
 	ch     chan RoutedPacket
 	mu     sync.RWMutex // protects ch against concurrent send-vs-close
 	closed bool
+	// gone is closed by UnregisterServer before it takes mu, so that a
+	// send to a full channel that the server no longer reads gives up.
+	gone chan struct{}
 }
 
 const serverChannelSize = 500
@@ -188,6 +191,7 @@ func (h *Hub) RegisterServer(cfg ServerConfig) *ServerHandle {
 	h.servers[cfg.Name] = &serverEntry{
 		config: cfg,
 		ch:     ch,
+		gone:   make(chan struct{}),
 	}
 
 	// Set up pubsub subscriptions for broadcast and peer servers
@@ -211,6 +215,7 @@ func (h *Hub) UnregisterServer(name string) {
 	}
 	delete(h.servers, name)
 	h.mu.Unlock()
+	close(entry.gone)
 
 	// Close the channel under the entry's write lock so that any concurrent
 	// send in deliverToServer (which holds the entry read lock) finishes
@@ -243,6 +248,7 @@ func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
 
 	select {
 	case entry.ch <- rp:
+	case <-entry.gone:
 	case <-h.done:
 		slog.Debug("Hub stopping, aborting packet delivery",
 			"server", serverName,
@@ -274,6 +280,8 @@ func (h *Hub) tryDeliverToServer(serverName string, rp RoutedPacket) bool {
 	select {
 	case entry.ch <- rp:
 		return true
+	case <-entry.gone:
+		return false
 	case <-h.done:
 		return false
 	}

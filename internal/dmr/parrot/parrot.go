@@ -64,7 +64,7 @@ func (p *Parrot) RecordPacket(ctx context.Context, streamID uint, packet models.
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Parrot.RecordPacket")
 	defer span.End()
 
-	go p.storage.refresh(ctx, streamID)
+	p.storage.refresh(ctx, streamID)
 
 	// Grab the repeater ID to go ahead and mark the packet as being routed back.
 	repeaterID, err := p.storage.get(ctx, streamID)

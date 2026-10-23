@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
@@ -57,6 +58,26 @@ const (
 
 func newTracker(t *testing.T) (*calltracker.CallTracker, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
+	database, ps, kvStore := trackerDeps(t)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	t.Cleanup(ct.Stop)
+	return ct, database, ps
+}
+
+// newReplicas returns two trackers that share the database, pubsub and KV,
+// as the trackers of two replicas of the hub do.
+func newReplicas(t *testing.T) (*calltracker.CallTracker, *calltracker.CallTracker, *gorm.DB) {
+	t.Helper()
+	database, ps, kvStore := trackerDeps(t)
+	one := calltracker.NewCallTracker(database, ps, kvStore)
+	t.Cleanup(one.Stop)
+	two := calltracker.NewCallTracker(database, ps, kvStore)
+	t.Cleanup(two.Stop)
+	return one, two, database
+}
+
+func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
+	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	defConfig.Database.Database = fmt.Sprintf("file:memdb_ct_%p", t)
@@ -65,6 +86,14 @@ func newTracker(t *testing.T) (*calltracker.CallTracker, *gorm.DB, pubsub.PubSub
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		sqlDB, _ := database.DB()
+		_ = sqlDB.Close()
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
 
 	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
 	require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "KD5SMP", Username: "b", Approved: true}).Error)
@@ -74,15 +103,7 @@ func newTracker(t *testing.T) (*calltracker.CallTracker, *gorm.DB, pubsub.PubSub
 		Type:                  models.RepeaterTypeMMDVM,
 	}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: tgID, Name: "TG42"}).Error)
-
-	ct := calltracker.NewCallTracker(database, ps)
-	t.Cleanup(func() {
-		ct.Stop()
-		sqlDB, _ := database.DB()
-		_ = sqlDB.Close()
-		_ = ps.Close()
-	})
-	return ct, database, ps
+	return database, ps, kvStore
 }
 
 type sender struct {
@@ -397,6 +418,48 @@ func confirmedACK(t *testing.T, bursts []layer2.RawBurst) []layer2.RawBurst {
 	return acks
 }
 
+// TestTrackAnswersARowOfAnotherReplica sends a confirmed SMS and a radio
+// check to one tracker and their answers to another tracker that shares its
+// database, pubsub and KV, as when the answering radio is on a repeater of
+// another replica. The answers must be set on the rows of the first one.
+func TestTrackAnswersARowOfAnotherReplica(t *testing.T) {
+	t.Parallel()
+	one, two, database := newReplicas(t)
+
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Confirmed: true, Body: []byte("copy, 5x9")})
+	newSender(t, one, userB, userA, false, 7060).data(bursts...)
+	one.Flush()
+	newSender(t, two, userA, userB, false, 7061).data(confirmedACK(t, bursts)...)
+
+	var req, ans pdu.CSBK
+	req.LastBlock, ans.LastBlock = true, true
+	require.NoError(t, req.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{RequesterAddress: uint32(userA), CheckedAddress: uint32(userB)}))
+	require.NoError(t, ans.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{Answer: true, RequesterAddress: uint32(userA), CheckedAddress: uint32(userB)}))
+	newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
+	one.Flush()
+	newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
+
+	byStream := map[uint]models.Call{}
+	require.Eventually(t, func() bool {
+		two.Flush()
+		one.Flush()
+		clear(byStream)
+		for _, c := range rows(t, database) {
+			if c.Active {
+				return false
+			}
+			byStream[c.StreamID] = c
+		}
+		return len(byStream) == 3 && byStream[7060].Response != models.CallResponseNone && byStream[7062].Response != models.CallResponseNone
+	}, 8*time.Second, 50*time.Millisecond, "the answers are set on the rows")
+	assert.Equal(t, "sms", byStream[7060].SubKind)
+	assert.Equal(t, models.CallResponseACK, byStream[7060].Response)
+	assert.Equal(t, "response", byStream[7061].SubKind)
+	assert.Equal(t, "radio_check", byStream[7062].SubKind)
+	assert.Equal(t, models.CallResponseACK, byStream[7062].Response)
+	assert.NotContains(t, byStream, uint(7063), "the answer makes no row of its own")
+}
+
 func TestTrackResponseAnswersOnlyItsConfirmedMessage(t *testing.T) {
 	t.Parallel()
 	ct, database, _ := newTracker(t)
@@ -607,12 +670,15 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 	require.NoError(t, database.Create(&models.Talkgroup{ID: tgID, Name: "TG42"}).Error)
 	net := models.Net{TalkgroupID: tgID, StartedByUserID: userA, StartTime: time.Now(), Active: true}
 	require.NoError(t, database.Create(&net).Error)
-	ct := calltracker.NewCallTracker(database, ps)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	require.NoError(t, err)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	t.Cleanup(func() {
 		ct.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()
+		_ = kvStore.Close()
 	})
 	sub := ps.Subscribe(fmt.Sprintf("net:checkins:%d", net.ID))
 	defer func() { _ = sub.Close() }()

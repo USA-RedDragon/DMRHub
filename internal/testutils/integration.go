@@ -104,7 +104,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)
 
-	ct := calltracker.NewCallTracker(database, ps)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database)
 	store.SetNotify(messages.NewPusher(database, ps).Push)
 	ct.SetDataObserver(store)
@@ -169,7 +169,7 @@ type Replica struct {
 func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 
-	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub)
+	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub, s.KV)
 	store2 := messages.NewStore(s.DB)
 	store2.SetNotify(messages.NewPusher(s.DB, s.PubSub).Push)
 	ct2.SetDataObserver(store2)

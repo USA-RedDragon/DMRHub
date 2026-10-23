@@ -242,3 +242,52 @@ func PrunePositions(db *gorm.DB, now time.Time) error {
 	}
 	return nil
 }
+
+// PositionOwner returns the user who tracks radioID, and false when no one
+// does.
+func PositionOwner(db *gorm.DB, radioID uint) (uint, bool, error) {
+	s, ok, err := FindPositionSetting(db, radioID)
+	if err != nil || !ok || !s.Tracking {
+		return 0, false, err
+	}
+	return s.UserID, true, nil
+}
+
+// SeesPositions reports whether viewer may see the positions of radioID:
+// they track it, or they and its owner both share their positions.
+func SeesPositions(db *gorm.DB, viewer, radioID uint) (bool, error) {
+	owner, ok, err := PositionOwner(db, radioID)
+	if err != nil || !ok {
+		return false, err
+	}
+	if owner == viewer {
+		return true, nil
+	}
+	var n int64
+	err = db.Model(&User{}).Where("id IN ? AND share_positions = ?", []uint{viewer, owner}, true).Count(&n).Error
+	if err != nil {
+		return false, fmt.Errorf("could not read position sharing: %w", err)
+	}
+	return n == 2, nil
+}
+
+// TracksPositions reports whether userID tracks the position of any radio.
+func TracksPositions(db *gorm.DB, userID uint) (bool, error) {
+	var n int64
+	if err := db.Model(&PositionSetting{}).Where("user_id = ? AND tracking = ?", userID, true).Count(&n).Error; err != nil {
+		return false, fmt.Errorf("could not read position tracking of %d: %w", userID, err)
+	}
+	return n > 0, nil
+}
+
+// Track returns the positions of radioID received between from and to, oldest
+// first.
+func Track(db *gorm.DB, radioID uint, from, to time.Time) ([]Position, error) {
+	var out []Position
+	err := db.Where("radio_id = ? AND received_at >= ? AND received_at <= ?", radioID, from.UTC(), to.UTC()).
+		Order("received_at").Order("id").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("could not read the track of %d: %w", radioID, err)
+	}
+	return out, nil
+}

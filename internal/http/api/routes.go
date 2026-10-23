@@ -32,6 +32,7 @@ import (
 	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
+	v1PositionsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/positions"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
 	v1UserDBControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/userdb"
@@ -170,6 +171,12 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 		v1Peers.POST("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRule)
 		v1Peers.DELETE("/:id/rules/:ruleId", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeerRule)
 	}
+
+	v1Positions := group.Group("/positions")
+	v1Positions.Use(middleware.RequireLogin(), userSuspension)
+	v1Positions.GET("", v1PositionsControllers.GETPositions)
+	v1Positions.GET("/:id", v1PositionsControllers.GETRadioPositions)
+	v1Positions.GET("/:id/track", v1PositionsControllers.GETTrack)
 
 	v1Messages := group.Group("/messages")
 	v1Messages.Use(middleware.RequireLogin(), userSuspension)

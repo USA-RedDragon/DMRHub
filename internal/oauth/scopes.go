@@ -30,6 +30,7 @@ const (
 	ScopeTalkgroupsRead     = "talkgroups:read"
 	ScopeLastHeardRead      = "lastheard:read"
 	ScopeMessagesRead       = "messages:read"
+	ScopePositionsRead      = "positions:read"
 	ScopeHotspotsRead       = "hotspots:read"
 	ScopeHotspotsRegister   = "hotspots:register"
 	ScopeHotspotsTalkgroups = "hotspots:talkgroups"
@@ -48,6 +49,7 @@ func scopes() []Scope {
 		{ScopeTalkgroupsRead, "talkgroups", "See the talkgroups of this network"},
 		{ScopeLastHeardRead, "last heard", "See last heard for your radio IDs and your hotspots"},
 		{ScopeMessagesRead, "messages", "Read your text messages, and get new ones as they arrive"},
+		{ScopePositionsRead, "positions", "See where your radios are, and the radios shared with you, as they report"},
 		{ScopeHotspotsRead, "hotspots", "See your hotspots"},
 		{ScopeHotspotsRegister, "hotspots", "Add hotspots to your account and see their passwords"},
 		{ScopeHotspotsTalkgroups, "hotspot talkgroups", "Change the static talkgroups of your hotspots"},

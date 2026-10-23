@@ -67,6 +67,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	if config.DMR.OpenBridge.Enabled {
 		ws.GET("/peers", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
 	}
+	ws.GET("/messages", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateMessagesWebsocket(pubsub)))
 	ws.GET("/nets", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateNetsWebsocket(pubsub)))
 }
 

@@ -103,6 +103,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 
 	ct := calltracker.NewCallTracker(database, ps)
 	store := messages.NewStore(database)
+	store.SetNotify(messages.NewPusher(database, ps).Push)
 	ct.SetDataObserver(store)
 
 	h := hub.NewHub(database, kvStore, ps, ct)
@@ -162,6 +163,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 
 	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub)
 	store2 := messages.NewStore(s.DB)
+	store2.SetNotify(messages.NewPusher(s.DB, s.PubSub).Push)
 	ct2.SetDataObserver(store2)
 	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
 

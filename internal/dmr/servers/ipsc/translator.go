@@ -359,8 +359,19 @@ func (t *IPSCTranslator) encodeUser(pkt models.Packet, u *ipscwire.User) []byte 
 func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enums.DataType, marker bool) []byte {
 	u := t.user(pkt, ss, false, dt == enums.DataTypeTerminatorWithLC, marker)
 	// The LC comes from ipscFullLC, which checks it, so the packet carries
-	// a burst rebuilt from it with the color code of the burst.
-	cw := ipscFullLC(pkt, dt)
+	// a burst rebuilt from it with the color code of the burst. An LC that
+	// fails the check is replaced by the LC of the call when one was heard,
+	// and only then by one built from the packet fields, which is not kept
+	// so that the embedded LC can still give the call its own.
+	cw, heard := ipscFullLC(pkt, dt)
+	if !heard && ss.haveLC {
+		lc := pdu.LCBytes(ss.lc)
+		var err error
+		if cw, err = lc.Codeword(dt); err != nil {
+			slog.Error("Failed to encode Full LC codeword", "error", err)
+		}
+		heard = true
+	}
 	raw, err := layer2.BuildDataBurst(cw, dt, layer2.RawBurst(pkt.DMRData).SlotType().ColorCode, layer2.SyncSourceBS)
 	if err == nil {
 		_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dt, HasDataType: true})
@@ -369,7 +380,9 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 		t.undeliverable(pkt, reasonBuild)
 		return nil
 	}
-	ss.lc, ss.haveLC = [9]byte(cw[:9]), true
+	if heard {
+		ss.lc, ss.haveLC = [9]byte(cw[:9]), true
+	}
 	return t.encodeUser(pkt, &u)
 }
 
@@ -495,17 +508,18 @@ func extractFullLCBytes(pkt models.Packet) pdu.LCBytes {
 
 // ipscFullLC returns the 12-byte Full LC codeword (masked parity) for an IPSC
 // voice header or terminator. It passes the received LC through when it is
-// valid and names the same call as pkt, and builds one from pkt otherwise.
-func ipscFullLC(pkt models.Packet, dataType enums.DataType) [12]byte {
+// valid and names the same call as pkt, and reports true. Otherwise it
+// builds one from pkt and reports false.
+func ipscFullLC(pkt models.Packet, dataType enums.DataType) ([12]byte, bool) {
 	if cw, ok := layer2.RawBurst(pkt.DMRData).MMDVMHostPayload(dataType); ok && fullLCMatchesPacket(cw, pkt) {
-		return cw
+		return cw, true
 	}
 	lc := extractFullLCBytes(pkt)
 	cw, err := lc.Codeword(dataType)
 	if err != nil {
 		slog.Error("Failed to encode Full LC codeword", "error", err)
 	}
-	return cw
+	return cw, false
 }
 
 // fullLCMatchesPacket reports whether a voice Full LC names the same call as pkt.

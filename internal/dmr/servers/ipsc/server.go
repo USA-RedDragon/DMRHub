@@ -64,6 +64,8 @@ type IPSCServer struct {
 	egressMu sync.Mutex
 	egress   map[uint32]*peerTranslator
 
+	pacer *pacer
+
 	wg       sync.WaitGroup
 	done     chan struct{}
 	stopped  atomic.Bool
@@ -106,6 +108,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 		egress:     map[uint32]*peerTranslator{},
 	}
+	s.pacer = newPacer(func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) })
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
 		ID:         s.localID,
 		MaxPeers:   ipscsession.MaxPeersLimit,
@@ -204,6 +207,7 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		if s.hub != nil {
 			s.hub.UnregisterServer(models.RepeaterTypeIPSC)
 		}
+		s.pacer.drain(pacerDrainTimeout)
 
 		if !servers.IsGracefulHandoff(ctx) {
 			s.closeSessions(ctx)
@@ -435,7 +439,7 @@ func (s *IPSCServer) consumeHubPackets() {
 // its own translator, so one stream sent to two peers keeps two states.
 func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
 	for _, frame := range s.egressTranslator(repeaterID).TranslateToIPSC(pkt) {
-		s.sendPacketToPeers(frame, repeaterID)
+		s.pacer.enqueue(slotKey{peer: repeaterID, slot: pkt.Slot}, frame)
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -79,6 +80,10 @@ func authenticateUser(c *gin.Context, authName string) (models.User, *gorm.DB, b
 
 	var user models.User
 	db.Find(&user, "id = ?", uid)
+	if utils.ViaToken(c) {
+		user.Admin = false
+		user.SuperAdmin = false
+	}
 	if span.IsRecording() {
 		span.SetAttributes(attribute.Bool("user.admin", user.Admin))
 	}

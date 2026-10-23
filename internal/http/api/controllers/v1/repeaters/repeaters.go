@@ -878,6 +878,9 @@ func PATCHRepeater(c *gin.Context) {
 }
 
 func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {
+	if utils.ViaToken(c) {
+		return false
+	}
 	userID, ok := sessions.Default(c).Get("user_id").(uint)
 	if !ok {
 		return false

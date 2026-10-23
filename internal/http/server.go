@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,10 +37,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
+	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
+	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
@@ -209,6 +212,9 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 	}
 
 	addMiddleware(ctx, config, dmrHub, r, db, pubsub, ready, ns, version, commit, o)
+	oauthServer := oauth.NewServer(db, config.GetDerivedSecret())
+	go oauthServer.PeriodicPrune(ctx, time.Hour)
+	r.Use(middleware.Provider(v1OAuthControllers.ServerKey, oauthServer))
 
 	ratelimitStore := gormRateLimit.NewGORMStore(&gormRateLimit.GORMOptions{
 		DB:    db,
@@ -226,7 +232,7 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 
 	userLockoutMiddleware := middleware.SuspendedUserLockout()
 
-	api.ApplyRoutes(config, r, dmrHub, db, pubsub, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(config, r, dmrHub, db, pubsub, oauthServer, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 
@@ -263,14 +269,39 @@ func (s *Server) Start() error {
 // Such a route answers any origin, without credentials, so that no browser
 // sends a session cookie with a request from another site.
 func isPublicPath(path string) bool {
-	return path == "/api/v1/lastheard" || path == "/api/v1/network/webtransport"
+	switch path {
+	case "/api/v1/lastheard", "/api/v1/network/webtransport",
+		"/.well-known/oauth-authorization-server", "/api/v1/oauth/token", "/api/v1/oauth/revoke":
+		return true
+	}
+	return false
 }
 
-// publicCORS answers the CORS requests of the public routes for any origin
-// and hands every other request to configured, when it is set.
+// isTokenRequest reports whether an app on another site calls an API route
+// with a Bearer token, or asks in a preflight whether it may. The consent
+// and the list of apps are only for the pages of DMRHub itself.
+func isTokenRequest(c *gin.Context) bool {
+	path := c.Request.URL.Path
+	if !strings.HasPrefix(path, "/api/v1/") || strings.HasPrefix(path, "/api/v1/oauth/") {
+		return false
+	}
+	if c.Request.Method == http.MethodOptions {
+		for _, h := range strings.Split(c.GetHeader("Access-Control-Request-Headers"), ",") {
+			if strings.EqualFold(strings.TrimSpace(h), "authorization") {
+				return true
+			}
+		}
+		return false
+	}
+	return c.GetHeader("Authorization") != ""
+}
+
+// publicCORS answers the CORS requests of the public routes and of apps
+// with Bearer tokens for any origin, and hands every other request to
+// configured, when it is set.
 func publicCORS(configured gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !isPublicPath(c.Request.URL.Path) || c.GetHeader("Origin") == "" {
+		if c.GetHeader("Origin") == "" || (!isPublicPath(c.Request.URL.Path) && !isTokenRequest(c)) {
 			if configured != nil {
 				configured(c)
 			}
@@ -279,7 +310,8 @@ func publicCORS(configured gin.HandlerFunc) gin.HandlerFunc {
 		h := c.Writer.Header()
 		h.Set("Access-Control-Allow-Origin", "*")
 		if c.Request.Method == http.MethodOptions {
-			h.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			h.Set("Access-Control-Max-Age", "43200")
 			c.AbortWithStatus(http.StatusNoContent)
 		}

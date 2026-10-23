@@ -20,13 +20,23 @@
 package hub
 
 import (
+	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 // streamIdle is the time after the last packet of a stream at which the
 // stream counts as ended, for a stream that ends with no terminator.
 const streamIdle = 2 * time.Second
+
+// streamClaimHold is how long a stream stays with its source after the
+// last burst from it, so that copies looping back after the terminator are
+// still dropped.
+const streamClaimHold = 30 * time.Second
 
 // inflight counts work that shutdown must wait for. Unlike a
 // sync.WaitGroup, Add may run while Wait waits.
@@ -106,4 +116,67 @@ func (h *Hub) endStream(stream uint, s *activeStream) {
 	}
 	delete(h.activeStreams, stream)
 	h.calls.Done()
+}
+
+// streamSource is where the bursts of a stream come in: a server and the
+// repeater or OpenBridge peer on it.
+type streamSource struct {
+	server   string
+	repeater uint
+}
+
+// claimKey is a stream of one radio. Some clients reuse stream IDs, such as
+// DroidStar, which calls rand() without srand(), so every instance sends the
+// same sequence; a loop keeps the source radio.
+type claimKey struct {
+	stream, src uint
+}
+
+type streamClaim struct {
+	source streamSource
+	last   time.Time
+}
+
+// AdmitStream reports whether the hub takes packet in. The first source of
+// a stream of a radio owns it until streamClaimHold passes with no burst from that
+// source. The same stream from another source meanwhile is a loop or a
+// second path to the same call, so it is dropped, counted and logged once
+// per stream, as FreeDMR's LoopControl does. A repeater that reconnects or
+// moves to another replica keeps its ID, so it keeps its stream.
+func (h *Hub) AdmitStream(packet models.Packet, sourceName string) bool {
+	if packet.StreamID == 0 {
+		return true
+	}
+	src := streamSource{server: sourceName, repeater: packet.Repeater}
+	now := time.Now()
+	var owner streamSource
+	admitted := true
+	h.streamClaims.Compute(claimKey{stream: packet.StreamID, src: packet.Src}, func(old streamClaim, loaded bool) (streamClaim, xsync.ComputeOp) {
+		if loaded && old.source != src && now.Sub(old.last) <= streamClaimHold {
+			owner = old.source
+			admitted = false
+			return old, xsync.CancelOp
+		}
+		return streamClaim{source: src, last: now}, xsync.UpdateOp
+	})
+	if admitted {
+		return true
+	}
+	metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonStreamFromOtherSource)
+	if _, logged := h.loopLogged.LoadOrStore(packet.StreamID, now); !logged {
+		slog.Warn("Dropping a stream that another source is already sending",
+			"stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst,
+			"server", sourceName, "repeaterID", packet.Repeater,
+			"ownerServer", owner.server, "ownerRepeaterID", owner.repeater)
+	}
+	return false
+}
+
+func (h *Hub) pruneStreamClaims(now time.Time) {
+	h.streamClaims.Range(func(k claimKey, v streamClaim) bool {
+		if now.Sub(v.last) > streamClaimHold {
+			h.streamClaims.Delete(k)
+		}
+		return true
+	})
 }

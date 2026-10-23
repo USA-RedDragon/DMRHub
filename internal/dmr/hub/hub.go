@@ -147,6 +147,8 @@ type Hub struct {
 	undeliverableLogged *xsync.Map[uint, time.Time]
 	parrotEnded         *xsync.Map[uint, time.Time]
 	streamTargets       *xsync.Map[streamTarget, targetAt]
+	streamClaims        *xsync.Map[claimKey, streamClaim]
+	loopLogged          *xsync.Map[uint, time.Time]
 }
 
 // NewHub creates a new Hub.
@@ -168,6 +170,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.undeliverableLogged = xsync.NewMap[uint, time.Time]()
 	h.parrotEnded = xsync.NewMap[uint, time.Time]()
 	h.streamTargets = xsync.NewMap[streamTarget, targetAt]()
+	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
+	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
 	if ct != nil {

@@ -47,6 +47,8 @@
           The port number to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
+        <br />
+        <WebTransportSettings v-model="webtransport" :errors="errors && errors.webtransport" />
       </CardContent>
     </Card>
   </div>
@@ -60,6 +62,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import WebTransportSettings from './WebTransportSettings.vue';
 
 export default {
   components: {
@@ -68,6 +71,7 @@ export default {
     CardHeader,
     CardTitle,
     ShadInput,
+    WebTransportSettings,
   },
   props: {
     modelValue: {
@@ -80,6 +84,17 @@ export default {
   },
   emits: ['update:modelValue'],
   computed: {
+    webtransport: {
+      get() {
+        return (this.modelValue && this.modelValue['webtransport']) || {};
+      },
+      set(value: Record<string, unknown>) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'webtransport': value,
+        });
+      },
+    },
     bind: {
       get() {
         return (this.modelValue && this.modelValue['bind']) || '';

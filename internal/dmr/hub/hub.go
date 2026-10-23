@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"gorm.io/gorm"
@@ -177,6 +178,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 	}
 	h.locator = locator.New(db, h.sendFromLocator)
+	h.locator.SetNotify(positions.NewPusher(db, ps).Push)
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.routing = streamorder.New(routingQueueSize, h.done)
 	h.sightings = make(chan sighting, sightingQueueSize)

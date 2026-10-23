@@ -85,3 +85,13 @@ func TestLineRefusesInvalidCallsigns(t *testing.T) {
 	_, err := c.Line("KI5VMF", "KI5VMF", "!\r\nN0CALL>APRS:x")
 	assert.Error(t, err)
 }
+
+func TestLicensedCallsigns(t *testing.T) {
+	t.Parallel()
+	for _, call := range []string{"KI5VMF", "N0CALL", "VK2ABC", "2E0ABC"} {
+		assert.True(t, aprs.Licensed(call), call)
+	}
+	for _, call := range []string{"", "GUEST", "123456", "KI5VMF-9", "ki5vmf", "KI5 VMF", "ABCDEFGHI1"} {
+		assert.False(t, aprs.Licensed(call), call)
+	}
+}

@@ -30,9 +30,9 @@
           These settings enable a separate HTTP server that serves the metrics endpoints.
         </p>
         <br />
-        <label class="field-label" for="otlpEndpoint">OTLP Endpoint</label>
+        <label class="field-label" for="metrics-otlp-endpoint">OTLP Endpoint</label>
         <ShadInput
-          id="otlpEndpoint"
+          id="metrics-otlp-endpoint"
           type="text"
           v-model="otlpEndpoint"
           :aria-invalid="(errors && errors['otlp-endpoint']) || false"
@@ -45,23 +45,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="metrics-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enable Prometheus Metrics</label>
+          <label for="metrics-enabled">Enable Prometheus Metrics</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="bind" v-if="enabled">Bind</label>
-        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="metrics-bind" v-if="enabled">Bind</label>
+        <ShadInput id="metrics-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the metrics server to
         </p>
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <label class="field-label" for="metrics-port" v-if="enabled">Port</label>
         <ShadInput
-          id="port"
+          id="metrics-port"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -72,10 +72,10 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="trustedProxies" v-if="enabled">Trusted Proxies</label>
+        <label class="field-label" for="metrics-trusted-proxies" v-if="enabled">Trusted Proxies</label>
         <textarea
           rows="5"
-          id="trustedProxies"
+          id="metrics-trusted-proxies"
           v-model="trustedProxies"
           v-if="enabled"
           class="ui-textarea"

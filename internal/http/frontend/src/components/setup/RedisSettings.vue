@@ -31,23 +31,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="redis-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enabled</label>
+          <label for="redis-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="host" v-if="enabled">Host</label>
-        <ShadInput id="host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
+        <label class="field-label" for="redis-host" v-if="enabled">Host</label>
+        <ShadInput id="redis-host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">
           The hostname or IP address of the Redis server to connect to.
         </p>
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <label class="field-label" for="redis-port" v-if="enabled">Port</label>
         <ShadInput
-          id="port"
+          id="redis-port"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -58,9 +58,9 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="password" v-if="enabled">Password</label>
+        <label class="field-label" for="redis-password" v-if="enabled">Password</label>
         <ShadInput
-          id="password"
+          id="redis-password"
           type="password"
           v-model="password"
           v-if="enabled"

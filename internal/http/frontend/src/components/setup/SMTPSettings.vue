@@ -34,17 +34,17 @@
         </ul>
         <br />
         <div class="checkbox-row">
-          <input id="enabled" type="checkbox" v-model="enabled" />
-          <label for="enabled">Enabled</label>
+          <input id="smtp-enabled" type="checkbox" v-model="enabled" />
+          <label for="smtp-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="from" v-if="enabled">From Address</label>
-        <ShadInput id="from" type="text" v-model="from" v-if="enabled" :aria-invalid="(errors && errors.from) || false" />
+        <label class="field-label" for="smtp-from" v-if="enabled">From Address</label>
+        <ShadInput id="smtp-from" type="text" v-model="from" v-if="enabled" :aria-invalid="(errors && errors.from) || false" />
         <p v-if="enabled">The email address used as the From address in email notifications</p>
         <span v-if="enabled && errors && errors.from" class="p-error">{{ errors.from }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="authMethod" v-if="enabled">Authentication Method</label>
-        <select id="authMethod" v-model="authMethod" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['auth-method']) || false }">
+        <label class="field-label" for="smtp-auth-method" v-if="enabled">Authentication Method</label>
+        <select id="smtp-auth-method" v-model="authMethod" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['auth-method']) || false }">
           <option v-for="option in [
             { label: 'Plain', value: 'plain' },
             { label: 'Login', value: 'login' },
@@ -57,31 +57,31 @@
         </p>
         <span v-if="enabled && errors && errors['auth-method']" class="p-error">{{ errors['auth-method'] }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="host" v-if="enabled">Host</label>
-        <ShadInput id="host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
+        <label class="field-label" for="smtp-host" v-if="enabled">Host</label>
+        <ShadInput id="smtp-host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">
           The hostname or IP address of the SMTP server to connect to.
         </p>
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
-        <ShadInput id="port" type="number" v-model="port" v-if="enabled"
+        <label class="field-label" for="smtp-port" v-if="enabled">Port</label>
+        <ShadInput id="smtp-port" type="number" v-model="port" v-if="enabled"
           :aria-invalid="(errors && errors.port) || false" />
         <p v-if="enabled">
           The port number of the SMTP server to connect to.
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="username" v-if="enabled">Username</label>
-        <ShadInput id="username" type="text" v-model="username" v-if="enabled"
+        <label class="field-label" for="smtp-username" v-if="enabled">Username</label>
+        <ShadInput id="smtp-username" type="text" v-model="username" v-if="enabled"
           :aria-invalid="(errors && errors.username) || false" />
         <p v-if="enabled">
           The username to use when connecting to the SMTP server.
         </p>
         <span v-if="enabled && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="password" v-if="enabled">Password</label>
-        <ShadInput id="password" type="password" v-model="password" v-if="enabled"
+        <label class="field-label" for="smtp-password" v-if="enabled">Password</label>
+        <ShadInput id="smtp-password" type="password" v-model="password" v-if="enabled"
           :aria-invalid="(errors && errors.password) || false" />
         <p v-if="enabled">
           The password to use when connecting to the SMTP server.
@@ -90,8 +90,8 @@
         <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br v-if="enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="tls" v-if="enabled">TLS Mode</label>
-        <select id="tls" v-model="tls" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.tls) || false }">
+        <label class="field-label" for="smtp-tls" v-if="enabled">TLS Mode</label>
+        <select id="smtp-tls" v-model="tls" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.tls) || false }">
           <option v-for="option in [
             { label: 'None', value: 'none' },
             { label: 'STARTTLS', value: 'starttls' },

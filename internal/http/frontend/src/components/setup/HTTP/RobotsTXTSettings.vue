@@ -26,8 +26,8 @@
         <CardTitle>robots.txt Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <label class="field-label" for="mode">Mode</label>
-        <select id="mode" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
+        <label class="field-label" for="robots-txt-mode">Mode</label>
+        <select id="robots-txt-mode" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
           <option v-for="option in [
             { label: 'Disabled', value: 'disabled' },
             { label: 'Allow', value: 'allow' },
@@ -43,10 +43,10 @@
         </p>
         <span v-if="errors && errors.mode" class="p-error">{{ errors.mode }}</span>
         <br v-if="mode === 'custom'" />
-        <label class="field-label" for="content" v-if="mode === 'custom'">Content</label>
+        <label class="field-label" for="robots-txt-content" v-if="mode === 'custom'">Content</label>
         <textarea
           rows="5"
-          id="content"
+          id="robots-txt-content"
           v-model="content"
           v-if="mode === 'custom'"
           class="ui-textarea"

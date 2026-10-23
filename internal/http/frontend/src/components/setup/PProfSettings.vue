@@ -33,23 +33,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="pprof-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enabled</label>
+          <label for="pprof-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="bind" v-if="enabled">Bind</label>
-        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="pprof-bind" v-if="enabled">Bind</label>
+        <ShadInput id="pprof-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the pprof server to
         </p>
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <label class="field-label" for="pprof-port" v-if="enabled">Port</label>
         <ShadInput
-          id="port"
+          id="pprof-port"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -60,10 +60,10 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="trustedProxies" v-if="enabled">Trusted Proxies</label>
+        <label class="field-label" for="pprof-trusted-proxies" v-if="enabled">Trusted Proxies</label>
         <textarea
           rows="5"
-          id="trustedProxies"
+          id="pprof-trusted-proxies"
           v-model="trustedProxies"
           v-if="enabled"
           class="ui-textarea"

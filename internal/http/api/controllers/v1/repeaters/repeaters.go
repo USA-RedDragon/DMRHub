@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -212,6 +213,15 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		return
 	}
 
+	if missing, err := missingTalkgroup(db, &json); err != nil {
+		slog.Error("Error validating talkgroups", "function", "POSTRepeaterTalkgroups", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	} else if missing != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: fmt.Sprintf("talkgroup %d does not exist", missing)})
+		return
+	}
+
 	err = db.Model(repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 	if err != nil {
 		slog.Error("Error updating TS1StaticTalkgroups", "function", "POSTRepeaterTalkgroups", "error", err)
@@ -279,6 +289,34 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	}
 	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater talkgroups updated"})
+}
+
+// missingTalkgroup returns the first talkgroup of post that does not
+// exist, or 0 when they all do. Without it, saving the associations would
+// create a blank talkgroup for each ID that does not exist.
+func missingTalkgroup(db *gorm.DB, post *apimodels.RepeaterTalkgroupsPost) (uint, error) {
+	var ids []uint
+	for _, tg := range post.TS1StaticTalkgroups {
+		ids = append(ids, tg.ID)
+	}
+	for _, tg := range post.TS2StaticTalkgroups {
+		ids = append(ids, tg.ID)
+	}
+	for _, tg := range []models.Talkgroup{post.TS1DynamicTalkgroup, post.TS2DynamicTalkgroup} {
+		if tg.ID != 0 {
+			ids = append(ids, tg.ID)
+		}
+	}
+	found, err := models.FindTalkgroupsByIDs(db, ids)
+	if err != nil {
+		return 0, fmt.Errorf("error finding talkgroups: %w", err)
+	}
+	for _, id := range ids {
+		if !slices.ContainsFunc(found, func(tg models.Talkgroup) bool { return tg.ID == id }) {
+			return id, nil
+		}
+	}
+	return 0, nil
 }
 
 //nolint:gocyclo

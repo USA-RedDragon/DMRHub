@@ -158,3 +158,68 @@ func TestRPTOAcrossReplicas(t *testing.T) {
 		}
 	})
 }
+
+func dynamicIDs(t *testing.T, stack *testutils.IntegrationStack, id uint) (ts1, ts2 uint) {
+	t.Helper()
+	rpt, err := models.FindRepeaterByID(stack.DB, id)
+	require.NoError(t, err)
+	if rpt.TS1DynamicTalkgroupID != nil {
+		ts1 = *rpt.TS1DynamicTalkgroupID
+	}
+	if rpt.TS2DynamicTalkgroupID != nil {
+		ts2 = *rpt.TS2DynamicTalkgroupID
+	}
+	return ts1, ts2
+}
+
+func waitDynamic(t *testing.T, stack *testutils.IntegrationStack, id, ts1, ts2 uint) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		got1, got2 := dynamicIDs(t, stack, id)
+		return got1 == ts1 && got2 == ts2
+	}, handshakeWait, 20*time.Millisecond, "dynamic talkgroups of %d should become TS1 %d TS2 %d", id, ts1, ts2)
+}
+
+// TestRPTODialLinksDynamicTalkgroup sends DIAL in the options. The
+// talkgroup must be linked as the dynamic talkgroup of TS2 and routed, a
+// keyup on another talkgroup must relink the slot as usual, and DIAL=0
+// must unlink it.
+func TestRPTODialLinksDynamicTalkgroup(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 10, "TG10")
+		stack.SeedTalkgroup(t, 11, "TG11")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
+		stack.StartServers(t)
+
+		c1 := testutils.NewMMDVMClient(100001, "", testPassword)
+		c2 := testutils.NewMMDVMClient(100002, "", testPassword)
+		require.NoError(t, c1.Connect(stack.MMDVMAddr))
+		require.NoError(t, c2.Connect(stack.MMDVMAddr))
+		defer c1.Close()
+		defer c2.Close()
+		require.NoError(t, c1.WaitReady(handshakeWait))
+		require.NoError(t, c2.WaitReady(handshakeWait))
+
+		require.NoError(t, c2.SendOptions("DIAL=10;"))
+		waitDynamic(t, stack, 100002, 0, 10)
+		time.Sleep(settleDuration)
+
+		sendGroupCall(t, c1.SendDMRD, 10, 9301, true)
+		pkts := c2.Drain(drainWait)
+		require.NotEmpty(t, pkts, "the repeater should hear the talkgroup that DIAL linked")
+		for _, p := range pkts {
+			assert.Equal(t, uint(10), p.Dst)
+			assert.True(t, p.Slot)
+		}
+
+		time.Sleep(callHoldTime)
+		sendGroupCall(t, c2.SendDMRD, 11, 9302, true)
+		waitDynamic(t, stack, 100002, 0, 11)
+
+		require.NoError(t, c2.SendOptions("DIAL=0;"))
+		waitDynamic(t, stack, 100002, 0, 0)
+	})
+}

@@ -127,9 +127,18 @@ As in FreeDMR, options with static talkgroups set both timeslots. They replace t
 - A timeslot that the options do not mention loses its static talkgroups. `TS2=9;` alone leaves TS1 with none.
 - An empty list, such as `TS2=;`, also removes all static talkgroups of that timeslot.
 - Talkgroups that DMRHub does not have are left out. If none of the talkgroups in a list exist, or the list has something that is not a talkgroup number, DMRHub leaves that timeslot as it is.
-- Options with no static talkgroups at all, such as `DIAL=0;`, change nothing.
+- Options with no static talkgroups at all, such as `DIAL=0;`, leave the static talkgroups as they are.
 
-DMRHub has no reflectors, timers, voice announcements or single mode, so it ignores the other FreeDMR and DMR+ options, such as `DIAL`, `StartRef`, `TIMER`, `RelinkTime`, `VOICE` and `SINGLE`. The DMRHub log lists what it applied and what it ignored.
+The default dial of a timeslot links a talkgroup as that timeslot's dynamic talkgroup, just as transmitting on it would. Like any other dynamic link, it changes when someone transmits on another talkgroup, and TG 4000 unlinks it.
+
+- `DIAL=91;` (or `DIAL2=`, `DEFAULT_REFLECTOR=`, `default_dial_ts2=`, or the DMR+ `StartRef=`) links TG 91 on TS2. `DIAL1=` (or `default_dial_ts1=`) does the same on TS1.
+- `DIAL=0;` or an empty value unlinks the dynamic talkgroup of that timeslot. So do the values FreeDMR does not take as a default dial: 1 to 9 and 9990 to 9999.
+- A talkgroup that DMRHub does not have is ignored.
+- Without a default dial, the dynamic talkgroup stays as it is.
+
+The repeater sends its options each time it connects, so the default dial is linked again at every login.
+
+DMRHub has no timers, voice announcements or single mode, so it ignores the other FreeDMR and DMR+ options, such as `TIMER`, `RelinkTime`, `VOICE` and `SINGLE`. The DMRHub log lists what it applied and what it ignored.
 
 ### Talkgroup Administration
 

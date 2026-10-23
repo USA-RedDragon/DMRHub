@@ -31,8 +31,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -59,12 +62,20 @@ func newOptionsRig(t *testing.T) *optionsRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = ""
-	cfg.Database.ExtraParameters = []string{}
+	cfg.Database.Database = fmt.Sprintf("file:memdb_%p", t)
+	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps))
+	t.Cleanup(func() {
+		h.Stop(context.Background())
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
 	for _, id := range []uint{optionsRepeater, otherRepeater} {
 		require.NoError(t, database.Create(&models.Repeater{
 			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
@@ -88,6 +99,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 			DB:        database,
 			Server:    conn,
 			kvClient:  servers.MakeKVClient(kvStore),
+			hub:       h,
 			connected: xsync.NewMap[uint, net.UDPAddr](),
 			newSalt:   func() (uint32, error) { return 0x01020304, nil },
 		},
@@ -249,5 +261,75 @@ func TestOptionsForAnotherRepeaterRejected(t *testing.T) {
 		ts1, ts2 := r.statics(id)
 		require.Equal(t, []uint{1}, ts1, "an options output for another repeater must not apply")
 		require.Equal(t, []uint{91}, ts2, "an options output for another repeater must not apply")
+	}
+}
+
+func (r *optionsRig) setDynamic(id uint, ts1, ts2 uint) {
+	r.t.Helper()
+	ptr := func(v uint) *uint {
+		if v == 0 {
+			return nil
+		}
+		return &v
+	}
+	require.NoError(r.t, r.db.Model(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}}).
+		Select("TS1DynamicTalkgroupID", "TS2DynamicTalkgroupID").
+		Updates(map[string]any{"TS1DynamicTalkgroupID": ptr(ts1), "TS2DynamicTalkgroupID": ptr(ts2)}).Error)
+}
+
+func (r *optionsRig) dynamic(id uint) (ts1, ts2 uint) {
+	r.t.Helper()
+	rpt, err := models.FindRepeaterByID(r.db, id)
+	require.NoError(r.t, err)
+	if rpt.TS1DynamicTalkgroupID != nil {
+		ts1 = *rpt.TS1DynamicTalkgroupID
+	}
+	if rpt.TS2DynamicTalkgroupID != nil {
+		ts2 = *rpt.TS2DynamicTalkgroupID
+	}
+	return ts1, ts2
+}
+
+func TestOptionsDialLinksDynamicTalkgroup(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		before   [2]uint
+		options  []string
+		ts1, ts2 uint
+	}{
+		{name: "dial", options: []string{"DIAL=91;"}, ts2: 91},
+		{name: "dial with statics", options: []string{"TS1=1;TS2=2;DIAL=91;VOICE=1;"}, ts2: 91},
+		{name: "dial per slot", options: []string{"DIAL1=3100;DIAL2=91;"}, ts1: 3100, ts2: 91},
+		{name: "default dial keys", options: []string{"default_dial_ts1=3100;default_dial_ts2=262;"}, ts1: 3100, ts2: 262},
+		{name: "default reflector", options: []string{"DEFAULT_REFLECTOR=262;"}, ts2: 262},
+		{name: "dmrplus start reflector", options: []string{"StartRef=262;RelinkTime=15;UserLink=1;TS1_1=1;"}, ts2: 262},
+		{name: "dial replaces a link", before: [2]uint{1, 2}, options: []string{"DIAL1=3100;DIAL=91;"}, ts1: 3100, ts2: 91},
+		{name: "repeated dial relinks", options: []string{"DIAL=91;", "DIAL=262;"}, ts2: 262},
+		{name: "dial zero unlinks", before: [2]uint{1, 2}, options: []string{"DIAL=0;"}, ts1: 1},
+		{name: "empty dial unlinks", before: [2]uint{1, 2}, options: []string{"DIAL1=;DIAL2=;"}},
+		{name: "prohibited dial unlinks", before: [2]uint{1, 2}, options: []string{"DIAL=9990;DIAL1=9;"}},
+		{name: "unknown talkgroup ignored", before: [2]uint{1, 2}, options: []string{"DIAL=4444;"}, ts1: 1, ts2: 2},
+		{name: "absent dial keeps", before: [2]uint{1, 2}, options: []string{"TS1=3;"}, ts1: 1, ts2: 2},
+		{name: "malformed dial keeps", before: [2]uint{1, 2}, options: []string{"DIAL=abc;"}, ts1: 1, ts2: 2},
+		{name: "overlength ignored", before: [2]uint{1, 2}, options: []string{"DIAL=91;" + strings.Repeat("X", dmrd.MaxFreeDMROptionsLen)}, ts1: 1, ts2: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newOptionsRig(t)
+			r.setDynamic(optionsRepeater, tc.before[0], tc.before[1])
+			r.setDynamic(otherRepeater, 1, 2)
+			r.login(optionsRepeater)
+			for _, o := range tc.options {
+				require.Equal(t, dmrd.CommandRPTACK, r.options(optionsRepeater, o), "options %q", o)
+			}
+			require.Eventually(t, func() bool {
+				ts1, ts2 := r.dynamic(optionsRepeater)
+				return ts1 == tc.ts1 && ts2 == tc.ts2
+			}, 2*time.Second, 10*time.Millisecond, "dynamic talkgroups should become TS1 %d TS2 %d", tc.ts1, tc.ts2)
+			ts1, ts2 := r.dynamic(otherRepeater)
+			require.Equal(t, uint(1), ts1, "the options must not change another repeater")
+			require.Equal(t, uint(2), ts2, "the options must not change another repeater")
+		})
 	}
 }

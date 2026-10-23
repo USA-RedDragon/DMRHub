@@ -166,16 +166,16 @@ func (h *Hub) routeToRepeater(packet models.Packet) {
 // routeToUser sends private traffic to the repeater where the registered
 // radio was last heard. Traffic to a radio that is not a user is dropped.
 func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) {
+	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
+	if at, ok := h.streamTargets.Load(key); ok {
+		h.publishToRepeater(at.repeater, packet)
+		return
+	}
 	user, err := models.FindUserByID(h.db, packet.Dst)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Error finding user", "error", err)
 		}
-		return
-	}
-	key := streamTarget{stream: packet.StreamID, dst: user.ID}
-	if at, ok := h.streamTargets.Load(key); ok {
-		h.publishToRepeater(at.repeater, packet)
 		return
 	}
 	repeaterID, ok := h.locateRadio(ctx, user.ID)

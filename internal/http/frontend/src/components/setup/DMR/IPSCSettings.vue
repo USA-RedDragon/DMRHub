@@ -131,7 +131,7 @@ export default {
       set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'port': value,
+          'port': Number(value) || 0,
         });
       },
     },
@@ -142,7 +142,7 @@ export default {
       set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'network-id': value,
+          'network-id': Number(value) || 0,
         });
       },
     },

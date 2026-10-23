@@ -103,3 +103,12 @@ type PositionRadioPut struct {
 	APRSSymbol      string `json:"aprs_symbol"`
 	APRSComment     string `json:"aprs_comment"`
 }
+
+// PositionPushKind is the kind of a position frame on /ws/messages.
+const PositionPushKind = "position"
+
+// PositionPush is a new position, pushed to each user who sees it.
+type PositionPush struct {
+	Kind     string   `json:"kind"`
+	Position Position `json:"position"`
+}

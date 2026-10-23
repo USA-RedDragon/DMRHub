@@ -82,6 +82,7 @@ type link struct {
 type Locator struct {
 	db      *gorm.DB
 	send    func(models.Packet)
+	notify  func(models.Position)
 	epoch   time.Time
 	mu      sync.Mutex
 	links   map[linkKey]*link
@@ -117,6 +118,14 @@ func New(db *gorm.DB, send func(models.Packet)) *Locator {
 	l.wg.Add(1)
 	go l.tick()
 	return l
+}
+
+// SetNotify sets fn to be called, on its own goroutine, with each position
+// that the Locator stores. Call it before the Locator handles packets.
+func (l *Locator) SetNotify(fn func(models.Position)) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.notify = fn
 }
 
 // Stop ends the timers of the Locator.
@@ -231,8 +240,14 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 		return
 	}
 	delete(l.retried, k.radio)
-	if _, err := models.StorePosition(l.db, pos); err != nil {
+	stored, err := models.StorePosition(l.db, pos)
+	if err != nil {
 		slog.Error("Locator: cannot store a position", "radio", k.radio, "error", err)
+		return
+	}
+	if stored && l.notify != nil {
+		notify := l.notify
+		l.wg.Go(func() { notify(pos) })
 	}
 }
 

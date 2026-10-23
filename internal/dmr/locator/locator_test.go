@@ -515,3 +515,38 @@ func TestARestartedLocatorUsesNewRequestIDs(t *testing.T) {
 	}
 	assert.Len(t, ids, 2)
 }
+
+func TestEachStoredPositionIsNotified(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now().Add(-time.Minute)))
+	var out sent
+	var mu sync.Mutex
+	var got []models.Position
+	l := locator.New(database, out.send)
+	l.SetNotify(func(p models.Position) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, p)
+	})
+	defer l.Stop()
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(got)
+	}
+
+	for _, p := range radioBursts(t, report(t, 30.2672, -97.7431), false) {
+		l.Handle(p)
+	}
+	require.Eventually(t, func() bool { return count() == 1 }, 3*time.Second, 20*time.Millisecond)
+	for _, p := range radioBursts(t, report(t, 30.2700, -97.7431), false) {
+		l.Handle(p)
+	}
+	time.Sleep(time.Second)
+	assert.Equal(t, 1, count(), "the second report came within 30 seconds and was not stored")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, uint(radio), got[0].RadioID)
+	assert.InDelta(t, 30.2672, got[0].Latitude, 1e-4)
+}

@@ -32,7 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const burstLatencyLimit = 150 * time.Millisecond
+// burstLatencyLimit is how soon a burst must reach the other repeater.
+const burstLatencyLimit = raceSlowdown * 150 * time.Millisecond
 
 func makeBurst(src, dst, streamID uint, group bool, frame dmrconst.FrameType, value uint, seq uint) models.Packet {
 	p := models.Packet{

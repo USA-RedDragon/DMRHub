@@ -148,6 +148,16 @@ func (c *MMDVMClient) SendRaw(p []byte) error {
 	return nil
 }
 
+// SendOptions sends an RPTO with the options text for the repeater ID of
+// the client.
+func (c *MMDVMClient) SendOptions(text string) error {
+	p, err := (&dmrd.Control{Command: dmrd.CommandRPTO, ID: c.RepeaterID, Text: []byte(text)}).AppendBinary(nil, dmrd.DialectMMDVM)
+	if err != nil {
+		return fmt.Errorf("building RPTO: %w", err)
+	}
+	return c.SendRaw(p)
+}
+
 // Ping sends an RPTPING and reports whether an MSTPONG came back within
 // timeout, that is whether the session is still up.
 func (c *MMDVMClient) Ping(timeout time.Duration) bool {

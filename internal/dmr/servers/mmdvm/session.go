@@ -167,7 +167,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 		case dmrdsession.OutputDown:
 			s.down(ctx, l, o)
 		case dmrdsession.OutputOptions:
-			slog.Info("Repeater options", "repeaterID", o.ID, "options", string(o.Packet))
+			s.options(ctx, l, o)
 		case dmrdsession.OutputData:
 			s.data(ctx, o)
 		case dmrdsession.OutputMessage:

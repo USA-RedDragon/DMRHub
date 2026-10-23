@@ -65,6 +65,17 @@ func FindTalkgroupByID(db *gorm.DB, id uint) (Talkgroup, error) {
 	return talkgroup, err
 }
 
+// FindTalkgroupsByIDs returns the talkgroups of ids that exist, in order of
+// ID.
+func FindTalkgroupsByIDs(db *gorm.DB, ids []uint) ([]Talkgroup, error) {
+	talkgroups := []Talkgroup{}
+	if len(ids) == 0 {
+		return talkgroups, nil
+	}
+	err := db.Where("id IN ?", ids).Order("id asc").Find(&talkgroups).Error
+	return talkgroups, err
+}
+
 func DeleteTalkgroup(db *gorm.DB, id uint) ([]uint, error) {
 	var affectedRepeaterIDs []uint
 	err := db.Transaction(func(tx *gorm.DB) error {

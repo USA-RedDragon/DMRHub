@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -187,4 +188,35 @@ func TestPrivateStreamKeepsItsTargetWhenTheRadioMoves(t *testing.T) {
 
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 4), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100004, "a new stream goes where the radio is now")
+}
+
+func countTableQueries(t *testing.T, database *gorm.DB, table string) *atomic.Int64 {
+	t.Helper()
+	var n atomic.Int64
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_"+table, func(tx *gorm.DB) {
+		if tx.Statement.Table == table {
+			n.Add(1)
+		}
+	}))
+	return &n
+}
+
+func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+
+	burst := dataHeader(1000001, 1000002, 100004, 2)
+	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "the first burst of the stream")
+
+	users := countTableQueries(t, database, "users")
+	for seq := uint(1); seq < 10; seq++ {
+		burst.Seq = seq
+		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "a later burst of the stream")
+	}
+	assert.Zero(t, users.Load(), "user lookups after the first burst of a private stream")
 }

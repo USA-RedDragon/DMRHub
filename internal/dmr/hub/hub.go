@@ -224,6 +224,12 @@ func (h *Hub) UnregisterServer(name string) {
 // deliverToServer pushes a routed packet to a server's channel (last-mile delivery).
 // This is called by subscription manager goroutines, never as primary routing.
 func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
+	h.deliverToServerUnless(nil, serverName, rp)
+}
+
+// deliverToServerUnless is deliverToServer, giving up on a full channel
+// when abort is closed.
+func (h *Hub) deliverToServerUnless(abort <-chan struct{}, serverName string, rp RoutedPacket) {
 	h.mu.RLock()
 	entry, ok := h.servers[serverName]
 	h.mu.RUnlock()
@@ -243,6 +249,7 @@ func (h *Hub) deliverToServer(serverName string, rp RoutedPacket) {
 
 	select {
 	case entry.ch <- rp:
+	case <-abort:
 	case <-h.done:
 		slog.Debug("Hub stopping, aborting packet delivery",
 			"server", serverName,

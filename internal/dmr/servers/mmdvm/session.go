@@ -585,14 +585,8 @@ func (s *Server) ping(ctx context.Context, l *link) {
 	repeater.IP, repeater.Port = l.ep.kvAddr()
 	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 
-	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
-	if err != nil {
-		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
-		return
-	}
-	dbRepeater.LastPing = now
-	if err := s.DB.Save(&dbRepeater).Error; err != nil {
-		slog.Error("Error saving repeater", "repeaterID", repeaterID, "error", err)
+	if err := s.DB.Model(&models.Repeater{}).Where("id = ?", repeaterID).UpdateColumn("last_ping", now).Error; err != nil {
+		slog.Error("Error saving the last ping of a repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
 

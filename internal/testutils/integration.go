@@ -22,6 +22,8 @@ package testutils
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -29,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
@@ -133,7 +136,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	t.Cleanup(func() {
 		_ = obServer.Stop(context.Background())
 		_ = ipscServer.Stop(context.Background())
-		_ = mmdvmServer.Stop(context.Background())
+		_ = stack.MMDVMServer.Stop(context.Background())
 		h.Stop(context.Background())
 		ct.Stop()
 		store.Stop()
@@ -215,6 +218,50 @@ func (s *IntegrationStack) SpawnFullReplica(t *testing.T) *Replica {
 	t.Helper()
 	r := s.SpawnSecondReplica(t)
 	return &r
+}
+
+// RestartMode is how RestartMMDVM stops the MMDVM server.
+type RestartMode int
+
+const (
+	// RestartClose stops the server as a lone instance does: it sends MSTCL
+	// to its repeaters, which log in again.
+	RestartClose RestartMode = iota
+	// RestartHandoff stops the server as when another replica is alive: it
+	// sends nothing, and the new server resumes the sessions from the KV
+	// records.
+	RestartHandoff
+	// RestartLost stops the server without MSTCL and drops the KV records
+	// of the repeaters, as after a crash, so the new server answers their
+	// pings with MSTNAK.
+	RestartLost
+)
+
+// RestartMMDVM stops the MMDVM server as mode says and starts a new one on
+// the same address, as a restart of the hub does. The stack stops the new
+// server at the end of the test.
+func (s *IntegrationStack) RestartMMDVM(t *testing.T, mode RestartMode) {
+	t.Helper()
+	ctx := servers.WithGracefulHandoff(context.Background(), mode != RestartClose)
+	require.NoError(t, s.MMDVMServer.Stop(ctx))
+	if mode == RestartLost {
+		kv := servers.MakeKVClient(s.KV)
+		ids, err := kv.ListRepeaters(ctx)
+		require.NoError(t, err)
+		for _, id := range ids {
+			kv.DeleteRepeater(ctx, id)
+		}
+	}
+
+	_, port, err := net.SplitHostPort(s.MMDVMAddr)
+	require.NoError(t, err)
+	cfg := *s.Config
+	cfg.DMR.MMDVM.Port, err = strconv.Atoi(port)
+	require.NoError(t, err)
+	m, err := mmdvm.MakeServer(&cfg, s.Hub, s.DB, s.PubSub, s.KV, "test", "test")
+	require.NoError(t, err)
+	require.NoError(t, m.Start(context.Background()))
+	s.MMDVMServer = &m
 }
 
 // StartServers starts the Hub and the MMDVM, IPSC, and OpenBridge servers.

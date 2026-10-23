@@ -143,4 +143,26 @@ describe('Last Heard & Main Page', () => {
     cy.get('[data-testid="type-idle"]').check();
     cy.wait('@getLastHeard').its('request.url').should('include', 'idle=true');
   });
+
+  it('says which repeaters a call was not sent to and why', () => {
+    cy.fixture('lastheard-kinds.json').then((data) => {
+      data.calls[1].undeliverable = ['ipsc:311304200:no_ipsc_form'];
+      data.calls[2].undeliverable = ['ipsc:311304200:encode_failed', 'ipsc:311304201:fec_uncorrectable'];
+      cy.intercept('GET', '/api/v1/lastheard*', { statusCode: 200, body: data }).as('getLastHeard');
+    });
+
+    cy.visit('/lastheard');
+    cy.wait('@getLastHeard');
+
+    cy.get('[data-testid="undeliverable"]').should('have.length', 2);
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 311304200')
+      .should('be.visible')
+      .and('have.attr', 'title', 'Not sent to IPSC repeater 311304200: the IPSC link cannot carry this kind of burst');
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to 2 repeaters')
+      .should('be.visible')
+      .and('have.attr', 'title')
+      .and('include', 'the burst could not be prepared for the IPSC link')
+      .and('not.include', 'encode_failed');
+    cy.contains('ipsc:').should('not.exist');
+  });
 });

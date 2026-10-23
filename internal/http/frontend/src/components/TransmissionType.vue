@@ -27,12 +27,26 @@
       data-testid="type-badge"
     >{{ label }}</span>
     <span v-for="(line, i) in lines" :key="i" class="text-xs text-muted-foreground">{{ line }}</span>
+    <span
+      v-if="undelivered"
+      class="text-xs text-muted-foreground"
+      :title="undelivered.detail"
+      data-testid="undeliverable"
+    >{{ undelivered.short }}</span>
   </div>
 </template>
 
 <script lang="ts">
 import type { PropType } from 'vue';
-import { TYPE_COLORS, typeLabel, typeLines, typeOf, type CallRow } from '@/lib/transmissions';
+import {
+  TYPE_COLORS,
+  typeLabel,
+  typeLines,
+  typeOf,
+  undeliverableSummary,
+  type CallRow,
+  type UndeliverableLabel,
+} from '@/lib/transmissions';
 
 export default {
   name: 'TransmissionType',
@@ -51,6 +65,9 @@ export default {
     },
     lines(): string[] {
       return typeLines(this.call);
+    },
+    undelivered(): UndeliverableLabel | null {
+      return undeliverableSummary(this.call);
     },
     colors() {
       return TYPE_COLORS[this.type];

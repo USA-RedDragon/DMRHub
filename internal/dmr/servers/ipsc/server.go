@@ -109,10 +109,9 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		egress:     map[uint32]*peerTranslator{},
 	}
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
-		ID:              s.localID,
-		MaxPeers:        ipscsession.MaxPeersLimit,
-		AdoptKnown:      true,
-		RegisterVersion: [4]byte{0x04, 0x02, 0x04, 0x01},
+		ID:         s.localID,
+		MaxPeers:   ipscsession.MaxPeersLimit,
+		AdoptKnown: true,
 	})
 	if err != nil {
 		slog.Error("error creating IPSC session", "error", err)

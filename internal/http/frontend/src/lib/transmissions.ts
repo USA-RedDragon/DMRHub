@@ -120,19 +120,17 @@ const UNKNOWN_NAMES: Record<string, string> = {
   frame_type_3: 'Frame type 3',
 };
 
-const UNDELIVERABLE_REASONS: Record<string, string> = {
-  invalid_data_type: 'invalid data type',
-  no_ipsc_form: 'no IPSC form',
-  frame_type_3: 'frame type 3',
-  fec_uncorrectable: 'FEC failed',
-  slot_type: 'bad slot type',
-  build_failed: 'cannot build',
+const UNDELIVERABLE_REASONS: Record<string, (link: string) => string> = {
+  invalid_data_type: () => 'the burst has an invalid data type',
+  no_ipsc_form: (link) => `the ${link} cannot carry this kind of burst`,
+  frame_type_3: () => 'the burst has an unknown frame type',
+  fec_uncorrectable: () => 'the burst was too damaged to repair',
+  slot_type: (link) => `the burst could not be rebuilt for the ${link}`,
 };
 
 const SERVER_NAMES: Record<string, string> = {
   ipsc: 'IPSC',
   mmdvm: 'MMDVM',
-  openbridge: 'OpenBridge',
 };
 
 /** humanize turns a sub kind such as c_bcast into C bcast for display. */
@@ -141,11 +139,57 @@ export function humanize(sub: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** undeliverableText shows a target such as ipsc:311304200:no_ipsc_form. */
-export function undeliverableText(target: string): string {
-  const [server = '', id = '', reason = ''] = target.split(':');
-  const name = `${SERVER_NAMES[server] || server} ${id}`.trim();
-  return reason ? `${name} (${UNDELIVERABLE_REASONS[reason] || humanize(reason)})` : name;
+export type UndeliverableLabel = {
+  short: string;
+  detail: string;
+};
+
+function repeaterCallsign(row: CallRow, id: number): string {
+  if (row.is_to_repeater && row.to_repeater?.id === id && row.to_repeater.callsign) {
+    return row.to_repeater.callsign;
+  }
+  if (row.repeater?.id === id && row.repeater.callsign) {
+    return row.repeater.callsign;
+  }
+  return '';
+}
+
+/**
+ * undeliverableLabel words a last heard undeliverable target such as
+ * ipsc:311304200:no_ipsc_form: short names the repeater, detail adds why.
+ */
+export function undeliverableLabel(target: string, row: CallRow): UndeliverableLabel {
+  const [server = '', id = '', ...rest] = target.split(':');
+  const reason = rest.join(':');
+  const serverName = SERVER_NAMES[server] || '';
+  const kind = serverName ? `${serverName} repeater` : 'repeater';
+  let who: string;
+  if (!id) {
+    who = serverName ? `an ${kind}` : `a ${kind}`;
+  } else {
+    const callsign = /^\d+$/.test(id) ? repeaterCallsign(row, Number(id)) : '';
+    who = callsign ? `${kind} ${callsign} (${id})` : `${kind} ${id}`;
+  }
+  const link = serverName ? `${serverName} link` : 'link';
+  const why = UNDELIVERABLE_REASONS[reason]?.(link) ?? `the burst could not be prepared for the ${link}`;
+  const short = `Not sent to ${who}`;
+  return { short, detail: `${short}: ${why}` };
+}
+
+/** undeliverableSummary words a call's undeliverable list, or is null if it is empty. */
+export function undeliverableSummary(row: CallRow): UndeliverableLabel | null {
+  const targets = row.undeliverable || [];
+  if (!targets.length) {
+    return null;
+  }
+  const labels = targets.map((t) => undeliverableLabel(t, row));
+  if (labels.length === 1) {
+    return labels[0]!;
+  }
+  return {
+    short: `Not sent to ${labels.length} repeaters`,
+    detail: labels.map((l) => l.detail).join('\n'),
+  };
 }
 
 const POSITION_ERRORS: Record<number, string> = {
@@ -333,9 +377,6 @@ export function typeLines(row: CallRow): string[] {
       break;
     default:
       lines = unknownLines(row);
-  }
-  if (row.undeliverable && row.undeliverable.length) {
-    lines.push(`Not delivered: ${row.undeliverable.map(undeliverableText).join(', ')}`);
   }
   return lines;
 }

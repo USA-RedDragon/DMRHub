@@ -19,7 +19,12 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import {
+  adminSearchQuery,
   applyMessageEvent,
+  dayStart,
+  hexDump,
+  sapLabel,
+  transportLabel,
   boxPageCount,
   getBox,
   getStats,
@@ -117,6 +122,32 @@ describe('messages service', () => {
     const res = applyMessageEvent(rows, { boxes: ['outbox'], message: msg(9) }, 'inbox', 1, 25, 1);
     expect(res.rows).toBe(rows);
     expect(res.added).toBe(false);
+  });
+
+  it('builds the admin search query and leaves out empty filters', () => {
+    const q = new URLSearchParams(adminSearchQuery({ src: '', dst: ' 3100 ', format: 'tms', text: '' }, 2, 100));
+    expect([...q.keys()]).toEqual(['dst', 'format', 'page', 'limit']);
+    expect(q.get('dst')).toBe('3100');
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+    try {
+      expect(dayStart('2026-10-22', 1)).toBe('2026-10-23T05:00:00.000Z');
+      expect(dayStart('2026-11-01')).toBe('2026-11-01T05:00:00.000Z');
+      expect(dayStart('2026-11-01', 1)).toBe('2026-11-02T06:00:00.000Z');
+    } finally {
+      process.env.TZ = tz;
+    }
+    expect(dayStart('bad')).toBeUndefined();
+  });
+
+  it('names SAPs and networks and dumps raw bytes', () => {
+    expect(sapLabel(4)).toBe('IP (4)');
+    expect(sapLabel(10)).toBe('Short data (10)');
+    expect(sapLabel(7)).toBe('SAP 7');
+    expect(sapLabel(null)).toBe('None');
+    expect(transportLabel('openbridge')).toBe('OpenBridge');
+    expect(hexDump('0102')).toBe('0000  01 02');
+    expect(hexDump('00'.repeat(17)).split('\n')[1]).toBe('0010  00');
   });
 
   it('does not put a new message on a later page', () => {

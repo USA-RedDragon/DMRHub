@@ -217,6 +217,15 @@
                 User Approvals
               </router-link>
               <router-link
+                to="/admin/messages"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/messages' }"
+                @click="mobileOpen = false"
+              >
+                <Mail class="h-4 w-4" />
+                Messages
+              </router-link>
+              <router-link
                 to="/admin/setup"
                 class="mobile-nav-link"
                 :class="{ active: route.path === '/admin/setup' }"
@@ -468,6 +477,15 @@
                   @click="closeMenus"
                 >
                   User Approvals
+                </router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link
+                  to="/admin/messages"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Messages
                 </router-link>
               </DropdownMenuItem>
               <DropdownMenuItem as-child>

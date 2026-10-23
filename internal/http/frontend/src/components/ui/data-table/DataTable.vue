@@ -37,6 +37,8 @@ const props = withDefaults(
     pageCount?: number
     manualPagination?: boolean
     summary?: string
+    rowClickable?: boolean
+    rowSelected?: (row: TData) => boolean
   }>(),
   {
     loading: false,
@@ -47,12 +49,15 @@ const props = withDefaults(
     pageCount: -1,
     manualPagination: false,
     summary: "",
+    rowClickable: false,
+    rowSelected: undefined,
   },
 )
 
 const emit = defineEmits<{
   (e: "update:pageIndex", value: number): void
   (e: "update:pageSize", value: number): void
+  (e: "rowClick", value: TData): void
 }>()
 
 const sorting = ref<SortingState>([])
@@ -109,6 +114,30 @@ const table = useVueTable({
   },
 })
 
+const interactive = "a, button, input, select, textarea, [role=button], [role=switch]"
+
+function onRowClick(event: MouseEvent, row: TData) {
+  if (!props.rowClickable) {
+    return
+  }
+  const target = event.target as Element | null
+  if (target && target.closest && target.closest(interactive)) {
+    return
+  }
+  emit("rowClick", row)
+}
+
+function onRowKeydown(event: KeyboardEvent, row: TData) {
+  if (!props.rowClickable || event.target !== event.currentTarget) {
+    return
+  }
+  if (event.key !== "Enter" && event.key !== " ") {
+    return
+  }
+  event.preventDefault()
+  emit("rowClick", row)
+}
+
 const visibleRows = computed(() => {
   return table.getRowModel().rows
 })
@@ -135,7 +164,15 @@ const visibleRows = computed(() => {
         <TableRow v-else-if="visibleRows.length === 0">
           <TableCell :colspan="columns.length" class="text-center">{{ emptyText }}</TableCell>
         </TableRow>
-        <TableRow v-for="row in visibleRows" :key="row.id">
+        <TableRow
+          v-for="row in visibleRows"
+          :key="row.id"
+          :class="rowClickable ? 'cursor-pointer' : undefined"
+          :tabindex="rowClickable ? 0 : undefined"
+          :data-state="rowSelected && rowSelected(row.original) ? 'selected' : undefined"
+          @click="onRowClick($event, row.original)"
+          @keydown="onRowKeydown($event, row.original)"
+        >
           <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
             <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
           </TableCell>

@@ -218,6 +218,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/UsersApprovalPage.vue'),
     },
     {
+      path: '/admin/messages',
+      name: 'AdminMessages',
+      component: () => import('@/views/admin/MessagesPage.vue'),
+    },
+    {
       path: '/admin/setup',
       name: 'SetupWizard',
       component: () => import('@/views/SetupWizard.vue'),

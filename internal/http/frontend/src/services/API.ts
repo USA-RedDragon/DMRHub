@@ -43,6 +43,7 @@ instance.interceptors.response.use(
       window.location.pathname !== '/register' &&
       window.location.pathname !== '/settings' &&
       window.location.pathname !== '/messages' &&
+      window.location.pathname !== '/admin/messages' &&
       (status === 401 || status === 403)
     ) {
       window.location.pathname = '/login';

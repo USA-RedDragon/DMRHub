@@ -162,3 +162,112 @@ export function applyMessageEvent<T extends Message>(
   }
   return { rows: [event.message as T, ...rows].slice(0, limit), added: true };
 }
+
+export type MessageTransport = 'mmdvm' | 'ipsc' | 'openbridge';
+
+export type AdminMessage = Message & {
+  transmission_id: number | null;
+  repeater_id: number;
+  slot: number;
+  transport: MessageTransport | string;
+  stream_id: number;
+  sap: number | null;
+  bad_crc: boolean;
+  blocks: number;
+};
+
+export type AdminMessageDetail = AdminMessage & {
+  raw: string;
+};
+
+export type AdminMessageFilters = {
+  src?: string;
+  dst?: string;
+  format?: string;
+  from?: string;
+  to?: string;
+  text?: string;
+};
+
+const TRANSPORT_LABELS: Record<string, string> = {
+  mmdvm: 'MMDVM',
+  ipsc: 'IPSC',
+  openbridge: 'OpenBridge',
+};
+
+export function transportLabel(transport: string): string {
+  return TRANSPORT_LABELS[transport] ?? transport;
+}
+
+const SAP_NAMES: Record<number, string> = {
+  0: 'UDT',
+  2: 'TCP/IP header compression',
+  3: 'UDP/IP header compression',
+  4: 'IP',
+  5: 'ARP',
+  9: 'Proprietary',
+  10: 'Short data',
+};
+
+export function sapLabel(sap: number | null | undefined): string {
+  if (sap === null || sap === undefined) {
+    return 'None';
+  }
+  const name = SAP_NAMES[sap];
+  return name ? `${name} (${sap})` : `SAP ${sap}`;
+}
+
+/** hexDump formats a hex string as lines of 16 octets, each line led by its offset. */
+export function hexDump(hex: string): string {
+  const clean = hex.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
+  const octets: string[] = [];
+  for (let i = 0; i + 1 < clean.length; i += 2) {
+    octets.push(clean.slice(i, i + 2));
+  }
+  const lines: string[] = [];
+  for (let i = 0; i < octets.length; i += 16) {
+    lines.push(`${i.toString(16).padStart(4, '0')}  ${octets.slice(i, i + 16).join(' ')}`);
+  }
+  return lines.join('\n');
+}
+
+/** dayStart returns the RFC 3339 time of the local midnight that starts a yyyy-mm-dd day, moved by extraDays. */
+export function dayStart(day: string, extraDays = 0): string | undefined {
+  const [y, m, d] = day.split('-').map(Number);
+  if (!y || !m || !d) {
+    return undefined;
+  }
+  return new Date(y, m - 1, d + extraDays).toISOString();
+}
+
+export function adminSearchQuery(filters: AdminMessageFilters, page: number, limit: number): string {
+  const query = new URLSearchParams();
+  const src = filters.src?.trim();
+  const dst = filters.dst?.trim();
+  const text = filters.text?.trim();
+  if (src) query.set('src', src);
+  if (dst) query.set('dst', dst);
+  if (filters.format) query.set('format', filters.format);
+  const from = filters.from ? dayStart(filters.from) : undefined;
+  const to = filters.to ? dayStart(filters.to, 1) : undefined;
+  if (from) query.set('from', from);
+  if (to) query.set('to', to);
+  if (text) query.set('text', text);
+  query.set('page', String(page));
+  query.set('limit', String(limit));
+  return query.toString();
+}
+
+export async function searchAdminMessages(
+  filters: AdminMessageFilters,
+  page = 1,
+  limit = 25,
+): Promise<MessagePage<AdminMessage>> {
+  const res = await API.get(`/admin/messages?${adminSearchQuery(filters, page, limit)}`);
+  return { total: res.data.total ?? 0, messages: res.data.messages ?? [] };
+}
+
+export async function getAdminMessage(id: number): Promise<AdminMessageDetail> {
+  const res = await API.get(`/admin/messages/${id}`);
+  return res.data;
+}

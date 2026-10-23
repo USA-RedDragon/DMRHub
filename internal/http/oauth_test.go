@@ -32,6 +32,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/messages"
+	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -352,4 +355,38 @@ func TestOAuthTokenOpensTheMessagesWebsocketFromAnotherSite(t *testing.T) {
 	conn, resp = testutils.DialWSProtocols(t, server.URL, "/ws/messages", appOrigin, "dmrhub")
 	assert.Nil(t, conn)
 	assert.NotEqual(t, http.StatusSwitchingProtocols, resp.StatusCode)
+}
+
+func TestOAuthTokenGetsOnlyTheFramesOfItsScopesOnTheMessagesWebsocket(t *testing.T) {
+	t.Parallel()
+	e := newOAuthEnv(t)
+	server := httptest.NewServer(e.router)
+	defer server.Close()
+	var admin models.User
+	require.NoError(t, e.tdb.DB().Where("username = ?", "Admin").Take(&admin).Error)
+
+	for scope, want := range map[string]string{
+		"positions:read": `{"kind":"position"}`,
+		"messages:read":  `{"boxes":["inbox"]}`,
+	} {
+		tok := e.token(t, scope)
+		conn, resp := testutils.DialWSProtocols(t, server.URL, "/ws/messages", appOrigin, "dmrhub", "dmrhub.bearer."+tok.AccessToken)
+		require.NotNil(t, conn, "status %d", resp.StatusCode)
+		conn.WriteText(t, "PING")
+		text, err := conn.ReadText(3 * time.Second)
+		require.NoError(t, err)
+		require.Equal(t, "PONG", text)
+
+		require.NoError(t, e.tdb.PubSub().Publish(positions.Topic(admin.ID), []byte(`{"kind":"position"}`)))
+		require.NoError(t, e.tdb.PubSub().Publish(messages.Topic(admin.ID), []byte(`{"boxes":["inbox"]}`)))
+		var got []string
+		for {
+			text, err := conn.ReadText(500 * time.Millisecond)
+			if err != nil {
+				break
+			}
+			got = append(got, text)
+		}
+		assert.Equal(t, []string{want}, got, scope)
+	}
 }

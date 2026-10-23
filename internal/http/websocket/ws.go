@@ -114,7 +114,11 @@ func createHandler(config *config.Config, ws Websocket, public bool) func(*gin.C
 		conn.SetReadLimit(readLimit)
 		value, _ := c.Get(userWatchKey)
 		watch, _ := value.(*userWatch)
-		handler.serve(session, c.Request, conn, watch)
+		r := c.Request
+		if g, ok := utils.Grant(c); ok {
+			r = r.WithContext(utils.ContextWithGrant(r.Context(), g))
+		}
+		handler.serve(session, r, conn, watch)
 	}
 }
 

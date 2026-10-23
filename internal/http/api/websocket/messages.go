@@ -23,14 +23,19 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
+	"github.com/USA-RedDragon/DMRHub/internal/oauth"
+	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 )
 
 // MessagesWebsocket pushes to each connection the new and changed messages
-// that its user sees in a box. Each connection keeps its own subscription.
+// that its user sees in a box, and the new positions of the radios that the
+// user sees. A connection that an app opened with a token gets only what
+// its scopes allow. Each connection keeps its own subscriptions.
 type MessagesWebsocket struct {
 	websocket.Websocket
 	pubsub pubsub.PubSub
@@ -44,16 +49,30 @@ func CreateMessagesWebsocket(ps pubsub.PubSub) *MessagesWebsocket {
 func (c *MessagesWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *MessagesWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, session sessions.Session) func() {
+func (c *MessagesWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, session sessions.Session) func() {
 	userID, ok := session.Get("user_id").(uint)
 	if !ok {
 		return nil
 	}
+	var topics []string
+	grant, viaToken := utils.GrantFromContext(r.Context()) //nolint:contextcheck // reads the grant, the context is not passed on
+	if !viaToken || grant.Allows(oauth.ScopeMessagesRead) {
+		topics = append(topics, messages.Topic(userID))
+	}
+	if !viaToken || grant.Allows(oauth.ScopePositionsRead) {
+		topics = append(topics, positions.Topic(userID))
+	}
 	ctx, cancel := context.WithCancel(ctx)
-	subscription := c.pubsub.Subscribe(messages.Topic(userID))
-	go forward(ctx, subscription, w)
+	subs := make([]pubsub.Subscription, 0, len(topics))
+	for _, topic := range topics {
+		sub := c.pubsub.Subscribe(topic)
+		subs = append(subs, sub)
+		go forward(ctx, sub, w)
+	}
 	return func() {
-		closeSubscription(subscription, "messages")
+		for _, sub := range subs {
+			closeSubscription(sub, "messages")
+		}
 		cancel()
 	}
 }

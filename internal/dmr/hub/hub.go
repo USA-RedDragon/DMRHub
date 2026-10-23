@@ -148,6 +148,9 @@ type Hub struct {
 	streamTargets         *xsync.Map[streamTarget, targetAt]
 	streamClaims          *xsync.Map[claimKey, streamClaim]
 	loopLogged            *xsync.Map[uint, time.Time]
+
+	repeaters *repeaterCache
+	origin    string
 }
 
 // NewHub creates a new Hub.
@@ -173,6 +176,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
+	h.repeaters = newRepeaterCache()
+	h.origin = newOrigin()
+	go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
 	if ct != nil {
 		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
 			ct.Undeliverable(p, fmt.Sprintf("%s:%d:%s", target, p.Repeater, reason))
@@ -399,6 +405,7 @@ func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
 // Protocol servers should call this when a repeater connects.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
 	h.claimPeerOwnership(ctx, repeaterID)
+	h.repeaters.invalidate(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 }
 
@@ -408,11 +415,16 @@ func (h *Hub) DeactivateRepeater(ctx context.Context, repeaterID uint) {
 	h.deactivateRepeater(ctx, repeaterID)
 }
 
-// ReloadRepeater re-reads a repeater's talkgroup assignments from the database
-// and adjusts subscriptions accordingly. Only reloads if the repeater is currently
-// active (connected). Call this after any DB change to a repeater's talkgroup
-// configuration (add/remove static TGs, link/unlink dynamic TGs).
+// ReloadRepeater re-reads a repeater from the database on every replica and
+// adjusts the subscriptions of the replica where it is active. Call it after
+// any database change to a repeater that routing reads: its talkgroups,
+// owner, type or simplex flag, or its creation or deletion.
 func (h *Hub) ReloadRepeater(ctx context.Context, repeaterID uint) {
+	h.repeaterChanged(repeaterID)
+	h.reloadLocal(ctx, repeaterID)
+}
+
+func (h *Hub) reloadLocal(ctx context.Context, repeaterID uint) {
 	h.subscriptionMgr.mu.Lock()
 	defer h.subscriptionMgr.mu.Unlock()
 

@@ -78,7 +78,7 @@ func (w *watchedPubSub) Subscribe(topic string) pubsub.Subscription {
 	return sub
 }
 
-func makeTestHubWrapping(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()

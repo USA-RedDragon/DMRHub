@@ -116,3 +116,15 @@ func BenchmarkGroupBurstFanout(b *testing.B) {
 		})
 	}
 }
+
+func TestGroupBurstQueriesDoNotGrowWithRepeaters(t *testing.T) {
+	t.Parallel()
+	f := setupFanout(t, 10)
+	const bursts = 20
+	start := f.queries.Load()
+	for range bursts {
+		f.burst(t)
+	}
+	perBurst := float64(f.queries.Load()-start) / bursts
+	require.LessOrEqual(t, perBurst, 1.5, "queries per burst to 10 repeaters")
+}

@@ -20,12 +20,14 @@
 package ipsc
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 )
 
@@ -164,5 +166,54 @@ func TestCleanupKeepsATranslatorInUse(t *testing.T) {
 	s.cleanupStaleStreams()
 	if s.egressTranslator(200001) != first {
 		t.Fatal("cleanup dropped the translator of a peer that was just given it")
+	}
+}
+
+func reportsOf(tr *IPSCTranslator) *[]string {
+	var reasons []string
+	tr.onUndeliverable = func(_ models.Packet, reason string) { reasons = append(reasons, reason) }
+	return &reasons
+}
+
+func TestTranslateToIPSCReportsADataBurstInAVoiceStream(t *testing.T) {
+	t.Parallel()
+	var c pdu.CSBK
+	c.LastBlock = true
+	if err := c.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: 91, SourceAddress: 3191868}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := layer2.BuildBurst(&c, 1, layer2.SyncSourceMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := newTestTranslator(t)
+	reasons := reportsOf(tr)
+	pkt := uncarriedPacket(t, uncarried{"voice", dmrconst.FrameVoice, 1})
+	pkt.DMRData = raw
+	if out := tr.TranslateToIPSC(pkt); len(out) != 0 {
+		t.Fatalf("%d IPSC packets, want none", len(out))
+	}
+	if len(*reasons) != 1 || (*reasons)[0] != reasonDataInVoice {
+		t.Fatalf("reports %v, want [%s]", *reasons, reasonDataInVoice)
+	}
+}
+
+func TestBurstsThatDoNotBuildAreReported(t *testing.T) {
+	t.Parallel()
+	pkt := uncarriedPacket(t, uncarried{"data", dmrconst.FrameDataSync, enums.DataTypeCSBK})
+
+	tr := newTestTranslator(t)
+	reasons := reportsOf(tr)
+	if out := tr.buildIPSCDataPacket(pkt, &streamState{}, enums.DataTypeRate1); out != nil {
+		t.Fatal("SetRawBurst took a rate 1 burst")
+	}
+	if out := tr.buildVoiceLC(pkt, &streamState{}, enums.DataTypeRate34, false); out != nil {
+		t.Fatal("BuildDataBurst took a rate 3/4 LC")
+	}
+	if out := tr.encodeUser(pkt, &ipscwire.User{}); out != nil {
+		t.Fatal("AppendBinary took a packet without an opcode")
+	}
+	if want := []string{reasonBuild, reasonBuild, reasonEncode}; !slices.Equal(*reasons, want) {
+		t.Fatalf("reports %v, want %v", *reasons, want)
 	}
 }

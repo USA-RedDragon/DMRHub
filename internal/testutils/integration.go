@@ -146,12 +146,17 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	return stack
 }
 
-// Replica is a second running copy of the app made by SpawnSecondReplica.
+// Replica is a second running copy of the app made by SpawnSecondReplica,
+// with its own Hub, call tracker and MMDVM, IPSC and OpenBridge servers.
 type Replica struct {
-	Hub            *hub.Hub
-	MMDVMAddr      string
-	IPSCAddr       string
-	OpenBridgeAddr string
+	Hub              *hub.Hub
+	CallTracker      *calltracker.CallTracker
+	MMDVMServer      *mmdvm.Server
+	IPSCServer       *ipsc.IPSCServer
+	OpenBridgeServer *openbridge.Server
+	MMDVMAddr        string
+	IPSCAddr         string
+	OpenBridgeAddr   string
 }
 
 // SpawnSecondReplica creates a second Hub with MMDVM, IPSC and OpenBridge
@@ -193,11 +198,23 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	})
 
 	return Replica{
-		Hub:            hub2,
-		MMDVMAddr:      mmdvm2.Server.LocalAddr().String(),
-		IPSCAddr:       ipsc2.Addr().String(),
-		OpenBridgeAddr: ob2.Server.LocalAddr().String(),
+		Hub:              hub2,
+		CallTracker:      ct2,
+		MMDVMServer:      &mmdvm2,
+		IPSCServer:       ipsc2,
+		OpenBridgeServer: &ob2,
+		MMDVMAddr:        mmdvm2.Server.LocalAddr().String(),
+		IPSCAddr:         ipsc2.Addr().String(),
+		OpenBridgeAddr:   ob2.Server.LocalAddr().String(),
 	}
+}
+
+// SpawnFullReplica starts a second replica, as SpawnSecondReplica does, and
+// returns it.
+func (s *IntegrationStack) SpawnFullReplica(t *testing.T) *Replica {
+	t.Helper()
+	r := s.SpawnSecondReplica(t)
+	return &r
 }
 
 // StartServers starts the Hub and the MMDVM, IPSC, and OpenBridge servers.

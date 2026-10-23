@@ -34,12 +34,12 @@ import (
 )
 
 // trackCall queues the packet for the call tracker, which records every
-// kind of transmission.
-func (h *Hub) trackCall(ctx context.Context, packet models.Packet, sourceName string) {
+// kind of transmission, and sets its TrackID.
+func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName string) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.TrackCall")
 	defer span.End()
 
-	h.callTracker.Track(ctx, packet, sourceName, h.getServerRole(sourceName) == RolePeer)
+	packet.TrackID = h.callTracker.Track(ctx, *packet, sourceName, h.getServerRole(sourceName) == RolePeer)
 }
 
 // RoutePacket is the central routing method for all incoming DMR packets.
@@ -64,7 +64,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		defer h.streamEnded(packet.StreamID)
 	}
 
-	h.trackCall(ctx, packet, sourceName)
+	h.trackCall(ctx, &packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {

@@ -94,7 +94,7 @@ func (s *shard) updateVoice(r *row, t *task) {
 	call := r.call
 	packet := t.p
 	r.last = t.at
-	s.streams[packet.StreamID] = r
+	s.note(t, r)
 	if call.LastSeq == packet.Seq {
 		return
 	}

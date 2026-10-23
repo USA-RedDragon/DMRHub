@@ -535,6 +535,31 @@ func TestTrackUndeliverable(t *testing.T) {
 	assert.Equal(t, []string{"ipsc:311304200", "ipsc:311304201"}, c.Undeliverable)
 }
 
+func TestUndeliverableGoesToTheRowOfItsBurst(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userB, userA, false, 7036)
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("first")})
+	ids := make([]uint64, 0, len(bursts))
+	var last models.Packet
+	for _, b := range bursts {
+		last = s.packet(dmrconst.FrameDataSync, uint(b.SlotType().DataType), b)
+		ids = append(ids, ct.Track(context.Background(), last, models.RepeaterTypeMMDVM, false))
+	}
+	s.data(smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Body: []byte("second")})...)
+	first := last
+	first.TrackID = ids[0]
+	ct.Undeliverable(first, "ipsc:1")
+	foreign := last
+	foreign.TrackID = ids[0] - 1<<20
+	ct.Undeliverable(foreign, "ipsc:2")
+
+	calls := waitDone(t, ct, database, 2)
+	assert.Equal(t, []string{"ipsc:1"}, calls[0].Undeliverable)
+	assert.Empty(t, calls[1].Undeliverable)
+}
+
 type observer struct {
 	mu       sync.Mutex
 	payloads [][]byte

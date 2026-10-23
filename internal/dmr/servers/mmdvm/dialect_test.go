@@ -46,11 +46,13 @@ const (
 	testPassword = "s3cret"
 )
 
-var allTags = []dmrd.Command{
-	dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTL, dmrd.CommandRPTACK,
-	dmrd.CommandMSTACK, dmrd.CommandRPTK, dmrd.CommandRPTC, dmrd.CommandRPTO, dmrd.CommandRPTPING,
-	dmrd.CommandMSTPONG, dmrd.CommandMSTPING, dmrd.CommandRPTPONG, dmrd.CommandRPTCL, dmrd.CommandMSTCL,
-	dmrd.CommandMSTNAK, dmrd.CommandRPTSBKN, dmrd.CommandRPTG, dmrd.CommandRPTRSSI, dmrd.CommandRPTINTR,
+func allTags() []dmrd.Command {
+	return []dmrd.Command{
+		dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTL, dmrd.CommandRPTACK,
+		dmrd.CommandMSTACK, dmrd.CommandRPTK, dmrd.CommandRPTC, dmrd.CommandRPTO, dmrd.CommandRPTPING,
+		dmrd.CommandMSTPONG, dmrd.CommandMSTPING, dmrd.CommandRPTPONG, dmrd.CommandRPTCL, dmrd.CommandMSTCL,
+		dmrd.CommandMSTNAK, dmrd.CommandRPTSBKN, dmrd.CommandRPTG, dmrd.CommandRPTRSSI, dmrd.CommandRPTINTR,
+	}
 }
 
 // TestNoPacketIsValidInBothDialects tries every tag at every length up to
@@ -59,7 +61,7 @@ var allTags = []dmrd.Command{
 // MMDVM network protocol and HBRP.
 func TestNoPacketIsValidInBothDialects(t *testing.T) {
 	t.Parallel()
-	for _, c := range allTags {
+	for _, c := range allTags() {
 		for n := len(c.String()); n <= dmrdsession.MaxPacket; n++ {
 			p := append([]byte(c.String()), bytes.Repeat([]byte{'0'}, n-len(c.String()))...)
 			_, mmdvm := dmrd.RepeaterID(p, dmrd.DialectMMDVM)
@@ -83,7 +85,7 @@ func TestNoPacketIsValidInBothDialects(t *testing.T) {
 func TestPacketDialectOfEachMessage(t *testing.T) {
 	t.Parallel()
 	for _, d := range []dmrd.Dialect{dmrd.DialectMMDVM, dmrd.DialectHBRP} {
-		for _, c := range allTags {
+		for _, c := range allTags() {
 			p, err := (&dmrd.Control{Command: c, ID: 311860}).AppendBinary(nil, d)
 			if err != nil {
 				continue
@@ -96,7 +98,7 @@ func TestPacketDialectOfEachMessage(t *testing.T) {
 			assert.True(t, ok, "%s %s", d, c)
 			assert.Equal(t, d, got, "%s %s", d, c)
 		}
-		got, ok := packetDialect(rptc(t, d, 311860, "N0CALL"))
+		got, ok := packetDialect(rptc(t, d, 311860))
 		assert.True(t, ok)
 		assert.Equal(t, d, got, "%s RPTC", d)
 	}
@@ -104,14 +106,14 @@ func TestPacketDialectOfEachMessage(t *testing.T) {
 	assert.False(t, ok, "DMRD is the same in both dialects")
 }
 
-func rptc(t *testing.T, d dmrd.Dialect, id uint32, callsign string) []byte {
+func rptc(t *testing.T, d dmrd.Dialect, id uint32) []byte {
 	t.Helper()
 	if d == dmrd.DialectHBRP {
 		var c dmrd.HBRPConfig
 		c.Reset()
 		c.SetID(id)
 		require.NoError(t, errors.Join(
-			c.SetCallsign([]byte(callsign)),
+			c.SetCallsign([]byte("N0CALL")),
 			c.SetRXFrequency(438000000),
 			c.SetTXFrequency(430400000),
 			c.SetPower(25),
@@ -131,7 +133,7 @@ func rptc(t *testing.T, d dmrd.Dialect, id uint32, callsign string) []byte {
 	c.Reset()
 	c.SetID(id)
 	require.NoError(t, errors.Join(
-		c.SetCallsign([]byte(callsign)),
+		c.SetCallsign([]byte("N0CALL")),
 		c.SetRXFrequency(440000000),
 		c.SetTXFrequency(445000000),
 		c.SetPower(10),
@@ -244,7 +246,7 @@ func (r *dialectRig) login(d dmrd.Dialect, id uint32) {
 	require.NoError(r.t, err)
 	r.control(d, dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token})
 	r.expect(d, ack)
-	r.send(rptc(r.t, d, id, "N0CALL"))
+	r.send(rptc(r.t, d, id))
 	r.expect(d, ack)
 	require.Equal(r.t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State())
 }
@@ -328,7 +330,7 @@ func TestMixedDialectLoginIsIgnored(t *testing.T) {
 			require.NoError(t, err)
 			r.control(tc.then, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311863, Token: token})
 			r.expectNothing()
-			r.send(rptc(t, tc.then, 311863, "N0CALL"))
+			r.send(rptc(t, tc.then, 311863))
 			r.expectNothing()
 			l := r.s.links[r.from.String()]
 			require.NotNil(t, l)
@@ -361,7 +363,7 @@ func TestLoginInTheOtherDialectEndsTheSession(t *testing.T) {
 	require.NoError(t, err)
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311864, Token: token})
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
-	r.send(rptc(t, dmrd.DialectHBRP, 311864, "N0CALL"))
+	r.send(rptc(t, dmrd.DialectHBRP, 311864))
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
 	rec, err := r.kv.GetRepeater(context.Background(), 311864)
 	require.NoError(t, err)

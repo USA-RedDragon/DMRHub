@@ -248,7 +248,11 @@ func (s *Server) Start(ctx context.Context) error {
 				RemoteIP:   remoteaddr.IP.String(),
 				RemotePort: remoteaddr.Port,
 			}
-			s.incomingChan <- p
+			select {
+			case s.incomingChan <- p:
+			case <-s.done:
+				return
+			}
 		}
 	}()
 

@@ -54,7 +54,7 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	ct := calltracker.NewCallTracker(database, ps)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	h := hub.NewHub(database, kvStore, ps, ct)
 	t.Cleanup(func() {
 		h.Stop(context.Background())

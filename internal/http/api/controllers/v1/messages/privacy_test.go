@@ -83,13 +83,16 @@ func TestRoutedSMSReachesTheInboxOnlyAfterOptIn(t *testing.T) {
 			e, cfg := newEnvOn(t, be)
 			ps, err := pubsub.MakePubSub(context.TODO(), cfg)
 			require.NoError(t, err)
-			ct := calltracker.NewCallTracker(e.db, ps)
+			kvStore, err := kv.MakeKV(context.TODO(), cfg)
+			require.NoError(t, err)
+			ct := calltracker.NewCallTracker(e.db, ps, kvStore)
 			store := messages.NewStore(e.db)
 			ct.SetDataObserver(store)
 			t.Cleanup(func() {
 				ct.Stop()
 				store.Stop()
 				_ = ps.Close()
+				_ = kvStore.Close()
 			})
 			send := func(stream uint, body string) {
 				for i, b := range smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(other), Destination: uint32(owner), Body: []byte(body)}) {

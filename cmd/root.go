@@ -138,7 +138,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to connect to pubsub: %w", err)
 	}
 
-	callTracker := calltracker.NewCallTracker(database, pubsubClient)
+	callTracker := calltracker.NewCallTracker(database, pubsubClient, kvStore)
 	messageStore := messages.NewStore(database)
 	messageStore.SetNotify(messages.NewPusher(database, pubsubClient).Push)
 	callTracker.SetDataObserver(messageStore)

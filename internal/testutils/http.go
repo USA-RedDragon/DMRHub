@@ -162,7 +162,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
 
-	ct := calltracker.NewCallTracker(t.database, ps)
+	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 
 	ready := &atomic.Bool{}
@@ -233,7 +233,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	}
 
 	t.pubsub = ps
-	ct := calltracker.NewCallTracker(t.database, ps)
+	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 
 	ready := &atomic.Bool{}

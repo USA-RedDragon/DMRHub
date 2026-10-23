@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -46,13 +47,16 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	require.NoError(t, err)
-	ct := NewCallTracker(database, ps)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	require.NoError(t, err)
+	ct := NewCallTracker(database, ps, kvStore)
 	release := make(chan struct{})
 	t.Cleanup(func() {
 		ct.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()
+		_ = kvStore.Close()
 	})
 
 	p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}

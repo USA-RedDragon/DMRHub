@@ -138,7 +138,7 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
-	ct := calltracker.NewCallTracker(database, ps)
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
 	server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
@@ -227,7 +227,7 @@ func FuzzHandleOpenBridgePacket(f *testing.F) {
 		require.NoError(t, err)
 		defer func() { _ = kvStore.Close() }()
 
-		ct := calltracker.NewCallTracker(database, ps)
+		ct := calltracker.NewCallTracker(database, ps, kvStore)
 		dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
 		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
@@ -301,7 +301,7 @@ func FuzzValidateOpenBridgeHMAC(f *testing.F) {
 		require.NoError(t, err)
 		defer func() { _ = kvStore.Close() }()
 
-		ct := calltracker.NewCallTracker(database, ps)
+		ct := calltracker.NewCallTracker(database, ps, kvStore)
 		dmrHub := hub.NewHub(database, kvStore, ps, ct)
 
 		server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)

@@ -79,16 +79,18 @@ This is the living handoff for the next session. It assumes you have nothing but
      - a burst held 125 s under Postgres load (rule: traffic is never held)
      - no clock-injection point, so clock jumps are untested
    - **Then:** rerun every area on `sqlite` and `postgres-redis` (`DMRHUB_STRESS_BACKENDS`), and write the results doc with tables and PNG graphs.
-4. **Owner questions still open.** Ask them; don't guess.
-   - **Live config.** Proposal sent to the owner, not yet approved:
+4. **Approved by the owner on 2026-10-23; do after the stress battery and before LRRP.**
+   - **Live config.** Approved as proposed:
      - Move the Setup-editable settings into the database, shared over pubsub, and applied live by `internal/dmr/servers/manager`.
      - Environment variables and flags win, and show read-only in Setup without naming keys.
      - The config file only seeds the database on first boot.
      - Boot-only settings (database, Redis, HTTP port, secrets) stay in file and environment.
      - Keep the config behind an atomic pointer. Today the API overwrites the shared config in place, and Setup saves go to `~/.config/DMRHub` while `./config.yaml` wins at load, so saves are lost on restart.
-   - **hbl4.** Recommendations sent, not yet approved:
+     - The Setup change (read-only settings that env or flags set) needs an approved mockup first.
+   - **hbl4.** Approved:
      - Share the "first source of a stream" claim across replicas through Redis (today each replica catches loops alone).
-     - Accept a login with a bad color code with a warning instead of refusing it.
+     - Accept a login with a bad color code with a warning, storing 0, instead of refusing it.
+     - Add the missing test for the 30 s hold.
 5. **Parked; keep track, don't start:**
    - Codec2 transcoding (design in the bundle, `previous-handoff/TRANSCODE-DESIGN.md`). The dmrgo js/wasm and wazero Codec2 backends are done and released in dmrgo v2.0.1.
    - A direct MMDVM modem over serial (read `refs/interop-results/imodem-RESULTS.md` first).

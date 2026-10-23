@@ -21,7 +21,11 @@ package config
 
 import (
 	"errors"
+	"net"
 	"net/url"
+	"regexp"
+	"slices"
+	"strconv"
 )
 
 const (
@@ -360,6 +364,67 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// MaxPositionRetentionDays is the longest time that positions are kept.
+const MaxPositionRetentionDays = 365
+
+var (
+	// ErrInvalidPositionInterval indicates a shortest report interval that
+	// owners cannot pick.
+	ErrInvalidPositionInterval = errors.New("the shortest report interval must be 5, 10, 15, 30 or 60 minutes")
+	// ErrInvalidPositionRetention indicates a longest position retention
+	// out of range.
+	ErrInvalidPositionRetention = errors.New("the longest time to keep positions must be 1 to 365 days")
+	// ErrInvalidAPRSCallsign indicates an APRS-IS callsign that APRS-IS
+	// does not accept.
+	ErrInvalidAPRSCallsign = errors.New("the APRS-IS callsign must be a callsign with an optional SSID, such as N0CALL-10")
+	// ErrInvalidAPRSPasscode indicates an APRS-IS passcode that is not a
+	// number.
+	ErrInvalidAPRSPasscode = errors.New("the APRS-IS passcode must be a number")
+	// ErrInvalidAPRSServer indicates an APRS-IS server that is not
+	// host:port.
+	ErrInvalidAPRSServer = errors.New("the APRS-IS server must be host:port")
+)
+
+// PositionIntervals returns the report intervals, in minutes, that an
+// owner can pick.
+func PositionIntervals() []int {
+	return []int{5, 10, 15, 30, 60}
+}
+
+const (
+	fieldPositionsMinInterval  = "dmr.positions.min-interval"
+	fieldPositionsMaxRetention = "dmr.positions.max-retention"
+)
+
+// Validate validates the position tracking configuration.
+func (p Positions) Validate() error {
+	return firstValidationError(p.ValidateWithFields())
+}
+
+func (p Positions) ValidateWithFields() (errs []ValidationError) {
+	if p.MinInterval != 0 && !slices.Contains(PositionIntervals(), p.MinInterval) {
+		errs = append(errs, ValidationError{Field: fieldPositionsMinInterval, Err: ErrInvalidPositionInterval})
+	}
+	if p.MaxRetention < 0 || p.MaxRetention > MaxPositionRetentionDays {
+		errs = append(errs, ValidationError{Field: fieldPositionsMaxRetention, Err: ErrInvalidPositionRetention})
+	}
+	a := p.APRSIS
+	if a.Callsign != "" && !aprsCallsignRegex.MatchString(a.Callsign) {
+		errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.callsign", Err: ErrInvalidAPRSCallsign})
+	}
+	if a.Passcode != "" {
+		if _, err := strconv.ParseUint(a.Passcode, 10, 16); err != nil {
+			errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.passcode", Err: ErrInvalidAPRSPasscode})
+		}
+	}
+	if host, port, err := net.SplitHostPort(a.Server); a.Server != "" && (err != nil || host == "" || port == "") {
+		errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.server", Err: ErrInvalidAPRSServer})
+	}
+	return
+}
+
+var aprsCallsignRegex = regexp.MustCompile(`^[A-Z0-9]{1,6}(-[0-9]{1,2})?$`)
+
 // MaxRetentionDays is the longest retention period, in days.
 const MaxRetentionDays = 36500
 
@@ -405,6 +470,8 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	if retentionErrs := d.Retention.ValidateWithFields(); len(retentionErrs) > 0 {
 		errs = append(errs, retentionErrs...)
 	}
+
+	errs = append(errs, d.Positions.ValidateWithFields()...)
 
 	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{

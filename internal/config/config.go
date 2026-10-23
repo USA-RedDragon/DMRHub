@@ -122,6 +122,52 @@ type DMR struct {
 	RadioIDURL               string     `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
 	RepeaterIDURL            string     `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
 	Retention                Retention  `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+	Positions                Positions  `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
+}
+
+// Positions holds the limits of position tracking and the APRS-IS login
+// of the hub.
+type Positions struct {
+	MinInterval  int    `json:"min-interval" yaml:"min-interval" name:"min-interval" description:"Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60" default:"5"`
+	MaxRetention int    `json:"max-retention" yaml:"max-retention" name:"max-retention" description:"Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365" default:"30"`
+	APRSIS       APRSIS `json:"aprs-is" yaml:"aprs-is" name:"aprs-is" description:"APRS-IS login of the hub, which sends the positions of the radios whose owners turn it on"`
+}
+
+const (
+	defaultPositionInterval  = 5
+	defaultPositionRetention = 30
+	defaultAPRSServer        = "rotate.aprs2.net:14580"
+)
+
+// Interval returns the shortest report interval, in minutes; 0 means 5.
+func (p Positions) Interval() int {
+	if p.MinInterval == 0 {
+		return defaultPositionInterval
+	}
+	return p.MinInterval
+}
+
+// Retention returns the longest position retention, in days; 0 means 30.
+func (p Positions) Retention() int {
+	if p.MaxRetention == 0 {
+		return defaultPositionRetention
+	}
+	return p.MaxRetention
+}
+
+// ServerAddress returns the APRS-IS server; empty means the default.
+func (a APRSIS) ServerAddress() string {
+	if a.Server == "" {
+		return defaultAPRSServer
+	}
+	return a.Server
+}
+
+// APRSIS holds the APRS-IS login of the hub.
+type APRSIS struct {
+	Callsign string `json:"callsign" name:"callsign" description:"Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS"`
+	Passcode string `json:"-" yaml:"passcode" name:"passcode" description:"APRS-IS passcode of the callsign"`
+	Server   string `json:"server" name:"server" description:"APRS-IS server, as host:port" default:"rotate.aprs2.net:14580"`
 }
 
 // Retention holds how many days DMRHub keeps each kind of record. 0 keeps

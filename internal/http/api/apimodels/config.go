@@ -27,6 +27,7 @@ type POSTConfig struct {
 	Secret       *string `json:"secret,omitempty"`
 	PasswordSalt *string `json:"password-salt,omitempty"`
 	HIBPAPIKey   *string `json:"hibp-api-key,omitempty"`
+	APRSPasscode *string `json:"aprs-is-passcode,omitempty"`
 	SMTP         struct {
 		config.SMTP
 		Password *string `json:"password,omitempty"`
@@ -45,6 +46,7 @@ type SecretStatus struct {
 	SecretSet       bool `json:"secretSet"`
 	PasswordSaltSet bool `json:"passwordSaltSet"`
 	SMTPPasswordSet bool `json:"smtpPasswordSet"`
+	APRSPasscodeSet bool `json:"aprsPasscodeSet"`
 }
 
 type ConfigResponse struct {
@@ -61,6 +63,10 @@ func (p POSTConfig) ToConfig(c *config.Config, fallback *config.Config) {
 		c.SMTP.Password = fallback.SMTP.Password
 		c.Database.Password = fallback.Database.Password
 		c.Redis.Password = fallback.Redis.Password
+		c.DMR.Positions.APRSIS.Passcode = fallback.DMR.Positions.APRSIS.Passcode
+	}
+	if p.APRSPasscode != nil {
+		c.DMR.Positions.APRSIS.Passcode = *p.APRSPasscode
 	}
 	if p.Secret != nil {
 		c.Secret = *p.Secret

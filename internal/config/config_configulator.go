@@ -88,6 +88,18 @@ type retentionShadow struct {
 	Bursts        *int `json:"bursts"        toml:"bursts"        yaml:"bursts"`
 }
 
+type aPRSISShadow struct {
+	Callsign *string `json:"callsign" toml:"callsign" yaml:"callsign"`
+	Passcode *string `json:"passcode" toml:"passcode" yaml:"passcode"`
+	Server   *string `json:"server"   toml:"server"   yaml:"server"`
+}
+
+type positionsShadow struct {
+	MinInterval  *int          `json:"min-interval"  toml:"min-interval"  yaml:"min-interval"`
+	MaxRetention *int          `json:"max-retention" toml:"max-retention" yaml:"max-retention"`
+	APRSIS       *aPRSISShadow `json:"aprs-is"       toml:"aprs-is"       yaml:"aprs-is"`
+}
+
 type dMRShadow struct {
 	MMDVM                    *mMDVMShadow      `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
 	OpenBridge               *openBridgeShadow `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
@@ -96,6 +108,7 @@ type dMRShadow struct {
 	RadioIDURL               *string           `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
 	RepeaterIDURL            *string           `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
 	Retention                *retentionShadow  `json:"retention"                   toml:"retention"                   yaml:"retention"`
+	Positions                *positionsShadow  `json:"positions"                   toml:"positions"                   yaml:"positions"`
 }
 
 type sMTPShadow struct {
@@ -204,6 +217,12 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.retention.transmissions", configulator.LayerDefault, "default tag")
 	cfg.DMR.Retention.Bursts = 0
 	set("dmr.retention.bursts", configulator.LayerDefault, "default tag")
+	cfg.DMR.Positions.MinInterval = 5
+	set("dmr.positions.min-interval", configulator.LayerDefault, "default tag")
+	cfg.DMR.Positions.MaxRetention = 30
+	set("dmr.positions.max-retention", configulator.LayerDefault, "default tag")
+	cfg.DMR.Positions.APRSIS.Server = "rotate.aprs2.net:14580"
+	set("dmr.positions.aprs-is.server", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
 	set("smtp.enabled", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Port = 25
@@ -428,6 +447,30 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.Retention.Bursts != nil {
 				cfg.DMR.Retention.Bursts = *s.DMR.Retention.Bursts
 				set("dmr.retention.bursts", configulator.LayerFile, file)
+			}
+		}
+		if s.DMR.Positions != nil {
+			if s.DMR.Positions.MinInterval != nil {
+				cfg.DMR.Positions.MinInterval = *s.DMR.Positions.MinInterval
+				set("dmr.positions.min-interval", configulator.LayerFile, file)
+			}
+			if s.DMR.Positions.MaxRetention != nil {
+				cfg.DMR.Positions.MaxRetention = *s.DMR.Positions.MaxRetention
+				set("dmr.positions.max-retention", configulator.LayerFile, file)
+			}
+			if s.DMR.Positions.APRSIS != nil {
+				if s.DMR.Positions.APRSIS.Callsign != nil {
+					cfg.DMR.Positions.APRSIS.Callsign = *s.DMR.Positions.APRSIS.Callsign
+					set("dmr.positions.aprs-is.callsign", configulator.LayerFile, file)
+				}
+				if s.DMR.Positions.APRSIS.Passcode != nil {
+					cfg.DMR.Positions.APRSIS.Passcode = *s.DMR.Positions.APRSIS.Passcode
+					set("dmr.positions.aprs-is.passcode", configulator.LayerFile, file)
+				}
+				if s.DMR.Positions.APRSIS.Server != nil {
+					cfg.DMR.Positions.APRSIS.Server = *s.DMR.Positions.APRSIS.Server
+					set("dmr.positions.aprs-is.server", configulator.LayerFile, file)
+				}
 			}
 		}
 	}
@@ -850,6 +893,44 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Retention.Bursts = int(p)
 		set("dmr.retention.bursts", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "min-interval"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.min-interval",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Positions.MinInterval = int(p)
+		set("dmr.positions.min-interval", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "max-retention"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.max-retention",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Positions.MaxRetention = int(p)
+		set("dmr.positions.max-retention", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "aprs-is", "callsign"); ok {
+		cfg.DMR.Positions.APRSIS.Callsign = v
+		set("dmr.positions.aprs-is.callsign", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "aprs-is", "passcode"); ok {
+		cfg.DMR.Positions.APRSIS.Passcode = v
+		set("dmr.positions.aprs-is.passcode", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "aprs-is", "server"); ok {
+		cfg.DMR.Positions.APRSIS.Server = v
+		set("dmr.positions.aprs-is.server", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1037,6 +1118,11 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "retention" + o.Separator + "messages",
 		"dmr" + o.Separator + "retention" + o.Separator + "transmissions",
 		"dmr" + o.Separator + "retention" + o.Separator + "bursts",
+		"dmr" + o.Separator + "positions" + o.Separator + "min-interval",
+		"dmr" + o.Separator + "positions" + o.Separator + "max-retention",
+		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign",
+		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "passcode",
+		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
 		"smtp" + o.Separator + "port",
@@ -1114,25 +1200,30 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(0), names[39], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
 	fs.Var(impl.NewInt(0), names[40], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
 	fs.Var(impl.NewInt(0), names[41], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Bool(names[42], false, "Enable SMTP support for sending emails")
-	fs.String(names[43], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[44], "SMTP server port")
-	fs.String(names[45], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[46], "", "SMTP server username")
-	fs.String(names[47], "", "SMTP server password")
-	fs.String(names[48], "", "Email address to use as the sender")
-	fs.String(names[49], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[50], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[51], false, "Enable metrics collection and export")
-	fs.String(names[52], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[53], "Metrics server port")
-	fs.StringSlice(names[54], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[55], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[56], false, "Enable PProf profiling and debugging support")
-	fs.String(names[57], "[::]", "PProf server listen address")
-	fs.StringSlice(names[58], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[59], "PProf server port")
-	fs.String(names[60], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Var(impl.NewInt(5), names[42], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[43], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[44], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[45], "", "APRS-IS passcode of the callsign")
+	fs.String(names[46], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[47], false, "Enable SMTP support for sending emails")
+	fs.String(names[48], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[49], "SMTP server port")
+	fs.String(names[50], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[51], "", "SMTP server username")
+	fs.String(names[52], "", "SMTP server password")
+	fs.String(names[53], "", "Email address to use as the sender")
+	fs.String(names[54], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[55], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[56], false, "Enable metrics collection and export")
+	fs.String(names[57], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[58], "Metrics server port")
+	fs.StringSlice(names[59], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[60], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[61], false, "Enable PProf profiling and debugging support")
+	fs.String(names[62], "[::]", "PProf server listen address")
+	fs.StringSlice(names[63], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[64], "PProf server port")
+	fs.String(names[65], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1640,6 +1731,66 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Retention.Bursts = v
 		set("dmr.retention.bursts", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "positions" + o.Separator + "min-interval"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.min-interval",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Positions.MinInterval = v
+		set("dmr.positions.min-interval", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "positions" + o.Separator + "max-retention"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.max-retention",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Positions.MaxRetention = v
+		set("dmr.positions.max-retention", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.aprs-is.callsign",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Positions.APRSIS.Callsign = v
+		set("dmr.positions.aprs-is.callsign", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "passcode"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.aprs-is.passcode",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Positions.APRSIS.Passcode = v
+		set("dmr.positions.aprs-is.passcode", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.positions.aprs-is.server",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Positions.APRSIS.Server = v
+		set("dmr.positions.aprs-is.server", configulator.LayerCLI, "--"+n)
 	}
 	if n := "smtp" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -2699,6 +2850,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.Retention = &sub
 			}
+		case "positions":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".positions", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub positionsShadow
+				if err := sub.decodeJSON(dec, path+".positions"); err != nil {
+					return err
+				}
+				s.Positions = &sub
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -3130,6 +3300,150 @@ func (s *retentionShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 
 // decodeJSON decodes the members of an object whose opening brace has
 // been read. path is the object's dotted path.
+func (s *positionsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "min-interval":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".min-interval", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".min-interval", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.MinInterval = &num
+			default:
+				return configJSONError(path+".min-interval", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "max-retention":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".max-retention", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".max-retention", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.MaxRetention = &num
+			default:
+				return configJSONError(path+".max-retention", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "aprs-is":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".aprs-is", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub aPRSISShadow
+				if err := sub.decodeJSON(dec, path+".aprs-is"); err != nil {
+					return err
+				}
+				s.APRSIS = &sub
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *aPRSISShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "callsign":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Callsign = &str
+			default:
+				return configJSONError(path+".callsign", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "passcode":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Passcode = &str
+			default:
+				return configJSONError(path+".passcode", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "server":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Server = &str
+			default:
+				return configJSONError(path+".server", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
 func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
@@ -3529,6 +3843,11 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.retention.messages = %v\n", c.DMR.Retention.Messages)
 	fmt.Fprintf(&b, "dmr.retention.transmissions = %v\n", c.DMR.Retention.Transmissions)
 	fmt.Fprintf(&b, "dmr.retention.bursts = %v\n", c.DMR.Retention.Bursts)
+	fmt.Fprintf(&b, "dmr.positions.min-interval = %v\n", c.DMR.Positions.MinInterval)
+	fmt.Fprintf(&b, "dmr.positions.max-retention = %v\n", c.DMR.Positions.MaxRetention)
+	fmt.Fprintf(&b, "dmr.positions.aprs-is.callsign = %v\n", c.DMR.Positions.APRSIS.Callsign)
+	fmt.Fprintf(&b, "dmr.positions.aprs-is.passcode = %v\n", c.DMR.Positions.APRSIS.Passcode)
+	fmt.Fprintf(&b, "dmr.positions.aprs-is.server = %v\n", c.DMR.Positions.APRSIS.Server)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
 	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)

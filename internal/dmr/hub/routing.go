@@ -70,7 +70,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		return
 	}
 
-	if packet.GroupCall && isVoice {
+	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer {
 		h.switchDynamicTalkgroup(ctx, packet)
 	}
 

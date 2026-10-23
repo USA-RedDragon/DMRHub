@@ -247,3 +247,24 @@ func TestDynamicLinksOfBothSlotsAtOnce(t *testing.T) {
 		assert.Equal(t, uint(3), *rpt.TS2DynamicTalkgroupID)
 	}
 }
+
+func TestRoutePacketFromAPeerLinksNoTalkgroup(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 2, "TG2")
+
+	h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	defer h.UnregisterServer("peer-srv")
+
+	pkt := makeVoicePacket(2, 99998, true, false)
+	pkt.Repeater = 100001
+	h.RoutePacket(context.Background(), pkt, "peer-srv")
+	time.Sleep(200 * time.Millisecond)
+
+	rpt, err := models.FindRepeaterByID(database, 100001)
+	require.NoError(t, err)
+	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "a call from a network peer whose ID is a repeater ID must not link that repeater")
+}

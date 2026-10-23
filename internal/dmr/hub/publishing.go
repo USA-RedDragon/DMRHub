@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -69,16 +70,37 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 	default:
 	}
 
+	key := streamTarget{stream: packet.StreamID, dst: packet.Src}
+	set, ok := h.streamPeers.Load(key)
+	if !ok {
+		var err error
+		set.peers, err = h.egressPeers(ctx, packet)
+		if err != nil {
+			slog.Error("Failed to list peers for publishing", "error", err)
+			return
+		}
+		set.at = time.Now()
+		h.streamPeers.Store(key, set)
+	}
+	for _, id := range set.peers {
+		h.publishToPeer(id, packet)
+	}
+}
+
+type streamPeerSet struct {
+	peers []uint
+	at    time.Time
+}
+
+func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]uint, error) {
 	peers, err := models.ListPeers(h.db)
 	if err != nil {
-		slog.Error("Failed to list peers for publishing", "error", err)
-		return
+		return nil, fmt.Errorf("listing peers: %w", err)
 	}
+	var out []uint
 	for _, p := range peers {
-		select {
-		case <-ctx.Done():
-			return
-		default:
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("listing peers: %w", ctx.Err())
 		}
 		should, err := rules.PeerShouldEgress(h.db, p, &packet)
 		if err != nil {
@@ -86,9 +108,10 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 			continue
 		}
 		if should {
-			h.publishToPeer(p.ID, packet)
+			out = append(out, p.ID)
 		}
 	}
+	return out, nil
 }
 
 // publishToPeer hands a packet to the local peer servers for one peer. The

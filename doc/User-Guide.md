@@ -79,6 +79,21 @@ For detailed Motorola CPS configuration, see the [BrandMeister IPSC wiki](https:
 
 > **Note:** IPSC connections require the DMRHub instance to have a static IP address. The official DMRHub instance uses a dynamic IP and cannot reliably support IPSC connections.
 
+#### What an IPSC repeater transmits
+
+DMRHub sends voice, CSBK, data headers and rate 1/2 and 3/4 data to IPSC repeaters in the IPSC form. IPSC has no form for rate 1 data, so DMRHub sends rate 1 data as raw blocks. A test with an XPR 8400 showed that it transmits these raw blocks bit for bit on both timeslots.
+
+The same test showed that an XPR 8400 does not transmit these bursts when it gets them from the network. It drops them and gives no error:
+
+- idle bursts, USBD and reserved data types;
+- a CSBK or a data header with a bad CRC;
+- a block whose FEC does not correct;
+- rate 1/2 data blocks without their data header;
+- an MBC without its last block;
+- terminator LC (TD_LC).
+
+DMRHub does not send idle bursts, USBD, reserved data types or bursts whose FEC does not correct to IPSC repeaters. It counts each of them in the `dmr_undeliverable_bursts_total` metric and marks it on the Last Heard row of the transmission. DMRHub sends the other bursts in the list, and the XPR 8400 drops them.
+
 ## Repeaters Page
 
 Once your repeater is registered and connecting, the repeaters page shows:

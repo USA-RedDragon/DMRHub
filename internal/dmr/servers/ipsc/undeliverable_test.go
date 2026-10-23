@@ -54,7 +54,6 @@ type uncarried struct {
 
 func uncarriedBursts() []uncarried {
 	return []uncarried{
-		{"rate 1", dmrconst.FrameDataSync, enums.DataTypeRate1},
 		{"idle", dmrconst.FrameDataSync, enums.DataTypeIdle},
 		{"USBD", dmrconst.FrameDataSync, enums.DataTypeUnifiedSingleBlock},
 		{"reserved", dmrconst.FrameDataSync, 13},
@@ -95,11 +94,45 @@ func TestTranslateToIPSCReportsUndeliverable(t *testing.T) {
 	}
 }
 
+func TestTranslateToIPSCSendsRate1AsRawBlocks(t *testing.T) {
+	t.Parallel()
+	for _, slot := range []bool{false, true} {
+		tr := newTestTranslator(t)
+		tr.onUndeliverable = func(_ models.Packet, reason string) { t.Errorf("rate 1 reported undeliverable: %s", reason) }
+		pkt := uncarriedPacket(t, uncarried{"rate 1", dmrconst.FrameDataSync, enums.DataTypeRate1})
+		pkt.Slot = slot
+		out := tr.TranslateToIPSC(pkt)
+		if len(out) != 1 {
+			t.Fatalf("slot 2 %v: %d IPSC packets, want 1", slot, len(out))
+		}
+		u, err := ipscwire.DecodeUser(out[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Burst != ipscwire.BurstRaw || u.Data.Bits != 196 {
+			t.Fatalf("burst %v with %d bits, want a raw block", u.Burst, u.Data.Bits)
+		}
+		if got, want := [25]byte(u.Data.Octets[:25]), layer2.RawBurst(pkt.DMRData).Info(); got != want {
+			t.Fatalf("info bits %x, want %x", got, want)
+		}
+		if st, ok := u.Data.SlotType(); !ok || st.DataType() != enums.DataTypeRate1 {
+			t.Fatalf("slot type %v %v, want rate 1", st, ok)
+		}
+		if got, want := u.Info.Slot() == enums.Slot2, slot; got != want {
+			t.Fatalf("slot 2 %v, want %v", got, want)
+		}
+		back := tr.TranslateToMMDVM(out[0][0], out[0])
+		if len(back) != 1 || back[0].DTypeOrVSeq != uint(enums.DataTypeRate1) || layer2.RawBurst(back[0].DMRData).Info() != layer2.RawBurst(pkt.DMRData).Info() {
+			t.Fatalf("the raw block did not come back as the rate 1 block")
+		}
+	}
+}
+
 func TestTranslateToIPSCRawBlocks(t *testing.T) {
 	t.Parallel()
 	for _, c := range uncarriedBursts() {
 		tr := newTestTranslator(t)
-		tr.rawBlocks = true
+		tr.rawBlocksAnXPRDrops = true
 		tr.onUndeliverable = func(_ models.Packet, reason string) { t.Errorf("%s: reported undeliverable: %s", c.name, reason) }
 		pkt := uncarriedPacket(t, c)
 		out := tr.TranslateToIPSC(pkt)

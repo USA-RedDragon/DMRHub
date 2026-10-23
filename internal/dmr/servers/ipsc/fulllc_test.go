@@ -352,14 +352,3 @@ func TestTranslateToIPSCDataCarriesPayload(t *testing.T) {
 		}
 	}
 }
-
-func TestTranslateToIPSCDropsRate1(t *testing.T) {
-	t.Parallel()
-	tr := newTestTranslator(t)
-	for _, dt := range []enums.DataType{enums.DataTypeRate1} {
-		pkt := makeTestMMDVMPacket(true, false, dmrconst.FrameDataSync, uint(dt))
-		if out := tr.TranslateToIPSC(pkt); out != nil {
-			t.Fatalf("dtype %d: expected nil, got %d packets", dt, len(out))
-		}
-	}
-}

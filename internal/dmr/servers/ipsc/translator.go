@@ -53,19 +53,21 @@ type IPSCTranslator struct {
 	nextCallControl uint32
 	nextStreamID    uint32
 
-	rawBlocks       bool
-	onUndeliverable func(pkt models.Packet, reason string)
+	rawBlocksAnXPRDrops bool
+	onUndeliverable     func(pkt models.Packet, reason string)
 }
 
-// sendRawBlocksToIPSC turns on the raw block path: a burst that IPSC has no
-// layout for, or whose FEC does not correct, goes to IPSC peers as an
-// undecodable block (burst type 0x1F) with its 196 information bits and
-// slot type, as an XPR 8400 sends such blocks. Turn it on only after a rig
-// test shows that an XPR 8400 transmits the raw blocks that it gets over
-// IPSC. Until then those bursts are reported undeliverable.
+// sendRawBlocksAnXPRDrops sends to IPSC peers, as undecodable blocks (burst
+// type 0x1F) with their 196 information bits and slot type, the bursts
+// that an XPR 8400 does not transmit when it gets them that way: idle,
+// USBD and reserved data types, and CSBK, data header and data blocks
+// whose FEC does not correct. The 2026-10-22 rig test showed that the XPR
+// drops each of them without a word, so they are reported undeliverable
+// while this is false. Rate 1 blocks always go as raw blocks, since the
+// XPR transmits those bit for bit.
 //
 //nolint:gochecknoglobals
-var sendRawBlocksToIPSC = false
+var sendRawBlocksAnXPRDrops = false
 
 // streamState tracks RTP sequencing and call framing for one voice stream.
 type streamState struct {
@@ -110,14 +112,14 @@ const (
 
 func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
-		streams:        make(map[uint32]*streamState),
-		reverseStreams: make(map[uint32]*reverseStreamState),
-		peerID:         peerID,
-		repeaterID:     peerID,
-		burst:          layer2.NewBurst(),
-		events:         make([]voice.Event, 0, voice.MaxEvents),
-		epoch:          time.Now(),
-		rawBlocks:      sendRawBlocksToIPSC,
+		streams:             make(map[uint32]*streamState),
+		reverseStreams:      make(map[uint32]*reverseStreamState),
+		peerID:              peerID,
+		repeaterID:          peerID,
+		burst:               layer2.NewBurst(),
+		events:              make([]voice.Event, 0, voice.MaxEvents),
+		epoch:               time.Now(),
+		rawBlocksAnXPRDrops: sendRawBlocksAnXPRDrops,
 	}
 }
 
@@ -197,13 +199,17 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			}
 			results = [][]byte{data}
 			ss.firstPacket = false
-		case enums.DataTypeRate1, enums.DataTypeIdle, enums.DataTypeUnifiedSingleBlock, enums.DataTypeReserved:
+		case enums.DataTypeRate1:
+			data := t.buildRawBlock(pkt, ss, dt)
+			if data == nil {
+				return nil
+			}
+			results = [][]byte{data}
+			ss.firstPacket = false
+		case enums.DataTypeIdle, enums.DataTypeUnifiedSingleBlock, enums.DataTypeReserved:
 			fallthrough
 		default:
-			// IPSC has no layout for rate 1 data, idle, USBD or a reserved
-			// data type. An XPR 8400 sent rate 1 blocks as an undecodable
-			// block (0x1F) or a BPTC decode of the uncoded bits.
-			if !t.rawBlocks {
+			if !t.rawBlocksAnXPRDrops {
 				t.undeliverable(pkt, "IPSC has no layout for data type "+dt.String())
 				return nil
 			}
@@ -351,8 +357,8 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 // A BPTC(196,96) burst carries its 12 decoded octets and a rate 3/4 burst
 // its 18. A burst whose FEC does not correct goes out as ipscBurstRaw with
 // its 196 info bits, as a MOTOTRBO repeater sends it and SetRawBurst builds
-// it, when the raw block path is on; otherwise it is reported undeliverable
-// and it returns nil.
+// it, when sendRawBlocksAnXPRDrops is on; otherwise it is reported
+// undeliverable and it returns nil.
 func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
 	slot := enums.Slot1
 	if pkt.Slot {
@@ -364,7 +370,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 		slog.Debug("IPSCTranslator: cannot build data packet", "dtype", dataType, "error", err)
 		return nil
 	}
-	if res.Uncorrectable && !t.rawBlocks {
+	if res.Uncorrectable && !t.rawBlocksAnXPRDrops {
 		t.undeliverable(pkt, "the FEC of the "+dataType.String()+" burst does not correct")
 		return nil
 	}

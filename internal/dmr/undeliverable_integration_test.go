@@ -28,14 +28,16 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestBurstsIPSCCannotCarryAreReported sends a rate 1 data burst to a
-// talkgroup that an IPSC peer carries. IPSC has no layout for it, so the hub
-// must report it undeliverable to that peer, and the MMDVM repeater on the
-// talkgroup must still get it.
+// TestBurstsIPSCCannotCarryAreReported sends an idle burst and a rate 1
+// data burst to a talkgroup that an IPSC peer carries. An XPR 8400 does not
+// transmit an idle burst, so the hub must report it undeliverable to that
+// peer, and the MMDVM repeater on the talkgroup must still get it. Rate 1
+// goes to the peer as a raw block.
 func TestBurstsIPSCCannotCarryAreReported(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -72,9 +74,16 @@ func TestBurstsIPSCCannotCarryAreReported(t *testing.T) {
 		require.NoError(t, ic.WaitReady(handshakeWait))
 		time.Sleep(settleDuration)
 
-		require.NoError(t, c1.SendDMRD(makeBurst(1000001, 1, 6101, true, dmrconst.FrameDataSync, uint(enums.DataTypeRate1), 0)))
-		assert.Len(t, c2.Drain(drainWait), 1, "the MMDVM repeater must get the rate 1 burst")
+		require.NoError(t, c1.SendDMRD(makeBurst(1000001, 1, 6101, true, dmrconst.FrameDataSync, uint(enums.DataTypeIdle), 0)))
+		assert.Len(t, c2.Drain(drainWait), 1, "the MMDVM repeater must get the idle burst")
 		assert.Empty(t, ic.Drain(100*time.Millisecond), "the IPSC peer must not get a burst it cannot carry")
+
+		require.NoError(t, c1.SendDMRD(makeBurst(1000001, 1, 6102, true, dmrconst.FrameDataSync, uint(enums.DataTypeRate1), 0)))
+		assert.Len(t, c2.Drain(drainWait), 1, "the MMDVM repeater must get the rate 1 burst")
+		rate1 := ic.Drain(drainWait)
+		if assert.Len(t, rate1, 1, "the IPSC peer gets rate 1 as a raw block") {
+			assert.Equal(t, byte(ipscwire.BurstRaw), rate1[0].Data[30])
+		}
 
 		mu.Lock()
 		defer mu.Unlock()

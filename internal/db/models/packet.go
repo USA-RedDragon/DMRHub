@@ -47,6 +47,10 @@ type Packet struct {
 	// We also want to be able to represent -1 as a null, so we use int
 	BER  int `msg:"ber"`
 	RSSI int `msg:"rssi"`
+	// TrackID names the burst to the call tracker that tracked it, so a
+	// report about the burst finds its transmission. Zero when untracked.
+	// It is not part of the DMRD packet.
+	TrackID uint64 `msg:"trackID"`
 }
 
 func (p Packet) Equal(other Packet) bool {

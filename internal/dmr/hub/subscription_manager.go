@@ -317,6 +317,7 @@ func unmarshalRawPacket(msg []byte) (models.Packet, bool) {
 		slog.Error("Failed to unpack packet")
 		return models.Packet{}, false
 	}
+	packet.TrackID = rawPacket.TrackID
 	return packet, true
 }
 

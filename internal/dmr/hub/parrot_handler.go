@@ -100,7 +100,7 @@ func (h *Hub) playbackParrot(ctx context.Context, repeaterID uint, packets []mod
 		// ownership), switch to pubsub so the new pod can deliver the packet
 		// to the live peer address. Once ownership is lost, stay on pubsub
 		// for the rest of the playback.
-		h.trackCall(ctx, pkt, parrotSource)
+		h.trackCall(ctx, &pkt, parrotSource)
 		useDirect := false
 		if serverType != "" && !lostOwnership {
 			if h.isLocalPeerOwner(ctx, repeaterID) {

@@ -85,16 +85,11 @@ type singleKey struct {
 
 func (s *shard) handle(t *task) {
 	ch := s.channel(t.key, t.peer)
-	if !ch.peer && ch.hasStreamID && ch.streamID != t.p.StreamID {
-		s.newStream(ch, t)
-	}
-	ch.streamID, ch.hasStreamID = t.p.StreamID, true
 	ch.last = t.at
 	s.heard(t)
 	pc := t.p
 	d := pc.Data()
 	h := d.Hint(s.t.now())
-	s.fixSeq(ch, &h)
 
 	switch t.p.FrameType {
 	case dmrconst.FrameVoice, dmrconst.FrameVoiceSync:
@@ -113,59 +108,26 @@ func (s *shard) handle(t *task) {
 	}
 }
 
-// newStream ends the data and control rows of the previous stream on the
-// repeater slot ch, where a new stream starts with t. A repeater slot
-// carries one transmission at a time, so a new stream right after another
-// is a new transmission, not more of the last one. Voice rows end on their
-// own key and hang.
-func (s *shard) newStream(ch *channel, t *task) {
-	if ch.rx != nil {
-		s.events = ch.rx.Lost(s.t.now(), s.events[:0])
-		s.apply(ch, nil, nil, s.events)
-		ch.rx = nil
+func (s *shard) receiver(ch *channel, stream uint) *data.Receiver {
+	if rx := ch.rxs[stream]; rx != nil {
+		return rx
 	}
-	for _, r := range ch.data {
-		s.finish(r, t.at)
+	rx, err := data.NewReceiver(&data.ReceiverConfig{
+		Respond:      false,
+		AcceptBadCRC: true,
+		Lost:         -1,
+		Hang:         dataHang,
+	})
+	if err != nil {
+		slog.Error("CallTracker: cannot make a data receiver", "error", err)
+		return nil
 	}
-	for k, r := range s.rows {
-		if sk, ok := k.(singleKey); ok && sk.ch == ch.key && r.call.StreamID != t.p.StreamID {
-			s.finish(r, t.at)
-		}
-	}
-}
-
-func (s *shard) fixSeq(ch *channel, h *layer2.Hint) {
-	raw := h.Seq & 0xff
-	switch {
-	case !ch.started:
-		ch.started, ch.stream, ch.offset = true, uint(h.Stream), 0
-	case uint(h.Stream) != ch.stream:
-		ch.stream = uint(h.Stream)
-		ch.offset = (ch.outSeq + 1 - raw) & 0xff
-	}
-	ch.outSeq = (raw + ch.offset) & 0xff
-	h.Seq = ch.outSeq
-}
-
-func (s *shard) receiver(ch *channel) *data.Receiver {
-	if ch.rx == nil {
-		rx, err := data.NewReceiver(&data.ReceiverConfig{
-			Respond:      false,
-			AcceptBadCRC: true,
-			Lost:         -1,
-			Hang:         dataHang,
-		})
-		if err != nil {
-			slog.Error("CallTracker: cannot make a data receiver", "error", err)
-			return nil
-		}
-		ch.rx = rx
-	}
-	return ch.rx
+	ch.rxs[stream] = rx
+	return rx
 }
 
 func (s *shard) feed(t *task, ch *channel, h *layer2.Hint, cls *class) {
-	rx := s.receiver(ch)
+	rx := s.receiver(ch, t.p.StreamID)
 	if rx == nil {
 		return
 	}
@@ -194,8 +156,8 @@ func (s *shard) dataBurst(t *task, ch *channel, h *layer2.Hint) {
 			sub = subReserved
 		}
 		s.single(t, ch, &class{kind: models.CallKindUnknown, sub: sub})
-		if ch.rx != nil {
-			s.events = ch.rx.Decoded(s.t.now(), nil, *h, s.events[:0])
+		if rx := ch.rxs[t.p.StreamID]; rx != nil {
+			s.events = rx.Decoded(s.t.now(), nil, *h, s.events[:0])
 			s.apply(ch, t, nil, s.events)
 		}
 		return
@@ -364,7 +326,7 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 	}
 	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: cls.kind, sub: cls.sub}
 	r, ok := s.rows[key]
-	if ok && t.at.Sub(r.last) > controlHang {
+	if ok && (t.at.Sub(r.last) > controlHang || r.call.StreamID != p.StreamID) {
 		s.finish(r, t.at)
 		ok = false
 	}
@@ -459,7 +421,7 @@ func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 	p := &t.p
 	key := dataKey{src: p.Src, dst: p.Dst, group: p.GroupCall}
 	r := ch.data[key]
-	if r != nil && (r.finished || newPacket(r, cls)) {
+	if r != nil && (r.finished || r.call.StreamID != p.StreamID || newPacket(r, cls)) {
 		s.finish(r, t.at)
 		r = nil
 	}

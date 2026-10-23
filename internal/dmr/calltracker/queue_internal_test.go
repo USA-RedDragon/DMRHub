@@ -32,7 +32,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
-	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -70,24 +69,4 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 	assert.Less(t, time.Since(start), time.Second, "Track must not wait for a busy worker")
 	assert.GreaterOrEqual(t, ct.Dropped(), uint64(shardDepth-1))
 	close(release)
-}
-
-func TestFixSeqContinuesAcrossStreams(t *testing.T) {
-	t.Parallel()
-	s := &shard{}
-	ch := &channel{}
-	seqs := []struct{ stream, seq, want uint16 }{
-		{1, 200, 200}, {1, 201, 201}, {1, 203, 203},
-		{2, 7, 204}, {2, 8, 205}, {2, 10, 207},
-		{3, 255, 208},
-	}
-	for _, c := range seqs {
-		h := hintOf(c.stream, c.seq)
-		s.fixSeq(ch, &h)
-		assert.Equal(t, c.want, h.Seq, "stream %d seq %d", c.stream, c.seq)
-	}
-}
-
-func hintOf(stream, seq uint16) layer2.Hint {
-	return layer2.Hint{Stream: uint32(stream), HasStream: true, Seq: seq, HasSeq: true, SeqBits: 8}
 }

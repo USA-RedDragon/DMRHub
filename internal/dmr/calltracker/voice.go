@@ -26,7 +26,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/mitchellh/hashstructure/v2"
 )
 
@@ -64,7 +66,7 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	if p.Dst == unlinkID {
 		return
 	}
-	if ch.rx != nil && ch.rx.State() != data.StateIdle {
+	if rx := ch.rxs[p.StreamID]; rx != nil && rx.State() != data.StateIdle {
 		s.feed(t, ch, h, nil)
 	}
 	key, err := voiceKeyOf(p)
@@ -84,10 +86,35 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	if encrypted {
 		r.call.SubKind = "encrypted"
 	}
+	if r.call.FID == nil {
+		r.call.FID = s.lcFID(p)
+	}
 	s.updateVoice(r, t)
 	if p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		s.finish(r, t.at)
 	}
+}
+
+// lcFID returns the FID of the Full LC of p, a voice header or terminator,
+// or nil for any other burst or an LC that does not decode.
+func (s *shard) lcFID(p *models.Packet) *uint8 {
+	if p.FrameType != dmrconst.FrameDataSync {
+		return nil
+	}
+	dt := enums.DataType(p.DTypeOrVSeq & 0xf)
+	if dt != enums.DataTypeVoiceLCHeader && dt != enums.DataTypeTerminatorWithLC {
+		return nil
+	}
+	b := s.burst
+	if err := b.DecodeFromBytesWith(layer2.RawBurst(p.DMRData), &layer2.DecodeOptions{Kind: layer2.KindData, DataType: &dt}); err != nil {
+		return nil
+	}
+	lc, ok := b.Data.(*pdu.FullLinkControl)
+	if !ok || lc.FEC.Uncorrectable {
+		return nil
+	}
+	fid := uint8(lc.FID)
+	return &fid
 }
 
 func (s *shard) updateVoice(r *row, t *task) {

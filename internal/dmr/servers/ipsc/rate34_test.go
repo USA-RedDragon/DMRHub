@@ -131,8 +131,12 @@ func TestTranslateToIPSCRate34Undecodable(t *testing.T) {
 	if !bytes.Equal(got[38:63], info[:]) || got[63] != 0 {
 		t.Fatalf("info bits %x, want %x", got[38:64], info)
 	}
-	if back := tr.TranslateToMMDVM(got[0], got); len(back) != 0 {
-		t.Fatalf("undecodable block translated to %d MMDVM packets", len(back))
+	back := tr.TranslateToMMDVM(got[0], got)
+	if len(back) != 1 {
+		t.Fatalf("undecodable block translated to %d MMDVM packets, want 1", len(back))
+	}
+	if back[0].DTypeOrVSeq != uint(enums.DataTypeRate34) || layer2.RawBurst(back[0].DMRData).Info() != info {
+		t.Fatalf("undecodable block came back as %s", back[0].String())
 	}
 }
 

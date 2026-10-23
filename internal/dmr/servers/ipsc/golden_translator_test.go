@@ -222,3 +222,38 @@ func TestXPRDataCallRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestXPRRawBlocksReachMMDVM translates the undecodable blocks (burst type
+// 0x1F) that the XPR 8400 sent. Each must reach MMDVM as one data burst with
+// the data type of its slot type and the 196 information bits it carried.
+func TestXPRRawBlocksReachMMDVM(t *testing.T) {
+	t.Parallel()
+	n := 0
+	for _, p := range readXPRCapture(t, "one") {
+		if len(p) < 31 || p[30] != byte(ipscwire.BurstRaw) {
+			continue
+		}
+		n++
+		u := decodeUserT(t, p)
+		st, ok := u.Data.SlotType()
+		if !ok {
+			t.Fatalf("%x: no slot type", p)
+		}
+		pkts := newTestTranslator(t).TranslateToMMDVM(p[0], p)
+		if len(pkts) != 1 {
+			t.Fatalf("%x: %d MMDVM packets, want 1", p, len(pkts))
+		}
+		if pkts[0].FrameType != dmrconst.FrameDataSync || pkts[0].DTypeOrVSeq != uint(st.DataType()) {
+			t.Fatalf("%x: %s, want data type %v", p, pkts[0].String(), st.DataType())
+		}
+		info := layer2.RawBurst(pkts[0].DMRData).Info()
+		want := [25]byte(u.Data.Octets[:25])
+		want[24] &= 0xF0
+		if info != want {
+			t.Fatalf("%x: info bits %x, want %x", p, info, want)
+		}
+	}
+	if n == 0 {
+		t.Fatal("the capture has no undecodable blocks")
+	}
+}

@@ -478,8 +478,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	case u.IsVoice():
 		results = t.voiceToMMDVM(&u, base, rss)
 	case u.Burst.Type() == ipscwire.BurstRaw:
-		// An undecodable block is not relayed.
-		slog.Debug("IPSCTranslator: dropping undecodable IPSC data block")
+		results = t.rawToMMDVM(&u, base, rss)
 	case u.Burst.Type() == ipscwire.BurstSyncLost:
 		t.events = rss.rx.Lost(time.Since(t.epoch), t.events[:0])
 	case isData:
@@ -523,6 +522,28 @@ func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base m
 	pkt.Seq = uint(rss.seq)
 	pkt.FrameType = dmrconst.FrameDataSync
 	pkt.DTypeOrVSeq = uint(dt)
+	pkt.DMRData = raw
+	rss.seq++
+	return []models.Packet{pkt}
+}
+
+// rawToMMDVM builds the MMDVM packet of an undecodable IPSC data block: its
+// 196 information bits as the repeater sent them, with the data type of its
+// slot type.
+func (t *IPSCTranslator) rawToMMDVM(u *ipscwire.User, base models.Packet, rss *reverseStreamState) []models.Packet {
+	raw, err := u.RawBurst(0, layer2.SyncSourceBS)
+	if err != nil {
+		slog.Debug("IPSCTranslator: cannot build undecodable data block", "error", err)
+		return nil
+	}
+	now := time.Since(t.epoch)
+	h := u.Hint(now)
+	t.events = rss.rx.Burst(now, &raw, h, t.events[:0])
+
+	pkt := base
+	pkt.Seq = uint(rss.seq)
+	pkt.FrameType = dmrconst.FrameDataSync
+	pkt.DTypeOrVSeq = uint(h.DataType)
 	pkt.DMRData = raw
 	rss.seq++
 	return []models.Packet{pkt}

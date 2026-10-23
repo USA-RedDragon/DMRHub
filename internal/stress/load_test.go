@@ -128,6 +128,7 @@ func TestLatency(t *testing.T) { //nolint:paralleltest
 	r := newRig(t, s, res, logs, rigOptions{})
 	limit := p99Limit()
 
+	r.waitQuiet(time.Minute)
 	q0, before := r.queries.total.Load(), r.queries.snapshot()
 	idle := 11 * time.Second
 	time.Sleep(idle)

@@ -88,6 +88,7 @@ type ledger struct {
 	sent    atomic.Int64
 	loose   atomic.Int64
 	bySD    sync.Map
+	byCall  sync.Map
 	parrot  sync.Map
 	totals  ledgerTotals
 	totalMu sync.Mutex
@@ -264,6 +265,11 @@ func (l *ledger) deliver(target uint, c *callRec, raw layer2.RawBurst, now int64
 	l.count(target, c, k, now)
 }
 
+type ipscCall struct {
+	target uint
+	cc     uint32
+}
+
 // receiveIPSC counts an IPSC user packet at target.
 func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 	now := l.now()
@@ -271,17 +277,22 @@ func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 	if b.Src == parrotID {
 		return
 	}
-	v, ok := l.bySD.Load(srcDst{b.Src, b.Dst, b.GroupCall})
-	if !ok {
-		if l.stray.Add(1) <= 20 {
-			l.sample(fmt.Sprintf("stray IPSC packet at %d: src %d dst %d", target, b.Src, b.Dst))
-		}
-		return
-	}
 	u, err := ipscwire.DecodeUser(b.Data)
 	if err != nil {
 		l.badKey.Add(1)
 		return
+	}
+	key := ipscCall{target, u.CallControl}
+	v, ok := l.byCall.Load(key)
+	if !ok {
+		v, ok = l.bySD.Load(srcDst{b.Src, b.Dst, b.GroupCall})
+		if !ok {
+			if l.stray.Add(1) <= 20 {
+				l.sample(fmt.Sprintf("stray IPSC packet at %d: src %d dst %d", target, b.Src, b.Dst))
+			}
+			return
+		}
+		v, _ = l.byCall.LoadOrStore(key, v)
 	}
 	raw, err := u.RawBurst(0, layer2.SyncSourceBS)
 	if err != nil {
@@ -336,6 +347,12 @@ func (l *ledger) finish(grace time.Duration, all bool) {
 			}
 			delete(sh.calls, id)
 			l.bySD.CompareAndDelete(srcDst{c.src, c.dst, c.group}, c)
+			l.byCall.Range(func(k, v any) bool {
+				if v == c {
+					l.byCall.Delete(k)
+				}
+				return true
+			})
 			out = append(out, c)
 		}
 		sh.mu.Unlock()

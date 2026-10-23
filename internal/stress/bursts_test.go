@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
@@ -305,5 +306,44 @@ func TestHarnessVoiceTagSurvivesIPSC(t *testing.T) {
 		k, ok := voiceTag(back)
 		require.True(t, ok, "burst %d lost its tag", pos)
 		require.Equal(t, 1000+pos, k)
+	}
+}
+
+func TestHarnessCountsLateIPSCBurstsForTheirCall(t *testing.T) {
+	t.Parallel()
+	l := newLedger()
+	script := voiceScript{group: true, dst: 50000, src: 3100015, frames: 12}
+	bursts, err := script.bursts()
+	require.NoError(t, err)
+	calls := []*callRec{
+		{stream: 1, kind: "voice", src: script.src, dst: script.dst, group: true},
+		{stream: 2, kind: "voice", src: script.src, dst: script.dst, group: true},
+	}
+	send := func(c *callRec, cc uint32, from, to int) {
+		for k := from; k < to; k++ {
+			if !bursts[k].voiceFrame() {
+				continue
+			}
+			l.willSend(c, k)
+			vb, _ := enums.VoiceBurstAt(int(bursts[k].value))
+			u := ipscwire.User{Opcode: ipscwire.OpGroupVoice, CallControl: cc}
+			_, err := u.SetRawBurst(bursts[k].raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: vb})
+			require.NoError(t, err)
+			data, err := u.AppendBinary(nil)
+			require.NoError(t, err)
+			l.receiveIPSC(ipscRptID, &testutils.IPSCBurst{Src: script.src, Dst: script.dst, GroupCall: true, Data: data})
+		}
+	}
+	require.NoError(t, l.register(calls[0], bursts, []uint{ipscRptID}))
+	send(calls[0], 1, 0, len(bursts)/2)
+	require.NoError(t, l.register(calls[1], bursts, []uint{ipscRptID}))
+	send(calls[0], 1, len(bursts)/2, len(bursts))
+	send(calls[1], 2, 0, len(bursts))
+	for _, c := range calls {
+		for k, b := range bursts {
+			if b.voiceFrame() {
+				require.Equal(t, uint8(1), c.got[k][0], "stream %d burst %d", c.stream, k)
+			}
+		}
 	}
 }

@@ -118,12 +118,12 @@ describe('Admin MessagesPage', () => {
   });
 
   it('lists every stored message with no 250 cap', async () => {
-    serve({ total: 1234, messages: Array.from({ length: 25 }, (_, i) => msg(i + 1)) });
+    serve({ total: 1234, messages: [msg(1), msg(2)] });
     const wrapper = await mountPage();
     expect(searchCalls()[0]).toBe('/admin/messages?page=1&limit=25');
     const text = wrapper.text();
     expect(text).toContain('Page 1 of 50');
-    expect(text).toContain('25 of 1234 stored messages');
+    expect(text).toContain('2 of 1234 stored messages');
     expect(text).toContain('MMDVM');
     expect(text).toContain('Select a row to see the raw message.');
   });

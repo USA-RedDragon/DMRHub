@@ -26,4 +26,6 @@ type RawDMRPacket struct {
 	Data       []byte `msg:"data"`
 	RemoteIP   string `msg:"remote_ip"`
 	RemotePort int    `msg:"remote_port"`
+	// TrackID is the Packet.TrackID of the packet in Data.
+	TrackID uint64 `msg:"track_id"`
 }

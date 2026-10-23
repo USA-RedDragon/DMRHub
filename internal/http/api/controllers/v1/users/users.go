@@ -781,14 +781,22 @@ func GETUserSelf(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
-	c.JSON(http.StatusOK, userSelf{User: user, SMSStorage: user.SMSStorageEnabled})
+	tracking, err := models.TracksPositions(db, uid)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return
+	}
+	c.JSON(http.StatusOK, userSelf{User: user, SMSStorage: user.SMSStorageEnabled, PositionTracking: tracking})
 }
 
-// userSelf is the logged-in user, with whether SMS Storage is on, so that
-// an app can tell why the inbox is empty.
+// userSelf is the logged-in user, with whether SMS Storage and position
+// tracking are on, so that an app can tell why the inbox or the map is
+// empty.
 type userSelf struct {
 	models.User
-	SMSStorage bool `json:"sms_storage"`
+	SMSStorage       bool `json:"sms_storage"`
+	PositionTracking bool `json:"position_tracking"`
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {

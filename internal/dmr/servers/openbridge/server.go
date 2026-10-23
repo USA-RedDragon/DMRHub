@@ -525,6 +525,11 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
+	if !s.hub.AdmitStream(packet, "openbridge") {
+		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
+		return
+	}
+
 	// We need to send this packet to all peers except the one that sent it
 	peers, err := models.ListPeers(s.DB)
 	if err != nil {

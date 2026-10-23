@@ -22,6 +22,7 @@ package models
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"runtime"
 	"strconv"
 	"strings"
@@ -52,10 +53,6 @@ type RepeaterConfiguration struct {
 var (
 	ErrInvalidCallsign  = errors.New("invalid callsign")
 	ErrInvalidColorCode = errors.New("invalid color code")
-	ErrInvalidLatitude  = errors.New("invalid latitude")
-	ErrInvalidLongitude = errors.New("invalid longitude")
-	ErrInvalidInt       = errors.New("invalid integer")
-	ErrInvalidFloat     = errors.New("invalid float")
 )
 
 const (
@@ -77,87 +74,92 @@ const (
 var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 
 // ParseConfig reads the 302-octet RPTC configuration message data.
+//
+// Clients pad the fields differently: DMRGateway and MMDVMHost zero fill the
+// numbers, HBlink3 left-justifies frequencies and coordinates with spaces,
+// and HBlink4 right-justifies coordinates with spaces. Every field is read
+// with leading and trailing spaces and NULs removed. Only the callsign and
+// the color code can refuse the login; any other field that does not parse
+// is logged and left at zero, as FreeDMR and HBlink store it as plain text.
+// The numbers are read from their octet ranges in dmrgo's MMDVMConfig layout,
+// since dmrgo's accessors refuse anything but digits.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
 	cfg, err := dmrd.MMDVMConfigOf(data)
 	if err != nil {
 		slog.Error("Error reading RPTC packet", "error", err)
 		return ErrInvalidConfig
 	}
+	id := cfg.ID()
 
-	c.Callsign = strings.ToUpper(string(cfg.Callsign()))
+	c.Callsign = strings.ToUpper(rptcText(cfg.Callsign()))
+	c.RXFrequency = uint(rptcNumber[uint32](id, "RXFrequency", cfg[16:25]))
+	c.TXFrequency = uint(rptcNumber[uint32](id, "TXFrequency", cfg[25:34]))
+	c.TXPower = rptcNumber[uint8](id, "Power", cfg[34:36])
 
-	rxFreq, err := cfg.RXFrequency()
-	if err != nil {
-		slog.Error("Error parsing rx frequency", "error", err)
-		return ErrInvalidInt
+	cc, ok := rptcDecimal[uint8](cfg[36:38])
+	if !ok {
+		slog.Error("Error parsing color code", "repeaterID", id, "value", string(cfg[36:38]))
+		return ErrInvalidColorCode
 	}
-	c.RXFrequency = uint(rxFreq)
+	c.ColorCode = cc
 
-	txFreq, err := cfg.TXFrequency()
-	if err != nil {
-		slog.Error("Error parsing tx frequency", "error", err)
-		return ErrInvalidInt
-	}
-	c.TXFrequency = uint(txFreq)
+	c.Latitude = rptcCoordinate(id, "Latitude", cfg[38:46], maxLatitude)
+	c.Longitude = rptcCoordinate(id, "Longitude", cfg[46:55], maxLongitude)
+	c.Height = rptcNumber[uint16](id, "Height", cfg[55:58])
+	c.Slots = uint(rptcNumber[uint8](id, "Slots", cfg[97:98]))
 
-	c.TXPower, err = cfg.Power()
-	if err != nil {
-		slog.Error("Error parsing tx power", "error", err)
-		return ErrInvalidInt
-	}
+	c.Location = rptcText(cfg.Location())
+	c.Description = rptcText(cfg.Description())
+	c.URL = rptcText(cfg.URL())
 
-	cc, err := cfg.ColorCode()
-	if err != nil {
-		slog.Error("Error parsing color code", "error", err)
-		return ErrInvalidInt
-	}
-	c.ColorCode = uint8(cc)
-	if c.ColorCode > maxColorCode {
-		slog.Error("Invalid color code: out of range", "colorCode", c.ColorCode)
-		return ErrInvalidInt
-	}
-
-	c.Latitude, err = strconv.ParseFloat(string(cfg.Latitude()), 32)
-	if err != nil {
-		slog.Error("Error parsing latitude", "error", err)
-		return ErrInvalidFloat
-	}
-
-	c.Longitude, err = strconv.ParseFloat(string(cfg.Longitude()), 32)
-	if err != nil {
-		slog.Error("Error parsing longitude", "error", err)
-		return ErrInvalidFloat
-	}
-
-	c.Height, err = cfg.Height()
-	if err != nil {
-		slog.Error("Error parsing height", "error", err)
-		return ErrInvalidInt
-	}
-
-	c.Location = string(cfg.Location())
-	c.Description = string(cfg.Description())
-
-	slots, err := cfg.Slots()
-	if err != nil {
-		slog.Error("Error parsing slots", "error", err)
-		return ErrInvalidInt
-	}
-	c.Slots = uint(slots)
-
-	c.URL = string(cfg.URL())
-
-	c.SoftwareID = string(cfg.SoftwareID())
+	c.SoftwareID = rptcText(cfg.SoftwareID())
 	if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub " + version + "-" + commit
 	}
 
-	c.PackageID = string(cfg.PackageID())
+	c.PackageID = rptcText(cfg.PackageID())
 	if c.PackageID == "" {
 		c.PackageID = version + "-" + commit
 	}
 
 	return c.Check(version, commit)
+}
+
+func rptcText(b []byte) string {
+	return strings.Trim(string(b), " \x00")
+}
+
+func rptcDecimal[T uint8 | uint16 | uint32](b []byte) (T, bool) {
+	s := rptcText(b)
+	if s == "" {
+		return 0, true
+	}
+	v, err := strconv.ParseUint(s, 10, 32)
+	if err != nil || v > uint64(^T(0)) {
+		return 0, false
+	}
+	return T(v), true
+}
+
+func rptcNumber[T uint8 | uint16 | uint32](id uint32, field string, raw []byte) T {
+	v, ok := rptcDecimal[T](raw)
+	if !ok {
+		slog.Warn("Ignoring unparsable RPTC field", "repeaterID", id, "field", field, "value", string(raw))
+	}
+	return v
+}
+
+func rptcCoordinate(id uint32, field string, raw []byte, limit float64) float64 {
+	s := rptcText(raw)
+	if s == "" {
+		return 0
+	}
+	v, err := strconv.ParseFloat(s, 32)
+	if err != nil || math.IsNaN(v) || v < -limit || v > limit {
+		slog.Warn("Ignoring unparsable RPTC field", "repeaterID", id, "field", field, "value", string(raw))
+		return 0
+	}
+	return v
 }
 
 func (c *RepeaterConfiguration) Check(version, commit string) error {
@@ -177,12 +179,12 @@ func (c *RepeaterConfiguration) Check(version, commit string) error {
 		return ErrInvalidColorCode
 	}
 
-	if c.Latitude < minLatitude || c.Latitude > maxLatitude {
-		return ErrInvalidLatitude
+	if math.IsNaN(c.Latitude) || c.Latitude < minLatitude || c.Latitude > maxLatitude {
+		c.Latitude = 0
 	}
 
-	if c.Longitude < minLongitude || c.Longitude > maxLongitude {
-		return ErrInvalidLongitude
+	if math.IsNaN(c.Longitude) || c.Longitude < minLongitude || c.Longitude > maxLongitude {
+		c.Longitude = 0
 	}
 
 	if c.Height > maxHeight {

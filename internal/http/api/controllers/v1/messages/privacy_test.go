@@ -86,7 +86,7 @@ func TestRoutedSMSReachesTheInboxOnlyAfterOptIn(t *testing.T) {
 			kvStore, err := kv.MakeKV(context.TODO(), cfg)
 			require.NoError(t, err)
 			ct := calltracker.NewCallTracker(e.db, ps, kvStore)
-			store := messages.NewStore(e.db)
+			store := messages.NewStore(e.db, kvStore)
 			ct.SetDataObserver(store)
 			t.Cleanup(func() {
 				ct.Stop()

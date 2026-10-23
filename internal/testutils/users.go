@@ -34,7 +34,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const testTimeout = 1 * time.Minute
+// testTimeout ends a test request that hangs. It leaves room for the first
+// request that checks a radio ID, which loads the embedded user database:
+// about a minute under the race detector.
+const testTimeout = 5 * time.Minute
 
 type CookieJar struct {
 	cookies []http.Cookie

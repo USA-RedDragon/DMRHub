@@ -363,6 +363,12 @@ func (r *rig) playOn(send func(models.Packet) error, ingress uint, slot2 bool, s
 		defer mu.Unlock()
 	}
 	stream := uint(r.streams.Add(1))
+	bursts, err := stampStream(s.bursts, stream)
+	if err != nil {
+		r.res.fail(r.t, "stamping %s: %v", s.label, err)
+		return nil
+	}
+	s.bursts = bursts
 	c := &callRec{stream: stream, kind: s.kind, label: s.label, src: s.src, dst: s.dst, group: s.group, slot2: slot2, ingress: ingress, rowKind: s.rowKind, sub: s.sub, text: s.text, confirm: s.confirm}
 	if s.kind == "voice" && s.dst == parrotID {
 		c.kind = "parrot"
@@ -516,4 +522,18 @@ func privateToRepeater(frames func(*rand.Rand) int) func(r *rig, rnd *rand.Rand,
 
 func between(lo, hi int) func(*rand.Rand) int {
 	return func(rnd *rand.Rand) int { return lo + rnd.IntN(hi-lo+1) }
+}
+
+// waitDeliveries waits until no packet has reached a target for quiet, or for
+// at most limit: an IPSC slot sends the calls that waited for it after the
+// traffic stops.
+func (r *rig) waitDeliveries(quiet, limit time.Duration) {
+	end := time.Now().Add(limit)
+	last, since := r.led.recv.Load(), time.Now()
+	for time.Now().Before(end) && time.Since(since) < quiet {
+		time.Sleep(100 * time.Millisecond)
+		if n := r.led.recv.Load(); n != last {
+			last, since = n, time.Now()
+		}
+	}
 }

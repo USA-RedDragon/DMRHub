@@ -41,14 +41,19 @@ import (
 )
 
 // A voice burst carries its identity in the first six octets of its first
-// AMBE+2 frame: tagMagic and the index of the burst in its stream. The tag
+// AMBE+2 frame: tagMagic and the index of the burst in its stream. Once
+// stampStream has run, its second frame holds streamMagic and the stream.
+// The tag
 // is in the vocoder bits, under the frame FEC, so it survives IPSC, which
 // decodes and encodes the frames again. Other bursts are told apart by
 // their sequence number.
 const (
 	tagMagic0 = 0xD5
 	tagMagic1 = 0x7E
-	colorCode = 1
+
+	streamMagic0 = 0xA3
+	streamMagic1 = 0x5C
+	colorCode    = 1
 )
 
 // burst is one DMRD packet of a scripted transmission.
@@ -82,11 +87,20 @@ func voiceLC(group bool, dst, src uint, dt enums.DataType) (layer2.RawBurst, err
 
 // voiceFrameBurst is voice burst pos (0 is A) with the tag of index k.
 func voiceFrameBurst(pos int, k uint32) (layer2.RawBurst, error) {
+	return voiceFrameBurstOf(pos, k, 0)
+}
+
+func voiceFrameBurstOf(pos int, k, stream uint32) (layer2.RawBurst, error) {
 	vb, _ := enums.VoiceBurstAt(pos)
 	silence := vocoder.AMBESilence()
 	tag := vocoder.AMBEFrame{tagMagic0, tagMagic1}
 	binary.BigEndian.PutUint32(tag[2:6], k)
-	raw, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{tag, silence, silence}, vb,
+	second := silence
+	if stream != 0 {
+		second = vocoder.AMBEFrame{streamMagic0, streamMagic1}
+		binary.BigEndian.PutUint32(second[2:6], stream)
+	}
+	raw, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{tag, second, silence}, vb,
 		pdu.EmbeddedSignalling{ColorCode: colorCode}, [4]byte{}, layer2.SyncSourceMS)
 	if err != nil {
 		return layer2.RawBurst{}, fmt.Errorf("voice burst: %w", err)
@@ -281,6 +295,31 @@ func burstIndex(p *models.Packet) (int, bool) {
 }
 
 // voiceTag is the index that voiceFrameBurst put in raw.
+// stampStream returns a copy of bursts whose voice tags name stream, so
+// that a burst rebuilt by IPSC still tells its call.
+func stampStream(bursts []burst, stream uint) ([]burst, error) {
+	out := append([]burst(nil), bursts...)
+	for k := range out {
+		if !out[k].voiceFrame() {
+			continue
+		}
+		raw, err := voiceFrameBurstOf(int(out[k].value), uint32(k), uint32(stream)) //nolint:gosec
+		if err != nil {
+			return nil, err
+		}
+		out[k].raw = raw
+	}
+	return out, nil
+}
+
+func voiceTagStream(raw layer2.RawBurst) (uint, bool) {
+	f, _ := raw.AMBEFrames()
+	if f[1][0] != streamMagic0 || f[1][1] != streamMagic1 {
+		return 0, false
+	}
+	return uint(binary.BigEndian.Uint32(f[1][2:6])), true
+}
+
 func voiceTag(raw layer2.RawBurst) (int, bool) {
 	f, _ := raw.AMBEFrames()
 	if f[0][0] != tagMagic0 || f[0][1] != tagMagic1 {
@@ -345,5 +384,30 @@ func TestHarnessCountsLateIPSCBurstsForTheirCall(t *testing.T) {
 				require.Equal(t, uint8(1), c.got[k][0], "stream %d burst %d", c.stream, k)
 			}
 		}
+	}
+}
+
+func TestHarnessStreamTagSurvivesIPSC(t *testing.T) {
+	t.Parallel()
+	bursts, err := voiceScript{group: true, dst: 50000, src: 3100015, frames: 6}.bursts()
+	require.NoError(t, err)
+	stamped, err := stampStream(bursts, 65600)
+	require.NoError(t, err)
+	for k, b := range stamped {
+		if !b.voiceFrame() {
+			continue
+		}
+		vb, _ := enums.VoiceBurstAt(int(b.value))
+		var u ipscwire.User
+		_, err = u.SetRawBurst(b.raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: vb})
+		require.NoError(t, err)
+		back, err := u.RawBurst(0, layer2.SyncSourceBS)
+		require.NoError(t, err)
+		stream, ok := voiceTagStream(back)
+		require.True(t, ok, "burst %d lost its stream", k)
+		require.Equal(t, uint(65600), stream)
+		idx, ok := voiceTag(back)
+		require.True(t, ok)
+		require.Equal(t, k, idx)
 	}
 }

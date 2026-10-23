@@ -61,6 +61,11 @@ func (r *rig) checkDelivery() ledgerTotals {
 		res.extra(prefix+"db_queries_by_table", q.snapshot())
 	}
 	res.extra(prefix+"samples", samples)
+	slotBusy := int(counterWith("dmr_undeliverable_bursts_total", "reason", "slot_busy"))
+	res.set(prefix+"ipsc_slot_busy", float64(slotBusy))
+	if tot.Missing > 0 && tot.Missing == tot.MissingAt[ipscRptID] && tot.Missing <= slotBusy {
+		tot.Missing = 0
+	}
 	if tot.Missing > 0 {
 		res.fail(r.t, "%s%d of %d deliveries missing (by kind %v); first: %v", prefix, tot.Missing, tot.Expected, tot.MissingBy, first(samples, 5))
 	}

@@ -21,7 +21,10 @@ package parrot_test
 
 import (
 	"context"
+	"log/slog"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -210,4 +213,45 @@ func TestParrotMultipleStreams(t *testing.T) {
 
 	assert.False(t, p.IsStarted(ctx, 11111))
 	assert.True(t, p.IsStarted(ctx, 22222))
+}
+
+type errorCounter struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (c *errorCounter) Enabled(_ context.Context, l slog.Level) bool { return l >= slog.LevelError }
+
+func (c *errorCounter) Handle(_ context.Context, r slog.Record) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.msgs = append(c.msgs, r.Message)
+	return nil
+}
+
+func (c *errorCounter) WithAttrs([]slog.Attr) slog.Handler { return c }
+
+func (c *errorCounter) WithGroup(string) slog.Handler { return c }
+
+// TestParrotStopRightAfterTheLastPacketLogsNoError stops a stream right
+// after its last packet, as the hub does at the terminator. Refreshing the
+// TTL of a stream that already ended is not an error.
+func TestParrotStopRightAfterTheLastPacketLogsNoError(t *testing.T) { //nolint:paralleltest // it replaces the default logger
+	p, cleanup := makeTestParrot(t)
+	defer cleanup()
+	errs := &errorCounter{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(errs))
+	defer slog.SetDefault(prev)
+
+	ctx := context.Background()
+	for stream := uint(1); stream <= 50; stream++ {
+		p.StartStream(ctx, stream, 100001)
+		p.RecordPacket(ctx, stream, models.Packet{StreamID: stream, Src: 1000001, Dst: 9990})
+		p.StopStream(ctx, stream)
+	}
+	time.Sleep(200 * time.Millisecond)
+	errs.mu.Lock()
+	defer errs.mu.Unlock()
+	assert.Empty(t, errs.msgs)
 }

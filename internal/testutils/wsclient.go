@@ -30,6 +30,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,10 +68,23 @@ func (e *WSCloseError) Is(target error) bool {
 }
 
 // WSConn is a small RFC 6455 client for tests. It needs no websocket
-// library, so the tests do not depend on the one the server uses.
+// library, so the tests do not depend on the one the server uses. Like a
+// browser, it answers the pings of the server whether or not the test is
+// reading.
 type WSConn struct {
-	conn net.Conn
-	r    *bufio.Reader
+	conn      net.Conn
+	r         *bufio.Reader
+	writeMu   sync.Mutex
+	frames    chan wsFrame
+	ended     chan struct{}
+	end       error
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+type wsFrame struct {
+	text string
+	err  error
 }
 
 // DialWS opens the websocket path on the test server at serverURL with the
@@ -113,14 +128,24 @@ func DialWSFrom(t *testing.T, serverURL, path string, jar CookieJar, origin stri
 		_ = conn.Close()
 		return nil, resp
 	}
-	w := &WSConn{conn: conn, r: r}
+	w := &WSConn{
+		conn:   conn,
+		r:      r,
+		frames: make(chan wsFrame, 64),
+		ended:  make(chan struct{}),
+		closed: make(chan struct{}),
+	}
+	go w.readLoop()
 	t.Cleanup(w.Close)
 	return w, resp
 }
 
 // Close closes the connection.
 func (w *WSConn) Close() {
-	_ = w.conn.Close()
+	w.closeOnce.Do(func() {
+		close(w.closed)
+		_ = w.conn.Close()
+	})
 }
 
 func (w *WSConn) write(op byte, payload []byte) error {
@@ -142,6 +167,8 @@ func (w *WSConn) write(op byte, payload []byte) error {
 	for i, b := range payload {
 		frame = append(frame, b^mask[i%4])
 	}
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	if _, err := w.conn.Write(frame); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
@@ -154,64 +181,106 @@ func (w *WSConn) WriteText(t *testing.T, s string) {
 	require.NoError(t, w.write(wsOpText, []byte(s)))
 }
 
-// ReadText returns the next text frame, answering pings on the way. It
-// returns an error that wraps os.ErrDeadlineExceeded when none comes
-// within timeout.
+// ReadText returns the next text frame. It returns an error that wraps
+// os.ErrDeadlineExceeded when none comes within timeout, a *WSCloseError
+// once the server closed the connection, and the read error once the
+// connection broke.
 func (w *WSConn) ReadText(timeout time.Duration) (string, error) {
-	if err := w.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return "", fmt.Errorf("deadline: %w", err)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case f := <-w.frames:
+		return f.text, f.err
+	case <-w.ended:
+		select {
+		case f := <-w.frames:
+			return f.text, f.err
+		default:
+			return "", w.end
+		}
+	case <-timer.C:
+		return "", fmt.Errorf("read: %w", os.ErrDeadlineExceeded)
 	}
+}
+
+func (w *WSConn) readLoop() {
+	var end error
+	defer func() {
+		w.end = end
+		close(w.ended)
+	}()
 	for {
-		var head [2]byte
-		if _, err := io.ReadFull(w.r, head[:]); err != nil {
-			return "", fmt.Errorf("read: %w", err)
+		text, isText, err := w.readFrame()
+		if err == nil && !isText {
+			continue
 		}
-		n := uint64(head[1] & 0x7f)
-		switch n {
-		case 126:
-			var ext [2]byte
-			if _, err := io.ReadFull(w.r, ext[:]); err != nil {
-				return "", fmt.Errorf("read: %w", err)
-			}
-			n = uint64(binary.BigEndian.Uint16(ext[:]))
-		case 127:
-			var ext [8]byte
-			if _, err := io.ReadFull(w.r, ext[:]); err != nil {
-				return "", fmt.Errorf("read: %w", err)
-			}
-			n = binary.BigEndian.Uint64(ext[:])
+		select {
+		case w.frames <- wsFrame{text: text, err: err}:
+		case <-w.closed:
+			end = net.ErrClosed
+			return
 		}
-		var mask [4]byte
-		masked := head[1]&wsMask != 0
-		if masked {
-			if _, err := io.ReadFull(w.r, mask[:]); err != nil {
-				return "", fmt.Errorf("read: %w", err)
-			}
-		}
-		payload := make([]byte, n)
-		if _, err := io.ReadFull(w.r, payload); err != nil {
-			return "", fmt.Errorf("read: %w", err)
-		}
-		if masked {
-			for i := range payload {
-				payload[i] ^= mask[i%4]
-			}
-		}
-		switch head[0] & 0x0f {
-		case wsOpText:
-			return string(payload), nil
-		case wsOpPing:
-			if err := w.write(wsOpPong, payload); err != nil {
-				return "", err
-			}
-		case wsOpClose:
-			_ = w.write(wsOpClose, payload)
-			closeErr := &WSCloseError{}
-			if len(payload) >= 2 {
-				closeErr.Code = int(binary.BigEndian.Uint16(payload[:2]))
-				closeErr.Reason = string(payload[2:])
-			}
-			return "", closeErr
+		if err != nil {
+			end = err
+			return
 		}
 	}
+}
+
+// readFrame reads the next frame and answers it when it is a ping. It
+// returns the text of a text frame with isText set, and an error once the
+// server closed the connection or it broke.
+func (w *WSConn) readFrame() (text string, isText bool, err error) {
+	var head [2]byte
+	if _, err := io.ReadFull(w.r, head[:]); err != nil {
+		return "", false, fmt.Errorf("read: %w", err)
+	}
+	n := uint64(head[1] & 0x7f)
+	switch n {
+	case 126:
+		var ext [2]byte
+		if _, err := io.ReadFull(w.r, ext[:]); err != nil {
+			return "", false, fmt.Errorf("read: %w", err)
+		}
+		n = uint64(binary.BigEndian.Uint16(ext[:]))
+	case 127:
+		var ext [8]byte
+		if _, err := io.ReadFull(w.r, ext[:]); err != nil {
+			return "", false, fmt.Errorf("read: %w", err)
+		}
+		n = binary.BigEndian.Uint64(ext[:])
+	}
+	var mask [4]byte
+	masked := head[1]&wsMask != 0
+	if masked {
+		if _, err := io.ReadFull(w.r, mask[:]); err != nil {
+			return "", false, fmt.Errorf("read: %w", err)
+		}
+	}
+	payload := make([]byte, n)
+	if _, err := io.ReadFull(w.r, payload); err != nil {
+		return "", false, fmt.Errorf("read: %w", err)
+	}
+	if masked {
+		for i := range payload {
+			payload[i] ^= mask[i%4]
+		}
+	}
+	switch head[0] & 0x0f {
+	case wsOpText:
+		return string(payload), true, nil
+	case wsOpPing:
+		if err := w.write(wsOpPong, payload); err != nil {
+			return "", false, err
+		}
+	case wsOpClose:
+		_ = w.write(wsOpClose, payload)
+		closeErr := &WSCloseError{}
+		if len(payload) >= 2 {
+			closeErr.Code = int(binary.BigEndian.Uint16(payload[:2]))
+			closeErr.Reason = string(payload[2:])
+		}
+		return "", false, closeErr
+	}
+	return "", false, nil
 }

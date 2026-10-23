@@ -144,7 +144,7 @@ describe('Last Heard & Main Page', () => {
     cy.wait('@getLastHeard').its('request.url').should('include', 'idle=true');
   });
 
-  it('says which repeaters a call was not sent to and why', () => {
+  it('says on screen which repeaters a call was not sent to and why', () => {
     cy.fixture('lastheard-kinds.json').then((data) => {
       data.calls[1].undeliverable = ['ipsc:311304200:no_ipsc_form'];
       data.calls[2].undeliverable = ['ipsc:311304200:encode_failed', 'ipsc:311304201:fec_uncorrectable'];
@@ -154,15 +154,14 @@ describe('Last Heard & Main Page', () => {
     cy.visit('/lastheard');
     cy.wait('@getLastHeard');
 
-    cy.get('[data-testid="undeliverable"]').should('have.length', 2);
-    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 311304200')
-      .should('be.visible')
-      .and('have.attr', 'title', 'Not sent to IPSC repeater 311304200: the IPSC link cannot carry this kind of burst');
-    cy.contains('[data-testid="undeliverable"]', 'Not sent to 2 repeaters')
-      .should('be.visible')
-      .and('have.attr', 'title')
-      .and('include', 'the burst could not be prepared for the IPSC link')
-      .and('not.include', 'encode_failed');
+    cy.get('[data-testid="undeliverable"]').should('have.length', 5);
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 311304200').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'The IPSC link cannot carry this kind of burst').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to 2 repeaters').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'IPSC repeater 311304200: the burst could not be prepared for the IPSC link').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'IPSC repeater 311304201: the burst was too damaged to repair').should('be.visible');
+    cy.get('[data-testid="undeliverable"][title]').should('not.exist');
+    cy.contains('encode_failed').should('not.exist');
     cy.contains('ipsc:').should('not.exist');
   });
 });

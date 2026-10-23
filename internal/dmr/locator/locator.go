@@ -293,6 +293,29 @@ func (l *Locator) startTracking(k linkKey, ln *link) {
 	}
 }
 
+// StopTracking sends a stop request to radioID for its open location
+// request, on the repeater and slot where the request went.
+func (l *Locator) StopTracking(radioID uint) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var rows []models.LocationRequest
+	if err := l.db.Where("radio_id = ?", radioID).Limit(1).Find(&rows).Error; err != nil || len(rows) == 0 {
+		return
+	}
+	r := rows[0]
+	k := linkKey{radio: radioID, service: r.ServiceID}
+	ln, ok := l.links[k]
+	if !ok {
+		rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec
+		if err != nil {
+			return
+		}
+		ln = &link{rx: rx, repeater: r.RepeaterID, slot: r.Slot == 2, cc: l.colorCode(r.RepeaterID), last: time.Now()}
+		l.links[k] = ln
+	}
+	l.stopTracking(k, ln)
+}
+
 func (l *Locator) stopTracking(k linkKey, ln *link) {
 	var rows []models.LocationRequest
 	if err := l.db.Where("radio_id = ?", k.radio).Limit(1).Find(&rows).Error; err != nil {

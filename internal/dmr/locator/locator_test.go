@@ -432,3 +432,27 @@ func TestASilentRadioThatIsNotHeardIsNotAskedAgain(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	assert.Len(t, answers(t, out.all()), 2)
 }
+
+func TestStopTrackingSendsAStopWhereTheRequestWent(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now()))
+	var out sent
+	l := locator.New(database, out.send)
+	defer l.Stop()
+
+	for _, p := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
+		l.Handle(p)
+	}
+	waitAnswers(t, &out, 2)
+	l.StopTracking(radio)
+	got := waitAnswers(t, &out, 3)
+	require.Len(t, got, 3)
+	require.NotNil(t, got[2].lrrp)
+	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+	last := out.all()[len(out.all())-1]
+	assert.Equal(t, uint(repeater), last.Repeater)
+	var n int64
+	require.NoError(t, database.Model(&models.LocationRequest{}).Where("radio_id = ?", radio).Count(&n).Error)
+	assert.Zero(t, n)
+}

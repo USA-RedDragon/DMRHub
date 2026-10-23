@@ -138,6 +138,8 @@
           <p v-if="idOK" class="text-sm text-green-600 dark:text-green-500" data-test="radio-id-ok">{{ idOK }}</p>
         </CardContent>
       </Card>
+
+      <AppsCard />
     </template>
 
     <Card v-else-if="state === 'error'">
@@ -160,6 +162,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppsCard from '@/components/users/AppsCard.vue';
 import { badgeClass } from '@/lib/badge';
 import {
   addRadioID,

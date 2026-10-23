@@ -402,6 +402,21 @@ func (m *subscriptionManager) cancelSubscription(repeaterID uint, talkgroupID ui
 	sub.stop()
 }
 
+// forget removes the entry of a repeater's subscription under key, unless
+// the entry already belongs to a newer subscription.
+func (m *subscriptionManager) forget(repeaterID uint, key uint, sub *subscription) {
+	radioSubs, ok := m.subscriptions.Load(repeaterID)
+	if !ok {
+		return
+	}
+	radioSubs.Compute(key, func(old *subscription, loaded bool) (*subscription, xsync.ComputeOp) {
+		if loaded && old == sub {
+			return nil, xsync.DeleteOp
+		}
+		return old, xsync.CancelOp
+	})
+}
+
 // subscribeRepeater listens for private calls destined to a specific repeater
 // and delivers them to the appropriate server via deliverToServer.
 func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.Subscription, repeaterID uint) {
@@ -417,10 +432,7 @@ func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.S
 		select {
 		case <-sub.done:
 			slog.Debug("Context canceled, stopping subscription to hub:packets:repeater", "repeaterID", repeaterID)
-			radioSubs, ok := m.subscriptions.Load(repeaterID)
-			if ok {
-				radioSubs.Delete(repeaterID)
-			}
+			m.forget(repeaterID, repeaterID, sub)
 			return
 		case msg := <-pubsubChannel:
 			if msg == nil {
@@ -462,10 +474,7 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscri
 		select {
 		case <-sub.done:
 			slog.Debug("Context canceled, stopping subscription to hub:packets:talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
-			radioSubs, ok := m.subscriptions.Load(repeaterID)
-			if ok {
-				radioSubs.Delete(tg)
-			}
+			m.forget(repeaterID, tg, sub)
 			return
 		case msg := <-pubsubChannel:
 			if msg == nil {
@@ -504,12 +513,8 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscri
 			} else {
 				// Clean up the subscription map entry and cancel the context
 				// to avoid leaking resources.
-				radioSubs, ok := m.subscriptions.Load(repeaterID)
-				if ok {
-					if loaded, ok := radioSubs.LoadAndDelete(tg); ok {
-						loaded.stop()
-					}
-				}
+				m.forget(repeaterID, tg, sub)
+				sub.stop()
 				err = feed.Close()
 				if err != nil {
 					slog.Error("Error closing pubsub connection", "error", err)

@@ -20,7 +20,6 @@
 package talkgroups
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -157,7 +156,7 @@ func DELETETalkgroup(c *gin.Context) {
 	// Reload affected repeaters so stale subscriptions are cleaned up
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok {
 		for _, rid := range affectedRepeaterIDs {
-			go dmrHub.ReloadRepeater(context.Background(), rid)
+			dmrHub.ReloadRepeater(c.Request.Context(), rid)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup deleted"})

@@ -41,6 +41,7 @@ import (
 type TestDB struct {
 	database *gorm.DB
 	pubsub   pubsub.PubSub
+	hub      *hub.Hub
 }
 
 func (t *TestDB) CloseDB() {
@@ -54,6 +55,11 @@ func (t *TestDB) CloseDB() {
 // PubSub returns the pubsub of the router of CreateTestDBRouterWithOptions.
 func (t *TestDB) PubSub() pubsub.PubSub {
 	return t.pubsub
+}
+
+// Hub returns the hub of the router, or nil when it has none.
+func (t *TestDB) Hub() *hub.Hub {
+	return t.hub
 }
 
 func (t *TestDB) DB() *gorm.DB {
@@ -111,6 +117,9 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	return http.CreateRouter(context.TODO(), &defConfig, nil, t.database, pubsub, ready, nil, "test", "deadbeef"), &t, nil
 }
 
+// CreateTestDBRouterWithHub creates a test router with a hub. Its in-memory
+// database is shared by every connection, so the goroutines of the hub see
+// what the handlers write.
 func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
@@ -118,8 +127,8 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	defConfig.Database.Database = "" // Use in-memory database for tests
-	defConfig.Database.ExtraParameters = []string{}
+	defConfig.Database.Database = fmt.Sprintf("file:hubrouter_%p", &t)
+	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
 	defConfig.DMR.DisableRadioIDValidation = true
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
@@ -164,6 +173,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 
 	ct := calltracker.NewCallTracker(t.database, ps)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
+	t.hub = dmrHub
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
@@ -235,6 +245,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	t.pubsub = ps
 	ct := calltracker.NewCallTracker(t.database, ps)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
+	t.hub = dmrHub
 
 	ready := &atomic.Bool{}
 	ready.Store(true)

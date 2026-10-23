@@ -652,3 +652,43 @@ func TestStaleRepeaterSaveKeepsTrust(t *testing.T) {
 	assert.True(t, fresh.SimplexRepeater)
 	assert.True(t, fresh.Trusted, "a save of a stale repeater must not undo the admin's trust")
 }
+
+func TestRepeaterEditsChangeRoutingAtOnce(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouterWithHub()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{
+		DMRId:    3191868,
+		Callsign: "KI5VMF",
+		Username: "testuser",
+		Password: "password",
+	})
+	const id = uint(319186811)
+	_, w := testutils.CreateRepeater(t, router, userJar, apimodels.RepeaterPost{RadioID: id})
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 92, Name: "TG92"}).Error)
+
+	delivery := testutils.NewHubDelivery(t, tdb.Hub())
+	tdb.Hub().ActivateRepeater(context.Background(), id)
+
+	_, w = testutils.SetRepeaterTalkgroups(t, router, id, userJar, apimodels.RepeaterTalkgroupsPost{
+		TS1StaticTalkgroups: []models.Talkgroup{{ID: 91}},
+	})
+	require.Equal(t, http.StatusOK, w.Code)
+	require.True(t, delivery.GroupBurstReaches(t, 91, id))
+
+	_, w = testutils.SetRepeaterTalkgroups(t, router, id, userJar, apimodels.RepeaterTalkgroupsPost{
+		TS1StaticTalkgroups: []models.Talkgroup{{ID: 92}},
+	})
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, delivery.GroupBurstReaches(t, 91, id), "removed static talkgroup")
+	assert.True(t, delivery.GroupBurstReaches(t, 92, id), "added static talkgroup")
+
+	_, w = testutils.DeleteRepeater(t, router, id, userJar)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, delivery.GroupBurstReaches(t, 92, id), "deleted repeater")
+}

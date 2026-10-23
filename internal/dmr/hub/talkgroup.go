@@ -40,10 +40,6 @@ func (h *Hub) doUnlink(ctx context.Context, packet models.Packet) {
 	}
 
 	h.unlinkTimeslot(&dbRepeater, packet.Slot)
-
-	if err := h.db.Save(&dbRepeater).Error; err != nil {
-		slog.Error("Error saving repeater", "error", err)
-	}
 }
 
 // unlinkTimeslot clears the dynamic talkgroup for the given timeslot on a repeater.
@@ -99,26 +95,15 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 		return
 	}
 
-	var currentDynTGID **uint
-	var dynTG *models.Talkgroup
-	var ts int
-
+	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
 	if packet.Slot {
-		currentDynTGID = &repeater.TS2DynamicTalkgroupID
-		dynTG = &repeater.TS2DynamicTalkgroup
-		ts = 2
-	} else {
-		currentDynTGID = &repeater.TS1DynamicTalkgroupID
-		dynTG = &repeater.TS1DynamicTalkgroup
-		ts = 1
+		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
 	}
 
-	if *currentDynTGID == nil || **currentDynTGID != packet.Dst {
+	if currentDynTGID == nil || *currentDynTGID != talkgroup.ID {
 		slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
-		*dynTG = talkgroup
-		*currentDynTGID = &packet.Dst
 		h.subscribeTalkgroup(ctx, repeater.ID, packet.Dst)
-		if err := h.db.Save(&repeater).Error; err != nil {
+		if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
 			slog.Error("Error saving repeater", "error", err)
 		}
 	}

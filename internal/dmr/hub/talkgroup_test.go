@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,4 +214,36 @@ func TestDataDoesNotLinkTalkgroup(t *testing.T) {
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
 	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "data and CSBK must not link a talkgroup")
+}
+
+func TestDynamicLinksOfBothSlotsAtOnce(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 2, "TG2")
+	seedTalkgroup(t, database, 3, "TG3")
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+	for round := range 20 {
+		require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100001).
+			Updates(map[string]any{"ts1_dynamic_talkgroup_id": nil, "ts2_dynamic_talkgroup_id": nil}).Error)
+		var wg sync.WaitGroup
+		for _, p := range []models.Packet{makeVoicePacket(2, 1, true, false), makeVoicePacket(3, 2, true, true)} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				p.Repeater = 100001
+				h.SwitchDynamicTalkgroup(context.Background(), p)
+			}()
+		}
+		wg.Wait()
+		rpt, err := models.FindRepeaterByID(database, 100001)
+		require.NoError(t, err)
+		require.NotNil(t, rpt.TS1DynamicTalkgroupID, "round %d: TS1 link lost", round)
+		require.NotNil(t, rpt.TS2DynamicTalkgroupID, "round %d: TS2 link lost", round)
+		assert.Equal(t, uint(2), *rpt.TS1DynamicTalkgroupID)
+		assert.Equal(t, uint(3), *rpt.TS2DynamicTalkgroupID)
+	}
 }

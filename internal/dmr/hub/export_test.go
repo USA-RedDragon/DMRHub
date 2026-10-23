@@ -19,7 +19,11 @@
 
 package hub
 
-import "context"
+import (
+	"context"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+)
 
 // HoldStream keeps the routing worker of stream busy until release is
 // called.
@@ -27,4 +31,8 @@ func (h *Hub) HoldStream(stream uint) (release func()) {
 	ch := make(chan struct{})
 	h.routing.Do(context.Background(), stream, func() { <-ch })
 	return func() { close(ch) }
+}
+
+func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) {
+	h.switchDynamicTalkgroup(ctx, packet)
 }

@@ -20,6 +20,7 @@
 package db_test
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -85,5 +86,40 @@ func TestMakeDBAppSettingsAlreadyExists(t *testing.T) {
 	}
 	if db2 == nil {
 		t.Fatal("Expected non-nil database instance from second MakeDB")
+	}
+}
+
+func TestMakeDBKeepsConnectionsOpenAfterABusySpell(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+	defConfig.Database.Database = filepath.Join(t.TempDir(), "busy.db")
+	gdb, err := db.MakeDB(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		t.Fatalf("Failed to get the pool: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	busy := sqlDB.Stats().MaxOpenConnections
+	conns := make([]interface{ Close() error }, 0, busy)
+	for range busy {
+		c, err := sqlDB.Conn(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to take a connection: %v", err)
+		}
+		conns = append(conns, c)
+	}
+	for _, c := range conns {
+		_ = c.Close()
+	}
+	if closed := sqlDB.Stats().MaxIdleClosed; closed != 0 {
+		t.Fatalf("%d of %d connections were closed when they went back to the pool", closed, busy)
 	}
 }

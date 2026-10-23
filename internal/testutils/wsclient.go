@@ -49,6 +49,22 @@ const (
 // connection.
 var ErrWSClosed = errors.New("websocket closed")
 
+// WSCloseError is the close frame that the server sent. It matches
+// ErrWSClosed with errors.Is.
+type WSCloseError struct {
+	Code   int
+	Reason string
+}
+
+func (e *WSCloseError) Error() string {
+	return fmt.Sprintf("websocket closed with %d %q", e.Code, e.Reason)
+}
+
+// Is reports whether target is ErrWSClosed.
+func (e *WSCloseError) Is(target error) bool {
+	return target == ErrWSClosed
+}
+
 // WSConn is a small RFC 6455 client for tests. It needs no websocket
 // library, so the tests do not depend on the one the server uses.
 type WSConn struct {
@@ -189,7 +205,13 @@ func (w *WSConn) ReadText(timeout time.Duration) (string, error) {
 				return "", err
 			}
 		case wsOpClose:
-			return "", ErrWSClosed
+			_ = w.write(wsOpClose, payload)
+			closeErr := &WSCloseError{}
+			if len(payload) >= 2 {
+				closeErr.Code = int(binary.BigEndian.Uint16(payload[:2]))
+				closeErr.Reason = string(payload[2:])
+			}
+			return "", closeErr
 		}
 	}
 }

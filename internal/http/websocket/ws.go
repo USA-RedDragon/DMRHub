@@ -55,8 +55,18 @@ var (
 	errPingTimeout  = errors.New("client did not answer a ping")
 	errWriteFailed  = errors.New("write to the client failed")
 	errInvalidUTF8  = errors.New("client sent a text frame that is not UTF-8")
-	errUserChanged  = errors.New("the user of the connection changed")
 )
+
+type policyCloseError struct {
+	reason string
+}
+
+func (e policyCloseError) Error() string {
+	return "closed by policy: " + e.reason
+}
+
+//nolint:gochecknoglobals
+var errUserChanged = policyCloseError{reason: "user changed"}
 
 type Websocket interface {
 	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
@@ -176,9 +186,13 @@ func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.C
 	closeConn(conn, context.Cause(ctx))
 }
 
+// read does not pass ctx to conn.Read, because the end of ctx would close
+// the TCP connection before closeConn can send a close frame. closeConn
+// unblocks the read instead.
 func (h *WSHandler) read(ctx context.Context, cancel context.CancelCauseFunc, s sessions.Session, r *http.Request, conn *websocket.Conn, w *wsWriter) {
+	readCtx := context.WithoutCancel(ctx)
 	for {
-		typ, msg, err := conn.Read(ctx)
+		typ, msg, err := conn.Read(readCtx)
 		if err != nil {
 			cancel(errClientClosed)
 			return
@@ -216,7 +230,10 @@ func keepalive(ctx context.Context, cancel context.CancelCauseFunc, conn *websoc
 
 func closeConn(conn *websocket.Conn, cause error) {
 	var err error
+	var policy policyCloseError
 	switch {
+	case errors.As(cause, &policy):
+		err = conn.Close(websocket.StatusPolicyViolation, policy.reason)
 	case errors.Is(cause, errInvalidUTF8):
 		err = conn.Close(websocket.StatusInvalidFramePayloadData, "invalid UTF-8")
 	case errors.Is(cause, errClientClosed):

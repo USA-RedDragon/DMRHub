@@ -1054,6 +1054,54 @@ func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
 	}
 }
 
+func TestListenForWebsocketPicksUpTalkgroupsOfTheUsersRepeaters(t *testing.T) {
+	t.Parallel()
+	h, database, ps, listening := makeTestHubWatching(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 40, "TG40")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	userSub := ps.Subscribe("calls:1000001")
+	defer func() { _ = userSub.Close() }()
+	userCh := userSub.Channel()
+
+	go h.ListenForWebsocket(ctx, 1000001)
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ListenForWebsocket never subscribed to calls")
+	}
+
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100001).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 40}))
+	h.ReloadRepeater(context.Background(), 100001)
+
+	callJSON, err := json.Marshal(models.Call{
+		ID:            1,
+		DestinationID: 40,
+		GroupCall:     true,
+		IsToTalkgroup: true,
+		User:          models.User{ID: 2000001},
+	})
+	require.NoError(t, err)
+	deadline := time.After(3 * time.Second)
+	for {
+		require.NoError(t, ps.Publish("calls", callJSON))
+		select {
+		case <-userCh:
+			return
+		case <-time.After(100 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("a call to a talkgroup newly linked to the user's repeater was not forwarded")
+		}
+	}
+}
+
 func TestListenForWebsocketForwardsCallsToStaticTalkgroupsOfTheUsersRepeaters(t *testing.T) {
 	t.Parallel()
 	h, database, ps, listening := makeTestHubWatching(t)

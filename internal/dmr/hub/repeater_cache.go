@@ -119,19 +119,28 @@ func (h *Hub) listenRepeaterChanges(sub pubsub.Subscription) {
 			if !ok {
 				return
 			}
-			origin, idStr, found := strings.Cut(string(msg), ":")
-			if !found || origin == h.origin {
+			origin, id, valid := parseRepeaterChange(msg)
+			if !valid || origin == h.origin {
 				continue
 			}
-			id, err := strconv.ParseUint(idStr, 10, 32)
-			if err != nil {
-				slog.Error("Invalid repeater change notice", "message", string(msg))
-				continue
-			}
-			h.repeaters.invalidate(uint(id))
-			h.reloadLocal(context.Background(), uint(id))
+			h.repeaters.invalidate(id)
+			h.reloadLocal(context.Background(), id)
 		}
 	}
+}
+
+func parseRepeaterChange(msg []byte) (string, uint, bool) {
+	origin, idStr, found := strings.Cut(string(msg), ":")
+	if !found {
+		slog.Error("Invalid repeater change notice", "message", string(msg))
+		return "", 0, false
+	}
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		slog.Error("Invalid repeater change notice", "message", string(msg))
+		return "", 0, false
+	}
+	return origin, uint(id), true
 }
 
 // resyncRepeaters reloads, every repeaterCacheTTL, the subscriptions of

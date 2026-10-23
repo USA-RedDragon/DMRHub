@@ -26,7 +26,6 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -35,10 +34,6 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 )
-
-// userCacheRefreshInterval controls how often ListenForWebsocket refreshes
-// the cached user and repeater list from the database.
-const userCacheRefreshInterval = 30 * time.Second
 
 // subscriptionManager tracks repeater-to-talkgroup subscriptions and manages
 // the pubsub fan-out goroutines that deliver packets to repeaters.
@@ -247,13 +242,20 @@ func (h *Hub) unsubscribeTalkgroup(repeaterID uint, talkgroupID uint, slot dmrco
 }
 
 // ListenForWebsocket relays call events to a WebSocket client for a specific user.
-// It caches the user's repeater list and refreshes it periodically to avoid
-// hitting the database on every pubsub message. It reads the SMS Storage
-// setting again for each data call.
+// It caches the user and its repeaters, and reloads them when one of those
+// repeaters changes. It reads the SMS Storage setting again for each data
+// call. A change of the user or of the repeaters it owns closes the
+// websocket instead.
 func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	slog.Debug("Listening for websocket", "userID", userID)
 
-	// Load the user and repeaters once up front.
+	changes := h.pubsub.Subscribe(repeaterChangedTopic)
+	defer func() {
+		if err := changes.Close(); err != nil {
+			slog.Error("Error closing repeater change subscription", "error", err)
+		}
+	}()
+
 	user, err := models.FindUserWithRepeaterTalkgroups(h.db, userID)
 	if err != nil {
 		slog.Error("User not found for websocket, aborting", "userID", userID, "error", err)
@@ -269,19 +271,24 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	}()
 
 	pubsubChannel := subscription.Channel()
-	refreshTicker := time.NewTicker(userCacheRefreshInterval)
-	defer refreshTicker.Stop()
+	changesChannel := changes.Channel()
 
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Debug("Websocket context done", "userID", userID)
 			return
-		case <-refreshTicker.C:
-			// Periodically refresh the cached user and repeaters.
+		case msg, ok := <-changesChannel:
+			if !ok {
+				return
+			}
+			_, id, ok := parseRepeaterChange(msg)
+			if !ok || !ownsRepeater(&user, id) {
+				continue
+			}
 			refreshed, err := models.FindUserWithRepeaterTalkgroups(h.db, userID)
 			if err != nil {
-				slog.Error("Error refreshing user for websocket, keeping stale cache", "userID", userID, "error", err)
+				slog.Error("Error reloading user for websocket, keeping stale cache", "userID", userID, "error", err)
 				continue
 			}
 			user = refreshed
@@ -321,6 +328,15 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			}
 		}
 	}
+}
+
+func ownsRepeater(user *models.User, repeaterID uint) bool {
+	for i := range user.Repeaters {
+		if user.Repeaters[i].ID == repeaterID {
+			return true
+		}
+	}
+	return false
 }
 
 func wantsCall(user *models.User, call *models.Call) bool {

@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRoutePacketParrot(t *testing.T) {
@@ -163,4 +164,43 @@ func TestParrotIgnoresNetworkPeers(t *testing.T) {
 		t.Fatalf("the peer got %v", rp.Packet)
 	default:
 	}
+}
+
+func TestParrotReplyIsTrackedBeforeItIsSent(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	seedUser(t, database, testSrcID, "TESTUSER")
+	seedRepeater(t, database, testRepeaterID, testSrcID)
+	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
+	h.ActivateRepeater(context.Background(), testRepeaterID)
+	time.Sleep(100 * time.Millisecond)
+
+	header := makeVoiceTermPacket(dmrconst.ParrotUser, 77004, false, false)
+	header.DTypeOrVSeq = uint(dmrconst.DTypeVoiceHead)
+	h.RoutePacket(context.Background(), header, models.RepeaterTypeMMDVM)
+	for i := uint(0); i < 6; i++ {
+		v := makeVoicePacket(dmrconst.ParrotUser, 77004, false, false)
+		v.DTypeOrVSeq = i
+		h.RoutePacket(context.Background(), v, models.RepeaterTypeMMDVM)
+		time.Sleep(60 * time.Millisecond)
+	}
+	h.RoutePacket(context.Background(), makeVoiceTermPacket(dmrconst.ParrotUser, 77004, false, false), models.RepeaterTypeMMDVM)
+
+	select {
+	case rp := <-srv.Packets:
+		h.ReportUndeliverable(rp.Packet, models.RepeaterTypeIPSC, "test")
+	case <-time.After(6 * time.Second):
+		t.Fatal("no parrot reply")
+	}
+	require.Eventually(t, func() bool {
+		var reply models.Call
+		if database.Where("stream_id = ? AND source_id = ?", 77004, dmrconst.ParrotUser).First(&reply).Error != nil {
+			return false
+		}
+		return len(reply.Undeliverable) == 1
+	}, 5*time.Second, 50*time.Millisecond, "the reply row gets the undeliverable target")
+	var call models.Call
+	require.NoError(t, database.Where("stream_id = ? AND source_id = ?", 77004, testSrcID).First(&call).Error)
+	assert.Empty(t, call.Undeliverable, "the recorded call does not get the target of its reply")
 }

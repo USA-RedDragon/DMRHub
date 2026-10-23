@@ -82,11 +82,11 @@ func TestStopUnderAFlood(t *testing.T) {
 func TestSendPacketAfterStop(t *testing.T) {
 	t.Parallel()
 	s := Server{
-		connected:    xsync.NewMap[uint, net.UDPAddr](),
+		connected:    xsync.NewMap[uint, endpoint](),
 		outgoingChan: make(chan models.RawDMRPacket, 1),
 		done:         make(chan struct{}),
 	}
-	s.connected.Store(1, net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1})
+	s.connected.Store(1, udpEndpoint(net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}))
 	s.outgoingChan <- models.RawDMRPacket{}
 	close(s.done)
 

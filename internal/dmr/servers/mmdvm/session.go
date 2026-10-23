@@ -55,7 +55,7 @@ var errTooManyPending = errors.New("too many sessions that are not logged in")
 // link is the session of the repeater at one address.
 type link struct {
 	key     string
-	addr    net.UDPAddr
+	ep      endpoint
 	dialect dmrd.Dialect
 	m       *dmrdsession.Master
 	beacon  *time.Timer
@@ -106,13 +106,13 @@ func storedDialect(repeater models.Repeater) dmrd.Dialect {
 // addr starts: the dialect of p, or for a DMRD the dialect of the session
 // that the KV store records for its repeater at addr, or else the MMDVM
 // network protocol.
-func (s *Server) dialectFor(ctx context.Context, addr net.UDPAddr, p []byte) dmrd.Dialect {
+func (s *Server) dialectFor(ctx context.Context, ep endpoint, p []byte) dmrd.Dialect {
 	if d, ok := packetDialect(p); ok {
 		return d
 	}
 	if id, ok := dmrd.RepeaterID(p, dmrd.DialectMMDVM); ok && s.kvClient != nil {
 		repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-		if err == nil && repeater.IP == addr.IP.String() && repeater.Port == addr.Port {
+		if err == nil && ep.matchesKV(repeater.IP, repeater.Port) {
 			return storedDialect(repeater)
 		}
 	}
@@ -130,13 +130,19 @@ func newMaster(d dmrd.Dialect) (*dmrdsession.Master, error) {
 	return m, nil
 }
 
-// linkFor returns the session at addr, or a new one in dialect d.
+// linkFor returns the session at the UDP address addr, or a new one in
+// dialect d.
 func (s *Server) linkFor(addr net.UDPAddr, d dmrd.Dialect) (*link, error) {
+	return s.linkAt(udpEndpoint(addr), d)
+}
+
+// linkAt returns the session at ep, or a new one in dialect d.
+func (s *Server) linkAt(ep endpoint, d dmrd.Dialect) (*link, error) {
 	if s.links == nil {
 		s.links = map[string]*link{}
 		s.byID = map[uint32]*link{}
 	}
-	key := addr.String()
+	key := ep.String()
 	if l, ok := s.links[key]; ok {
 		return l, nil
 	}
@@ -147,7 +153,7 @@ func (s *Server) linkFor(addr net.UDPAddr, d dmrd.Dialect) (*link, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &link{key: key, addr: addr, dialect: d, m: m}
+	l := &link{key: key, ep: ep, dialect: d, m: m}
 	s.links[key] = l
 	return l, nil
 }
@@ -176,6 +182,10 @@ func (s *Server) forget(l *link) {
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
+	s.handleFrom(ctx, udpEndpoint(remoteAddr), data)
+}
+
+func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 	if s.stopped.Load() {
 		return
 	}
@@ -188,16 +198,16 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data 
 	if s.stopped.Load() {
 		return
 	}
-	l, ok := s.links[remoteAddr.String()]
+	l, ok := s.links[remote.String()]
 	if !ok {
 		var err error
-		if l, err = s.linkFor(remoteAddr, s.dialectFor(ctx, remoteAddr, data)); err != nil {
-			slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
+		if l, err = s.linkAt(remote, s.dialectFor(ctx, remote, data)); err != nil {
+			slog.Error("Error making session", "remoteAddr", remote.String(), "error", err)
 			return
 		}
 	} else if d, ok := loginDialect(data); ok && d != l.dialect {
 		if err := s.redial(ctx, l, d); err != nil {
-			slog.Error("Error making session", "remoteAddr", remoteAddr.String(), "error", err)
+			slog.Error("Error making session", "remoteAddr", remote.String(), "error", err)
 			return
 		}
 	}
@@ -233,9 +243,14 @@ func (s *Server) closeSessions(ctx context.Context) {
 	clear(s.links)
 }
 
-func (s *Server) write(addr net.UDPAddr, p []byte) {
-	if _, err := s.Server.WriteToUDP(p, &addr); err != nil {
-		slog.Error("Error sending packet", "remoteAddr", addr.String(), "error", err)
+func (s *Server) write(ep endpoint, p []byte) {
+	t, ok := s.transport(ep.transport)
+	if !ok {
+		slog.Error("Error sending packet: no such transport", "remoteAddr", ep.String())
+		return
+	}
+	if _, err := t.WriteTo(p, ep.addr); err != nil {
+		slog.Error("Error sending packet", "remoteAddr", ep.String(), "error", err)
 	}
 }
 
@@ -245,7 +260,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 	for _, o := range out {
 		switch o.Kind {
 		case dmrdsession.OutputSend:
-			s.write(l.addr, o.Packet)
+			s.write(l.ep, o.Packet)
 		case dmrdsession.OutputLogin:
 			s.login(ctx, now, l, o.ID)
 		case dmrdsession.OutputUp:
@@ -287,7 +302,7 @@ func (s *Server) login(ctx context.Context, now time.Duration, l *link, id uint3
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	password, err := s.password(uint(id))
 	if err != nil {
-		slog.Debug("Refusing login", "repeaterID", id, "remoteAddr", l.addr.String(), "error", err)
+		slog.Debug("Refusing login", "repeaterID", id, "remoteAddr", l.ep.String(), "error", err)
 		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
 		return
 	}
@@ -337,8 +352,7 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 		return false
 	}
 	now := time.Now()
-	repeater.IP = l.addr.IP.String()
-	repeater.Port = l.addr.Port
+	repeater.IP, repeater.Port = l.ep.kvAddr()
 	repeater.Connected = now
 	repeater.LastPing = now
 	repeater.Connection = models.RepeaterStateConnected
@@ -366,24 +380,24 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 		s.forget(old)
 	}
 	s.byID[id] = l
-	s.connected.Store(uint(id), l.addr)
+	s.connected.Store(uint(id), l.ep)
 	s.stopBeacon(l)
-	addr, d := l.addr, l.dialect
-	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, addr, d) })
+	ep, d := l.ep, l.dialect
+	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
 	if s.hub != nil {
 		s.hub.ActivateRepeater(ctx, uint(id))
 	}
 }
 
 // sendBeacon asks the repeater id for a beacon in dialect d when it is
-// still connected at addr.
-func (s *Server) sendBeacon(id uint32, addr net.UDPAddr, d dmrd.Dialect) {
-	if a, ok := s.connected.Load(uint(id)); !ok || a.String() != addr.String() {
+// still connected at ep.
+func (s *Server) sendBeacon(id uint32, ep endpoint, d dmrd.Dialect) {
+	if a, ok := s.connected.Load(uint(id)); !ok || a.String() != ep.String() {
 		return
 	}
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTSBKN, ID: id}).AppendBinary(nil, d)
 	if err == nil {
-		s.write(addr, p)
+		s.write(ep, p)
 	}
 }
 
@@ -472,8 +486,7 @@ func (s *Server) ping(ctx context.Context, l *link) {
 	}
 	repeater.PingsReceived++
 	repeater.LastPing = now
-	repeater.IP = l.addr.IP.String()
-	repeater.Port = l.addr.Port
+	repeater.IP, repeater.Port = l.ep.kvAddr()
 	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
@@ -502,14 +515,14 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
 	if err != nil || repeater.Connection != models.RepeaterStateConnected ||
-		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port || storedDialect(repeater) != l.dialect {
+		!l.ep.matchesKV(repeater.IP, repeater.Port) || storedDialect(repeater) != l.dialect {
 		return
 	}
 	s.resumeLink(ctx, now, l, id)
 }
 
 func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id uint32) {
-	slog.Info("Resuming repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
+	slog.Info("Resuming repeater session", "repeaterID", id, "remoteAddr", l.ep.String())
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	s.run(ctx, now, l, l.m.Resume(now, id, buf[:0]))
 }
@@ -519,28 +532,28 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 // when the KV store records it as connected and the hub of this server
 // owns it. It returns the address of the repeater. Without it, a repeater
 // that only listens would get nothing until its next ping.
-func (s *Server) resumeForEgress(ctx context.Context, id uint) (net.UDPAddr, bool) {
+func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) {
 	if id > math.MaxUint32 || s.stopped.Load() {
-		return net.UDPAddr{}, false
+		return endpoint{}, false
 	}
 	if at, ok := s.egressMiss.Load(id); ok && time.Since(at) < egressResumeRetry {
-		return net.UDPAddr{}, false
+		return endpoint{}, false
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, id)
-	if err != nil || repeater.Connection != models.RepeaterStateConnected || (s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) {
+	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port == 0 || (s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) {
 		s.egressMiss.Store(id, time.Now())
-		return net.UDPAddr{}, false
+		return endpoint{}, false
 	}
-	addr := net.UDPAddr{IP: net.ParseIP(repeater.IP), Port: repeater.Port}
+	ep := udpEndpoint(net.UDPAddr{IP: net.ParseIP(repeater.IP), Port: repeater.Port})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if a, ok := s.connected.Load(id); ok {
 		return a, true
 	}
-	l, err := s.linkFor(addr, storedDialect(repeater))
+	l, err := s.linkAt(ep, storedDialect(repeater))
 	if err != nil || l.m.State() != dmrdsession.StateIdle || l.dialect != storedDialect(repeater) {
 		s.egressMiss.Store(id, time.Now())
-		return net.UDPAddr{}, false
+		return endpoint{}, false
 	}
 	s.resumeLink(ctx, s.now(), l, uint32(id))
 	s.forget(l)

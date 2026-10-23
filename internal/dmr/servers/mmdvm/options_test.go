@@ -100,7 +100,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 			Server:    conn,
 			kvClient:  servers.MakeKVClient(kvStore),
 			hub:       h,
-			connected: xsync.NewMap[uint, net.UDPAddr](),
+			connected: xsync.NewMap[uint, endpoint](),
 			newSalt:   func() (uint32, error) { return 0x01020304, nil },
 		},
 		peer: peer,

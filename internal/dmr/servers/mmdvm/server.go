@@ -61,7 +61,8 @@ type Server struct {
 	incomingChan  chan models.RawDMRPacket
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
-	connected     *xsync.Map[uint, net.UDPAddr]
+	connected     *xsync.Map[uint, endpoint]
+	transports    *xsync.Map[string, transport]
 	egressMiss    *xsync.Map[uint, time.Time]
 	stopped       atomic.Bool
 	wg            sync.WaitGroup
@@ -116,7 +117,8 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Commit:        commit,
 		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
-		connected:     xsync.NewMap[uint, net.UDPAddr](),
+		connected:     xsync.NewMap[uint, endpoint](),
+		transports:    xsync.NewMap[string, transport](),
 		egressMiss:    xsync.NewMap[uint, time.Time](),
 		done:          make(chan struct{}),
 	}, nil
@@ -152,6 +154,14 @@ func (s *Server) Stop(ctx context.Context) error {
 		if err := s.Server.Close(); err != nil {
 			slog.Error("Error closing MMDVM UDP socket", "error", err)
 		}
+		s.transports.Range(func(name string, t transport) bool {
+			if name != udpTransport {
+				if err := t.Close(); err != nil {
+					slog.Error("Error closing MMDVM transport", "transport", name, "error", err)
+				}
+			}
+			return true
+		})
 	})
 
 	s.wg.Wait()
@@ -170,10 +180,7 @@ func (s *Server) listen(ctx context.Context) {
 		case <-ticker.C:
 			s.tick(ctx)
 		case packet := <-s.incomingChan:
-			s.handlePacket(ctx, net.UDPAddr{
-				IP:   net.ParseIP(packet.RemoteIP),
-				Port: packet.RemotePort,
-			}, packet.Data)
+			s.handleFrom(ctx, endpointOf(packet), packet.Data)
 		}
 	}
 }
@@ -185,13 +192,7 @@ func (s *Server) subscribePackets() {
 		case <-s.done:
 			return
 		case packet := <-s.outgoingChan:
-			_, err := s.Server.WriteToUDP(packet.Data, &net.UDPAddr{
-				IP:   net.ParseIP(packet.RemoteIP),
-				Port: packet.RemotePort,
-			})
-			if err != nil {
-				slog.Error("Error sending packet", "error", err)
-			}
+			s.write(endpointOf(packet), packet.Data)
 		}
 	}
 }
@@ -230,56 +231,75 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.subscribePackets()
 	go s.consumeHubPackets(ctx)
 
-	go func() {
-		defer s.wg.Done()
-		for {
-			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
-			if err != nil {
-				// When the socket is closed during shutdown, stop the loop quietly.
-				if errors.Is(err, net.ErrClosed) {
-					return
-				}
-				slog.Error("Error reading from UDP Socket, Swallowing Error", "error", err)
-				continue
-			}
-			slog.Debug("Read message from UDP socket", "remoteaddr", remoteaddr, "length", length)
-			// Copy the buffer data since s.Buffer will be reused for the next read
-			data := make([]byte, length)
-			copy(data, s.Buffer[:length])
-			p := models.RawDMRPacket{
-				Data:       data,
-				RemoteIP:   remoteaddr.IP.String(),
-				RemotePort: remoteaddr.Port,
-			}
-			select {
-			case s.incomingChan <- p:
-			case <-s.done:
-				return
-			}
-		}
-	}()
+	s.transports.Store(udpTransport, s.Server)
+	go s.serve(udpTransport, s.Server, s.Buffer)
 
 	return nil
+}
+
+// serve reads the packets of the transport t, named name, until it is
+// closed, and queues them for the sessions.
+func (s *Server) serve(name string, t transport, buf []byte) {
+	defer s.wg.Done()
+	for {
+		length, remote, err := t.ReadFrom(buf)
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			slog.Error("Error reading from MMDVM transport, swallowing error", "transport", name, "error", err)
+			continue
+		}
+		slog.Debug("Read message from MMDVM transport", "transport", name, "remoteaddr", remote, "length", length)
+		data := make([]byte, length)
+		copy(data, buf[:length])
+		select {
+		case s.incomingChan <- rawPacketFrom(endpoint{transport: name, addr: remote}, data):
+		case <-s.done:
+			return
+		}
+	}
+}
+
+func (s *Server) transport(name string) (transport, bool) {
+	if name == udpTransport && s.Server != nil {
+		return s.Server, true
+	}
+	if s.transports == nil {
+		return nil, false
+	}
+	return s.transports.Load(name)
+}
+
+func rawPacketFrom(ep endpoint, data []byte) models.RawDMRPacket {
+	p := models.RawDMRPacket{Data: data, Transport: ep.transport, Addr: ep.addr}
+	if a, ok := ep.addr.(*net.UDPAddr); ok && ep.transport == udpTransport {
+		p.RemoteIP, p.RemotePort = a.IP.String(), a.Port
+	}
+	return p
+}
+
+func endpointOf(p models.RawDMRPacket) endpoint {
+	if p.Addr != nil {
+		return endpoint{transport: p.Transport, addr: p.Addr}
+	}
+	return udpEndpoint(net.UDPAddr{IP: net.ParseIP(p.RemoteIP), Port: p.RemotePort})
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.Packet) {
 	// Only send to repeaters with active local sessions on this replica.
 	// In multi-replica deployments, all replicas receive pubsub messages but
 	// only the replica holding the UDP session should transmit.
-	addr, ok := s.connected.Load(repeaterID)
+	ep, ok := s.connected.Load(repeaterID)
 	if !ok {
-		addr, ok = s.resumeForEgress(ctx, repeaterID)
+		ep, ok = s.resumeForEgress(ctx, repeaterID)
 		if !ok {
 			return
 		}
 	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
 	select {
-	case s.outgoingChan <- models.RawDMRPacket{
-		Data:       packet.Encode(),
-		RemoteIP:   addr.IP.String(),
-		RemotePort: addr.Port,
-	}:
+	case s.outgoingChan <- rawPacketFrom(ep, packet.Encode()):
 	case <-s.done:
 	}
 }

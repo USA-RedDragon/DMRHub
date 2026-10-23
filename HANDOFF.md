@@ -47,6 +47,17 @@ This is the living handoff for the next session. It assumes you have nothing but
 
 ## Next, in order
 
+**Owner's order from 2026-10-23 (overrides the numbering below):**
+1. Finish IPSC pacing (per peer and timeslot, 60 ms, never dropped: `internal/dmr/servers/ipsc/pacer.go`).
+2. LRRP location server, without the request endpoint (item 5 below).
+3. Live config (item 4 below).
+4. Hold data and CSBK calls to IPSC during the repeater's call hang, as ipsc2hbrp does (`internal/timeslot/manager.go` SetCallHang: 2.5 s after voice, 1.2 s after data; an XPR 8400 drops those calls otherwise).
+5. hbl4: shared stream claim in Redis, bad color code accepted with a warning, a test for the 30 s hold (item 4 below).
+6. Recheck the old report items (item 3 below).
+7. Finish the stress battery (item 3 below); start dockerd first or postgres-redis is skipped.
+8. Fix the kinds area: one SMS stream gets several call rows (also repro-backtoback, stream 65559).
+9. Drop the `handoff:` commits from history (force-push needs the owner's OK).
+
 1. **Make CI green on the current head.** At handoff time CI for `791b90ff` had not reported. The fixes in the last pushes target these CI failures:
    - `TestTransparencyMatrix/ipsc/.../sms-confirmed-nack-retry` (commit `e887059a`)
    - `TestStaticTalkgroupEditOnOneReplicaRoutesOnAnother` (`791b90ff`)

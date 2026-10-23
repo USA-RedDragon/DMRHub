@@ -60,6 +60,9 @@ type IPSCServer struct {
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
 	bursts       []burst
 
+	egressMu sync.Mutex
+	egress   map[uint32]*IPSCTranslator
+
 	wg       sync.WaitGroup
 	done     chan struct{}
 	stopped  atomic.Bool
@@ -90,6 +93,7 @@ const (
 	tickInterval            = time.Second
 	dbWriteDebounceInterval = 30 * time.Second
 	burstInterval           = 30 * time.Millisecond
+	staleStreamAge          = 30 * time.Second
 )
 
 func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
@@ -102,6 +106,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		epoch:      time.Now(),
 		done:       make(chan struct{}),
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
+		egress:     map[uint32]*IPSCTranslator{},
 	}
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
 		ID:              s.localID,
@@ -150,9 +155,8 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	}
 
 	s.hubHandle = s.hub.RegisterServer(hub.ServerConfig{
-		Name:      models.RepeaterTypeIPSC,
-		Role:      hub.RoleRepeater,
-		Broadcast: true,
+		Name: models.RepeaterTypeIPSC,
+		Role: hub.RoleRepeater,
 	})
 
 	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
@@ -229,6 +233,7 @@ func (s *IPSCServer) tick(ctx context.Context, now time.Duration) {
 	bursts := s.takeBursts()
 	s.mu.Unlock()
 	s.runBursts(bursts)
+	s.cleanupStaleStreams()
 }
 
 func (s *IPSCServer) handler(ctx context.Context) {
@@ -398,13 +403,43 @@ func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {
 func (s *IPSCServer) consumeHubPackets() {
 	defer s.wg.Done()
 	for rp := range s.hubHandle.Packets {
-		s.SendPacket(rp.Packet)
+		s.sendTo(uint32(rp.RepeaterID), rp.Packet) //nolint:gosec
 	}
 }
 
-func (s *IPSCServer) SendPacket(pkt models.Packet) {
-	for _, frame := range s.translator.TranslateToIPSC(pkt) {
-		s.sendPacketInternal(frame)
+// sendTo sends pkt to the IPSC peer whose ID is repeaterID. Each peer has
+// its own translator, so one stream sent to two peers keeps two states.
+func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
+	for _, frame := range s.egressTranslator(repeaterID).TranslateToIPSC(pkt) {
+		s.sendPacketToPeers(frame, repeaterID)
+	}
+}
+
+func (s *IPSCServer) egressTranslator(repeaterID uint32) *IPSCTranslator {
+	s.egressMu.Lock()
+	defer s.egressMu.Unlock()
+	t, ok := s.egress[repeaterID]
+	if !ok {
+		if s.egress == nil {
+			s.egress = map[uint32]*IPSCTranslator{}
+		}
+		t = NewIPSCTranslator(s.localID)
+		s.egress[repeaterID] = t
+	}
+	return t
+}
+
+func (s *IPSCServer) cleanupStaleStreams() {
+	if s.translator != nil {
+		s.translator.CleanupStaleStreams(staleStreamAge)
+	}
+	s.egressMu.Lock()
+	defer s.egressMu.Unlock()
+	for id, t := range s.egress {
+		t.CleanupStaleStreams(staleStreamAge)
+		if forward, reverse := t.StreamCount(); forward == 0 && reverse == 0 {
+			delete(s.egress, id)
+		}
 	}
 }
 
@@ -416,12 +451,21 @@ type destination struct {
 }
 
 func (s *IPSCServer) sendPacketInternal(data []byte) {
+	s.sendPacketToPeers(data, 0)
+}
+
+// sendPacketToPeers sends data to the registered peer only, or to every
+// registered peer when only is 0.
+func (s *IPSCServer) sendPacketToPeers(data []byte, only uint32) {
 	if s.stopped.Load() || s.m == nil {
 		return
 	}
 	s.mu.Lock()
 	dests := make([]destination, 0, len(s.peers))
 	for id, state := range s.peers {
+		if only != 0 && id != only {
+			continue
+		}
 		info, ok := s.m.Peer(id)
 		if !ok {
 			continue

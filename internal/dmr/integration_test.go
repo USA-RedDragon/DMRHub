@@ -208,8 +208,7 @@ func TestGroupCallMMDVMToMMDVM(t *testing.T) {
 }
 
 // TestGroupCallMMDVMToIPSC verifies that a group voice call originating from
-// an MMDVM repeater is delivered to an IPSC server's connected peers via the
-// hub's broadcast mechanism.
+// an MMDVM repeater is delivered to an IPSC peer that carries the talkgroup.
 func TestGroupCallMMDVMToIPSC(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -219,6 +218,7 @@ func TestGroupCallMMDVMToIPSC(t *testing.T) {
 		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
 
 		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.AssignTS1StaticTG(t, 200001, 1)
 
 		stack.StartServers(t)
 
@@ -245,7 +245,7 @@ func TestGroupCallMMDVMToIPSC(t *testing.T) {
 
 		// IPSC client should receive translated burst(s)
 		bursts := ic1.Drain(drainWait)
-		assert.NotEmpty(t, bursts, "IPSC client should receive broadcast of TG1 call from MMDVM")
+		assert.NotEmpty(t, bursts, "IPSC client should receive the TG1 call from MMDVM")
 	})
 }
 
@@ -512,10 +512,9 @@ func TestNoDeliveryToNonexistentTG(t *testing.T) {
 	})
 }
 
-// TestIPSCReceivesAllGroupCalls verifies that an IPSC server (registered with
-// Broadcast: true) receives ALL group calls regardless of the specific talkgroup,
-// whereas MMDVM repeaters receive only calls for subscribed talkgroups.
-func TestIPSCReceivesAllGroupCalls(t *testing.T) {
+// TestIPSCReceivesOnlyItsTalkgroups verifies that an IPSC peer, like an
+// MMDVM repeater, receives only the group calls of its talkgroups.
+func TestIPSCReceivesOnlyItsTalkgroups(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
@@ -528,6 +527,7 @@ func TestIPSCReceivesAllGroupCalls(t *testing.T) {
 		// R1 only subscribes to TG1, R2 only to TG2
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		stack.AssignTS1StaticTG(t, 100002, 2)
+		stack.AssignTS1StaticTG(t, 200001, 1)
 
 		stack.StartServers(t)
 
@@ -559,9 +559,11 @@ func TestIPSCReceivesAllGroupCalls(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000001, 2, 702, false)))
 
-		// IPSC client should receive bursts from BOTH TG1 and TG2 (broadcast)
 		bursts := ic.Drain(drainWait)
-		assert.NotEmpty(t, bursts, "IPSC client should receive broadcast packets")
+		assert.NotEmpty(t, bursts, "IPSC client should receive the TG1 call")
+		for _, b := range bursts {
+			assert.Equal(t, uint(1), b.Dst, "IPSC client should not receive TG2 packets")
+		}
 
 		// C2 should NOT receive TG1; C1 should NOT receive TG2
 		pkts1 := c1.Drain(drainWait)
@@ -1064,6 +1066,7 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 
 		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.AssignTS1StaticTG(t, 200001, 1)
 
 		stack.StartServers(t)
 
@@ -1099,6 +1102,9 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		// Also verify that the auto-registered IPSC peer can RECEIVE traffic.
 		// Have the MMDVM client send a group call — the IPSC peer should
 		// receive it because hub subscriptions were activated on auto-registration.
+		// The test peer registers on its first Drain and drops user packets
+		// until then.
+		_ = ic.Drain(settleDuration)
 		voicePkt := makeGroupVoicePacket(1000001, 1, 9002, false)
 		require.NoError(t, mc.SendDMRD(voicePkt))
 		time.Sleep(50 * time.Millisecond)

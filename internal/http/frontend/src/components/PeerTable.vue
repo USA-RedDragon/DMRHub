@@ -58,6 +58,7 @@ type PeerRow = {
   id: number;
   ingress: boolean;
   egress: boolean;
+  enhanced: boolean;
   created_at: string | Date;
   last_ping_time: string | Date;
   editable: boolean;
@@ -146,6 +147,21 @@ export default {
               type: 'checkbox',
               checked: peer.egress,
               disabled: !peer.editable,
+            });
+          },
+        },
+        {
+          accessorKey: 'enhanced',
+          header: 'Enhanced',
+          cell: ({ row }: { row: { original: PeerRow } }) => {
+            const peer = row.original;
+            return h('input', {
+              id: 'enhanced',
+              type: 'checkbox',
+              title: 'FreeDMR enhanced OpenBridge',
+              checked: peer.enhanced,
+              disabled: !this.admin,
+              onChange: (e: Event) => this.setEnhanced(peer, (e.target as HTMLInputElement).checked),
             });
           },
         },
@@ -264,6 +280,30 @@ export default {
       }
     },
     stopEdit() {},
+    setEnhanced(peer: PeerRow, enhanced: boolean) {
+      API.patch('/peers/' + peer.id, { enhanced })
+        .then(() => {
+          peer.enhanced = enhanced;
+          this.$toast.add({
+            summary: 'Saved',
+            severity: 'success',
+            detail: enhanced ?
+              `Peer ${peer.id} now uses enhanced OpenBridge` :
+              `Peer ${peer.id} now uses OpenBridge version 1`,
+            life: 3000,
+          });
+        })
+        .catch((err) => {
+          console.error(err);
+          this.peers = [...this.peers];
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: `Error saving peer ${peer.id}`,
+            life: 3000,
+          });
+        });
+    },
     deletePeer(peer: Record<string, unknown>) {
       // First, show a confirmation dialog
       this.$confirm.require({

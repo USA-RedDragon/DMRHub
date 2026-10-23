@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -214,6 +215,13 @@ func PATCHPeer(c *gin.Context) {
 	if json.Egress != nil {
 		updates["egress"] = *json.Egress
 	}
+	if json.Enhanced != nil {
+		if !requesterIsAdmin(c, db) {
+			c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a peer uses enhanced OpenBridge"})
+			return
+		}
+		updates["enhanced"] = *json.Enhanced
+	}
 
 	if len(updates) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "No fields to update"})
@@ -292,6 +300,7 @@ func POSTPeer(c *gin.Context) {
 
 		peer.Egress = json.Egress
 		peer.Ingress = json.Ingress
+		peer.Enhanced = json.Enhanced
 		peer.IP = json.IP
 		peer.Port = json.Port
 
@@ -345,4 +354,16 @@ func POSTPeer(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {
+	userID, ok := sessions.Default(c).Get("user_id").(uint)
+	if !ok {
+		return false
+	}
+	user, err := models.FindUserByID(db, userID)
+	if err != nil {
+		return false
+	}
+	return user.Admin && user.Approved && !user.Suspended
 }

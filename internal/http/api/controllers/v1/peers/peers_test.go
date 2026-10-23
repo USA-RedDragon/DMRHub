@@ -802,6 +802,36 @@ func TestGETMyPeersOpenBridgeDisabledReturns404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestPATCHPeerEnhancedIsForAdmins(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
+	ownerJar := testutils.Login(t, router, "owner")
+
+	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{
+		ID: 200002, OwnerID: 3191868, IP: "10.0.0.2", Port: 62035, Ingress: true, Egress: true, Enhanced: true,
+	})
+	require.Equal(t, http.StatusOK, w.Code)
+	var stored models.Peer
+	require.NoError(t, tdb.DB().First(&stored, 200002).Error)
+	assert.True(t, stored.Enhanced, "an admin creates an enhanced peer")
+
+	off := false
+	_, w = testutils.PatchPeer(t, router, 200002, ownerJar, apimodels.PeerPatch{Enhanced: &off})
+	assert.Equal(t, http.StatusForbidden, w.Code, "the owner cannot change the protocol")
+	require.NoError(t, tdb.DB().First(&stored, 200002).Error)
+	assert.True(t, stored.Enhanced)
+
+	resp, w := testutils.PatchPeer(t, router, 200002, adminJar, apimodels.PeerPatch{Enhanced: &off})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, resp.Enhanced)
+}
+
 func TestPeerOwnerCanReadTheirPeer(t *testing.T) {
 	t.Parallel()
 

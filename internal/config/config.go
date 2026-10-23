@@ -151,6 +151,9 @@ type OpenBridge struct {
 	Enabled bool   `json:"enabled,omitempty" name:"enabled" description:"Enable experimental OpenBridge server support" default:"false"`
 	Bind    string `json:"bind,omitempty" name:"bind" description:"OpenBridge server listen address" default:"[::]"`
 	Port    int    `json:"port,omitempty" name:"port" description:"OpenBridge server port" default:"62035"`
+	// ServerID is the source server that DMRHub names in the DMRE packets
+	// that it sends to enhanced OpenBridge peers.
+	ServerID uint32 `json:"server-id,omitempty" yaml:"server-id" name:"server-id" description:"Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer"`
 }
 
 // SMTP holds the SMTP configuration.

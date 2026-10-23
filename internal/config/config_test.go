@@ -552,3 +552,13 @@ func TestGetDerivedSecretDifferentInputs(t *testing.T) {
 		t.Error("Expected different keys for different secrets")
 	}
 }
+
+func TestOpenBridgeValidateServerID(t *testing.T) {
+	t.Parallel()
+	for id, ok := range map[uint32]bool{0: true, 999: false, 1000: true, 3129: true, 9999999: true, 10000000: false} {
+		o := config.OpenBridge{Enabled: true, Bind: "[::]", Port: 62035, ServerID: id}
+		if got := o.Validate() == nil; got != ok {
+			t.Errorf("server ID %d: valid %v, want %v (%v)", id, got, ok, o.Validate())
+		}
+	}
+}

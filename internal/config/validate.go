@@ -30,6 +30,7 @@ const (
 	fieldHTTPPort          = "http.port"
 	fieldDMRMMDVMPort      = "dmr.mmdvm.port"
 	fieldDMROpenBridgePort = "dmr.openbridge.port"
+	fieldDMROpenBridgeSrv  = "dmr.openbridge.server-id"
 	fieldDMRIPSCPort       = "dmr.ipsc.port"
 	fieldDMRIPSCNetworkID  = "dmr.ipsc.network-id"
 	fieldSMTPPort          = "smtp.port"
@@ -83,6 +84,8 @@ var (
 	ErrInvalidDMROpenBridgeHost = errors.New("invalid DMR OpenBridge host provided")
 	// ErrInvalidDMROpenBridgePort indicates that the provided DMR OpenBridge port is not valid.
 	ErrInvalidDMROpenBridgePort = errors.New("invalid DMR OpenBridge port provided")
+	// ErrInvalidDMROpenBridgeServerID indicates that the OpenBridge server ID is not 0 or 4 to 7 digits.
+	ErrInvalidDMROpenBridgeServerID = errors.New("the OpenBridge server ID must be 0 or 4 to 7 digits")
 	// ErrInvalidMetricsBindAddress indicates that the provided metrics server bind address is not valid.
 	ErrInvalidMetricsBindAddress = errors.New("invalid metrics server bind address provided")
 	// ErrInvalidMetricsPort indicates that the provided metrics server port is not valid.
@@ -292,6 +295,13 @@ func (o OpenBridge) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, ValidationError{
 			Field: fieldDMROpenBridgePort,
 			Err:   ErrInvalidDMROpenBridgePort,
+		})
+	}
+	const minServerID, maxServerID = 1000, 9999999
+	if o.ServerID != 0 && (o.ServerID < minServerID || o.ServerID > maxServerID) {
+		errs = append(errs, ValidationError{
+			Field: fieldDMROpenBridgeSrv,
+			Err:   ErrInvalidDMROpenBridgeServerID,
 		})
 	}
 

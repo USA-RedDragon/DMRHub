@@ -126,6 +126,15 @@
             <input id="egress" type="checkbox" v-model="egress" />
             <label for="egress">Transmit DMR traffic to this peer</label>
           </div>
+          <br />
+          <div class="checkbox-row">
+            <input id="enhanced" type="checkbox" v-model="enhanced" />
+            <label for="enhanced">Use FreeDMR enhanced OpenBridge with this peer</label>
+          </div>
+          <p>
+            Turn this on for a FreeDMR server whose link to this hub has ENHANCED_OBP on.
+            DMRHub then sends keepalives and keeps the source server and the hop count of each call.
+          </p>
         </CardContent>
         <CardFooter>
           <div class="card-footer">
@@ -177,6 +186,7 @@ export default {
       port: '',
       ingress: false,
       egress: false,
+      enhanced: false,
       submitted: false,
       hostname: window.location.hostname,
       allUsers: [] as Array<{ id: number; callsign: string; display?: string }>,
@@ -244,6 +254,7 @@ export default {
         port: parseInt(this.port),
         ingress: this.ingress,
         egress: this.egress,
+        enhanced: this.enhanced,
       })
         .then((res) => {
           if (!res.data) {

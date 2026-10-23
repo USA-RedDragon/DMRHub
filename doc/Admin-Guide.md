@@ -59,6 +59,19 @@ Click **Approve** to grant the user access to sign in and use DMRHub.
 
 The setup page allows administrators to edit the DMRHub configuration. All configuration options are available here. In deployments with read-only file-based configuration (e.g., Docker), this page is view-only and shows the current effective configuration.
 
+## OpenBridge peers
+
+When OpenBridge is on, the **Peers** page in the admin menu lists the peers, and **New Peer** adds one. Each peer has a network ID, a passphrase, an address and port, and switches to receive traffic from it and to send traffic to it.
+
+Turn on **Enhanced** for a FreeDMR server whose link to this hub has `ENHANCED_OBP: True`. Only an admin can change it. For an enhanced peer, DMRHub does what FreeDMR's `hblink.py` does on such a link:
+
+- It sends DMRE version 5 packets in place of the 73-octet DMRD packets. Each packet carries the send time, the source server, the source repeater and the hop count.
+- It keeps the source server and the source repeater of a call that came in from another enhanced peer, and adds one to the hop count.
+- It drops a call that already crossed 20 links (FreeDMR's `MAX_FBP_HOPS`) and asks the sender with a BCSQ to stop that stream.
+- It sends a BCKA keepalive every 10 seconds. FreeDMR stops sending to a peer that sent no keepalive for 60 seconds.
+
+The source server of a call from a local repeater is the **Server ID** in the OpenBridge settings, or the network ID of the peer when the server ID is 0. FreeDMR wants a source server of 4 to 7 digits, and it checks a 4 or 5-digit one against its list of server IDs. Other peers keep getting OpenBridge version 1.
+
 ## Transmission kinds
 
 Each Last Heard entry has a `kind` and a `sub_kind`. The API and the websocket give them in these fields, and the values stay the same between releases. A sub kind that names a CSBK opcode, a SAP, a port, a USBD service type or a text format is the dmrgo name of that value in lower case, without "PDU", with `_` between the words. For example, the BS outbound activation CSBK is `bs_outbound_activation_or_td_grant_mi`.

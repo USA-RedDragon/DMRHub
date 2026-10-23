@@ -61,9 +61,10 @@ type mMDVMShadow struct {
 }
 
 type openBridgeShadow struct {
-	Enabled *bool   `json:"enabled" toml:"enabled" yaml:"enabled"`
-	Bind    *string `json:"bind"    toml:"bind"    yaml:"bind"`
-	Port    *int    `json:"port"    toml:"port"    yaml:"port"`
+	Enabled  *bool   `json:"enabled"   toml:"enabled"   yaml:"enabled"`
+	Bind     *string `json:"bind"      toml:"bind"      yaml:"bind"`
+	Port     *int    `json:"port"      toml:"port"      yaml:"port"`
+	ServerID *uint32 `json:"server-id" toml:"server-id" yaml:"server-id"`
 }
 
 type iPSCShadow struct {
@@ -349,6 +350,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.OpenBridge.Port != nil {
 				cfg.DMR.OpenBridge.Port = *s.DMR.OpenBridge.Port
 				set("dmr.openbridge.port", configulator.LayerFile, file)
+			}
+			if s.DMR.OpenBridge.ServerID != nil {
+				cfg.DMR.OpenBridge.ServerID = *s.DMR.OpenBridge.ServerID
+				set("dmr.openbridge.server-id", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.IPSC != nil {
@@ -665,6 +670,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.OpenBridge.Port = int(p)
 		set("dmr.openbridge.port", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "server-id"); ok {
+		p, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.openbridge.server-id",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.OpenBridge.ServerID = uint32(p)
+		set("dmr.openbridge.server-id", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -940,6 +958,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "openbridge" + o.Separator + "enabled",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "bind",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "port",
+		"dmr" + o.Separator + "openbridge" + o.Separator + "server-id",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "enabled",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "bind",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "port",
@@ -1012,35 +1031,36 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[24], false, "Enable experimental OpenBridge server support")
 	fs.String(names[25], "[::]", "OpenBridge server listen address")
 	fs.Var(impl.NewInt(62035), names[26], "OpenBridge server port")
-	fs.Bool(names[27], false, "Enable IPSC server support")
-	fs.String(names[28], "[::]", "IPSC server listen address")
-	fs.Var(impl.NewInt(50000), names[29], "IPSC server port")
-	fs.Uint32(names[30], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
-	fs.Bool(names[31], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[32], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[33], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[34], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[35], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[36], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Bool(names[37], false, "Enable SMTP support for sending emails")
-	fs.String(names[38], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[39], "SMTP server port")
-	fs.String(names[40], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[41], "", "SMTP server username")
-	fs.String(names[42], "", "SMTP server password")
-	fs.String(names[43], "", "Email address to use as the sender")
-	fs.String(names[44], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[45], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[46], false, "Enable metrics collection and export")
-	fs.String(names[47], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[48], "Metrics server port")
-	fs.StringSlice(names[49], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[50], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[51], false, "Enable PProf profiling and debugging support")
-	fs.String(names[52], "[::]", "PProf server listen address")
-	fs.StringSlice(names[53], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[54], "PProf server port")
-	fs.String(names[55], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Uint32(names[27], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")
+	fs.Bool(names[28], false, "Enable IPSC server support")
+	fs.String(names[29], "[::]", "IPSC server listen address")
+	fs.Var(impl.NewInt(50000), names[30], "IPSC server port")
+	fs.Uint32(names[31], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
+	fs.Bool(names[32], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[33], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[34], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[35], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[36], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[37], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Bool(names[38], false, "Enable SMTP support for sending emails")
+	fs.String(names[39], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[40], "SMTP server port")
+	fs.String(names[41], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[42], "", "SMTP server username")
+	fs.String(names[43], "", "SMTP server password")
+	fs.String(names[44], "", "Email address to use as the sender")
+	fs.String(names[45], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[46], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[47], false, "Enable metrics collection and export")
+	fs.String(names[48], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[49], "Metrics server port")
+	fs.StringSlice(names[50], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[51], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[52], false, "Enable PProf profiling and debugging support")
+	fs.String(names[53], "[::]", "PProf server listen address")
+	fs.StringSlice(names[54], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[55], "PProf server port")
+	fs.String(names[56], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1368,6 +1388,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.OpenBridge.Port = v
 		set("dmr.openbridge.port", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "server-id"; fs.Changed(n) {
+		v, err := fs.GetUint32(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.openbridge.server-id",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.OpenBridge.ServerID = v
+		set("dmr.openbridge.server-id", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -2672,6 +2704,26 @@ func (s *openBridgeShadow) decodeJSON(dec *jsontext.Decoder, path string) error 
 			default:
 				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
+		case "server-id":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".server-id", v, err)
+				}
+				if raw > math.MaxUint32 {
+					return configJSONError(path+".server-id", v, fmt.Errorf("%d overflows uint32", raw))
+				}
+				num := uint32(raw)
+				s.ServerID = &num
+			default:
+				return configJSONError(path+".server-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -3241,6 +3293,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.openbridge.enabled = %v\n", c.DMR.OpenBridge.Enabled)
 	fmt.Fprintf(&b, "dmr.openbridge.bind = %v\n", c.DMR.OpenBridge.Bind)
 	fmt.Fprintf(&b, "dmr.openbridge.port = %v\n", c.DMR.OpenBridge.Port)
+	fmt.Fprintf(&b, "dmr.openbridge.server-id = %v\n", c.DMR.OpenBridge.ServerID)
 	fmt.Fprintf(&b, "dmr.ipsc.enabled = %v\n", c.DMR.IPSC.Enabled)
 	fmt.Fprintf(&b, "dmr.ipsc.bind = %v\n", c.DMR.IPSC.Bind)
 	fmt.Fprintf(&b, "dmr.ipsc.port = %v\n", c.DMR.IPSC.Port)

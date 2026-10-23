@@ -46,6 +46,8 @@ type OpenBridgeClient struct {
 	stopOnce sync.Once
 	wg       sync.WaitGroup
 	packets  chan models.Packet
+	bridges  chan dmrd.Bridge
+	controls chan dmrd.BridgeControl
 }
 
 var ErrOpenBridgeNotConnected = errors.New("OpenBridge client not connected")
@@ -57,6 +59,40 @@ func NewOpenBridgeClient(peerID uint32, password string) *OpenBridgeClient {
 		Password: password,
 		done:     make(chan struct{}),
 		packets:  make(chan models.Packet, clientBuffer),
+		bridges:  make(chan dmrd.Bridge, clientBuffer),
+		controls: make(chan dmrd.BridgeControl, clientBuffer),
+	}
+}
+
+// DrainBridges collects the OpenBridge data packets, of any version, that
+// arrive with a good signature within timeout.
+func (c *OpenBridgeClient) DrainBridges(timeout time.Duration) []dmrd.Bridge {
+	var out []dmrd.Bridge
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case b := <-c.bridges:
+			out = append(out, b)
+		case <-timer.C:
+			return out
+		}
+	}
+}
+
+// DrainControls collects the control packets, such as BCKA, that arrive
+// with a good signature within timeout.
+func (c *OpenBridgeClient) DrainControls(timeout time.Duration) []dmrd.BridgeControl {
+	var out []dmrd.BridgeControl
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case b := <-c.controls:
+			out = append(out, b)
+		case <-timer.C:
+			return out
+		}
 	}
 }
 
@@ -248,9 +284,6 @@ func (c *OpenBridgeClient) rx() {
 			// timeout — loop back
 			continue
 		}
-		if n != openbridgePacketLength {
-			continue
-		}
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
@@ -259,6 +292,19 @@ func (c *OpenBridgeClient) rx() {
 		}
 		bridge, err := dmrd.DecodeBridge(data)
 		if err != nil {
+			if control, err := dmrd.DecodeBridgeControl(data); err == nil {
+				select {
+				case c.controls <- control:
+				default:
+				}
+			}
+			continue
+		}
+		select {
+		case c.bridges <- bridge:
+		default:
+		}
+		if n != openbridgePacketLength {
 			continue
 		}
 		pkt := models.PacketFromData(&bridge.Data, false)
@@ -273,7 +319,13 @@ func (c *OpenBridgeClient) rx() {
 // SendEnhancedPacket sends pkt as a signed DMRE packet of FreeDMR's
 // enhanced OpenBridge, version 4 or 5.
 func (c *OpenBridgeClient) SendEnhancedPacket(pkt models.Packet, version uint8) error {
-	bridge := dmrd.Bridge{Version: version, Data: pkt.Data(), SourceServer: c.PeerID, SourceRepeater: uint32(pkt.Repeater), Hops: 1} //nolint:gosec
+	return c.SendBridge(dmrd.Bridge{Version: version, Data: pkt.Data(), SourceServer: c.PeerID, SourceRepeater: uint32(pkt.Repeater), Hops: 1}) //nolint:gosec
+}
+
+// SendBridge sends bridge, a DMRE packet of version 4 or 5 with its source
+// server, repeater and hops, signed, with the send time of now.
+func (c *OpenBridgeClient) SendBridge(bridge dmrd.Bridge) error {
+	bridge.Time = uint64(time.Now().UnixNano()) //nolint:gosec
 	bridge.Data.Size = dmrconst.MMDVMMaxPacketLength
 	out, err := bridge.AppendBinary(nil)
 	if err != nil {

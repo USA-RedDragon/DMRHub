@@ -92,14 +92,15 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 
 // publishToPeer hands a packet to the local peer servers for one peer. The
 // replica that routes a packet sends it to the peers, so each peer gets it
-// once whatever the number of replicas.
+// once whatever the number of replicas. The packet keeps the repeater that
+// it came from, which an enhanced OpenBridge peer gets as the source
+// repeater; RoutedPacket.RepeaterID names the peer.
 func (h *Hub) publishToPeer(peerID uint, packet models.Packet) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type for peer delivery", "signature", packet.Signature)
 		return
 	}
 
-	packet.Repeater = peerID
 	for _, name := range h.peerServers() {
 		h.deliverToServer(name, RoutedPacket{RepeaterID: peerID, Packet: packet})
 	}

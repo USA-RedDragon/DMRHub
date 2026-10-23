@@ -57,6 +57,20 @@
           The port number to bind the OpenBridge server to
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
+        <br v-if="enabled" />
+        <label class="field-label" for="server-id" v-if="enabled">Server ID</label>
+        <ShadInput
+          id="server-id"
+          type="number"
+          v-model="serverID"
+          v-if="enabled"
+          :aria-invalid="(errors && errors['server-id']) || false"
+        />
+        <p v-if="enabled">
+          The server ID of 4 to 7 digits that FreeDMR enhanced OpenBridge peers see as the source of calls from
+          this hub. Leave it at 0 to send the network ID of each peer.
+        </p>
+        <span v-if="enabled && errors && errors['server-id']" class="p-error">{{ errors['server-id'] }}</span>
       </CardContent>
     </Card>
   </div>
@@ -109,6 +123,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'bind': value,
+        });
+      },
+    },
+    serverID: {
+      get() {
+        return (this.modelValue && this.modelValue['server-id']) || 0;
+      },
+      set(value: string) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'server-id': Number(value) || 0,
         });
       },
     },

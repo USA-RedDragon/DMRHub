@@ -51,7 +51,25 @@ const (
 	ingressQueueSize = 500
 	quenchTTL        = 30 * time.Second
 	quenchPruneSize  = 1024
+	keepaliveTick    = time.Second
 )
+
+// maxHops is the most OpenBridge links a call may cross, as FreeDMR's
+// MAX_FBP_HOPS in hblink.py.
+const maxHops = 20
+
+// enhancedVersion is the DMRE version that DMRHub sends to enhanced peers,
+// the newest of FreeDMR (hblink.py send_system).
+const enhancedVersion = 5
+
+// origin is where a call entered OpenBridge: the source server and
+// repeater, and the number of links it crossed. The zero origin is a call
+// from a local repeater or a version 1 peer.
+type origin struct {
+	server   uint32
+	repeater uint32
+	hops     uint8
+}
 
 // OpenBridge is the same as HBRP, but with a single packet type.
 type Server struct {
@@ -60,9 +78,10 @@ type Server struct {
 	Server        *net.UDPConn
 	Tracer        trace.Tracer
 
-	DB     *gorm.DB
-	pubsub pubsub.PubSub
-	hub    *hub.Hub
+	DB       *gorm.DB
+	pubsub   pubsub.PubSub
+	hub      *hub.Hub
+	serverID uint32
 
 	hubHandle *hub.ServerHandle
 	ingress   *streamorder.Queue
@@ -88,6 +107,7 @@ type quench struct {
 type bridge struct {
 	mu       sync.Mutex
 	password string
+	enhanced bool
 	b        *dmrdsession.Bridge
 	key      *dmrdauth.BridgeKey
 }
@@ -95,17 +115,17 @@ type bridge struct {
 func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
 	s.bridgesMu.Lock()
 	defer s.bridgesMu.Unlock()
-	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password {
+	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password && b.enhanced == peer.Enhanced {
 		return b, nil
 	}
-	sb, err := dmrdsession.NewBridge(&dmrdsession.BridgeConfig{Key: []byte(peer.Password)})
+	sb, err := dmrdsession.NewBridge(&dmrdsession.BridgeConfig{Key: []byte(peer.Password), Enhanced: peer.Enhanced})
 	if err != nil {
 		return nil, fmt.Errorf("failed to make OpenBridge link: %w", err)
 	}
 	if s.bridges == nil {
 		s.bridges = map[uint]*bridge{}
 	}
-	b := &bridge{password: peer.Password, b: sb, key: dmrdauth.NewBridgeKey([]byte(peer.Password))}
+	b := &bridge{password: peer.Password, enhanced: peer.Enhanced, b: sb, key: dmrdauth.NewBridgeKey([]byte(peer.Password))}
 	s.bridges[peer.ID] = b
 	return b, nil
 }
@@ -125,10 +145,34 @@ func (b *bridge) verified(now time.Duration, data []byte) bool {
 }
 
 // verifiedControl reports whether data is a control packet with a good
-// signature.
-func (b *bridge) verifiedControl(data []byte) bool {
-	_, ok := b.key.Verify(data)
-	return ok
+// signature. For an enhanced link it is also a sign of life of the peer.
+func (b *bridge) verifiedControl(now time.Duration, data []byte) bool {
+	if _, ok := b.key.Verify(data); !ok {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	b.b.Packet(now, data, buf[:0])
+	return true
+}
+
+// tick runs the keepalive of an enhanced link and returns the packets to
+// send to the peer.
+func (b *bridge) tick(now time.Duration) [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	var out [][]byte
+	for _, o := range b.b.Tick(now, buf[:0]) {
+		switch o.Kind { //nolint:exhaustive
+		case dmrdsession.OutputSend:
+			out = append(out, o.Packet)
+		case dmrdsession.OutputDown:
+			slog.Info("Enhanced OpenBridge peer sent nothing for a minute")
+		}
+	}
+	return out
 }
 
 func (b *bridge) sign(p []byte) error {
@@ -168,6 +212,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		DB:            db,
 		pubsub:        pubsub,
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
+		serverID:      config.DMR.OpenBridge.ServerID,
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
@@ -189,8 +234,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.ingress = streamorder.New(ingressQueueSize, s.done)
 
-	s.wg.Add(2)
+	s.wg.Add(3)
 	go s.consumeHubPackets(ctx)
+	go s.keepalive()
 
 	go func() {
 		defer s.wg.Done()
@@ -244,13 +290,84 @@ func (s *Server) consumeHubPackets(ctx context.Context) {
 				return
 			}
 			// rp.RepeaterID is the peer ID for peer-role servers
-			s.sendPacketToPeer(ctx, rp.RepeaterID, rp.Packet)
+			s.sendPacketToPeer(ctx, rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec
 		}
 	}
 }
 
+// keepalive sends the BCKA of each enhanced peer when it is due.
+func (s *Server) keepalive() {
+	defer s.wg.Done()
+	ticker := time.NewTicker(keepaliveTick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+		}
+		peers, err := models.ListPeers(s.DB)
+		if err != nil {
+			slog.Error("Failed to list peers for OpenBridge keepalives", "error", err)
+			continue
+		}
+		now := time.Since(s.epoch)
+		for _, p := range peers {
+			if !p.Enhanced || p.IP == "" || p.Port == 0 {
+				continue
+			}
+			b, err := s.bridgeFor(p)
+			if err != nil {
+				continue
+			}
+			for _, pkt := range b.tick(now) {
+				if _, err := s.Server.WriteToUDP(pkt, &net.UDPAddr{IP: net.ParseIP(p.IP), Port: p.Port}); err != nil {
+					slog.Error("Error sending OpenBridge keepalive", "peerID", p.ID, "error", err)
+				}
+			}
+		}
+	}
+}
+
+// encode returns the unsigned OpenBridge packet of packet for peer: DMRE
+// of enhancedVersion for an enhanced peer, which keeps the source server
+// and repeater of org and counts one more hop, and the 73-octet DMRD of
+// version 1 for the others.
+func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]byte, error) {
+	if !peer.Enhanced {
+		bridge := dmrd.Bridge{Version: 1, Data: packet.Data()}
+		bridge.Data.Size = dmrconst.MMDVMPacketLength
+		out, err := bridge.AppendBinary(make([]byte, 0, packetLength))
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode OpenBridge packet: %w", err)
+		}
+		return out, nil
+	}
+	server := org.server
+	if server == 0 {
+		server = s.serverID
+	}
+	if server == 0 {
+		server = uint32(peer.ID) //nolint:gosec
+	}
+	bridge := dmrd.Bridge{
+		Version:        enhancedVersion,
+		Data:           packet.Data(),
+		Time:           uint64(time.Now().UnixNano()), //nolint:gosec
+		SourceServer:   server,
+		SourceRepeater: org.repeater,
+		Hops:           org.hops + 1,
+	}
+	bridge.Data.Size = dmrconst.MMDVMMaxPacketLength
+	out, err := bridge.AppendBinary(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode DMRE packet: %w", err)
+	}
+	return out, nil
+}
+
 // sendPacketToPeer sends a packet to a specific OpenBridge peer.
-func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.Packet) {
+func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.Packet, org origin) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
@@ -268,11 +385,9 @@ func (s *Server) sendPacketToPeer(_ context.Context, peerID uint, packet models.
 	// OpenBridge is always TS1
 	packet.Slot = false
 	packet.Repeater = peerID
-	bridge := dmrd.Bridge{Version: 1, Data: packet.Data()}
-	bridge.Data.Size = dmrconst.MMDVMPacketLength
-	outbound, err := bridge.AppendBinary(make([]byte, 0, packetLength))
+	outbound, err := s.encode(peer, packet, org)
 	if err != nil {
-		slog.Error("Error encoding OpenBridge packet", "error", err)
+		slog.Error("Error encoding OpenBridge packet", "peerID", peerID, "error", err)
 		return
 	}
 	b, err := s.bridgeFor(peer)
@@ -364,6 +479,16 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		)
 	}
 
+	var org origin
+	if bridge.Version != 1 {
+		org = origin{server: bridge.SourceServer, repeater: bridge.SourceRepeater, hops: bridge.Hops}
+		if int(org.hops)+1 > maxHops {
+			slog.Warn("Dropping an OpenBridge call that crossed too many links", "peerID", peerID, "hops", org.hops, "sourceServer", org.server, "stream", packet.StreamID)
+			s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
+			return
+		}
+	}
+
 	should, err := rules.PeerShouldIngress(s.DB, &peer, &packet)
 	if err != nil {
 		slog.Error("Failed to check peer ingress rules", "peerID", peerID, "error", err)
@@ -389,7 +514,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 			continue
 		}
 		if should {
-			s.sendPacketToPeer(ctx, p.ID, packet)
+			s.sendPacketToPeer(ctx, p.ID, packet, org)
 		}
 	}
 
@@ -418,7 +543,7 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 			continue
 		}
 		b, err := s.bridgeFor(p)
-		if err != nil || !b.verifiedControl(data) {
+		if err != nil || !b.verifiedControl(time.Since(s.epoch), data) {
 			continue
 		}
 		if control.Command == dmrd.CommandBCSQ {
@@ -430,6 +555,25 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 		return
 	}
 	slog.Debug("Dropping an OpenBridge control packet of no known peer", "remote", remoteAddr)
+}
+
+// sendQuench asks an enhanced peer with a BCSQ not to send the stream to
+// the talkgroup any more, as FreeDMR does for a call over the hop limit.
+func (s *Server) sendQuench(peer models.Peer, b *bridge, talkgroup, stream uint32, to *net.UDPAddr) {
+	if !peer.Enhanced || to == nil {
+		return
+	}
+	p, err := (&dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: talkgroup, Stream: stream}).AppendBinary(nil)
+	if err == nil {
+		err = b.sign(p)
+	}
+	if err != nil {
+		slog.Error("Error making an OpenBridge source quench", "peerID", peer.ID, "error", err)
+		return
+	}
+	if _, err := s.Server.WriteToUDP(p, to); err != nil {
+		slog.Error("Error sending an OpenBridge source quench", "peerID", peer.ID, "error", err)
+	}
 }
 
 func (s *Server) quenchStream(peer, stream uint) {

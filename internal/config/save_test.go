@@ -87,3 +87,24 @@ func TestSaveRoundTrip(t *testing.T) {
 		t.Errorf("saved config did not round-trip (-want +got):\n%s", diff)
 	}
 }
+
+func TestOpenBridgeServerIDLoadsFromTheFile(t *testing.T) {
+	t.Parallel()
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte("dmr:\n  openbridge:\n    server-id: 3129\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := configulator.New(config.ConfigSchema()).
+		WithFile(&configulator.FileOptions{
+			Search:       []string{file},
+			RequireFound: true,
+			Decoders:     configulator.Decoders{".yaml": yaml.Unmarshal},
+		}).
+		LoadWithoutValidation()
+	if err != nil {
+		t.Fatalf("loading the config: %v", err)
+	}
+	if got.DMR.OpenBridge.ServerID != 3129 {
+		t.Fatalf("dmr.openbridge.server-id %d, want 3129", got.DMR.OpenBridge.ServerID)
+	}
+}

@@ -32,15 +32,18 @@ import (
 //
 //go:generate go run github.com/tinylib/msgp
 type Peer struct {
-	ID        uint           `json:"id" gorm:"primaryKey" msg:"id"`
-	LastPing  time.Time      `json:"last_ping_time" msg:"last_ping"`
-	IP        string         `json:"ip" msg:"ip"`
-	Port      int            `json:"port" msg:"port"`
-	Password  string         `json:"-" msg:"-"`
-	Owner     User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
-	OwnerID   uint           `json:"-" msg:"-"`
-	Ingress   bool           `json:"ingress" msg:"-"`
-	Egress    bool           `json:"egress" msg:"-"`
+	ID       uint      `json:"id" gorm:"primaryKey" msg:"id"`
+	LastPing time.Time `json:"last_ping_time" msg:"last_ping"`
+	IP       string    `json:"ip" msg:"ip"`
+	Port     int       `json:"port" msg:"port"`
+	Password string    `json:"-" msg:"-"`
+	Owner    User      `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
+	OwnerID  uint      `json:"-" msg:"-"`
+	Ingress  bool      `json:"ingress" msg:"-"`
+	Egress   bool      `json:"egress" msg:"-"`
+	// Enhanced makes the link FreeDMR's enhanced OpenBridge: DMRE packets
+	// and BCKA keepalives. Only an admin sets it.
+	Enhanced  bool           `json:"enhanced" gorm:"default:false" msg:"-"`
 	CreatedAt time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt time.Time      `json:"-" msg:"-"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`

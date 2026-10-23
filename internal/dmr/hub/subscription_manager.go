@@ -253,7 +253,7 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 	slog.Debug("Listening for websocket", "userID", userID)
 
 	// Load the user and repeaters once up front.
-	user, err := models.FindUserByID(h.db, userID)
+	user, err := models.FindUserWithRepeaterTalkgroups(h.db, userID)
 	if err != nil {
 		slog.Error("User not found for websocket, aborting", "userID", userID, "error", err)
 		return
@@ -278,7 +278,7 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			return
 		case <-refreshTicker.C:
 			// Periodically refresh the cached user and repeaters.
-			refreshed, err := models.FindUserByID(h.db, userID)
+			refreshed, err := models.FindUserWithRepeaterTalkgroups(h.db, userID)
 			if err != nil {
 				slog.Error("Error refreshing user for websocket, keeping stale cache", "userID", userID, "error", err)
 				continue

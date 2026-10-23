@@ -55,11 +55,11 @@ func makeTestHubWithPubSub(t testing.TB) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 
 // makeTestHubWatching is like makeTestHubWithPubSub, and the returned
 // channel receives once for each subscription to topic.
-func makeTestHubWatching(t *testing.T, topic string) (*hub.Hub, *gorm.DB, pubsub.PubSub, <-chan struct{}) {
+func makeTestHubWatching(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub, <-chan struct{}) {
 	t.Helper()
 	subscribed := make(chan struct{}, 100)
 	h, database, ps := makeTestHubWrapping(t, func(ps pubsub.PubSub) pubsub.PubSub {
-		return &watchedPubSub{PubSub: ps, topic: topic, subscribed: subscribed}
+		return &watchedPubSub{PubSub: ps, topic: "calls", subscribed: subscribed}
 	})
 	return h, database, ps, subscribed
 }

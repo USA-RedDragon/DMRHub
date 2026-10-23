@@ -945,7 +945,7 @@ func TestListenForWebsocketNonExistentUserExitsImmediately(t *testing.T) {
 // however long its first user lookup takes.
 func TestListenForWebsocketForwardsMatchingCalls(t *testing.T) {
 	t.Parallel()
-	h, database, ps, listening := makeTestHubWatching(t, "calls")
+	h, database, ps, listening := makeTestHubWatching(t)
 
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
@@ -1014,7 +1014,7 @@ func TestListenForWebsocketForwardsMatchingCalls(t *testing.T) {
 // user's repeater subscriptions.
 func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
 	t.Parallel()
-	h, database, ps, listening := makeTestHubWatching(t, "calls")
+	h, database, ps, listening := makeTestHubWatching(t)
 
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
@@ -1051,5 +1051,48 @@ func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
 		t.Fatal("User should not receive calls for unsubscribed talkgroups")
 	case <-time.After(500 * time.Millisecond):
 		// Expected: no forwarding
+	}
+}
+
+func TestListenForWebsocketForwardsCallsToStaticTalkgroupsOfTheUsersRepeaters(t *testing.T) {
+	t.Parallel()
+	h, database, ps, listening := makeTestHubWatching(t)
+
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100001, 1000001)
+	seedTalkgroup(t, database, 40, "TG40")
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100001).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 40}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	userSub := ps.Subscribe("calls:1000001")
+	defer func() { _ = userSub.Close() }()
+	userCh := userSub.Channel()
+
+	go h.ListenForWebsocket(ctx, 1000001)
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ListenForWebsocket never subscribed to calls")
+	}
+
+	callJSON, err := json.Marshal(models.Call{
+		ID:            1,
+		DestinationID: 40,
+		GroupCall:     true,
+		IsToTalkgroup: true,
+		TimeSlot:      true,
+		User:          models.User{ID: 2000001},
+	})
+	require.NoError(t, err)
+	require.NoError(t, ps.Publish("calls", callJSON))
+
+	select {
+	case <-userCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a call to a static talkgroup of the user's repeater was not forwarded")
 	}
 }

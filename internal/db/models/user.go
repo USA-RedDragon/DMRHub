@@ -74,6 +74,15 @@ func FindUserByID(db *gorm.DB, id uint) (User, error) {
 	return user, err
 }
 
+// FindUserWithRepeaterTalkgroups returns the user with its repeaters and
+// their static talkgroups, which a repeater needs to tell which calls it
+// receives.
+func FindUserWithRepeaterTalkgroups(db *gorm.DB, id uint) (User, error) {
+	var user User
+	err := db.Preload("Repeaters.TS1StaticTalkgroups").Preload("Repeaters.TS2StaticTalkgroups").First(&user, id).Error
+	return user, err
+}
+
 func ListUsers(db *gorm.DB) ([]User, error) {
 	var users []User
 	err := db.Preload("Repeaters").Find(&users).Error

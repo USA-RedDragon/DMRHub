@@ -22,79 +22,87 @@ package hub_test
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBroadcastServerReceivesGroupCall(t *testing.T) {
+// topicRecorder is a pubsub that records the topics published to it.
+type topicRecorder struct {
+	pubsub.PubSub
+	mu     sync.Mutex
+	topics []string
+}
+
+func (r *topicRecorder) Publish(topic string, message []byte) error {
+	r.mu.Lock()
+	r.topics = append(r.topics, topic)
+	r.mu.Unlock()
+	if err := r.PubSub.Publish(topic, message); err != nil {
+		return fmt.Errorf("publishing to %s: %w", topic, err)
+	}
+	return nil
+}
+
+func (r *topicRecorder) packetTopics() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var topics []string
+	for _, topic := range r.topics {
+		if strings.HasPrefix(topic, "hub:packets:") {
+			topics = append(topics, topic)
+		}
+	}
+	return topics
+}
+
+func TestGroupCallPublishesOnlyItsTalkgroupTopic(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	_, database, ps := makeTestHubWithPubSub(t)
+	rec := &topicRecorder{PubSub: ps}
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+	ct := calltracker.NewCallTracker(database, ps)
+	h := hub.NewHub(database, kvStore, rec, ct)
+	t.Cleanup(func() {
+		h.Stop(context.Background())
+		ct.Stop()
+		_ = kvStore.Close()
+	})
 
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
 	seedTalkgroup(t, database, 1, "TG1")
 
-	broadcastHandle := h.RegisterServer(hub.ServerConfig{
-		Name:      "broadcast-srv",
-		Role:      hub.RoleRepeater,
-		Broadcast: true,
-	})
-	defer h.UnregisterServer("broadcast-srv")
-
-	// Also need a repeater server registered for the source
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	h.ActivateRepeater(context.Background(), 100001)
+	sub := ps.Subscribe("hub:packets:talkgroup:1")
+	defer func() { _ = sub.Close() }()
 
-	// Allow subscription goroutines to fully start
+	h.RoutePacket(context.Background(), makeVoicePacket(1, 44444, true, false), models.RepeaterTypeMMDVM)
+	select {
+	case <-sub.Channel():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for the talkgroup publish")
+	}
 	time.Sleep(100 * time.Millisecond)
 
-	pkt := makeVoicePacket(1, 44444, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-
-	select {
-	case rp := <-broadcastHandle.Packets:
-		assert.Equal(t, uint(1), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
-		t.Fatal("Timed out waiting for broadcast delivery")
-	}
-}
-
-func TestBroadcastServerSkipsEcho(t *testing.T) {
-	t.Parallel()
-	h, database := makeTestHub(t)
-
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-
-	broadcastHandle := h.RegisterServer(hub.ServerConfig{
-		Name:      "echo-srv",
-		Role:      hub.RoleRepeater,
-		Broadcast: true,
-	})
-	defer h.UnregisterServer("echo-srv")
-
-	// Route with sourceName = "echo-srv" — should not be delivered back
-	pkt := makeVoicePacket(1, 44445, true, false)
-	h.RoutePacket(context.Background(), pkt, "echo-srv")
-
-	select {
-	case <-broadcastHandle.Packets:
-		t.Fatal("Broadcast server should not receive its own echo")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery
-	}
+	assert.Equal(t, []string{"hub:packets:talkgroup:1"}, rec.packetTopics())
 }
 
 func TestPeerServerDoesNotForwardToSelf(t *testing.T) {
@@ -210,7 +218,7 @@ func TestPeerEgressKeepsStreamOrder(t *testing.T) {
 
 // --- Benchmarks ---
 // These benchmark the end-to-end publish pipeline: Packet.Encode → RawDMRPacket.MarshalMsg → pubsub.Publish
-// which is what publishToRepeater and publishForBroadcastServers do internally.
+// which is what publishToRepeater does internally.
 
 func makeTestPubSubB(b *testing.B) pubsub.PubSub {
 	b.Helper()
@@ -253,39 +261,6 @@ func BenchmarkPublishToRepeater(b *testing.B) {
 		rawPacket.Data = pkt.Encode()
 		packedBytes, _ := rawPacket.MarshalMsg(nil)
 		_ = ps.Publish(fmt.Sprintf("hub:packets:repeater:%d", 307201), packedBytes)
-		<-sub.Channel()
-	}
-}
-
-func BenchmarkPublishForBroadcastServers(b *testing.B) {
-	ps := makeTestPubSubB(b)
-	sub := ps.Subscribe("hub:packets:broadcast")
-	defer func() { _ = sub.Close() }()
-
-	pkt := models.Packet{
-		Signature:   "DMRD",
-		Seq:         1,
-		Src:         1000001,
-		Dst:         1,
-		Repeater:    307201,
-		Slot:        false,
-		GroupCall:   true,
-		FrameType:   dmrconst.FrameDataSync,
-		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
-		StreamID:    42,
-	}
-	sourceName := "mmdvm"
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		encodedPacket := pkt.Encode()
-		nameBytes := []byte(sourceName)
-		msg := make([]byte, 0, 1+len(nameBytes)+len(encodedPacket))
-		msg = append(msg, byte(len(nameBytes)))
-		msg = append(msg, nameBytes...)
-		msg = append(msg, encodedPacket...)
-		_ = ps.Publish("hub:packets:broadcast", msg)
 		<-sub.Channel()
 	}
 }

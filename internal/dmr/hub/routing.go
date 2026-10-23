@@ -84,7 +84,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 
 	if packet.GroupCall {
-		h.handleGroupCall(packet, sourceName)
+		h.handleGroupCall(packet)
 	} else {
 		h.handlePrivateCall(ctx, packet)
 	}
@@ -113,7 +113,7 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 
 // handleGroupCall routes a group burst of any kind to all subscribed
 // repeaters.
-func (h *Hub) handleGroupCall(packet models.Packet, sourceName string) {
+func (h *Hub) handleGroupCall(packet models.Packet) {
 	exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if talkgroup exists", "error", err)
@@ -132,9 +132,6 @@ func (h *Hub) handleGroupCall(packet models.Packet, sourceName string) {
 	if err := h.marshalAndPublish(packet, topic); err != nil {
 		slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
 	}
-
-	// Forward to broadcast servers (they handle echo filtering by source name)
-	h.publishForBroadcastServers(packet, sourceName)
 }
 
 // handlePrivateCall routes a private burst of any kind to the target

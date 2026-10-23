@@ -120,23 +120,3 @@ func (h *Hub) publishToRepeater(repeaterID uint, packet models.Packet) {
 		slog.Error("Error publishing packet to repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
-
-// publishForBroadcastServers publishes a packet to the broadcast pubsub topic.
-// sourceName is embedded so consumers can skip echo.
-func (h *Hub) publishForBroadcastServers(packet models.Packet, sourceName string) {
-	// Encode: [sourceNameLen(1 byte)][sourceName][packetData]
-	nameBytes := []byte(sourceName)
-	if len(nameBytes) > 255 {
-		nameBytes = nameBytes[:255]
-	}
-	totalLen := 1 + len(nameBytes) + dmrconst.MMDVMMaxPacketLength
-	buf := make([]byte, totalLen)
-	buf[0] = byte(len(nameBytes))
-	copy(buf[1:], nameBytes)
-	packet.EncodeTo(buf[1+len(nameBytes):])
-	msg := buf[:totalLen]
-
-	if err := h.pubsub.Publish("hub:packets:broadcast", msg); err != nil {
-		slog.Error("Error publishing packet to broadcast", "error", err)
-	}
-}

@@ -141,3 +141,28 @@ func TestPrivateTrafficToUnregisteredRadioIsDropped(t *testing.T) {
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1234567, 100003, 2), models.RepeaterTypeMMDVM)
 	expectNone(t, srv, "private traffic to a radio that is not a user")
 }
+
+func TestUntrustingRepeaterStopsRouting(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100004, 1), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", false, 100004).Error)
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 2), models.RepeaterTypeMMDVM)
+	expectNone(t, srv, "private traffic must not follow a sighting on a repeater that is no longer trusted")
+}
+
+func TestSightingIsNotHiddenByAnotherSourceOnTheSameStream(t *testing.T) {
+	t.Parallel()
+	h, _, srv := lastSeenHub(t)
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1, 100004, 7), models.RepeaterTypeMMDVM)
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 7), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 8), models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "a stream ID that another radio used first must not hide a sighting")
+}

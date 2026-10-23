@@ -41,13 +41,17 @@ type sighting struct {
 	src, repeater uint
 }
 
+type sightingKey struct {
+	src, stream uint
+}
+
 // noteSighting queues the place where the source of packet was heard, once
 // per stream. It never blocks.
 func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
 	if h.getServerRole(sourceName) == RolePeer {
 		return
 	}
-	if _, seen := h.sightedStreams.LoadOrStore(packet.StreamID, time.Now()); seen {
+	if _, seen := h.sightedStreams.LoadOrStore(sightingKey{src: packet.Src, stream: packet.StreamID}, time.Now()); seen {
 		return
 	}
 	select {
@@ -82,11 +86,11 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	if err != nil {
 		return
 	}
-	var rpt models.Repeater
-	if err := h.db.Select("id", "owner_id", "trusted").First(&rpt, s.repeater).Error; err != nil {
+	rpt, ok := h.routableFor(user.ID, s.repeater)
+	if !ok && rpt.ID == 0 {
 		return
 	}
-	if rpt.OwnerID != user.ID && !rpt.Trusted {
+	if !ok {
 		slog.Info("Radio heard on a repeater that its user does not own; private routing does not follow",
 			"radioID", s.src, "repeaterID", s.repeater, "repeaterOwner", rpt.OwnerID)
 		return
@@ -110,7 +114,9 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
 	if v, err := h.kv.Get(ctx, fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID)); err == nil {
 		if id, err := strconv.ParseUint(string(v), 10, 32); err == nil {
-			return uint(id), true
+			if _, ok := h.routableFor(userID, uint(id)); ok {
+				return uint(id), true
+			}
 		}
 	}
 	var repeaterID uint
@@ -129,11 +135,22 @@ func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
 	return repeaterID, repeaterID != 0
 }
 
-func pruneStreams(m *xsync.Map[uint, time.Time], now time.Time) {
-	m.Range(func(stream uint, at time.Time) bool {
+func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {
+	m.Range(func(stream K, at time.Time) bool {
 		if now.Sub(at) > sightedStreamTTL {
 			m.Delete(stream)
 		}
 		return true
 	})
+}
+
+// routableFor reports whether private traffic for the radio of userID may
+// follow it to repeaterID: the user owns the repeater or an admin trusts
+// it. It returns the repeater it found, with ID 0 when there is none.
+func (h *Hub) routableFor(userID, repeaterID uint) (models.Repeater, bool) {
+	var rpt models.Repeater
+	if err := h.db.Select("id", "owner_id", "trusted").First(&rpt, repeaterID).Error; err != nil {
+		return models.Repeater{}, false
+	}
+	return rpt, rpt.OwnerID == userID || rpt.Trusted
 }

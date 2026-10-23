@@ -64,11 +64,22 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	ws.Use(ratelimit, websocket.WatchUser(pubsub))
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
 	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
-	if config.DMR.OpenBridge.Enabled {
-		ws.GET("/peers", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
-	}
+	ws.GET("/peers", requireOpenBridge(config), middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
 	ws.GET("/messages", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateMessagesWebsocket(pubsub)))
 	ws.GET("/nets", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateNetsWebsocket(pubsub)))
+}
+
+// requireOpenBridge answers 404 while OpenBridge is off, as for a route
+// that does not exist. It reads the config at each request, so turning
+// OpenBridge on or off in the Setup page takes effect at once.
+func requireOpenBridge(config *configPkg.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !config.DMR.OpenBridge.Enabled {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		c.Next()
+	}
 }
 
 func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
@@ -129,8 +140,9 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.PATCH("/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1UsersControllers.PATCHUser)
 	v1Users.DELETE("/:id", middleware.RequireSuperAdmin(), userSuspension, v1UsersControllers.DELETEUser)
 
-	if config.DMR.OpenBridge.Enabled {
+	{
 		v1Peers := group.Group("/peers")
+		v1Peers.Use(requireOpenBridge(config))
 		// Paginated
 		v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
 		// Paginated

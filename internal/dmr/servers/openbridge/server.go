@@ -206,10 +206,12 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 
 	err = server.SetReadBuffer(bufferSize)
 	if err != nil {
+		_ = server.Close()
 		return Server{}, fmt.Errorf("error setting UDP Socket read buffer: %w", err)
 	}
 	err = server.SetWriteBuffer(bufferSize)
 	if err != nil {
+		_ = server.Close()
 		return Server{}, fmt.Errorf("error setting UDP Socket write buffer: %w", err)
 	}
 
@@ -274,6 +276,11 @@ func (s *Server) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// Addr returns the address of the socket of the server.
+func (s *Server) Addr() net.Addr {
+	return s.Server.LocalAddr()
 }
 
 // Stop stops the DMR server.

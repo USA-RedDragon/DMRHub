@@ -36,9 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -308,7 +306,7 @@ func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
 
 // serverManager holds all the server instances and their dependencies
 type serverManager struct {
-	servers      []servers.DMRServer
+	dmr          *manager.Manager
 	httpServer   *http.Server
 	netScheduler *netscheduler.NetScheduler
 	callTracker  *calltracker.CallTracker
@@ -320,20 +318,6 @@ type serverManager struct {
 	cfg          *config.Config
 	registry     *servers.InstanceRegistry
 	ready        *atomic.Bool
-}
-
-func (sm *serverManager) addServer(server servers.DMRServer) {
-	sm.servers = append(sm.servers, server)
-}
-
-func (sm *serverManager) start(ctx context.Context) error {
-	for _, server := range sm.servers {
-		err := server.Start(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to start server: %w", err)
-		}
-	}
-	return nil
 }
 
 // stopDMRServers sends disconnect messages (MSTCL, deregistration) and
@@ -354,12 +338,19 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 		}
 		sm.registry.Deregister(ctx)
 	}
-	stopCtx := servers.WithGracefulHandoff(ctx, graceful)
-	for _, server := range sm.servers {
-		if err := server.Stop(stopCtx); err != nil {
-			slog.Error("Failed to stop server", "error", err)
-		}
-	}
+	sm.dmr.Stop(servers.WithGracefulHandoff(ctx, graceful))
+}
+
+// liveConfig puts the settings that the Setup page saves into effect: the
+// DMR servers and the log level.
+type liveConfig struct {
+	dmr *manager.Manager
+}
+
+func (l liveConfig) Apply(next *config.Config) []manager.ApplyError {
+	errs := l.dmr.Apply(next)
+	setupLogger(next)
+	return errs
 }
 
 // closeResources tears down the HTTP server, pubsub, and KV connections.
@@ -420,25 +411,8 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 		ready:       ready,
 	}
 
-	mmdvmServer, err := mmdvm.MakeServer(cfg, hub, database, pubsubClient, kvStore, version, commit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create MMDVM server: %w", err)
-	}
-	sm.addServer(&mmdvmServer)
-
-	if cfg.DMR.OpenBridge.Enabled {
-		openbridgeServer, err := openbridge.MakeServer(cfg, hub, database, pubsubClient, kvStore)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create OpenBridge server: %w", err)
-		}
-		sm.addServer(&openbridgeServer)
-	}
-
-	if cfg.DMR.IPSC.Enabled {
-		sm.addServer(ipsc.NewIPSCServer(cfg, hub, database))
-	}
-
-	if err := sm.start(ctx); err != nil {
+	sm.dmr = manager.New(manager.Deps{Hub: hub, DB: database, PubSub: pubsubClient, KV: kvStore, Version: version, Commit: commit})
+	if err := sm.dmr.Start(ctx, cfg); err != nil {
 		return nil, fmt.Errorf("failed to start servers: %w", err)
 	}
 
@@ -453,7 +427,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	sm.purger = retention.NewPurger(cfg, database, kvStore)
 	sm.purger.Start(ctx)
 
-	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit)
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(liveConfig{dmr: sm.dmr}))
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

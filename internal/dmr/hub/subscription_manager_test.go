@@ -901,26 +901,35 @@ func TestListenForWebsocketNonExistentUserExitsImmediately(t *testing.T) {
 
 // TestListenForWebsocketForwardsMatchingCalls verifies that
 // ListenForWebsocket correctly forwards call events that match the user's
-// repeater subscriptions using cached user data (no DB query per message).
+// repeater subscriptions using cached user data (no DB query per message),
+// however long its first user lookup takes.
 func TestListenForWebsocketForwardsMatchingCalls(t *testing.T) {
 	t.Parallel()
-	h, database, ps := makeTestHubWithPubSub(t)
+	h, database, ps, listening := makeTestHubWatching(t, "calls")
 
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
 
+	var slowed atomic.Bool
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:slow_user", func(tx *gorm.DB) {
+		if tx.Statement.Table == "users" && slowed.CompareAndSwap(false, true) {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start listening for websocket calls
-	go h.ListenForWebsocket(ctx, 1000001)
-
-	// Subscribe to the user's personal call channel to verify forwarding
 	userSub := ps.Subscribe("calls:1000001")
 	defer func() { _ = userSub.Close() }()
 	userCh := userSub.Channel()
 
-	time.Sleep(100 * time.Millisecond)
+	go h.ListenForWebsocket(ctx, 1000001)
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ListenForWebsocket never subscribed to calls")
+	}
 
 	// Publish a call event where DestinationID matches the repeater's OwnerID (1000001).
 	// This triggers the `call.DestinationID == p.OwnerID` branch in ListenForWebsocket.
@@ -965,7 +974,7 @@ func TestListenForWebsocketForwardsMatchingCalls(t *testing.T) {
 // user's repeater subscriptions.
 func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
 	t.Parallel()
-	h, database, ps := makeTestHubWithPubSub(t)
+	h, database, ps, listening := makeTestHubWatching(t, "calls")
 
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
@@ -974,13 +983,16 @@ func TestListenForWebsocketDoesNotForwardUnrelatedCalls(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go h.ListenForWebsocket(ctx, 1000001)
-
 	userSub := ps.Subscribe("calls:1000001")
 	defer func() { _ = userSub.Close() }()
 	userCh := userSub.Channel()
 
-	time.Sleep(100 * time.Millisecond)
+	go h.ListenForWebsocket(ctx, 1000001)
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ListenForWebsocket never subscribed to calls")
+	}
 
 	// Publish a call to an unrelated talkgroup
 	call := models.Call{

@@ -50,6 +50,10 @@ const (
 	lastService  = 5059
 
 	tickInterval = 50 * time.Millisecond
+	recheckEvery = time.Second
+	silentAfter  = 3
+	heardExpiry  = time.Hour
+	maxInterval  = 24 * time.Hour
 	linkIdle     = 2 * time.Minute
 	networkLost  = 500 * time.Millisecond
 )
@@ -75,31 +79,36 @@ type link struct {
 
 // Locator is the location server. Its methods are safe for concurrent use.
 type Locator struct {
-	db     *gorm.DB
-	send   func(models.Packet)
-	epoch  time.Time
-	mu     sync.Mutex
-	links  map[linkKey]*link
-	dec    location.Decoder
-	events []data.Event
-	outs   []data.Output
-	lrrp   lrrp.Message
-	reqID  uint32
-	stream uint
-	done   chan struct{}
-	wg     sync.WaitGroup
+	db      *gorm.DB
+	send    func(models.Packet)
+	epoch   time.Time
+	mu      sync.Mutex
+	links   map[linkKey]*link
+	dec     location.Decoder
+	events  []data.Event
+	outs    []data.Output
+	lrrp    lrrp.Message
+	reqID   uint32
+	stream  uint
+	heard   map[uint]heardAt
+	retried map[uint]bool
+	checked time.Time
+	done    chan struct{}
+	wg      sync.WaitGroup
 }
 
 // New returns a Locator that stores positions in db and hands the packets
 // it sends to send, which routes each to its Repeater.
 func New(db *gorm.DB, send func(models.Packet)) *Locator {
 	l := &Locator{
-		db:     db,
-		send:   send,
-		epoch:  time.Now(),
-		links:  map[linkKey]*link{},
-		stream: 0x10C0_0000,
-		done:   make(chan struct{}),
+		db:      db,
+		send:    send,
+		epoch:   time.Now(),
+		links:   map[linkKey]*link{},
+		heard:   map[uint]heardAt{},
+		retried: map[uint]bool{},
+		stream:  0x10C0_0000,
+		done:    make(chan struct{}),
 	}
 	l.wg.Add(1)
 	go l.tick()
@@ -114,6 +123,21 @@ func (l *Locator) Stop() {
 
 func (l *Locator) now() time.Duration {
 	return time.Since(l.epoch)
+}
+
+type heardAt struct {
+	repeater uint
+	slot     bool
+	at       time.Time
+}
+
+// Heard tells the Locator that the radio was heard on repeater and slot,
+// so that it can ask a tracked radio that went silent for its position
+// again there.
+func (l *Locator) Heard(radio, repeater uint, slot bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.heard[radio] = heardAt{repeater: repeater, slot: slot, at: time.Now()}
 }
 
 // Handle takes a private burst to a radio ID of the location server.
@@ -202,6 +226,7 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 	if !ok {
 		return
 	}
+	delete(l.retried, k.radio)
 	if _, err := models.StorePosition(l.db, pos); err != nil {
 		slog.Error("Locator: cannot store a position", "radio", k.radio, "error", err)
 	}
@@ -347,6 +372,60 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 	}
 }
 
+func (l *Locator) askSilent() {
+	var rows []models.LocationRequest
+	if err := l.db.Find(&rows).Error; err != nil {
+		slog.Error("Locator: cannot list location requests", "error", err)
+		return
+	}
+	for _, r := range rows {
+		interval := maxInterval
+		if r.IntervalSeconds < uint(maxInterval/time.Second) {
+			interval = time.Duration(r.IntervalSeconds) * time.Second //nolint:gosec
+		}
+		h, ok := l.heard[r.RadioID]
+		if !ok || l.retried[r.RadioID] || !h.at.After(r.SentAt.Add(interval)) {
+			continue
+		}
+		silence := interval * silentAfter
+		last := r.SentAt
+		var newest []models.Position
+		if err := l.db.Where("radio_id = ?", r.RadioID).Order("received_at DESC").Limit(1).Find(&newest).Error; err != nil {
+			slog.Error("Locator: cannot read the last position", "radio", r.RadioID, "error", err)
+			continue
+		}
+		if len(newest) == 1 && newest[0].ReceivedAt.After(last) {
+			last = newest[0].ReceivedAt
+		}
+		if time.Since(last) < silence {
+			continue
+		}
+		k := linkKey{radio: r.RadioID, service: r.ServiceID}
+		ln, ok := l.links[k]
+		if !ok {
+			ln = &link{cc: l.colorCode(h.repeater)}
+			rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(r.ServiceID), Respond: true, Source: layer2.SyncSourceBS, Lost: networkLost}) //nolint:gosec
+			if err != nil {
+				continue
+			}
+			ln.rx = rx
+			l.links[k] = ln
+		}
+		ln.repeater, ln.slot, ln.last = h.repeater, h.slot, time.Now()
+		l.retried[r.RadioID] = true
+		slog.Info("Locator: asking a silent radio for its position again", "radio", r.RadioID, "repeater", h.repeater)
+		l.startTracking(k, ln)
+	}
+}
+
+func (l *Locator) colorCode(repeater uint) enums.ColorCode {
+	var cc []uint
+	if err := l.db.Model(&models.Repeater{}).Where("id = ?", repeater).Limit(1).Pluck("color_code", &cc).Error; err != nil || len(cc) == 0 {
+		return 1
+	}
+	return enums.ColorCode(cc[0] & 0xF) //nolint:gosec
+}
+
 func positionOf(f *location.Fix, k linkKey, ln *link) (models.Position, bool) {
 	if !f.Valid || math.IsNaN(f.Latitude) || math.IsNaN(f.Longitude) ||
 		f.Latitude < -90 || f.Latitude > 90 || f.Longitude < -180 || f.Longitude > 180 ||
@@ -410,6 +489,15 @@ func (l *Locator) expire() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
+	if len(l.heard) > 0 && time.Since(l.checked) >= recheckEvery {
+		l.checked = time.Now()
+		for radio, h := range l.heard {
+			if time.Since(h.at) > heardExpiry {
+				delete(l.heard, radio)
+			}
+		}
+		l.askSilent()
+	}
 	for k, ln := range l.links {
 		if at, ok := ln.rx.Deadline(); ok && now >= at {
 			l.events = ln.rx.Tick(now, l.events[:0])

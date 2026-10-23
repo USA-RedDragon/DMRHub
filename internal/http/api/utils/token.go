@@ -19,6 +19,8 @@
 package utils
 
 import (
+	"context"
+
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-gonic/gin"
 )
@@ -43,4 +45,19 @@ func Grant(c *gin.Context) (models.OAuthGrant, bool) {
 func ViaToken(c *gin.Context) bool {
 	_, ok := Grant(c)
 	return ok
+}
+
+type grantContextKey struct{}
+
+// ContextWithGrant returns ctx carrying g, the OAuth grant of the request
+// that ctx belongs to.
+func ContextWithGrant(ctx context.Context, g models.OAuthGrant) context.Context {
+	return context.WithValue(ctx, grantContextKey{}, g)
+}
+
+// GrantFromContext returns the OAuth grant that ContextWithGrant put in
+// ctx, and false for a request made without a Bearer token.
+func GrantFromContext(ctx context.Context) (models.OAuthGrant, bool) {
+	g, ok := ctx.Value(grantContextKey{}).(models.OAuthGrant)
+	return g, ok
 }

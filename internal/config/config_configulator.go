@@ -1028,7 +1028,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[21], "", "URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required")
 	fs.String(names[22], "[::]", "MMDVM server listen address")
 	fs.Var(impl.NewInt(62031), names[23], "MMDVM server port")
-	fs.Bool(names[24], false, "Enable experimental OpenBridge server support")
+	fs.Bool(names[24], false, "Enable OpenBridge server support")
 	fs.String(names[25], "[::]", "OpenBridge server listen address")
 	fs.Var(impl.NewInt(62035), names[26], "OpenBridge server port")
 	fs.Uint32(names[27], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")

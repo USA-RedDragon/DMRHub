@@ -1,0 +1,5 @@
+# codec2 passthrough (lane/codec2): finished
+- 2ed179ef test: send a codec2 call over every path; cf3f01fe ipsc: keep the embedded LC of a late entry call in burst E; 97352365 hub: echo the parrot call with the caller's LC and codec.
+- Per path (bits + LC at receiver): MMDVM-MMDVM group/private TS1/TS2, MMDVM-OpenBridge v1/enhanced and back, handoff resume, MMDVM late entry, IPSC with header: passed before and after. IPSC late entry failed before (burst E FID 0x00, SO 0x20), passes after. Parrot failed before (FID 0, zero SO, AMBE silence padding), passes after.
+- IPSC framing cannot carry Codec2 voice: IPSC carries 3x49 = 147 bits per burst, not 216 (TestCodec2VoiceDoesNotFitIPSC); no bits altered.
+- Left: postgres late-entry and parrot cases still failed at load ~20, not investigated; one handoff run lost the first burst after restart (not repeated in 8 runs, not codec-specific). Last heard records no FID for voice (fid nil): owner call whether to record it (transcoding work will need it).

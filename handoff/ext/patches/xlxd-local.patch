@@ -1,0 +1,63 @@
+diff --git a/src/main.h b/src/main.h
+index 6a2d44d..7cf8877 100644
+--- a/src/main.h
++++ b/src/main.h
+@@ -48,7 +48,7 @@
+ #define VERSION_REVISION                1
+ 
+ // global ------------------------------------------------------
+-#define RUN_AS_DAEMON
++//#define RUN_AS_DAEMON
+ #define JSON_MONITOR
+ // QoS - set DSCP/TOS on outgoing packets for network prioritization.
+ // Voice-flow packets (voice frames, headers, EoT) are marked DSCP_VALUE.
+@@ -73,7 +73,7 @@ static_assert(DSCP_VALUE >= 0 && DSCP_VALUE <= 63,
+ // debug -------------------------------------------------------
+ //#define DEBUG_NO_ERROR_ON_XML_OPEN_FAIL
+ //#define DEBUG_DUMPFILE
+-//#define DEBUG_NO_G3_ICMP_SOCKET
++#define DEBUG_NO_G3_ICMP_SOCKET
+ 
+ // reflector ---------------------------------------------------
+ #define NB_OF_MODULES                   26
+@@ -217,18 +217,18 @@ static_assert(DSCP_VALUE >= 0 && DSCP_VALUE <= 63,
+ #define TRANSCODER_PACKET_SIZE_C2IN     21                                  // codec1(1)+pid(1)+ambe(9)+codec2(1)+ambe(9) - Codec2 input
+ 
+ // DMRid database -----------------------------------------------
+-#define DMRIDDB_USE_RLX_SERVER          1                                   // 1 = use http, 0 = use local file
+-#define DMRIDDB_PATH                    "/xlxd/dmrid.dat"                   // local file path
++#define DMRIDDB_USE_RLX_SERVER          0                                   // 1 = use http, 0 = use local file
++#define DMRIDDB_PATH                    "/home/user/work/ext/xlxd-run/dmrid.dat"                   // local file path
+ #define DMRIDDB_REFRESH_RATE            180                                 // in minutes
+ 
+ // Wires-X node database ----------------------------------------
+-#define YSFNODEDB_USE_RLX_SERVER        1                                   // 1 = use http, 0 = use local file
+-#define YSFNODEDB_PATH                  "/xlxd/ysfnode.dat"                 // local file path
++#define YSFNODEDB_USE_RLX_SERVER        0                                   // 1 = use http, 0 = use local file
++#define YSFNODEDB_PATH                  "/home/user/work/ext/xlxd-run/ysfnode.dat"                 // local file path
+ #define YSFNODEDB_REFRESH_RATE          180                                 // in minutes
+ 
+ // NXDN ID database ---------------------------------------------
+ #define NXDNIDDB_USE_RLX_SERVER         0                                   // 1 = use http, 0 = use local file
+-#define NXDNIDDB_PATH                   "/xlxd/nxdn.csv"                    // local file path
++#define NXDNIDDB_PATH                   "/home/user/work/ext/xlxd-run/nxdn.csv"                    // local file path
+ #define NXDNIDDB_REFRESH_RATE           720                                 // in minutes (12 hours)
+ 
+ // xml & json reporting -----------------------------------------
+@@ -238,11 +238,11 @@ static_assert(DSCP_VALUE >= 0 && DSCP_VALUE <= 63,
+ #define JSON_PORT                       10001
+ 
+ // system paths -------------------------------------------------
+-#define XML_PATH                        "/var/log/xlxd.xml"
+-#define WHITELIST_PATH                  "/xlxd/xlxd.whitelist"
+-#define BLACKLIST_PATH                  "/xlxd/xlxd.blacklist"
+-#define INTERLINKLIST_PATH              "/xlxd/xlxd.interlink"
+-#define TERMINALOPTIONS_PATH            "/xlxd/xlxd.terminal"
++#define XML_PATH                        "/home/user/work/ext/xlxd-run/xlxd.xml"
++#define WHITELIST_PATH                  "/home/user/work/ext/xlxd-run/xlxd.whitelist"
++#define BLACKLIST_PATH                  "/home/user/work/ext/xlxd-run/xlxd.blacklist"
++#define INTERLINKLIST_PATH              "/home/user/work/ext/xlxd-run/xlxd.interlink"
++#define TERMINALOPTIONS_PATH            "/home/user/work/ext/xlxd-run/xlxd.terminal"
+ #define DEBUGDUMP_PATH                  "/var/log/xlxd.debug"
+ 
+ // system constants ---------------------------------------------

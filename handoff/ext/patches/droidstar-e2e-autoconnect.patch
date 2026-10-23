@@ -1,0 +1,36 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e2b837d..0aa81e4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -204,7 +204,7 @@ if(FALSE) # set TRUE for flite
+     )
+ endif()
+ 
+-if(TRUE) # set TRUE for md380_vocoder
++if(FALSE) # set TRUE for md380_vocoder
+     target_compile_definitions(DroidStar PRIVATE
+         USE_MD380_VOCODER
+     )
+diff --git a/droidstar.cpp b/droidstar.cpp
+index 5a67986..fc5fa37 100644
+--- a/droidstar.cpp
++++ b/droidstar.cpp
+@@ -69,6 +69,18 @@ DroidStar::DroidStar(QObject *parent) :
+ 	qDebug() << "Kernel version: " << QSysInfo::kernelVersion();
+     qDebug() << "Software version: " << VERSION_NUMBER;
+     qDebug() << "OpenSSL: " << QSslSocket::supportsSsl();
++	const QByteArray e2e = qgetenv("DROIDSTAR_E2E_AUTOCONNECT");
++	if(!e2e.isEmpty()){
++		const int ms = e2e.toInt();
++		qDebug() << "DROIDSTAR_E2E_AUTOCONNECT: connecting in" << ms << "ms with no vocoder and no modem";
++		QTimer::singleShot(ms, this, [this](){
++			m_vocoder = "None";
++			m_modem = "None";
++			if(connect_status == Mode::DISCONNECTED){
++				process_connect();
++			}
++		});
++	}
+ }
+ 
+ DroidStar::~DroidStar()

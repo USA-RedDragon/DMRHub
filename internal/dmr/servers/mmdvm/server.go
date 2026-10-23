@@ -265,7 +265,7 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.serve(udpTransport, s.Server, s.Buffer)
 
 	if s.wt != nil {
-		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", WebTransportPath)
+		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)
 		s.wg.Add(1)
 		go s.serve(webTransportName, s.wt, make([]byte, dmrdsession.MaxPacket))

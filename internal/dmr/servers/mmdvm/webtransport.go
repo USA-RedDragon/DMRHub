@@ -38,12 +38,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-const (
-	webTransportName = "webtransport"
-	// WebTransportPath is the path of the WebTransport endpoint of the
-	// MMDVM server.
-	WebTransportPath = "/mmdvm"
-)
+const webTransportName = "webtransport"
 
 var errNoSession = errors.New("no WebTransport session at the address")
 
@@ -82,7 +77,7 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransp
 		done:     make(chan struct{}),
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc(WebTransportPath, t.accept)
+	mux.HandleFunc(wtcert.Path, t.accept)
 	h3 := &http3.Server{
 		Handler:    mux,
 		TLSConfig:  http3.ConfigureTLSConfig(&tls.Config{GetCertificate: certs.GetCertificate, MinVersion: tls.VersionTLS13}),

@@ -69,6 +69,14 @@ func (t *TestDB) DB() *gorm.DB {
 	return t.database
 }
 
+//nolint:gochecknoglobals
+var memoryDBs atomic.Uint64
+
+func useMemoryDB(cfg *config.Config) {
+	cfg.Database.Database = fmt.Sprintf("file:testdb_%d", memoryDBs.Add(1))
+	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+}
+
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
@@ -76,8 +84,7 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	defConfig.Database.Database = "" // Use in-memory database for tests
-	defConfig.Database.ExtraParameters = []string{}
+	useMemoryDB(&defConfig)
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 
@@ -130,8 +137,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	defConfig.Database.Database = fmt.Sprintf("file:hubrouter_%p", &t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	useMemoryDB(&defConfig)
 	defConfig.DMR.DisableRadioIDValidation = true
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
@@ -197,8 +203,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	defConfig.Database.Database = "" // Use in-memory database for tests
-	defConfig.Database.ExtraParameters = []string{}
+	useMemoryDB(&defConfig)
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 	defConfig.DMR.DisableRadioIDValidation = true

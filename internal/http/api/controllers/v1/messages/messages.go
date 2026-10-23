@@ -22,6 +22,7 @@
 package messages
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -54,6 +55,9 @@ const (
 
 func intParam(c *gin.Context, name string, def, maxValue int) int {
 	v, err := strconv.Atoi(c.Query(name))
+	if errors.Is(err, strconv.ErrRange) && v > 0 {
+		err = nil
+	}
 	if err != nil || v < 1 {
 		return def
 	}

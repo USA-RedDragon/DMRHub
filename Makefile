@@ -60,6 +60,11 @@ test:
 	@env CGO_ENABLED=0 go test -p 2 -v ./...
 	@echo "--> Done"
 
+stress:
+	@echo "--> Running the stress battery (see hack/stress.sh for its settings)"
+	@./hack/stress.sh
+	@echo "--> Done"
+
 benchmark:
 	@echo "--> Running benchmarks"
 	@env CGO_ENABLED=0 go test -run ^$ -benchmem -bench=. ./...

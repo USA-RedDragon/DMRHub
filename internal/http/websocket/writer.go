@@ -56,6 +56,9 @@ func (w *wsWriter) WriteMessage(message Message) {
 	}
 }
 
+// drain does not let the end of ctx cancel a write, because a cancelled
+// write closes the TCP connection before closeConn can send a close frame.
+// writeTimeout bounds each write instead.
 func (w *wsWriter) drain(ctx context.Context, conn *websocket.Conn) {
 	for {
 		select {
@@ -66,7 +69,7 @@ func (w *wsWriter) drain(ctx context.Context, conn *websocket.Conn) {
 			if m.Type == int(websocket.MessageBinary) {
 				typ = websocket.MessageBinary
 			}
-			writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+			writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
 			err := conn.Write(writeCtx, typ, m.Data)
 			cancel()
 			if err != nil {

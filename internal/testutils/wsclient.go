@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -101,6 +102,18 @@ func DialWS(t *testing.T, serverURL, path string, jar CookieJar) (*WSConn, *http
 // origin.
 func DialWSFrom(t *testing.T, serverURL, path string, jar CookieJar, origin string) (*WSConn, *http.Response) {
 	t.Helper()
+	return dialWS(t, serverURL, path, jar, origin, nil)
+}
+
+// DialWSProtocols opens the websocket path from a page at origin, without
+// cookies, offering the subprotocols protocols.
+func DialWSProtocols(t *testing.T, serverURL, path, origin string, protocols ...string) (*WSConn, *http.Response) {
+	t.Helper()
+	return dialWS(t, serverURL, path, CookieJar{}, origin, protocols)
+}
+
+func dialWS(t *testing.T, serverURL, path string, jar CookieJar, origin string, protocols []string) (*WSConn, *http.Response) {
+	t.Helper()
 	u, err := url.Parse(serverURL)
 	require.NoError(t, err)
 	dialer := net.Dialer{Timeout: 5 * time.Second}
@@ -116,6 +129,9 @@ func DialWSFrom(t *testing.T, serverURL, path string, jar CookieJar, origin stri
 	req.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(key[:]))
 	req.Header.Set("Sec-WebSocket-Version", "13")
 	req.Header.Set("Origin", origin)
+	if len(protocols) > 0 {
+		req.Header.Set("Sec-WebSocket-Protocol", strings.Join(protocols, ", "))
+	}
 	for _, c := range jar.Cookies() {
 		req.Header.Add("Cookie", c.String())
 	}

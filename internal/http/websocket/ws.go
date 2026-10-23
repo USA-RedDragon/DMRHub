@@ -31,6 +31,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -75,6 +76,11 @@ type Websocket interface {
 	OnConnect(ctx context.Context, r *http.Request, w Writer, session sessions.Session) (onDisconnect func())
 }
 
+// Subprotocol is the websocket subprotocol of DMRHub. An app that opens a
+// websocket with an access token offers it next to the token, as
+// "dmrhub.bearer." and the token, and DMRHub picks it.
+const Subprotocol = "dmrhub"
+
 type WSHandler struct {
 	config  *config.Config
 	handler Websocket
@@ -84,12 +90,12 @@ func CreateHandler(config *config.Config, ws Websocket) func(*gin.Context) {
 	handler := &WSHandler{config: config, handler: ws}
 
 	return func(c *gin.Context) {
-		if !handler.originAllowed(c.Request) {
+		if !utils.ViaToken(c) && !handler.originAllowed(c.Request) {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		session := sessions.Default(c)
-		conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{InsecureSkipVerify: true, Subprotocols: []string{Subprotocol}})
 		if err != nil {
 			slog.Error("Failed to accept websocket", "error", err)
 			return

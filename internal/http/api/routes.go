@@ -30,6 +30,7 @@ import (
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
 	v1MessagesControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/messages"
 	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
+	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
@@ -38,13 +39,14 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	websocketControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // ApplyRoutes to the HTTP Mux.
-func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, oauthServer *oauth.Server, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
 	router.GET("/robots.txt", func(c *gin.Context) {
 		switch config.HTTP.RobotsTXT.Mode {
 		case configPkg.RobotsTXTModeDisabled:
@@ -56,12 +58,15 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 		}
 	})
 
+	router.GET("/.well-known/oauth-authorization-server", ratelimit, v1OAuthControllers.GETMetadata)
+
+	bearer := middleware.Bearer(oauthServer)
 	apiV1 := router.Group("/api/v1")
-	apiV1.Use(ratelimit)
+	apiV1.Use(ratelimit, bearer)
 	v1(config, apiV1, userSuspension)
 
 	ws := router.Group("/ws")
-	ws.Use(ratelimit, websocket.WatchUser(pubsub))
+	ws.Use(ratelimit, bearer, websocket.WatchUser(pubsub))
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
 	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
 	ws.GET("/peers", requireOpenBridge(config), middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
@@ -86,6 +91,14 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
+
+	v1OAuth := group.Group("/oauth")
+	v1OAuth.GET("/authorize", v1OAuthControllers.GETAuthorize)
+	v1OAuth.POST("/authorize", middleware.RequireLogin(), userSuspension, v1OAuthControllers.POSTAuthorize)
+	v1OAuth.POST("/token", v1OAuthControllers.POSTToken)
+	v1OAuth.POST("/revoke", v1OAuthControllers.POSTRevoke)
+	v1OAuth.GET("/apps", middleware.RequireLogin(), userSuspension, v1OAuthControllers.GETApps)
+	v1OAuth.DELETE("/apps/:id", middleware.RequireLogin(), userSuspension, v1OAuthControllers.DELETEApp)
 
 	v1Repeaters := group.Group("/repeaters")
 	// Paginated

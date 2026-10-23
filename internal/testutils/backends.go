@@ -51,6 +51,19 @@ func SQLiteMemoryBackend() Backend {
 // PostgresRedisBackend returns a backend that spins up a dedicated Postgres
 // and Redis container for each test. Containers are fully parallel.
 func PostgresRedisBackend() Backend {
+	return PostgresRedisBackendInto(nil)
+}
+
+// Containers holds the IDs of the Docker containers of a Postgres and
+// Redis backend, so that a test can pause, stop or restart them.
+type Containers struct {
+	Postgres string
+	Redis    string
+}
+
+// PostgresRedisBackendInto is PostgresRedisBackend that also stores the IDs
+// of its containers in c when c is not nil.
+func PostgresRedisBackendInto(c *Containers) Backend {
 	return Backend{
 		Name: "postgres-redis",
 		Setup: func(t *testing.T, cfg *config.Config) {
@@ -81,6 +94,9 @@ func PostgresRedisBackend() Backend {
 			}
 
 			pgPort, _ := strconv.Atoi(pgResource.GetPort("5432/tcp"))
+			if c != nil {
+				c.Postgres = pgResource.ID()
+			}
 
 			if err := pool.Retry(t.Context(), 0, func() error {
 				db, err := sql.Open("pgx",
@@ -116,6 +132,9 @@ func PostgresRedisBackend() Backend {
 			}
 
 			redisPort, _ := strconv.Atoi(redisResource.GetPort("6379/tcp"))
+			if c != nil {
+				c.Redis = redisResource.ID()
+			}
 
 			if err := pool.Retry(t.Context(), 0, func() error {
 				rdb := redis.NewClient(&redis.Options{

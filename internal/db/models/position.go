@@ -165,6 +165,37 @@ func SetPositionRetention(db *gorm.DB, radioID uint, keep time.Duration) error {
 	return nil
 }
 
+// PositionOptions is what the owner of a radio picks besides turning
+// tracking on or off.
+type PositionOptions struct {
+	Interval    time.Duration
+	Retention   time.Duration
+	APRS        bool
+	APRSSSID    string
+	APRSSymbol  string
+	APRSComment string
+}
+
+// SetPositionOptions sets the options of radioID, owned by userID, and
+// keeps whether it is tracked.
+func SetPositionOptions(db *gorm.DB, userID, radioID uint, o PositionOptions) error {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		s, _, err := FindPositionSetting(tx, radioID)
+		if err != nil {
+			return err
+		}
+		s.UserID = userID
+		s.IntervalSeconds = uint(max(o.Interval/time.Second, 0))
+		s.RetentionHours = uint(max(o.Retention/time.Hour, 1))
+		s.APRS, s.APRSSSID, s.APRSSymbol, s.APRSComment = o.APRS && s.Tracking, o.APRSSSID, o.APRSSymbol, o.APRSComment
+		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&s).Error
+	})
+	if err != nil {
+		return fmt.Errorf("could not set the position options of %d: %w", radioID, err)
+	}
+	return nil
+}
+
 // SetSharePositions sets whether the user userID shares the positions of
 // their radios with the other users who share theirs.
 func SetSharePositions(db *gorm.DB, userID uint, share bool) error {

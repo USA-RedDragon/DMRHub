@@ -29,16 +29,16 @@
         <p>DMRHub can run an MMDVM server to allow connections from DMR radios and
           software such as DMRGateway.</p>
         <br />
-        <label class="field-label" for="bind">Bind</label>
-        <ShadInput id="bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="mmdvm-bind">Bind</label>
+        <ShadInput id="mmdvm-bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the MMDVM server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <label class="field-label" for="port">Port</label>
+        <label class="field-label" for="mmdvm-port">Port</label>
         <ShadInput
-          id="port"
+          id="mmdvm-port"
           type="number"
           v-model="port"
           :aria-invalid="(errors && errors.port) || false"

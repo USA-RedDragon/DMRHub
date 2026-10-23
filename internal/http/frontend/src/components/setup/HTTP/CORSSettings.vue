@@ -33,15 +33,15 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="cors-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enabled</label>
+          <label for="cors-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="hosts" v-if="enabled">Hosts</label>
-        <textarea rows="5" id="hosts" v-model="hosts" v-if="enabled" class="ui-textarea" :class="{ 'ui-textarea-invalid': (errors && errors.hosts) || false }" />
+        <label class="field-label" for="cors-hosts" v-if="enabled">Hosts</label>
+        <textarea rows="5" id="cors-hosts" v-model="hosts" v-if="enabled" class="ui-textarea" :class="{ 'ui-textarea-invalid': (errors && errors.hosts) || false }" />
         <p v-if="enabled">
           A list of hosts that are allowed to access the DMRHub API.
           Use <code>*</code> to allow all hosts (not recommended for production). One per line.

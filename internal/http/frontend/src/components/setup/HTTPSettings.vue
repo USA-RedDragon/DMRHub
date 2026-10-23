@@ -29,16 +29,16 @@
         <p>These settings control the main HTTP server that serves the web interface and API.
           A canonical host is required by DMRHub to allow it to generate absolute URLs.</p>
         <br />
-        <label class="field-label" for="bind">Bind</label>
-        <ShadInput id="bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="http-bind">Bind</label>
+        <ShadInput id="http-bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the HTTP server to
         </p>
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <label class="field-label" for="port">Port</label>
+        <label class="field-label" for="http-port">Port</label>
         <ShadInput
-          id="port"
+          id="http-port"
           type="number"
           v-model="port"
           :aria-invalid="(errors && errors.port) || false"
@@ -48,10 +48,10 @@
         </p>
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
-        <label class="field-label" for="trustedProxies">Trusted Proxies</label>
+        <label class="field-label" for="http-trusted-proxies">Trusted Proxies</label>
         <textarea
           rows="5"
-          id="trustedProxies"
+          id="http-trusted-proxies"
           v-model="trustedProxies"
           class="ui-textarea"
           :class="{ 'ui-textarea-invalid': (errors && errors['trusted-proxies']) || false }"
@@ -62,9 +62,9 @@
         </p>
         <span v-if="errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
         <br />
-        <label class="field-label" for="canonicalHost">Canonical Host</label>
+        <label class="field-label" for="http-canonical-host">Canonical Host</label>
         <ShadInput
-          id="canonicalHost"
+          id="http-canonical-host"
           type="text"
           v-model="canonicalHost"
           :aria-invalid="(errors && errors['canonical-host']) || false"

@@ -61,6 +61,6 @@ describe('Admin Setup: OpenBridge', () => {
     cy.get('#openbridge-server-id').should('not.exist');
     cy.get('label[for="openbridge-enabled"]').click();
     cy.get('#openbridge-server-id').should('be.visible');
-    cy.get('#enabled').should('be.checked');
+    cy.get('#ipsc-enabled').should('be.checked');
   });
 });

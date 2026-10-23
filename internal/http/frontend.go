@@ -145,7 +145,7 @@ func addFrontendRoutes(r *gin.Engine) {
 
 func handleMime(c *gin.Context, fileContent []byte, entry string) {
 	switch {
-	case strings.HasSuffix(c.Request.URL.Path, ".js"):
+	case strings.HasSuffix(c.Request.URL.Path, ".js") || strings.HasSuffix(c.Request.URL.Path, ".mjs"):
 		c.Data(http.StatusOK, "text/javascript", fileContent)
 		return
 	case strings.HasSuffix(c.Request.URL.Path, ".css"):
@@ -180,6 +180,10 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 		return
 	case strings.HasSuffix(c.Request.URL.Path, ".txt"):
 		c.Data(http.StatusOK, "text/plain", fileContent)
+		return
+	case strings.HasSuffix(c.Request.URL.Path, ".pbf"):
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.Data(http.StatusOK, "application/x-protobuf", fileContent)
 		return
 	case strings.HasSuffix(c.Request.URL.Path, ".webmanifest"):
 		c.Data(http.StatusOK, "application/manifest+json", fileContent)

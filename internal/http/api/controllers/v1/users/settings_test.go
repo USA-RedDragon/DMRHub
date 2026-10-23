@@ -77,7 +77,7 @@ func TestSMSStorageIsOffByDefault(t *testing.T) {
 
 	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/settings", nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"sms_storage": false}`, w.Body.String())
+	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false}`, w.Body.String())
 }
 
 func TestSMSStorageOnSetsTheTimeAndOffAndOnResetsIt(t *testing.T) {

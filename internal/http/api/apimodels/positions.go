@@ -62,3 +62,44 @@ type RadioPositions struct {
 	Latest *Position  `json:"latest"`
 	Track  []Position `json:"track"`
 }
+
+// PositionRadio is the position setting of one radio ID of the user.
+type PositionRadio struct {
+	RadioID         uint   `json:"radio_id"`
+	Tracking        bool   `json:"tracking"`
+	IntervalMinutes uint   `json:"interval_minutes"`
+	RetentionHours  uint   `json:"retention_hours"`
+	APRS            bool   `json:"aprs"`
+	APRSSSID        string `json:"aprs_ssid"`
+	APRSSymbol      string `json:"aprs_symbol"`
+	APRSComment     string `json:"aprs_comment"`
+}
+
+// NewPositionRadio returns the API form of s.
+func NewPositionRadio(s *models.PositionSetting) PositionRadio {
+	return PositionRadio{
+		RadioID: s.RadioID, Tracking: s.Tracking, IntervalMinutes: s.IntervalSeconds / 60, RetentionHours: s.RetentionHours,
+		APRS: s.APRS, APRSSSID: s.APRSSSID, APRSSymbol: s.APRSSymbol, APRSComment: s.APRSComment,
+	}
+}
+
+// PositionRadios is the position settings of the radio IDs of the user and
+// the choices the hub allows.
+type PositionRadios struct {
+	Radios    []PositionRadio `json:"radios"`
+	Intervals []uint          `json:"intervals"`
+	Retention []uint          `json:"retention_hours"`
+	APRS      bool            `json:"aprs"`
+	Callsign  string          `json:"callsign"`
+}
+
+// PositionRadioPut sets the position setting of a radio ID.
+type PositionRadioPut struct {
+	Tracking        *bool  `json:"tracking" binding:"required"`
+	IntervalMinutes uint   `json:"interval_minutes" binding:"required"`
+	RetentionHours  uint   `json:"retention_hours" binding:"required"`
+	APRS            bool   `json:"aprs"`
+	APRSSSID        string `json:"aprs_ssid"`
+	APRSSymbol      string `json:"aprs_symbol"`
+	APRSComment     string `json:"aprs_comment"`
+}

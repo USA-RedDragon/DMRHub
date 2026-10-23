@@ -61,6 +61,7 @@ type Server struct {
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
 	connected     *xsync.Map[uint, net.UDPAddr]
+	egressMiss    *xsync.Map[uint, time.Time]
 	stopped       atomic.Bool
 	wg            sync.WaitGroup
 	done          chan struct{}
@@ -118,6 +119,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
 		connected:     xsync.NewMap[uint, net.UDPAddr](),
+		egressMiss:    xsync.NewMap[uint, time.Time](),
 		done:          make(chan struct{}),
 	}, nil
 }
@@ -192,7 +194,7 @@ func (s *Server) subscribePackets() {
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to repeaters.
-func (s *Server) consumeHubPackets() {
+func (s *Server) consumeHubPackets(ctx context.Context) {
 	defer s.wg.Done()
 	for {
 		select {
@@ -202,7 +204,7 @@ func (s *Server) consumeHubPackets() {
 			if !ok {
 				return
 			}
-			s.sendPacket(rp.RepeaterID, rp.Packet)
+			s.sendPacket(ctx, rp.RepeaterID, rp.Packet)
 		}
 	}
 }
@@ -223,7 +225,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.wg.Add(4)
 	go s.listen(ctx)
 	go s.subscribePackets()
-	go s.consumeHubPackets()
+	go s.consumeHubPackets(ctx)
 
 	go func() {
 		defer s.wg.Done()
@@ -253,13 +255,16 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) sendPacket(repeaterID uint, packet models.Packet) {
+func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.Packet) {
 	// Only send to repeaters with active local sessions on this replica.
 	// In multi-replica deployments, all replicas receive pubsub messages but
 	// only the replica holding the UDP session should transmit.
 	addr, ok := s.connected.Load(repeaterID)
 	if !ok {
-		return
+		addr, ok = s.resumeForEgress(ctx, repeaterID)
+		if !ok {
+			return
+		}
 	}
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
 	s.outgoingChan <- models.RawDMRPacket{

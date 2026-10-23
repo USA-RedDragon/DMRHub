@@ -38,7 +38,7 @@ const droidStarReconnects = 5
 // log in, show the call info of group voice calls on both slots, log in
 // again after an MSTCL and after an MSTNAK, each about 10 s later, and keep
 // its session through a handoff to a new server, which resumes it at the
-// next ping of DroidStar. It runs
+// first packet that the hub has for it. It runs
 // only when DMRHUB_DROIDSTAR names the binary and the process is in a
 // network namespace with only loopback, as hack/droidstar-test.sh runs it.
 func TestExternalDroidStar(t *testing.T) {

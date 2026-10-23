@@ -50,6 +50,7 @@ type MMDVMClient struct {
 	packets  chan models.Packet
 	readyVal atomic.Bool
 	pongs    atomic.Uint64
+	noPings  atomic.Bool
 }
 
 const (
@@ -305,6 +306,12 @@ func (c *MMDVMClient) sendRPTC() {
 	_, _ = c.conn.Write(cfg[:])
 }
 
+// PausePings stops the keepalive pings, so that the client sends nothing
+// that it is not told to send.
+func (c *MMDVMClient) PausePings() {
+	c.noPings.Store(true)
+}
+
 func (c *MMDVMClient) ping() {
 	defer c.wg.Done()
 	ticker := time.NewTicker(5 * time.Second)
@@ -313,7 +320,9 @@ func (c *MMDVMClient) ping() {
 	for {
 		select {
 		case <-ticker.C:
-			c.sendPing()
+			if !c.noPings.Load() {
+				c.sendPing()
+			}
 		case <-c.done:
 			return
 		}

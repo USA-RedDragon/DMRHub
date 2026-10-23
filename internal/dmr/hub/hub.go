@@ -382,6 +382,12 @@ func (h *Hub) isLocalPeerOwner(ctx context.Context, repeaterID uint) bool {
 	return string(val) == h.instanceID
 }
 
+// OwnsRepeater reports whether this hub owns the repeater, as
+// ActivateRepeater claimed it in the KV store.
+func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
+	return h.isLocalPeerOwner(ctx, repeaterID)
+}
+
 // ActivateRepeater sets up pubsub subscriptions for a repeater.
 // Protocol servers should call this when a repeater connects.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {

@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"time"
 
@@ -39,6 +40,10 @@ import (
 // beaconDelay is the time after a login at which the server asks the
 // repeater for a beacon.
 const beaconDelay = time.Minute
+
+// egressResumeRetry is how long resumeForEgress waits before it looks again
+// for the KV record of a repeater that it could not resume.
+const egressResumeRetry = time.Second
 
 // maxPending is the most sessions that are not logged in. LoginTimeout ends
 // each of them, but RPTLs from many spoofed addresses could still fill the
@@ -403,7 +408,48 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 		repeater.IP != l.addr.IP.String() || repeater.Port != l.addr.Port {
 		return
 	}
+	s.resumeLink(ctx, now, l, id)
+}
+
+func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id uint32) {
 	slog.Info("Resuming repeater session", "repeaterID", id, "remoteAddr", l.addr.String())
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	s.run(ctx, now, l, l.m.Resume(now, id, buf[:0]))
+}
+
+// resumeForEgress resumes the session of a repeater that the hub has a
+// packet for and that this server has no session of, as after a handoff,
+// when the KV store records it as connected and the hub of this server
+// owns it. It returns the address of the repeater. Without it, a repeater
+// that only listens would get nothing until its next ping.
+func (s *Server) resumeForEgress(ctx context.Context, id uint) (net.UDPAddr, bool) {
+	if id > math.MaxUint32 || s.stopped.Load() {
+		return net.UDPAddr{}, false
+	}
+	if at, ok := s.egressMiss.Load(id); ok && time.Since(at) < egressResumeRetry {
+		return net.UDPAddr{}, false
+	}
+	repeater, err := s.kvClient.GetRepeater(ctx, id)
+	if err != nil || repeater.Connection != models.RepeaterStateConnected || (s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) {
+		s.egressMiss.Store(id, time.Now())
+		return net.UDPAddr{}, false
+	}
+	addr := net.UDPAddr{IP: net.ParseIP(repeater.IP), Port: repeater.Port}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.connected.Load(id); ok {
+		return a, true
+	}
+	l, err := s.linkFor(addr)
+	if err != nil || l.m.State() != dmrdsession.StateIdle {
+		s.egressMiss.Store(id, time.Now())
+		return net.UDPAddr{}, false
+	}
+	s.resumeLink(ctx, s.now(), l, uint32(id))
+	s.forget(l)
+	a, ok := s.connected.Load(id)
+	if !ok {
+		s.egressMiss.Store(id, time.Now())
+	}
+	return a, ok
 }

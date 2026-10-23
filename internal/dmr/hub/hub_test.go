@@ -48,7 +48,7 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 
 // makeTestHubWithPubSub is like makeTestHub but also returns the pubsub
 // instance so tests can publish/subscribe to channels directly.
-func makeTestHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+func makeTestHubWithPubSub(t testing.TB) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
@@ -118,7 +118,7 @@ func makeVoiceTermPacket(dst, streamID uint, groupCall bool, slot bool) models.P
 	}
 }
 
-func seedRepeater(t *testing.T, database *gorm.DB, id uint, ownerID uint) {
+func seedRepeater(t testing.TB, database *gorm.DB, id uint, ownerID uint) {
 	t.Helper()
 	err := database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{
@@ -131,7 +131,7 @@ func seedRepeater(t *testing.T, database *gorm.DB, id uint, ownerID uint) {
 	require.NoError(t, err)
 }
 
-func seedTalkgroup(t *testing.T, database *gorm.DB, id uint, name string) {
+func seedTalkgroup(t testing.TB, database *gorm.DB, id uint, name string) {
 	t.Helper()
 	err := database.Create(&models.Talkgroup{
 		ID:   id,
@@ -140,7 +140,7 @@ func seedTalkgroup(t *testing.T, database *gorm.DB, id uint, name string) {
 	require.NoError(t, err)
 }
 
-func seedUser(t *testing.T, database *gorm.DB, id uint, callsign string) {
+func seedUser(t testing.TB, database *gorm.DB, id uint, callsign string) {
 	t.Helper()
 	err := database.Create(&models.User{
 		ID:       id,

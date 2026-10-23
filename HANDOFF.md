@@ -93,6 +93,7 @@ This is the living handoff for the next session. It assumes you have nothing but
      - Add the missing test for the 30 s hold.
 5. **LRRP location server, after item 4.** The owner's design is the PDF "DMRHub as a location server (LRRP)" from 2026-10-23; ask the owner for it if it is not in the bundle. Its Positions page and settings need approved mockups first.
    - The APRS tocall is `aprs.ToCall` in `internal/aprs`, now the experimental `APZDMH`. A permanent tocall was requested in https://github.com/aprsorg/aprs-deviceid/issues/393 (about a week from 2026-10-23); when it is assigned, it replaces `APZDMH` in that one constant (fill any version characters, as in `APDHxx`, from DMRHub's version), and the design doc's tocall checkbox gets ticked.
+   - Owner, 2026-10-23: do NOT implement `POST /api/v1/positions/:id/request` or a `positions:request` scope. "Request update" needs no hub endpoint: dmr-web is on the network over MMDVM, so an LRRP request it sends reaches any radio on the network, on RF or not. The hub still sends triggered requests itself on ARS registration.
    - Per-instance APRS-IS config (login callsign with SSID, passcode, server, opt-ins) is `aprs.Config`; it never sets the destination.
 6. **Parked; keep track, don't start:**
    - Codec2 transcoding (design in the bundle, `previous-handoff/TRANSCODE-DESIGN.md`). The dmrgo js/wasm and wazero Codec2 backends are done and released in dmrgo v2.0.1.

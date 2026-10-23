@@ -167,3 +167,24 @@ func TestSightingIsNotHiddenByAnotherSourceOnTheSameStream(t *testing.T) {
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 8), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100003, "a stream ID that another radio used first must not hide a sighting")
 }
+
+func TestPrivateStreamKeepsItsTargetWhenTheRadioMoves(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "the first burst goes where the radio was heard")
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100004, 3), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+	block := dataHeader(1000001, 1000002, 100004, 2)
+	block.DTypeOrVSeq = 7
+	h.RoutePacket(context.Background(), block, models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "the rest of the stream goes to the same repeater")
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 4), models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100004, "a new stream goes where the radio is now")
+}

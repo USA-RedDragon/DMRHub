@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -168,12 +169,31 @@ func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) {
 		}
 		return
 	}
+	key := streamTarget{stream: packet.StreamID, dst: user.ID}
+	if at, ok := h.streamTargets.Load(key); ok {
+		h.publishToRepeater(at.repeater, packet)
+		return
+	}
 	repeaterID, ok := h.locateRadio(ctx, user.ID)
 	if !ok {
 		slog.Debug("Dropping private traffic to a radio with no known location", "userID", user.ID, "src", packet.Src)
 		return
 	}
+	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})
 	h.publishToRepeater(repeaterID, packet)
+}
+
+// streamTarget is a private stream to a radio. The repeater that its first
+// burst went to takes the rest of the stream, even when the radio is heard
+// elsewhere meanwhile.
+type streamTarget struct {
+	stream uint
+	dst    uint
+}
+
+type targetAt struct {
+	repeater uint
+	at       time.Time
 }
 
 // isRepeaterID checks if an ID looks like a repeater (6-digit or 9-digit)

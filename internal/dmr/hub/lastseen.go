@@ -74,6 +74,12 @@ func (h *Hub) runSightings() {
 			pruneStreams(h.sightedStreams, now)
 			pruneStreams(h.undeliverableLogged, now)
 			pruneStreams(h.parrotEnded, now)
+			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {
+				if now.Sub(v.at) > sightedStreamTTL {
+					h.streamTargets.Delete(k)
+				}
+				return true
+			})
 		}
 	}
 }

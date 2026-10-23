@@ -146,6 +146,7 @@ type Hub struct {
 	undeliverable       atomic.Pointer[UndeliverableFunc]
 	undeliverableLogged *xsync.Map[uint, time.Time]
 	parrotEnded         *xsync.Map[uint, time.Time]
+	streamTargets       *xsync.Map[streamTarget, targetAt]
 }
 
 // NewHub creates a new Hub.
@@ -166,6 +167,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
 	h.undeliverableLogged = xsync.NewMap[uint, time.Time]()
 	h.parrotEnded = xsync.NewMap[uint, time.Time]()
+	h.streamTargets = xsync.NewMap[streamTarget, targetAt]()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
 	if ct != nil {

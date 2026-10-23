@@ -322,11 +322,12 @@ func TestTrackSMSWithPreambles(t *testing.T) {
 	s.data(preambles(t, userB, userA, 4)...)
 	s.data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})...)
 
-	calls := waitDone(t, ct, database, 2)
-	pre, msg := calls[0], calls[1]
-	assert.Equal(t, models.CallKindCSBK, pre.Kind)
-	assert.Equal(t, "preamble", pre.SubKind)
-	assert.Equal(t, uint(4), pre.Bursts)
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})
+	calls := waitDone(t, ct, database, 1)
+	require.Len(t, calls, 1, "the preambles and the data they announce make one row")
+	msg := calls[0]
+	assert.Equal(t, uint(4+len(bursts)), msg.Bursts)
+	assert.Nil(t, msg.Opcode)
 
 	assert.Equal(t, models.CallKindData, msg.Kind)
 	assert.Equal(t, "sms", msg.SubKind)

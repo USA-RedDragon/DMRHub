@@ -415,13 +415,35 @@ func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 		if cls != nil && cls.sub == subResponse {
 			sub = subResponse
 		}
-		r = s.open(t, ch, nil, kind, sub, dataRowHang)
+		r = s.adoptPreambles(ch, t, kind, sub)
+		if r == nil {
+			r = s.open(t, ch, nil, kind, sub, dataRowHang)
+		}
 		if r == nil {
 			return nil
 		}
 		r.dataKey = &key
 		ch.data[key] = r
 	}
+	return r
+}
+
+// adoptPreambles returns the open row of the preamble CSBKs that announced
+// the data packet of t on its stream, made into the row of the packet, so
+// that a preamble and its data make one transmission. It returns nil when
+// there is none.
+func (s *shard) adoptPreambles(ch *channel, t *task, kind models.CallKind, sub string) *row {
+	p := &t.p
+	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: models.CallKindCSBK, sub: subPreamble}
+	r, ok := s.rows[key]
+	if !ok || r.finished || r.call.StreamID != p.StreamID || t.at.Sub(r.last) > controlHang {
+		return nil
+	}
+	delete(s.rows, key)
+	r.key = nil
+	r.hang = dataRowHang
+	r.call.Kind, r.call.SubKind = kind, sub
+	r.call.FID, r.call.Opcode = nil, nil
 	return r
 }
 

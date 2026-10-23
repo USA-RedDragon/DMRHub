@@ -151,3 +151,29 @@ func TestLatestPositionsFollowSharing(t *testing.T) {
 	assert.ElementsMatch(t, []uint{3140598, 3191868}, ids(3140598))
 	assert.Equal(t, []uint{3100001}, ids(3100001))
 }
+
+func TestSetPositionOptionsKeepsTrackingAndNeedsItForAPRS(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	seedPositionUsers(t, database)
+	o := models.PositionOptions{Interval: 30 * time.Minute, Retention: 7 * 24 * time.Hour, APRS: true, APRSSSID: "7", APRSSymbol: "person", APRSComment: "DMR"}
+
+	require.NoError(t, models.SetPositionOptions(database, 3191868, 3191868, o))
+	s, ok, err := models.FindPositionSetting(database, 3191868)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.False(t, s.Tracking)
+	assert.False(t, s.APRS, "APRS-IS needs tracking")
+	assert.Equal(t, uint(1800), s.IntervalSeconds)
+	assert.Equal(t, uint(168), s.RetentionHours)
+	assert.Equal(t, "7", s.APRSSSID)
+
+	require.NoError(t, models.SetPositionTracking(database, 3191868, 3191868, true, time.Now()))
+	require.NoError(t, models.SetPositionOptions(database, 3191868, 3191868, o))
+	s, _, err = models.FindPositionSetting(database, 3191868)
+	require.NoError(t, err)
+	assert.True(t, s.Tracking)
+	assert.True(t, s.APRS)
+	assert.NotNil(t, s.TrackingSince)
+}

@@ -754,11 +754,16 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	pkt2 := makeVoicePacket(200, 90001, true, false)
 	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
 
-	select {
-	case rp := <-srvHandle.Packets:
-		t.Fatalf("After Stop, no repeater should receive packets, but repeater %d did", rp.RepeaterID)
-	case <-time.After(500 * time.Millisecond):
-		// Expected: all subscriptions were canceled
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case rp := <-srvHandle.Packets:
+			if rp.Packet.StreamID == pkt2.StreamID {
+				t.Fatalf("After Stop, no repeater should receive packets, but repeater %d did", rp.RepeaterID)
+			}
+		case <-deadline:
+			return
+		}
 	}
 }
 

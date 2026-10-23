@@ -28,11 +28,11 @@
     >{{ label }}</span>
     <span v-for="(line, i) in lines" :key="i" class="text-xs text-muted-foreground">{{ line }}</span>
     <span
-      v-if="undelivered"
+      v-for="(line, i) in undelivered"
+      :key="`u${i}`"
       class="text-xs text-muted-foreground"
-      :title="undelivered.detail"
       data-testid="undeliverable"
-    >{{ undelivered.short }}</span>
+    >{{ line }}</span>
   </div>
 </template>
 
@@ -43,9 +43,8 @@ import {
   typeLabel,
   typeLines,
   typeOf,
-  undeliverableSummary,
+  undeliverableLines,
   type CallRow,
-  type UndeliverableLabel,
 } from '@/lib/transmissions';
 
 export default {
@@ -66,8 +65,8 @@ export default {
     lines(): string[] {
       return typeLines(this.call);
     },
-    undelivered(): UndeliverableLabel | null {
-      return undeliverableSummary(this.call);
+    undelivered(): string[] {
+      return undeliverableLines(this.call);
     },
     colors() {
       return TYPE_COLORS[this.type];

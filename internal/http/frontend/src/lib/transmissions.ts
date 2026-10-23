@@ -140,8 +140,8 @@ export function humanize(sub: string): string {
 }
 
 export type UndeliverableLabel = {
-  short: string;
-  detail: string;
+  target: string;
+  reason: string;
 };
 
 function repeaterCallsign(row: CallRow, id: number): string {
@@ -154,9 +154,13 @@ function repeaterCallsign(row: CallRow, id: number): string {
   return '';
 }
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /**
  * undeliverableLabel words a last heard undeliverable target such as
- * ipsc:311304200:no_ipsc_form: short names the repeater, detail adds why.
+ * ipsc:311304200:no_ipsc_form as the repeater it names and why it was not sent.
  */
 export function undeliverableLabel(target: string, row: CallRow): UndeliverableLabel {
   const [server = '', id = '', ...rest] = target.split(':');
@@ -172,24 +176,19 @@ export function undeliverableLabel(target: string, row: CallRow): UndeliverableL
   }
   const link = serverName ? `${serverName} link` : 'link';
   const why = UNDELIVERABLE_REASONS[reason]?.(link) ?? `the burst could not be prepared for the ${link}`;
-  const short = `Not sent to ${who}`;
-  return { short, detail: `${short}: ${why}` };
+  return { target: who, reason: why };
 }
 
-/** undeliverableSummary words a call's undeliverable list, or is null if it is empty. */
-export function undeliverableSummary(row: CallRow): UndeliverableLabel | null {
-  const targets = row.undeliverable || [];
-  if (!targets.length) {
-    return null;
-  }
-  const labels = targets.map((t) => undeliverableLabel(t, row));
+/** undeliverableLines words a call's undeliverable list as lines to show under its type. */
+export function undeliverableLines(row: CallRow): string[] {
+  const labels = (row.undeliverable || []).map((t) => undeliverableLabel(t, row));
   if (labels.length === 1) {
-    return labels[0]!;
+    return [`Not sent to ${labels[0]!.target}`, capitalize(labels[0]!.reason)];
   }
-  return {
-    short: `Not sent to ${labels.length} repeaters`,
-    detail: labels.map((l) => l.detail).join('\n'),
-  };
+  if (labels.length > 1) {
+    return [`Not sent to ${labels.length} repeaters`, ...labels.map((l) => `${capitalize(l.target)}: ${l.reason}`)];
+  }
+  return [];
 }
 
 const POSITION_ERRORS: Record<number, string> = {

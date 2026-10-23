@@ -26,28 +26,33 @@
         <CardTitle>OpenBridge Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <p>DMRHub can run an OpenBridge server to allow connections from DMR radios and software.
-          This is useful for connecting to other DMR networks.</p>
+        <p>DMRHub can run an OpenBridge server to link with other DMR networks, such as FreeDMR servers.</p>
         <br />
         <div class="checkbox-row">
           <input
-            id="enabled"
+            id="openbridge-enabled"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="enabled">Enabled</label>
+          <label for="openbridge-enabled">Enabled</label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="bind" v-if="enabled">Bind</label>
-        <ShadInput id="bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="openbridge-bind" v-if="enabled">Bind Address</label>
+        <ShadInput
+          id="openbridge-bind"
+          type="text"
+          v-model="bind"
+          v-if="enabled"
+          :aria-invalid="(errors && errors.bind) || false"
+        />
         <p v-if="enabled">
           The address to bind the OpenBridge server to
         </p>
-        <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
+        <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="port" v-if="enabled">Port</label>
+        <label class="field-label" for="openbridge-port" v-if="enabled">Port</label>
         <ShadInput
-          id="port"
+          id="openbridge-port"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -58,9 +63,9 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="server-id" v-if="enabled">Server ID</label>
+        <label class="field-label" for="openbridge-server-id" v-if="enabled">Server ID</label>
         <ShadInput
-          id="server-id"
+          id="openbridge-server-id"
           type="number"
           v-model="serverID"
           v-if="enabled"
@@ -144,7 +149,7 @@ export default {
       set(value: string) {
         this.$emit('update:modelValue', {
           ...this.modelValue,
-          'port': value,
+          'port': Number(value) || 0,
         });
       },
     },

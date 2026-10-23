@@ -24,12 +24,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 )
@@ -89,6 +91,14 @@ func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
 	h.deliverToServerUnless(s.done, serverName, rp)
 }
 
+func repeaterTopic(repeaterID uint) string {
+	return repeaterTopicPrefix + strconv.FormatUint(uint64(repeaterID), 10)
+}
+
+func talkgroupTopic(tg uint) string {
+	return "hub:packets:talkgroup:" + strconv.FormatUint(uint64(tg), 10)
+}
+
 // activateRepeater sets up all pubsub subscriptions for a repeater
 // (private calls, static TGs, and dynamic TGs). Safe to call multiple times.
 func (h *Hub) activateRepeater(ctx context.Context, repeaterID uint) {
@@ -125,7 +135,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	if !ok {
 		sub := newSubscription()
 		radioSubs.Store(repeaterID, sub)
-		go h.subscriptionMgr.subscribeRepeater(sub, repeaterID)
+		go h.subscriptionMgr.subscribeRepeater(sub, h.pubsub.Subscribe(repeaterTopic(repeaterID)), repeaterID)
 	}
 
 	// Subscribe to each static talkgroup
@@ -134,7 +144,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		if !ok {
 			sub := newSubscription()
 			radioSubs.Store(tg.ID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, repeaterID, tg.ID)
+			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(tg.ID)), repeaterID, tg.ID)
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
@@ -142,7 +152,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		if !ok {
 			sub := newSubscription()
 			radioSubs.Store(tg.ID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, repeaterID, tg.ID)
+			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(tg.ID)), repeaterID, tg.ID)
 		}
 	}
 
@@ -152,7 +162,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		if !ok {
 			sub := newSubscription()
 			radioSubs.Store(*p.TS1DynamicTalkgroupID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, repeaterID, *p.TS1DynamicTalkgroupID)
+			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(*p.TS1DynamicTalkgroupID)), repeaterID, *p.TS1DynamicTalkgroupID)
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
@@ -160,7 +170,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		if !ok {
 			sub := newSubscription()
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, repeaterID, *p.TS2DynamicTalkgroupID)
+			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(*p.TS2DynamicTalkgroupID)), repeaterID, *p.TS2DynamicTalkgroupID)
 		}
 	}
 }
@@ -227,7 +237,7 @@ func (h *Hub) subscribeTalkgroup(ctx context.Context, repeaterID uint, talkgroup
 	if !ok {
 		sub := newSubscription()
 		radioSubs.Store(talkgroupID, sub)
-		go h.subscriptionMgr.subscribeTG(sub, repeaterID, talkgroupID)
+		go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(talkgroupID)), repeaterID, talkgroupID)
 	}
 }
 
@@ -393,16 +403,15 @@ func (m *subscriptionManager) cancelSubscription(repeaterID uint, talkgroupID ui
 
 // subscribeRepeater listens for private calls destined to a specific repeater
 // and delivers them to the appropriate server via deliverToServer.
-func (m *subscriptionManager) subscribeRepeater(sub *subscription, repeaterID uint) {
+func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.Subscription, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
-	subscription := m.hub.pubsub.Subscribe(fmt.Sprintf("hub:packets:repeater:%d", repeaterID))
 	defer func() {
-		err := subscription.Close()
+		err := feed.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
-	pubsubChannel := subscription.Channel()
+	pubsubChannel := feed.Channel()
 	for {
 		select {
 		case <-sub.done:
@@ -435,19 +444,18 @@ func (m *subscriptionManager) subscribeRepeater(sub *subscription, repeaterID ui
 
 // subscribeTG listens for group calls on a talkgroup and delivers matching
 // packets to the repeater via the appropriate server.
-func (m *subscriptionManager) subscribeTG(sub *subscription, repeaterID uint, tg uint) {
-	if tg == 0 {
-		return
-	}
-	slog.Debug("Listening for calls on talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
-	subscription := m.hub.pubsub.Subscribe(fmt.Sprintf("hub:packets:talkgroup:%d", tg))
+func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscription, repeaterID uint, tg uint) {
 	defer func() {
-		err := subscription.Close()
+		err := feed.Close()
 		if err != nil {
 			slog.Error("Error closing pubsub connection", "error", err)
 		}
 	}()
-	pubsubChannel := subscription.Channel()
+	if tg == 0 {
+		return
+	}
+	slog.Debug("Listening for calls on talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
+	pubsubChannel := feed.Channel()
 
 	for {
 		select {
@@ -501,7 +509,7 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, repeaterID uint, tg
 						loaded.stop()
 					}
 				}
-				err = subscription.Close()
+				err = feed.Close()
 				if err != nil {
 					slog.Error("Error closing pubsub connection", "error", err)
 				}

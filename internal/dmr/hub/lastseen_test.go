@@ -220,3 +220,30 @@ func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
 	}
 	assert.Zero(t, users.Load(), "user lookups after the first burst of a private stream")
 }
+
+func TestGroupStreamChecksItsTalkgroupOnce(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	seedUser(t, database, 1000001, "TESTUSER")
+	seedRepeater(t, database, 100002, 1000001)
+	seedTalkgroup(t, database, 1, "TG1")
+	var rpt models.Repeater
+	require.NoError(t, database.First(&rpt, 100002).Error)
+	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	burst := makeVoicePacket(1, 55555, true, false)
+	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100002, "the first burst of the stream")
+
+	talkgroups := countTableQueries(t, database, "talkgroups")
+	for seq := uint(1); seq < 10; seq++ {
+		burst.Seq = seq
+		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100002, "a later burst of the stream")
+	}
+	assert.Zero(t, talkgroups.Load(), "talkgroup checks after the first burst of a group stream")
+}

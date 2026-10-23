@@ -210,7 +210,8 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 	c.enqueue(idx, task{key: key, p: p, peer: peer, at: now})
 }
 
-// Undeliverable records that target, such as "ipsc:311304200", could not
+// Undeliverable records that target, such as "ipsc:311304200:no_ipsc_form"
+// (the server, the repeater and the reason), could not
 // take the burst of p, a packet that Track got, on the transmission that
 // holds the burst. Call it after Track for the same packet. The hub
 // counts the burst in its metrics.

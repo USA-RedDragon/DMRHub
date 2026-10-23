@@ -99,9 +99,9 @@ describe('typeLines', () => {
     expect(typeLines(row({ kind: 'csbk', sub_kind: 'radio_check', fid: 16 }))).toEqual(['Radio Check', 'Motorola FID 0x10']);
     expect(typeLines(row({ kind: 'csbk', sub_kind: 'call_alert', fid: 16, response: 'ack' }))).toEqual(['Call Alert', 'Motorola FID 0x10, ACK']);
     expect(typeLines(row({ kind: 'udt', blocks: 1, octets: 12 }))).toEqual(['UDT', '1 block, 12 B']);
-    expect(typeLines(row({ kind: 'mbc', opcode: 0x28, sub_kind: 'C_BCAST' }))).toEqual(['MBC', 'Opcode 0x28 C_BCAST']);
+    expect(typeLines(row({ kind: 'mbc', opcode: 0x28, sub_kind: 'c_bcast' }))).toEqual(['MBC', 'Opcode 0x28 C bcast']);
     expect(typeLines(row({ kind: 'idle' }))).toEqual(['Idle', 'PR fill']);
-    expect(typeLines(row({ kind: 'usbd', sub_kind: '0' }))).toEqual(['USBD', 'Service 0']);
+    expect(typeLines(row({ kind: 'usbd', sub_kind: 'location_information_protocol' }))).toEqual(['USBD', 'Location information protocol']);
     expect(typeLines(row({ kind: 'unknown', sub_kind: 'csbk', opcode: 0x3a, fid: 0x68 })))
       .toEqual(['CSBK opcode 0x3A', 'FID 0x68, forwarded unchanged']);
   });
@@ -115,7 +115,7 @@ describe('typeLines', () => {
   });
 
   it('names the targets that could not take a burst', () => {
-    expect(typeLines(row({ kind: 'idle', undeliverable: ['ipsc:311304200'] }))).toEqual(['Idle', 'PR fill', 'Not delivered: ipsc 311304200']);
+    expect(typeLines(row({ kind: 'idle', undeliverable: ['ipsc:311304200:no_ipsc_form'] }))).toEqual(['Idle', 'PR fill', 'Not delivered: IPSC 311304200 (no IPSC form)']);
   });
 });
 

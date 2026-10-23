@@ -120,6 +120,34 @@ const UNKNOWN_NAMES: Record<string, string> = {
   frame_type_3: 'Frame type 3',
 };
 
+const UNDELIVERABLE_REASONS: Record<string, string> = {
+  invalid_data_type: 'invalid data type',
+  no_ipsc_form: 'no IPSC form',
+  frame_type_3: 'frame type 3',
+  fec_uncorrectable: 'FEC failed',
+  slot_type: 'bad slot type',
+  build_failed: 'cannot build',
+};
+
+const SERVER_NAMES: Record<string, string> = {
+  ipsc: 'IPSC',
+  mmdvm: 'MMDVM',
+  openbridge: 'OpenBridge',
+};
+
+/** humanize turns a sub kind such as c_bcast into C bcast for display. */
+export function humanize(sub: string): string {
+  const text = sub.replace(/_/g, ' ').trim();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** undeliverableText shows a target such as ipsc:311304200:no_ipsc_form. */
+export function undeliverableText(target: string): string {
+  const [server = '', id = '', reason = ''] = target.split(':');
+  const name = `${SERVER_NAMES[server] || server} ${id}`.trim();
+  return reason ? `${name} (${UNDELIVERABLE_REASONS[reason] || humanize(reason)})` : name;
+}
+
 const POSITION_ERRORS: Record<number, string> = {
   0: '±2 m',
   1: '±20 m',
@@ -215,7 +243,7 @@ function dataLines(row: CallRow): string[] {
 
 function csbkLines(row: CallRow): string[] {
   const sub = row.sub_kind || '';
-  const lines = [CSBK_NAMES[sub] || sub];
+  const lines = [CSBK_NAMES[sub] || humanize(sub)];
   if (sub === 'preamble') {
     lines.push(plural(row.bursts ?? 1, 'burst'));
   } else if (row.fid === MOTOROLA_FID) {
@@ -230,13 +258,13 @@ function controlLines(row: CallRow): string[] {
       return ['UDT', sizeText(row)];
     case 'mbc': {
       const opcode = row.opcode ?? null;
-      const detail = opcode === null ? '' : `Opcode ${hex(opcode)} ${row.sub_kind || ''}`.trim();
+      const detail = opcode === null ? '' : `Opcode ${hex(opcode)} ${humanize(row.sub_kind || '')}`.trim();
       return detail ? ['MBC', detail] : ['MBC'];
     }
     case 'idle':
       return ['Idle', 'PR fill'];
     case 'usbd':
-      return ['USBD', `Service ${row.sub_kind || '0'}`];
+      return row.sub_kind ? ['USBD', humanize(row.sub_kind)] : ['USBD'];
   }
   return [];
 }
@@ -307,7 +335,7 @@ export function typeLines(row: CallRow): string[] {
       lines = unknownLines(row);
   }
   if (row.undeliverable && row.undeliverable.length) {
-    lines.push(`Not delivered: ${row.undeliverable.map((t) => t.replace(':', ' ')).join(', ')}`);
+    lines.push(`Not delivered: ${row.undeliverable.map(undeliverableText).join(', ')}`);
   }
   return lines;
 }

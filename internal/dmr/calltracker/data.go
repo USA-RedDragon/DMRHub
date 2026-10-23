@@ -208,7 +208,7 @@ func classify(b *layer2.Burst) class {
 		if d.FEC.Uncorrectable {
 			return class{kind: models.CallKindUnknown, sub: subBadCRC}
 		}
-		return class{kind: models.CallKindUSBD, sub: strconv.Itoa(int(d.ServiceType))}
+		return class{kind: models.CallKindUSBD, sub: SubKindName(d.ServiceType.String())}
 	}
 	return class{kind: models.CallKindUnknown, sub: subUndecodable}
 }
@@ -244,7 +244,7 @@ func classifyCSBK(d *pdu.CSBK) class {
 	case d.FID == enums.FIDStandardized && name != "":
 		c.sub = name
 	case d.FID == enums.FIDMotorola && (d.Opcode == pdu.CSBKCapacityPlusSiteStatus || d.Opcode == pdu.CSBKCapacityPlusNeighbors || d.Opcode == pdu.CSBKCapacityPlusDataRevertAnnouncement):
-		c.sub = strings.TrimSuffix(d.Opcode.String(), " (FID 0x10)")
+		c.sub = SubKindName(d.Opcode.String())
 	default:
 		c.kind, c.sub = models.CallKindUnknown, subUnknownCSBK
 	}
@@ -256,7 +256,32 @@ func opcodeName(op pdu.CSBKOpcode) string {
 	if strings.HasPrefix(name, "Unknown") || strings.Contains(name, "FID 0x10") {
 		return ""
 	}
-	return strings.TrimSuffix(name, " PDU")
+	return SubKindName(name)
+}
+
+// SubKindName returns the sub kind for the dmrgo name of a CSBK opcode, a
+// SAP, a port, a USBD service type or a text format: the name in lower
+// case, without " PDU" and " (FID 0x10)", with each run of other
+// characters than letters and digits as one "_". For example, the name
+// "BS Outbound Activation PDU or TD_GRANT_MI PDU" gives
+// "bs_outbound_activation_or_td_grant_mi".
+func SubKindName(name string) string {
+	name = strings.ReplaceAll(name, " PDU", "")
+	name = strings.ReplaceAll(name, " (FID 0x10)", "")
+	var b strings.Builder
+	sep := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if sep && b.Len() > 0 {
+				b.WriteByte('_')
+			}
+			sep = false
+			b.WriteRune(r)
+			continue
+		}
+		sep = true
+	}
+	return b.String()
 }
 
 func classifyHeader(d *pdu.DataHeader) class {
@@ -537,22 +562,19 @@ func classifyPayload(h *pdu.DataHeader, payload []byte) (sub, format string) {
 		return subSMS, smsFormat(text.Format)
 	}
 	sap, ok := h.SAP()
-	if !ok || (sap != enums.SAPIPBasedPacketData && sap != enums.SAPUDPIPHeaderCompression) {
+	if !ok {
 		return "", ""
+	}
+	if sap != enums.SAPIPBasedPacketData && sap != enums.SAPUDPIPHeaderCompression {
+		return SubKindName(sap.String()), ""
 	}
 	d, err := ip.Decode(sap, payload)
 	if err != nil && !errors.Is(err, ip.ErrChecksum) {
 		return "", ""
 	}
 	for _, port := range []ip.Port{d.DestinationPort, d.SourcePort} {
-		if port == ip.PortLRRP {
-			return "lrrp", ""
-		}
-		if port == ip.PortARS {
-			return "ars", ""
-		}
-		if port == ip.PortTMS {
-			return "tms", ""
+		if name := port.String(); name != strconv.Itoa(int(port)) {
+			return SubKindName(name), ""
 		}
 	}
 	return "ip", ""
@@ -560,16 +582,8 @@ func classifyPayload(h *pdu.DataHeader, payload []byte) (sub, format string) {
 
 func smsFormat(f sms.Format) string {
 	switch f {
-	case sms.FormatTMS:
-		return "tms"
-	case sms.FormatIP:
-		return "ip"
-	case sms.FormatAnyTone:
-		return "anytone"
-	case sms.FormatDefinedData:
-		return "defined_data"
-	case sms.FormatHytera:
-		return "hytera"
+	case sms.FormatTMS, sms.FormatIP, sms.FormatAnyTone, sms.FormatDefinedData, sms.FormatHytera:
+		return SubKindName(f.String())
 	}
 	return "unknown"
 }

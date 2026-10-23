@@ -89,6 +89,6 @@ func TestUndeliverableBurstIsRecordedOnItsTransmission(t *testing.T) {
 		if database.Where("stream_id = ?", pkt.StreamID).First(&call).Error != nil {
 			return false
 		}
-		return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "ipsc:311304"
+		return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "ipsc:311304:test"
 	}, 5*time.Second, 50*time.Millisecond)
 }

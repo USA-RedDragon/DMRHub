@@ -169,8 +169,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
 	if ct != nil {
-		h.SetUndeliverableFunc(func(p models.Packet, target, _ string) {
-			ct.Undeliverable(p, fmt.Sprintf("%s:%d", target, p.Repeater))
+		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
+			ct.Undeliverable(p, fmt.Sprintf("%s:%d:%s", target, p.Repeater, reason))
 		})
 	}
 	return h

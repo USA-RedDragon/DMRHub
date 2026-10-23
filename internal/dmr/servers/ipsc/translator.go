@@ -123,6 +123,16 @@ func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	}
 }
 
+// The reasons that undeliverable reports. They are stable: last heard
+// stores them as "ipsc:<repeater>:<reason>".
+const (
+	reasonInvalidDataType = "invalid_data_type"
+	reasonNoIPSCForm      = "no_ipsc_form"
+	reasonFrameType3      = "frame_type_3"
+	reasonFEC             = "fec_uncorrectable"
+	reasonSlotType        = "slot_type"
+)
+
 // undeliverable reports a burst that cannot go to IPSC peers. The caller
 // holds t.mu.
 func (t *IPSCTranslator) undeliverable(pkt models.Packet, reason string) {
@@ -166,7 +176,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 	switch pkt.FrameType {
 	case dmrconst.FrameDataSync:
 		if dtypeOrVSeq > 255 {
-			t.undeliverable(pkt, "invalid data type")
+			t.undeliverable(pkt, reasonInvalidDataType)
 			return nil
 		}
 		// Voice LC Header, Terminator, or Data
@@ -210,7 +220,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			fallthrough
 		default:
 			if !t.rawBlocksAnXPRDrops {
-				t.undeliverable(pkt, "IPSC has no layout for data type "+dt.String())
+				t.undeliverable(pkt, reasonNoIPSCForm)
 				return nil
 			}
 			data := t.buildRawBlock(pkt, ss, dt)
@@ -227,7 +237,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		}
 
 	default:
-		t.undeliverable(pkt, "IPSC has no form for DMRD frame type 3")
+		t.undeliverable(pkt, reasonFrameType3)
 		return nil
 	}
 
@@ -371,7 +381,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 		return nil
 	}
 	if res.Uncorrectable && !t.rawBlocksAnXPRDrops {
-		t.undeliverable(pkt, "the FEC of the "+dataType.String()+" burst does not correct")
+		t.undeliverable(pkt, reasonFEC)
 		return nil
 	}
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
@@ -394,7 +404,7 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 	st.DataType = dataType
 	sti, err := st.Info()
 	if err != nil {
-		t.undeliverable(pkt, "the slot type does not encode")
+		t.undeliverable(pkt, reasonSlotType)
 		return nil
 	}
 	d.Trailer[1] = byte(sti)

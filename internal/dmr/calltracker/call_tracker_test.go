@@ -479,10 +479,10 @@ func TestTrackControlKinds(t *testing.T) {
 		kinds[c.Kind] = c
 	}
 	assert.Contains(t, kinds, models.CallKindIdle)
-	assert.Equal(t, "0", kinds[models.CallKindUSBD].SubKind)
+	assert.Equal(t, "location_information_protocol", kinds[models.CallKindUSBD].SubKind)
 	mbc := kinds[models.CallKindMBC]
 	assert.Equal(t, uint(2), mbc.Bursts)
-	assert.Equal(t, "C_BCAST", mbc.SubKind)
+	assert.Equal(t, "c_bcast", mbc.SubKind)
 	for _, c := range calls {
 		assert.True(t, c.IsToTalkgroup)
 		assert.True(t, c.GroupCall)
@@ -748,5 +748,19 @@ func TestPublicCallsMaskSMS(t *testing.T) {
 		assert.InDelta(t, 0, row["octets"], 0)
 	case <-time.After(5 * time.Second):
 		t.Fatal("no public row")
+	}
+}
+
+func TestSubKindNamesComeFromDMRGo(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		pdu.CSBKBSOutboundActivation.String():   "bs_outbound_activation_or_td_grant_mi",
+		pdu.CSBKPreamble.String():               "preamble",
+		pdu.CSBKCapacityPlusSiteStatus.String(): "capacity_plus_site_status",
+		enums.SAPShortData.String():             "short_data",
+		pdu.ServiceTypeLIP.String():             "location_information_protocol",
+		sms.FormatDefinedData.String():          "defined_data",
+	} {
+		assert.Equal(t, want, calltracker.SubKindName(name), name)
 	}
 }

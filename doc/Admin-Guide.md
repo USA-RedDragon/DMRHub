@@ -59,6 +59,27 @@ Click **Approve** to grant the user access to sign in and use DMRHub.
 
 The setup page allows administrators to edit the DMRHub configuration. All configuration options are available here. In deployments with read-only file-based configuration (e.g., Docker), this page is view-only and shows the current effective configuration.
 
+## Transmission kinds
+
+Each Last Heard entry has a `kind` and a `sub_kind`. The API and the websocket give them in these fields, and the values stay the same between releases. A sub kind that names a CSBK opcode, a SAP, a port, a USBD service type or a text format is the dmrgo name of that value in lower case, without "PDU", with `_` between the words. For example, the BS outbound activation CSBK is `bs_outbound_activation_or_td_grant_mi`.
+
+| `kind`    | `sub_kind`                                                                                                                                                                             |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `voice`   | empty, or `encrypted` when the call had a PI header                                                                                                                                    |
+| `data`    | `sms` for a text message, `response` for an ACK, NACK or SACK, the port name of an IP packet (`lrrp`, `ars`, `tms`, `text`, `location` and others), `ip` for another IP packet, or the SAP name (`short_data`, `proprietary_packet_data` and others) |
+| `udt`     | empty                                                                                                                                                                                  |
+| `csbk`    | `preamble` when no data followed it, `radio_check`, `radio_check_answer`, `call_alert`, `call_alert_ack`, another standard opcode name, or a Capacity Plus opcode name such as `capacity_plus_site_status` |
+| `mbc`     | the opcode name, such as `c_bcast`                                                                                                                                                    |
+| `usbd`    | the service type name, such as `location_information_protocol`                                                                                                                       |
+| `idle`    | empty                                                                                                                                                                                  |
+| `alias`   | empty, or `partial` when only part of the alias arrived                                                                                                                                |
+| `gps`     | empty, or `partial` for a short DMRG that has no coordinates                                                                                                                          |
+| `unknown` | `bad_crc`, `undecodable`, `reserved`, `frame_type_3`, or `csbk` for a CSBK opcode that DMRHub does not know                                                                         |
+
+The `data_format` of a text message is `tms`, `ip`, `anytone`, `defined_data`, `hytera` or `unknown`.
+
+The `undeliverable` list names each target that could not take a burst of the entry, as `<server>:<repeater>:<reason>`, for example `ipsc:311304200:no_ipsc_form`. The reasons are `no_ipsc_form`, `fec_uncorrectable`, `frame_type_3`, `invalid_data_type` and `slot_type`.
+
 ## Messages
 
 DMRHub routes text messages (SMS) and other data messages between radios. For what users see, see [Messages and SMS Storage](messages.md).

@@ -20,6 +20,8 @@
 package v1
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +29,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,6 +47,46 @@ func GETNetworkName(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting network name"})
 	}
+}
+
+// GETNetworkWebTransport tells browser hotspots and radios where the
+// WebTransport listener of the MMDVM server is: its UDP port and path, and,
+// when it serves certificates of its own, their SHA-256 hashes, base64
+// encoded, for the serverCertificateHashes of the WebTransport API.
+func GETNetworkWebTransport(c *gin.Context) {
+	config, ok := utils.GetConfig(c)
+	if !ok {
+		return
+	}
+	wt := config.DMR.MMDVM.WebTransport
+	if !wt.Enabled {
+		c.JSON(http.StatusOK, gin.H{"enabled": false})
+		return
+	}
+	certs, err := wtcert.New(config.GetDerivedSecret(), wt.CertFile, wt.KeyFile)
+	var hashes [][sha256.Size]byte
+	if err == nil {
+		hashes, err = certs.Hashes()
+	}
+	if err != nil {
+		slog.Error("Error getting the WebTransport certificate hashes", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting the WebTransport certificate"})
+		return
+	}
+	type certificateHash struct {
+		Algorithm string `json:"algorithm"`
+		Value     string `json:"value"`
+	}
+	list := make([]certificateHash, 0, len(hashes))
+	for _, h := range hashes {
+		list = append(list, certificateHash{Algorithm: "sha-256", Value: base64.StdEncoding.EncodeToString(h[:])})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"enabled":            true,
+		"port":               wt.Port,
+		"path":               wtcert.Path,
+		"certificate_hashes": list,
+	})
 }
 
 // GETNetworkFeatures answers which optional servers are on, for the

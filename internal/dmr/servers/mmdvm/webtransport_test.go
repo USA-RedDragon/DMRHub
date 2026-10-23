@@ -99,7 +99,7 @@ func dialByHash(t *testing.T, s *Server, cfg *config.Config) *webtransport.Sessi
 	t.Cleanup(func() { _ = d.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rsp, sess, err := d.Dial(ctx, fmt.Sprintf("https://%s%s", s.WebTransportAddr().String(), WebTransportPath), nil)
+	rsp, sess, err := d.Dial(ctx, fmt.Sprintf("https://%s%s", s.WebTransportAddr().String(), wtcert.Path), nil)
 	require.NoError(t, err)
 	require.Equal(t, 200, rsp.StatusCode)
 	t.Cleanup(func() { _ = sess.CloseWithError(0, "") })

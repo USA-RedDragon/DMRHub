@@ -210,6 +210,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 
 	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/network/features", v1Controllers.GETNetworkFeatures)
+	group.GET("/network/webtransport", v1Controllers.GETNetworkWebTransport)
 	group.GET("/version", v1Controllers.GETVersion)
 	group.GET("/ping", v1Controllers.GETPing)
 	group.GET("/healthcheck", v1Controllers.GETHealthcheck)

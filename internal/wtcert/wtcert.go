@@ -42,6 +42,9 @@ import (
 	"time"
 )
 
+// Path is the path of the WebTransport endpoint of the MMDVM server.
+const Path = "/mmdvm"
+
 const (
 	// Window is how long one of the own certificates is the one in use.
 	Window = 10 * 24 * time.Hour

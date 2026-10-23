@@ -263,7 +263,7 @@ func (s *Server) Start() error {
 // Such a route answers any origin, without credentials, so that no browser
 // sends a session cookie with a request from another site.
 func isPublicPath(path string) bool {
-	return path == "/api/v1/lastheard"
+	return path == "/api/v1/lastheard" || path == "/api/v1/network/webtransport"
 }
 
 // publicCORS answers the CORS requests of the public routes for any origin

@@ -160,3 +160,42 @@ By default, DMRHub keeps all records forever. To delete old records, go to **Adm
 Each value is a number of days, from 0 to 36500. 0 keeps the records forever. The Setup page offers Keep forever, 30 days, 90 days, 1 year, 2 years and 5 years. A different value from the configuration file shows as a number of days.
 
 Retention also deletes records from the admin search. Set a period that your local rules allow.
+
+## Positions
+
+DMRHub answers as the location server on the IDs 5050 to 5059. For what users see, see [Positions](positions.md).
+
+### What the hub stores
+
+DMRHub stores positions only for the radios whose owners turn on position tracking, and only from that time. It stores at most one position of a radio each 30 seconds: the latitude and longitude, the accuracy, speed, heading and altitude when the radio sends them, the time of the fix and of its arrival, the repeater and timeslot, and the location service ID. When the owner turns tracking off, DMRHub deletes the positions of the radio.
+
+Admins see the same positions as everyone else: their own radios, and the radios of the users who share when they share too. Apps never get admin rights.
+
+### Limits
+
+Go to **Admin**, then **Setup**, and find the **Positions** card in **DMR Settings**.
+
+| Setting                         | What it does                                                                 | Configuration key              |
+| ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------ |
+| Shortest report interval        | Owners can pick 5, 10, 15, 30 or 60 minutes, but not less than this.         | `dmr.positions.min-interval`   |
+| Longest time to keep positions  | Owners can keep positions for 24 hours, 7 days, 30 days or this many days, from 1 to 365. | `dmr.positions.max-retention`  |
+
+Each hour, DMRHub deletes the positions older than the time the owner picked, and never keeps them longer than the longest time.
+
+### APRS-IS
+
+DMRHub logs in to APRS-IS once, and sends the positions of the radios whose owners turn it on, each under its owner's callsign. Set the login on the same card:
+
+| Setting  | What it is                                                     | Configuration key                |
+| -------- | -------------------------------------------------------------- | -------------------------------- |
+| Callsign | The callsign and SSID that the hub logs in as, such as `N0HUB-10`. Empty sends nothing. | `dmr.positions.aprs-is.callsign` |
+| Passcode | The APRS-IS passcode of that callsign                          | `dmr.positions.aprs-is.passcode` |
+| Server   | The APRS-IS server, as host and port                           | `dmr.positions.aprs-is.server`   |
+
+The server is `rotate.aprs2.net:14580` by default. When DMRHub runs as several replicas, only one of them logs in at a time.
+
+Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.
+
+### The map
+
+The Positions page loads its map from `https://tiles.squallar.app`, without cookies, and keeps the map data it has read in the browser's cache. If you add a Content-Security-Policy, allow `connect-src https://tiles.squallar.app`, `worker-src 'self' blob:`, `img-src 'self' data: blob:` and `style-src 'unsafe-inline'`.

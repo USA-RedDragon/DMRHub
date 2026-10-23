@@ -110,6 +110,7 @@ type ledgerTotals struct {
 	ShedOK     int            `json:"shed_delivered"`
 	ByLabel    map[string]int `json:"calls_by_label"`
 	MissingBy  map[string]int `json:"missing_by_label"`
+	MissingAt  map[uint]int   `json:"missing_by_target"`
 	DupBy      map[string]int `json:"duplicates_by_label"`
 	WrongBy    map[string]int `json:"wrong_by_label"`
 }
@@ -119,10 +120,11 @@ func newLedger() *ledger {
 	for i := range l.shards {
 		l.shards[i].calls = map[uint]*callRec{}
 	}
-	for _, k := range []string{"voice", "data", "csbk", "other"} {
+	for _, k := range []string{"voice", "data", "csbk", "other", "ipsc_slot"} {
 		l.lat[k] = &histogram{}
 	}
 	l.totals.ByLabel, l.totals.MissingBy, l.totals.DupBy, l.totals.WrongBy = map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
+	l.totals.MissingAt = map[uint]int{}
 	return l
 }
 
@@ -262,7 +264,7 @@ func (l *ledger) deliver(target uint, c *callRec, raw layer2.RawBurst, now int64
 		l.badKey.Add(1)
 		return
 	}
-	l.count(target, c, k, now)
+	l.countAt(target, c, k, now, ipsc)
 }
 
 type ipscCall struct {
@@ -282,6 +284,15 @@ func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 		l.badKey.Add(1)
 		return
 	}
+	raw, rawErr := u.RawBurst(0, layer2.SyncSourceBS)
+	if rawErr == nil {
+		if stream, ok := voiceTagStream(raw); ok {
+			if c := l.get(stream); c != nil {
+				l.deliver(target, c, raw, now, true)
+				return
+			}
+		}
+	}
 	key := ipscCall{target, u.CallControl}
 	v, ok := l.byCall.Load(key)
 	if !ok {
@@ -294,8 +305,7 @@ func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 		}
 		v, _ = l.byCall.LoadOrStore(key, v)
 	}
-	raw, err := u.RawBurst(0, layer2.SyncSourceBS)
-	if err != nil {
+	if rawErr != nil {
 		l.loose.Add(1)
 		return
 	}
@@ -303,6 +313,10 @@ func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 }
 
 func (l *ledger) count(target uint, c *callRec, k int, now int64) {
+	l.countAt(target, c, k, now, false)
+}
+
+func (l *ledger) countAt(target uint, c *callRec, k int, now int64, ipsc bool) {
 	c.mu.Lock()
 	at := c.sentAt[k]
 	if i, ok := c.wantIdx[target]; ok {
@@ -316,6 +330,10 @@ func (l *ledger) count(target uint, c *callRec, k int, now int64) {
 	c.mu.Unlock()
 	if at > 0 {
 		d := time.Duration(now - at)
+		if ipsc {
+			l.lat["ipsc_slot"].add(d)
+			return
+		}
 		l.latAll.add(d)
 		h, ok := l.lat[kind]
 		if !ok {
@@ -369,6 +387,7 @@ func (l *ledger) tally(c *callRec) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	missing, dup, deliv := 0, 0, 0
+	missingAt := map[uint]int{}
 	for k := range c.got {
 		if c.sentAt[k] == 0 {
 			continue
@@ -395,6 +414,7 @@ func (l *ledger) tally(c *callRec) {
 			case n == 0 && c.optional[c.want[i]]:
 			case n == 0:
 				missing++
+				missingAt[c.want[i]]++
 			case n > 1:
 				dup += int(n) - 1
 				deliv++
@@ -432,6 +452,9 @@ func (l *ledger) tally(c *callRec) {
 	t.ByLabel[c.label]++
 	if missing > 0 {
 		t.MissingBy[c.label] += missing
+		for target, n := range missingAt {
+			t.MissingAt[target] += n
+		}
 		if len(l.samples) < 50 {
 			l.samples = append(l.samples, fmt.Sprintf("%s stream %d from %d to %d slot2=%v: %d of %d deliveries missing (targets %v)", c.label, c.stream, c.ingress, c.dst, c.slot2, missing, int(c.sent.Load())*len(c.want), c.missingTargets()))
 		}
@@ -497,7 +520,7 @@ func (c *callRec) missingTargets() map[uint]int {
 // reset forgets the totals, the samples and the latencies.
 func (l *ledger) reset() {
 	l.totalMu.Lock()
-	l.totals = ledgerTotals{ByLabel: map[string]int{}, MissingBy: map[string]int{}, DupBy: map[string]int{}, WrongBy: map[string]int{}}
+	l.totals = ledgerTotals{ByLabel: map[string]int{}, MissingBy: map[string]int{}, MissingAt: map[uint]int{}, DupBy: map[string]int{}, WrongBy: map[string]int{}}
 	l.samples = nil
 	l.totalMu.Unlock()
 	l.latAll.reset()

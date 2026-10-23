@@ -297,6 +297,27 @@ func counterValue(name string) float64 {
 	return total
 }
 
+func counterWith(name, label, value string) float64 {
+	mfs, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		return -1
+	}
+	total := 0.0
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == label && l.GetValue() == value {
+					total += metricValue(m)
+				}
+			}
+		}
+	}
+	return total
+}
+
 func metricValue(m *dto.Metric) float64 {
 	if c := m.GetCounter(); c != nil {
 		return c.GetValue()

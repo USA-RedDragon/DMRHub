@@ -207,6 +207,7 @@ func TestTransports(t *testing.T) { //nolint:paralleltest
 	cancel()
 	r.waitLanes()
 	time.Sleep(8 * time.Second)
+	r.waitDeliveries(3*time.Second, 45*time.Second)
 	r.led.finish(0, true)
 	r.checkDelivery()
 	res.set("ipsc_unmatched_bursts", float64(r.led.loose.Load()))
@@ -250,6 +251,12 @@ func (r *rig) playVia(src xsource, s script) {
 		s.rowKind = ""
 	}
 	stream := uint(r.streams.Add(1))
+	bursts, err := stampStream(s.bursts, stream)
+	if err != nil {
+		r.res.fail(r.t, "stamping %s: %v", s.label, err)
+		return
+	}
+	s.bursts = bursts
 	c := &callRec{stream: stream, kind: s.kind, label: s.label, src: s.src, dst: s.dst, group: s.group, ingress: src.ingress, rowKind: s.rowKind, foreign: src.foreign}
 	if err := r.led.register(c, s.bursts, s.want); err != nil {
 		r.res.fail(r.t, "%v", err)

@@ -108,7 +108,11 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
 		egress:     map[uint32]*peerTranslator{},
 	}
-	s.pacer = newPacer(func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) })
+	s.pacer = newPacer(func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) }, func(pkt models.Packet) {
+		if s.hub != nil {
+			s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reasonSlotBusy)
+		}
+	})
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
 		ID:         s.localID,
 		MaxPeers:   ipscsession.MaxPeersLimit,
@@ -438,9 +442,15 @@ func (s *IPSCServer) consumeHubPackets() {
 // sendTo sends pkt to the IPSC peer whose ID is repeaterID. Each peer has
 // its own translator, so one stream sent to two peers keeps two states.
 func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
+	k := slotKey{peer: repeaterID, slot: pkt.Slot}
 	for _, frame := range s.egressTranslator(repeaterID).TranslateToIPSC(pkt) {
-		s.pacer.enqueue(slotKey{peer: repeaterID, slot: pkt.Slot}, frame)
+		s.pacer.enqueue(k, pkt.StreamID, frame, frameEndsCall(frame), pkt)
 	}
+}
+
+func frameEndsCall(frame []byte) bool {
+	u, err := ipscwire.DecodeUser(frame)
+	return err == nil && u.Info.End()
 }
 
 // peerTranslator is the translator of one IPSC peer, with the time it

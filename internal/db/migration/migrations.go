@@ -56,5 +56,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_call_kind_columns_migration_202610221910(db, cfg),
 		add_messages_migration_202610222000(db, cfg),
 		add_peer_enhanced_column_migration_202610230000(db, cfg),
+		add_repeater_dialect_column_migration_202610231200(db, cfg),
 	}
 }

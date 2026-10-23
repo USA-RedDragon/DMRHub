@@ -73,7 +73,8 @@ const (
 
 var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 
-// ParseConfig reads the 302-octet RPTC configuration message data.
+// ParseConfig reads the 302-octet RPTC configuration message data of the
+// MMDVM network protocol.
 //
 // Clients pad the fields differently: DMRGateway and MMDVMHost zero fill the
 // numbers, HBlink3 left-justifies frequencies and coordinates with spaces,
@@ -81,7 +82,7 @@ var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 // with leading and trailing spaces and NULs removed. Only the callsign and
 // the color code can refuse the login; any other field that does not parse
 // is logged and left at zero, as FreeDMR and HBlink store it as plain text.
-// The numbers are read from their octet ranges in dmrgo's MMDVMConfig layout,
+// The numbers are read from their octet ranges in dmrgo's config layouts,
 // since dmrgo's accessors refuse anything but digits.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
 	cfg, err := dmrd.MMDVMConfigOf(data)
@@ -90,34 +91,66 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 		return ErrInvalidConfig
 	}
 	id := cfg.ID()
+	c.Slots = uint(rptcNumber[uint8](id, "Slots", cfg[97:98]))
+	return c.parse(id, cfg[:], 16, cfg, version, commit)
+}
 
-	c.Callsign = strings.ToUpper(rptcText(cfg.Callsign()))
-	c.RXFrequency = uint(rptcNumber[uint32](id, "RXFrequency", cfg[16:25]))
-	c.TXFrequency = uint(rptcNumber[uint32](id, "TXFrequency", cfg[25:34]))
-	c.TXPower = rptcNumber[uint8](id, "Power", cfg[34:36])
+// ParseHBRPConfig reads the 306-octet RPTC configuration message data of
+// HBRP, which has no slots field, as ParseConfig reads the MMDVM one.
+func (c *RepeaterConfiguration) ParseHBRPConfig(data []byte, version, commit string) error {
+	cfg, err := dmrd.HBRPConfigOf(data)
+	if err != nil {
+		slog.Error("Error reading RPTC packet", "error", err)
+		return ErrInvalidConfig
+	}
+	id, err := cfg.ID()
+	if err != nil {
+		slog.Error("Error reading RPTC repeater ID", "error", err)
+		return ErrInvalidConfig
+	}
+	c.Slots = 0
+	return c.parse(id, cfg[:], 20, cfg, version, commit)
+}
 
-	cc, ok := rptcDecimal[uint8](cfg[36:38])
+type rptcText interface {
+	Callsign() []byte
+	Location() []byte
+	Description() []byte
+	URL() []byte
+	SoftwareID() []byte
+	PackageID() []byte
+}
+
+// parse reads the fields that both dialects carry. The numeric fields are
+// at the same offsets from freq, the first octet of the RX frequency.
+func (c *RepeaterConfiguration) parse(id uint32, raw []byte, freq int, cfg rptcText, version, commit string) error {
+	f := raw[freq:]
+	c.Callsign = strings.ToUpper(rptcString(cfg.Callsign()))
+	c.RXFrequency = uint(rptcNumber[uint32](id, "RXFrequency", f[0:9]))
+	c.TXFrequency = uint(rptcNumber[uint32](id, "TXFrequency", f[9:18]))
+	c.TXPower = rptcNumber[uint8](id, "Power", f[18:20])
+
+	cc, ok := rptcDecimal[uint8](f[20:22])
 	if !ok {
-		slog.Error("Error parsing color code", "repeaterID", id, "value", string(cfg[36:38]))
+		slog.Error("Error parsing color code", "repeaterID", id, "value", string(f[20:22]))
 		return ErrInvalidColorCode
 	}
 	c.ColorCode = cc
 
-	c.Latitude = rptcCoordinate(id, "Latitude", cfg[38:46], maxLatitude)
-	c.Longitude = rptcCoordinate(id, "Longitude", cfg[46:55], maxLongitude)
-	c.Height = rptcNumber[uint16](id, "Height", cfg[55:58])
-	c.Slots = uint(rptcNumber[uint8](id, "Slots", cfg[97:98]))
+	c.Latitude = rptcCoordinate(id, "Latitude", f[22:30], maxLatitude)
+	c.Longitude = rptcCoordinate(id, "Longitude", f[30:39], maxLongitude)
+	c.Height = rptcNumber[uint16](id, "Height", f[39:42])
 
-	c.Location = rptcText(cfg.Location())
-	c.Description = rptcText(cfg.Description())
-	c.URL = rptcText(cfg.URL())
+	c.Location = rptcString(cfg.Location())
+	c.Description = rptcString(cfg.Description())
+	c.URL = rptcString(cfg.URL())
 
-	c.SoftwareID = rptcText(cfg.SoftwareID())
+	c.SoftwareID = rptcString(cfg.SoftwareID())
 	if c.SoftwareID == "" {
 		c.SoftwareID = "USA-RedDragon/DMRHub " + version + "-" + commit
 	}
 
-	c.PackageID = rptcText(cfg.PackageID())
+	c.PackageID = rptcString(cfg.PackageID())
 	if c.PackageID == "" {
 		c.PackageID = version + "-" + commit
 	}
@@ -125,12 +158,12 @@ func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string)
 	return c.Check(version, commit)
 }
 
-func rptcText(b []byte) string {
+func rptcString(b []byte) string {
 	return strings.Trim(string(b), " \x00")
 }
 
 func rptcDecimal[T uint8 | uint16 | uint32](b []byte) (T, bool) {
-	s := rptcText(b)
+	s := rptcString(b)
 	if s == "" {
 		return 0, true
 	}
@@ -150,7 +183,7 @@ func rptcNumber[T uint8 | uint16 | uint32](id uint32, field string, raw []byte) 
 }
 
 func rptcCoordinate(id uint32, field string, raw []byte, limit float64) float64 {
-	s := rptcText(raw)
+	s := rptcString(raw)
 	if s == "" {
 		return 0
 	}

@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -182,7 +183,10 @@ func (s *IPSCServer) Addr() net.Addr {
 	return s.udp.LocalAddr()
 }
 
-func (s *IPSCServer) Stop(_ context.Context) error {
+// Stop stops the server. Unless ctx asks for a graceful handoff, it first
+// asks every registered peer to deregister, as DMRlink does, so that the
+// peers register again.
+func (s *IPSCServer) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping IPSC server")
 
@@ -193,6 +197,10 @@ func (s *IPSCServer) Stop(_ context.Context) error {
 			s.hub.UnregisterServer(models.RepeaterTypeIPSC)
 		}
 
+		if !servers.IsGracefulHandoff(ctx) {
+			s.closeSessions(ctx)
+		}
+
 		if s.udp != nil {
 			if err := s.udp.Close(); err != nil {
 				slog.Error("error closing UDP listener", "error", err)
@@ -201,6 +209,15 @@ func (s *IPSCServer) Stop(_ context.Context) error {
 	})
 	s.wg.Wait()
 	return nil
+}
+
+func (s *IPSCServer) closeSessions(ctx context.Context) {
+	if s.m == nil || s.udp == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.apply(ctx, s.m.Close(s.now(), s.out[:0]))
 }
 
 func (s *IPSCServer) now() time.Duration {

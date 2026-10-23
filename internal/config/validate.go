@@ -29,6 +29,8 @@ const (
 	fieldDatabasePort      = "database.port"
 	fieldHTTPPort          = "http.port"
 	fieldDMRMMDVMPort      = "dmr.mmdvm.port"
+	fieldDMRMMDVMWTPort    = "dmr.mmdvm.webtransport.port"
+	fieldDMRMMDVMWTKey     = "dmr.mmdvm.webtransport.key-file"
 	fieldDMROpenBridgePort = "dmr.openbridge.port"
 	fieldDMROpenBridgeSrv  = "dmr.openbridge.server-id"
 	fieldDMRIPSCPort       = "dmr.ipsc.port"
@@ -80,6 +82,10 @@ var (
 	ErrInvalidDMRMMDVMHost = errors.New("invalid DMR MMDVM host provided")
 	// ErrInvalidDMRMMDVMPort indicates that the provided DMR MMDVM port is not valid.
 	ErrInvalidDMRMMDVMPort = errors.New("invalid DMR MMDVM port provided")
+	// ErrInvalidDMRMMDVMWebTransportPort indicates that the WebTransport port is not a port, or is the MMDVM port.
+	ErrInvalidDMRMMDVMWebTransportPort = errors.New("the WebTransport port must be a port other than the MMDVM port")
+	// ErrDMRMMDVMWebTransportKeyPair indicates that only one of the WebTransport certificate and key files is set.
+	ErrDMRMMDVMWebTransportKeyPair = errors.New("set both the WebTransport certificate and key files, or neither")
 	// ErrInvalidDMROpenBridgeHost indicates that the provided DMR OpenBridge host is not valid.
 	ErrInvalidDMROpenBridgeHost = errors.New("invalid DMR OpenBridge host provided")
 	// ErrInvalidDMROpenBridgePort indicates that the provided DMR OpenBridge port is not valid.
@@ -270,6 +276,21 @@ func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 			Field: fieldDMRMMDVMPort,
 			Err:   ErrInvalidDMRMMDVMPort,
 		})
+	}
+
+	if wt := h.WebTransport; wt.Enabled {
+		if wt.Port <= 0 || wt.Port > 65535 || wt.Port == h.Port {
+			errs = append(errs, ValidationError{
+				Field: fieldDMRMMDVMWTPort,
+				Err:   ErrInvalidDMRMMDVMWebTransportPort,
+			})
+		}
+		if (wt.CertFile == "") != (wt.KeyFile == "") {
+			errs = append(errs, ValidationError{
+				Field: fieldDMRMMDVMWTKey,
+				Err:   ErrDMRMMDVMWebTransportKeyPair,
+			})
+		}
 	}
 
 	return

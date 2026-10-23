@@ -58,11 +58,13 @@ type wtDatagram struct {
 // MMDVM network protocol.
 type webTransport struct {
 	udp      net.PacketConn
+	ln       *quic.EarlyListener
 	srv      *webtransport.Server
 	sessions *xsync.Map[string, *webtransport.Session]
 	in       chan wtDatagram
 	done     chan struct{}
 	once     sync.Once
+	wg       sync.WaitGroup
 }
 
 func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransport, error) {
@@ -85,16 +87,40 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransp
 	}
 	webtransport.ConfigureHTTP3Server(h3)
 	t.srv = &webtransport.Server{H3: h3, CheckOrigin: func(*http.Request) bool { return true }}
-	go func() {
-		if err := t.srv.Serve(udp); err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, http.ErrServerClosed) {
+	ln, err := quic.ListenEarly(udp, h3.TLSConfig, h3.QUICConfig)
+	if err != nil {
+		_ = udp.Close()
+		return nil, fmt.Errorf("%w: %w", ErrOpenSocket, err)
+	}
+	t.ln = ln
+	t.wg.Add(1)
+	go t.serve()
+	return t, nil
+}
+
+// serve hands each QUIC connection to the WebTransport server. It accepts
+// the connections itself, rather than through webtransport.Server.Serve,
+// whose wait group races with a Close right after the start.
+func (t *webTransport) serve() {
+	defer t.wg.Done()
+	for {
+		conn, err := t.ln.Accept(context.Background())
+		if err != nil {
 			select {
 			case <-t.done:
 			default:
 				slog.Error("WebTransport listener stopped", "error", err)
 			}
+			return
 		}
-	}()
-	return t, nil
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
+			if err := t.srv.ServeQUICConn(conn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Debug("WebTransport connection ended", "error", err)
+			}
+		}()
+	}
 }
 
 // Addr returns the address of the UDP socket of the listener.
@@ -161,7 +187,8 @@ func (t *webTransport) Close() error {
 			_ = sess.CloseWithError(0, "server stopping")
 			return true
 		})
-		err = errors.Join(t.srv.Close(), t.udp.Close())
+		err = errors.Join(t.srv.Close(), t.ln.Close(), t.udp.Close())
+		t.wg.Wait()
 	})
 	return err
 }

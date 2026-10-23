@@ -70,7 +70,7 @@ dmr:
     # OpenBridge server port
     port: 62035
     # Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer
-    server-id: 0
+    # server-id: 0
   # IPSC server configuration for Motorola DMR repeaters
   ipsc:
     # Enable IPSC server support

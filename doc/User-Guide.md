@@ -25,6 +25,10 @@ The list updates in real-time. The table includes:
 | BER    | Bit Error Rate (if the source repeater sends it)                                                                      |
 | Jitter | Average timing deviation from the 60ms DMR packet interval. Positive = packets too slow, negative = packets too fast. |
 
+## Messages and Settings
+
+When you are logged in, the **Messages** page shows the text messages sent to and from your radio IDs, and the **Settings** page lets you turn on SMS Storage and add the other radio IDs that you own. See [Messages and SMS Storage](messages.md#for-users).
+
 ## Registration
 
 Visit `<siteurl>/register` to create an account. You'll need:

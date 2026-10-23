@@ -28,6 +28,7 @@ When logged in as an administrator, the navigation bar displays an **Admin** dro
 - **Repeaters** — manage all repeaters
 - **Users** — manage user accounts
 - **User Approvals** — process pending registrations
+- **Messages**: search all stored text and data messages (see [Messages and SMS Storage](messages.md#for-admins))
 - **Setup** — update configuration settings
 
 ## Talkgroups

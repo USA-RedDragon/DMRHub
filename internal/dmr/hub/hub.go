@@ -124,14 +124,13 @@ type Hub struct {
 	// Kubernetes endpoint removal prevents new traffic from arriving.
 	stopping atomic.Bool
 
-	// callsWg tracks all in-flight activity that must complete before
-	// shutdown: incoming voice calls and parrot playback goroutines.
-	callsWg sync.WaitGroup
+	// calls tracks all in-flight activity that must complete before
+	// shutdown: incoming streams of every kind and parrot playback
+	// goroutines.
+	calls inflight
 
-	// activeStreams tracks stream IDs currently being processed. Used to
-	// distinguish the first packet of a new call (needs WG increment) from
-	// continuation packets (already tracked).
-	activeStreams *xsync.Map[uint, struct{}]
+	streamsMu     sync.Mutex
+	activeStreams map[uint]*activeStream
 
 	// done is closed when Stop is called, allowing blocked deliverToServer
 	// sends to unblock during shutdown.
@@ -154,7 +153,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		callTracker:   ct,
 		parrot:        parrot.NewParrot(kvStore),
 		servers:       make(map[string]*serverEntry),
-		activeStreams: xsync.NewMap[uint, struct{}](),
+		activeStreams: make(map[uint]*activeStream),
 		done:          make(chan struct{}),
 	}
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
@@ -315,7 +314,7 @@ func (h *Hub) StartDraining() {
 // complete. There is no timeout — the shutdown sequence waits as long as
 // needed for every active call to finish.
 func (h *Hub) WaitForCalls() {
-	h.callsWg.Wait()
+	h.calls.Wait()
 	slog.Info("All in-flight calls completed")
 }
 

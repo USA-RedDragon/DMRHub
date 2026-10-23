@@ -70,19 +70,9 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 	isVoice, _ := utils.CheckPacketType(packet)
 
-	if isVoice {
-		if _, alreadyActive := h.activeStreams.Load(packet.StreamID); !alreadyActive {
-			// First packet of a new call/stream — track it.
-			h.activeStreams.Store(packet.StreamID, struct{}{})
-			h.callsWg.Add(1)
-		}
-
-		// On voice terminator, mark the stream as finished.
-		if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
-			if _, wasActive := h.activeStreams.LoadAndDelete(packet.StreamID); wasActive {
-				defer h.callsWg.Done()
-			}
-		}
+	h.streamActive(packet.StreamID)
+	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
+		defer h.streamEnded(packet.StreamID)
 	}
 
 	defer h.trackCall(ctx, packet, isVoice)

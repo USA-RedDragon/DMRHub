@@ -50,9 +50,9 @@ func (h *Hub) doParrot(ctx context.Context, packet models.Packet) {
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		packets := h.parrot.GetStream(ctx, packet.StreamID)
 		h.parrot.StopStream(ctx, packet.StreamID)
-		h.callsWg.Add(1)
+		h.calls.Add()
 		go func() {
-			defer h.callsWg.Done()
+			defer h.calls.Done()
 			h.playbackParrot(ctx, repeaterID, packets)
 		}()
 	}

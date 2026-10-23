@@ -1,0 +1,14 @@
+{
+  "source": "testdata/dmrgateway-dmra-dmrg.txt: the DMRA and DMRG packets that DMRGateway forwards, cut to 15 and 14 octets",
+  "transmissions": [
+    {
+      "kind": "alias",
+      "source_id": 3191868
+    },
+    {
+      "kind": "gps",
+      "source_id": 3191868
+    }
+  ],
+  "messages": []
+}

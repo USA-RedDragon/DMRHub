@@ -1,0 +1,12 @@
+{
+  "source": "testdata/xpr8400-data.txt raw1f: a rate 1 packet with an undecodable block (burst type 0x1F)",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3191868,
+      "group_call": false
+    }
+  ],
+  "messages": []
+}

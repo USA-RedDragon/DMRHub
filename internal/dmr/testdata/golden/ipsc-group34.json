@@ -1,0 +1,13 @@
+{
+  "source": "testdata/xpr8400-data.txt group34: an unconfirmed rate 3/4 group packet to talkgroup 9",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 9,
+      "group_call": true,
+      "time_slot": true
+    }
+  ],
+  "messages": []
+}

@@ -19,6 +19,8 @@
 
 package testutils
 
+const clientBuffer = 2000
+
 type APIResponse struct {
 	Message string `json:"message"`
 	Error   string `json:"error"`

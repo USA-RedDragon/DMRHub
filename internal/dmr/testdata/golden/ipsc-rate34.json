@@ -1,0 +1,14 @@
+{
+  "source": "testdata/xpr8400-data.txt rate34: a confirmed rate 3/4 packet with the data DMRGO TEST, from the AnyTone to itself",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true,
+      "confirmed": true
+    }
+  ],
+  "messages": []
+}

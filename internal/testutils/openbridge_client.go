@@ -41,6 +41,7 @@ type OpenBridgeClient struct {
 	Password string
 
 	conn     *net.UDPConn
+	server   *net.UDPAddr
 	done     chan struct{}
 	stopOnce sync.Once
 	wg       sync.WaitGroup
@@ -55,21 +56,23 @@ func NewOpenBridgeClient(peerID uint32, password string) *OpenBridgeClient {
 		PeerID:   peerID,
 		Password: password,
 		done:     make(chan struct{}),
-		packets:  make(chan models.Packet, 100),
+		packets:  make(chan models.Packet, clientBuffer),
 	}
 }
 
-// Connect dials the OpenBridge server. No handshake is needed.
+// Connect opens a socket to send to the OpenBridge server at addr. It
+// takes packets from any address, as a peer that several replicas send to
+// does. No handshake is needed.
 func (c *OpenBridgeClient) Connect(addr string) error {
 	raddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return fmt.Errorf("resolve addr: %w", err)
 	}
-	conn, err := net.DialUDP("udp", nil, raddr)
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
-		return fmt.Errorf("dial udp: %w", err)
+		return fmt.Errorf("listen udp: %w", err)
 	}
-	c.conn = conn
+	c.conn, c.server = conn, raddr
 
 	c.wg.Add(1)
 	go c.rx()
@@ -187,7 +190,7 @@ func (c *OpenBridgeClient) SendRawBytes(data []byte) error {
 	if c.conn == nil {
 		return ErrOpenBridgeNotConnected
 	}
-	_, err := c.conn.Write(data)
+	_, err := c.conn.WriteToUDP(data, c.server)
 	if err != nil {
 		return fmt.Errorf("writing raw bytes: %w", err)
 	}
@@ -209,7 +212,7 @@ func (c *OpenBridgeClient) sendPacket(pkt models.Packet) error {
 		return fmt.Errorf("signing packet: %w", err)
 	}
 
-	_, err = c.conn.Write(outbound)
+	_, err = c.conn.WriteToUDP(outbound, c.server)
 	if err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
@@ -237,7 +240,7 @@ func (c *OpenBridgeClient) rx() {
 		default:
 		}
 		_ = c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		n, err := c.conn.Read(buf)
+		n, _, err := c.conn.ReadFromUDP(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -295,7 +298,7 @@ func (c *OpenBridgeClient) sendSigned(p []byte) error {
 	if err := dmrdauth.NewBridgeKey([]byte(c.Password)).SignInPlace(p); err != nil {
 		return fmt.Errorf("signing packet: %w", err)
 	}
-	if _, err := c.conn.Write(p); err != nil {
+	if _, err := c.conn.WriteToUDP(p, c.server); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil

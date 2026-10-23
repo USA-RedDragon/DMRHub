@@ -1,0 +1,72 @@
+{
+  "source": "testdata/anytone-sms-xpr.txt: a confirmed rate 3/4 text, a SACK, three retries and three ACKs",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": [
+    {
+      "format": "anytone",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "confirmed": true,
+      "group": false,
+      "text": "THE QUICK BROWN FOX JUMPED OVER THE LAZY DOG",
+      "response": "ack"
+    }
+  ]
+}

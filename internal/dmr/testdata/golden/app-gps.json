@@ -1,0 +1,22 @@
+{
+  "source": "dmrgo internal/appcapture GPS: an AnyTone position report, which is data but not text",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": [
+    {
+      "format": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "confirmed": false,
+      "group": false,
+      "text": ""
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "source": "testdata/anytone-dmr-text.txt: an unconfirmed AnyTone text",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": [
+    {
+      "format": "anytone",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "confirmed": false,
+      "group": false,
+      "text": "DMR TEST"
+    }
+  ]
+}

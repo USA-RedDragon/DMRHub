@@ -1,0 +1,22 @@
+{
+  "source": "testdata/xpr8400-data.txt dmrtext: an unconfirmed rate 1/2 AnyTone text that an XPR 8400 relayed",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": [
+    {
+      "format": "anytone",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "confirmed": false,
+      "group": false,
+      "text": "DMR TEST"
+    }
+  ]
+}

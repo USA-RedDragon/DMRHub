@@ -1,0 +1,14 @@
+{
+  "source": "testdata/xpr8400-data.txt radiocheck: 5 Pre_CSBKs and a Motorola FID 0x10 radio check",
+  "transmissions": [
+    {
+      "kind": "csbk",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "sub_kind~": "radio_check",
+      "time_slot": true
+    }
+  ],
+  "messages": []
+}

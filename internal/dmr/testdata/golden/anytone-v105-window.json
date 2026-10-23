@@ -1,0 +1,44 @@
+{
+  "source": "testdata/anytone-v105-window.txt: a confirmed window of three texts and the ACK of the radio for the last",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "group_call": false
+    },
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false
+    }
+  ],
+  "messages": [
+    {
+      "format": "anytone",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "confirmed": true,
+      "group": false,
+      "text": "W1 one"
+    },
+    {
+      "format": "anytone",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "confirmed": true,
+      "group": false,
+      "text": "W2 two"
+    },
+    {
+      "format": "anytone",
+      "source_id": 3140598,
+      "destination_id": 3191868,
+      "confirmed": true,
+      "group": false,
+      "text": "W3 three",
+      "response": "ack"
+    }
+  ]
+}

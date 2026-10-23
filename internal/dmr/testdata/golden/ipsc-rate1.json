@@ -1,0 +1,13 @@
+{
+  "source": "testdata/xpr8400-data.txt rate1: a confirmed rate 1 packet whose block the XPR 8400 relayed as a data header",
+  "transmissions": [
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3191868,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": []
+}

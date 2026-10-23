@@ -1,0 +1,29 @@
+{
+  "source": "testdata/anytone-hsms.txt: a BS_Dwn_Act and an H-SMS (defined data) text",
+  "transmissions": [
+    {
+      "kind": "csbk",
+      "source_id": 3191868,
+      "destination_id": 16777215,
+      "group_call": false,
+      "time_slot": true
+    },
+    {
+      "kind": "data",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "group_call": false,
+      "time_slot": true
+    }
+  ],
+  "messages": [
+    {
+      "format": "hytera",
+      "source_id": 3191868,
+      "destination_id": 3140598,
+      "confirmed": false,
+      "group": false,
+      "text": "HYT TEST"
+    }
+  ]
+}

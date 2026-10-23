@@ -49,6 +49,7 @@ type MMDVMClient struct {
 	state    atomic.Uint32
 	packets  chan models.Packet
 	readyVal atomic.Bool
+	pongs    atomic.Uint64
 }
 
 const (
@@ -69,7 +70,7 @@ func NewMMDVMClient(repeaterID uint32, callsign, password string) *MMDVMClient {
 		Password:   password,
 		ready:      make(chan struct{}),
 		done:       make(chan struct{}),
-		packets:    make(chan models.Packet, 100),
+		packets:    make(chan models.Packet, clientBuffer),
 	}
 }
 
@@ -137,12 +138,28 @@ func (c *MMDVMClient) SendDMRD(pkt models.Packet) error {
 	return nil
 }
 
-// SendRaw sends data to the server as it is.
-func (c *MMDVMClient) SendRaw(data []byte) error {
-	if _, err := c.conn.Write(data); err != nil {
+// SendRaw sends p to the server as it is, for packets that SendDMRD cannot
+// build, such as DMRA, DMRG and malformed packets.
+func (c *MMDVMClient) SendRaw(p []byte) error {
+	if _, err := c.conn.Write(p); err != nil {
 		return fmt.Errorf("writing raw packet: %w", err)
 	}
 	return nil
+}
+
+// Ping sends an RPTPING and reports whether an MSTPONG came back within
+// timeout, that is whether the session is still up.
+func (c *MMDVMClient) Ping(timeout time.Duration) bool {
+	before := c.pongs.Load()
+	c.sendPing()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if c.pongs.Load() > before {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
 }
 
 // Close shuts down the client.
@@ -221,6 +238,9 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 		}
 
 	case mmdvmStateReady:
+		if command == dmrd.CommandMSTPONG {
+			c.pongs.Add(1)
+		}
 		if command == dmrd.CommandDMRD {
 			pkt, ok := models.UnpackPacket(data)
 			if ok {

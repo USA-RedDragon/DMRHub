@@ -96,7 +96,7 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 		peer:    peer,
 		ready:   make(chan struct{}),
 		done:    make(chan struct{}),
-		packets: make(chan models.Packet, 100),
+		packets: make(chan models.Packet, clientBuffer),
 	}, nil
 }
 

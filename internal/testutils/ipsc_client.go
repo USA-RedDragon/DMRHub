@@ -90,7 +90,7 @@ func NewIPSCClient(peerID uint32, password string) *IPSCClient {
 		useAuth:  err == nil,
 		ready:    make(chan struct{}),
 		done:     make(chan struct{}),
-		packets:  make(chan IPSCBurst, 100),
+		packets:  make(chan IPSCBurst, clientBuffer),
 	}
 }
 
@@ -198,6 +198,68 @@ func (c *IPSCClient) SendGroupVoice(src, dst uint, slot bool, streamID uint32) e
 // SendPrivateVoice sends an IPSC private voice call.
 func (c *IPSCClient) SendPrivateVoice(src, dst uint, slot bool, streamID uint32) error {
 	return c.sendVoice(ipscwire.OpPrivateVoice, src, dst, false, slot, streamID)
+}
+
+// SendRaw signs the IPSC user packet p, without its trailer, and sends it
+// to the master as it is.
+func (c *IPSCClient) SendRaw(p []byte) error {
+	if c.conn == nil {
+		return ErrIPSCNotConnected
+	}
+	c.mu.Lock()
+	signed, err := c.peer.Sign(append([]byte(nil), p...))
+	c.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("signing packet: %w", err)
+	}
+	if _, err := c.conn.WriteToUDP(signed, c.master); err != nil {
+		return fmt.Errorf("sending packet: %w", err)
+	}
+	return nil
+}
+
+// SendUser encodes u with the peer ID of the client and sends it.
+func (c *IPSCClient) SendUser(u ipscwire.User) error {
+	u.ID = c.PeerID
+	p, err := u.AppendBinary(nil)
+	if err != nil {
+		return fmt.Errorf("encoding user packet: %w", err)
+	}
+	return c.SendRaw(p)
+}
+
+// SendBurst sends raw as an IPSC user packet of the call: group or
+// private, with call control callControl, in a voice packet for a voice
+// burst, a voice LC header, a PI header or a terminator, as an XPR 8400
+// sends them, and in a data packet for the rest. RTP sequence numbers go
+// up by one for each packet, as an XPR 8400 needs.
+func (c *IPSCClient) SendBurst(src, dst uint, group, slot bool, callControl uint32, raw layer2.RawBurst, h layer2.Hint, end bool) error {
+	c.mu.Lock()
+	c.rtpSeq++
+	seq := c.rtpSeq
+	c.mu.Unlock()
+	voice := h.Kind == layer2.KindVoice || (h.HasDataType && (h.DataType == enums.DataTypeVoiceLCHeader ||
+		h.DataType == enums.DataTypeTerminatorWithLC || h.DataType == enums.DataTypePIHeader))
+	u := ipscwire.User{
+		Opcode:      ipscwire.UserOpcode(group, !voice),
+		ID:          c.PeerID,
+		Source:      uint32(src),
+		Destination: uint32(dst),
+		Priority:    0x02,
+		CallControl: callControl,
+		RTP:         ipscwire.RTP{Flags: 0x80, PayloadType: 0x5D, Seq: seq, Timestamp: 480 * uint32(seq)},
+	}
+	if slot {
+		_ = u.Info.SetSlot(enums.Slot2)
+	}
+	if end {
+		u.Info.SetEnd(true)
+		u.RTP.PayloadType = 0x5E
+	}
+	if _, err := u.SetRawBurst(raw, h); err != nil {
+		return fmt.Errorf("setting burst: %w", err)
+	}
+	return c.SendUser(u)
 }
 
 func (c *IPSCClient) sendVoice(op ipscwire.Opcode, src, dst uint, groupCall, slot bool, streamID uint32) error {

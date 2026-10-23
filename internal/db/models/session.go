@@ -29,6 +29,7 @@ type Session struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	ExpiresAt time.Time `gorm:"index"`
+	UserID    *uint     `gorm:"index"`
 }
 
 // TableName is the table of the sessions.

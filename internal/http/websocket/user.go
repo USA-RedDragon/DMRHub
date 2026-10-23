@@ -21,6 +21,9 @@ package websocket
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -33,6 +36,10 @@ import (
 const (
 	userTopicPrefix = "user:changed:"
 	userWatchKey    = "websocket.userWatch"
+
+	reasonUserChanged     = "user changed"
+	reasonLoggedOut       = "logged out"
+	reasonPasswordChanged = "password changed"
 )
 
 // UserTopic is the pubsub topic that tells every replica that the user
@@ -45,24 +52,64 @@ func UserTopic(userID uint) string {
 // replica. Call it after a change to the user's role, suspension, approval
 // or existence; the clients reconnect and are checked again.
 func PublishUserChanged(ps pubsub.PubSub, userID uint) error {
-	if err := ps.Publish(UserTopic(userID), []byte(strconv.FormatUint(uint64(userID), 10))); err != nil {
+	return publishUserEvent(ps, userID, userEvent{Reason: reasonUserChanged})
+}
+
+// PublishLogout closes the websockets of the session sessionID of the user
+// userID on every replica.
+func PublishLogout(ps pubsub.PubSub, userID uint, sessionID string) error {
+	return publishUserEvent(ps, userID, userEvent{Reason: reasonLoggedOut, Only: sessionKey(sessionID)})
+}
+
+// PublishPasswordChanged closes the websockets of the user userID on every
+// replica, except those of the session keepSessionID.
+func PublishPasswordChanged(ps pubsub.PubSub, userID uint, keepSessionID string) error {
+	return publishUserEvent(ps, userID, userEvent{Reason: reasonPasswordChanged, Except: sessionKey(keepSessionID)})
+}
+
+type userEvent struct {
+	Reason string `json:"reason"`
+	Only   string `json:"only,omitempty"`
+	Except string `json:"except,omitempty"`
+}
+
+func publishUserEvent(ps pubsub.PubSub, userID uint, event userEvent) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to encode the change of user %d: %w", userID, err)
+	}
+	if err := ps.Publish(UserTopic(userID), data); err != nil {
 		return fmt.Errorf("failed to publish the change of user %d: %w", userID, err)
 	}
 	return nil
 }
 
+func sessionKey(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(sessionID))
+	return hex.EncodeToString(sum[:16])
+}
+
+type userWatch struct {
+	subscription pubsub.Subscription
+	session      string
+}
+
 // WatchUser subscribes a websocket request of a logged-in user to its
 // UserTopic before the login checks run, so that no change after those
 // checks is missed. The handler of CreateHandler closes the connection on
-// the first message.
+// each message that concerns its session.
 func WatchUser(ps pubsub.PubSub) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := sessions.Default(c).Get("user_id").(uint)
+		session := sessions.Default(c)
+		userID, ok := session.Get("user_id").(uint)
 		if !ok {
 			return
 		}
 		subscription := ps.Subscribe(UserTopic(userID))
-		c.Set(userWatchKey, subscription)
+		c.Set(userWatchKey, &userWatch{subscription: subscription, session: sessionKey(session.ID())})
 		c.Next()
 		if err := subscription.Close(); err != nil {
 			slog.Error("Failed to close the user subscription of a websocket", "error", err)
@@ -70,13 +117,39 @@ func WatchUser(ps pubsub.PubSub) gin.HandlerFunc {
 	}
 }
 
-func watchUser(ctx context.Context, cancel context.CancelCauseFunc, subscription pubsub.Subscription) {
-	channel := subscription.Channel()
-	select {
-	case <-ctx.Done():
-	case _, ok := <-channel:
-		if ok {
-			cancel(errUserChanged)
+func (w *userWatch) run(ctx context.Context, cancel context.CancelCauseFunc) {
+	channel := w.subscription.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-channel:
+			if !ok {
+				return
+			}
+			if cause, closes := w.closes(msg); closes {
+				cancel(cause)
+				return
+			}
 		}
+	}
+}
+
+func (w *userWatch) closes(msg []byte) (error, bool) {
+	var event userEvent
+	if err := json.Unmarshal(msg, &event); err != nil {
+		return errUserChanged, true
+	}
+	if event.Only != "" && event.Only != w.session {
+		return nil, false
+	}
+	if event.Except != "" && event.Except == w.session {
+		return nil, false
+	}
+	switch event.Reason {
+	case reasonLoggedOut, reasonPasswordChanged:
+		return policyCloseError{reason: event.Reason}, true
+	default:
+		return errUserChanged, true
 	}
 }

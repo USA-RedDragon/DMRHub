@@ -20,9 +20,11 @@
 package websocket_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -91,15 +93,31 @@ func (e *userEnv) user(t *testing.T, admin bool) (uint, testutils.CookieJar) {
 
 func (e *userEnv) do(t *testing.T, method, path string) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), method, e.primary.URL+path, nil)
+	require.Equal(t, http.StatusOK, e.request(t, e.admin, method, path, nil), "%s %s", method, path)
+}
+
+func (e *userEnv) request(t *testing.T, jar testutils.CookieJar, method, path string, body any) int {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), method, e.primary.URL+path, reader)
 	require.NoError(t, err)
-	for _, c := range e.admin.Cookies() {
+	for _, c := range jar.Cookies() {
 		req.Header.Add("Cookie", c.String())
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	_ = resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "%s %s", method, path)
+	return resp.StatusCode
+}
+
+func (e *userEnv) login(t *testing.T, id uint) testutils.CookieJar {
+	t.Helper()
+	return testutils.Login(t, e.router, fmt.Sprintf("user%d", id))
 }
 
 func open(t *testing.T, server *httptest.Server, path string, jar testutils.CookieJar) *testutils.WSConn {
@@ -127,6 +145,11 @@ func privateCall(t *testing.T, id uint) []byte {
 
 func (e *userEnv) requireClosed(t *testing.T, conn *testutils.WSConn, id uint, what string) {
 	t.Helper()
+	e.requireClosedFor(t, conn, id, "user changed", what)
+}
+
+func (e *userEnv) requireClosedFor(t *testing.T, conn *testutils.WSConn, id uint, reason, what string) {
+	t.Helper()
 	text, err := conn.ReadText(3 * time.Second)
 	if err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
 		require.NoError(t, e.ps.Publish("calls", privateCall(t, id)))
@@ -136,14 +159,14 @@ func (e *userEnv) requireClosed(t *testing.T, conn *testutils.WSConn, id uint, w
 	var closed *testutils.WSCloseError
 	require.ErrorAs(t, err, &closed, "%s: the server dropped the socket without a close frame", what)
 	assert.Equal(t, 1008, closed.Code, what)
-	assert.Equal(t, "user changed", closed.Reason, what)
+	assert.Equal(t, reason, closed.Reason, what)
 }
 
 func requireOpen(t *testing.T, conn *testutils.WSConn, what string) {
 	t.Helper()
 	conn.WriteText(t, "ping")
 	text, err := conn.ReadText(3 * time.Second)
-	require.NoError(t, err, "%s: a socket of another user was closed", what)
+	require.NoError(t, err, "%s: a socket that should stay open was closed", what)
 	require.Equal(t, "PONG", text)
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
@@ -648,6 +649,10 @@ func PATCHUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating user"})
 			return
 		}
+		if json.Password != "" && !endOtherSessions(c, user.ID) {
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Password changed, but the other sessions could not be ended"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
 }
@@ -788,4 +793,27 @@ func publishUserChanged(c *gin.Context, userID uint) {
 	if err := websocket.PublishUserChanged(ps, userID); err != nil {
 		slog.Error("Failed to close the websockets of a changed user", "user", userID, "error", err)
 	}
+}
+
+func endOtherSessions(c *gin.Context, userID uint) bool {
+	sessionID := sessions.Default(c).ID()
+	store, ok := c.Value("SessionStore").(*sessionstore.Store)
+	if !ok {
+		slog.Error("SessionStore not found in context", "user", userID)
+		return false
+	}
+	if err := store.DeleteUserSessions(c.Request.Context(), userID, sessionID); err != nil {
+		slog.Error("Failed to end the other sessions of a user", "user", userID, "error", err)
+		return false
+	}
+	ps, ok := c.Value("PubSub").(pubsub.PubSub)
+	if !ok {
+		slog.Error("PubSub not found in context, the websockets of a user stay open", "user", userID)
+		return false
+	}
+	if err := websocket.PublishPasswordChanged(ps, userID, sessionID); err != nil {
+		slog.Error("Failed to close the websockets of a user", "user", userID, "error", err)
+		return false
+	}
+	return true
 }

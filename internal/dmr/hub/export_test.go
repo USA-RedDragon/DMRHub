@@ -42,3 +42,9 @@ func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 func (h *Hub) ForgetCachedRepeater(id uint) {
 	h.repeaters.invalidate(id)
 }
+
+// LiftSlotRate lets the test send faster than one repeater slot can, or
+// limits it again.
+func (h *Hub) LiftSlotRate(lift bool) {
+	h.slotRateOff.Store(lift)
+}

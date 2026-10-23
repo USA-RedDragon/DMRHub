@@ -100,6 +100,7 @@ func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 
 	h := hub.NewHub(database, kvStore, ps, ct)
+	h.LiftSlotRate(true)
 
 	t.Cleanup(func() {
 		h.Stop(context.Background())

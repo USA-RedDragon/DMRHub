@@ -34,8 +34,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
@@ -89,7 +92,7 @@ var (
 	ErrSocketBuffer = errors.New("error setting socket buffer size")
 )
 
-const bufferSize = 1000000 // 1MB
+const bufferSize = 4 << 20
 
 // MakeServer creates a new DMR server.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, version, commit string) (Server, error) {
@@ -302,6 +305,9 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 			continue
 		}
 		slog.Debug("Read message from MMDVM transport", "transport", name, "remoteaddr", remote, "length", length)
+		if s.discard(buf[:length]) {
+			continue
+		}
 		data := make([]byte, length)
 		copy(data, buf[:length])
 		select {
@@ -310,6 +316,28 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 			return
 		}
 	}
+}
+
+// discard reports whether the reader drops p before it is queued: a
+// packet with no tag of either dialect, which the sessions would ignore,
+// or a DMRD packet of a repeater slot that has sent more than the hub
+// takes (see hub.Hub.SlotOverRate). A flood of either is dropped as fast
+// as it comes, so that it never fills the socket that other repeaters
+// share.
+func (s *Server) discard(p []byte) bool {
+	c := dmrd.Classify(p, dmrd.DialectMMDVM)
+	if c == dmrd.CommandUnknown && dmrd.Classify(p, dmrd.DialectHBRP) == dmrd.CommandUnknown {
+		return true
+	}
+	if s.hub == nil || c != dmrd.CommandDMRD {
+		return false
+	}
+	d, err := dmrd.DecodeData(p)
+	if err != nil || !s.hub.SlotOverRate(models.RepeaterTypeMMDVM, uint(d.Repeater), d.Slot == enums.Slot2) {
+		return false
+	}
+	metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonSlotRate)
+	return true
 }
 
 func (s *Server) transport(name string) (transport, bool) {

@@ -51,6 +51,10 @@ type Metrics struct {
 // for a burst of a stream that another source is already sending.
 const DropReasonStreamFromOtherSource = "stream_from_other_source"
 
+// DropReasonSlotRate is the IngressDroppedBurstsTotal reason for a burst
+// over the rate that one repeater slot can carry.
+const DropReasonSlotRate = "slot_rate"
+
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
 	metricsInstance *Metrics  //nolint:gochecknoglobals

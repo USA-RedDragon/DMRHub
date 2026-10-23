@@ -58,7 +58,7 @@ func TestStopUnderAFlood(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 	for range 4 * channelBufferSize {
-		_, err := c.Write([]byte("JUNKJUNK"))
+		_, err := c.Write([]byte("RPTPING\x00\x00\x00\x01"))
 		require.NoError(t, err)
 	}
 	require.Eventually(t, func() bool { return len(s.incomingChan) == cap(s.incomingChan) }, 2*time.Second, time.Millisecond)

@@ -139,7 +139,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	}
 
 	callTracker := calltracker.NewCallTracker(database, pubsubClient, kvStore)
-	messageStore := messages.NewStore(database)
+	messageStore := messages.NewStore(database, kvStore)
 	messageStore.SetNotify(messages.NewPusher(database, pubsubClient).Push)
 	callTracker.SetDataObserver(messageStore)
 

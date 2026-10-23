@@ -35,7 +35,8 @@ import (
 // used by publishToRepeater and handleGroupCall.
 func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	rawPacket := models.RawDMRPacket{
-		Data: packet.Encode(),
+		Data:    packet.Encode(),
+		TrackID: packet.TrackID,
 	}
 	packedBytes, err := rawPacket.MarshalMsg(nil)
 	if err != nil {

@@ -23,6 +23,7 @@ package calltracker
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -62,7 +63,9 @@ const (
 	peerChannelIdle = 30 * time.Second
 	streamIdle      = time.Minute
 	shardCount      = 8
+	shardBits       = 3
 	shardDepth      = 1024
+	maxStreamRows   = 32
 	maxCallData     = 33 * 10000
 	packetTimingMs  = 60
 	pct             = 100
@@ -109,6 +112,7 @@ type CallTracker struct {
 	observer atomic.Pointer[observerBox]
 	dropped  atomic.Uint64
 	metrics  *metrics.Metrics
+	bursts   atomic.Uint64
 }
 
 type observerBox struct{ o DataObserver }
@@ -142,6 +146,9 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub) *CallTracker {
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
 	}
+	var seed [8]byte
+	_, _ = rand.Read(seed[:])
+	ct.bursts.Store(binary.LittleEndian.Uint64(seed[:]) >> (shardBits + 2))
 	ct.loadActiveNets()
 	ct.subscribeNetEvents()
 	ct.shards = make([]*shard, shardCount)
@@ -192,10 +199,11 @@ func (c *CallTracker) Dropped() uint64 {
 // recorded. peer reports a server of network peers, such as OpenBridge,
 // whose Repeater field is a peer ID and which carries many streams on one
 // slot. Track never blocks: when the queue of the worker is full, the
-// packet is not recorded and Dropped counts it.
-func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, peer bool) {
+// packet is not recorded and Dropped counts it. It returns the ID of the
+// burst, for p.TrackID, or zero when it is stopped.
+func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, peer bool) uint64 {
 	if c.stopped.Load() {
-		return
+		return 0
 	}
 	key := chanKey{server: server, repeater: p.Repeater, slot: p.Slot}
 	if peer {
@@ -203,24 +211,34 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 	}
 	idx := key.shard()
 	now := time.Now()
+	id := c.bursts.Add(1)<<shardBits | uint64(idx) //nolint:gosec
 	c.streams.Store(p.StreamID, streamRef{shard: idx, at: now})
 	if !peer {
 		c.sources.Store(sourceKey{server: server, repeater: p.Repeater, src: p.Src}, streamRef{shard: idx, at: now})
 	}
-	c.enqueue(idx, task{key: key, p: p, peer: peer, at: now})
+	c.enqueue(idx, task{key: key, p: p, peer: peer, at: now, id: id})
+	return id
 }
 
 // Undeliverable records that target, such as "ipsc:311304200:no_ipsc_form"
 // (the server, the repeater and the reason), could not
 // take the burst of p, a packet that Track got, on the transmission that
-// holds the burst. Call it after Track for the same packet. The hub
-// counts the burst in its metrics.
+// holds the burst. Call it after Track for the same packet. p.TrackID
+// names the burst; without it the mark goes on the latest transmission of
+// the stream. The hub counts the burst in its metrics.
 func (c *CallTracker) Undeliverable(p models.Packet, target string) {
-	ref, ok := c.streams.Load(p.StreamID)
-	if !ok || c.stopped.Load() {
+	if c.stopped.Load() {
 		return
 	}
-	c.enqueue(ref.shard, task{fn: func(s *shard) { s.undeliverable(p.StreamID, target) }})
+	idx := int(p.TrackID % shardCount)
+	if p.TrackID == 0 {
+		ref, ok := c.streams.Load(p.StreamID)
+		if !ok {
+			return
+		}
+		idx = ref.shard
+	}
+	c.enqueue(idx, task{fn: func(s *shard) { s.undeliverable(p.StreamID, p.TrackID, target) }})
 }
 
 // Flush waits until the workers handled every packet queued before it.
@@ -285,6 +303,7 @@ type task struct {
 	p    models.Packet
 	peer bool
 	at   time.Time
+	id   uint64
 	fn   func(*shard)
 	stop bool
 }
@@ -511,7 +530,7 @@ type shard struct {
 	in       chan task
 	channels map[chanKey]*channel
 	rows     map[any]*row
-	streams  map[uint]*row
+	streams  map[uint]*streamRows
 	aliases  map[sourceKey]*sourceState
 	burst    *layer2.Burst
 	events   []data.Event
@@ -524,7 +543,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		in:       make(chan task, shardDepth),
 		channels: map[chanKey]*channel{},
 		rows:     map[any]*row{},
-		streams:  map[uint]*row{},
+		streams:  map[uint]*streamRows{},
 		aliases:  map[sourceKey]*sourceState{},
 		burst:    layer2.NewBurst(),
 		events:   make([]data.Event, 0, data.MaxEvents),
@@ -588,7 +607,7 @@ func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub st
 	if key != nil {
 		s.rows[key] = r
 	}
-	s.streams[p.StreamID] = r
+	s.note(t, r)
 	slog.Debug("CallTracker: transmission started", "kind", kind, "sub", sub, "streamID", p.StreamID, "src", p.Src, "dst", p.Dst)
 	return r
 }
@@ -599,7 +618,50 @@ func (s *shard) touch(r *row, t *task) {
 	if len(r.call.CallData)+len(t.p.DMRData) <= maxCallData {
 		r.call.CallData = append(r.call.CallData, t.p.DMRData[:]...)
 	}
-	s.streams[t.p.StreamID] = r
+	s.note(t, r)
+}
+
+// streamRows holds the rows that the bursts of one stream went to, each
+// from the ID of its first burst there, oldest first.
+type streamRows struct {
+	from []uint64
+	rows []*row
+	last uint64
+}
+
+func (s *shard) note(t *task, r *row) {
+	if t.id == 0 {
+		return
+	}
+	st := s.streams[t.p.StreamID]
+	if st == nil {
+		st = &streamRows{}
+		s.streams[t.p.StreamID] = st
+	}
+	st.last = t.id
+	if n := len(st.rows); n > 0 && st.rows[n-1] == r {
+		return
+	}
+	if len(st.rows) == maxStreamRows {
+		st.from, st.rows = append(st.from[:0], st.from[1:]...), append(st.rows[:0], st.rows[1:]...)
+	}
+	st.from, st.rows = append(st.from, t.id), append(st.rows, r)
+}
+
+func (st *streamRows) row(id uint64) *row {
+	n := len(st.rows)
+	if id == 0 {
+		return st.rows[n-1]
+	}
+	if id > st.last || id < st.from[0] {
+		return nil
+	}
+	for i := n - 1; i >= 0; i-- {
+		if st.from[i] <= id {
+			return st.rows[i]
+		}
+	}
+	return nil
 }
 
 func (s *shard) finish(r *row, at time.Time) {
@@ -621,9 +683,6 @@ func (s *shard) finish(r *row, at time.Time) {
 	}
 	if call.Kind == models.CallKindVoice && !at.IsZero() && call.Duration < keyUp {
 		r.deleted = true
-		if s.streams[call.StreamID] == r {
-			delete(s.streams, call.StreamID)
-		}
 		s.t.db.Unscoped().Delete(call)
 		return
 	}
@@ -681,8 +740,8 @@ func (s *shard) sweep(now time.Time) {
 			delete(s.channels, key)
 		}
 	}
-	for id, r := range s.streams {
-		if r.finished && now.Sub(r.last) >= streamIdle {
+	for id, st := range s.streams {
+		if r := st.rows[len(st.rows)-1]; r.finished && now.Sub(r.last) >= streamIdle {
 			delete(s.streams, id)
 		}
 	}
@@ -719,9 +778,13 @@ func (s *shard) setResponse(r *row, resp models.CallResponse) {
 	s.t.publishCall(r.call)
 }
 
-func (s *shard) undeliverable(stream uint, target string) {
-	r, ok := s.streams[stream]
-	if !ok || r.deleted {
+func (s *shard) undeliverable(stream uint, id uint64, target string) {
+	st, ok := s.streams[stream]
+	if !ok {
+		return
+	}
+	r := st.row(id)
+	if r == nil || r.deleted {
 		return
 	}
 	for _, t := range r.call.Undeliverable {

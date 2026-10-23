@@ -23,6 +23,7 @@
 package oauth
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -31,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -47,6 +49,9 @@ const (
 	RefreshLifetime = 30 * 24 * time.Hour
 	// CodeLifetime is how long an authorization code works.
 	CodeLifetime = 2 * time.Minute
+	// SpentTokenLifetime is how long a spent refresh token is kept, so that
+	// spending it again ends its grant.
+	SpentTokenLifetime = 24 * time.Hour
 
 	accessPrefix  = "dmrhub_at."
 	refreshPrefix = "dmrhub_rt."
@@ -439,6 +444,46 @@ func (s *Server) revokeGrant(db *gorm.DB, id string) error {
 		return fmt.Errorf("failed to revoke the grant: %w", err)
 	}
 	return nil
+}
+
+// Prune deletes the codes and refresh tokens that can no longer work and
+// the grants that were removed.
+func (s *Server) Prune() error {
+	now := s.Now()
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("expires_at <= ?", now).Delete(&models.OAuthCode{}).Error; err != nil {
+			return fmt.Errorf("failed to prune codes: %w", err)
+		}
+		revoked := tx.Model(&models.OAuthGrant{}).Select("id").Where("revoked_at IS NOT NULL")
+		if err := tx.Where("expires_at <= ? OR used_at <= ? OR grant_id IN (?)", now, now.Add(-SpentTokenLifetime), revoked).
+			Delete(&models.OAuthRefreshToken{}).Error; err != nil {
+			return fmt.Errorf("failed to prune refresh tokens: %w", err)
+		}
+		if err := tx.Where("revoked_at IS NOT NULL").Delete(&models.OAuthGrant{}).Error; err != nil {
+			return fmt.Errorf("failed to prune grants: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to prune OAuth data: %w", err)
+	}
+	return nil
+}
+
+// PeriodicPrune runs Prune every interval until ctx ends.
+func (s *Server) PeriodicPrune(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.Prune(); err != nil {
+				slog.Error("Failed to prune OAuth data", "error", err)
+			}
+		}
+	}
 }
 
 func activeGrant(db *gorm.DB, id string) (models.OAuthGrant, error) {

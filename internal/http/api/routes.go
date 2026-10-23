@@ -65,6 +65,8 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	apiV1.Use(ratelimit, bearer)
 	v1(config, apiV1, userSuspension)
 
+	router.GET("/ws/lastheard", ratelimit, websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(pubsub)))
+
 	ws := router.Group("/ws")
 	ws.Use(ratelimit, bearer, websocket.WatchUser(pubsub))
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))

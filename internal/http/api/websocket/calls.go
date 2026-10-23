@@ -73,3 +73,27 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 		cancel()
 	}
 }
+
+// PublicCallsWebsocket sends the public calls, which the last heard page
+// shows to everyone, whoever opens it.
+type PublicCallsWebsocket struct {
+	pubsub pubsub.PubSub
+}
+
+// CreatePublicCallsWebsocket returns the websocket of the public calls.
+func CreatePublicCallsWebsocket(pubsub pubsub.PubSub) *PublicCallsWebsocket {
+	return &PublicCallsWebsocket{pubsub: pubsub}
+}
+
+func (c *PublicCallsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
+}
+
+func (c *PublicCallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+	newCtx, cancel := context.WithCancel(ctx)
+	subscription := c.pubsub.Subscribe("calls:public")
+	go forward(newCtx, subscription, w)
+	return func() {
+		closeSubscription(subscription, "calls")
+		cancel()
+	}
+}

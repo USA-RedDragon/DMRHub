@@ -437,14 +437,23 @@ func TestSendToRegisteredPeers(t *testing.T) {
 	expectNoUDP(t, c1)
 }
 
-func TestPace(t *testing.T) {
+func TestSendsAreNotHeld(t *testing.T) {
 	t.Parallel()
-	var p peerState
-	p.pace()
+	s, srv := newTestServerWithUDP(t)
+	c, a := dialServer(t, srv)
+	register(t, s, c, a, 101)
+
+	const n = 40
+	data := voicePacket(311860)
 	start := time.Now()
-	p.pace()
-	if d := time.Since(start); d < burstInterval-time.Millisecond {
-		t.Fatalf("second send after %v, want at least %v", d, burstInterval)
+	for range n {
+		s.sendPacketInternal(data)
+	}
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Fatalf("%d sends to one peer took %v", n, d)
+	}
+	for range n {
+		readUDP(t, c)
 	}
 }
 

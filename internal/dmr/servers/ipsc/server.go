@@ -78,8 +78,6 @@ type burst struct {
 
 // peerState is what DMRHub keeps for a registered peer.
 type peerState struct {
-	mu          sync.Mutex
-	lastSend    time.Time
 	lastDBWrite time.Time
 }
 
@@ -93,7 +91,6 @@ var (
 const (
 	tickInterval            = time.Second
 	dbWriteDebounceInterval = 30 * time.Second
-	burstInterval           = 30 * time.Millisecond
 	staleStreamAge          = 30 * time.Second
 )
 
@@ -487,7 +484,6 @@ func (s *IPSCServer) cleanupStaleStreams() {
 type destination struct {
 	id     uint32
 	to     *net.UDPAddr
-	state  *peerState
 	packet []byte
 }
 
@@ -503,7 +499,7 @@ func (s *IPSCServer) sendPacketToPeers(data []byte, only uint32) {
 	}
 	s.mu.Lock()
 	dests := make([]destination, 0, len(s.peers))
-	for id, state := range s.peers {
+	for id := range s.peers {
 		if only != 0 && id != only {
 			continue
 		}
@@ -516,26 +512,13 @@ func (s *IPSCServer) sendPacketToPeers(data []byte, only uint32) {
 			slog.Warn("failed signing IPSC user packet", "peerID", info.ID, "error", err)
 			continue
 		}
-		dests = append(dests, destination{id: info.ID, to: toUDPAddr(info.Addr), state: state, packet: packet})
+		dests = append(dests, destination{id: info.ID, to: toUDPAddr(info.Addr), packet: packet})
 	}
 	s.mu.Unlock()
 	for _, d := range dests {
-		d.state.pace()
 		slog.Debug("IPSC burst sending", "peerID", d.id, "peer", d.to, "length", len(d.packet))
 		if _, err := s.udp.WriteToUDP(d.packet, d.to); err != nil {
 			slog.Warn("failed sending IPSC user packet", "peer", d.to, "error", err)
 		}
 	}
-}
-
-// pace waits until burstInterval after the last send to the peer.
-func (p *peerState) pace() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.lastSend.IsZero() {
-		if elapsed := time.Since(p.lastSend); elapsed < burstInterval {
-			time.Sleep(burstInterval - elapsed)
-		}
-	}
-	p.lastSend = time.Now()
 }

@@ -92,7 +92,7 @@ The same test showed that an XPR 8400 does not transmit these bursts when it get
 - an MBC without its last block;
 - terminator LC (TD_LC).
 
-DMRHub does not send idle bursts, USBD, reserved data types or bursts whose FEC does not correct to IPSC repeaters. It counts each of them in the `dmr_undeliverable_bursts_total` metric and marks it on the Last Heard row of the transmission. DMRHub sends the other bursts in the list, and the XPR 8400 drops them.
+DMRHub does not send idle bursts, USBD, reserved data types or bursts whose FEC does not correct to IPSC repeaters. It counts each of them in the `dmr_undeliverable_bursts_total` metric, whose `reason` label says why, and marks it on the Last Heard row of the transmission. DMRHub sends the other bursts in the list, and the XPR 8400 drops them. A data burst in a voice stream, and a burst that DMRHub cannot put in an IPSC packet, are counted and marked the same way.
 
 ## Repeaters Page
 

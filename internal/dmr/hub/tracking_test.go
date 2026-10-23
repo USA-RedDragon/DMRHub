@@ -20,17 +20,23 @@
 package hub_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,4 +153,67 @@ func TestUndeliverableMarksTheDataPacketOfItsBurst(t *testing.T) {
 	assert.Equal(t, "ip", calls[0].DataFormat)
 	assert.Equal(t, []string{"ipsc:100003:test"}, calls[0].Undeliverable, "the row of the packet whose burst was undeliverable")
 	assert.Empty(t, calls[1].Undeliverable, "the row of the next packet on the stream")
+}
+
+func undeliverableCount(t *testing.T, target, reason string) float64 {
+	t.Helper()
+	metrics.NewMetrics()
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, f := range families {
+		if f.GetName() != "dmr_undeliverable_bursts_total" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["target"] == target && labels["reason"] == reason {
+				return m.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
+}
+
+func TestUndeliverableIsCountedWithItsReason(t *testing.T) {
+	t.Parallel()
+	h, _ := makeTestHub(t)
+	before := undeliverableCount(t, models.RepeaterTypeIPSC, "counted_reason_test")
+	pkt := makeVoicePacket(1, 4245, true, false)
+	h.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, "counted_reason_test")
+	h.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, "counted_reason_test")
+	assert.InDelta(t, before+2, undeliverableCount(t, models.RepeaterTypeIPSC, "counted_reason_test"), 0)
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n, _ := b.buf.Write(p)
+	return n, nil
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+//nolint:paralleltest // it swaps the default logger
+func TestUndeliverableStormDoesNotFloodTheLog(t *testing.T) {
+	h, _ := makeTestHub(t)
+	var out lockedBuffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&out, nil)))
+	defer slog.SetDefault(prev)
+	for stream := range uint(1000) {
+		h.ReportUndeliverable(makeVoicePacket(1, 50000+stream, true, false), models.RepeaterTypeIPSC, "storm_test")
+	}
+	assert.Equal(t, 1, strings.Count(out.String(), "reason=storm_test"), "a storm over many streams must not log a line per stream")
 }

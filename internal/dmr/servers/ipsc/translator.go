@@ -131,6 +131,11 @@ const (
 	reasonFrameType3      = "frame_type_3"
 	reasonFEC             = "fec_uncorrectable"
 	reasonSlotType        = "slot_type"
+	reasonStreamID        = "stream_id_range"
+	reasonBuild           = "build_failed"
+	reasonEncode          = "encode_failed"
+	reasonDataInVoice     = "data_in_voice"
+	reasonUndecodable     = "undecodable"
 )
 
 // undeliverable reports a burst that cannot go to IPSC peers. The caller
@@ -150,6 +155,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 
 	streamID := pkt.StreamID
 	if streamID > math.MaxUint32 {
+		t.undeliverable(pkt, reasonStreamID)
 		return nil
 	}
 
@@ -185,9 +191,11 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			// Send voice header (IPSC sends 3 copies)
 			results = make([][]byte, 0, 3)
 			for i := 0; i < 3; i++ {
-				if data := t.buildVoiceLC(pkt, ss, dt, i == 0 && ss.firstPacket); data != nil {
-					results = append(results, data)
+				data := t.buildVoiceLC(pkt, ss, dt, i == 0 && ss.firstPacket)
+				if data == nil {
+					break
 				}
+				results = append(results, data)
 			}
 			ss.headersSent = 3
 			ss.firstPacket = false
@@ -334,11 +342,12 @@ func (t *IPSCTranslator) user(pkt models.Packet, ss *streamState, isData, isEnd,
 	return u
 }
 
-// encodeUser returns the octets of u, or nil when it does not encode.
-func encodeUser(u *ipscwire.User) []byte {
+// encodeUser returns the octets of u, the IPSC packet of pkt. When u does
+// not encode, it reports pkt undeliverable and returns nil.
+func (t *IPSCTranslator) encodeUser(pkt models.Packet, u *ipscwire.User) []byte {
 	data, err := u.AppendBinary(nil)
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot encode IPSC packet", "error", err)
+		t.undeliverable(pkt, reasonEncode)
 		return nil
 	}
 	return data
@@ -356,11 +365,11 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 		_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dt, HasDataType: true})
 	}
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot build voice LC packet", "dtype", dt, "error", err)
+		t.undeliverable(pkt, reasonBuild)
 		return nil
 	}
 	ss.lc, ss.haveLC = [9]byte(cw[:9]), true
-	return encodeUser(&u)
+	return t.encodeUser(pkt, &u)
 }
 
 // buildIPSCDataPacket builds an IPSC data packet for CSBK, Data Header, etc.
@@ -377,7 +386,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	var b ipscwire.User
 	res, err := b.SetRawBurst(layer2.RawBurst(pkt.DMRData), layer2.Hint{Slot: slot, Kind: layer2.KindData, DataType: dataType, HasDataType: true})
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot build data packet", "dtype", dataType, "error", err)
+		t.undeliverable(pkt, reasonBuild)
 		return nil
 	}
 	if res.Uncorrectable && !t.rawBlocksAnXPRDrops {
@@ -387,7 +396,7 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
 	u.Burst, u.Data = b.Burst, b.Data
 	ss.ipscSeq++
-	return encodeUser(&u)
+	return t.encodeUser(pkt, &u)
 }
 
 // buildRawBlock builds an undecodable block (0x1F) of the 196 information
@@ -411,7 +420,7 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
 	u.Burst, u.Data = ipscwire.BurstRaw, d
 	ss.ipscSeq++
-	return encodeUser(&u)
+	return t.encodeUser(pkt, &u)
 }
 
 // buildVoiceBurst builds an IPSC voice burst packet: the 52-octet form for
@@ -419,8 +428,12 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 // the others. The position comes from the DMRD packet.
 func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []byte {
 	raw := layer2.RawBurst(pkt.DMRData)
-	if err := t.burst.DecodeFromBytes(raw); err != nil || t.burst.Kind == layer2.KindData {
-		slog.Debug("IPSCTranslator: skipping data burst in voice stream")
+	if err := t.burst.DecodeFromBytes(raw); err != nil {
+		t.undeliverable(pkt, reasonUndecodable)
+		return nil
+	}
+	if t.burst.Kind == layer2.KindData {
+		t.undeliverable(pkt, reasonDataInVoice)
 		return nil
 	}
 
@@ -438,10 +451,10 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	u := t.user(pkt, ss, false, false, false)
 	u.Voice.LC = ss.lc
 	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: pos}); err != nil {
-		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
+		t.undeliverable(pkt, reasonBuild)
 		return nil
 	}
-	return encodeUser(&u)
+	return t.encodeUser(pkt, &u)
 }
 
 // extractFullLCBytes builds the 9 Full Link Control octets of a group or

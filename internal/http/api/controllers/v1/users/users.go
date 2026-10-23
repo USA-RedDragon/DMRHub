@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
@@ -667,11 +668,23 @@ func DELETEUser(c *gin.Context) {
 		return
 	}
 
+	repeaters, err := models.GetUserRepeaters(db, uint(idUint64))
+	if err != nil {
+		slog.Error("Error listing the repeaters of a user", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting user"})
+		return
+	}
+
 	err = models.DeleteUser(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting user", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting user"})
 		return
+	}
+	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
+		for _, r := range repeaters {
+			dmrHub.ReloadRepeater(c.Request.Context(), r.ID)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{messageKey: "User deleted"})
 }

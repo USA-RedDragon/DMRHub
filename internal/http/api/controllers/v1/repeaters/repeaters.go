@@ -20,7 +20,6 @@
 package repeaters
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -176,6 +175,9 @@ func DELETERepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting repeater"})
 		return
 	}
+	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
+		dmrHub.ReloadRepeater(c.Request.Context(), repeaterID)
+	}
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater deleted"})
 }
 
@@ -277,7 +279,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+	dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater talkgroups updated"})
 }
 
@@ -451,7 +453,7 @@ func POSTRepeater(c *gin.Context) {
 		}
 		dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 		if ok {
-			go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+			dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "Repeater created", "password": repeater.Password})
 	}
@@ -554,7 +556,7 @@ func POSTRepeaterLink(c *gin.Context) {
 	}
 	dmrHub, ok := c.MustGet("Hub").(*hub.Hub)
 	if ok {
-		go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+		dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 	}
 }
 
@@ -774,7 +776,7 @@ func POSTRepeaterUnlink(c *gin.Context) {
 		return
 	}
 
-	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+	dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Timeslot unlinked"})
 }
 
@@ -833,7 +835,7 @@ func PATCHRepeater(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
-	go dmrHub.ReloadRepeater(context.Background(), repeater.ID)
+	dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater updated"})
 }
 

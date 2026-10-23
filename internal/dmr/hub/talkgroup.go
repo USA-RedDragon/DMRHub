@@ -73,6 +73,7 @@ func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool) {
 		if err != nil {
 			slog.Error("Error deleting dynamic talkgroup association", "association", assocName, "error", err)
 		}
+		h.repeaterChanged(repeater.ID)
 		h.unsubscribeTalkgroup(repeater.ID, oldTGID, ts)
 	}
 }
@@ -83,9 +84,17 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.switchDynamicTalkgroup")
 	defer span.End()
 
-	repeater, err := models.FindRepeaterByID(h.db, packet.Repeater)
+	repeater, err := h.routingRepeater(packet.Repeater)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", packet.Repeater, "error", err)
+		return
+	}
+
+	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
+	if packet.Slot {
+		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
+	}
+	if currentDynTGID != nil && *currentDynTGID == packet.Dst {
 		return
 	}
 
@@ -95,16 +104,11 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 		return
 	}
 
-	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
-	if packet.Slot {
-		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
+	slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
+	if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
+		slog.Error("Error saving repeater", "error", err)
+		return
 	}
-
-	if currentDynTGID == nil || *currentDynTGID != talkgroup.ID {
-		slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", packet.Repeater, "talkgroupID", packet.Dst)
-		h.subscribeTalkgroup(ctx, repeater.ID, packet.Dst)
-		if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
-			slog.Error("Error saving repeater", "error", err)
-		}
-	}
+	h.repeaterChanged(repeater.ID)
+	h.subscribeTalkgroup(ctx, repeater.ID, packet.Dst)
 }

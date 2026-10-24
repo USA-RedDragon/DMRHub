@@ -163,6 +163,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct.subscribe("net:events", ct.netEvent)
 	ct.subscribe(responsesTopic, ct.remoteResponse)
 	ct.subscribe(dropsTopic, ct.remoteDrop)
+	ct.subscribe(convertedTopic, ct.remoteConverted)
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -730,6 +731,7 @@ type row struct {
 	remembered bool
 	ns         uint8
 	hasNS      bool
+	converted  map[string]bool
 }
 
 type channel struct {

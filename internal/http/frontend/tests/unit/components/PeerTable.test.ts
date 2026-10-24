@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 
 vi.mock('@/services/API', () => ({
@@ -32,17 +32,24 @@ import PeerTable from '@/components/PeerTable.vue';
 
 const mockAPI = API as unknown as { get: Mock; patch: Mock };
 
-const peer = (enhanced: boolean) => ({
+class FakeSocket {
+  addEventListener() {}
+  send() {}
+  close() {}
+}
+
+const peer = (enhanced: boolean, codec2 = false) => ({
   id: 500001,
   ingress: true,
   egress: true,
   enhanced,
+  codec2,
   created_at: '2026-10-22T22:21:05Z',
   last_ping_time: '0001-01-01T00:00:00Z',
 });
 
-async function mountTable(admin: boolean, enhanced: boolean) {
-  mockAPI.get.mockResolvedValue({ data: { total: 1, peers: [peer(enhanced)] } });
+async function mountTable(admin: boolean, enhanced: boolean, codec2 = false) {
+  mockAPI.get.mockResolvedValue({ data: { total: 1, peers: [peer(enhanced, codec2)] } });
   const toast = { add: vi.fn() };
   const wrapper = mount(PeerTable, {
     props: { admin },
@@ -58,6 +65,11 @@ async function mountTable(admin: boolean, enhanced: boolean) {
 describe('PeerTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('WebSocket', FakeSocket);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('lets an admin turn on enhanced OpenBridge for a peer', async () => {
@@ -77,5 +89,68 @@ describe('PeerTable', () => {
     const box = wrapper.find('input#enhanced');
     expect((box.element as HTMLInputElement).checked).toBe(true);
     expect((box.element as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('puts the Codec2 column right after Enhanced', async () => {
+    const { wrapper } = await mountTable(true, false);
+    const headers = wrapper.findAll('th').map((th) => th.text());
+    expect(headers[headers.indexOf('Enhanced') + 1]).toBe('Codec2');
+  });
+
+  it('lets an admin say that a peer carries Codec2', async () => {
+    mockAPI.patch.mockResolvedValue({ data: peer(false, true) });
+    const { wrapper, toast } = await mountTable(true, false);
+    const box = wrapper.find('input#codec2');
+    expect((box.element as HTMLInputElement).checked).toBe(false);
+    expect((box.element as HTMLInputElement).disabled).toBe(false);
+    expect(box.attributes('title')).toBe('This peer carries Codec2');
+    expect(box.attributes('aria-label')).toBe('This peer carries Codec2');
+    await box.setValue(true);
+    await flushPromises();
+    expect(mockAPI.patch).toHaveBeenCalledWith('/peers/500001', { codec2: true });
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'success',
+      detail: 'The peer now gets calls in their own codec.',
+    }));
+  });
+
+  it('lets an admin turn Codec2 off for a peer', async () => {
+    mockAPI.patch.mockResolvedValue({ data: peer(false, false) });
+    const { wrapper, toast } = await mountTable(true, false, true);
+    await wrapper.find('input#codec2').setValue(false);
+    await flushPromises();
+    expect(mockAPI.patch).toHaveBeenCalledWith('/peers/500001', { codec2: false });
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'success',
+      detail: 'The peer now gets every call as AMBE.',
+    }));
+  });
+
+  it('puts the box back and shows an error when the save fails', async () => {
+    mockAPI.patch.mockRejectedValue(new Error('no'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { wrapper, toast } = await mountTable(true, false);
+    await wrapper.find('input#codec2').setValue(true);
+    await flushPromises();
+    expect((wrapper.find('input#codec2').element as HTMLInputElement).checked).toBe(false);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'error',
+      detail: 'Error saving peer 500001',
+    }));
+    error.mockRestore();
+  });
+
+  it('shows the Codec2 setting to an owner who is not an admin, without letting them change it', async () => {
+    const { wrapper } = await mountTable(false, false, true);
+    const box = wrapper.find('input#codec2');
+    expect((box.element as HTMLInputElement).checked).toBe(true);
+    expect((box.element as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('explains the Codec2 column under the table', async () => {
+    const { wrapper } = await mountTable(false, false);
+    expect(wrapper.find('[data-test="codec2-hint"]').text()).toBe(
+      'Codec2: on, the peer gets every call in the codec it was sent in; turn it on only when every network behind the peer can carry Codec2. Off, the peer gets every call as AMBE.',
+    );
   });
 });

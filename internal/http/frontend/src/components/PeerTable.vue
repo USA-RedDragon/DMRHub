@@ -40,6 +40,10 @@
       @update:page-index="handlePageIndexUpdate"
       @update:page-size="handlePageSizeUpdate"
     />
+    <p class="text-sm text-muted-foreground" data-test="codec2-hint">
+      Codec2: on, the peer gets every call in the codec it was sent in; turn it on only when every network behind the
+      peer can carry Codec2. Off, the peer gets every call as AMBE.
+    </p>
   </div>
 </template>
 
@@ -59,6 +63,7 @@ type PeerRow = {
   ingress: boolean;
   egress: boolean;
   enhanced: boolean;
+  codec2: boolean;
   created_at: string | Date;
   last_ping_time: string | Date;
   editable: boolean;
@@ -162,6 +167,22 @@ export default {
               checked: peer.enhanced,
               disabled: !this.admin,
               onChange: (e: Event) => this.setEnhanced(peer, (e.target as HTMLInputElement).checked),
+            });
+          },
+        },
+        {
+          accessorKey: 'codec2',
+          header: 'Codec2',
+          cell: ({ row }: { row: { original: PeerRow } }) => {
+            const peer = row.original;
+            return h('input', {
+              id: 'codec2',
+              type: 'checkbox',
+              title: 'This peer carries Codec2',
+              'aria-label': 'This peer carries Codec2',
+              checked: peer.codec2,
+              disabled: !this.admin,
+              onChange: (e: Event) => this.setCodec2(peer, e.target as HTMLInputElement),
             });
           },
         },
@@ -295,6 +316,32 @@ export default {
         })
         .catch((err) => {
           console.error(err);
+          this.peers = [...this.peers];
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: `Error saving peer ${peer.id}`,
+            life: 3000,
+          });
+        });
+    },
+    setCodec2(peer: PeerRow, box: HTMLInputElement) {
+      const codec2 = box.checked;
+      API.patch('/peers/' + peer.id, { codec2 })
+        .then(() => {
+          peer.codec2 = codec2;
+          this.$toast.add({
+            summary: 'Saved',
+            severity: 'success',
+            detail: codec2 ?
+              'The peer now gets calls in their own codec.' :
+              'The peer now gets every call as AMBE.',
+            life: 3000,
+          });
+        })
+        .catch((err) => {
+          console.error(err);
+          box.checked = !codec2;
           this.peers = [...this.peers];
           this.$toast.add({
             severity: 'error',

@@ -135,6 +135,16 @@
             Turn this on for a FreeDMR server whose link to this hub has ENHANCED_OBP on.
             DMRHub then sends keepalives and keeps the source server and the hop count of each call.
           </p>
+          <br />
+          <div class="checkbox-row">
+            <input id="codec2" type="checkbox" v-model="codec2" />
+            <label for="codec2">This peer carries Codec2</label>
+          </div>
+          <p v-if="codec2">
+            On: this peer gets every call in the codec it was sent in. Turn this on only when every network behind the
+            peer can carry Codec2.
+          </p>
+          <p v-else>Off: this peer gets every call as AMBE. Codec2 calls are converted before they go to it.</p>
         </CardContent>
         <CardFooter>
           <div class="card-footer">
@@ -187,6 +197,7 @@ export default {
       ingress: false,
       egress: false,
       enhanced: false,
+      codec2: false,
       submitted: false,
       hostname: window.location.hostname,
       allUsers: [] as Array<{ id: number; callsign: string; display?: string }>,
@@ -255,6 +266,7 @@ export default {
         ingress: this.ingress,
         egress: this.egress,
         enhanced: this.enhanced,
+        codec2: this.codec2,
       })
         .then((res) => {
           if (!res.data) {

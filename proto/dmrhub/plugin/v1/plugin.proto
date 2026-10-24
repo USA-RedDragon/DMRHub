@@ -1,0 +1,126 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+syntax = "proto3";
+
+package dmrhub.plugin.v1;
+
+option go_package = "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1;pluginv1";
+
+// PluginService is how a plugin talks to the hub. A plugin answers the calls
+// to the IDs an admin gave it, and sends calls only from those IDs.
+service PluginService {
+  // Connect opens the plugin's one stream. The plugin sends its token in the
+  // "authorization" metadata as "Bearer <token>". The hub answers first with
+  // a Welcome, then sends the bursts of the calls to the plugin's IDs. A newer
+  // connection of the same plugin ends this one.
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+}
+
+// ConnectRequest is what a plugin sends.
+message ConnectRequest {
+  oneof message {
+    // A burst of a call that the plugin sends.
+    Burst burst = 1;
+  }
+}
+
+// ConnectResponse is what the hub sends.
+message ConnectResponse {
+  oneof message {
+    // The first message: who the plugin is and its IDs.
+    Welcome welcome = 1;
+    // A burst of a call to one of the plugin's IDs.
+    Burst burst = 2;
+    // A burst of the plugin that the hub did not send, and why.
+    Refusal refusal = 3;
+    // The admin changed the plugin's IDs.
+    Ranges ranges = 4;
+  }
+}
+
+// Welcome tells a plugin who it is to the hub.
+message Welcome {
+  string name = 1;
+  repeated IDRange ranges = 2;
+}
+
+// Ranges is the plugin's IDs after an admin changed them.
+message Ranges {
+  repeated IDRange ranges = 1;
+}
+
+// IDRange is the DMR IDs from first to last, both included.
+message IDRange {
+  uint32 first = 1;
+  uint32 last = 2;
+}
+
+// FrameType is the kind of a DMR burst.
+enum FrameType {
+  FRAME_TYPE_UNSPECIFIED = 0;
+  FRAME_TYPE_VOICE = 1;
+  FRAME_TYPE_VOICE_SYNC = 2;
+  FRAME_TYPE_DATA_SYNC = 3;
+}
+
+// Burst is one DMR burst of a call, as the MMDVM network protocol carries it.
+message Burst {
+  // The source and destination DMR IDs.
+  uint32 source = 1;
+  uint32 destination = 2;
+  // A group call to a talkgroup, else a private call to a radio.
+  bool group_call = 3;
+  // The timeslot, 1 or 2.
+  uint32 slot = 4;
+  // The stream ID, the same for every burst of a call.
+  uint32 stream_id = 5;
+  FrameType frame_type = 6;
+  // The data type of a data sync burst, or the voice sequence (0 to 5) of a
+  // voice burst.
+  uint32 data_type_or_voice_sequence = 7;
+  // The sequence number of the burst in its call, 0 to 255.
+  uint32 sequence = 8;
+  // The 33 bytes of the burst.
+  bytes payload = 9;
+  // The repeater or hotspot the call came from. The hub ignores it on bursts
+  // that a plugin sends.
+  uint32 repeater = 10;
+}
+
+// Refusal says why the hub did not send a burst of the plugin.
+message Refusal {
+  uint32 stream_id = 1;
+  RefusalReason reason = 2;
+}
+
+// RefusalReason is why the hub did not send a burst.
+enum RefusalReason {
+  REFUSAL_REASON_UNSPECIFIED = 0;
+  // The source is not one of the plugin's IDs.
+  REFUSAL_REASON_SOURCE = 1;
+  // A group call to a talkgroup that is not one of the plugin's IDs, or a
+  // call to another plugin's IDs.
+  REFUSAL_REASON_DESTINATION = 2;
+  // The burst is malformed: a slot that is not 1 or 2, a payload that is
+  // not 33 bytes, or no frame type.
+  REFUSAL_REASON_MALFORMED = 3;
+  // The plugin sent faster than a timeslot carries.
+  REFUSAL_REASON_RATE = 4;
+}

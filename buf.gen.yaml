@@ -1,0 +1,10 @@
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: protoc-gen-go
+    out: sdk
+    opt: module=github.com/USA-RedDragon/DMRHub/sdk
+  - local: protoc-gen-go-grpc
+    out: sdk
+    opt: module=github.com/USA-RedDragon/DMRHub/sdk

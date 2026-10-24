@@ -119,7 +119,7 @@ Click a repeater's icon to edit its dynamic and static talkgroup assignments. Th
 
 The talkgroup list is available at `<siteurl>/talkgroups`. These are managed by DMRHub administrators.
 
-Parrot (TG 9990) is listed as a talkgroup, but it always responds with a private call and does not route traffic like standard talkgroups.
+When your admin runs the parrot, a call to its ID, usually 9990, is played back to you as a private call. It answers private and group calls.
 
 ### Linking and Unlinking
 

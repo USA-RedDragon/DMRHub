@@ -27,6 +27,7 @@ type PeerPost struct {
 	Ingress  bool   `json:"ingress"`
 	Egress   bool   `json:"egress"`
 	Enhanced bool   `json:"enhanced"`
+	Codec2   bool   `json:"codec2"`
 }
 
 type PeerPatch struct {
@@ -35,6 +36,7 @@ type PeerPatch struct {
 	Ingress  *bool   `json:"ingress"`
 	Egress   *bool   `json:"egress"`
 	Enhanced *bool   `json:"enhanced"`
+	Codec2   *bool   `json:"codec2"`
 }
 
 type PeerRulePost struct {

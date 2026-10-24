@@ -869,10 +869,32 @@ func PATCHRepeater(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a repeater is trusted"})
 		return
 	}
+	codecChanged := false
+	for _, set := range []struct {
+		value *string
+		field *string
+	}{{json.TS1Codec, &repeater.TS1Codec}, {json.TS2Codec, &repeater.TS2Codec}} {
+		if set.value == nil {
+			continue
+		}
+		if !models.ValidCodecSetting(*set.value) {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "The codec of a timeslot must be auto, codec2 or ambe"})
+			return
+		}
+		if repeater.Type == models.RepeaterTypeIPSC && *set.value == models.CodecCodec2 {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "IPSC repeaters carry only AMBE"})
+			return
+		}
+		codecChanged = codecChanged || *set.field != *set.value
+		*set.field = *set.value
+	}
 
 	err = db.Save(repeater).Error
 	if err == nil && json.Trusted != nil {
 		err = db.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", *json.Trusted, repeater.ID).Error
+	}
+	if err == nil && (json.TS1Codec != nil || json.TS2Codec != nil) {
+		err = models.SetRepeaterCodec(db, repeater.ID, repeater.TS1Codec, repeater.TS2Codec)
 	}
 	if err != nil {
 		slog.Error(msgErrSavingRepeater, "function", "PATCHRepeater", "error", err)
@@ -887,6 +909,9 @@ func PATCHRepeater(c *gin.Context) {
 		return
 	}
 	dmrHub.ReloadRepeater(c.Request.Context(), repeater.ID)
+	if codecChanged {
+		dmrHub.CodecChanged(repeater.ID)
+	}
 	c.JSON(http.StatusOK, gin.H{messageKey: "Repeater updated"})
 }
 

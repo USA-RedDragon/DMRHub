@@ -40,4 +40,8 @@ type RepeaterPatch struct {
 	// repeater last heard it, whoever owns the radio. Only an admin may set
 	// it.
 	Trusted *bool `json:"trusted"`
+	// TS1Codec and TS2Codec set the codec of each timeslot: "auto",
+	// "codec2" or "ambe".
+	TS1Codec *string `json:"ts1_codec"`
+	TS2Codec *string `json:"ts2_codec"`
 }

@@ -236,6 +236,15 @@
                 Messages
               </router-link>
               <router-link
+                to="/admin/plugins"
+                class="mobile-nav-link"
+                :class="{ active: route.path.startsWith('/admin/plugins') }"
+                @click="mobileOpen = false"
+              >
+                <Puzzle class="h-4 w-4" />
+                Plugins
+              </router-link>
+              <router-link
                 to="/admin/setup"
                 class="mobile-nav-link"
                 :class="{ active: route.path === '/admin/setup' }"
@@ -508,6 +517,15 @@
               </DropdownMenuItem>
               <DropdownMenuItem as-child>
                 <router-link
+                  to="/admin/plugins"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Plugins
+                </router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link
                   to="/admin/setup"
                   class="dropdown-link"
                   @click="closeMenus"
@@ -571,6 +589,7 @@ import {
   MapPin,
   Menu,
   MessageSquare,
+  Puzzle,
   Radio,
   RadioTower,
   Settings,

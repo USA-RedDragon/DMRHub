@@ -238,6 +238,16 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/MessagesPage.vue'),
     },
     {
+      path: '/admin/plugins',
+      name: 'AdminPlugins',
+      component: () => import('@/views/admin/PluginsPage.vue'),
+    },
+    {
+      path: '/admin/plugins/:id(new|\\d+)',
+      name: 'AdminPlugin',
+      component: () => import('@/views/admin/PluginPage.vue'),
+    },
+    {
       path: '/admin/setup',
       name: 'SetupWizard',
       component: () => import('@/views/SetupWizard.vue'),

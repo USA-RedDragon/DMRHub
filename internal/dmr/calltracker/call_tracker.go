@@ -695,7 +695,7 @@ func (c *CallTracker) resolve(call *models.Call, peer bool) {
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("CallTracker: error finding source user", "userID", call.SourceID, "error", err)
 	}
-	if !peer {
+	if !peer && call.IngressID != 0 {
 		if repeater, err := models.FindRepeaterByID(c.db, call.IngressID); err == nil {
 			call.RepeaterID, call.Repeater = &repeater.ID, repeater
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {

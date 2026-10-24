@@ -22,6 +22,7 @@ package calltracker_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -275,6 +276,37 @@ func TestTrackVoiceFromUnregisteredSourceOverPeer(t *testing.T) {
 	assert.Equal(t, uint(777), c.IngressID)
 	assert.Equal(t, "openbridge", c.Transport)
 	assert.True(t, c.IsToTalkgroup)
+}
+
+// TestTrackVoiceFromAPluginLooksUpNoRepeater checks that a call from a
+// plugin, which comes from no repeater, does not look up repeater 0, which
+// the database logs as a record not found for each call.
+func TestTrackVoiceFromAPluginLooksUpNoRepeater(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+	var mu sync.Mutex
+	lookups := 0
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("count_missing_repeaters", func(tx *gorm.DB) {
+		if tx.Statement.Table == "repeaters" && errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+			mu.Lock()
+			defer mu.Unlock()
+			lookups++
+		}
+	}))
+
+	s := newSender(t, ct, 9990, userA, false, 7003)
+	s.server, s.repeater = "plugin:1", 0
+	s.voiceCall(2, false)
+	time.Sleep(150 * time.Millisecond)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	c := waitDone(t, ct, database, 1)[0]
+	assert.Nil(t, c.RepeaterID)
+	assert.Equal(t, "plugin:1", c.Transport)
+	assert.True(t, c.IsToUser)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Zero(t, lookups)
 }
 
 func TestTrackVoiceTimeoutEndsAtTheLastBurst(t *testing.T) {

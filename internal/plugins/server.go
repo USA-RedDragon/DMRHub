@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"google.golang.org/grpc"
@@ -60,8 +61,10 @@ type Server struct {
 }
 
 // Start listens for plugins as cfg says, and gives the hub the registry of
-// their IDs through setPlugins. It returns nil when the listener is off.
-func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSub, router Router, setPlugins func(*Registry)) (*Server, error) {
+// their IDs through setPlugins. notify gets each position that a plugin
+// sent and the hub stored. It returns nil when the listener is off.
+func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSub, router Router,
+	setPlugins func(*Registry), notify func(models.Position)) (*Server, error) {
 	c := cfg.DMR.Plugins
 	if !c.Enabled {
 		return nil, nil //nolint:nilnil // no listener when it is off
@@ -90,7 +93,7 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 		registry: registry,
 		done:     make(chan struct{}),
 	}
-	pluginv1.RegisterPluginServiceServer(s.grpc, NewService(db, ps, registry, router))
+	pluginv1.RegisterPluginServiceServer(s.grpc, NewService(db, ps, registry, router, notify))
 	registry.Follow(s.done)
 	setPlugins(registry)
 	go func() {

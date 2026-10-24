@@ -26,6 +26,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,14 +86,16 @@ type Service struct {
 	pubsub    pubsub.PubSub
 	registry  *Registry
 	router    Router
+	notify    func(models.Position)
 	now       func() time.Time
 	heartbeat time.Duration
 }
 
 // NewService returns the plugin service. Bursts that plugins send go to
-// router; registry tells who owns each ID.
-func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router) *Service {
-	return &Service{db: db, pubsub: ps, registry: registry, router: router, now: time.Now, heartbeat: heartbeatEvery}
+// router; registry tells who owns each ID; notify gets each position that
+// a plugin sent and the hub stored.
+func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router, notify func(models.Position)) *Service {
+	return &Service{db: db, pubsub: ps, registry: registry, router: router, notify: notify, now: time.Now, heartbeat: heartbeatEvery}
 }
 
 func tokenOf(ctx context.Context) string {
@@ -195,9 +198,13 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 
 	ranges := make(chan []models.PluginRange, 1)
 	ranges <- p.Ranges
-	go s.watch(ctx, cancel, &p, session, kick, in, changed, send, ranges)
+	w := &watcher{
+		s: s, cancel: cancel, p: &p, session: session, kick: kick, in: in, changed: changed, send: send, ranges: ranges,
+		subscribe: make(chan bool, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{},
+	}
+	go w.watch(ctx)
 
-	go s.receive(ctx, cancel, stream, &p, send, ranges)
+	go s.receive(ctx, cancel, stream, &p, send, ranges, w)
 	<-ctx.Done()
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, errPluginDone) && !errors.Is(cause, context.Canceled) {
 		return cause //nolint:wrapcheck // a gRPC status of this package, or the error of a failed send
@@ -209,9 +216,9 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 var errPluginDone = errors.New("the plugin closed its stream")
 
 // receive routes the bursts that the plugin sends, and refuses those it may
-// not send.
+// not send. It hands its subscriptions and positions to w.
 func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, stream pluginv1.PluginService_ConnectServer,
-	p *models.Plugin, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange) {
+	p *models.Plugin, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange, w *watcher) {
 	current := p.Ranges
 	for {
 		msg, err := stream.Recv()
@@ -222,6 +229,22 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 		select {
 		case current = <-ranges:
 		default:
+		}
+		switch m := msg.GetMessage().(type) {
+		case *pluginv1.ConnectRequest_Subscribe:
+			select {
+			case <-w.subscribe:
+			default:
+			}
+			w.subscribe <- m.Subscribe.GetTracking()
+			continue
+		case *pluginv1.ConnectRequest_Position:
+			select {
+			case w.positions <- m.Position:
+			default:
+				slog.Warn("Plugins: dropping a position of a plugin that sends too many", "plugin", p.Name)
+			}
+			continue
 		}
 		b := msg.GetBurst()
 		if b == nil {
@@ -236,30 +259,55 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 	}
 }
 
+// watcher follows one plugin's stream.
+type watcher struct {
+	s         *Service
+	cancel    context.CancelCauseFunc
+	p         *models.Plugin
+	session   string
+	kick      pubsub.Subscription
+	in        pubsub.Subscription
+	changed   pubsub.Subscription
+	send      func(*pluginv1.ConnectResponse)
+	ranges    chan []models.PluginRange
+	subscribe chan bool
+	positions chan *pluginv1.Position
+
+	tracking pubsub.Subscription
+	heard    pubsub.Subscription
+	// heardOn is the repeater where each radio with tracking on was heard
+	// last, when the plugin subscribed to tracking.
+	heardOn map[uint32]uint
+}
+
 // watch forwards the bursts to the plugin, follows changes to it, and ends
 // the stream when a newer stream of it starts or it is turned off.
-func (s *Service) watch(ctx context.Context, cancel context.CancelCauseFunc, p *models.Plugin, session string,
-	kick, in, changed pubsub.Subscription, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange) {
-	current := p.Ranges
-	heartbeat := time.NewTicker(s.heartbeat)
+func (w *watcher) watch(ctx context.Context) {
+	defer w.unsubscribe()
+	current := w.p.Ranges
+	heartbeat := time.NewTicker(w.s.heartbeat)
 	defer heartbeat.Stop()
 	for {
+		var tracking, heard <-chan []byte
+		if w.tracking != nil {
+			tracking, heard = w.tracking.Channel(), w.heard.Channel()
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-heartbeat.C:
-			if err := models.NotePluginSeen(s.db, p.ID, session, s.now()); err != nil {
-				slog.Warn("Plugins: cannot note a heartbeat", "plugin", p.Name, "error", err)
+			if err := models.NotePluginSeen(w.s.db, w.p.ID, w.session, w.s.now()); err != nil {
+				slog.Warn("Plugins: cannot note a heartbeat", "plugin", w.p.Name, "error", err)
 			}
-		case b, ok := <-kick.Channel():
+		case b, ok := <-w.kick.Channel():
 			if !ok {
 				return
 			}
-			if string(b) != session {
-				cancel(errReplaced)
+			if string(b) != w.session {
+				w.cancel(errReplaced)
 				return
 			}
-		case b, ok := <-in.Channel():
+		case b, ok := <-w.in.Channel():
 			if !ok {
 				return
 			}
@@ -268,35 +316,132 @@ func (s *Service) watch(ctx context.Context, cancel context.CancelCauseFunc, p *
 				slog.Error("Plugins: cannot decode a burst", "error", err)
 				continue
 			}
-			send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
-		case _, ok := <-changed.Channel():
+			w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
+		case on := <-w.subscribe:
+			w.setTracking(on)
+		case pos := <-w.positions:
+			w.store(pos, current)
+		case b, ok := <-tracking:
 			if !ok {
 				return
 			}
-			now, err := models.FindPlugin(s.db, p.ID)
+			w.trackingChanged(b)
+		case b, ok := <-heard:
+			if !ok {
+				return
+			}
+			w.radioHeard(b)
+		case _, ok := <-w.changed.Channel():
+			if !ok {
+				return
+			}
+			now, err := models.FindPlugin(w.s.db, w.p.ID)
 			switch {
 			case errors.Is(err, models.ErrPluginNotFound):
-				cancel(errDeleted)
+				w.cancel(errDeleted)
 				return
 			case err != nil:
-				slog.Error("Plugins: cannot read a plugin", "plugin", p.Name, "error", err)
+				slog.Error("Plugins: cannot read a plugin", "plugin", w.p.Name, "error", err)
 				continue
 			case !now.Enabled:
-				cancel(errOff)
+				w.cancel(errOff)
 				return
-			case !slices.Equal(now.TokenHash, p.TokenHash):
-				cancel(errNewToken)
+			case !slices.Equal(now.TokenHash, w.p.TokenHash):
+				w.cancel(errNewToken)
 				return
 			}
 			if !sameRanges(now.Ranges, current) {
 				current = now.Ranges
 				select {
-				case <-ranges:
+				case <-w.ranges:
 				default:
 				}
-				ranges <- current
-				send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Ranges{Ranges: &pluginv1.Ranges{Ranges: rangesOf(&now)}}})
+				w.ranges <- current
+				w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Ranges{Ranges: &pluginv1.Ranges{Ranges: rangesOf(&now)}}})
 			}
 		}
+	}
+}
+
+// setTracking subscribes the plugin to the radios with tracking on, and
+// sends them all, or ends that subscription.
+func (w *watcher) setTracking(on bool) {
+	if !on {
+		w.unsubscribe()
+		return
+	}
+	if w.tracking == nil {
+		w.tracking = w.s.pubsub.Subscribe(TrackingTopic)
+		w.heard = w.s.pubsub.Subscribe(HeardTopic)
+	}
+	radios, err := tracked(w.s.db)
+	if err != nil {
+		slog.Error("Plugins: cannot list the tracked radios", "plugin", w.p.Name, "error", err)
+		return
+	}
+	known := make(map[uint32]uint, len(radios))
+	for _, r := range radios {
+		known[r.GetRadio()] = w.heardOn[r.GetRadio()]
+	}
+	w.heardOn = known
+	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Tracked{Tracked: &pluginv1.Tracked{Radios: radios}}})
+}
+
+func (w *watcher) unsubscribe() {
+	if w.tracking == nil {
+		return
+	}
+	_ = w.tracking.Close()
+	_ = w.heard.Close()
+	w.tracking, w.heard = nil, nil
+	w.heardOn = map[uint32]uint{}
+}
+
+// trackingChanged sends the tracking of the radio named in b.
+func (w *watcher) trackingChanged(b []byte) {
+	radio, err := strconv.ParseUint(string(b), 10, 32)
+	if err != nil {
+		return
+	}
+	s, _, err := models.FindPositionSetting(w.s.db, uint(radio))
+	if err != nil {
+		slog.Error("Plugins: cannot read a position setting", "radio", radio, "error", err)
+		return
+	}
+	if s.Tracking {
+		w.heardOn[uint32(radio)] = w.heardOn[uint32(radio)]
+	} else {
+		delete(w.heardOn, uint32(radio))
+	}
+	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Tracking{Tracking: trackingOf(&s)}})
+}
+
+// radioHeard tells the plugin where a radio with tracking on was heard.
+func (w *watcher) radioHeard(b []byte) {
+	h, ok := decodeHeard(b)
+	if !ok {
+		return
+	}
+	if _, tracked := w.heardOn[h.radio]; !tracked {
+		return
+	}
+	w.heardOn[h.radio] = uint(h.repeater)
+	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Heard{Heard: &pluginv1.Heard{Radio: h.radio, Slot: uint32(h.slot), ColorCode: uint32(h.cc)}}})
+}
+
+// store keeps a position that the plugin sent, when the radio has tracking
+// on and sent it to one of the plugin's IDs.
+func (w *watcher) store(p *pluginv1.Position, ranges []models.PluginRange) {
+	pos, ok := positionOf(p, ranges, w.heardOn[p.GetRadio()], w.s.now())
+	if !ok {
+		return
+	}
+	stored, err := models.StorePosition(w.s.db, pos)
+	if err != nil {
+		slog.Error("Plugins: cannot store a position", "plugin", w.p.Name, "radio", pos.RadioID, "error", err)
+		return
+	}
+	if stored && w.s.notify != nil {
+		w.s.notify(pos)
 	}
 }

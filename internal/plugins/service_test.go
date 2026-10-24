@@ -69,6 +69,8 @@ func (r *routed) all() ([]models.Packet, []string) {
 }
 
 type rig struct {
+	mu       sync.Mutex
+	notified []models.Position
 	t        *testing.T
 	db       *gorm.DB
 	ps       pubsub.PubSub
@@ -93,7 +95,7 @@ func newRig(t *testing.T) *rig {
 	registry.Follow(done)
 	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20)}
 	srv := grpc.NewServer()
-	pluginv1.RegisterPluginServiceServer(srv, plugins.NewService(database, ps, registry, r.router))
+	pluginv1.RegisterPluginServiceServer(srv, plugins.NewService(database, ps, registry, r.router, r.notify))
 	go func() { _ = srv.Serve(r.lis) }()
 	t.Cleanup(func() {
 		srv.Stop()
@@ -104,6 +106,18 @@ func newRig(t *testing.T) *rig {
 		}
 	})
 	return r
+}
+
+func (r *rig) notify(p models.Position) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.notified = append(r.notified, p)
+}
+
+func (r *rig) positions() []models.Position {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]models.Position(nil), r.notified...)
 }
 
 func (r *rig) add(name string, ranges ...models.PluginRange) (models.Plugin, string) {

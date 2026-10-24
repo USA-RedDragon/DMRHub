@@ -48,7 +48,7 @@ internal/db/models/user_ref.go	17	15
 internal/db/models/visible.go	66	60
 internal/dmr/calltracker/alias.go	77	68
 internal/dmr/calltracker/call_tracker.go	446	387
-internal/dmr/calltracker/data.go	298	263
+internal/dmr/calltracker/data.go	298	266
 internal/dmr/calltracker/voice.go	100	92
 internal/dmr/dmrconst/const.go	13	13
 internal/dmr/hub/hub.go	127	107
@@ -60,8 +60,8 @@ internal/dmr/hub/repeater_cache.go	90	82
 internal/dmr/hub/routing.go	87	84
 internal/dmr/hub/slotrate.go	34	34
 internal/dmr/hub/streams.go	62	59
-internal/dmr/hub/subscription_manager.go	269	220
-internal/dmr/hub/talkgroup.go	55	50
+internal/dmr/hub/subscription_manager.go	269	223
+internal/dmr/hub/talkgroup.go	55	52
 internal/dmr/hub/tracking.go	2	2
 internal/dmr/hub/undeliverable.go	10	10
 internal/dmr/locator/locator.go	263	209
@@ -79,10 +79,10 @@ internal/dmr/servers/mmdvm/options.go	130	120
 internal/dmr/servers/mmdvm/server.go	133	116
 internal/dmr/servers/mmdvm/session.go	324	274
 internal/dmr/servers/mmdvm/transport.go	11	9
-internal/dmr/servers/mmdvm/webtransport.go	70	59
+internal/dmr/servers/mmdvm/webtransport.go	70	60
 internal/dmr/servers/openbridge/replicas.go	81	63
-internal/dmr/servers/openbridge/server.go	282	225
-internal/dmr/streamorder/streamorder.go	25	24
+internal/dmr/servers/openbridge/server.go	282	224
+internal/dmr/streamorder/streamorder.go	25	25
 internal/dmr/utils/utils.go	10	10
 internal/dmrdb/decode.go	25	23
 internal/dmrdb/dmrdb.go	88	74
@@ -152,7 +152,7 @@ internal/oauth/scopes.go	26	24
 internal/positions/aprs.go	121	105
 internal/positions/push.go	36	25
 internal/pprof/server.go	16	0
-internal/pubsub/memory.go	35	35
+internal/pubsub/memory.go	35	34
 internal/pubsub/pubsub.go	3	3
 internal/pubsub/redis.go	33	22
 internal/queue/queue.go	14	14
@@ -168,7 +168,7 @@ internal/testutils/hubdelivery.go	14	14
 internal/testutils/integration.go	129	124
 internal/testutils/ipsc_client.go	176	151
 internal/testutils/live.go	56	53
-internal/testutils/mmdvm_client.go	139	125
+internal/testutils/mmdvm_client.go	139	124
 internal/testutils/nets.go	136	129
 internal/testutils/openbridge_client.go	127	104
 internal/testutils/peers.go	100	100

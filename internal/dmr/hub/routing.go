@@ -28,7 +28,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/locator"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"go.opentelemetry.io/otel"
@@ -84,18 +83,28 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		h.switchDynamicTalkgroup(ctx, packet)
 	}
 
-	if h.getServerRole(sourceName) != RolePeer {
+	_, isPlugin := plugins.PluginOfSource(sourceName)
+	if !isPlugin && h.getServerRole(sourceName) != RolePeer {
 		h.publishForPeers(ctx, packet)
 	}
 
 	if packet.GroupCall {
+		if isPlugin {
+			h.publishForPeers(ctx, packet)
+		}
 		h.handleGroupCall(packet)
-	} else {
-		h.handlePrivateCall(ctx, packet)
+		return
+	}
+	// A private call of a plugin goes to the peers only when the hub
+	// cannot deliver it here, so that a reply to a radio on this hub,
+	// such as the parrot's, does not reach it again through a peer.
+	if !h.handlePrivateCall(ctx, packet) && isPlugin {
+		h.publishForPeers(ctx, packet)
 	}
 }
 
-// handleSpecialDestinations handles parrot (TG 9990) and unlink (TG 4000).
+// handleSpecialDestinations hands the calls to plugins' IDs to them, and
+// handles unlink (TG 4000).
 // Returns true if the packet was consumed (no further routing needed).
 // Packets from network peers are not handled: their Repeater field is a
 // peer ID, not a repeater to play back to or unlink.
@@ -106,15 +115,6 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 	if h.getServerRole(sourceName) == RolePeer {
 		return false
 	}
-	if !packet.GroupCall && locator.IsService(packet.Dst) {
-		h.locator.Handle(packet)
-		return true
-	}
-	if packet.Dst == dmrconst.ParrotUser && isVoice {
-		h.doParrot(ctx, packet)
-		return true
-	}
-
 	if packet.Dst == 4000 && isVoice {
 		h.doUnlink(ctx, packet)
 		return true
@@ -182,52 +182,58 @@ func (h *Hub) handleGroupCall(packet models.Packet) {
 
 // handlePrivateCall routes a private burst of any kind to the target
 // repeater or user.
-func (h *Hub) handlePrivateCall(ctx context.Context, packet models.Packet) {
+func (h *Hub) handlePrivateCall(ctx context.Context, packet models.Packet) bool {
 	if isRepeaterID(packet.Dst) {
-		h.routeToRepeater(packet)
-	} else if isUserID(packet.Dst) {
-		h.routeToUser(ctx, packet)
+		return h.routeToRepeater(packet)
 	}
+	if isUserID(packet.Dst) {
+		return h.routeToUser(ctx, packet)
+	}
+	return false
 }
 
-// routeToRepeater sends a private call packet to a specific repeater via pubsub.
-func (h *Hub) routeToRepeater(packet models.Packet) {
+// routeToRepeater sends a private call packet to a specific repeater via
+// pubsub. It reports whether the repeater exists.
+func (h *Hub) routeToRepeater(packet models.Packet) bool {
 	exists, err := models.RepeaterIDExists(h.db, packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if repeater exists", "error", err)
-		return
+		return false
 	}
 	if !exists {
 		slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
-		return
+		return false
 	}
 
 	// Publish to repeater topic — subscription manager delivers to the correct server
 	h.publishToRepeater(packet.Dst, packet)
+	return true
 }
 
 // routeToUser sends private traffic to the repeater where the registered
 // radio was last heard. Traffic to a radio that is not a user is dropped.
-func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) {
+// It reports whether the hub knows where the radio is.
+func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) bool {
 	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
 	if at, ok := h.streamTargets.Load(key); ok {
 		h.publishToRepeater(at.repeater, packet)
-		return
+		return true
 	}
 	user, err := models.FindUserByID(h.db, packet.Dst)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Error finding user", "error", err)
 		}
-		return
+		return false
 	}
 	repeaterID, ok := h.locateRadio(ctx, user.ID)
 	if !ok {
 		slog.Debug("Dropping private traffic to a radio with no known location", "userID", user.ID, "src", packet.Src)
-		return
+		return false
 	}
 	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})
 	h.publishToRepeater(repeaterID, packet)
+	return true
 }
 
 // streamTarget is a private stream to a radio. The repeater that its first
@@ -263,8 +269,6 @@ func isUserID(id uint) bool {
 	return id >= userIDMin && id <= userIDMax
 }
 
-const locatorSource = "locator"
-
 // Plugins tells which plugin owns a DMR ID and hands it the bursts to that
 // ID.
 type Plugins interface {
@@ -275,23 +279,4 @@ type Plugins interface {
 // SetPlugins makes p the plugins that the hub hands the bursts to their IDs.
 func (h *Hub) SetPlugins(p Plugins) {
 	h.plugins.Store(&p)
-}
-
-// StopTracking stops the open location request of radioID.
-func (h *Hub) StopTracking(radioID uint) {
-	h.locator.StopTracking(radioID)
-}
-
-// Retrack replaces the open location request of radioID with one that
-// follows its current setting.
-func (h *Hub) Retrack(radioID uint) {
-	h.locator.Retrack(radioID)
-}
-
-// sendFromLocator sends a packet of the location server to the repeater
-// that the radio it answers was heard on.
-func (h *Hub) sendFromLocator(p models.Packet) {
-	ctx := context.Background()
-	h.trackCall(ctx, &p, locatorSource)
-	h.publishToRepeater(p.Repeater, p)
 }

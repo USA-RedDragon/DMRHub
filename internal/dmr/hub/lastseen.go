@@ -75,7 +75,6 @@ func (h *Hub) runSightings() {
 		case now := <-ticker.C:
 			pruneStreams(h.sightedStreams, now)
 			pruneStreams(h.undeliverableLogged, now)
-			pruneStreams(h.parrotEnded, now)
 			pruneStreams(h.loopLogged, now)
 			pruneStreams(h.streamTalkgroups, now)
 			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
@@ -115,7 +114,6 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 			"radioID", s.src, "repeaterID", s.repeater, "repeaterOwner", rpt.OwnerID)
 		return
 	}
-	h.locator.Heard(s.src, rpt.ID, s.slot)
 	h.tellHeard(s, &rpt)
 	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, user.ID)
 	if prev, err := h.kv.Get(ctx, key); err == nil && string(prev) != strconv.FormatUint(uint64(rpt.ID), 10) {
@@ -130,7 +128,7 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	}
 }
 
-// noteHeardRadio tells the location server where a radio ID that a user
+// noteHeardRadio tells the plugins where a radio ID that a user
 // added was heard, on the same terms as a sighting of an account ID.
 func (h *Hub) noteHeardRadio(s sighting) {
 	owner, ok, err := models.RadioIDOwner(h.db, s.src)
@@ -138,7 +136,6 @@ func (h *Hub) noteHeardRadio(s sighting) {
 		return
 	}
 	if rpt, ok := h.routableFor(owner, s.repeater); ok {
-		h.locator.Heard(s.src, rpt.ID, s.slot)
 		h.tellHeard(s, &rpt)
 	}
 }

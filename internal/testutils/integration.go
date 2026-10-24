@@ -59,6 +59,8 @@ type IntegrationStack struct {
 	MMDVMAddr        string // host:port of the MMDVM server
 	IPSCAddr         string // host:port of the IPSC server
 	OpenBridgeAddr   string // host:port of the OpenBridge server
+
+	plugins *Plugins
 }
 
 // SetupIntegrationStack creates and starts a full integration test environment.

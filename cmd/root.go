@@ -477,7 +477,7 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 
 	hub.StartDraining()
 
-	// Wait for all active voice calls and parrot playbacks to complete.
+	// Wait for all active calls to complete.
 	// No timeout — we wait as long as needed.
 	hub.WaitForCalls()
 

@@ -160,3 +160,87 @@ func TestAHeardRadioIsToldToThePlugins(t *testing.T) {
 		t.Fatal("the plugins were not told where the radio was heard")
 	}
 }
+
+func TestAPluginsCallStaysOnThisHub(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	f := newFakePlugins(map[uint]uint{9990: parrotPlugin})
+	h.SetPlugins(f)
+	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+	require.NoError(t, database.Create(&owner).Error)
+	require.NoError(t, database.Create(&models.Peer{ID: 200, OwnerID: owner.ID, Egress: true}).Error)
+	require.NoError(t, database.Create(&models.PeerRule{PeerID: 200, Direction: false, SubjectIDMin: 1, SubjectIDMax: 16777215}).Error)
+	peer := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	t.Cleanup(func() { h.UnregisterServer("peer-srv") })
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1000001, 100003, 1), models.RepeaterTypeMMDVM)
+	select {
+	case <-peer.Packets:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the peer does not get the private calls of a radio, so this test proves nothing")
+	}
+	for {
+		select {
+		case <-srv.Packets:
+			continue
+		case <-time.After(200 * time.Millisecond):
+		}
+		break
+	}
+
+	reply := makeVoicePacket(1000002, 7006, false, true)
+	reply.Src, reply.Repeater = 9990, 0
+	h.RoutePacket(context.Background(), reply, plugins.SourceName(parrotPlugin))
+	expectAt(t, srv, 100003, "the radio's repeater")
+	select {
+	case rp := <-peer.Packets:
+		t.Fatalf("the peer got the plugin's call: %v", rp.Packet)
+	case <-time.After(500 * time.Millisecond):
+	}
+	assert.Empty(t, f.got(parrotPlugin))
+}
+
+// pluginPeerHub returns pluginHub with a peer whose egress takes every
+// source.
+func pluginPeerHub(t *testing.T) (*hub.Hub, *hub.ServerHandle, *hub.ServerHandle) {
+	t.Helper()
+	h, database, srv := lastSeenHub(t)
+	seedTalkgroup(t, database, weatherTG, "Weather")
+	h.SetPlugins(newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 310009: weatherPlugin}))
+	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+	require.NoError(t, database.Create(&owner).Error)
+	require.NoError(t, database.Create(&models.Peer{ID: 200, OwnerID: owner.ID, Egress: true}).Error)
+	require.NoError(t, database.Create(&models.PeerRule{PeerID: 200, Direction: false, SubjectIDMin: 1, SubjectIDMax: 16777215}).Error)
+	peer := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+	t.Cleanup(func() { h.UnregisterServer("peer-srv") })
+	return h, srv, peer
+}
+
+func TestAPluginsGroupCallReachesThePeers(t *testing.T) {
+	t.Parallel()
+	h, _, peer := pluginPeerHub(t)
+	p := makeVoicePacket(weatherTG, 7007, true, false)
+	p.Src, p.Repeater = 310009, 0
+	h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
+	select {
+	case rp := <-peer.Packets:
+		assert.Equal(t, uint(310009), rp.Packet.Src)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the peer did not get the plugin's group call")
+	}
+}
+
+func TestAPluginsPrivateCallToARadioNotHereReachesThePeers(t *testing.T) {
+	t.Parallel()
+	h, srv, peer := pluginPeerHub(t)
+	p := makeVoicePacket(3999999, 7008, false, true)
+	p.Src, p.Repeater = 9990, 0
+	h.RoutePacket(context.Background(), p, plugins.SourceName(parrotPlugin))
+	select {
+	case rp := <-peer.Packets:
+		assert.Equal(t, uint(3999999), rp.Packet.Dst)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the peer did not get a private call the hub cannot deliver")
+	}
+	expectNone(t, srv, "the radio is not here")
+}

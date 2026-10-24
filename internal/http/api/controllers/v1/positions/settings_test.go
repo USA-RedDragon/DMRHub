@@ -128,35 +128,14 @@ func TestThePositionSettingIsStored(t *testing.T) {
 	assert.Equal(t, owner, s.UserID)
 }
 
-func (e *env) openRequest(interval uint) {
-	e.t.Helper()
-	require.NoError(e.t, e.db.Create(&models.LocationRequest{RadioID: owner, ServiceID: 5057, RequestID: []byte{0, 0, 0, 1},
-		IntervalSeconds: interval, SentAt: time.Now(), RepeaterID: 319186801, Slot: 2}).Error)
-}
-
-func TestTurningTrackingOffStopsTheRequestAndDeletesThePositions(t *testing.T) {
+func TestTurningTrackingOffDeletesThePositions(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.track(owner, time.Hour)
-	e.openRequest(600)
 	require.Equal(t, http.StatusOK, e.put(fmt.Sprintf("/api/v1/positions/%d/settings", owner), settings(false, 10, 24), nil))
 	var n int64
-	require.NoError(t, e.db.Model(&models.LocationRequest{}).Count(&n).Error)
-	assert.Zero(t, n, "the stop request forgets the open request")
 	require.NoError(t, e.db.Model(&models.Position{}).Count(&n).Error)
 	assert.Zero(t, n)
-}
-
-func TestANewIntervalReplacesTheOpenRequest(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t)
-	e.track(owner)
-	e.openRequest(600)
-	require.Equal(t, http.StatusOK, e.put(fmt.Sprintf("/api/v1/positions/%d/settings", owner), settings(true, 30, 24), nil))
-	var r models.LocationRequest
-	require.NoError(t, e.db.Where("radio_id = ?", owner).Take(&r).Error)
-	assert.Equal(t, uint(1800), r.IntervalSeconds)
-	assert.NotEqual(t, []byte{0, 0, 0, 1}, r.RequestID)
 }
 
 func TestTheOwnersTrackingChangesReachThePlugins(t *testing.T) {

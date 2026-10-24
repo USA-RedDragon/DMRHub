@@ -22,6 +22,7 @@ package plugin
 import (
 	"context"
 	"errors"
+	"flag"
 	"slices"
 	"testing"
 	"time"
@@ -98,5 +99,22 @@ func TestRunStopsWhileItWaits(t *testing.T) {
 	}
 	if dials != 1 {
 		t.Fatalf("dialed %d times, want 1", dials)
+	}
+}
+
+func TestTheOptionsComeFromFlagsAndTheEnvironment(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{"DMRHUB_PLUGIN_ADDRESS": "hub:3006", "DMRHUB_PLUGIN_TOKEN": "dmrhub_plg_x", "DMRHUB_PLUGIN_FINGERPRINT": "AA:BB"}
+	o, err := optionsFrom(flag.NewFlagSet("p", flag.ContinueOnError), nil, func(k string) string { return env[k] })
+	if err != nil || o != (Options{Address: "hub:3006", Token: "dmrhub_plg_x", Fingerprint: "AA:BB"}) {
+		t.Fatalf("got %+v, %v", o, err)
+	}
+	o, err = optionsFrom(flag.NewFlagSet("p", flag.ContinueOnError), []string{"-address", "other:1", "-fingerprint", ""}, func(k string) string { return env[k] })
+	if err != nil || o != (Options{Address: "other:1", Token: "dmrhub_plg_x"}) {
+		t.Fatalf("flags win: got %+v, %v", o, err)
+	}
+	_, err = optionsFrom(flag.NewFlagSet("p", flag.ContinueOnError), []string{"-address", "hub:3006"}, func(string) string { return "" })
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("no token: got %v", err)
 	}
 }

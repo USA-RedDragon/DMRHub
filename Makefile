@@ -50,6 +50,12 @@ view-coverage:
 	@go tool cover -html=coverage.txt
 	@echo "--> Done"
 
+proto:
+	@echo "--> Generating the plugin protocol"
+	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 lint proto
+	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 generate
+	@echo "--> Done"
+
 lint:
 	@echo "--> Linting"
 	@golangci-lint run

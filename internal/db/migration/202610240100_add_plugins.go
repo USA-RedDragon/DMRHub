@@ -36,7 +36,9 @@ func add_plugins_migration_202610240100(_ *gorm.DB, _ *config.Config) *gormigrat
 		TokenCreatedAt  time.Time `gorm:"not null"`
 		Enabled         bool      `gorm:"not null;default:true"`
 		LastConnectedAt *time.Time
+		LastSeenAt      *time.Time
 		LastAddress     string `gorm:"size:64"`
+		Session         string `gorm:"size:32;not null;default:''"`
 		CreatedAt       time.Time
 		UpdatedAt       time.Time
 	}

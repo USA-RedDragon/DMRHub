@@ -95,3 +95,15 @@ func TestLicensedCallsigns(t *testing.T) {
 		assert.False(t, aprs.Licensed(call), call)
 	}
 }
+
+func TestThePasscodeComesFromTheCallsign(t *testing.T) {
+	t.Parallel()
+	for login, want := range map[string]string{
+		"N0CALL":    "13023",
+		"KI5VMF-10": "16571",
+		"ki5vmf":    "16571",
+		"N0HUB-10":  "14215",
+	} {
+		assert.Equal(t, want, aprs.Passcode(login), login)
+	}
+}

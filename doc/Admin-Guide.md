@@ -189,10 +189,9 @@ DMRHub logs in to APRS-IS once, and sends the positions of the radios whose owne
 | Setting  | What it is                                                     | Configuration key                |
 | -------- | -------------------------------------------------------------- | -------------------------------- |
 | Callsign | The callsign and SSID that the hub logs in as, such as `N0HUB-10`. Empty sends nothing. | `dmr.positions.aprs-is.callsign` |
-| Passcode | The APRS-IS passcode of that callsign                          | `dmr.positions.aprs-is.passcode` |
 | Server   | The APRS-IS server, as host and port                           | `dmr.positions.aprs-is.server`   |
 
-The server is `rotate.aprs2.net:14580` by default. When DMRHub runs as several replicas, only one of them logs in at a time.
+DMRHub works out the APRS-IS passcode from the callsign, so there is nothing to register. Use a callsign that you hold a license for. The server is `rotate.aprs2.net:14580` by default. When DMRHub runs as several replicas, only one of them logs in at a time.
 
 Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.
 

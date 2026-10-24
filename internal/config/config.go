@@ -163,10 +163,10 @@ func (a APRSIS) ServerAddress() string {
 	return a.Server
 }
 
-// APRSIS holds the APRS-IS login of the hub.
+// APRSIS holds the APRS-IS login of the hub. Its passcode comes from the
+// callsign.
 type APRSIS struct {
 	Callsign string `json:"callsign" name:"callsign" description:"Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS"`
-	Passcode string `json:"-" yaml:"passcode" name:"passcode" description:"APRS-IS passcode of the callsign"`
 	Server   string `json:"server" name:"server" description:"APRS-IS server, as host:port" default:"rotate.aprs2.net:14580"`
 }
 

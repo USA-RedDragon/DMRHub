@@ -39,7 +39,7 @@ const mountWizard = async (secrets: Record<string, boolean> = {}) => {
     data: {
       dmr: { mmdvm: { port: 62031 }, positions: { 'min-interval': 10, 'max-retention': 0, 'aprs-is': { callsign: 'N0HUB-10', server: '' } } },
       http: {}, database: {}, smtp: {}, redis: {}, metrics: {}, pprof: {},
-      secrets: { secretSet: true, passwordSaltSet: true, smtpPasswordSet: false, aprsPasscodeSet: false, ...secrets },
+      secrets: { secretSet: true, passwordSaltSet: true, smtpPasswordSet: false, ...secrets },
     },
   });
   mockAPI.post.mockResolvedValue({ data: { valid: true, errors: {} } });
@@ -67,10 +67,11 @@ describe('Positions settings', () => {
     expect(text).toContain('Shortest report interval');
     expect(text).toContain('Longest time to keep positions');
     expect(text).toContain('APRS-IS');
+    expect(text).toContain('works out the APRS-IS passcode from the callsign');
     expect(text).toContain('Leave the callsign empty to send nothing to APRS-IS.');
     expect((wrapper.find('#positions-min-interval').element as HTMLInputElement).value).toBe('5');
     expect((wrapper.find('#positions-max-retention').element as HTMLInputElement).value).toBe('30');
-    expect((wrapper.find('#positions-aprs-passcode').element as HTMLInputElement).type).toBe('password');
+    expect(wrapper.find('#positions-aprs-passcode').exists()).toBe(false);
     expect(text).not.toMatch(/min-interval|max-retention|aprs-is\.|dmr\./);
   });
 
@@ -94,37 +95,17 @@ describe('Positions settings', () => {
     expect(wrapper.text()).toContain('bad server');
   });
 
-  it('says whether a passcode is stored', () => {
-    const stored = mount(PositionsSettings, { props: { modelValue: {}, passcodeSet: true } });
-    expect(stored.find('[data-test="aprs-passcode-status"]').text()).toBe('Stored. Leave blank to keep it.');
-    const none = mount(PositionsSettings, { props: { modelValue: {} } });
-    expect(none.find('[data-test="aprs-passcode-status"]').text()).toBe('Not set.');
-  });
-
-  it('is saved with the DMR settings, with the passcode sent apart', async () => {
-    const wrapper = await mountWizard({ aprsPasscodeSet: true });
+  it('is saved with the DMR settings, with no passcode', async () => {
+    const wrapper = await mountWizard();
     const card = wrapper.findComponent(PositionsSettings);
     expect(card.exists()).toBe(true);
-    expect(card.props('passcodeSet')).toBe(true);
-    await card.find('#positions-aprs-passcode').setValue('14215');
+    await card.find('#positions-aprs-callsign').setValue('n0hub-11');
     await flushPromises();
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     const payload = mockAPI.put.mock.calls[0]![1] as Record<string, unknown> & { dmr: { positions: Record<string, unknown> } };
-    expect(payload['aprs-is-passcode']).toBe('14215');
-    expect(payload.dmr.positions['aprs-is']).toEqual({ callsign: 'N0HUB-10', server: '' });
-    expect(payload.dmr.positions['min-interval']).toBe(10);
-  });
-
-  it('keeps the stored passcode when the field is left blank', async () => {
-    const wrapper = await mountWizard({ aprsPasscodeSet: true });
-    const card = wrapper.findComponent(PositionsSettings);
-    await card.find('#positions-aprs-passcode').setValue('');
-    await flushPromises();
-    await wrapper.find('form').trigger('submit');
-    await flushPromises();
-    const payload = mockAPI.put.mock.calls[0]![1] as Record<string, unknown> & { dmr: { positions: Record<string, Record<string, unknown>> } };
     expect(payload).not.toHaveProperty('aprs-is-passcode');
-    expect(payload.dmr.positions['aprs-is']).not.toHaveProperty('passcode');
+    expect(payload.dmr.positions['aprs-is']).toEqual({ callsign: 'N0HUB-11', server: '' });
+    expect(payload.dmr.positions['min-interval']).toBe(10);
   });
 });

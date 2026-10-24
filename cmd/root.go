@@ -42,6 +42,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -314,6 +315,7 @@ type serverManager struct {
 	messageStore *messages.Store
 	purger       *retention.Purger
 	aprs         *positions.Gateway
+	plugins      *plugins.Server
 	kv           kv.KV
 	pubsub       pubsub.PubSub
 	database     *gorm.DB
@@ -370,6 +372,7 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	if sm.aprs != nil {
 		sm.aprs.Stop()
 	}
+	sm.plugins.Stop()
 	if sm.purger != nil {
 		sm.purger.Stop()
 	}
@@ -433,6 +436,10 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	sm.purger.Start(ctx)
 	sm.aprs = positions.NewGateway(database, cfg, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
+	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) })
+	if err != nil {
+		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
+	}
 
 	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(liveConfig{dmr: sm.dmr}))
 	err = httpServer.Start()

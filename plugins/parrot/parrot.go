@@ -17,9 +17,14 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package main
+// Package parrot is a DMRHub plugin that plays each private voice call to
+// its IDs back to the caller.
+package parrot
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
@@ -294,4 +299,28 @@ func voiceSlots(rec []dmrd.Data) (slots [][9]byte, call voice.Call, known bool) 
 		}
 	}
 	return slots, call, known
+}
+
+// Serve plays back the calls that come on conn until it ends. Give it to
+// plugin.Run.
+func Serve(_ context.Context, conn *plugin.Conn) error {
+	p := NewParrot(conn.Send)
+	defer p.Wait()
+	for {
+		m, err := conn.Recv()
+		if err != nil {
+			return fmt.Errorf("cannot receive: %w", err)
+		}
+		switch msg := m.GetMessage().(type) {
+		case *pluginv1.ConnectResponse_Burst:
+			p.Handle(msg.Burst)
+		case *pluginv1.ConnectResponse_Refusal:
+			slog.Warn("Parrot: the hub refused a burst", "stream", msg.Refusal.GetStreamId(), "reason", msg.Refusal.GetReason())
+		case *pluginv1.ConnectResponse_Ranges:
+			slog.Info("Parrot: new IDs", "ids", msg.Ranges.GetRanges())
+		case *pluginv1.ConnectResponse_Welcome:
+		default:
+			return errors.New("unknown message from the hub")
+		}
+	}
 }

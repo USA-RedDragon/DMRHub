@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package main
+package parrot
 
 import (
 	"bufio"
@@ -99,7 +99,7 @@ func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 	})
 	go func() {
 		defer close(done)
-		plugin.Run(ctx, plugin.Options{Address: listener.Addr().String(), Token: token, Fingerprint: fp}, serve)
+		plugin.Run(ctx, plugin.Options{Address: listener.Addr().String(), Token: token, Fingerprint: fp}, Serve)
 	}()
 	require.Eventually(t, func() bool {
 		p, err := models.FindPlugin(database, 1)

@@ -161,9 +161,13 @@ Each value is a number of days, from 0 to 36500. 0 keeps the records forever. Th
 
 Retention also deletes records from the admin search. Set a period that your local rules allow.
 
+## Plugins
+
+Plugins answer the calls to the IDs you give them, such as the parrot at 9990 and the location server at 5050 to 5059. DMRHub does not answer those IDs itself. See [Plugins](plugins.md) to turn on the plugin listener, add the plugins and run them.
+
 ## Positions
 
-DMRHub answers as the location server on the IDs 5050 to 5059. For what users see, see [Positions](positions.md).
+The location server is a plugin: see [Plugins](plugins.md#location-server). For what users see, see [Positions](positions.md).
 
 ### What the hub stores
 

@@ -6,7 +6,7 @@ Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHu
 
 ## Set up the radio
 
-DMRHub answers as the location server on the IDs 5050 to 5059. Program your radio to send its registrations (ARS) and its location reports to one of these IDs. All ten work the same way. The ID only picks the symbol that APRS-IS shows when you do not pick one yourself:
+The location server answers on the IDs your admin gave it, usually 5050 to 5059. Program your radio to send its registrations (ARS) and its location reports to one of these IDs. All ten work the same way. The ID only picks the symbol that APRS-IS shows when you do not pick one yourself:
 
 | ID   | Symbol  | ID   | Symbol  |
 | ---- | ------- | ---- | ------- |
@@ -16,7 +16,7 @@ DMRHub answers as the location server on the IDs 5050 to 5059. Program your radi
 | 5053 | Pickup  | 5058 | Bike    |
 | 5054 | Van     | 5059 | Car     |
 
-DMRHub reads LRRP, NMEA and Hytera (HDAP) location reports, and answers the confirmed ones.
+The location server reads LRRP, NMEA and Hytera (HDAP) location reports, and answers the confirmed ones.
 
 ## Turn on position tracking
 
@@ -27,7 +27,7 @@ Position tracking is off for every radio by default. To turn it on:
 3. Click **Settings** next to the radio ID.
 4. Turn on **Position tracking**, pick how often the radio reports and how long to keep its positions, then click **Save**.
 
-The next time the radio registers, DMRHub asks it to report at that interval. DMRHub keeps the request when it restarts. It asks again when the radio registers again, and once more when the radio is heard but has not reported for three intervals.
+The next time the radio registers, or is heard, the location server asks it to report at that interval. It asks again when the radio registers again, and once more when the radio is heard but has not reported for three intervals. When you turn tracking off or change the interval, it tells the radio.
 
 DMRHub stores at most one position of a radio each 30 seconds, and only positions that arrived after you turned tracking on. The hub sets the shortest interval and the longest time that you can pick.
 

@@ -47,6 +47,11 @@ type Peer struct {
 	CreatedAt time.Time      `json:"created_at" msg:"-"`
 	UpdatedAt time.Time      `json:"-" msg:"-"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
+
+	// Codec2 makes the peer get every call in the codec it was sent in.
+	// Without it the peer is AMBE only, and gets Codec2 calls converted.
+	// Only an admin sets it.
+	Codec2 bool `json:"codec2" gorm:"default:false" msg:"-"`
 }
 
 func (p *Peer) String() string {

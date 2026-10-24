@@ -120,6 +120,21 @@ type Call struct {
 	CreatedAt      time.Time      `json:"-"`
 	UpdatedAt      time.Time      `json:"-"`
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// Codec is the codec of a voice call, "ambe" or "codec2", and
+	// Codec2Mode the Codec2 mode, 2400 or 3200, once the frames show it.
+	Codec      string `json:"codec" gorm:"size:8"`
+	Codec2Mode int    `json:"codec2_mode"`
+	// SentAMBE and SentCodec2 count the targets that got the call
+	// converted to AMBE and to Codec2.
+	SentAMBE   int `json:"sent_ambe"`
+	SentCodec2 int `json:"sent_codec2"`
+	// MissedMS is the audio, in milliseconds, that could not be converted
+	// and went out as silence.
+	MissedMS int `json:"missed_ms"`
+	// TranscodeBusy marks a call that was not converted because every
+	// AMBE server was busy.
+	TranscodeBusy bool `json:"busy"`
 }
 
 func FindCalls(db *gorm.DB) ([]Call, error) {

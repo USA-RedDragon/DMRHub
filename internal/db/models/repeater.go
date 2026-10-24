@@ -37,6 +37,50 @@ const (
 
 type RepeaterState string
 
+// The codec settings of a repeater timeslot, and the codec names.
+const (
+	CodecSettingAuto = "auto"
+	CodecAMBE        = "ambe"
+	CodecCodec2      = "codec2"
+)
+
+// ValidCodecSetting reports whether s is a codec setting of a timeslot.
+func ValidCodecSetting(s string) bool {
+	return s == CodecSettingAuto || s == CodecAMBE || s == CodecCodec2
+}
+
+// SlotCodec returns the codec that the radios on a timeslot of the
+// repeater use, CodecAMBE or CodecCodec2: the setting of the slot, or with
+// CodecSettingAuto the codec last heard on it. A slot is AMBE until it
+// hears a Codec2 call, and IPSC repeaters are always AMBE. slot is true
+// for TS2.
+func (p *Repeater) SlotCodec(slot bool) string {
+	if p.Type == RepeaterTypeIPSC {
+		return CodecAMBE
+	}
+	setting, heard := p.TS1Codec, p.TS1HeardCodec
+	if slot {
+		setting, heard = p.TS2Codec, p.TS2HeardCodec
+	}
+	switch setting {
+	case CodecAMBE, CodecCodec2:
+		return setting
+	}
+	if heard == CodecCodec2 {
+		return CodecCodec2
+	}
+	return CodecAMBE
+}
+
+// SlotCodec2Mode returns the Codec2 mode last heard on a timeslot, 0 when
+// none was. slot is true for TS2.
+func (p *Repeater) SlotCodec2Mode(slot bool) int {
+	if slot {
+		return p.TS2HeardCodec2Mode
+	}
+	return p.TS1HeardCodec2Mode
+}
+
 const (
 	RepeaterStateConnected     RepeaterState = "CONNECTED"
 	RepeaterStateChallengeSent RepeaterState = "CHALLENGE_SENT"
@@ -75,6 +119,24 @@ type Repeater struct {
 	UpdatedAt             time.Time      `json:"-" msg:"-"`
 	DeletedAt             gorm.DeletedAt `json:"-" gorm:"index" msg:"-"`
 	RepeaterConfiguration
+
+	// TS1Codec and TS2Codec are the codec setting of each timeslot:
+	// CodecSettingAuto follows the last call heard on it. Like the heard
+	// codec below, a save of the whole repeater does not write them, so a
+	// stale copy cannot undo a change; SetRepeaterCodec and
+	// SetRepeaterHeardCodec do.
+	TS1Codec string `json:"ts1_codec" gorm:"size:8;not null;default:'auto';<-:create" msg:"-"`
+	TS2Codec string `json:"ts2_codec" gorm:"size:8;not null;default:'auto';<-:create" msg:"-"`
+	// TS1HeardCodec and TS2HeardCodec are the codec of the last call that
+	// started with a Voice LC Header on each timeslot, "" before the
+	// first. The Codec2 mode is the last one heard, and stays through
+	// AMBE calls.
+	TS1HeardCodec      string     `json:"ts1_heard_codec" gorm:"size:8;not null;default:'';<-:create" msg:"-"`
+	TS2HeardCodec      string     `json:"ts2_heard_codec" gorm:"size:8;not null;default:'';<-:create" msg:"-"`
+	TS1HeardCodec2Mode int        `json:"ts1_heard_codec2_mode" gorm:"not null;default:0;<-:create" msg:"-"`
+	TS2HeardCodec2Mode int        `json:"ts2_heard_codec2_mode" gorm:"not null;default:0;<-:create" msg:"-"`
+	TS1HeardAt         *time.Time `json:"ts1_heard_at" gorm:"<-:create" msg:"-"`
+	TS2HeardAt         *time.Time `json:"ts2_heard_at" gorm:"<-:create" msg:"-"`
 }
 
 func (p *Repeater) String() string {

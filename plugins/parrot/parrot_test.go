@@ -265,3 +265,21 @@ func TestParrotIgnoresLateBurstsOfAnEndedCall(t *testing.T) {
 		t.Fatalf("the parrot records %d calls after the end, want none", len(p.calls))
 	}
 }
+
+func TestAReplyWithoutVoiceIsANewStream(t *testing.T) {
+	t.Parallel()
+	rec := []dmrd.Data{
+		{Source: 9990, Destination: 1000001, Private: true, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeVoiceLCHeader), Stream: 8888},
+		{Source: 9990, Destination: 1000001, Private: true, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeTerminatorWithLC), Stream: 8888, Seq: 5},
+	}
+	reply := Reply(rec, 42)
+	require.Len(t, reply, 2)
+	for i, d := range reply {
+		if d.Stream != 42 || d.Seq != uint8(i) || d.Source != 9990 || d.Destination != 1000001 {
+			t.Fatalf("burst %d: %+v, want stream 42 and sequence %d", i, d, i)
+		}
+	}
+	if rec[0].Stream != 8888 {
+		t.Fatal("Reply changed the recording")
+	}
+}

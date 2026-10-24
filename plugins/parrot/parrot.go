@@ -172,14 +172,15 @@ func colorCode(rec []dmrd.Data) enums.ColorCode {
 // pass. The last superframe of a call whose FID is not that of AMBE+2 is
 // padded with the last recorded slot, because AMBE+2 silence is noise to
 // another codec such as Codec2. When the recording holds no voice that the
-// Receiver can place, Reply returns the recording as it is.
+// Receiver can place, Reply returns the recording as it is, as the new
+// stream.
 func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 	if len(rec) == 0 {
 		return rec
 	}
 	slots, recorded, known := voiceSlots(rec)
 	if len(slots) == 0 {
-		return rec
+		return asIs(rec, stream)
 	}
 	total, last := len(slots), slots[len(slots)-1]
 	tx, err := voice.NewTransmitter(&voice.TransmitterConfig{
@@ -187,14 +188,14 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 	})
 	if err != nil {
 		slog.Error("Parrot: cannot make a voice transmitter", "error", err)
-		return rec
+		return asIs(rec, stream)
 	}
 	first := rec[0]
 	call := replyCall(&first, recorded, known)
 	padLast := call.FID != enums.FIDStandardized && call.FID != enums.FIDMotorola
 	if err := tx.Start(0, call, nil); err != nil {
 		slog.Error("Parrot: cannot start the reply", "error", err)
-		return rec
+		return asIs(rec, stream)
 	}
 	reply := make([]dmrd.Data, 0, len(rec)+len(slots)/layer2.VoiceSlotsPerBurst+6)
 	outputs := make([]voice.Output, 0, voice.MaxOutputs)
@@ -203,7 +204,7 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 		for len(slots) > 0 && tx.Room() > 0 {
 			if err := tx.VocoderSlot(slots[0]); err != nil {
 				slog.Error("Parrot: cannot queue voice", "error", err)
-				return rec
+				return asIs(rec, stream)
 			}
 			slots = slots[1:]
 		}
@@ -238,6 +239,16 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 			reply = append(reply, d)
 		}
 	}
+}
+
+// asIs returns a copy of the recording rec as the call stream.
+func asIs(rec []dmrd.Data, stream uint32) []dmrd.Data {
+	out := make([]dmrd.Data, len(rec))
+	for i := range rec {
+		out[i] = rec[i]
+		out[i].Seq, out[i].Stream, out[i].Repeater = uint8(i&0xFF), stream, 0 //nolint:gosec // masked to 8 bits
+	}
+	return out
 }
 
 // replyCall returns the call of the reply, from the destination to the

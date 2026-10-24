@@ -24,6 +24,7 @@ import Talkgroup from '@/components/Talkgroup.vue';
 import Repeater from '@/components/Repeater.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import TransmissionType from '@/components/TransmissionType.vue';
+import CallCodec from '@/components/CallCodec.vue';
 import {
   berText,
   durationText,
@@ -121,6 +122,11 @@ export function lastHeardColumns(opts: LastHeardColumnOptions = {}): ColumnDef<C
       accessorKey: 'duration',
       header: 'Duration',
       cell: ({ row }: Cell) => durationText(row.original),
+    },
+    {
+      accessorKey: 'codec',
+      header: 'Codec',
+      cell: ({ row }: Cell) => h(CallCodec, { call: row.original }),
     },
     {
       accessorKey: 'ber',

@@ -115,8 +115,6 @@ dmr:
     aprs-is:
       # Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS
       # callsign: ""
-      # APRS-IS passcode of the callsign
-      # passcode: ""
       # APRS-IS server, as host:port
       server: "rotate.aprs2.net:14580"
 # SMTP configuration for sending emails

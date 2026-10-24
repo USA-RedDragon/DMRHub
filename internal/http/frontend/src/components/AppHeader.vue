@@ -430,7 +430,7 @@
           >
             <DropdownMenuTrigger as-child>
               <router-link
-                to="/admins/setup"
+                to="/admin/setup"
                 class="desktop-nav-link"
                 :class="{ active: route.path.startsWith('/admin') }">
               

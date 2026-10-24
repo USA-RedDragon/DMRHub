@@ -60,5 +60,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_positions_migration_202610232100(db, cfg),
 		add_plugins_migration_202610240100(db, cfg),
 		remove_builtin_services_migration_202610240200(db, cfg),
+		add_codec_columns_migration_202610241000(db, cfg),
 	}
 }

@@ -2,6 +2,9 @@ version: "2"
 
 run:
   timeout: 30m
+  # Codec2 runs on its WebAssembly build, also when cgo is on.
+  build-tags:
+    - codec2wasm
 
 linters:
   exclusions:

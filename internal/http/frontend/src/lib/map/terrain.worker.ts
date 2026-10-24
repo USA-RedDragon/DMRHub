@@ -46,8 +46,15 @@ function open(): Promise<PMTiles> {
   return archive;
 }
 
+/**
+ * PREMULTIPLIED makes each bitmap premultiplied, as MapLibre's raster shader
+ * expects. WebGL ignores its premultiply flag for an ImageBitmap, so a bitmap
+ * left with straight alpha draws every lit pixel solid white.
+ */
+const PREMULTIPLIED: ImageBitmapOptions = { premultiplyAlpha: 'premultiply' };
+
 function blank(): Promise<ImageBitmap> {
-  return createImageBitmap(new ImageData(1, 1));
+  return createImageBitmap(new ImageData(1, 1), PREMULTIPLIED);
 }
 
 async function tile(id: number, z: number, x: number, y: number): Promise<ImageBitmap | null> {
@@ -72,7 +79,7 @@ async function tile(id: number, z: number, x: number, y: number): Promise<ImageB
   if (!out.some((v, i) => i % 4 === 3 && v !== 0)) {
     return blank();
   }
-  return createImageBitmap(new ImageData(out, width, height));
+  return createImageBitmap(new ImageData(out, width, height), PREMULTIPLIED);
 }
 
 scope.onmessage = (e) => {

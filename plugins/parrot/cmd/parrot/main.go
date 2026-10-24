@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Command parrot is a DMRHub plugin that plays each private voice call to
+// Command parrot is a DMRHub plugin that plays each voice call to
 // its IDs back to the caller. Add it on the Plugins page of the hub with the
 // parrot's ID, such as 9990, then run it with the address, token and
 // fingerprint that the page shows:

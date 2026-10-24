@@ -24,8 +24,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -155,29 +153,4 @@ func CountTalkgroupsByOwnerID(db *gorm.DB, ownerID uint) (int, error) {
 		Joins("JOIN users on talkgroup_admins.user_id=users.id").
 		Where("users.id=?", ownerID).Count(&count).Error
 	return int(count), err
-}
-
-type TalkgroupsSeeder struct {
-	gorm_seeder.SeederAbstract
-}
-
-const TalkgroupSeederRows = 1
-
-func NewTalkgroupsSeeder(cfg gorm_seeder.SeederConfiguration) TalkgroupsSeeder {
-	return TalkgroupsSeeder{gorm_seeder.NewSeederAbstract(cfg)}
-}
-
-func (s *TalkgroupsSeeder) Seed(db *gorm.DB) error {
-	var talkgroups = []Talkgroup{
-		{
-			ID:          dmrconst.ParrotUser,
-			Name:        "DMRHub Parrot",
-			Description: "This talkgroup will not be routed to any repeaters and Parrot will respond with a private call.",
-		},
-	}
-	return db.CreateInBatches(talkgroups, s.Configuration.Rows).Error
-}
-
-func (s *TalkgroupsSeeder) Clear(_ *gorm.DB) error {
-	return nil
 }

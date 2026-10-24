@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +57,15 @@ func allBackends() []testutils.Backend {
 }
 
 // forAllBackends runs f as a subtest against every configured backend.
+// parrotID is the ID that runParrot gives the parrot.
+const parrotID = uint(9990)
+
+// runParrot runs the parrot plugin at parrotID on the hub of stack.
+func runParrot(t *testing.T, stack *testutils.IntegrationStack) {
+	t.Helper()
+	stack.RunPlugin(t, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, parrot.Serve)
+}
+
 func forAllBackends(t *testing.T, f func(t *testing.T, stack *testutils.IntegrationStack)) {
 	t.Helper()
 	for _, be := range allBackends() {
@@ -807,6 +817,7 @@ func TestParrotReturnsToSource(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100002, 1)
 
 		stack.StartServers(t)
+		runParrot(t, stack)
 
 		c1 := testutils.NewMMDVMClient(100001, "", testPassword)
 		c2 := testutils.NewMMDVMClient(100002, "", testPassword)
@@ -819,7 +830,7 @@ func TestParrotReturnsToSource(t *testing.T) {
 
 		time.Sleep(settleDuration)
 
-		const parrotUser = uint(9990)
+		const parrotUser = parrotID
 		streamID := uint(8888)
 
 		// Send voice header to parrot
@@ -964,6 +975,7 @@ func TestParrotIPSC(t *testing.T) {
 		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
 
 		stack.StartServers(t)
+		runParrot(t, stack)
 
 		ic := testutils.NewIPSCClient(200001, ipscAuthKey)
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
@@ -972,7 +984,7 @@ func TestParrotIPSC(t *testing.T) {
 
 		time.Sleep(settleDuration)
 
-		const parrotUser = uint(9990)
+		const parrotUser = parrotID
 		const callerUser = uint(1000001)
 
 		// Send a private voice call to 9990 (parrot) from user 1000001

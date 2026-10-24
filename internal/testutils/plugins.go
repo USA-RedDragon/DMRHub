@@ -132,3 +132,14 @@ func RepeaterHub(t testing.TB, owner, repeater uint) (*hub.Hub, *gorm.DB, pubsub
 	h.ActivateRepeater(context.Background(), repeater)
 	return h, database, ps, srv
 }
+
+// RunPlugin starts the plugin listener of the stack's hub, when it has not
+// yet, and runs the plugin name with ranges on it, as RunPlugin of
+// Plugins does.
+func (s *IntegrationStack) RunPlugin(t testing.TB, name string, ranges []models.PluginRange, serve func(context.Context, *plugin.Conn) error) {
+	t.Helper()
+	if s.plugins == nil {
+		s.plugins = StartPlugins(t, s.DB, s.PubSub, s.Hub, func(r *plugins.Registry) { s.Hub.SetPlugins(r) }, nil)
+	}
+	s.plugins.Run(t, name, ranges, serve)
+}

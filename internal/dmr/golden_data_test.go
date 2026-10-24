@@ -355,6 +355,7 @@ func TestGoldenParrotCall(t *testing.T) {
 		stack.SeedUser(t, anyTone, "KI5VMF")
 		stack.SeedMMDVMRepeater(t, repeaterID, anyTone, testPassword)
 		stack.StartServers(t)
+		runParrot(t, stack)
 
 		c := testutils.NewMMDVMClient(repeaterID, "", testPassword)
 		defer c.Close()
@@ -379,7 +380,7 @@ func TestGoldenParrotCall(t *testing.T) {
 		}
 		require.Len(t, voice, 18)
 
-		reply := ofCall(c.Drain(8*time.Second), dmrconst.ParrotUser, anyTone)
+		reply := ofCall(c.Drain(8*time.Second), parrotID, anyTone)
 		require.Len(t, reply, len(voice)+2, "parrot reply packets")
 		for _, p := range reply {
 			assert.Equal(t, uint(repeaterID), p.Repeater)

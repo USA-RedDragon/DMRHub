@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -275,23 +274,14 @@ func TestGetUsers(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	assert.Equal(t, 2, userResp.Total)
+	assert.Equal(t, 1, userResp.Total)
 	for _, user := range userResp.Users {
-		if user.ID != dmrconst.ParrotUser {
-			assert.Equal(t, true, user.SuperAdmin)
-			assert.Equal(t, "Admin", user.Username)
-			assert.Equal(t, "XXXXXX", user.Callsign)
-			assert.Equal(t, true, user.Admin)
-			assert.Equal(t, true, user.Approved)
-			assert.Equal(t, false, user.Suspended)
-		} else {
-			assert.Equal(t, dmrconst.ParrotUser, user.ID)
-			assert.Equal(t, "", user.Username)
-			assert.Equal(t, "Parrot", user.Callsign)
-			assert.Equal(t, false, user.Admin)
-			assert.Equal(t, true, user.Approved)
-			assert.Equal(t, false, user.Suspended)
-		}
+		assert.Equal(t, true, user.SuperAdmin)
+		assert.Equal(t, "Admin", user.Username)
+		assert.Equal(t, "XXXXXX", user.Callsign)
+		assert.Equal(t, true, user.Admin)
+		assert.Equal(t, true, user.Approved)
+		assert.Equal(t, false, user.Suspended)
 	}
 }
 

@@ -26,6 +26,10 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/plugins/locator"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
@@ -35,6 +39,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/lrrp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func confirmedReport(t *testing.T, src, dst, repeater uint) []models.Packet {
@@ -97,9 +102,19 @@ func dataCall(t *testing.T, src, dst, repeater uint, port ip.Port, payload []byt
 	return pkts
 }
 
+// locatorHub returns lastSeenHub with the location plugin at 5050 to
+// 5059.
+func locatorHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
+	t.Helper()
+	h, database, ps, srv := lastSeenHubWithPubSub(t)
+	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
+	listener.Run(t, "Location", []models.PluginRange{{First: 5050, Last: 5059}}, locator.Serve)
+	return h, database, srv
+}
+
 func TestDataToTheLocationServerIsAnsweredOnItsRepeater(t *testing.T) {
 	t.Parallel()
-	h, _, srv := lastSeenHub(t)
+	h, _, srv := locatorHub(t)
 
 	for _, p := range confirmedReport(t, 1000002, 5057, 100003) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
@@ -118,9 +133,11 @@ func TestDataToTheLocationServerIsAnsweredOnItsRepeater(t *testing.T) {
 
 func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
+	h, database, ps, srv := lastSeenHubWithPubSub(t)
 	require.NoError(t, models.SetPositionTracking(database, 1000002, 1000002, true, time.Now()))
 	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", 1000002).Update("interval_seconds", 1).Error)
+	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
+	listener.Run(t, "Location", []models.PluginRange{{First: 5050, Last: 5059}}, locator.Serve)
 
 	for _, p := range arsRegistration(t, 1000002, 5057, 100003) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)

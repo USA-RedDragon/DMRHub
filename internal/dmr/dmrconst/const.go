@@ -101,10 +101,6 @@ const (
 // CallsignRegex is a regex for validating callsigns.
 var CallsignRegex = regexp.MustCompile(`^([A-Z0-9]{0,8})$`)
 
-const (
-	ParrotUser = uint(9990)
-)
-
 // MaxDMRAddress is the maximum value for a 24-bit DMR address.
 const MaxDMRAddress = 0xFFFFFF
 

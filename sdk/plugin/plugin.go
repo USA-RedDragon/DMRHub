@@ -20,12 +20,17 @@
 // Package plugin connects a DMRHub plugin to its hub. A plugin answers the
 // calls to the DMR IDs an admin gave it, and sends calls only from those IDs.
 //
-//	conn, err := plugin.Dial(ctx, plugin.Options{Address: "hub.example.org:3006", Token: token, Fingerprint: fp})
-//	for {
-//		burst, err := conn.Recv()
-//		...
-//		err = conn.Send(reply)
-//	}
+//	plugin.Run(ctx, plugin.Options{Address: "hub.example.org:3006", Token: token, Fingerprint: fp},
+//		func(ctx context.Context, conn *plugin.Conn) error {
+//			for {
+//				m, err := conn.Recv()
+//				if err != nil {
+//					return err
+//				}
+//				...
+//				err = conn.Send(reply)
+//			}
+//		})
 package plugin
 
 import (

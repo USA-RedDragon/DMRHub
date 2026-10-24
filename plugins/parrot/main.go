@@ -34,15 +34,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
-)
-
-const (
-	minBackoff = time.Second
-	maxBackoff = 30 * time.Second
 )
 
 func main() {
@@ -57,45 +51,13 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	run(ctx, plugin.Options{Address: *address, Token: token, Fingerprint: *fingerprint})
+	plugin.Run(ctx, plugin.Options{Address: *address, Token: token, Fingerprint: *fingerprint}, serve)
 }
 
-// run keeps the parrot connected until ctx ends, connecting again after a
-// wait that doubles up to maxBackoff.
-func run(ctx context.Context, o plugin.Options) {
-	backoff := minBackoff
-	for ctx.Err() == nil {
-		started := time.Now()
-		err := serve(ctx, o)
-		if ctx.Err() != nil {
-			return
-		}
-		slog.Warn("Parrot: disconnected", "error", err)
-		if time.Since(started) > maxBackoff {
-			backoff = minBackoff
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, maxBackoff)
-	}
-}
-
-func serve(ctx context.Context, o plugin.Options) error {
-	conn, err := plugin.Dial(ctx, o)
-	if err != nil {
-		return fmt.Errorf("cannot connect: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-	slog.Info("Parrot: connected", "name", conn.Name(), "ids", conn.Ranges())
+// serve plays back the calls that come on conn until it ends.
+func serve(_ context.Context, conn *plugin.Conn) error {
 	p := NewParrot(conn.Send)
 	defer p.Wait()
-	go func() {
-		<-ctx.Done()
-		_ = conn.Close()
-	}()
 	for {
 		m, err := conn.Recv()
 		if err != nil {

@@ -22,7 +22,7 @@
 // parrot's ID, such as 9990, then run it with the address, token and
 // fingerprint that the page shows:
 //
-//	DMRHUB_PLUGIN_TOKEN=dmrhub_plg_... parrot -address hub.example.org:3006 -fingerprint 4F:2A:...
+//	DMRHUB_PLUGIN_TOKEN=dmrhub_plg_... dmrhub-parrot -address hub.example.org:3006 -fingerprint 4F:2A:...
 //
 // The address and fingerprint can also come from DMRHUB_PLUGIN_ADDRESS and
 // DMRHUB_PLUGIN_FINGERPRINT.

@@ -9,5 +9,8 @@ WORKDIR /app
 
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/DMRHub .
+# The plugins that come with DMRHub. Run one with --entrypoint, such as
+# /app/dmrhub-parrot.
+COPY $TARGETPLATFORM/dmrhub-parrot $TARGETPLATFORM/dmrhub-locator ./
 
 ENTRYPOINT ["/app/DMRHub"]

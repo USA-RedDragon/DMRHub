@@ -78,6 +78,8 @@
         <RetentionSettings v-model="retention" :errors="errors.retention" />
         <br />
         <PositionsSettings v-model="positions" :errors="errors.positions" />
+        <br />
+        <PluginsSettings v-model="plugins" :errors="errors.plugins" />
       </CardContent>
     </Card>
   </div>
@@ -89,6 +91,7 @@ import OpenBridgeSettings from './DMR/OpenBridgeSettings.vue';
 import IPSCSettings from './DMR/IPSCSettings.vue';
 import RetentionSettings from './DMR/RetentionSettings.vue';
 import PositionsSettings from './DMR/PositionsSettings.vue';
+import PluginsSettings from './DMR/PluginsSettings.vue';
 import {
   Card,
   CardContent,
@@ -104,6 +107,7 @@ export default {
     IPSCSettings,
     RetentionSettings,
     PositionsSettings,
+    PluginsSettings,
     Card,
     CardContent,
     CardHeader,
@@ -158,6 +162,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'retention': value,
+        });
+      },
+    },
+    plugins: {
+      get() {
+        return (this.modelValue && this.modelValue['plugins']) || {};
+      },
+      set(value: Record<string, unknown>) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'plugins': value,
         });
       },
     },

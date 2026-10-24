@@ -26,6 +26,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/configulator/v2"
 )
 
@@ -344,5 +345,49 @@ func BenchmarkPubSubPublishFanOut(b *testing.B) {
 		for _, s := range subs {
 			<-s.Channel()
 		}
+	}
+}
+
+// TestEachCallOfChannelGetsEveryMessage checks, on both backends, that a
+// subscriber that asks for its channel again, as a select loop does, loses
+// no message.
+func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			if err != nil {
+				t.Fatal(err)
+			}
+			be.Setup(t, &cfg)
+			ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ps.Close() })
+			sub := ps.Subscribe("again")
+			defer func() { _ = sub.Close() }()
+			time.Sleep(100 * time.Millisecond)
+			for range 5 {
+				_ = sub.Channel()
+			}
+			const n = 20
+			for i := range n {
+				if err := ps.Publish("again", []byte{byte(i)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range n {
+				select {
+				case m := <-sub.Channel():
+					if len(m) != 1 || m[0] != byte(i) {
+						t.Fatalf("message %d: got %v", i, m)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatalf("message %d did not come", i)
+				}
+			}
+		})
 	}
 }

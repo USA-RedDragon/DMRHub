@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/consts"
@@ -76,8 +77,20 @@ func (ps redisPubSub) Publish(topic string, message []byte) error {
 func (ps redisPubSub) Subscribe(topic string) Subscription {
 	ctx := context.Background()
 	sub := ps.client.Subscribe(ctx, topic)
-	ch := sub.Channel()
-	return redisSubscription{ch: ch, sub: sub}
+	in := sub.Channel()
+	out := make(chan []byte)
+	done := make(chan struct{})
+	go func() {
+		defer close(out)
+		for msg := range in {
+			select {
+			case out <- []byte(msg.Payload):
+			case <-done:
+				return
+			}
+		}
+	}()
+	return redisSubscription{ch: out, sub: sub, done: done, once: &sync.Once{}}
 }
 
 func (ps redisPubSub) Close() error {
@@ -87,12 +100,17 @@ func (ps redisPubSub) Close() error {
 	return nil
 }
 
+// redisSubscription forwards the messages of sub on ch, which every call of
+// Channel returns, so that asking for it again loses nothing.
 type redisSubscription struct {
-	ch  <-chan *redis.Message
-	sub *redis.PubSub
+	ch   <-chan []byte
+	sub  *redis.PubSub
+	done chan struct{}
+	once *sync.Once
 }
 
 func (s redisSubscription) Close() error {
+	s.once.Do(func() { close(s.done) })
 	if err := s.sub.Close(); err != nil {
 		return fmt.Errorf("failed to close redis subscription: %w", err)
 	}
@@ -100,12 +118,5 @@ func (s redisSubscription) Close() error {
 }
 
 func (s redisSubscription) Channel() <-chan []byte {
-	ch := make(chan []byte)
-	go func() {
-		for msg := range s.ch {
-			ch <- []byte(msg.Payload)
-		}
-		close(ch)
-	}()
-	return ch
+	return s.ch
 }

@@ -57,10 +57,10 @@ internal/dmr/hub/parrot_handler.go	50	43
 internal/dmr/hub/parrot_reply.go	86	74
 internal/dmr/hub/publishing.go	51	38
 internal/dmr/hub/repeater_cache.go	90	82
-internal/dmr/hub/routing.go	87	84
+internal/dmr/hub/routing.go	87	85
 internal/dmr/hub/slotrate.go	34	34
 internal/dmr/hub/streams.go	62	59
-internal/dmr/hub/subscription_manager.go	269	222
+internal/dmr/hub/subscription_manager.go	269	221
 internal/dmr/hub/talkgroup.go	55	50
 internal/dmr/hub/tracking.go	2	2
 internal/dmr/hub/undeliverable.go	10	10
@@ -76,10 +76,10 @@ internal/dmr/servers/ipsc/translator.go	317	280
 internal/dmr/servers/kvclient.go	71	47
 internal/dmr/servers/manager/manager.go	124	96
 internal/dmr/servers/mmdvm/options.go	130	120
-internal/dmr/servers/mmdvm/server.go	133	116
-internal/dmr/servers/mmdvm/session.go	324	274
+internal/dmr/servers/mmdvm/server.go	133	115
+internal/dmr/servers/mmdvm/session.go	324	275
 internal/dmr/servers/mmdvm/transport.go	11	9
-internal/dmr/servers/mmdvm/webtransport.go	70	60
+internal/dmr/servers/mmdvm/webtransport.go	70	59
 internal/dmr/servers/openbridge/replicas.go	81	63
 internal/dmr/servers/openbridge/server.go	282	224
 internal/dmr/streamorder/streamorder.go	25	25
@@ -136,8 +136,8 @@ internal/http/setupwizard/middleware/auth.go	23	0
 internal/http/setupwizard/middleware/makedb.go	11	0
 internal/http/setupwizard/middleware/setupwizard.go	6	0
 internal/http/setupwizard/routes.go	12	0
-internal/http/websocket/user.go	43	38
-internal/http/websocket/writer.go	16	13
+internal/http/websocket/user.go	43	39
+internal/http/websocket/writer.go	16	15
 internal/http/websocket/ws.go	93	87
 internal/kv/kv.go	6	5
 internal/kv/memory.go	175	167
@@ -177,7 +177,7 @@ internal/testutils/retry/retry.go	36	35
 internal/testutils/session_peer.go	118	107
 internal/testutils/talkgroups.go	96	94
 internal/testutils/users.go	190	190
-internal/testutils/wsclient.go	131	107
+internal/testutils/wsclient.go	131	108
 internal/userdb/userdb.go	93	67
 internal/wtcert/wtcert.go	74	65
 main.go	11	0

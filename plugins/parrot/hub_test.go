@@ -23,22 +23,14 @@ import (
 	"bufio"
 	"context"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
-	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,58 +45,9 @@ const (
 // TLS, plays it back to that repeater.
 func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	cfg.Secret = "a secret of the config, long enough"
-	cfg.Database.Database = fmt.Sprintf("file:memdb_parrotplugin_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
-	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
-	database, err := db.MakeDB(&cfg)
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps, kvStore))
-	t.Cleanup(func() {
-		h.Stop(context.Background())
-		_ = ps.Close()
-		_ = kvStore.Close()
-	})
-
-	require.NoError(t, database.Create(&models.User{ID: caller, Callsign: "CALLER", Username: "CALLER", Approved: true}).Error)
-	require.NoError(t, database.Create(&models.Repeater{
-		RepeaterConfiguration: models.RepeaterConfiguration{Callsign: "T1ST", ID: repeater},
-		OwnerID:               caller,
-		Type:                  models.RepeaterTypeMMDVM,
-	}).Error)
-	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	h.ActivateRepeater(context.Background(), repeater)
-
-	_, token, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, time.Now())
-	require.NoError(t, err)
-	listener, err := plugins.Start(context.Background(), &cfg, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
-	require.NoError(t, err)
-	t.Cleanup(listener.Stop)
-	certs, err := plugins.NewCertSource(cfg.GetDerivedSecret(), "", "")
-	require.NoError(t, err)
-	fp, err := certs.Fingerprint()
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	t.Cleanup(func() {
-		cancel()
-		<-done
-	})
-	go func() {
-		defer close(done)
-		plugin.Run(ctx, plugin.Options{Address: listener.Addr().String(), Token: token, Fingerprint: fp}, Serve)
-	}()
-	require.Eventually(t, func() bool {
-		p, err := models.FindPlugin(database, 1)
-		return err == nil && p.Online(time.Now())
-	}, 5*time.Second, 20*time.Millisecond, "the parrot connects")
+	h, database, ps, srv := testutils.RepeaterHub(t, caller, repeater)
+	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
+	listener.Run(t, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, Serve)
 
 	call := hubCall(t)
 	for _, p := range call {

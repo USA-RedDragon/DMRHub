@@ -472,3 +472,21 @@ func TestARegisteringRadioThatIsHeardGetsOneRequest(t *testing.T) {
 	assert.NotNil(t, got[0].ars)
 	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
 }
+
+func TestARadioIsAskedFromTheIDItRegisteredWith(t *testing.T) {
+	t.Parallel()
+	l, o := newLocator(t)
+	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+	waitAnswers(t, o, 1)
+	track(l, 600)
+	stop := make(chan struct{})
+	defer close(stop)
+	go heardOften(l, stop)
+	require.Eventually(t, func() bool { return len(answers(t, o.sent())) >= 2 }, 15*time.Second, 50*time.Millisecond,
+		"the request comes after the 5 seconds the Locator leaves a radio that sent data alone")
+	got := answers(t, o.sent())
+	require.Len(t, got, 2, "the ack, then the request once the radio is tracked")
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+	last := o.sent()[len(o.sent())-1]
+	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with, not the plugin's first")
+}

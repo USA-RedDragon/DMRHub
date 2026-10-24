@@ -43,6 +43,10 @@ import (
 // its bursts are dropped.
 const sendQueue = 256
 
+// heartbeatEvery is how often a stream records that its plugin is still
+// there.
+const heartbeatEvery = 15 * time.Second
+
 // streamError ends a plugin's stream with a gRPC code.
 type streamError struct {
 	code codes.Code
@@ -77,17 +81,18 @@ type Router interface {
 type Service struct {
 	pluginv1.UnimplementedPluginServiceServer
 
-	db       *gorm.DB
-	pubsub   pubsub.PubSub
-	registry *Registry
-	router   Router
-	now      func() time.Time
+	db        *gorm.DB
+	pubsub    pubsub.PubSub
+	registry  *Registry
+	router    Router
+	now       func() time.Time
+	heartbeat time.Duration
 }
 
 // NewService returns the plugin service. Bursts that plugins send go to
 // router; registry tells who owns each ID.
 func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router) *Service {
-	return &Service{db: db, pubsub: ps, registry: registry, router: router, now: time.Now}
+	return &Service{db: db, pubsub: ps, registry: registry, router: router, now: time.Now, heartbeat: heartbeatEvery}
 }
 
 func tokenOf(ctx context.Context) string {
@@ -152,11 +157,16 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 	if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
 		address = pr.Addr.String()
 	}
-	if err := models.NotePluginConnected(s.db, p.ID, address, s.now()); err != nil {
+	if err := models.NotePluginConnected(s.db, p.ID, session, address, s.now()); err != nil {
 		slog.Warn("Plugins: cannot note a connection", "plugin", p.Name, "error", err)
 	}
 	slog.Info("Plugins: connected", "plugin", p.Name, "address", address)
-	defer slog.Info("Plugins: disconnected", "plugin", p.Name)
+	defer func() {
+		if err := models.NotePluginDisconnected(s.db, p.ID, session, s.now()); err != nil {
+			slog.Warn("Plugins: cannot note a disconnection", "plugin", p.Name, "error", err)
+		}
+		slog.Info("Plugins: disconnected", "plugin", p.Name)
+	}()
 
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -231,10 +241,16 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 func (s *Service) watch(ctx context.Context, cancel context.CancelCauseFunc, p *models.Plugin, session string,
 	kick, in, changed pubsub.Subscription, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange) {
 	current := p.Ranges
+	heartbeat := time.NewTicker(s.heartbeat)
+	defer heartbeat.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-heartbeat.C:
+			if err := models.NotePluginSeen(s.db, p.ID, session, s.now()); err != nil {
+				slog.Warn("Plugins: cannot note a heartbeat", "plugin", p.Name, "error", err)
+			}
 		case b, ok := <-kick.Channel():
 			if !ok {
 				return

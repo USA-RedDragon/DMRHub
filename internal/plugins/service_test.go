@@ -326,3 +326,32 @@ func TestTurningAPluginOffEndsItsStream(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 	require.Eventually(t, func() bool { _, ok := r.registry.Owner(9990); return !ok }, 3*time.Second, 10*time.Millisecond, "a plugin that is off owns no IDs")
 }
+
+func online(t *testing.T, r *rig, id uint) bool {
+	t.Helper()
+	p, err := models.FindPlugin(r.db, id)
+	require.NoError(t, err)
+	return p.Online(time.Now())
+}
+
+func TestAPluginIsOnlineWhileItsLatestStreamLasts(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	p, token := r.add("Parrot", rng(9990, 9990))
+	assert.False(t, online(t, r, p.ID))
+	old := r.connect(token)
+	_, err := recv(t, old)
+	require.NoError(t, err)
+	assert.True(t, online(t, r, p.ID))
+
+	fresh := r.connect(token)
+	_, err = recv(t, fresh)
+	require.NoError(t, err)
+	_, err = recv(t, old)
+	require.Equal(t, codes.Aborted, status.Code(err))
+	time.Sleep(200 * time.Millisecond)
+	assert.True(t, online(t, r, p.ID), "the stream that was replaced does not mark the newer one offline")
+
+	require.NoError(t, fresh.CloseSend())
+	require.Eventually(t, func() bool { return !online(t, r, p.ID) }, 3*time.Second, 20*time.Millisecond)
+}

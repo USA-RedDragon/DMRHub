@@ -17,6 +17,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+import type { CallCodecFields } from '@/lib/codec';
+
 export type TypeKey = 'voice' | 'data' | 'sms' | 'gps' | 'alias' | 'csbk' | 'control' | 'unknown';
 
 export const TYPES: { key: TypeKey; label: string }[] = [
@@ -76,7 +78,7 @@ export type CallRow = {
   position_error?: number | null;
   partial?: boolean;
   undeliverable?: string[] | null;
-};
+} & CallCodecFields;
 
 const CONTROL_KINDS = ['udt', 'mbc', 'idle', 'usbd'];
 const IDLE_KINDS = ['idle', 'usbd'];

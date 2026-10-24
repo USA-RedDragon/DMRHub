@@ -32,6 +32,7 @@ import (
 	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
+	v1PluginsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/plugins"
 	v1PositionsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/positions"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
@@ -191,6 +192,11 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Admin := group.Group("/admin")
 	v1Admin.Use(middleware.RequireAdmin(), userSuspension)
 	v1Admin.GET("/messages", v1MessagesControllers.GETAdminMessages)
+	v1Admin.GET("/plugins", v1PluginsControllers.GETPlugins)
+	v1Admin.POST("/plugins", v1PluginsControllers.POSTPlugin)
+	v1Admin.PUT("/plugins/:id", v1PluginsControllers.PUTPlugin)
+	v1Admin.DELETE("/plugins/:id", v1PluginsControllers.DELETEPlugin)
+	v1Admin.POST("/plugins/:id/token", v1PluginsControllers.POSTPluginToken)
 	v1Admin.GET("/messages/:id", v1MessagesControllers.GETAdminMessage)
 
 	v1Lastheard := group.Group("/lastheard")

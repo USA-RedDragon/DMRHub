@@ -30,6 +30,10 @@ type RawDMRPacket struct {
 	RemotePort int    `msg:"remote_port"`
 	// TrackID is the Packet.TrackID of the packet in Data.
 	TrackID uint64 `msg:"track_id"`
+	// Codec, Copy and HasCopy are those of the Packet in Data.
+	Codec   uint8 `msg:"codec"`
+	Copy    bool  `msg:"copy"`
+	HasCopy bool  `msg:"has_copy"`
 	// Transport names the transport of a packet that a server received or
 	// sends on another transport than its UDP socket, and Addr is its
 	// address there. Neither is encoded.

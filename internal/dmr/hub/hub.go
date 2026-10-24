@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -158,7 +159,12 @@ type Hub struct {
 
 	plugins atomic.Pointer[Plugins]
 
+	transcoder   *transcode.Service
+	transcoders  inflight
 	codecStreams *xsync.Map[uint, *streamCodec]
+	copyReports  *xsync.Map[copyReport, time.Time]
+	tgRepeaters  *xsync.Map[uint, tgRepeaters]
+	codec2Slots  atomic.Pointer[[]uint]
 	heard        chan heardNote
 }
 
@@ -184,7 +190,10 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
+	h.transcoder = transcode.NewService(kvStore)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
+	h.copyReports = xsync.NewMap[copyReport, time.Time]()
+	h.tgRepeaters = xsync.NewMap[uint, tgRepeaters]()
 	h.heard = make(chan heardNote, heardQueue)
 	go h.runHeard()
 	go h.runSightings()
@@ -343,6 +352,8 @@ func (h *Hub) Stop(ctx context.Context) {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
 		close(h.done)
+		h.transcoders.Wait()
+		h.transcoder.Close()
 	})
 }
 

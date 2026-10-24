@@ -18,8 +18,8 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 // Package manager runs the MMDVM, IPSC and OpenBridge servers of DMRHub
-// and puts a change of their settings into effect without a restart of
-// DMRHub.
+// and puts a change of their settings, and of the AMBE server of the hub,
+// into effect without a restart of DMRHub.
 package manager
 
 import (
@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"gorm.io/gorm"
@@ -165,6 +166,9 @@ func (m *Manager) Start(ctx context.Context, cfg *config.Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ctx = context.WithoutCancel(ctx)
+	if m.deps.Hub != nil {
+		m.deps.Hub.SetAMBEServers(ambeServers(cfg)) //nolint:contextcheck // the probes of the servers outlive Start; Hub.Stop ends them
+	}
 	for _, k := range kinds() {
 		if !settingsOf(k, cfg).enabled {
 			continue
@@ -219,6 +223,9 @@ func (m *Manager) Apply(next *config.Config) []ApplyError {
 	defer m.mu.Unlock()
 	if m.stopped || m.ctx == nil {
 		return nil
+	}
+	if m.deps.Hub != nil {
+		m.deps.Hub.SetAMBEServers(ambeServers(next)) //nolint:contextcheck // the probes of the servers outlive Apply; Hub.Stop ends them
 	}
 	var errs []ApplyError
 	for _, k := range kinds() {
@@ -346,6 +353,14 @@ func (m *Manager) stop(ctx context.Context, k Kind) {
 	if err := r.server.Stop(ctx); err != nil {
 		slog.Error("Failed to stop server", "server", k, "error", err)
 	}
+}
+
+func ambeServers(c *config.Config) []transcode.ServerConfig {
+	out := make([]transcode.ServerConfig, 0, len(c.DMR.Transcoding.AMBEServers))
+	for _, s := range c.DMR.Transcoding.AMBEServers {
+		out = append(out, transcode.ServerConfig{Addr: s.Address, Calls: s.Calls})
+	}
+	return out
 }
 
 func (m *Manager) stopAll(ctx context.Context) {

@@ -54,8 +54,13 @@ type Packet struct {
 
 	// Codec is the codec of the voice in the burst, 1 for AMBE and 2 for
 	// Codec2, or 0 for a burst without voice or one the hub did not look
-	// at. It is not part of the DMRD packet.
-	Codec uint8 `msg:"-"`
+	// at. Copy marks a copy that the hub converted from a burst in the
+	// other codec. HasCopy marks a burst whose copy in the other codec
+	// follows, for the targets that use that codec. None of them is part
+	// of the DMRD packet.
+	Codec   uint8 `msg:"-"`
+	Copy    bool  `msg:"-"`
+	HasCopy bool  `msg:"-"`
 }
 
 func (p Packet) Equal(other Packet) bool {

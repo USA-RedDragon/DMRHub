@@ -43,8 +43,8 @@ const (
 )
 
 // streamCodec is what the hub knows about the codec of one stream that it
-// routes. Only the routing worker of the stream uses it, apart from last,
-// which mu guards.
+// routes. Only the routing worker of the stream uses it, apart from last
+// and tx, which mu guards.
 type streamCodec struct {
 	codec     transcode.Codec
 	header    bool
@@ -55,6 +55,10 @@ type streamCodec struct {
 	det       transcode.ModeDetector
 	mode      codec2.Mode
 	noted     bool
+	ended     bool
+	need      bool
+	needAt    time.Time
+	tx        *transcoder
 
 	mu   sync.Mutex
 	last time.Time
@@ -92,6 +96,9 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 	now := time.Now()
 	voice := transcode.IsVoice(packet) || isVoiceLC(packet)
 	sc, loaded := h.codecStreams.Load(packet.StreamID)
+	if loaded && sc.ended && transcode.IsHeader(packet) {
+		loaded = false
+	}
 	if !loaded {
 		if !voice {
 			return nil
@@ -103,8 +110,18 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		h.codecStreams.Store(packet.StreamID, sc)
 	}
 	sc.touch(now)
+	if sc.ended {
+		if voice {
+			packet.Codec = uint8(sc.codec)
+		}
+		return sc
+	}
 	if codec, lc, ok := transcode.HeaderCodec(packet); ok && !sc.header {
 		sc.header = true
+		if sc.codec != codec {
+			sc.setTranscoder(nil)
+			sc.needAt = time.Time{}
+		}
 		sc.codec = codec
 		sc.encrypted = transcode.Encrypted(lc)
 		if sc.learns {
@@ -208,6 +225,7 @@ func (h *Hub) recordHeard(n heardNote) {
 // timeslots.
 func (h *Hub) CodecChanged(id uint) {
 	h.repeaters.invalidate(id)
+	h.loadCodec2Repeaters()
 	if h.pubsub == nil {
 		return
 	}
@@ -224,10 +242,14 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 		}
 	}()
 	ch := sub.Channel()
+	ticker := time.NewTicker(repeaterCacheTTL)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-h.done:
 			return
+		case <-ticker.C:
+			h.loadCodec2Repeaters()
 		case msg, ok := <-ch:
 			if !ok {
 				return
@@ -237,6 +259,7 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 				continue
 			}
 			h.repeaters.invalidate(id)
+			h.loadCodec2Repeaters()
 		}
 	}
 }
@@ -245,12 +268,26 @@ func (h *Hub) pruneCodecStreams(now time.Time) {
 	h.codecStreams.Range(func(id uint, sc *streamCodec) bool {
 		if sc.idle(now) {
 			h.codecStreams.Delete(id)
+			sc.setTranscoder(nil)
+		}
+		return true
+	})
+	pruneStreams(h.copyReports, now)
+	h.tgRepeaters.Range(func(tg uint, e tgRepeaters) bool {
+		if now.Sub(e.at) > tgRepeatersTTL {
+			h.tgRepeaters.Delete(tg)
 		}
 		return true
 	})
 }
 
-// endCodecStream forgets a stream at its terminator.
+// endCodecStream stops the transcoder of a stream at its terminator. The
+// stream stays known as ended until it idles, so that a late or repeated
+// burst after the terminator keeps the codec of the call; a new Voice LC
+// Header with the same stream ID starts a new call.
 func (h *Hub) endCodecStream(stream uint) {
-	h.codecStreams.Delete(stream)
+	if sc, ok := h.codecStreams.Load(stream); ok {
+		sc.ended = true
+		sc.setTranscoder(nil)
+	}
 }

@@ -309,7 +309,7 @@ jobs:
 
       - name: Race tests
         run: |
-          go test -timeout 30m ./... -race
+          go test -tags codec2wasm -timeout 30m ./... -race
 
   backend-unit-tests:
     runs-on: ubuntu-24.04

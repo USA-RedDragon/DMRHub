@@ -71,9 +71,12 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	h.streamActive(packet.StreamID)
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		defer h.streamEnded(packet.StreamID)
+		defer h.endCodecStream(packet.StreamID)
 	}
 
 	defer h.noteSighting(packet, sourceName)
+
+	h.observeCodec(&packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {
 		return

@@ -34,8 +34,65 @@ dockers_v2:
       "org.opencontainers.image.source": "https://github.com/USA-RedDragon/{{ .ProjectName }}"
 
 builds:
-  - main: .
+  - id: dmrhub
+    main: .
     binary: DMRHub
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - riscv64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goarch: arm
+        goos: windows
+      - goarch: riscv64
+        goos: windows
+      - goarch: arm
+        goos: darwin
+      - goarch: riscv64
+        goos: darwin
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+  - id: parrot
+    main: ./plugins/parrot/cmd/parrot
+    binary: dmrhub-parrot
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - riscv64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goarch: arm
+        goos: windows
+      - goarch: riscv64
+        goos: windows
+      - goarch: arm
+        goos: darwin
+      - goarch: riscv64
+        goos: darwin
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+  - id: locator
+    main: ./plugins/locator/cmd/locator
+    binary: dmrhub-locator
     goos:
       - darwin
       - linux

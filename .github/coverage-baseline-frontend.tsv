@@ -16,7 +16,7 @@ src/components/UserTable.vue	144	89
 src/components/setup/DMR/IPSCSettings.vue	9	5
 src/components/setup/DMR/MMDVMSettings.vue	7	4
 src/components/setup/DMR/OpenBridgeSettings.vue	9	7
-src/components/setup/DMR/PositionsSettings.vue	31	25
+src/components/setup/DMR/PositionsSettings.vue	27	22
 src/components/setup/DMR/RetentionSettings.vue	23	19
 src/components/setup/DMR/WebTransportSettings.vue	8	2
 src/components/setup/DMRSettings.vue	27	10
@@ -101,7 +101,7 @@ src/services/ws.ts	51	30
 src/store/index.ts	11	11
 src/views/LastHeard.vue	1	1
 src/views/MainPage.vue	1	1
-src/views/SetupWizard.vue	81	46
+src/views/SetupWizard.vue	76	43
 src/views/admin/NetsPage.vue	73	40
 src/views/admin/NewTalkgroupsPage.vue	40	23
 src/views/admin/RepeatersPage.vue	1	1

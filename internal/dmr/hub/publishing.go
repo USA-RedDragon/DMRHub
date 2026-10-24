@@ -38,6 +38,9 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	rawPacket := models.RawDMRPacket{
 		Data:    packet.Encode(),
 		TrackID: packet.TrackID,
+		Codec:   packet.Codec,
+		Copy:    packet.Copy,
+		HasCopy: packet.HasCopy,
 	}
 	packedBytes, err := rawPacket.MarshalMsg(nil)
 	if err != nil {
@@ -70,34 +73,52 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 	default:
 	}
 
-	key := streamTarget{stream: packet.StreamID, dst: packet.Src}
-	set, ok := h.streamPeers.Load(key)
+	set, ok := h.peerSet(ctx, packet)
 	if !ok {
-		var err error
-		set.peers, err = h.egressPeers(ctx, packet)
-		if err != nil {
-			slog.Error("Failed to list peers for publishing", "error", err)
-			return
-		}
-		set.at = time.Now()
-		h.streamPeers.Store(key, set)
+		return
 	}
-	for _, id := range set.peers {
-		h.publishToPeer(id, packet)
+	for _, p := range set.peers {
+		if !wantsPeerVersion(&packet, p.codec2) {
+			continue
+		}
+		h.publishToPeer(p.id, packet)
+		h.noteCopy(&packet, "peer:"+strconv.FormatUint(uint64(p.id), 10))
 	}
 }
 
 type streamPeerSet struct {
-	peers []uint
+	peers []peerTarget
 	at    time.Time
 }
 
-func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]uint, error) {
+type peerTarget struct {
+	id     uint
+	codec2 bool
+}
+
+// peerSet returns the peers that the stream of packet goes to, as the
+// first burst of the stream found them.
+func (h *Hub) peerSet(ctx context.Context, packet models.Packet) (streamPeerSet, bool) {
+	key := streamTarget{stream: packet.StreamID, dst: packet.Src}
+	if set, ok := h.streamPeers.Load(key); ok {
+		return set, true
+	}
+	peers, err := h.egressPeers(ctx, packet)
+	if err != nil {
+		slog.Error("Failed to list peers for publishing", "error", err)
+		return streamPeerSet{}, false
+	}
+	set := streamPeerSet{peers: peers, at: time.Now()}
+	h.streamPeers.Store(key, set)
+	return set, true
+}
+
+func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]peerTarget, error) {
 	peers, err := models.ListPeers(h.db)
 	if err != nil {
 		return nil, fmt.Errorf("listing peers: %w", err)
 	}
-	var out []uint
+	var out []peerTarget
 	for _, p := range peers {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("listing peers: %w", ctx.Err())
@@ -108,7 +129,7 @@ func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]uint, er
 			continue
 		}
 		if should {
-			out = append(out, p.ID)
+			out = append(out, peerTarget{id: p.ID, codec2: p.Codec2})
 		}
 	}
 	return out, nil

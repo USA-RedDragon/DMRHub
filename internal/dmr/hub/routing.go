@@ -76,7 +76,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 	defer h.noteSighting(packet, sourceName)
 
-	h.observeCodec(&packet, sourceName)
+	sc := h.observeCodec(&packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {
 		return
@@ -86,6 +86,16 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		h.switchDynamicTalkgroup(ctx, packet)
 	}
 
+	tx := h.prepareCopy(ctx, &packet, sc, sourceName)
+	h.fanOut(ctx, packet, sourceName)
+	if tx != nil {
+		tx.queue(packet)
+	}
+}
+
+// fanOut sends packet, an original or a copy in the other codec, to the
+// peers, the talkgroup or the private target.
+func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName string) {
 	_, isPlugin := plugins.PluginOfSource(sourceName)
 	if !isPlugin && h.getServerRole(sourceName) != RolePeer {
 		h.publishForPeers(ctx, packet)
@@ -217,26 +227,56 @@ func (h *Hub) routeToRepeater(packet models.Packet) bool {
 // radio was last heard. Traffic to a radio that is not a user is dropped.
 // It reports whether the hub knows where the radio is.
 func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) bool {
+	repeaterID, ok := h.privateTarget(ctx, packet)
+	if !ok {
+		return false
+	}
+	h.publishToRepeater(repeaterID, packet)
+	return true
+}
+
+// privateTarget returns the repeater that the private stream of packet to
+// a registered radio goes to: where its first burst went, or where the
+// radio was last heard.
+func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bool) {
 	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
 	if at, ok := h.streamTargets.Load(key); ok {
-		h.publishToRepeater(at.repeater, packet)
-		return true
+		return at.repeater, true
 	}
 	user, err := models.FindUserByID(h.db, packet.Dst)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Error finding user", "error", err)
 		}
-		return false
+		return 0, false
 	}
 	repeaterID, ok := h.locateRadio(ctx, user.ID)
 	if !ok {
 		slog.Debug("Dropping private traffic to a radio with no known location", "userID", user.ID, "src", packet.Src)
-		return false
+		return 0, false
 	}
 	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})
-	h.publishToRepeater(repeaterID, packet)
-	return true
+	return repeaterID, true
+}
+
+// privateTargetRepeater returns the repeater that the private burst
+// packet goes to.
+func (h *Hub) privateTargetRepeater(ctx context.Context, packet models.Packet) (*models.Repeater, bool) {
+	id := packet.Dst
+	if !isRepeaterID(id) {
+		if !isUserID(id) {
+			return nil, false
+		}
+		var ok bool
+		if id, ok = h.privateTarget(ctx, packet); !ok {
+			return nil, false
+		}
+	}
+	rpt, err := h.routingRepeater(id)
+	if err != nil {
+		return nil, false
+	}
+	return rpt, true
 }
 
 // streamTarget is a private stream to a radio. The repeater that its first

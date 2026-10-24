@@ -45,7 +45,13 @@ type Metrics struct {
 
 	// MessagesDroppedTotal counts data messages that the message store dropped.
 	MessagesDroppedTotal prometheus.Counter
+
+	// TranscodeMissedSecondsTotal counts the audio of calls that could not
+	// be converted to the other codec, by the codec of the copy and reason.
+	TranscodeMissedSecondsTotal *prometheus.CounterVec
 }
+
+const labelReason = "reason"
 
 // DropReasonStreamFromOtherSource is the IngressDroppedBurstsTotal reason
 // for a burst of a stream that another source is already sending.
@@ -91,11 +97,11 @@ func NewMetrics() *Metrics {
 			UndeliverableBurstsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 				Name: "dmr_undeliverable_bursts_total",
 				Help: "The total number of bursts that a target could not carry",
-			}, []string{"target", "reason"}),
+			}, []string{"target", labelReason}),
 			IngressDroppedBurstsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 				Name: "dmr_ingress_dropped_bursts_total",
 				Help: "The total number of incoming bursts that were not routed, by reason",
-			}, []string{"reason"}),
+			}, []string{labelReason}),
 			TrackerDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "call_tracker_dropped_packets_total",
 				Help: "The total number of packets that the call tracker did not record because its queue was full",
@@ -104,6 +110,10 @@ func NewMetrics() *Metrics {
 				Name: "message_store_dropped_total",
 				Help: "The total number of data messages that the message store did not save because its queue was full",
 			}),
+			TranscodeMissedSecondsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dmr_transcode_missed_seconds_total",
+				Help: "The total seconds of call audio that could not be converted to the other codec and went out as silence, by the codec of the copy and reason",
+			}, []string{"to", labelReason}),
 		}
 		metricsInstance.register()
 	})
@@ -120,6 +130,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.IngressDroppedBurstsTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
+	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
 }
 
 // KV Store metrics methods
@@ -160,4 +171,10 @@ func (m *Metrics) IncrementTrackerDropped() {
 // dropped.
 func (m *Metrics) IncrementMessagesDropped() {
 	m.MessagesDroppedTotal.Inc()
+}
+
+// AddTranscodeMissed counts seconds of audio that could not be converted
+// to the codec to, for reason.
+func (m *Metrics) AddTranscodeMissed(to, reason string, seconds float64) {
+	m.TranscodeMissedSecondsTotal.WithLabelValues(to, reason).Add(seconds)
 }

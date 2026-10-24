@@ -86,6 +86,10 @@ func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
 	h.deliverToServerUnless(s.done, serverName, rp)
 }
 
+func repeaterTarget(repeaterID uint) string {
+	return "repeater:" + strconv.FormatUint(uint64(repeaterID), 10)
+}
+
 func repeaterTopic(repeaterID uint) string {
 	return repeaterTopicPrefix + strconv.FormatUint(uint64(repeaterID), 10)
 }
@@ -377,6 +381,7 @@ func unmarshalRawPacket(msg []byte) (models.Packet, bool) {
 		return models.Packet{}, false
 	}
 	packet.TrackID = rawPacket.TrackID
+	packet.Codec, packet.Copy, packet.HasCopy = rawPacket.Codec, rawPacket.Copy, rawPacket.HasCopy
 	return packet, true
 }
 
@@ -473,7 +478,11 @@ func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.S
 				slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
 				continue
 			}
+			if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
+				continue
+			}
 			sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+			m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
 		}
 	}
 }
@@ -522,8 +531,12 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscri
 				}
 				packet.Repeater = p.ID
 				packet.Slot = !packet.Slot
+				if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
+					continue
+				}
 
 				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+				m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
 				continue
 			}
 
@@ -531,8 +544,12 @@ func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscri
 			if want {
 				packet.Repeater = p.ID
 				packet.Slot = slot
+				if !wantsVersion(&packet, p.SlotCodec(slot)) {
+					continue
+				}
 
 				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+				m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
 			} else {
 				// Clean up the subscription map entry and cancel the context
 				// to avoid leaking resources.

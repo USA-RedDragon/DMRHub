@@ -138,7 +138,7 @@ func (g *Gateway) Stop() {
 
 func (g *Gateway) login() (aprs.Config, bool) {
 	is := g.cfg.DMR.Positions.APRSIS
-	c := aprs.Config{Login: is.Callsign, Passcode: is.Passcode, Server: is.ServerAddress()}
+	c := aprs.Config{Login: is.Callsign, Passcode: aprs.Passcode(is.Callsign), Server: is.ServerAddress()}
 	return c, c.Login != ""
 }
 

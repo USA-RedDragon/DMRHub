@@ -107,7 +107,6 @@ func GETConfig(c *gin.Context) {
 			SecretSet:       config.Secret != "",
 			PasswordSaltSet: config.PasswordSalt != "",
 			SMTPPasswordSet: config.SMTP.Password != "",
-			APRSPasscodeSet: config.DMR.Positions.APRSIS.Passcode != "",
 		},
 	}
 

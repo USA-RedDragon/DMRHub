@@ -90,7 +90,6 @@ type retentionShadow struct {
 
 type aPRSISShadow struct {
 	Callsign *string `json:"callsign" toml:"callsign" yaml:"callsign"`
-	Passcode *string `json:"passcode" toml:"passcode" yaml:"passcode"`
 	Server   *string `json:"server"   toml:"server"   yaml:"server"`
 }
 
@@ -462,10 +461,6 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				if s.DMR.Positions.APRSIS.Callsign != nil {
 					cfg.DMR.Positions.APRSIS.Callsign = *s.DMR.Positions.APRSIS.Callsign
 					set("dmr.positions.aprs-is.callsign", configulator.LayerFile, file)
-				}
-				if s.DMR.Positions.APRSIS.Passcode != nil {
-					cfg.DMR.Positions.APRSIS.Passcode = *s.DMR.Positions.APRSIS.Passcode
-					set("dmr.positions.aprs-is.passcode", configulator.LayerFile, file)
 				}
 				if s.DMR.Positions.APRSIS.Server != nil {
 					cfg.DMR.Positions.APRSIS.Server = *s.DMR.Positions.APRSIS.Server
@@ -923,10 +918,6 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Positions.APRSIS.Callsign = v
 		set("dmr.positions.aprs-is.callsign", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "aprs-is", "passcode"); ok {
-		cfg.DMR.Positions.APRSIS.Passcode = v
-		set("dmr.positions.aprs-is.passcode", configulator.LayerEnv, n)
-	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "aprs-is", "server"); ok {
 		cfg.DMR.Positions.APRSIS.Server = v
 		set("dmr.positions.aprs-is.server", configulator.LayerEnv, n)
@@ -1121,7 +1112,6 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "positions" + o.Separator + "min-interval",
 		"dmr" + o.Separator + "positions" + o.Separator + "max-retention",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign",
-		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "passcode",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -1203,27 +1193,26 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(5), names[42], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
 	fs.Var(impl.NewInt(30), names[43], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
 	fs.String(names[44], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[45], "", "APRS-IS passcode of the callsign")
-	fs.String(names[46], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[47], false, "Enable SMTP support for sending emails")
-	fs.String(names[48], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[49], "SMTP server port")
-	fs.String(names[50], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[51], "", "SMTP server username")
-	fs.String(names[52], "", "SMTP server password")
-	fs.String(names[53], "", "Email address to use as the sender")
-	fs.String(names[54], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[55], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[56], false, "Enable metrics collection and export")
-	fs.String(names[57], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[58], "Metrics server port")
-	fs.StringSlice(names[59], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[60], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[61], false, "Enable PProf profiling and debugging support")
-	fs.String(names[62], "[::]", "PProf server listen address")
-	fs.StringSlice(names[63], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[64], "PProf server port")
-	fs.String(names[65], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.String(names[45], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[46], false, "Enable SMTP support for sending emails")
+	fs.String(names[47], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[48], "SMTP server port")
+	fs.String(names[49], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[50], "", "SMTP server username")
+	fs.String(names[51], "", "SMTP server password")
+	fs.String(names[52], "", "Email address to use as the sender")
+	fs.String(names[53], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[54], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[55], false, "Enable metrics collection and export")
+	fs.String(names[56], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[57], "Metrics server port")
+	fs.StringSlice(names[58], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[59], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[60], false, "Enable PProf profiling and debugging support")
+	fs.String(names[61], "[::]", "PProf server listen address")
+	fs.StringSlice(names[62], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[63], "PProf server port")
+	fs.String(names[64], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1767,18 +1756,6 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Positions.APRSIS.Callsign = v
 		set("dmr.positions.aprs-is.callsign", configulator.LayerCLI, "--"+n)
-	}
-	if n := "dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "passcode"; fs.Changed(n) {
-		v, err := fs.GetString(n)
-		if err != nil {
-			return &configulator.ParseError{
-				Err:    err,
-				Path:   "dmr.positions.aprs-is.passcode",
-				Source: "--" + n,
-			}
-		}
-		cfg.DMR.Positions.APRSIS.Passcode = v
-		set("dmr.positions.aprs-is.passcode", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server"; fs.Changed(n) {
 		v, err := fs.GetString(n)
@@ -3405,19 +3382,6 @@ func (s *aPRSISShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".callsign", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
-		case "passcode":
-			v, err := dec.ReadToken()
-			if err != nil {
-				return err
-			}
-			switch v.Kind() {
-			case jsontext.KindNull:
-			case jsontext.KindString:
-				str := v.String()
-				s.Passcode = &str
-			default:
-				return configJSONError(path+".passcode", v, fmt.Errorf("expected a string, got %v", v.Kind()))
-			}
 		case "server":
 			v, err := dec.ReadToken()
 			if err != nil {
@@ -3846,7 +3810,6 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.positions.min-interval = %v\n", c.DMR.Positions.MinInterval)
 	fmt.Fprintf(&b, "dmr.positions.max-retention = %v\n", c.DMR.Positions.MaxRetention)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.callsign = %v\n", c.DMR.Positions.APRSIS.Callsign)
-	fmt.Fprintf(&b, "dmr.positions.aprs-is.passcode = %v\n", c.DMR.Positions.APRSIS.Passcode)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.server = %v\n", c.DMR.Positions.APRSIS.Server)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

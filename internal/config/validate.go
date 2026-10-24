@@ -25,7 +25,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strconv"
 )
 
 const (
@@ -377,9 +376,6 @@ var (
 	// ErrInvalidAPRSCallsign indicates an APRS-IS callsign that APRS-IS
 	// does not accept.
 	ErrInvalidAPRSCallsign = errors.New("the APRS-IS callsign must be a callsign with an optional SSID, such as N0CALL-10")
-	// ErrInvalidAPRSPasscode indicates an APRS-IS passcode that is not a
-	// number.
-	ErrInvalidAPRSPasscode = errors.New("the APRS-IS passcode must be a number")
 	// ErrInvalidAPRSServer indicates an APRS-IS server that is not
 	// host:port.
 	ErrInvalidAPRSServer = errors.New("the APRS-IS server must be host:port")
@@ -411,11 +407,6 @@ func (p Positions) ValidateWithFields() (errs []ValidationError) {
 	a := p.APRSIS
 	if a.Callsign != "" && !aprsCallsignRegex.MatchString(a.Callsign) {
 		errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.callsign", Err: ErrInvalidAPRSCallsign})
-	}
-	if a.Passcode != "" {
-		if _, err := strconv.ParseUint(a.Passcode, 10, 16); err != nil {
-			errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.passcode", Err: ErrInvalidAPRSPasscode})
-		}
 	}
 	if host, port, err := net.SplitHostPort(a.Server); a.Server != "" && (err != nil || host == "" || port == "") {
 		errs = append(errs, ValidationError{Field: "dmr.positions.aprs-is.server", Err: ErrInvalidAPRSServer})

@@ -67,7 +67,7 @@
             The hub logs in to APRS-IS once and sends the positions of the radios whose owners turn it on, each under
             its owner's callsign.
           </p>
-          <div class="grid gap-4 sm:grid-cols-3 mt-4">
+          <div class="grid gap-4 sm:grid-cols-2 mt-4">
             <div>
               <label class="field-label" for="positions-aprs-callsign">Callsign</label>
               <ShadInput
@@ -77,19 +77,6 @@
                 @update:model-value="(v) => setAPRS('callsign', String(v).toUpperCase())"
               />
               <span v-if="aprsErrors.callsign" class="p-error">{{ aprsErrors.callsign }}</span>
-            </div>
-            <div>
-              <label class="field-label" for="positions-aprs-passcode">Passcode</label>
-              <ShadInput
-                id="positions-aprs-passcode"
-                type="password"
-                autocomplete="off"
-                :model-value="aprs.passcode || ''"
-                :aria-invalid="aprsErrors.passcode ? true : undefined"
-                @update:model-value="(v) => setAPRS('passcode', String(v))"
-              />
-              <small class="text-muted-foreground" data-test="aprs-passcode-status">{{ passcodeStatus }}</small>
-              <span v-if="aprsErrors.passcode" class="p-error">{{ aprsErrors.passcode }}</span>
             </div>
             <div>
               <label class="field-label" for="positions-aprs-server">Server</label>
@@ -103,7 +90,10 @@
               <span v-if="aprsErrors.server" class="p-error">{{ aprsErrors.server }}</span>
             </div>
           </div>
-          <p class="text-sm text-muted-foreground mt-2">Leave the callsign empty to send nothing to APRS-IS.</p>
+          <p class="text-sm text-muted-foreground mt-2">
+            The hub works out the APRS-IS passcode from the callsign. Leave the callsign empty to send nothing to
+            APRS-IS.
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -122,7 +112,6 @@ const DEFAULT_RETENTION = 30;
 const props = defineProps<{
   modelValue: Record<string, unknown>;
   errors?: Record<string, unknown>;
-  passcodeSet?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -141,13 +130,6 @@ const retention = computed(() => positive(props.modelValue?.['max-retention'], D
 const aprs = computed(() => (props.modelValue?.['aprs-is'] as Record<string, string> | undefined) || {});
 
 const aprsErrors = computed(() => (props.errors?.['aprs-is'] as Record<string, string> | undefined) || {});
-
-const passcodeStatus = computed(() => {
-  if (aprs.value.passcode) {
-    return props.passcodeSet ? 'Will replace the stored passcode when you save.' : 'Will be saved when you save.';
-  }
-  return props.passcodeSet ? 'Stored. Leave blank to keep it.' : 'Not set.';
-});
 
 const setNumber = (key: string, v: unknown) => {
   const text = String(v).trim();

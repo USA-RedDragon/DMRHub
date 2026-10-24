@@ -23,6 +23,7 @@ package aprs
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +41,21 @@ type Config struct {
 	Passcode string
 	// Server is the APRS-IS server, as host:port.
 	Server string
+}
+
+// Passcode returns the APRS-IS passcode of the callsign login, whose SSID
+// does not count. APRS-IS checks a login with it; anyone can work it out,
+// so it is no secret.
+func Passcode(login string) string {
+	call, _, _ := strings.Cut(strings.ToUpper(login), "-")
+	h := uint16(0x73e2)
+	for i := 0; i < len(call); i += 2 {
+		h ^= uint16(call[i]) << 8
+		if i+1 < len(call) {
+			h ^= uint16(call[i+1])
+		}
+	}
+	return strconv.Itoa(int(h & 0x7fff))
 }
 
 // ErrCallsign is returned for a callsign that cannot go in an APRS header.

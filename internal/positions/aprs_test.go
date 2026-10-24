@@ -38,7 +38,8 @@ import (
 	"gorm.io/gorm"
 )
 
-const passcode = "12345"
+// passcode is the APRS-IS passcode of N0HUB, the login of the gateway.
+const passcode = "14215"
 
 type clock struct {
 	mu  sync.Mutex
@@ -75,7 +76,7 @@ func newGateway(t *testing.T) *gateway {
 	require.True(t, strings.HasPrefix(srv.Addr(), "127.0.0.1:"), "tests send only to loopback")
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.DMR.Positions.APRSIS = config.APRSIS{Callsign: "N0HUB-10", Passcode: passcode, Server: srv.Addr()}
+	cfg.DMR.Positions.APRSIS = config.APRSIS{Callsign: "N0HUB-10", Server: srv.Addr()}
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })

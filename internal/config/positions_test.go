@@ -44,7 +44,7 @@ func TestPositionDefaults(t *testing.T) {
 
 func TestPositionValidate(t *testing.T) {
 	t.Parallel()
-	valid := config.Positions{MinInterval: 10, MaxRetention: 365, APRSIS: config.APRSIS{Callsign: "N0HUB-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"}}
+	valid := config.Positions{MinInterval: 10, MaxRetention: 365, APRSIS: config.APRSIS{Callsign: "N0HUB-10", Server: "rotate.aprs2.net:14580"}}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("expected valid, got %v", err)
 	}
@@ -58,7 +58,6 @@ func TestPositionValidate(t *testing.T) {
 		{"retention 366", func(p *config.Positions) { p.MaxRetention = 366 }, config.ErrInvalidPositionRetention},
 		{"lower case callsign", func(p *config.Positions) { p.APRSIS.Callsign = "n0hub" }, config.ErrInvalidAPRSCallsign},
 		{"injected callsign", func(p *config.Positions) { p.APRSIS.Callsign = "N0HUB>APRS" }, config.ErrInvalidAPRSCallsign},
-		{"passcode", func(p *config.Positions) { p.APRSIS.Passcode = "abc" }, config.ErrInvalidAPRSPasscode},
 		{"server", func(p *config.Positions) { p.APRSIS.Server = "rotate.aprs2.net" }, config.ErrInvalidAPRSServer},
 	} {
 		p := valid

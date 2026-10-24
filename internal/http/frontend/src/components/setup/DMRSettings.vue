@@ -77,7 +77,7 @@
         <br />
         <RetentionSettings v-model="retention" :errors="errors.retention" />
         <br />
-        <PositionsSettings v-model="positions" :errors="errors.positions" :passcode-set="!!secretStatus.aprsPasscodeSet" />
+        <PositionsSettings v-model="positions" :errors="errors.positions" />
       </CardContent>
     </Card>
   </div>

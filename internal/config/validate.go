@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 )
 
 const (
@@ -91,6 +92,10 @@ var (
 	ErrInvalidPluginsPort = errors.New("the plugin port must be a port other than the HTTP port")
 	// ErrInvalidPluginsBind indicates that the plugin listener has no address.
 	ErrInvalidPluginsBind = errors.New("the plugin listener needs an address to bind to")
+	// ErrInvalidAMBEServer indicates that an AMBE server is not a host and port.
+	ErrInvalidAMBEServer = errors.New("enter a host and port for each server, such as ambeserver:2460")
+	// ErrInvalidAMBECalls indicates that the calls at once of an AMBE server are negative.
+	ErrInvalidAMBECalls = errors.New("calls at once is a whole number of 1 or more, or empty for no limit")
 	// ErrPluginsKeyPair indicates that only one of the plugin certificate and key files is set.
 	ErrPluginsKeyPair = errors.New("set both the plugin certificate and key files, or neither")
 	// ErrDMRMMDVMWebTransportKeyPair indicates that only one of the WebTransport certificate and key files is set.
@@ -470,6 +475,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 
 	errs = append(errs, d.Positions.ValidateWithFields()...)
 	errs = append(errs, d.Plugins.ValidateWithFields()...)
+	errs = append(errs, d.Transcoding.ValidateWithFields()...)
 
 	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{
@@ -641,7 +647,28 @@ func (p Plugins) ValidateWithFields() (errs []ValidationError) {
 	return errs
 }
 
-const fieldPluginsPort = "dmr.plugins.port"
+const (
+	fieldPluginsPort = "dmr.plugins.port"
+	fieldAMBEServers = "dmr.transcoding.ambe-servers"
+)
+
+// ValidateWithFields validates the address and calls at once of each AMBE
+// server.
+func (t Transcoding) ValidateWithFields() []ValidationError {
+	for _, s := range t.AMBEServers {
+		host, port, err := net.SplitHostPort(s.Address)
+		if err != nil || host == "" {
+			return []ValidationError{{Field: fieldAMBEServers, Err: ErrInvalidAMBEServer}}
+		}
+		if n, err := strconv.Atoi(port); err != nil || n <= 0 || n > 65535 {
+			return []ValidationError{{Field: fieldAMBEServers, Err: ErrInvalidAMBEServer}}
+		}
+		if s.Calls < 0 {
+			return []ValidationError{{Field: fieldAMBEServers, Err: ErrInvalidAMBECalls}}
+		}
+	}
+	return nil
+}
 
 func (c Config) ValidateWithFields() (errs []ValidationError) {
 	if c.DMR.Plugins.Enabled && c.DMR.Plugins.Port == c.HTTP.Port {

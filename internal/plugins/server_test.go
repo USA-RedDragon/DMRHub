@@ -53,7 +53,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	p, token, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{{First: 9990, Last: 9990}}, time.Now())
 	require.NoError(t, err)
 	var given *plugins.Registry
-	srv, err := plugins.Start(context.Background(), &cfg, database, ps, &routed{}, func(r *plugins.Registry) { given = r })
+	srv, err := plugins.Start(context.Background(), &cfg, database, ps, &routed{}, func(r *plugins.Registry) { given = r }, nil)
 	require.NoError(t, err)
 	t.Cleanup(srv.Stop)
 	require.NotNil(t, given)
@@ -87,7 +87,7 @@ func TestAListenerThatIsOffStartsNothing(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	called := false
-	srv, err := plugins.Start(context.Background(), &cfg, nil, nil, nil, func(*plugins.Registry) { called = true })
+	srv, err := plugins.Start(context.Background(), &cfg, nil, nil, nil, func(*plugins.Registry) { called = true }, nil)
 	require.NoError(t, err)
 	assert.Nil(t, srv)
 	assert.False(t, called, "the built-in services keep their IDs")
@@ -107,7 +107,7 @@ func TestStoppingTheListenerTwiceIsSafe(t *testing.T) {
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
-	srv, err := plugins.Start(context.Background(), &cfg, database, ps, &routed{}, func(*plugins.Registry) {})
+	srv, err := plugins.Start(context.Background(), &cfg, database, ps, &routed{}, func(*plugins.Registry) {}, nil)
 	require.NoError(t, err)
 	srv.Stop()
 	assert.NotPanics(t, srv.Stop, "the server shuts down its resources twice when the HTTP server cannot start")

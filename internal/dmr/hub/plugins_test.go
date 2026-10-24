@@ -135,3 +135,28 @@ func TestAPluginDoesNotHearItsOwnGroupCall(t *testing.T) {
 	expectAt(t, srv, 100004, "the subscribers of the talkgroup")
 	assert.Empty(t, f.got(weatherPlugin), "no echo to the plugin that sent it")
 }
+
+func TestAHeardRadioIsToldToThePlugins(t *testing.T) {
+	t.Parallel()
+	h, database, ps := makeTestHubWithPubSub(t)
+	seedUser(t, database, 1000002, "TARGET")
+	seedRepeater(t, database, 100003, 1000002)
+	require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100003).Update("color_code", 7).Error)
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	h.ActivateRepeater(context.Background(), 100003)
+	h.SetPlugins(newFakePlugins(nil))
+	sub := ps.Subscribe(plugins.HeardTopic)
+	t.Cleanup(func() { _ = sub.Close() })
+	p := dataHeader(1000002, 1, 100003, 1)
+	p.Slot = true
+	h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+	select {
+	case b := <-sub.Channel():
+		radio, repeater, slot, cc, ok := plugins.DecodeHeard(b)
+		require.True(t, ok)
+		assert.Equal(t, []uint{1000002, 100003}, []uint{radio, repeater})
+		assert.Equal(t, []uint8{2, 7}, []uint8{slot, cc})
+	case <-time.After(2 * time.Second):
+		t.Fatal("the plugins were not told where the radio was heard")
+	}
+}

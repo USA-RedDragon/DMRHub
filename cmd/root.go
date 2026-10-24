@@ -436,7 +436,8 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	sm.purger.Start(ctx)
 	sm.aprs = positions.NewGateway(database, cfg, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
-	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) })
+	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) },
+		positions.NewPusher(database, pubsubClient).Push)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

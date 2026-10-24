@@ -123,6 +123,16 @@ type DMR struct {
 	RepeaterIDURL            string     `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
 	Retention                Retention  `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
 	Positions                Positions  `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
+	Plugins                  Plugins    `json:"plugins" name:"plugins" description:"Listener of the plugins, which answer the calls to the IDs an admin gives them"`
+}
+
+// Plugins holds the configuration of the listener that plugins connect to.
+type Plugins struct {
+	Enabled  bool   `json:"enabled" name:"enabled" description:"Accept plugins" default:"false"`
+	Bind     string `json:"bind" name:"bind" description:"Address the plugin listener binds to" default:"[::]"`
+	Port     int    `json:"port" name:"port" description:"TCP port that plugins connect to" default:"3006"`
+	CertFile string `json:"cert-file" yaml:"cert-file" name:"cert-file" description:"TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint"`
+	KeyFile  string `json:"key-file" yaml:"key-file" name:"key-file" description:"TLS key file of the certificate file"`
 }
 
 // Positions holds the limits of position tracking and the APRS-IS login

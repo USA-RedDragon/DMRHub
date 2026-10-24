@@ -99,6 +99,14 @@ type positionsShadow struct {
 	APRSIS       *aPRSISShadow `json:"aprs-is"       toml:"aprs-is"       yaml:"aprs-is"`
 }
 
+type pluginsShadow struct {
+	Enabled  *bool   `json:"enabled"   toml:"enabled"   yaml:"enabled"`
+	Bind     *string `json:"bind"      toml:"bind"      yaml:"bind"`
+	Port     *int    `json:"port"      toml:"port"      yaml:"port"`
+	CertFile *string `json:"cert-file" toml:"cert-file" yaml:"cert-file"`
+	KeyFile  *string `json:"key-file"  toml:"key-file"  yaml:"key-file"`
+}
+
 type dMRShadow struct {
 	MMDVM                    *mMDVMShadow      `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
 	OpenBridge               *openBridgeShadow `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
@@ -108,6 +116,7 @@ type dMRShadow struct {
 	RepeaterIDURL            *string           `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
 	Retention                *retentionShadow  `json:"retention"                   toml:"retention"                   yaml:"retention"`
 	Positions                *positionsShadow  `json:"positions"                   toml:"positions"                   yaml:"positions"`
+	Plugins                  *pluginsShadow    `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
 }
 
 type sMTPShadow struct {
@@ -222,6 +231,12 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.positions.max-retention", configulator.LayerDefault, "default tag")
 	cfg.DMR.Positions.APRSIS.Server = "rotate.aprs2.net:14580"
 	set("dmr.positions.aprs-is.server", configulator.LayerDefault, "default tag")
+	cfg.DMR.Plugins.Enabled = false
+	set("dmr.plugins.enabled", configulator.LayerDefault, "default tag")
+	cfg.DMR.Plugins.Bind = "[::]"
+	set("dmr.plugins.bind", configulator.LayerDefault, "default tag")
+	cfg.DMR.Plugins.Port = 3006
+	set("dmr.plugins.port", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
 	set("smtp.enabled", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Port = 25
@@ -466,6 +481,28 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 					cfg.DMR.Positions.APRSIS.Server = *s.DMR.Positions.APRSIS.Server
 					set("dmr.positions.aprs-is.server", configulator.LayerFile, file)
 				}
+			}
+		}
+		if s.DMR.Plugins != nil {
+			if s.DMR.Plugins.Enabled != nil {
+				cfg.DMR.Plugins.Enabled = *s.DMR.Plugins.Enabled
+				set("dmr.plugins.enabled", configulator.LayerFile, file)
+			}
+			if s.DMR.Plugins.Bind != nil {
+				cfg.DMR.Plugins.Bind = *s.DMR.Plugins.Bind
+				set("dmr.plugins.bind", configulator.LayerFile, file)
+			}
+			if s.DMR.Plugins.Port != nil {
+				cfg.DMR.Plugins.Port = *s.DMR.Plugins.Port
+				set("dmr.plugins.port", configulator.LayerFile, file)
+			}
+			if s.DMR.Plugins.CertFile != nil {
+				cfg.DMR.Plugins.CertFile = *s.DMR.Plugins.CertFile
+				set("dmr.plugins.cert-file", configulator.LayerFile, file)
+			}
+			if s.DMR.Plugins.KeyFile != nil {
+				cfg.DMR.Plugins.KeyFile = *s.DMR.Plugins.KeyFile
+				set("dmr.plugins.key-file", configulator.LayerFile, file)
 			}
 		}
 	}
@@ -922,6 +959,44 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Positions.APRSIS.Server = v
 		set("dmr.positions.aprs-is.server", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.enabled",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Plugins.Enabled = p
+		set("dmr.plugins.enabled", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "bind"); ok {
+		cfg.DMR.Plugins.Bind = v
+		set("dmr.plugins.bind", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "port"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.port",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Plugins.Port = int(p)
+		set("dmr.plugins.port", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "cert-file"); ok {
+		cfg.DMR.Plugins.CertFile = v
+		set("dmr.plugins.cert-file", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "key-file"); ok {
+		cfg.DMR.Plugins.KeyFile = v
+		set("dmr.plugins.key-file", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1113,6 +1188,11 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "positions" + o.Separator + "max-retention",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server",
+		"dmr" + o.Separator + "plugins" + o.Separator + "enabled",
+		"dmr" + o.Separator + "plugins" + o.Separator + "bind",
+		"dmr" + o.Separator + "plugins" + o.Separator + "port",
+		"dmr" + o.Separator + "plugins" + o.Separator + "cert-file",
+		"dmr" + o.Separator + "plugins" + o.Separator + "key-file",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
 		"smtp" + o.Separator + "port",
@@ -1194,25 +1274,30 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(30), names[43], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
 	fs.String(names[44], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
 	fs.String(names[45], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[46], false, "Enable SMTP support for sending emails")
-	fs.String(names[47], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[48], "SMTP server port")
-	fs.String(names[49], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[50], "", "SMTP server username")
-	fs.String(names[51], "", "SMTP server password")
-	fs.String(names[52], "", "Email address to use as the sender")
-	fs.String(names[53], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[54], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[55], false, "Enable metrics collection and export")
-	fs.String(names[56], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[57], "Metrics server port")
-	fs.StringSlice(names[58], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[59], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[60], false, "Enable PProf profiling and debugging support")
-	fs.String(names[61], "[::]", "PProf server listen address")
-	fs.StringSlice(names[62], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[63], "PProf server port")
-	fs.String(names[64], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[46], false, "Accept plugins")
+	fs.String(names[47], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[48], "TCP port that plugins connect to")
+	fs.String(names[49], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[50], "", "TLS key file of the certificate file")
+	fs.Bool(names[51], false, "Enable SMTP support for sending emails")
+	fs.String(names[52], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[53], "SMTP server port")
+	fs.String(names[54], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[55], "", "SMTP server username")
+	fs.String(names[56], "", "SMTP server password")
+	fs.String(names[57], "", "Email address to use as the sender")
+	fs.String(names[58], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[59], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[60], false, "Enable metrics collection and export")
+	fs.String(names[61], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[62], "Metrics server port")
+	fs.StringSlice(names[63], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[64], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[65], false, "Enable PProf profiling and debugging support")
+	fs.String(names[66], "[::]", "PProf server listen address")
+	fs.StringSlice(names[67], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[68], "PProf server port")
+	fs.String(names[69], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	return nil
 }
 
@@ -1768,6 +1853,66 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Positions.APRSIS.Server = v
 		set("dmr.positions.aprs-is.server", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "enabled"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.enabled",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.Enabled = v
+		set("dmr.plugins.enabled", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "bind"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.bind",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.Bind = v
+		set("dmr.plugins.bind", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "port"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.port",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.Port = v
+		set("dmr.plugins.port", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "cert-file"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.cert-file",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.CertFile = v
+		set("dmr.plugins.cert-file", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "key-file"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.key-file",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.KeyFile = v
+		set("dmr.plugins.key-file", configulator.LayerCLI, "--"+n)
 	}
 	if n := "smtp" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -2846,6 +2991,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.Positions = &sub
 			}
+		case "plugins":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".plugins", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub pluginsShadow
+				if err := sub.decodeJSON(dec, path+".plugins"); err != nil {
+					return err
+				}
+				s.Plugins = &sub
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -3408,6 +3572,101 @@ func (s *aPRSISShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 
 // decodeJSON decodes the members of an object whose opening brace has
 // been read. path is the object's dotted path.
+func (s *pluginsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "enabled":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Enabled = &b
+			default:
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "bind":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Bind = &str
+			default:
+				return configJSONError(path+".bind", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "port":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".port", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".port", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Port = &num
+			default:
+				return configJSONError(path+".port", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "cert-file":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.CertFile = &str
+			default:
+				return configJSONError(path+".cert-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "key-file":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.KeyFile = &str
+			default:
+				return configJSONError(path+".key-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
 func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
@@ -3811,6 +4070,11 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.positions.max-retention = %v\n", c.DMR.Positions.MaxRetention)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.callsign = %v\n", c.DMR.Positions.APRSIS.Callsign)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.server = %v\n", c.DMR.Positions.APRSIS.Server)
+	fmt.Fprintf(&b, "dmr.plugins.enabled = %v\n", c.DMR.Plugins.Enabled)
+	fmt.Fprintf(&b, "dmr.plugins.bind = %v\n", c.DMR.Plugins.Bind)
+	fmt.Fprintf(&b, "dmr.plugins.port = %v\n", c.DMR.Plugins.Port)
+	fmt.Fprintf(&b, "dmr.plugins.cert-file = %v\n", c.DMR.Plugins.CertFile)
+	fmt.Fprintf(&b, "dmr.plugins.key-file = %v\n", c.DMR.Plugins.KeyFile)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
 	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)

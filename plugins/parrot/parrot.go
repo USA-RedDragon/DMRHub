@@ -17,8 +17,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Package parrot is a DMRHub plugin that plays each private voice call to
-// its IDs back to the caller.
+// Package parrot is a DMRHub plugin that plays each voice call to its IDs
+// back to the caller.
 package parrot
 
 import (
@@ -57,8 +57,8 @@ const (
 	maxDMRAddress = 1<<24 - 1
 )
 
-// Parrot records the private voice calls to its IDs and plays each back to
-// its caller as a new call.
+// Parrot records the voice calls to its IDs, private or group, and plays
+// each back to its caller as a new private call.
 type Parrot struct {
 	send  func(*pluginv1.Burst) error
 	delay time.Duration
@@ -93,9 +93,10 @@ func (p *Parrot) Wait() {
 }
 
 // Handle records b, a burst to one of the parrot's IDs, and starts the
-// reply when b ends its call. It ignores group calls and data.
+// reply, a private call to the caller, when b ends its call. It ignores
+// data.
 func (p *Parrot) Handle(b *pluginv1.Burst) {
-	if b.GetGroupCall() || !plugin.IsVoice(b) {
+	if !plugin.IsVoice(b) {
 		return
 	}
 	stream := b.GetStreamId()

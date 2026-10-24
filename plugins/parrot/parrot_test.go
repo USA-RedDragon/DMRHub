@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -196,15 +197,27 @@ func TestParrotForgetsAnEndedCall(t *testing.T) {
 	}
 }
 
-func TestParrotIgnoresGroupCallsAndData(t *testing.T) {
+func TestParrotAnswersAGroupCallWithAPrivateCall(t *testing.T) {
 	t.Parallel()
 	p, sent := testParrot()
-	call := capturedCall(t)
-	for _, b := range call {
+	for _, b := range capturedCall(t) {
 		g, _ := proto.Clone(b).(*pluginv1.Burst)
 		g.GroupCall = true
 		p.Handle(g)
 	}
+	reply := sent()
+	require.Len(t, reply, 8)
+	for i, b := range reply {
+		if b.GetGroupCall() || b.GetSource() != 91 || b.GetDestination() != 3191868 {
+			t.Fatalf("burst %d: %v, want a private call from 91 to 3191868", i, b)
+		}
+	}
+}
+
+func TestParrotIgnoresData(t *testing.T) {
+	t.Parallel()
+	p, sent := testParrot()
+	call := capturedCall(t)
 	csbk := &pluginv1.Burst{Source: 3191868, Destination: 91, Slot: 1, StreamId: 7, FrameType: pluginv1.FrameType_FRAME_TYPE_DATA_SYNC, DataTypeOrVoiceSequence: uint32(enums.DataTypeCSBK), Payload: make([]byte, 33)}
 	p.Handle(csbk)
 	p.Handle(call[len(call)-1])

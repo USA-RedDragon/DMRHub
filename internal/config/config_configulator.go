@@ -107,16 +107,26 @@ type pluginsShadow struct {
 	KeyFile  *string `json:"key-file"  toml:"key-file"  yaml:"key-file"`
 }
 
+type aMBEServerShadow struct {
+	Address *string `json:"address" toml:"address" yaml:"address"`
+	Calls   *int    `json:"calls"   toml:"calls"   yaml:"calls"`
+}
+
+type transcodingShadow struct {
+	AMBEServers *[]aMBEServerShadow `json:"ambe-servers" toml:"ambe-servers" yaml:"ambe-servers"`
+}
+
 type dMRShadow struct {
-	MMDVM                    *mMDVMShadow      `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
-	OpenBridge               *openBridgeShadow `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
-	IPSC                     *iPSCShadow       `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
-	DisableRadioIDValidation *bool             `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
-	RadioIDURL               *string           `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
-	RepeaterIDURL            *string           `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
-	Retention                *retentionShadow  `json:"retention"                   toml:"retention"                   yaml:"retention"`
-	Positions                *positionsShadow  `json:"positions"                   toml:"positions"                   yaml:"positions"`
-	Plugins                  *pluginsShadow    `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
+	MMDVM                    *mMDVMShadow       `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
+	OpenBridge               *openBridgeShadow  `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
+	IPSC                     *iPSCShadow        `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
+	DisableRadioIDValidation *bool              `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
+	RadioIDURL               *string            `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
+	RepeaterIDURL            *string            `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
+	Retention                *retentionShadow   `json:"retention"                   toml:"retention"                   yaml:"retention"`
+	Positions                *positionsShadow   `json:"positions"                   toml:"positions"                   yaml:"positions"`
+	Plugins                  *pluginsShadow     `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
+	Transcoding              *transcodingShadow `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
 }
 
 type sMTPShadow struct {
@@ -503,6 +513,26 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.Plugins.KeyFile != nil {
 				cfg.DMR.Plugins.KeyFile = *s.DMR.Plugins.KeyFile
 				set("dmr.plugins.key-file", configulator.LayerFile, file)
+			}
+		}
+		if s.DMR.Transcoding != nil {
+			if s.DMR.Transcoding.AMBEServers != nil {
+				out := make([]AMBEServer, len(*s.DMR.Transcoding.AMBEServers))
+				for i, esh := range *s.DMR.Transcoding.AMBEServers {
+					var e AMBEServer
+					idx := "dmr.transcoding.ambe-servers[" + strconv.Itoa(i) + "]"
+					if esh.Address != nil {
+						e.Address = *esh.Address
+						set(idx+".address", configulator.LayerFile, file)
+					}
+					if esh.Calls != nil {
+						e.Calls = *esh.Calls
+						set(idx+".calls", configulator.LayerFile, file)
+					}
+					out[i] = e
+				}
+				cfg.DMR.Transcoding.AMBEServers = out
+				set("dmr.transcoding.ambe-servers", configulator.LayerFile, file)
 			}
 		}
 	}
@@ -3010,6 +3040,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.Plugins = &sub
 			}
+		case "transcoding":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".transcoding", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub transcodingShadow
+				if err := sub.decodeJSON(dec, path+".transcoding"); err != nil {
+					return err
+				}
+				s.Transcoding = &sub
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -3667,6 +3716,119 @@ func (s *pluginsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 
 // decodeJSON decodes the members of an object whose opening brace has
 // been read. path is the object's dotted path.
+func (s *transcodingShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "ambe-servers":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".ambe-servers", open, fmt.Errorf("expected an array, got %v", open.Kind()))
+				}
+				out := []aMBEServerShadow{}
+				for dec.PeekKind() != jsontext.KindEndArray {
+					ep := path + ".ambe-servers" + "[" + strconv.Itoa(len(out)) + "]"
+					et, err := dec.ReadToken()
+					if err != nil {
+						return err
+					}
+					if et.Kind() != jsontext.KindBeginObject {
+						return configJSONError(ep, et, fmt.Errorf("expected an object, got %v", et.Kind()))
+					}
+					var el aMBEServerShadow
+					if err := el.decodeJSON(dec, ep); err != nil {
+						return err
+					}
+					out = append(out, el)
+				}
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				s.AMBEServers = &out
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *aMBEServerShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "address":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Address = &str
+			default:
+				return configJSONError(path+".address", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "calls":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".calls", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".calls", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Calls = &num
+			default:
+				return configJSONError(path+".calls", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
 func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
@@ -4075,6 +4237,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.plugins.port = %v\n", c.DMR.Plugins.Port)
 	fmt.Fprintf(&b, "dmr.plugins.cert-file = %v\n", c.DMR.Plugins.CertFile)
 	fmt.Fprintf(&b, "dmr.plugins.key-file = %v\n", c.DMR.Plugins.KeyFile)
+	fmt.Fprintf(&b, "dmr.transcoding.ambe-servers = %v\n", c.DMR.Transcoding.AMBEServers)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
 	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)

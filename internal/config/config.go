@@ -115,15 +115,28 @@ type RobotsTXT struct {
 
 // DMR holds the DMR server configuration.
 type DMR struct {
-	MMDVM                    MMDVM      `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
-	OpenBridge               OpenBridge `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
-	IPSC                     IPSC       `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
-	DisableRadioIDValidation bool       `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
-	RadioIDURL               string     `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
-	RepeaterIDURL            string     `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
-	Retention                Retention  `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
-	Positions                Positions  `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
-	Plugins                  Plugins    `json:"plugins" name:"plugins" description:"Listener of the plugins, which answer the calls to the IDs an admin gives them"`
+	MMDVM                    MMDVM       `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
+	OpenBridge               OpenBridge  `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
+	IPSC                     IPSC        `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
+	DisableRadioIDValidation bool        `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
+	RadioIDURL               string      `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
+	RepeaterIDURL            string      `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
+	Retention                Retention   `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+	Positions                Positions   `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
+	Plugins                  Plugins     `json:"plugins" name:"plugins" description:"Listener of the plugins, which answer the calls to the IDs an admin gives them"`
+	Transcoding              Transcoding `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
+}
+
+// Transcoding holds the AMBE servers that convert calls between Codec2 and
+// AMBE.
+type Transcoding struct {
+	AMBEServers []AMBEServer `json:"ambe-servers" yaml:"ambe-servers,omitempty" name:"ambe-servers" description:"AMBE servers (AMBEserver protocol, usually UDP port 2460) that convert calls between Codec2 and AMBE, in the order a call tries them. Each converted call holds one server for its whole length. None turns transcoding off, and calls pass through in their own codec"`
+}
+
+// AMBEServer is one AMBE server.
+type AMBEServer struct {
+	Address string `json:"address" yaml:"address" name:"address" description:"Host and UDP port of the AMBE server, such as ambeserver:2460"`
+	Calls   int    `json:"calls" yaml:"calls" name:"calls" description:"Calls the server converts at once. 0 is no limit; use 1 for an AMBEserver with one DVSI chip, which answers only its last client"`
 }
 
 // Plugins holds the configuration of the listener that plugins connect to.

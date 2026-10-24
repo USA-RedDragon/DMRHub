@@ -72,6 +72,58 @@
         </CardHeader>
       </Card>
 
+      <Card v-if="repeater.type !== 'ipsc'" data-test="voice-codec">
+        <CardHeader>
+          <CardTitle>Voice codec</CardTitle>
+          <CardDescription>
+            The codec this repeater's radios use on each timeslot. DMRHub sends AMBE calls to a Codec2 timeslot as
+            Codec2, and Codec2 calls to AMBE targets as AMBE.
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-4">
+          <div class="grid gap-4 md:grid-cols-2">
+            <div v-for="slot in codecSlots" :key="slot.key" class="flex flex-col gap-2 rounded-lg border p-4">
+              <h4 class="text-sm font-semibold">{{ slot.title }}</h4>
+              <div class="flex flex-col gap-1">
+                <label class="text-sm" :for="`${slot.key}-codec`">Codec</label>
+                <ShadSelect
+                  :model-value="codecs[slot.key]"
+                  :disabled="!canEditCodec"
+                  @update:model-value="(v) => setCodec(slot.key, v)"
+                >
+                  <SelectTrigger :id="`${slot.key}-codec`" class="w-full" :data-test="`${slot.key}-codec`">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="opt in codecOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </SelectItem>
+                  </SelectContent>
+                </ShadSelect>
+              </div>
+              <p
+                v-if="codecs[slot.key] === 'auto' && slot.heard"
+                class="text-sm text-muted-foreground"
+                :data-test="`${slot.key}-heard`"
+              >{{ slot.heard }}</p>
+            </div>
+          </div>
+          <p class="text-sm text-muted-foreground">
+            Automatic follows the last call heard on the timeslot. A timeslot counts as Codec2 only when a call starts
+            with a Codec2 voice header; until then it is AMBE.
+          </p>
+          <div v-if="canEditCodec" class="flex items-center gap-3">
+            <ShadButton type="button" :disabled="codecSaving" data-test="codec-save" @click="saveCodecs">Save</ShadButton>
+            <span
+              v-if="codecMessage"
+              class="text-sm"
+              :class="codecFailed ? 'text-destructive' : 'text-muted-foreground'"
+              data-test="codec-message"
+            >{{ codecMessage }}</span>
+          </div>
+        </CardContent>
+      </Card>
+
       <!-- Info grid -->
       <div class="grid gap-6 md:grid-cols-2">
         <!-- Radio Configuration -->
@@ -260,12 +312,22 @@
 </template>
 
 <script lang="ts">
+import type { AcceptableValue } from 'reka-ui';
+import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select as ShadSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
+import { heardLine, type Codec, type Codec2Mode, type SlotCodec } from '@/lib/codec';
 import {
   cleanCalls,
   defaultFilter,
@@ -276,7 +338,9 @@ import {
 } from '@/lib/transmissions';
 
 import API from '@/services/API';
+import { errorText } from '@/services/settings';
 import { getWebsocketURI } from '@/services/util';
+import { useUserStore } from '@/store';
 import ws from '@/services/ws';
 
 type TalkgroupRef = {
@@ -319,10 +383,34 @@ type RepeaterData = {
   ts2_static_talkgroups: TalkgroupRef[];
   ts1_dynamic_talkgroup: TalkgroupRef;
   ts2_dynamic_talkgroup: TalkgroupRef;
+  ts1_codec: SlotCodec;
+  ts2_codec: SlotCodec;
+  ts1_heard_codec: Codec;
+  ts2_heard_codec: Codec;
+  ts1_heard_codec2_mode: Codec2Mode;
+  ts2_heard_codec2_mode: Codec2Mode;
+  ts1_heard_at: string | null;
+  ts2_heard_at: string | null;
 };
+
+type SlotKey = 'ts1' | 'ts2';
+
+const CODEC_OPTIONS: { value: SlotCodec; label: string }[] = [
+  { value: 'auto', label: 'Automatic' },
+  { value: 'codec2', label: 'Codec2' },
+  { value: 'ambe', label: 'AMBE' },
+];
+
+const slotCodec = (v: unknown): SlotCodec => (v === 'codec2' || v === 'ambe' ? v : 'auto');
 
 export default {
   components: {
+    ShadButton,
+    ShadSelect,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
     Card,
     CardContent,
     CardDescription,
@@ -370,6 +458,11 @@ export default {
       socket: null as { close(): void } | null,
       now: Date.now(),
       timeInterval: null as ReturnType<typeof setInterval> | null,
+      codecOptions: CODEC_OPTIONS,
+      codecs: { ts1: 'auto', ts2: 'auto' } as Record<SlotKey, SlotCodec>,
+      codecSaving: false,
+      codecMessage: '',
+      codecFailed: false,
     };
   },
   watch: {
@@ -389,6 +482,26 @@ export default {
     protocol(): string {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';
       return this.repeater.dialect === 'HBRP' ? 'HBRP' : 'MMDVM';
+    },
+    canEditCodec(): boolean {
+      const userStore = useUserStore();
+      if (!this.repeater || !userStore.loggedIn) return false;
+      return userStore.admin || (!!this.repeater.owner && this.repeater.owner.id === userStore.id);
+    },
+    codecSlots(): { key: SlotKey; title: string; heard: string }[] {
+      const r = this.repeater;
+      return [
+        {
+          key: 'ts1',
+          title: 'Timeslot 1',
+          heard: r ? heardLine(r.ts1_heard_codec, r.ts1_heard_codec2_mode, r.ts1_heard_at) : '',
+        },
+        {
+          key: 'ts2',
+          title: 'Timeslot 2',
+          heard: r ? heardLine(r.ts2_heard_codec, r.ts2_heard_codec2_mode, r.ts2_heard_at) : '',
+        },
+      ];
     },
     hasCoordinates(): boolean {
       if (!this.repeater) return false;
@@ -421,12 +534,39 @@ export default {
       API.get(`/repeaters/${this.repeaterID}`)
         .then((res) => {
           this.repeater = res.data;
+          this.codecs = { ts1: slotCodec(res.data?.ts1_codec), ts2: slotCodec(res.data?.ts2_codec) };
           this.loading = false;
         })
         .catch((err) => {
           console.error(err);
           this.error = 'Failed to load repeater details. You may not have permission to view this repeater.';
           this.loading = false;
+        });
+    },
+    setCodec(slot: SlotKey, value: AcceptableValue) {
+      this.codecs = { ...this.codecs, [slot]: slotCodec(value) };
+      this.codecMessage = '';
+      this.codecFailed = false;
+    },
+    saveCodecs() {
+      const body = { ts1_codec: this.codecs.ts1, ts2_codec: this.codecs.ts2 };
+      this.codecSaving = true;
+      this.codecMessage = '';
+      this.codecFailed = false;
+      API.patch(`/repeaters/${this.repeaterID}`, body)
+        .then(() => {
+          if (this.repeater) {
+            this.repeater = { ...this.repeater, ...body };
+          }
+          this.codecMessage = 'Saved.';
+        })
+        .catch((err) => {
+          console.error(err);
+          this.codecFailed = true;
+          this.codecMessage = errorText(err, 'Could not save. Try again later.');
+        })
+        .finally(() => {
+          this.codecSaving = false;
         });
     },
     fetchLastheard(page = 1, limit = 30) {

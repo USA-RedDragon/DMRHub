@@ -95,23 +95,6 @@ func (Position) TableName() string {
 	return "positions"
 }
 
-// LocationRequest is the triggered location request that the hub keeps
-// open with a tracked radio.
-type LocationRequest struct {
-	RadioID         uint   `gorm:"primaryKey;autoIncrement:false"`
-	ServiceID       uint   `gorm:"not null"`
-	RequestID       []byte `gorm:"not null"`
-	IntervalSeconds uint   `gorm:"not null"`
-	SentAt          time.Time
-	RepeaterID      uint  `gorm:"not null;default:0"`
-	Slot            uint8 `gorm:"not null;default:1"`
-}
-
-// TableName returns the table of the location requests.
-func (LocationRequest) TableName() string {
-	return "location_requests"
-}
-
 // FindPositionSetting returns the setting of radioID, and false when its
 // owner never set one.
 func FindPositionSetting(db *gorm.DB, radioID uint) (PositionSetting, bool, error) {

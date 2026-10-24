@@ -53,7 +53,7 @@ func TestAddPositionsKeepsUsersNotSharing(t *testing.T) {
 			})
 
 			m := database.Migrator()
-			require.NoError(t, m.DropTable(&models.LocationRequest{}, &models.Position{}, &models.PositionSetting{}))
+			require.NoError(t, m.DropTable("location_requests", &models.Position{}, &models.PositionSetting{}))
 			require.NoError(t, m.DropColumn(&models.User{}, "SharePositions"))
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610232100").Error)
 			require.NoError(t, database.Exec(
@@ -63,7 +63,7 @@ func TestAddPositionsKeepsUsersNotSharing(t *testing.T) {
 
 			require.NoError(t, migration.Migrate(database, &cfg))
 
-			for _, table := range []any{&models.PositionSetting{}, &models.Position{}, &models.LocationRequest{}} {
+			for _, table := range []any{&models.PositionSetting{}, &models.Position{}, "location_requests"} {
 				assert.True(t, m.HasTable(table))
 			}
 			var got models.User

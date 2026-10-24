@@ -642,6 +642,7 @@ func TestCodec2Parrot(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newC2Net(t, stack)
+		runParrot(t, stack)
 		c := call{dst: c2Parrot, src: c2Talker}
 		stream := n.nextStream()
 		const bursts = 6*2 + 3

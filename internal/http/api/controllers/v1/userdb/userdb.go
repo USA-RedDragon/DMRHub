@@ -23,14 +23,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/biter777/countries"
 	"github.com/gin-gonic/gin"
-)
-
-const (
-	parrotName = "Parrot"
 )
 
 type UserDBResponse struct {
@@ -56,21 +51,6 @@ func GETUserDBEntry(c *gin.Context) {
 	userID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
-		return
-	}
-
-	// Parrot user (9990) is a synthetic user not in the RadioID database.
-	if uint(userID) == dmrconst.ParrotUser {
-		c.JSON(http.StatusOK, UserDBResponse{
-			DMRUser: userdb.DMRUser{
-				ID:       dmrconst.ParrotUser,
-				Callsign: parrotName,
-				FName:    parrotName,
-				Name:     parrotName,
-				RadioID:  dmrconst.ParrotUser,
-			},
-			Flag: "\U0001F99C", // 🦜
-		})
 		return
 	}
 

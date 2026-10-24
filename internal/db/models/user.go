@@ -24,8 +24,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	gorm_seeder "github.com/kachit/gorm-seeder"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -133,32 +131,6 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 	var count int64
 	err := db.Model(&User{}).Where("approved = ?", false).Count(&count).Error
 	return int(count), err
-}
-
-type UsersSeeder struct {
-	gorm_seeder.SeederAbstract
-}
-
-const UserSeederRows = 1
-
-func NewUsersSeeder(cfg gorm_seeder.SeederConfiguration) UsersSeeder {
-	return UsersSeeder{gorm_seeder.NewSeederAbstract(cfg)}
-}
-
-func (s *UsersSeeder) Seed(db *gorm.DB) error {
-	var users = []User{
-		{
-			ID:       dmrconst.ParrotUser,
-			Callsign: "Parrot",
-			Admin:    false,
-			Approved: true,
-		},
-	}
-	return db.CreateInBatches(users, s.Configuration.Rows).Error
-}
-
-func (s *UsersSeeder) Clear(_ *gorm.DB) error {
-	return nil
 }
 
 func DeleteUser(db *gorm.DB, id uint) error {

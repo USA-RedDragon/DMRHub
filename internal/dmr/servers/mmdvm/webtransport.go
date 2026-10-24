@@ -83,7 +83,7 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransp
 	h3 := &http3.Server{
 		Handler:    mux,
 		TLSConfig:  http3.ConfigureTLSConfig(&tls.Config{GetCertificate: certs.GetCertificate, MinVersion: tls.VersionTLS13}),
-		QUICConfig: &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true},
+		QUICConfig: &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true, InitialPacketSize: 1200},
 	}
 	webtransport.ConfigureHTTP3Server(h3)
 	t.srv = &webtransport.Server{H3: h3, CheckOrigin: func(*http.Request) bool { return true }}

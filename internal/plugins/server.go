@@ -105,6 +105,11 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 	return s, nil
 }
 
+// Registry returns the registry of the plugins' IDs.
+func (s *Server) Registry() *Registry {
+	return s.registry
+}
+
 // Addr returns the address the listener listens on.
 func (s *Server) Addr() net.Addr {
 	return s.listener.Addr()

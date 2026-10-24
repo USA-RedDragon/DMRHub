@@ -93,3 +93,22 @@ func TestAListenerThatIsOffStartsNothing(t *testing.T) {
 	assert.False(t, called, "the built-in services keep their IDs")
 	srv.Stop()
 }
+
+func TestStoppingTheListenerTwiceIsSafe(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	cfg.Secret = "a secret of the config, long enough"
+	cfg.Database.Database = fmt.Sprintf("file:memdb_pluginstop_%p", t)
+	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	srv, err := plugins.Start(context.Background(), &cfg, database, ps, &routed{}, func(*plugins.Registry) {})
+	require.NoError(t, err)
+	srv.Stop()
+	assert.NotPanics(t, srv.Stop, "the server shuts down its resources twice when the HTTP server cannot start")
+}

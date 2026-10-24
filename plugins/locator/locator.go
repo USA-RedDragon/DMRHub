@@ -96,9 +96,11 @@ type radio struct {
 	slot     uint32
 	cc       enums.ColorCode
 	req      *request
-	lastPos  time.Time
-	retried  bool
-	stopped  time.Time
+	// service is the ID the radio last sent data to.
+	service uint32
+	lastPos time.Time
+	retried bool
+	stopped time.Time
 }
 
 // Locator is the location server. Its methods are safe for concurrent use.
@@ -296,6 +298,7 @@ func (l *Locator) Handle(b *pluginv1.Burst) {
 	}
 	raw := layer2.RawBurst(b.GetPayload())
 	ln.slot, ln.last, ln.cc = b.GetSlot(), time.Now(), raw.SlotType().ColorCode
+	l.radio(k.radio).service = k.service
 	now := l.now()
 	d := plugin.DataOf(b)
 	l.events = ln.rx.Burst(now, &raw, d.Hint(now), l.events[:0])
@@ -537,7 +540,9 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 
 // askHeard asks each tracked radio that was heard for its position: one
 // with no open request and no data in the last settle once, and one whose
-// request went silent for silentAfter intervals once until it reports.
+// request went silent for silentAfter intervals once until it reports. It
+// asks from the ID of the open request, else from the ID the radio last
+// sent data to, else from the Locator's first ID.
 func (l *Locator) askHeard() {
 	for id, r := range l.radios {
 		if !r.tracked || r.retried || r.heard.IsZero() || time.Since(r.heard) > heardExpiry || (r.req == nil && l.busy(id)) {
@@ -557,8 +562,11 @@ func (l *Locator) askHeard() {
 			}
 		}
 		service := l.service
-		if r.req != nil {
+		switch {
+		case r.req != nil:
 			service = r.req.service
+		case r.service != 0:
+			service = r.service
 		}
 		k := linkKey{radio: id, service: service}
 		ln, ok := l.links[k]

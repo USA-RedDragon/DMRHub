@@ -80,6 +80,13 @@
         <PositionsSettings v-model="positions" :errors="errors.positions" />
         <br />
         <PluginsSettings v-model="plugins" :errors="errors.plugins" />
+        <br />
+        <TranscodingSettings
+          v-model="transcoding"
+          :errors="errors.transcoding"
+          :show-status="showTranscodingStatus"
+          :saves="saves"
+        />
       </CardContent>
     </Card>
   </div>
@@ -92,6 +99,7 @@ import IPSCSettings from './DMR/IPSCSettings.vue';
 import RetentionSettings from './DMR/RetentionSettings.vue';
 import PositionsSettings from './DMR/PositionsSettings.vue';
 import PluginsSettings from './DMR/PluginsSettings.vue';
+import TranscodingSettings from './DMR/TranscodingSettings.vue';
 import {
   Card,
   CardContent,
@@ -108,6 +116,7 @@ export default {
     RetentionSettings,
     PositionsSettings,
     PluginsSettings,
+    TranscodingSettings,
     Card,
     CardContent,
     CardHeader,
@@ -128,6 +137,14 @@ export default {
       type: Object,
       required: false,
       default: () => ({}),
+    },
+    showTranscodingStatus: {
+      type: Boolean,
+      default: false,
+    },
+    saves: {
+      type: Number,
+      default: 0,
     },
   },
   emits: ['update:modelValue'],
@@ -173,6 +190,17 @@ export default {
         this.$emit('update:modelValue', {
           ...this.modelValue,
           'plugins': value,
+        });
+      },
+    },
+    transcoding: {
+      get() {
+        return (this.modelValue && this.modelValue['transcoding']) || {};
+      },
+      set(value: Record<string, unknown>) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'transcoding': value,
         });
       },
     },

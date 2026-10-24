@@ -37,7 +37,13 @@
     <form @submit.prevent="submit()">
       <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
       <br />
-      <DMRSettings v-model="config.dmr" :errors="errors.dmr" :secret-status="secretStatus" />
+      <DMRSettings
+        v-model="config.dmr"
+        :errors="errors.dmr"
+        :secret-status="secretStatus"
+        :show-transcoding-status="isAdminSetup"
+        :saves="saves"
+      />
       <br />
       <HTTPSettings v-model="config.http" :errors="errors.http" />
       <br />
@@ -73,6 +79,7 @@ import MetricsSettings from '@/components/setup/MetricsSettings.vue';
 import PProfSettings from '@/components/setup/PProfSettings.vue';
 
 import API from '@/services/API';
+import { ambeServersError, ambeServersPayload, type AmbeServerRow } from '@/lib/codec';
 
 type SetupSection = Record<string, unknown>;
 
@@ -158,6 +165,19 @@ const applyErrorsOf = (error: unknown): ApplyError[] | undefined => {
   return data.applyErrors as ApplyError[];
 };
 
+const ambeServerRows = (config: Record<string, unknown>): AmbeServerRow[] | undefined => {
+  const servers = asRecord(asRecord(config.dmr)?.transcoding)?.['ambe-servers'];
+  return Array.isArray(servers) ? (servers as AmbeServerRow[]) : undefined;
+};
+
+const localErrors = (config: Record<string, unknown>): SetupErrors | undefined => {
+  const error = ambeServersError(ambeServerRows(config) ?? []);
+  if (!error) {
+    return undefined;
+  }
+  return { ...createInitialErrors(), dmr: { transcoding: { 'ambe-servers': error } } };
+};
+
 const showApplyError = (e: ApplyError): ShownApplyError => {
   const name = serverNames[e.server] ?? 'DMR';
   const state = e.running ? 'It keeps running with its previous settings.' : 'It is not running.';
@@ -194,6 +214,7 @@ export default defineComponent({
       config: createInitialConfig() as SetupConfig,
       errors: createInitialErrors() as SetupErrors,
       applyErrors: [] as ShownApplyError[],
+      saves: 0,
       secretStatus: {
         secretSet: false,
         passwordSaltSet: false,
@@ -262,7 +283,28 @@ export default defineComponent({
       if (redis && redis.password === '') {
         delete redis.password;
       }
+      const transcoding = asRecord(asRecord(payload.dmr)?.transcoding);
+      const servers = ambeServerRows(payload);
+      if (transcoding && servers) {
+        transcoding['ambe-servers'] = ambeServersPayload(servers);
+      }
       return payload;
+    },
+    checkLocal(showToast: boolean): boolean {
+      const local = localErrors(this.config);
+      if (!local) {
+        return true;
+      }
+      this.errors = local;
+      if (showToast) {
+        this.$toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Configuration is invalid. Please correct the errors and try again.',
+          life: 3000,
+        });
+      }
+      return false;
     },
     async checkConfig(config: Record<string, unknown>, showToast: boolean): Promise<boolean> {
       const response = await API.post(
@@ -287,12 +329,16 @@ export default defineComponent({
       }
     },
     async submit() {
+      if (!this.checkLocal(true)) {
+        return;
+      }
       const payload = this.buildConfigPayload();
       try {
         if (!await this.checkConfig(payload, true)) {
           return;
         }
         await API.put('/config', payload, { headers: this.setupWizardHeaders() });
+        this.saves++;
         this.applyErrors = [];
         this.$toast.add({
           severity: 'success',
@@ -314,6 +360,7 @@ export default defineComponent({
       } catch (error: unknown) {
         const applyErrors = applyErrorsOf(error);
         if (applyErrors) {
+          this.saves++;
           this.applyErrors = applyErrors.map(showApplyError);
           this.$toast.add({
             severity: 'error',

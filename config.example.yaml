@@ -117,6 +117,18 @@ dmr:
       # callsign: ""
       # APRS-IS server, as host:port
       server: "rotate.aprs2.net:14580"
+  # Listener of the plugins, which answer the calls to the IDs an admin gives them
+  plugins:
+    # Accept plugins
+    enabled: false
+    # Address the plugin listener binds to
+    bind: "[::]"
+    # TCP port that plugins connect to
+    port: 3006
+    # TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint
+    # cert-file: ""
+    # TLS key file of the certificate file
+    # key-file: ""
 # SMTP configuration for sending emails
 smtp:
   # Enable SMTP support for sending emails

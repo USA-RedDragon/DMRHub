@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -55,6 +56,7 @@ type Server struct {
 	listener net.Listener
 	registry *Registry
 	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // Start listens for plugins as cfg says, and gives the hub the registry of
@@ -110,17 +112,19 @@ func (s *Server) Stop() {
 	if s == nil {
 		return
 	}
-	close(s.done)
-	stopped := make(chan struct{})
-	go func() {
-		s.grpc.GracefulStop()
-		close(stopped)
-	}()
-	select {
-	case <-stopped:
-	case <-time.After(stopWait):
-		s.grpc.Stop()
-	}
+	s.stopOnce.Do(func() {
+		close(s.done)
+		stopped := make(chan struct{})
+		go func() {
+			s.grpc.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(stopWait):
+			s.grpc.Stop()
+		}
+	})
 }
 
 func trimBrackets(host string) string {

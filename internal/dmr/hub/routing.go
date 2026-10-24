@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/locator"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -99,6 +100,9 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 // Packets from network peers are not handled: their Repeater field is a
 // peer ID, not a repeater to play back to or unlink.
 func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string) bool {
+	if h.toPlugin(packet, sourceName) {
+		return true
+	}
 	if h.getServerRole(sourceName) == RolePeer {
 		return false
 	}
@@ -117,6 +121,36 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 	}
 
 	return false
+}
+
+// toPlugin hands packet to the plugin that owns its destination, unless the
+// plugin sent it. A private call goes only to the plugin; a group call also
+// goes to the talkgroup's subscribers when the talkgroup exists. It reports
+// whether routing ends here.
+func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
+	p := h.plugins.Load()
+	if p == nil {
+		return false
+	}
+	owner, ok := (*p).Owner(packet.Dst)
+	if !ok {
+		return false
+	}
+	if from, isPlugin := plugins.PluginOfSource(sourceName); !isPlugin || from != owner {
+		(*p).Deliver(owner, packet)
+	}
+	if !packet.GroupCall {
+		return true
+	}
+	if _, ok := h.streamTalkgroups.Load(streamTarget{stream: packet.StreamID, dst: packet.Dst}); ok {
+		return false
+	}
+	exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
+	if err != nil {
+		slog.Error("Error checking if talkgroup exists", "error", err)
+		return true
+	}
+	return !exists
 }
 
 // handleGroupCall routes a group burst of any kind to all subscribed
@@ -230,6 +264,18 @@ func isUserID(id uint) bool {
 }
 
 const locatorSource = "locator"
+
+// Plugins tells which plugin owns a DMR ID and hands it the bursts to that
+// ID.
+type Plugins interface {
+	Owner(id uint) (uint, bool)
+	Deliver(id uint, p models.Packet)
+}
+
+// SetPlugins makes p the plugins that the hub hands the bursts to their IDs.
+func (h *Hub) SetPlugins(p Plugins) {
+	h.plugins.Store(&p)
+}
 
 // StopTracking stops the open location request of radioID.
 func (h *Hub) StopTracking(radioID uint) {

@@ -163,6 +163,7 @@ type Hub struct {
 	origin    string
 
 	locator *locator.Locator
+	plugins atomic.Pointer[Plugins]
 }
 
 // NewHub creates a new Hub.

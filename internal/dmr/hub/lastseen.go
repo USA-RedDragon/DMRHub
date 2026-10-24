@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
@@ -49,7 +50,7 @@ type sightingKey struct {
 // noteSighting queues the place where the source of packet was heard, once
 // per stream. It never blocks.
 func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
-	if h.getServerRole(sourceName) == RolePeer {
+	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return
 	}
 	if _, seen := h.sightedStreams.LoadOrStore(sightingKey{src: packet.Src, stream: packet.StreamID}, time.Now()); seen {

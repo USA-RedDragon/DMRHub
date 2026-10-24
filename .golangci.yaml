@@ -10,6 +10,10 @@ linters:
       - .*_configulator\.go$
       - internal/http/frontend/node_modules
     rules:
+      # The plugin SDK is MIT, and its files have the MIT header.
+      - path: ^sdk/
+        linters:
+          - goheader
       - path: _test\.go
         linters:
           - dogsled

@@ -222,6 +222,13 @@ func PATCHPeer(c *gin.Context) {
 		}
 		updates["enhanced"] = *json.Enhanced
 	}
+	if json.Codec2 != nil {
+		if !requesterIsAdmin(c, db) {
+			c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a peer carries Codec2"})
+			return
+		}
+		updates["codec2"] = *json.Codec2
+	}
 
 	if len(updates) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "No fields to update"})
@@ -301,6 +308,7 @@ func POSTPeer(c *gin.Context) {
 		peer.Egress = json.Egress
 		peer.Ingress = json.Ingress
 		peer.Enhanced = json.Enhanced
+		peer.Codec2 = json.Codec2
 		peer.IP = json.IP
 		peer.Port = json.Port
 

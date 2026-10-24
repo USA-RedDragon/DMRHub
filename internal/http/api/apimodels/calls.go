@@ -87,6 +87,12 @@ type WSCallResponse struct {
 	PositionError *uint8                  `json:"position_error"`
 	Partial       bool                    `json:"partial"`
 	Undeliverable []string                `json:"undeliverable"`
+	Codec         string                  `json:"codec"`
+	Codec2Mode    int                     `json:"codec2_mode"`
+	SentAMBE      int                     `json:"sent_ambe"`
+	SentCodec2    int                     `json:"sent_codec2"`
+	MissedMS      int                     `json:"missed_ms"`
+	Busy          bool                    `json:"busy"`
 }
 
 // NewWSCallResponseFromCall converts a models.Call into a WSCallResponse suitable
@@ -131,6 +137,12 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		PositionError: call.PositionError,
 		Partial:       call.Partial,
 		Undeliverable: call.Undeliverable,
+		Codec:         call.Codec,
+		Codec2Mode:    call.Codec2Mode,
+		SentAMBE:      call.SentAMBE,
+		SentCodec2:    call.SentCodec2,
+		MissedMS:      call.MissedMS,
+		Busy:          call.TranscodeBusy,
 	}
 	if resp.Kind == "" {
 		resp.Kind = models.CallKindVoice

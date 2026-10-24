@@ -23,8 +23,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
@@ -176,4 +178,48 @@ func formatErrors(errs []config.ValidationError) map[string]any {
 	}
 
 	return errors
+}
+
+// TranscodingStatus is the state of the AMBE servers that convert calls
+// between Codec2 and AMBE, in order; none when transcoding is off.
+type TranscodingStatus struct {
+	Servers []AMBEServerStatus `json:"servers"`
+}
+
+// AMBEServerStatus is the state of one AMBE server.
+type AMBEServerStatus struct {
+	Server string `json:"server"`
+	// CallsLimit is the calls the server converts at once, 0 for no limit.
+	CallsLimit int `json:"calls_limit"`
+	// AnsweredSeconds is how many seconds ago the server last answered,
+	// nil when it has not answered within answeredWithin.
+	AnsweredSeconds *int64 `json:"answered_seconds"`
+	// Calls is the number of calls that hold the server now.
+	Calls int `json:"calls"`
+}
+
+// answeredWithin is how recent the last answer of the AMBE server must be
+// for the status to show it. The hub asks every transcode.ProbeInterval.
+const answeredWithin = 30 * time.Second
+
+// GETTranscoding returns the TranscodingStatus. The calls are those of
+// every replica; the answers are those that this replica saw.
+func GETTranscoding(c *gin.Context) {
+	h, ok := c.Get("Hub")
+	dmrHub, isHub := h.(*hub.Hub)
+	if !ok || !isHub || dmrHub == nil {
+		slog.Error("Hub not found in context")
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		return
+	}
+	status := TranscodingStatus{Servers: []AMBEServerStatus{}}
+	for _, st := range dmrHub.Transcoder().Status(c.Request.Context()) {
+		s := AMBEServerStatus{Server: st.Addr, CallsLimit: st.Calls, Calls: st.CallsNow}
+		if ago := time.Since(st.AnsweredAt); st.Answered && ago < answeredWithin {
+			secs := int64(ago / time.Second)
+			s.AnsweredSeconds = &secs
+		}
+		status.Servers = append(status.Servers, s)
+	}
+	c.JSON(http.StatusOK, status)
 }

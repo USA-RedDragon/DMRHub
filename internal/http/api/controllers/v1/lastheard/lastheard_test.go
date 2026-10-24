@@ -202,6 +202,7 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 		"opcode": true, "sap": true, "data_format": true, "confirmed": true, "blocks": true, "octets": true,
 		"bad_crc": true, "lost_blocks": true, "response": true, "talker_alias": true, "alias_format": true,
 		"grid": true, "latitude": true, "longitude": true, "position_error": true, "partial": true, "undeliverable": true,
+		"codec": true, "codec2_mode": true, "sent_ambe": true, "sent_codec2": true, "missed_ms": true, "busy": true,
 		"user.id": true, "user.callsign": true, "repeater.id": true, "repeater.callsign": true,
 		"to_user.id": true, "to_user.callsign": true, "to_repeater.id": true, "to_repeater.callsign": true,
 		"to_talkgroup.id": true, "to_talkgroup.name": true, "to_talkgroup.description": true,

@@ -88,6 +88,12 @@ var (
 	ErrInvalidDMRMMDVMPort = errors.New("invalid DMR MMDVM port provided")
 	// ErrInvalidDMRMMDVMWebTransportPort indicates that the WebTransport port is not a port, or is the MMDVM port.
 	ErrInvalidDMRMMDVMWebTransportPort = errors.New("the WebTransport port must be a port other than the MMDVM port")
+	// ErrInvalidPluginsPort indicates that the plugin port is not a port, or is the HTTP port.
+	ErrInvalidPluginsPort = errors.New("the plugin port must be a port other than the HTTP port")
+	// ErrInvalidPluginsBind indicates that the plugin listener has no address.
+	ErrInvalidPluginsBind = errors.New("the plugin listener needs an address to bind to")
+	// ErrPluginsKeyPair indicates that only one of the plugin certificate and key files is set.
+	ErrPluginsKeyPair = errors.New("set both the plugin certificate and key files, or neither")
 	// ErrDMRMMDVMWebTransportKeyPair indicates that only one of the WebTransport certificate and key files is set.
 	ErrDMRMMDVMWebTransportKeyPair = errors.New("set both the WebTransport certificate and key files, or neither")
 	// ErrInvalidDMROpenBridgeHost indicates that the provided DMR OpenBridge host is not valid.
@@ -472,6 +478,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	}
 
 	errs = append(errs, d.Positions.ValidateWithFields()...)
+	errs = append(errs, d.Plugins.ValidateWithFields()...)
 
 	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{
@@ -620,7 +627,36 @@ func firstValidationError(errs []ValidationError) error {
 	return nil
 }
 
+// Validate validates the plugin listener configuration.
+func (p Plugins) Validate() error {
+	return firstValidationError(p.ValidateWithFields())
+}
+
+// ValidateWithFields validates the plugin listener configuration when it is
+// on.
+func (p Plugins) ValidateWithFields() (errs []ValidationError) {
+	if !p.Enabled {
+		return nil
+	}
+	if p.Port <= 0 || p.Port > 65535 {
+		errs = append(errs, ValidationError{Field: fieldPluginsPort, Err: ErrInvalidPluginsPort})
+	}
+	if p.Bind == "" {
+		errs = append(errs, ValidationError{Field: "dmr.plugins.bind", Err: ErrInvalidPluginsBind})
+	}
+	if (p.CertFile == "") != (p.KeyFile == "") {
+		errs = append(errs, ValidationError{Field: "dmr.plugins.key-file", Err: ErrPluginsKeyPair})
+	}
+	return errs
+}
+
+const fieldPluginsPort = "dmr.plugins.port"
+
 func (c Config) ValidateWithFields() (errs []ValidationError) {
+	if c.DMR.Plugins.Enabled && c.DMR.Plugins.Port == c.HTTP.Port {
+		errs = append(errs, ValidationError{Field: fieldPluginsPort, Err: ErrInvalidPluginsPort})
+	}
+
 	if c.LogLevel != LogLevelDebug &&
 		c.LogLevel != LogLevelInfo &&
 		c.LogLevel != LogLevelWarn &&

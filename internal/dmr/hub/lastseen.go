@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
@@ -49,7 +50,7 @@ type sightingKey struct {
 // noteSighting queues the place where the source of packet was heard, once
 // per stream. It never blocks.
 func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
-	if h.getServerRole(sourceName) == RolePeer {
+	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return
 	}
 	if _, seen := h.sightedStreams.LoadOrStore(sightingKey{src: packet.Src, stream: packet.StreamID}, time.Now()); seen {
@@ -74,7 +75,6 @@ func (h *Hub) runSightings() {
 		case now := <-ticker.C:
 			pruneStreams(h.sightedStreams, now)
 			pruneStreams(h.undeliverableLogged, now)
-			pruneStreams(h.parrotEnded, now)
 			pruneStreams(h.loopLogged, now)
 			pruneStreams(h.streamTalkgroups, now)
 			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
@@ -114,7 +114,7 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 			"radioID", s.src, "repeaterID", s.repeater, "repeaterOwner", rpt.OwnerID)
 		return
 	}
-	h.locator.Heard(s.src, rpt.ID, s.slot)
+	h.tellHeard(s, &rpt)
 	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, user.ID)
 	if prev, err := h.kv.Get(ctx, key); err == nil && string(prev) != strconv.FormatUint(uint64(rpt.ID), 10) {
 		slog.Info("Radio moved", "radioID", user.ID, "from", string(prev), "to", rpt.ID)
@@ -128,7 +128,7 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	}
 }
 
-// noteHeardRadio tells the location server where a radio ID that a user
+// noteHeardRadio tells the plugins where a radio ID that a user
 // added was heard, on the same terms as a sighting of an account ID.
 func (h *Hub) noteHeardRadio(s sighting) {
 	owner, ok, err := models.RadioIDOwner(h.db, s.src)
@@ -136,7 +136,22 @@ func (h *Hub) noteHeardRadio(s sighting) {
 		return
 	}
 	if rpt, ok := h.routableFor(owner, s.repeater); ok {
-		h.locator.Heard(s.src, rpt.ID, s.slot)
+		h.tellHeard(s, &rpt)
+	}
+}
+
+// tellHeard tells the plugins that the radio of s was heard on rpt, when
+// plugins can connect.
+func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
+	if h.plugins.Load() == nil || h.pubsub == nil {
+		return
+	}
+	slot := uint8(1)
+	if s.slot {
+		slot = 2
+	}
+	if err := plugins.PublishHeard(h.pubsub, s.src, rpt.ID, slot, rpt.ColorCode&0xF); err != nil {
+		slog.Warn("Failed to tell the plugins where a radio was heard", "radioID", s.src, "error", err)
 	}
 }
 
@@ -181,7 +196,7 @@ func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {
 // it. It returns the repeater it found, with ID 0 when there is none.
 func (h *Hub) routableFor(userID, repeaterID uint) (models.Repeater, bool) {
 	var rpt models.Repeater
-	if err := h.db.Select("id", "owner_id", "trusted").First(&rpt, repeaterID).Error; err != nil {
+	if err := h.db.Select("id", "owner_id", "trusted", "color_code").First(&rpt, repeaterID).Error; err != nil {
 		return models.Repeater{}, false
 	}
 	return rpt, rpt.OwnerID == userID || rpt.Trusted

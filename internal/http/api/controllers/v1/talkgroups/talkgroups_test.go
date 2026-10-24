@@ -45,6 +45,7 @@ func TestGETTalkgroupsAuthenticated(t *testing.T) {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
 	defer tdb.CloseDB()
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 31337, Name: "Echo net"}).Error)
 
 	w := httptest.NewRecorder()
 
@@ -62,8 +63,7 @@ func TestGETTalkgroupsAuthenticated(t *testing.T) {
 	}
 	err = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.NoError(t, err)
-	// Should have at least the parrot talkgroup (seeded)
-	assert.GreaterOrEqual(t, result.Total, 1)
+	assert.Equal(t, 1, result.Total)
 }
 
 func TestGETTalkgroupByID(t *testing.T) {
@@ -74,6 +74,7 @@ func TestGETTalkgroupByID(t *testing.T) {
 		t.Fatalf("Failed to create test DB router: %v", err)
 	}
 	defer tdb.CloseDB()
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 31337, Name: "Echo net"}).Error)
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
 
@@ -82,8 +83,7 @@ func TestGETTalkgroupByID(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	// Talkgroup 9990 is the parrot talkgroup (seeded)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/9990", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/31337", nil)
 	for _, cookie := range adminJar.Cookies() {
 		req.Header.Add("Cookie", cookie.String())
 	}
@@ -94,8 +94,8 @@ func TestGETTalkgroupByID(t *testing.T) {
 	var tg models.Talkgroup
 	err = json.Unmarshal(w.Body.Bytes(), &tg)
 	assert.NoError(t, err)
-	assert.Equal(t, uint(9990), tg.ID)
-	assert.Equal(t, "DMRHub Parrot", tg.Name)
+	assert.Equal(t, uint(31337), tg.ID)
+	assert.Equal(t, "Echo net", tg.Name)
 }
 
 // TestGETTalkgroupByIDReturnsAdminsAndNCOs is a regression test ensuring that

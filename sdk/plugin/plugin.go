@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: MIT
+// DMRHub plugin SDK
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// Use of this source code is governed by the MIT license in sdk/LICENSE
+// and proto/LICENSE.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+
+// Package plugin connects a DMRHub plugin to its hub. A plugin answers the
+// calls to the DMR IDs an admin gave it, and sends calls only from those IDs.
+//
+//	plugin.Run(ctx, plugin.Options{Address: "hub.example.org:3006", Token: token, Fingerprint: fp},
+//		func(ctx context.Context, conn *plugin.Conn) error {
+//			for {
+//				m, err := conn.Recv()
+//				if err != nil {
+//					return err
+//				}
+//				...
+//				err = conn.Send(reply)
+//			}
+//		})
+package plugin
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
+)
+
+// Options says how to reach the hub.
+type Options struct {
+	// Address is the hub's plugin listener, as host:port.
+	Address string
+	// Token is the plugin's token, from the hub's Plugins page.
+	Token string
+	// Fingerprint is the SHA-256 of the hub's own certificate, as shown on
+	// the Plugins page. Leave it empty when the hub has a certificate from a
+	// certificate authority.
+	Fingerprint string
+}
+
+// ErrFingerprint is returned when the hub's certificate does not match the
+// fingerprint.
+var ErrFingerprint = errors.New("the hub's certificate does not match the fingerprint")
+
+// ErrNoWelcome is returned when the hub does not start with a Welcome.
+var ErrNoWelcome = errors.New("the hub did not welcome the plugin")
+
+// pingEvery is how often a quiet connection checks that the hub is there.
+const pingEvery = 30 * time.Second
+
+// Conn is a plugin's connection to its hub.
+type Conn struct {
+	conn    *grpc.ClientConn
+	stream  pluginv1.PluginService_ConnectClient
+	welcome *pluginv1.Welcome
+
+	sendMu sync.Mutex
+}
+
+func normalize(fp string) string {
+	return strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(fp))
+}
+
+func tlsConfig(fingerprint string) *tls.Config {
+	if fingerprint == "" {
+		return &tls.Config{MinVersion: tls.VersionTLS13}
+	}
+	want := normalize(fingerprint)
+	return &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		// The certificate is checked by its fingerprint instead of a
+		// certificate authority.
+		InsecureSkipVerify: true, //nolint:gosec // checked by VerifyConnection
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return ErrFingerprint
+			}
+			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+			if hex.EncodeToString(sum[:]) != want {
+				return ErrFingerprint
+			}
+			return nil
+		},
+	}
+}
+
+// Dial connects to the hub and waits for its Welcome.
+func Dial(ctx context.Context, o Options) (*Conn, error) {
+	conn, err := grpc.NewClient(o.Address,
+		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig(o.Fingerprint))),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: pingEvery, Timeout: pingEvery, PermitWithoutStream: true}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not reach the hub: %w", err)
+	}
+	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+o.Token)
+	stream, err := pluginv1.NewPluginServiceClient(conn).Connect(ctx)
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("could not connect to the hub: %w", err)
+	}
+	first, err := stream.Recv()
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("could not connect to the hub: %w", err)
+	}
+	if first.GetWelcome() == nil {
+		_ = conn.Close()
+		return nil, ErrNoWelcome
+	}
+	return &Conn{conn: conn, stream: stream, welcome: first.GetWelcome()}, nil
+}
+
+// Name returns the plugin's name on the hub.
+func (c *Conn) Name() string {
+	return c.welcome.GetName()
+}
+
+// Ranges returns the plugin's IDs when it connected.
+func (c *Conn) Ranges() []*pluginv1.IDRange {
+	return c.welcome.GetRanges()
+}
+
+// Recv returns the next message from the hub: a burst to one of the
+// plugin's IDs, a refusal of one of its bursts, its new IDs, or what it
+// subscribed to.
+func (c *Conn) Recv() (*pluginv1.ConnectResponse, error) {
+	m, err := c.stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("the hub closed the connection: %w", err)
+	}
+	return m, nil
+}
+
+// Send sends a burst. It is safe to call from several goroutines.
+func (c *Conn) Send(b *pluginv1.Burst) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}})
+}
+
+// SubscribeTracking asks the hub for the radios whose owners turned
+// position tracking on, and for where they are heard, or, with on false,
+// stops that.
+func (c *Conn) SubscribeTracking(on bool) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: &pluginv1.Subscribe{Tracking: on}}})
+}
+
+// SendPosition gives the hub a position that a radio reported to one of
+// the plugin's IDs. It is safe to call from several goroutines.
+func (c *Conn) SendPosition(p *pluginv1.Position) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Position{Position: p}})
+}
+
+func (c *Conn) send(m *pluginv1.ConnectRequest) error {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if err := c.stream.Send(m); err != nil {
+		return fmt.Errorf("could not send to the hub: %w", err)
+	}
+	return nil
+}
+
+// Close ends the connection.
+func (c *Conn) Close() error {
+	c.sendMu.Lock()
+	_ = c.stream.CloseSend()
+	c.sendMu.Unlock()
+	if err := c.conn.Close(); err != nil {
+		return fmt.Errorf("could not close the connection: %w", err)
+	}
+	return nil
+}

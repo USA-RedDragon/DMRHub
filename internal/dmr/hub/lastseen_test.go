@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -49,7 +50,13 @@ func dataHeader(src, dst, repeater, stream uint) models.Packet {
 
 func lastSeenHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
 	t.Helper()
-	h, database := makeTestHub(t)
+	h, database, _, srv := lastSeenHubWithPubSub(t)
+	return h, database, srv
+}
+
+func lastSeenHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
+	t.Helper()
+	h, database, ps := makeTestHubWithPubSub(t)
 	seedUser(t, database, 1000001, "OTHER")
 	seedUser(t, database, 1000002, "TARGET")
 	seedRepeater(t, database, 100003, 1000002)
@@ -59,7 +66,7 @@ func lastSeenHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
 	h.ActivateRepeater(context.Background(), 100003)
 	h.ActivateRepeater(context.Background(), 100004)
 	time.Sleep(100 * time.Millisecond)
-	return h, database, srv
+	return h, database, ps, srv
 }
 
 func expectAt(t *testing.T, srv *hub.ServerHandle, repeater uint, what string) {

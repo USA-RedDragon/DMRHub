@@ -29,11 +29,8 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/locator"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/parrot"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"gorm.io/gorm"
@@ -110,7 +107,6 @@ type Hub struct {
 	kv          kv.KV
 	pubsub      pubsub.PubSub
 	callTracker *calltracker.CallTracker
-	parrot      *parrot.Parrot
 
 	mu      sync.RWMutex
 	servers map[string]*serverEntry
@@ -122,13 +118,12 @@ type Hub struct {
 	instanceID string
 
 	// stopping is set when the server begins graceful shutdown. In-flight
-	// calls and parrot playback continue until they finish naturally;
+	// calls continue until they finish naturally;
 	// Kubernetes endpoint removal prevents new traffic from arriving.
 	stopping atomic.Bool
 
 	// calls tracks all in-flight activity that must complete before
-	// shutdown: incoming streams of every kind and parrot playback
-	// goroutines.
+	// shutdown: incoming streams of every kind.
 	calls inflight
 
 	streamsMu     sync.Mutex
@@ -149,7 +144,6 @@ type Hub struct {
 	undeliverableLogged   *xsync.Map[uint, time.Time]
 	undeliverableLogNext  atomic.Int64
 	undeliverableUnlogged atomic.Uint64
-	parrotEnded           *xsync.Map[uint, time.Time]
 	streamTargets         *xsync.Map[streamTarget, targetAt]
 	streamTalkgroups      *xsync.Map[streamTarget, time.Time]
 	streamPeers           *xsync.Map[streamTarget, streamPeerSet]
@@ -162,7 +156,7 @@ type Hub struct {
 	repeaters *repeaterCache
 	origin    string
 
-	locator *locator.Locator
+	plugins atomic.Pointer[Plugins]
 }
 
 // NewHub creates a new Hub.
@@ -172,19 +166,15 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		kv:            kvStore,
 		pubsub:        ps,
 		callTracker:   ct,
-		parrot:        parrot.NewParrot(kvStore),
 		servers:       make(map[string]*serverEntry),
 		activeStreams: make(map[uint]*activeStream),
 		done:          make(chan struct{}),
 	}
-	h.locator = locator.New(db, h.sendFromLocator)
-	h.locator.SetNotify(positions.NewPusher(db, ps).Push)
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.routing = streamorder.New(routingQueueSize, h.done)
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
 	h.undeliverableLogged = xsync.NewMap[uint, time.Time]()
-	h.parrotEnded = xsync.NewMap[uint, time.Time]()
 	h.streamTargets = xsync.NewMap[streamTarget, targetAt]()
 	h.streamTalkgroups = xsync.NewMap[streamTarget, time.Time]()
 	h.streamPeers = xsync.NewMap[streamTarget, streamPeerSet]()
@@ -284,37 +274,6 @@ func (h *Hub) deliverToServerUnless(abort <-chan struct{}, serverName string, rp
 	}
 }
 
-// tryDeliverToServer attempts to deliver a packet to a server's channel.
-// Returns true if the packet was successfully queued, false if the server
-// is not registered or the hub is stopping.
-func (h *Hub) tryDeliverToServer(serverName string, rp RoutedPacket) bool {
-	h.mu.RLock()
-	entry, ok := h.servers[serverName]
-	h.mu.RUnlock()
-
-	if !ok {
-		return false
-	}
-
-	// Hold the entry read lock during the send so that UnregisterServer
-	// (which takes the write lock) cannot close the channel concurrently.
-	entry.mu.RLock()
-	defer entry.mu.RUnlock()
-
-	if entry.closed {
-		return false
-	}
-
-	select {
-	case entry.ch <- rp:
-		return true
-	case <-entry.gone:
-		return false
-	case <-h.done:
-		return false
-	}
-}
-
 // getServerRole returns the role of a registered server, or -1 if not found.
 func (h *Hub) getServerRole(name string) ServerRole {
 	h.mu.RLock()
@@ -359,8 +318,7 @@ func (h *Hub) StartDraining() {
 	slog.Info("Hub draining: waiting for in-flight calls to finish")
 }
 
-// WaitForCalls blocks until all in-flight calls and parrot playbacks
-// complete. There is no timeout — the shutdown sequence waits as long as
+// WaitForCalls blocks until all in-flight calls complete. There is no timeout — the shutdown sequence waits as long as
 // needed for every active call to finish.
 func (h *Hub) WaitForCalls() {
 	h.calls.Wait()
@@ -377,7 +335,6 @@ func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
-		h.locator.Stop()
 		close(h.done)
 	})
 }

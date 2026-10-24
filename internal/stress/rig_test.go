@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/stretchr/testify/require"
 )
 
@@ -145,6 +146,7 @@ func newRig(t *testing.T, s settings, res *result, logs *logCounter, o rigOption
 	r.seed(t)
 	r.queries = countQueries(stack.DB)
 	stack.StartServers(t)
+	stack.RunPlugin(t, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, parrot.Serve)
 	if o.withOB {
 		r.ob = testutils.NewOpenBridgeClient(obPeerID, obPassword)
 		require.NoError(t, r.ob.Connect(stack.OpenBridgeAddr))

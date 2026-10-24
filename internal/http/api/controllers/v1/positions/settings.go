@@ -21,6 +21,7 @@ package positions
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -28,9 +29,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/aprs"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -137,8 +139,8 @@ func validSymbol(name string) bool {
 }
 
 // PUTPositionRadio sets the position setting of a radio ID of the user.
-// Turning tracking off stops the open location request of the radio and
-// deletes its positions; a new interval replaces the open request.
+// Turning tracking off deletes the positions of the radio. A change of
+// tracking or interval is told to the plugins.
 func PUTPositionRadio(c *gin.Context) {
 	cfg, ok := utils.GetConfig(c)
 	if !ok {
@@ -191,12 +193,11 @@ func PUTPositionRadio(c *gin.Context) {
 		failed(c, "cannot set position options", err)
 		return
 	}
-	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
-		switch {
-		case before.Tracking && !*req.Tracking:
-			dmrHub.StopTracking(radio)
-		case before.Tracking && before.IntervalSeconds != req.IntervalMinutes*60:
-			dmrHub.Retrack(radio)
+	if before.Tracking != *req.Tracking || before.IntervalSeconds != req.IntervalMinutes*60 {
+		if ps, ok := c.MustGet("PubSub").(pubsub.PubSub); ok {
+			if err := plugins.PublishTracking(ps, radio); err != nil {
+				slog.Warn("Positions: cannot tell the plugins of a tracking change", "radio", radio, "error", err)
+			}
 		}
 	}
 	after, _, err := models.FindPositionSetting(db, radio)

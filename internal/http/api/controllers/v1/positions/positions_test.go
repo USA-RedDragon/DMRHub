@@ -31,6 +31,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -48,6 +49,7 @@ type env struct {
 	t      *testing.T
 	router *gin.Engine
 	db     *gorm.DB
+	ps     pubsub.PubSub
 	jar    testutils.CookieJar
 }
 
@@ -60,7 +62,7 @@ func newEnv(t *testing.T, opts ...testutils.ConfigOption) *env {
 	testutils.SeedAccount(t, db, owner, "KI5VMF", "owner")
 	testutils.SeedAccount(t, db, other, "KD5SMP", "other")
 	testutils.SeedAccount(t, db, third, "N0CALL", "third")
-	return &env{t: t, router: router, db: db, jar: testutils.Login(t, router, "owner")}
+	return &env{t: t, router: router, db: db, ps: tdb.PubSub(), jar: testutils.Login(t, router, "owner")}
 }
 
 func (e *env) track(radio uint, ages ...time.Duration) {

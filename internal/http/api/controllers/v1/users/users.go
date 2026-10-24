@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
@@ -320,11 +319,6 @@ func POSTUserPromote(c *gin.Context) {
 	if err != nil {
 		slog.Error(msgErrGettingUser, "function", "POSTUserPromote", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-		return
-	}
-	if user.ID == dmrconst.ParrotUser {
-		// Prevent promoting the Parrot user
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot promote the Parrot user"})
 		return
 	}
 	if !user.Approved {
@@ -735,11 +729,6 @@ func POSTUserSuspend(c *gin.Context) {
 
 	if user.Admin || user.SuperAdmin {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot suspend an admin"})
-		return
-	}
-
-	if user.ID == dmrconst.ParrotUser {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot suspend the Parrot user"})
 		return
 	}
 

@@ -30,7 +30,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/glebarez/sqlite"
-	gorm_seeder "github.com/kachit/gorm-seeder"
 	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -122,7 +121,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.LocationRequest{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{})
 	if err != nil {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -148,17 +147,6 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 
 	// If the record exists and HasSeeded is true, then we don't need to seed the database.
 	if !appSettings.HasSeeded {
-		usersSeeder := models.NewUsersSeeder(gorm_seeder.SeederConfiguration{Rows: models.UserSeederRows})
-		talkgroupsSeeder := models.NewTalkgroupsSeeder(gorm_seeder.SeederConfiguration{Rows: models.TalkgroupSeederRows})
-		seedersStack := gorm_seeder.NewSeedersStack(db)
-		seedersStack.AddSeeder(&usersSeeder)
-		seedersStack.AddSeeder(&talkgroupsSeeder)
-
-		// Apply seed
-		err = seedersStack.Seed()
-		if err != nil {
-			return db, fmt.Errorf("failed to seed database: %w", err)
-		}
 		appSettings.HasSeeded = true
 		err = db.Save(&appSettings).Error
 		if err != nil {

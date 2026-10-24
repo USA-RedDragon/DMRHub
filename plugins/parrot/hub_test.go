@@ -83,7 +83,7 @@ func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 
 	_, token, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, time.Now())
 	require.NoError(t, err)
-	listener, err := plugins.Start(context.Background(), &cfg, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) })
+	listener, err := plugins.Start(context.Background(), &cfg, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
 	require.NoError(t, err)
 	t.Cleanup(listener.Stop)
 	certs, err := plugins.NewCertSource(cfg.GetDerivedSecret(), "", "")

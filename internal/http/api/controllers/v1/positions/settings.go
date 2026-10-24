@@ -21,6 +21,7 @@ package positions
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -31,6 +32,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -190,6 +193,13 @@ func PUTPositionRadio(c *gin.Context) {
 	if err != nil {
 		failed(c, "cannot set position options", err)
 		return
+	}
+	if before.Tracking != *req.Tracking || before.IntervalSeconds != req.IntervalMinutes*60 {
+		if ps, ok := c.MustGet("PubSub").(pubsub.PubSub); ok {
+			if err := plugins.PublishTracking(ps, radio); err != nil {
+				slog.Warn("Positions: cannot tell the plugins of a tracking change", "radio", radio, "error", err)
+			}
+		}
 	}
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
 		switch {

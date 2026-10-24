@@ -23,12 +23,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -155,6 +157,35 @@ func TestANewIntervalReplacesTheOpenRequest(t *testing.T) {
 	require.NoError(t, e.db.Where("radio_id = ?", owner).Take(&r).Error)
 	assert.Equal(t, uint(1800), r.IntervalSeconds)
 	assert.NotEqual(t, []byte{0, 0, 0, 1}, r.RequestID)
+}
+
+func TestTheOwnersTrackingChangesReachThePlugins(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, func(cfg *config.Config) { cfg.DMR.Positions.MaxRetention = 90 })
+	sub := e.ps.Subscribe(plugins.TrackingTopic)
+	t.Cleanup(func() { _ = sub.Close() })
+	path := fmt.Sprintf("/api/v1/positions/%d/settings", owner)
+	told := func(what string) {
+		t.Helper()
+		select {
+		case b := <-sub.Channel():
+			assert.Equal(t, strconv.FormatUint(uint64(owner), 10), string(b), what)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: the plugins were not told", what)
+		}
+	}
+	require.Equal(t, http.StatusOK, e.put(path, settings(true, 10, 24), nil))
+	told("tracking on")
+	require.Equal(t, http.StatusOK, e.put(path, settings(true, 30, 24), nil))
+	told("a new interval")
+	require.Equal(t, http.StatusOK, e.put(path, settings(true, 30, 168), nil))
+	select {
+	case <-sub.Channel():
+		t.Fatal("a new retention is no news to the plugins")
+	case <-time.After(200 * time.Millisecond):
+	}
+	require.Equal(t, http.StatusOK, e.put(path, settings(false, 30, 168), nil))
+	told("tracking off")
 }
 
 func TestSharingPositionsIsAUserSetting(t *testing.T) {

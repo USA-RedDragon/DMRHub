@@ -147,7 +147,8 @@ func (c *Conn) Ranges() []*pluginv1.IDRange {
 }
 
 // Recv returns the next message from the hub: a burst to one of the
-// plugin's IDs, a refusal of one of its bursts, or its new IDs.
+// plugin's IDs, a refusal of one of its bursts, its new IDs, or what it
+// subscribed to.
 func (c *Conn) Recv() (*pluginv1.ConnectResponse, error) {
 	m, err := c.stream.Recv()
 	if err != nil {
@@ -158,10 +159,27 @@ func (c *Conn) Recv() (*pluginv1.ConnectResponse, error) {
 
 // Send sends a burst. It is safe to call from several goroutines.
 func (c *Conn) Send(b *pluginv1.Burst) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}})
+}
+
+// SubscribeTracking asks the hub for the radios whose owners turned
+// position tracking on, and for where they are heard, or, with on false,
+// stops that.
+func (c *Conn) SubscribeTracking(on bool) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: &pluginv1.Subscribe{Tracking: on}}})
+}
+
+// SendPosition gives the hub a position that a radio reported to one of
+// the plugin's IDs. It is safe to call from several goroutines.
+func (c *Conn) SendPosition(p *pluginv1.Position) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Position{Position: p}})
+}
+
+func (c *Conn) send(m *pluginv1.ConnectRequest) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	if err := c.stream.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}}); err != nil {
-		return fmt.Errorf("could not send a burst: %w", err)
+	if err := c.stream.Send(m); err != nil {
+		return fmt.Errorf("could not send to the hub: %w", err)
 	}
 	return nil
 }

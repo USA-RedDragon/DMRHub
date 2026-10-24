@@ -44,6 +44,9 @@ const (
 	MaxPluginRanges = 32
 	// MaxPluginName is the longest name of a plugin.
 	MaxPluginName = 64
+	// PluginOnline is how long after its last heartbeat a connected plugin
+	// still counts as online.
+	PluginOnline = 45 * time.Second
 )
 
 var (
@@ -66,7 +69,9 @@ type Plugin struct {
 	TokenCreatedAt  time.Time `gorm:"not null"`
 	Enabled         bool      `gorm:"not null;default:true"`
 	LastConnectedAt *time.Time
+	LastSeenAt      *time.Time
 	LastAddress     string        `gorm:"size:64"`
+	Session         string        `gorm:"size:32;not null;default:''"`
 	Ranges          []PluginRange `gorm:"constraint:OnDelete:CASCADE"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -288,14 +293,60 @@ func PluginByToken(db *gorm.DB, token string) (Plugin, bool, error) {
 	return found[0], true, nil
 }
 
-// NotePluginConnected records that the plugin id connected from address.
-func NotePluginConnected(db *gorm.DB, id uint, address string, now time.Time) error {
+// NotePluginConnected records that the plugin id connected from address in
+// session.
+func NotePluginConnected(db *gorm.DB, id uint, session, address string, now time.Time) error {
 	if len(address) > 64 {
 		address = address[:64]
 	}
-	err := db.Model(&Plugin{}).Where("id = ?", id).Updates(map[string]any{"last_connected_at": now.UTC(), "last_address": address}).Error
+	at := now.UTC()
+	err := db.Model(&Plugin{}).Where("id = ?", id).Updates(map[string]any{
+		"last_connected_at": at, "last_seen_at": at, "last_address": address, "session": session,
+	}).Error
 	if err != nil {
 		return fmt.Errorf("could not note a plugin connection: %w", err)
 	}
 	return nil
+}
+
+// NotePluginSeen records that the session of the plugin id is still there.
+func NotePluginSeen(db *gorm.DB, id uint, session string, now time.Time) error {
+	err := db.Model(&Plugin{}).Where("id = ? AND session = ?", id, session).Update("last_seen_at", now.UTC()).Error
+	if err != nil {
+		return fmt.Errorf("could not note a plugin heartbeat: %w", err)
+	}
+	return nil
+}
+
+// NotePluginDisconnected records that the session of the plugin id ended,
+// unless a newer session took over.
+func NotePluginDisconnected(db *gorm.DB, id uint, session string, now time.Time) error {
+	err := db.Model(&Plugin{}).Where("id = ? AND session = ?", id, session).Updates(map[string]any{"session": "", "last_seen_at": now.UTC()}).Error
+	if err != nil {
+		return fmt.Errorf("could not note a plugin disconnection: %w", err)
+	}
+	return nil
+}
+
+// Online reports whether the plugin has a session whose heartbeat is recent
+// at now.
+func (p *Plugin) Online(now time.Time) bool {
+	return p.Session != "" && p.LastSeenAt != nil && now.Sub(*p.LastSeenAt) < PluginOnline
+}
+
+// CountCallsTo counts the calls to the IDs of ranges since since.
+func CountCallsTo(db *gorm.DB, ranges []PluginRange, since time.Time) (int64, error) {
+	if len(ranges) == 0 {
+		return 0, nil
+	}
+	q := db.Model(&Call{}).Where("start_time >= ?", since.UTC())
+	cond := db.Where("destination_id BETWEEN ? AND ?", ranges[0].First, ranges[0].Last)
+	for _, r := range ranges[1:] {
+		cond = cond.Or("destination_id BETWEEN ? AND ?", r.First, r.Last)
+	}
+	var n int64
+	if err := q.Where(cond).Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("could not count the calls to a plugin: %w", err)
+	}
+	return n, nil
 }

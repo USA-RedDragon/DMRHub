@@ -129,3 +129,22 @@ func TestDeletingAPluginFreesItsIDs(t *testing.T) {
 	_, err = models.RotatePluginToken(database, 999, time.Now())
 	assert.ErrorIs(t, err, models.ErrPluginNotFound)
 }
+
+func TestCallsToAPluginsIDsAreCounted(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	now := time.Now()
+	for i, c := range []struct {
+		dst uint
+		at  time.Time
+	}{{9990, now}, {9990, now.Add(-time.Hour)}, {310005, now}, {310005, now.Add(-48 * time.Hour)}, {91, now}} {
+		require.NoError(t, database.Create(&models.Call{StreamID: uint(i + 1), StartTime: c.at, DestinationID: c.dst}).Error)
+	}
+	n, err := models.CountCallsTo(database, []models.PluginRange{rng(9990, 9990), rng(310001, 310009)}, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+	n, err = models.CountCallsTo(database, nil, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.Zero(t, n)
+}

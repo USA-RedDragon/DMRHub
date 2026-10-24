@@ -99,7 +99,7 @@ func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 	})
 	go func() {
 		defer close(done)
-		run(ctx, plugin.Options{Address: listener.Addr().String(), Token: token, Fingerprint: fp})
+		plugin.Run(ctx, plugin.Options{Address: listener.Addr().String(), Token: token, Fingerprint: fp}, serve)
 	}()
 	require.Eventually(t, func() bool {
 		p, err := models.FindPlugin(database, 1)

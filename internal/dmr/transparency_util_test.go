@@ -372,6 +372,32 @@ func sendPackets(t *testing.T, send func(models.Packet) error, pkts []models.Pac
 	}
 }
 
+// awaitHeard waits, as a radio does before it answers, until c got a packet
+// from src to dst and then nothing more for 300 ms, or until timeout. It
+// returns every packet c got meanwhile.
+func awaitHeard(c *testutils.MMDVMClient, src, dst uint, timeout time.Duration) []models.Packet {
+	var got []models.Packet
+	heard := false
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		quiet := time.NewTimer(300 * time.Millisecond)
+		select {
+		case p := <-c.ReceivedPackets():
+			quiet.Stop()
+			got = append(got, p)
+			heard = heard || (p.Src == src && p.Dst == dst)
+		case <-quiet.C:
+			if heard {
+				return got
+			}
+		case <-deadline.C:
+			quiet.Stop()
+			return got
+		}
+	}
+}
+
 type drainer interface {
 	Drain(time.Duration) []models.Packet
 }

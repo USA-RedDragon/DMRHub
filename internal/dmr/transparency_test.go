@@ -477,7 +477,7 @@ func TestTransparencyMatrix(t *testing.T) {
 func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, stream uint) {
 	t.Run(addr.name+"/"+p.name, func(t *testing.T) {
 		txs := p.build(t, addr.c)
-		var sent []models.Packet
+		var sent, heard []models.Packet
 		for i, tx := range txs {
 			if tx.src == addr.c.src {
 				pkts := src.send(t, n, tx, stream+uint(i))
@@ -485,6 +485,7 @@ func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, s
 					sent = pkts
 				}
 			} else {
+				heard = append(heard, awaitHeard(n.user, uint(addr.c.src), uint(addr.c.dst), 10*time.Second)...)
 				sendPackets(t, n.user.SendDMRD, tx.packets(stream+uint(i)))
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -494,6 +495,7 @@ func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, s
 			total += len(tx.bursts)
 		}
 		g := n.drain(time.Duration(total)*60*time.Millisecond + time.Second)
+		g.user = append(heard, g.user...)
 		mine := func(pkts []models.Packet) []models.Packet {
 			return ofCall(pkts, uint(addr.c.src), uint(addr.c.dst))
 		}

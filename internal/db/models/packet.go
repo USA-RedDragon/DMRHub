@@ -51,6 +51,11 @@ type Packet struct {
 	// report about the burst finds its transmission. Zero when untracked.
 	// It is not part of the DMRD packet.
 	TrackID uint64 `msg:"trackID"`
+
+	// Codec is the codec of the voice in the burst, 1 for AMBE and 2 for
+	// Codec2, or 0 for a burst without voice or one the hub did not look
+	// at. It is not part of the DMRD packet.
+	Codec uint8 `msg:"-"`
 }
 
 func (p Packet) Equal(other Packet) bool {

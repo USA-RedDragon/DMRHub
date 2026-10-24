@@ -157,6 +157,9 @@ type Hub struct {
 	origin    string
 
 	plugins atomic.Pointer[Plugins]
+
+	codecStreams *xsync.Map[uint, *streamCodec]
+	heard        chan heardNote
 }
 
 // NewHub creates a new Hub.
@@ -181,12 +184,16 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
+	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
+	h.heard = make(chan heardNote, heardQueue)
+	go h.runHeard()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
 	h.repeaters = newRepeaterCache()
 	h.origin = newOrigin()
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
+		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
 	}
 	go h.resyncRepeaters()
 	if ct != nil {

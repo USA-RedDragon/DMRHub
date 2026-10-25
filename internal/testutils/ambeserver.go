@@ -20,6 +20,7 @@
 package testutils
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -54,6 +55,7 @@ type FakeAMBEServer struct {
 	bare    atomic.Bool
 	mu      sync.Mutex
 	errs    []string
+	askers  map[string]bool
 	pcm     [][dvsi.FrameSamples]int16
 	done    chan struct{}
 }
@@ -122,6 +124,14 @@ func (f *FakeAMBEServer) Queries() int {
 	return int(f.queries.Load())
 }
 
+// QuerySources returns the number of client addresses that sent product
+// queries.
+func (f *FakeAMBEServer) QuerySources() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.askers)
+}
+
 // EncodedPCM returns the audio of each frame that the server encoded, in
 // the order it came.
 func (f *FakeAMBEServer) EncodedPCM() [][dvsi.FrameSamples]int16 {
@@ -166,6 +176,14 @@ func (f *FakeAMBEServer) serve() {
 		}
 		f.last.Store(from)
 		reply := f.handle(buf[:n])
+		if reply != nil && reply[3] == byte(dvsi.TypeControl) && bytes.IndexByte(buf[4:n], byte(dvsi.FieldProdID)) >= 0 {
+			f.mu.Lock()
+			if f.askers == nil {
+				f.askers = map[string]bool{}
+			}
+			f.askers[from.String()] = true
+			f.mu.Unlock()
+		}
 		if reply == nil || !f.answer.Load() {
 			continue
 		}

@@ -246,9 +246,30 @@ func warmCodec2() {
 func probe(ctx context.Context, srv *server) {
 	t := time.NewTicker(ProbeInterval)
 	defer t.Stop()
+	var conn net.Conn
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 	for {
-		if time.Since(time.Unix(0, srv.answered.Load())) >= ProbeInterval && srv.leases.count(ctx) == 0 && askProduct(ctx, srv.Addr) {
-			srv.answer()
+		if time.Since(time.Unix(0, srv.answered.Load())) >= ProbeInterval && srv.leases.count(ctx) == 0 {
+			if conn == nil {
+				var d net.Dialer
+				if c, err := d.DialContext(ctx, "udp", srv.Addr); err == nil {
+					conn = c
+				}
+			}
+			if conn != nil {
+				ok, broken := askProduct(conn)
+				if ok {
+					srv.answer()
+				}
+				if broken {
+					_ = conn.Close()
+					conn = nil
+				}
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -258,26 +279,18 @@ func probe(ctx context.Context, srv *server) {
 	}
 }
 
-func askProduct(ctx context.Context, addr string) bool {
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "udp", addr)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = conn.Close() }()
-	if dl, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(dl)
-	}
+// askProduct sends a product query on conn and waits probeTimeout for the
+// answer. broken reports that conn cannot send and must be opened again.
+func askProduct(conn net.Conn) (ok, broken bool) {
+	_ = conn.SetDeadline(time.Now().Add(probeTimeout))
 	if _, err := conn.Write(dvsi.AppendQuery(nil, true)); err != nil {
-		return false
+		return false, true
 	}
 	buf := make([]byte, dvsi.MaxPacketLen)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			return false
+			return false, false
 		}
 		for _, parity := range []bool{true, false} {
 			p, _, err := dvsi.Parse(buf[:n], parity)
@@ -285,7 +298,7 @@ func askProduct(ctx context.Context, addr string) bool {
 				continue
 			}
 			if _, ok := p.Response(dvsi.FieldProdID); ok {
-				return true
+				return true, false
 			}
 		}
 	}

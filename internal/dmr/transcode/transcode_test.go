@@ -509,6 +509,18 @@ func TestProbeShowsTheServerAnswers(t *testing.T) {
 	assert.False(t, answered(svc, 1), "the answer of another server shows for the new one")
 }
 
+// TestProbesComeFromOneSocket probes a server twice; both queries must
+// come from the same address, so the server sees one client and not a new
+// one every ProbeInterval.
+func TestProbesComeFromOneSocket(t *testing.T) {
+	t.Parallel()
+	srv := testutils.StartFakeAMBEServer(t)
+	srv.SetControlParity(false)
+	newService(t, srv.Addr())
+	require.Eventually(t, func() bool { return srv.Queries() >= 2 }, 3*transcode.ProbeInterval, 50*time.Millisecond)
+	assert.Equal(t, 1, srv.QuerySources())
+}
+
 // TestProbeTakesAReplyWithoutParity probes a server whose chip has parity
 // mode off, so its replies carry no parity field.
 func TestProbeTakesAReplyWithoutParity(t *testing.T) {

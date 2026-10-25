@@ -48,8 +48,30 @@ func TestPingWritesOnlyTheLastPingTime(t *testing.T) {
 	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
 
+	require.Eventually(t, func() bool { return statements.Load() >= 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, int64(1), statements.Load(), "statements for one ping")
 	var row models.Repeater
 	require.NoError(t, r.s.DB.First(&row, 311860).Error)
 	assert.False(t, row.LastPing.Before(before.Truncate(time.Second)), "last ping %v, want after %v", row.LastPing, before)
+}
+
+func TestASlowPingWriteDoesNotHoldUpThePackets(t *testing.T) {
+	t.Parallel()
+	r := newDialectRig(t, 311860)
+	r.login(dmrd.DialectMMDVM, 311860)
+	require.NoError(t, r.s.DB.Callback().Update().Before("gorm:update").Register("test:slow_store", func(*gorm.DB) {
+		time.Sleep(time.Second)
+	}))
+
+	before := time.Now()
+	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
+	took := time.Since(before)
+	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
+	assert.Less(t, took, 200*time.Millisecond, "the server took %s on a ping", took)
+
+	require.Eventually(t, func() bool {
+		var row models.Repeater
+		return r.s.DB.First(&row, 311860).Error == nil && !row.LastPing.Before(before.Truncate(time.Second))
+	}, 5*time.Second, 20*time.Millisecond, "the last ping is written")
 }

@@ -584,10 +584,58 @@ func (s *Server) ping(ctx context.Context, l *link) {
 	repeater.LastPing = now
 	repeater.IP, repeater.Port = l.ep.kvAddr()
 	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+	s.notePing(repeaterID, now)
+}
 
-	if err := s.DB.Model(&models.Repeater{}).Where("id = ?", repeaterID).UpdateColumn("last_ping", now).Error; err != nil {
-		slog.Error("Error saving the last ping of a repeater", "repeaterID", repeaterID, "error", err)
+// notePing queues the last ping time of a repeater for the database, so
+// that a slow store never holds up the packets of every repeater.
+func (s *Server) notePing(repeaterID uint, at time.Time) {
+	if s.DB == nil {
+		return
 	}
+	s.pingMu.Lock()
+	defer s.pingMu.Unlock()
+	if s.pingsClosed {
+		return
+	}
+	if s.pings == nil {
+		s.pings = map[uint]time.Time{}
+	}
+	s.pings[repeaterID] = at
+	if s.pinging {
+		return
+	}
+	s.pinging = true
+	s.pingWG.Add(1)
+	go s.writePings()
+}
+
+func (s *Server) writePings() {
+	defer s.pingWG.Done()
+	for {
+		s.pingMu.Lock()
+		pings := s.pings
+		s.pings = nil
+		if len(pings) == 0 {
+			s.pinging = false
+			s.pingMu.Unlock()
+			return
+		}
+		s.pingMu.Unlock()
+		for id, at := range pings {
+			if err := s.DB.Model(&models.Repeater{}).Where("id = ?", id).UpdateColumn("last_ping", at).Error; err != nil {
+				slog.Error("Error saving the last ping of a repeater", "repeaterID", id, "error", err)
+			}
+		}
+	}
+}
+
+// closePings stops taking ping times and waits for the queued ones.
+func (s *Server) closePings() {
+	s.pingMu.Lock()
+	s.pingsClosed = true
+	s.pingMu.Unlock()
+	s.pingWG.Wait()
 }
 
 // resume takes over the session of a repeater that logged in to another

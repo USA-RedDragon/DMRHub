@@ -85,6 +85,12 @@ type Server struct {
 	epoch    time.Time
 	// newSalt, when set, makes the login salts in place of crypto/rand.
 	newSalt func() (uint32, error)
+
+	pingMu      sync.Mutex
+	pings       map[uint]time.Time
+	pinging     bool
+	pingsClosed bool
+	pingWG      sync.WaitGroup
 }
 
 var (
@@ -200,6 +206,7 @@ func (s *Server) Stop(ctx context.Context) error {
 
 	s.wg.Wait()
 	s.lookups.Wait()
+	s.closePings()
 	return nil
 }
 

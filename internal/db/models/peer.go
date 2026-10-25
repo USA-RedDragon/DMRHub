@@ -99,8 +99,15 @@ func PeerIDExists(db *gorm.DB, id uint) (bool, error) {
 	return count > 0, err
 }
 
+// DeletePeer deletes a peer and its rules in one transaction.
 func DeletePeer(db *gorm.DB, id uint) error {
-	if err := db.Unscoped().Delete(&Peer{ID: id}).Error; err != nil {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("peer_id = ?", id).Delete(&PeerRule{}).Error; err != nil {
+			return fmt.Errorf("rules: %w", err)
+		}
+		return tx.Unscoped().Delete(&Peer{ID: id}).Error
+	})
+	if err != nil {
 		return fmt.Errorf("delete peer: %w", err)
 	}
 	return nil

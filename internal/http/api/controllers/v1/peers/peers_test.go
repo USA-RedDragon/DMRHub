@@ -267,6 +267,45 @@ func TestDELETEPeer(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, w.Code)
 }
 
+func TestDELETEPeerWithRules(t *testing.T) {
+	t.Parallel()
+	sqliteFK := testutils.SQLiteMemoryBackend()
+	sqliteFK.Name = "sqlite-memory-fk"
+	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
+		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
+	}
+	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+
+			_, _, adminJar := testutils.LoginAdmin(t, router)
+			var adminUser models.User
+			require.NoError(t, tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error)
+
+			peer := apimodels.PeerPost{ID: 100009, OwnerID: adminUser.ID, IP: "10.0.0.9", Port: 62035, Ingress: true, Egress: true}
+			_, w := testutils.CreatePeer(t, router, adminJar, peer)
+			require.Equal(t, http.StatusOK, w.Code)
+			for _, dir := range []bool{true, false} {
+				_, w = testutils.CreatePeerRule(t, router, peer.ID, adminJar, apimodels.PeerRulePost{Direction: dir, SubjectIDMin: 1, SubjectIDMax: 100})
+				require.Equal(t, http.StatusOK, w.Code)
+			}
+
+			delResp, w := testutils.DeletePeer(t, router, peer.ID, adminJar)
+			require.Equal(t, http.StatusOK, w.Code, delResp.Error)
+			assert.Equal(t, "Peer deleted", delResp.Message)
+
+			_, w = testutils.GetPeer(t, router, peer.ID, adminJar)
+			assert.NotEqual(t, http.StatusOK, w.Code)
+			var rules int64
+			require.NoError(t, tdb.DB().Unscoped().Model(&models.PeerRule{}).Where("peer_id = ?", peer.ID).Count(&rules).Error)
+			assert.Zero(t, rules)
+		})
+	}
+}
+
 func TestPOSTPeerDuplicate(t *testing.T) {
 	t.Parallel()
 

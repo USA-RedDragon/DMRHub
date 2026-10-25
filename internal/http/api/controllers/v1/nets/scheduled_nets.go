@@ -165,7 +165,7 @@ func POSTScheduledNet(c *gin.Context) {
 
 	sn := models.ScheduledNet{
 		TalkgroupID:     req.TalkgroupID,
-		CreatedByUserID: userID,
+		CreatedByUserID: &userID,
 		Name:            req.Name,
 		Description:     req.Description,
 		CronExpression:  cronExpr,

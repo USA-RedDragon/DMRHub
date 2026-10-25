@@ -737,7 +737,7 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: tgID, Name: "TG42"}).Error)
-	net := models.Net{TalkgroupID: tgID, StartedByUserID: userA, StartTime: time.Now(), Active: true}
+	net := models.Net{TalkgroupID: tgID, StartedByUserID: new(userA), StartTime: time.Now(), Active: true}
 	require.NoError(t, database.Create(&net).Error)
 	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
 	require.NoError(t, err)

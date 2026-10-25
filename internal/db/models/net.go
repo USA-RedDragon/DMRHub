@@ -41,7 +41,7 @@ type Net struct {
 	ID              uint           `json:"id" gorm:"primarykey" msg:"id"`
 	TalkgroupID     uint           `json:"talkgroup_id" gorm:"not null;index" msg:"talkgroup_id"`
 	Talkgroup       Talkgroup      `json:"talkgroup" gorm:"foreignKey:TalkgroupID" msg:"-"`
-	StartedByUserID uint           `json:"started_by_user_id" msg:"started_by_user_id"`
+	StartedByUserID *uint          `json:"started_by_user_id" msg:"started_by_user_id"`
 	StartedByUser   User           `json:"started_by_user" gorm:"foreignKey:StartedByUserID" msg:"-"`
 	ScheduledNetID  *uint          `json:"scheduled_net_id,omitempty" msg:"scheduled_net_id,omitempty"`
 	StartTime       time.Time      `json:"start_time" msg:"start_time"`

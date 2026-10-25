@@ -41,7 +41,7 @@ func (s *IntegrationStack) SeedNet(t *testing.T, talkgroupID, startedByUserID ui
 	t.Helper()
 	net := models.Net{
 		TalkgroupID:     talkgroupID,
-		StartedByUserID: startedByUserID,
+		StartedByUserID: &startedByUserID,
 		StartTime:       time.Now(),
 		Description:     description,
 		Active:          true,
@@ -58,7 +58,7 @@ func (s *IntegrationStack) SeedEndedNet(t *testing.T, talkgroupID, startedByUser
 	endTime := time.Now()
 	net := models.Net{
 		TalkgroupID:     talkgroupID,
-		StartedByUserID: startedByUserID,
+		StartedByUserID: &startedByUserID,
 		StartTime:       startTime,
 		EndTime:         &endTime,
 		Description:     description,
@@ -76,7 +76,7 @@ func (s *IntegrationStack) SeedScheduledNet(t *testing.T, talkgroupID, createdBy
 	require.NoError(t, err)
 	sn := models.ScheduledNet{
 		TalkgroupID:     talkgroupID,
-		CreatedByUserID: createdByUserID,
+		CreatedByUserID: &createdByUserID,
 		Name:            name,
 		CronExpression:  cronExpr,
 		DayOfWeek:       dayOfWeek,

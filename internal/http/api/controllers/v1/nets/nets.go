@@ -259,7 +259,7 @@ func POSTNetStart(c *gin.Context) {
 
 	net := models.Net{
 		TalkgroupID:     req.TalkgroupID,
-		StartedByUserID: userID,
+		StartedByUserID: &userID,
 		StartTime:       time.Now(),
 		DurationMinutes: req.DurationMinutes,
 		Description:     req.Description,

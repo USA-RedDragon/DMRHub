@@ -453,7 +453,7 @@ func FuzzNetStartStop(f *testing.F) {
 			// Start net — should succeed (no active net)
 			net := models.Net{
 				TalkgroupID:     tgID,
-				StartedByUserID: 1,
+				StartedByUserID: new(uint(1)),
 				StartTime:       time.Now(),
 				Active:          true,
 				Description:     fmt.Sprintf("fuzz iteration %d", i),

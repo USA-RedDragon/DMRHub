@@ -37,7 +37,7 @@ type ScheduledNet struct {
 	ID              uint           `json:"id" gorm:"primarykey" msg:"id"`
 	TalkgroupID     uint           `json:"talkgroup_id" gorm:"not null;index" msg:"talkgroup_id"`
 	Talkgroup       Talkgroup      `json:"talkgroup" gorm:"foreignKey:TalkgroupID" msg:"-"`
-	CreatedByUserID uint           `json:"created_by_user_id" msg:"created_by_user_id"`
+	CreatedByUserID *uint          `json:"created_by_user_id" msg:"created_by_user_id"`
 	CreatedByUser   User           `json:"created_by_user" gorm:"foreignKey:CreatedByUserID" msg:"-"`
 	Name            string         `json:"name" msg:"name"`
 	Description     string         `json:"description" msg:"description"`

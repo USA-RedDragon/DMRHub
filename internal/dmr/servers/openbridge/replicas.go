@@ -44,9 +44,15 @@ const (
 	egressLeaseRenew = EgressLeaseTTL / 4
 	egressTopic      = "openbridge:egress"
 
-	quenchKeyPrefix = "dmrhub:openbridge:quench:"
-	quenchRecheck   = time.Second
+	quenchTopic = "openbridge:quench"
+	outboxSize  = 1024
 )
+
+// outMessage is a message that an outbox publishes.
+type outMessage struct {
+	topic string
+	msg   []byte
+}
 
 // egressJob is a packet that a replica without the lease hands to the
 // holder.
@@ -136,12 +142,37 @@ func (s *Server) handOff(peerID uint, packet models.Packet, org origin) {
 		slog.Error("Error encoding OpenBridge egress", "error", err)
 		return
 	}
-	if err := s.pubsub.Publish(egressTopic, b); err != nil {
-		slog.Error("Error handing OpenBridge egress to the lease holder", "error", err)
+	s.publishLater(s.egressOut, egressTopic, b)
+}
+
+// publishLater queues msg for the outbox out, so that no packet waits on
+// pubsub. A full outbox drops msg.
+func (s *Server) publishLater(out chan outMessage, topic string, msg []byte) {
+	select {
+	case out <- outMessage{topic: topic, msg: msg}:
+	default:
+		if n := s.outDropped.Add(1); n&(n-1) == 0 {
+			slog.Warn("OpenBridge outbox full, messages dropped", "topic", topic, "dropped", n)
+		}
 	}
 }
 
-func (s *Server) consumeEgress(ctx context.Context) {
+// runOutbox publishes the messages of out in order.
+func (s *Server) runOutbox(out chan outMessage) {
+	defer s.wg.Done()
+	for {
+		select {
+		case <-s.done:
+			return
+		case m := <-out:
+			if err := s.pubsub.Publish(m.topic, m.msg); err != nil {
+				slog.Error("Error publishing an OpenBridge message", "topic", m.topic, "error", err)
+			}
+		}
+	}
+}
+
+func (s *Server) consumeEgress() {
 	defer s.wg.Done()
 	sub := s.pubsub.Subscribe(egressTopic)
 	defer func() { _ = sub.Close() }()
@@ -166,44 +197,47 @@ func (s *Server) consumeEgress(ctx context.Context) {
 			if !ok {
 				continue
 			}
-			s.sendNow(ctx, j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
+			s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
 		}
 	}
 }
 
-func quenchKey(q quench) string {
-	return fmt.Sprintf("%s%d:%d", quenchKeyPrefix, q.peer, q.stream)
+type sharedQuenchMsg struct {
+	Peer   uint `json:"peer"`
+	Stream uint `json:"stream"`
 }
 
-// shareQuench writes a BCSQ to the KV store, so that the replica that
+// shareQuench publishes a BCSQ to every replica, so that the replica that
 // sends egress honors it whichever replica got it.
-func (s *Server) shareQuench(ctx context.Context, q quench) {
-	if s.kv == nil {
+func (s *Server) shareQuench(q quench) {
+	b, err := json.Marshal(sharedQuenchMsg{Peer: q.peer, Stream: q.stream})
+	if err != nil {
+		slog.Error("Error encoding an OpenBridge source quench", "error", err)
 		return
 	}
-	if err := s.kv.Set(ctx, quenchKey(q), []byte{1}); err != nil {
-		slog.Error("Error sharing an OpenBridge source quench", "error", err)
-		return
-	}
-	if err := s.kv.Expire(ctx, quenchKey(q), quenchTTL); err != nil {
-		slog.Error("Error setting the time of an OpenBridge source quench", "error", err)
-	}
+	s.publishLater(s.egressOut, quenchTopic, b)
 }
 
-// sharedQuench reports whether another replica stored a BCSQ for q. It
-// asks the KV store at most once a second for each stream.
-func (s *Server) sharedQuench(ctx context.Context, q quench) bool {
-	if s.kv == nil {
-		return false
+// consumeQuenches takes the BCSQs that the replicas share.
+func (s *Server) consumeQuenches() {
+	defer s.wg.Done()
+	sub := s.pubsub.Subscribe(quenchTopic)
+	defer func() { _ = sub.Close() }()
+	ch := sub.Channel()
+	for {
+		select {
+		case <-s.done:
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			var m sharedQuenchMsg
+			if err := json.Unmarshal(msg, &m); err != nil {
+				slog.Error("Error decoding an OpenBridge source quench", "error", err)
+				continue
+			}
+			s.quenched.Store(quench{peer: m.Peer, stream: m.Stream}, time.Now())
+		}
 	}
-	if at, ok := s.quenchChecked.Load(q); ok && time.Since(at) < quenchRecheck {
-		return false
-	}
-	s.quenchChecked.Store(q, time.Now())
-	ok, err := s.kv.Has(ctx, quenchKey(q))
-	if err != nil || !ok {
-		return false
-	}
-	s.quenched.Store(q, time.Now())
-	return true
 }

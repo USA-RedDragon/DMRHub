@@ -106,6 +106,15 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)
 
+	for _, be := range backends {
+		if be.WrapKV != nil {
+			kvStore = be.WrapKV(kvStore)
+		}
+		if be.WrapPubSub != nil {
+			ps = be.WrapPubSub(ps)
+		}
+	}
+
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database, kvStore)
 	store.SetNotify(messages.NewPusher(database, ps).Push)

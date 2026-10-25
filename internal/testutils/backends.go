@@ -28,6 +28,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/moby/moby/api/types/container"
 	"github.com/ory/dockertest/v4"
@@ -38,6 +40,10 @@ import (
 type Backend struct {
 	Name  string
 	Setup func(t *testing.T, cfg *config.Config)
+	// WrapKV and WrapPubSub, when not nil, wrap the KV store and the
+	// pubsub of an integration stack, such as to slow them down.
+	WrapKV     func(kv.KV) kv.KV
+	WrapPubSub func(pubsub.PubSub) pubsub.PubSub
 }
 
 // SQLiteMemoryBackend returns a backend using in-memory SQLite and in-memory pubsub/KV.

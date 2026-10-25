@@ -99,8 +99,11 @@ type Server struct {
 	bridges   map[uint]*bridge
 	epoch     time.Time
 
-	quenched      *xsync.Map[quench, time.Time]
-	quenchChecked *xsync.Map[quench, time.Time]
+	quenched *xsync.Map[quench, time.Time]
+
+	egressOut  chan outMessage
+	eventsOut  chan outMessage
+	outDropped atomic.Uint64
 
 	kv     kv.KV
 	id     string
@@ -241,9 +244,9 @@ func (b *bridge) sign(p []byte) error {
 	return nil
 }
 
-// MakeServer creates a new DMR server. kvStore holds the egress lease and
-// the source quenches that replicas share; with a nil kvStore the server
-// works alone.
+// MakeServer creates a new DMR server. kvStore holds the egress lease that
+// replicas share; with a nil kvStore the server works alone. Replicas
+// share source quenches and hand egress over pubsub.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kvStore kv.KV) (Server, error) {
 	server, socketAddress, err := servers.ListenUDP(config.DMR.OpenBridge.Bind, config.DMR.OpenBridge.Port)
 	if err != nil {
@@ -274,7 +277,8 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
-		quenchChecked: xsync.NewMap[quench, time.Time](),
+		egressOut:     make(chan outMessage, outboxSize),
+		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
 		id:            newReplicaID(),
 	}, nil
@@ -299,11 +303,14 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	s.leader.Store(s.holdLease(ctx))
-	s.wg.Add(5)
-	go s.consumeHubPackets(ctx)
+	s.wg.Add(8)
+	go s.consumeHubPackets()
 	go s.keepalive()
 	go s.runLease(context.WithoutCancel(ctx))
-	go s.consumeEgress(ctx)
+	go s.consumeEgress()
+	go s.consumeQuenches()
+	go s.runOutbox(s.egressOut)
+	go s.runOutbox(s.eventsOut)
 
 	go func() {
 		defer s.wg.Done()
@@ -355,7 +362,7 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.
-func (s *Server) consumeHubPackets(ctx context.Context) {
+func (s *Server) consumeHubPackets() {
 	defer s.wg.Done()
 	for {
 		select {
@@ -366,7 +373,7 @@ func (s *Server) consumeHubPackets(ctx context.Context) {
 				return
 			}
 			// rp.RepeaterID is the peer ID for peer-role servers
-			s.sendPacketToPeer(ctx, rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec
+			s.sendPacketToPeer(rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec
 		}
 	}
 }
@@ -447,7 +454,7 @@ func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]b
 
 // sendPacketToPeer sends a packet to a specific OpenBridge peer, from this
 // replica when it holds the egress lease and from the holder otherwise.
-func (s *Server) sendPacketToPeer(ctx context.Context, peerID uint, packet models.Packet, org origin) {
+func (s *Server) sendPacketToPeer(peerID uint, packet models.Packet, org origin) {
 	if packet.Signature != string(dmrconst.CommandDMRD) {
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
@@ -456,11 +463,11 @@ func (s *Server) sendPacketToPeer(ctx context.Context, peerID uint, packet model
 		s.handOff(peerID, packet, org)
 		return
 	}
-	s.sendNow(ctx, peerID, packet, org)
+	s.sendNow(peerID, packet, org)
 }
 
-func (s *Server) sendNow(ctx context.Context, peerID uint, packet models.Packet, org origin) {
-	if s.isQuenched(ctx, peerID, packet.StreamID) {
+func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
+	if s.isQuenched(peerID, packet.StreamID) {
 		return
 	}
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
@@ -517,7 +524,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	bridge, err := dmrd.DecodeBridge(data)
 	if err != nil {
 		if control, cerr := dmrd.DecodeBridgeControl(data); cerr == nil {
-			s.handleControl(ctx, remoteAddr, data, control)
+			s.handleControl(remoteAddr, data, control)
 			return
 		}
 		slog.Debug("Dropping a packet that is not OpenBridge", "length", len(data), "error", err)
@@ -593,13 +600,11 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 				continue
 			}
 			if p.Egress && rules.EgressAllows(p.egress, &packet) {
-				s.sendPacketToPeer(ctx, p.ID, packet, org)
+				s.sendPacketToPeer(p.ID, packet, org)
 			}
 		}
 		peerEvent := fmt.Sprintf(`{"peer_id":%d,"event":"active","src":%d,"dst":%d}`, peerID, packet.Src, packet.Dst)
-		if err := s.pubsub.Publish("hub:events:peers", []byte(peerEvent)); err != nil {
-			slog.Error("Error publishing peer event", "error", err)
-		}
+		s.publishLater(s.eventsOut, "hub:events:peers", []byte(peerEvent))
 	})
 }
 
@@ -607,7 +612,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 // It carries no peer ID, so the peer is the one at the source address
 // whose key signed it. A BCSQ asks not to get a stream; BCKA, BCST and BCVE
 // change nothing here.
-func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
+func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
 	table, err := s.peerTable()
 	if err != nil {
 		slog.Error("Failed to list peers", "error", err)
@@ -624,7 +629,7 @@ func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, dat
 		}
 		if control.Command == dmrd.CommandBCSQ {
 			slog.Debug("OpenBridge peer quenched a stream", "peerID", p.ID, "talkgroup", control.TalkGroup, "stream", control.Stream)
-			s.quenchStream(ctx, p.ID, uint(control.Stream))
+			s.quenchStream(p.ID, uint(control.Stream))
 			return
 		}
 		slog.Debug("OpenBridge control packet", "peerID", p.ID, "command", string(control.Command), "version", control.Version)
@@ -652,10 +657,10 @@ func (s *Server) sendQuench(peer models.Peer, b *bridge, talkgroup, stream uint3
 	}
 }
 
-func (s *Server) quenchStream(ctx context.Context, peer, stream uint) {
+func (s *Server) quenchStream(peer, stream uint) {
 	now := time.Now()
 	s.quenched.Store(quench{peer: peer, stream: stream}, now)
-	s.shareQuench(ctx, quench{peer: peer, stream: stream})
+	s.shareQuench(quench{peer: peer, stream: stream})
 	if s.quenched.Size() > quenchPruneSize {
 		s.quenched.Range(func(q quench, at time.Time) bool {
 			if now.Sub(at) > quenchTTL {
@@ -666,10 +671,10 @@ func (s *Server) quenchStream(ctx context.Context, peer, stream uint) {
 	}
 }
 
-func (s *Server) isQuenched(ctx context.Context, peer, stream uint) bool {
+func (s *Server) isQuenched(peer, stream uint) bool {
 	at, ok := s.quenched.Load(quench{peer: peer, stream: stream})
 	if !ok {
-		return s.sharedQuench(ctx, quench{peer: peer, stream: stream})
+		return false
 	}
 	if time.Since(at) > quenchTTL {
 		s.quenched.Delete(quench{peer: peer, stream: stream})

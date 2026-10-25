@@ -200,7 +200,7 @@ func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.C
 	}
 
 	go h.read(ctx, cancel, s, r, conn, writer)
-	go keepalive(ctx, cancel, conn)
+	go keepalive(ctx, cancel, conn, writer)
 	writer.drain(ctx, conn)
 
 	closeConn(conn, context.Cause(ctx))
@@ -229,7 +229,7 @@ func (h *WSHandler) read(ctx context.Context, cancel context.CancelCauseFunc, s 
 	}
 }
 
-func keepalive(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn) {
+func keepalive(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn, w *wsWriter) {
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 	for {
@@ -238,13 +238,41 @@ func keepalive(ctx context.Context, cancel context.CancelCauseFunc, conn *websoc
 			return
 		case <-ticker.C:
 		}
-		pingCtx, pingCancel := context.WithTimeout(context.WithoutCancel(ctx), pingTimeout)
-		err := conn.Ping(pingCtx)
-		pingCancel()
-		if err != nil {
+		if err := ping(ctx, conn, w); err != nil {
 			cancel(errPingTimeout)
 			return
 		}
+	}
+}
+
+func ping(ctx context.Context, conn *websocket.Conn, w *wsWriter) error {
+	pingCtx, pingCancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer pingCancel()
+	result := make(chan error, 1)
+	go func() { result <- conn.Ping(pingCtx) }()
+	timer := time.NewTimer(pingTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case err := <-result:
+			return err
+		case <-timer.C:
+		}
+		select {
+		case err := <-result:
+			return err
+		default:
+		}
+		writing := w.writing()
+		if writing == nil {
+			return errPingTimeout
+		}
+		select {
+		case err := <-result:
+			return err
+		case <-writing:
+		}
+		timer.Reset(pingTimeout)
 	}
 }
 

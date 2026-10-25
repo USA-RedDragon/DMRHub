@@ -21,6 +21,7 @@ package websocket_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -394,6 +395,33 @@ func TestPingTimeoutDropsSilentClient(t *testing.T) {
 	defer func() { _ = conn.CloseNow() }()
 	<-ws.writers
 	waitClosed(t, ws, 3*websocket.PingInterval(), "a client that does not answer pings")
+}
+
+func TestPingWaitingBehindALongWriteKeepsTheClient(t *testing.T) {
+	t.Parallel()
+	ws := newCaptureWebsocket()
+	server := setupTestServer(t, ws)
+	defer server.Close()
+
+	big := make([]byte, 16<<20)
+	got := make([]byte, len(big))
+	conn := dialWS(t, server.URL)
+	defer func() { _ = conn.CloseNow() }()
+	conn.SetReadLimit(64 << 20)
+	w := <-ws.writers
+
+	w.WriteMessage(websocket.Message{Type: int(coderWS.MessageBinary), Data: big})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, r, err := conn.Reader(ctx)
+	require.NoError(t, err)
+	<-time.After(3 * websocket.PingInterval())
+	_, err = io.ReadFull(r, got)
+	require.NoError(t, err)
+	require.NoError(t, conn.Write(ctx, coderWS.MessageText, []byte("ping")))
+	_, msg, err := conn.Read(ctx)
+	require.NoError(t, err, "a ping that waited behind a write the client read ended the connection")
+	require.Equal(t, "PONG", string(msg))
 }
 
 func TestPingKeepsLiveClient(t *testing.T) {

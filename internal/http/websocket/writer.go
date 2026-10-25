@@ -21,6 +21,7 @@ package websocket
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/coder/websocket"
 )
@@ -41,6 +42,7 @@ type wsWriter struct {
 	out    chan Message
 	done   <-chan struct{}
 	cancel context.CancelCauseFunc
+	busy   atomic.Pointer[chan struct{}]
 }
 
 func (w *wsWriter) WriteMessage(message Message) {
@@ -70,7 +72,11 @@ func (w *wsWriter) drain(ctx context.Context, conn *websocket.Conn) {
 				typ = websocket.MessageBinary
 			}
 			writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+			written := make(chan struct{})
+			w.busy.Store(&written)
 			err := conn.Write(writeCtx, typ, m.Data)
+			w.busy.Store(nil)
+			close(written)
 			cancel()
 			if err != nil {
 				w.cancel(errWriteFailed)
@@ -78,4 +84,11 @@ func (w *wsWriter) drain(ctx context.Context, conn *websocket.Conn) {
 			}
 		}
 	}
+}
+
+func (w *wsWriter) writing() <-chan struct{} {
+	if written := w.busy.Load(); written != nil {
+		return *written
+	}
+	return nil
 }

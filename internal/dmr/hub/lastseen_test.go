@@ -208,6 +208,10 @@ func (c queryCount) Load() int64 {
 	return c.n.Load() - c.base
 }
 
+// trackerQuery marks the queries of the call tracker of a test hub, which
+// the query counters leave out.
+type trackerQuery struct{}
+
 // countedQueries holds the query counters of each test database, which
 // makeTestHubWrapping registers before the hub runs, as a gorm callback
 // may not be registered while other goroutines query.
@@ -219,6 +223,9 @@ func registerQueryCounter(t testing.TB, database *gorm.DB) {
 	countedQueries.Store(database, tables)
 	t.Cleanup(func() { countedQueries.Delete(database) })
 	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_tables", func(tx *gorm.DB) {
+		if tx.Statement.Context.Value(trackerQuery{}) != nil {
+			return
+		}
 		n, _ := tables.LoadOrStore(tx.Statement.Table, &atomic.Int64{})
 		n.Add(1)
 	}))
@@ -242,6 +249,9 @@ func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
 	burst := dataHeader(1000001, 1000002, 100004, 2)
 	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100003, "the first burst of the stream")
+	require.Eventually(t, func() bool {
+		return h.HeardAt(context.Background(), 1000002) == 100003 && h.HeardAt(context.Background(), 1000001) == 100004
+	}, 10*time.Second, 10*time.Millisecond, "the sightings of both streams are recorded")
 
 	users := countTableQueries(t, database, "users")
 	for seq := uint(1); seq < 10; seq++ {

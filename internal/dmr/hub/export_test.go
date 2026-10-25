@@ -21,6 +21,8 @@ package hub
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -56,4 +58,17 @@ const StreamClaimHold = streamClaimHold
 // limits it again.
 func (h *Hub) LiftSlotRate(lift bool) {
 	h.slotRateOff.Store(lift)
+}
+
+// HeardAt returns the repeater where the radio userID was last heard, or 0.
+func (h *Hub) HeardAt(ctx context.Context, userID uint) uint {
+	v, err := h.kv.Get(ctx, fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID))
+	if err != nil {
+		return 0
+	}
+	id, err := strconv.ParseUint(string(v), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint(id)
 }

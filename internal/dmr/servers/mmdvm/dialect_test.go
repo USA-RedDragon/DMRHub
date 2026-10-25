@@ -23,7 +23,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -154,12 +156,18 @@ type dialectRig struct {
 	from net.UDPAddr
 }
 
+var memoryDBs atomic.Uint64 //nolint:gochecknoglobals // gives each test database of the package its own name
+
+func sharedMemoryDB(cfg *config.Config) {
+	cfg.Database.Database = fmt.Sprintf("file:mmdvm_test_%d", memoryDBs.Add(1))
+	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+}
+
 func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = ""
-	cfg.Database.ExtraParameters = []string{}
+	sharedMemoryDB(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)

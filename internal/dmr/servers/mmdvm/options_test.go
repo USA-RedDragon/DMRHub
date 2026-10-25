@@ -62,8 +62,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	sharedMemoryDB(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)

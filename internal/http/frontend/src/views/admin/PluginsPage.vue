@@ -28,9 +28,14 @@
           Programs that answer the calls to their own IDs, such as the parrot or the location server.
         </p>
       </div>
-      <ShadButton as-child>
-        <RouterLink to="/admin/plugins/new" data-test="add-plugin">Add a plugin</RouterLink>
-      </ShadButton>
+      <div class="flex flex-wrap gap-2">
+        <ShadButton as-child>
+          <RouterLink to="/admin/plugins/upload" data-test="upload-plugin">Upload a plugin</RouterLink>
+        </ShadButton>
+        <ShadButton as-child variant="outline">
+          <RouterLink to="/admin/plugins/new" data-test="add-plugin">Add an external plugin</RouterLink>
+        </ShadButton>
+      </div>
     </div>
 
     <p v-if="state === 'error'" class="text-sm text-destructive">Could not load the plugins.</p>
@@ -40,6 +45,7 @@
       <li v-for="p in plugins" :key="p.id" class="flex items-start justify-between gap-3 border-b px-4 py-3 last:border-b-0">
         <div class="flex min-w-0 flex-col gap-0.5 text-sm">
           <b class="font-semibold">{{ p.name }}</b>
+          <span><PluginBadge :kind="p.kind" /> <span v-if="p.version" class="font-mono">{{ p.version }}</span></span>
           <span>{{ formatRanges(p.ranges) }}</span>
           <span class="text-muted-foreground">{{ status(p, now) }} · {{ p.calls_today }} today</span>
         </div>
@@ -52,6 +58,8 @@
         <thead>
           <tr class="bg-muted/50 text-left text-muted-foreground">
             <th class="px-4 py-3 font-medium">Name</th>
+            <th class="px-4 py-3 font-medium">Runs</th>
+            <th class="px-4 py-3 font-medium">Version</th>
             <th class="px-4 py-3 font-medium">IDs</th>
             <th class="px-4 py-3 font-medium">Status</th>
             <th class="px-4 py-3 font-medium">Calls today</th>
@@ -60,10 +68,12 @@
         </thead>
         <tbody>
           <tr v-if="plugins.length === 0">
-            <td colspan="5" class="px-4 py-6 text-muted-foreground" data-test="no-plugins">No plugins yet.</td>
+            <td colspan="7" class="px-4 py-6 text-muted-foreground" data-test="no-plugins">No plugins yet.</td>
           </tr>
           <tr v-for="p in plugins" :key="p.id" class="border-t" :data-test="`plugin-${p.id}`">
             <td class="px-4 py-3.5 font-semibold">{{ p.name }}</td>
+            <td class="px-4 py-3.5"><PluginBadge :kind="p.kind" /></td>
+            <td class="px-4 py-3.5 font-mono">{{ p.version }}</td>
             <td class="px-4 py-3.5">{{ formatRanges(p.ranges) }}</td>
             <td class="px-4 py-3.5" :class="{ 'text-muted-foreground': !p.enabled }">
               <span class="inline-flex items-center gap-2">
@@ -87,12 +97,7 @@
 
     <div v-if="state === 'ready'" role="note" class="max-w-[80ch] rounded-lg border bg-muted/40 px-3.5 py-3 text-sm" data-test="plugins-note">
       A plugin gets the calls to its IDs. It can send calls only from its IDs, to a radio or to a talkgroup among its IDs.
-      <template v-if="connection?.enabled && connection.address">
-        Plugins connect to {{ connection.address }} with the token you get when you add them.
-      </template>
-      <template v-else>
-        Plugins cannot connect until you turn on Accept plugins in Setup.
-      </template>
+      Plugins that run inside DMRHub cannot reach your files, and reach only the hosts you allow on their page.
     </div>
   </div>
 </template>
@@ -103,13 +108,13 @@ import { RouterLink } from 'vue-router';
 import { useHead } from '@unhead/vue';
 
 import { Button as ShadButton } from '@/components/ui/button';
-import { formatRanges, listPlugins, status, type AdminPlugin, type PluginConnection } from '@/services/plugins';
+import PluginBadge from '@/components/PluginBadge.vue';
+import { formatRanges, listPlugins, status, type AdminPlugin } from '@/services/plugins';
 
 useHead({ title: 'Plugins' });
 
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 const plugins = ref<AdminPlugin[]>([]);
-const connection = ref<PluginConnection | null>(null);
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -117,7 +122,6 @@ const load = async () => {
   try {
     const list = await listPlugins();
     plugins.value = list.plugins;
-    connection.value = list.connection;
     now.value = Date.now();
     state.value = 'ready';
   } catch {

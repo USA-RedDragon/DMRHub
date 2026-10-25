@@ -253,6 +253,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/PluginsPage.vue'),
     },
     {
+      path: '/admin/plugins/upload',
+      name: 'AdminPluginUpload',
+      component: () => import('@/views/admin/UploadPluginPage.vue'),
+    },
+    {
       path: '/admin/plugins/:id(new|\\d+)',
       name: 'AdminPlugin',
       component: () => import('@/views/admin/PluginPage.vue'),

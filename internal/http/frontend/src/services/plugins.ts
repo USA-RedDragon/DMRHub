@@ -20,11 +20,20 @@ import API from '@/services/API';
 
 export type PluginRange = { first: number; last: number };
 
+export type PluginKind = 'external' | 'builtin' | 'uploaded';
+
+export type PluginHost = { address: string; reason: string; allowed: boolean };
+
 export type AdminPlugin = {
   id: number;
   name: string;
+  kind: PluginKind;
+  version: string;
+  author: string;
+  description: string;
   enabled: boolean;
   ranges: PluginRange[];
+  hosts: PluginHost[];
   online: boolean;
   connected_since: string | null;
   last_seen_at: string | null;
@@ -40,15 +49,52 @@ export type PluginConnection = {
   own_certificate: boolean;
 };
 
-export type PluginList = { plugins: AdminPlugin[]; connection: PluginConnection };
+export type PluginList = { plugins: AdminPlugin[]; connection: PluginConnection; inProcess: boolean };
+
+export type PluginManifest = {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  ranges: PluginRange[];
+  hosts: PluginHost[];
+};
 
 export type PluginToken = { plugin: AdminPlugin; token: string };
 
-export type PluginInput = { name: string; enabled: boolean; ranges: PluginRange[] };
+export type PluginInput = { name: string; enabled: boolean; ranges: PluginRange[]; allowed_hosts?: string[] };
 
 export async function listPlugins(): Promise<PluginList> {
   const res = await API.get('/admin/plugins');
-  return { plugins: res.data.plugins ?? [], connection: res.data.connection };
+  const plugins: AdminPlugin[] = (res.data.plugins ?? []).map((p: AdminPlugin) => ({ ...p, hosts: p.hosts ?? [] }));
+  return { plugins, connection: res.data.connection, inProcess: res.data.in_process === true };
+}
+
+function fileForm(file: File): FormData {
+  const form = new FormData();
+  form.append('file', file);
+  return form;
+}
+
+/** inspectPlugin returns what the plugin file says it is and asks for, and adds nothing. */
+export async function inspectPlugin(file: File): Promise<PluginManifest> {
+  const res = await API.post('/admin/plugins/inspect', fileForm(file));
+  return { ...res.data, ranges: res.data.ranges ?? [], hosts: res.data.hosts ?? [] };
+}
+
+/** uploadPlugin adds the plugin file with its IDs and the hosts it may reach, and starts it. */
+export async function uploadPlugin(file: File, ranges: PluginRange[], allowedHosts: string[]): Promise<AdminPlugin> {
+  const form = fileForm(file);
+  form.append('ranges', JSON.stringify(ranges));
+  form.append('allowed_hosts', JSON.stringify(allowedHosts));
+  const res = await API.post('/admin/plugins/upload', form);
+  return res.data;
+}
+
+/** uploadPluginVersion replaces the module of an uploaded plugin with a newer file. */
+export async function uploadPluginVersion(id: number, file: File): Promise<AdminPlugin> {
+  const res = await API.post(`/admin/plugins/${id}/module`, fileForm(file));
+  return res.data;
 }
 
 export async function addPlugin(input: PluginInput): Promise<PluginToken> {
@@ -91,10 +137,56 @@ export function formatSpan(fromIso: string, now: number = Date.now()): string {
   return `${Math.round(hours / 24)} days`;
 }
 
-/** status is what the list says of a plugin's connection. */
+/** isInside reports whether p runs inside DMRHub. */
+export function isInside(p: AdminPlugin): boolean {
+  return p.kind === 'builtin' || p.kind === 'uploaded';
+}
+
+/** runsLabel says where a plugin of kind runs. */
+export function runsLabel(kind: PluginKind): string {
+  switch (kind) {
+    case 'builtin':
+      return 'Built in';
+    case 'uploaded':
+      return 'Uploaded';
+    default:
+      return 'External';
+  }
+}
+
+/** formatIDs is the IDs of a plugin as its IDs field shows them: 9990, 5050-5059. */
+export function formatIDs(ranges: PluginRange[]): string {
+  return ranges.map((r) => (r.first === r.last ? `${r.first}` : `${r.first}-${r.last}`)).join(', ');
+}
+
+/** parseIDs reads IDs and ranges such as 9990, 5050-5059, and returns null for anything else. */
+export function parseIDs(text: string): PluginRange[] | null {
+  if (text.trim() === '') {
+    return [];
+  }
+  const out: PluginRange[] = [];
+  for (const part of text.split(',')) {
+    const m = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$/.exec(part);
+    if (!m) {
+      return null;
+    }
+    const first = Number(m[1]);
+    const last = m[2] === undefined ? first : Number(m[2]);
+    if (last < first) {
+      return null;
+    }
+    out.push({ first, last });
+  }
+  return out;
+}
+
+/** status is what the list says of a plugin's connection, or of a plugin inside DMRHub. */
 export function status(p: AdminPlugin, now: number = Date.now()): string {
   if (!p.enabled) {
     return 'Off';
+  }
+  if (isInside(p)) {
+    return p.online ? 'Running in DMRHub' : 'Not running';
   }
   if (p.online && p.connected_since) {
     return `Connected for ${formatSpan(p.connected_since, now)}, from ${p.address.replace(/:\d+$/, '')}`;

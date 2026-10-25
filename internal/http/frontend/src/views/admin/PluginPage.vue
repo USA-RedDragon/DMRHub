@@ -20,7 +20,8 @@
 -->
 
 <template>
-  <div class="flex flex-col gap-6">
+  <InsidePlugin v-if="state === 'ready' && saved && isInside(saved)" :initial="saved" />
+  <div v-else class="flex flex-col gap-6">
     <div class="flex flex-col gap-1.5">
       <RouterLink to="/admin/plugins" class="text-sm text-primary underline-offset-4 hover:underline">Plugins</RouterLink>
       <h1 class="text-2xl font-semibold">{{ isNew ? 'Add a plugin' : saved?.name }}</h1>
@@ -147,6 +148,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useHead } from '@unhead/vue';
 
+import InsidePlugin from '@/components/InsidePlugin.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
@@ -155,6 +157,7 @@ import {
   addPlugin,
   deletePlugin,
   formatDay,
+  isInside,
   listPlugins,
   newPluginToken,
   status,

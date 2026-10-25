@@ -26,13 +26,25 @@
         <CardTitle>Plugins</CardTitle>
       </CardHeader>
       <CardContent>
-        <p>
-          Plugins connect to the hub to answer the calls to their IDs. Add them, and give them their IDs, on the Plugins
-          page under Admin.
+        <p>Plugins answer the calls to their IDs. Give them their IDs on the Plugins page under Admin.</p>
+        <div class="mt-4 flex items-center gap-3">
+          <Switch
+            id="plugins-in-process"
+            aria-labelledby="plugins-in-process-label"
+            :model-value="inProcess"
+            @update:model-value="(v: boolean) => set('in-process', v)"
+          />
+          <label id="plugins-in-process-label" for="plugins-in-process" class="text-sm">Run plugins inside DMRHub</label>
+        </div>
+        <p v-if="inProcess" class="mt-2 text-sm text-muted-foreground" data-test="in-process-on">
+          The parrot, the location server and the plugins you upload run as part of DMRHub, with nothing else to install.
+        </p>
+        <p v-else class="mt-2 text-sm text-muted-foreground" data-test="in-process-off">
+          Turn this off only if you run every plugin as its own program, such as dmrhub-parrot and dmrhub-locator.
         </p>
         <div class="mt-4 flex items-center gap-3">
           <Switch id="plugins-enabled" aria-labelledby="plugins-enabled-label" :model-value="enabled" @update:model-value="(v: boolean) => set('enabled', v)" />
-          <label id="plugins-enabled-label" for="plugins-enabled" class="text-sm">Accept plugins</label>
+          <label id="plugins-enabled-label" for="plugins-enabled" class="text-sm">Accept plugins that run as their own programs</label>
         </div>
         <div v-if="enabled" class="mt-4 grid gap-4 sm:grid-cols-3" data-test="plugins-fields">
           <div>
@@ -99,6 +111,7 @@ const emit = defineEmits<{
 }>();
 
 const enabled = computed(() => props.modelValue?.enabled === true);
+const inProcess = computed(() => props.modelValue?.['in-process'] !== false);
 const port = computed(() => (typeof props.modelValue?.port === 'number' && props.modelValue.port > 0 ? props.modelValue.port : DEFAULT_PORT));
 const certFile = computed(() => String(props.modelValue?.['cert-file'] ?? ''));
 const keyFile = computed(() => String(props.modelValue?.['key-file'] ?? ''));

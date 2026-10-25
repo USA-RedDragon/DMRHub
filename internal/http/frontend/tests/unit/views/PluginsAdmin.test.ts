@@ -51,7 +51,8 @@ const mockAPI = API as unknown as { get: Mock; post: Mock; put: Mock; delete: Mo
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
 
 const parrot: AdminPlugin = {
-  id: 1, name: 'Parrot', enabled: true, ranges: [{ first: 9990, last: 9990 }], online: true,
+  id: 1, name: 'Parrot', kind: 'external', version: '', author: '', description: '', hosts: [],
+  enabled: true, ranges: [{ first: 9990, last: 9990 }], online: true,
   connected_since: ago(120), last_seen_at: ago(0), address: '10.0.4.7:51234', token_created_at: '2026-10-23T12:00:00Z', calls_today: 12,
 };
 const locator: AdminPlugin = {
@@ -101,18 +102,17 @@ describe('PluginsPage', () => {
     expect(row).toContain('12');
     expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('310001–310009');
     expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('Off');
-    expect(wrapper.find('[data-test="plugins-note"]').text()).toContain('Plugins connect to dmrhub.example.org:3006');
+    expect(wrapper.find('[data-test="plugins-note"]').text()).toContain('It can send calls only from its IDs');
     expect(wrapper.find('[data-test="add-plugin"]').attributes('href')).toBe('/admin/plugins/new');
     expect(wrapper.text()).not.toMatch(/dmr\.plugins|cert-file/);
     wrapper.unmount();
   });
 
-  it('says plugins cannot connect while the listener is off', async () => {
+  it('says when there are no plugins', async () => {
     mockAPI.get.mockResolvedValue({ data: { plugins: [], connection: { ...connection, enabled: false } } });
     const wrapper = mount(PluginsPage);
     await flushPromises();
     expect(wrapper.find('[data-test="no-plugins"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="plugins-note"]').text()).toContain('turn on Accept plugins in Setup');
     wrapper.unmount();
   });
 });

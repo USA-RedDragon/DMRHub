@@ -81,15 +81,15 @@ var (
 )
 
 // NewIPSCClient creates a new IPSC simulator client. password is the hex
-// auth key as stored in the database; a password that is not hex turns
-// authentication off.
+// auth key as stored in the database; a password that is empty, as the hub
+// takes for a peer without a key, or not hex turns authentication off.
 func NewIPSCClient(peerID uint32, password string) *IPSCClient {
 	key, err := ipscauth.ParseKey(password)
 	return &IPSCClient{
 		PeerID:   peerID,
 		Password: password,
 		key:      key,
-		useAuth:  err == nil,
+		useAuth:  err == nil && password != "",
 		ready:    make(chan struct{}),
 		done:     make(chan struct{}),
 		packets:  make(chan IPSCBurst, clientBuffer),

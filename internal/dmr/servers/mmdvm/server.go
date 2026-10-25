@@ -139,7 +139,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 			_ = server.Close()
 			return Server{}, fmt.Errorf("WebTransport certificate: %w", err)
 		}
-		if wt, err = listenWebTransport(config.DMR.MMDVM.Bind, c.Port, certs); err != nil {
+		if wt, err = listenWebTransport(config.DMR.MMDVM.Bind, c.Port, certs, config.GetDerivedSecret(), pubsub, kv); err != nil {
 			_ = server.Close()
 			return Server{}, err
 		}
@@ -209,6 +209,7 @@ func (s *Server) Stop(ctx context.Context) error {
 			slog.Error("Error closing MMDVM UDP socket", "error", err)
 		}
 		if s.wt != nil {
+			s.wt.unregister(ctx)
 			if err := s.wt.Close(); err != nil {
 				slog.Error("Error closing MMDVM WebTransport listener", "error", err)
 			}

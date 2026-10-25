@@ -22,6 +22,7 @@ package mmdvm
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
@@ -32,6 +33,8 @@ import (
 	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
@@ -58,7 +61,8 @@ type wtDatagram struct {
 // WebTransport session is a peer, and each datagram is one packet of the
 // MMDVM network protocol.
 type webTransport struct {
-	udp      net.PacketConn
+	udp      *wtConn
+	tr       *quic.Transport
 	ln       *quic.EarlyListener
 	srv      *webtransport.Server
 	sessions *xsync.Map[string, *webtransport.Session]
@@ -68,13 +72,26 @@ type webTransport struct {
 	wg       sync.WaitGroup
 }
 
-func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransport, error) {
-	udp, _, err := servers.ListenUDP(bind, port)
+// listenWebTransport listens for WebTransport sessions on the UDP port.
+// The replicas share secret, from which they make one stateless reset key,
+// and forward the packets of each other's connections over ps; with a nil
+// ps or store the listener works alone.
+func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []byte, ps pubsub.PubSub, store kv.KV) (*webTransport, error) {
+	sock, _, err := servers.ListenUDP(bind, port)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOpenSocket, err)
 	}
+	tag, err := newReplicaTag()
+	if err != nil {
+		_ = sock.Close()
+		return nil, err
+	}
+	udp := newWTConn(sock, tag, ps, store)
+	reset := quic.StatelessResetKey(sha256.Sum256(append([]byte("dmrhub webtransport stateless reset"), secret...)))
+	tr := &quic.Transport{Conn: udp, ConnectionIDGenerator: cidGenerator{tag: tag}, StatelessResetKey: &reset}
 	t := &webTransport{
 		udp:      udp,
+		tr:       tr,
 		sessions: xsync.NewMap[string, *webtransport.Session](),
 		in:       make(chan wtDatagram, channelBufferSize),
 		done:     make(chan struct{}),
@@ -88,7 +105,7 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransp
 	}
 	webtransport.ConfigureHTTP3Server(h3)
 	t.srv = &webtransport.Server{H3: h3, CheckOrigin: func(*http.Request) bool { return true }}
-	ln, err := quic.ListenEarly(udp, h3.TLSConfig, h3.QUICConfig)
+	ln, err := tr.ListenEarly(h3.TLSConfig, h3.QUICConfig)
 	if err != nil {
 		_ = udp.Close()
 		return nil, fmt.Errorf("%w: %w", ErrOpenSocket, err)
@@ -180,6 +197,12 @@ func (t *webTransport) WriteTo(p []byte, addr net.Addr) (int, error) {
 	return len(p), nil
 }
 
+// unregister removes the tag of the replica, so that the others reset
+// its connections at once instead of forwarding to it.
+func (t *webTransport) unregister(ctx context.Context) {
+	t.udp.unregister(ctx)
+}
+
 func (t *webTransport) Close() error {
 	var err error
 	t.once.Do(func() {
@@ -188,7 +211,7 @@ func (t *webTransport) Close() error {
 			_ = sess.CloseWithError(0, "server stopping")
 			return true
 		})
-		err = errors.Join(t.srv.Close(), t.ln.Close(), t.udp.Close())
+		err = errors.Join(t.srv.Close(), t.ln.Close(), t.tr.Close(), t.udp.Close())
 		t.wg.Wait()
 	})
 	return err

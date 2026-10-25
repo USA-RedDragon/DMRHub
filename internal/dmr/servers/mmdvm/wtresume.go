@@ -136,6 +136,16 @@ func (s *Server) DrainWebTransport(ctx context.Context) {
 	slog.Info("Told the browser hotspots to move to another replica", "count", len(notices))
 }
 
+// noticeTime returns the time, to the second and not after it, at which
+// the drain notice of a token that checkResumeToken took went out.
+func noticeTime(token string) time.Time {
+	b, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(b) < 12 {
+		return time.Now()
+	}
+	return time.Unix(int64(binary.BigEndian.Uint64(b[4:12])), 0).Add(-resumeTTL) //nolint:gosec // a time after 1970
+}
+
 // spendToken reports whether token was not used before, and marks it used
 // for as long as it is good, so that a token moves a session once.
 func (s *Server) spendToken(ctx context.Context, token string) bool {
@@ -147,7 +157,9 @@ func (s *Server) spendToken(ctx context.Context, token string) bool {
 
 // resumeWebTransport takes over, at the WebTransport session addr, the
 // MMDVM session that the token names, as a browser hotspot that moves from
-// a draining replica asks.
+// a draining replica asks. A load balancer may have lost what the draining
+// replica sent the hotspot since the notice, so the claim asks for all of
+// that, and the hotspot drops the copies of what it got.
 func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	now := time.Now()
 	id, ok := s.checkResumeToken(token, now)
@@ -166,6 +178,7 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	if !s.spendToken(ctx, token) {
 		return wtResume{Reason: "the token was used"}
 	}
+	s.awaitHandover(ctx, uint(id))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped.Load() {
@@ -176,7 +189,7 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	if err != nil || l.m.State() != dmrdsession.StateIdle {
 		return wtResume{Reason: "busy"}
 	}
-	l.heard = now
+	l.heard = noticeTime(token)
 	s.resumeLink(ctx, s.now(), l, id)
 	if s.byID[id] != l {
 		s.forget(l)

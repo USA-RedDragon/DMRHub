@@ -86,3 +86,63 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 	})
 }
+
+// TestWebTransportMoveGetsWhatTheLoadBalancerLost drains the replica of a
+// browser hotspot while a call to its talkgroup goes on, and the load
+// balancer ends the session of the hotspot to that replica at once and
+// takes 300 ms to open it a new one, so that the bursts that the draining
+// replica sends meanwhile are lost. The replica that the hotspot moves to
+// must hand it those bursts, so that it gets every burst of the call once.
+func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
+	t.Parallel()
+	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100004, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100004, 1)
+		regA := testutils.Register(t, stack.Hub, stack.KV)
+		b := stack.SpawnFullReplica(t)
+		testutils.Register(t, b.Hub, stack.KV)
+		stack.StartServers(t)
+		require.NotEmpty(t, stack.WebTransportAddr)
+
+		front := testutils.NewUDPFront(t)
+		front.Add(t, stack.WebTransportAddr)
+		browser, err := testutils.NewWebTransportPeer(100004, testPassword)
+		require.NoError(t, err)
+		require.NoError(t, browser.Connect(front.Addr()))
+		t.Cleanup(browser.Close)
+		require.NoError(t, browser.WaitReady(handshakeWait))
+		front.Add(t, b.WebTransportAddr)
+
+		talker := testutils.NewMMDVMClient(100001, "", testPassword)
+		require.NoError(t, talker.Connect(b.MMDVMAddr))
+		t.Cleanup(talker.Close)
+		require.NoError(t, talker.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+
+		const bursts = 80
+		next := time.Now()
+		for i := range bursts {
+			p := makeGroupVoicePacket(1000001, 1, 8201, false)
+			p.Seq = uint(i)
+			p.DTypeOrVSeq = dmrconst.VoiceA + uint(i%6)
+			if i%6 == 0 {
+				p.FrameType = dmrconst.FrameVoiceSync
+			}
+			require.NoError(t, talker.SendDMRD(p))
+			if i == 15 {
+				regA.MarkDraining(t.Context())
+				stack.MMDVMServer.DrainWebTransport(t.Context())
+				front.Cut(stack.WebTransportAddr, 300*time.Millisecond)
+			}
+			next = next.Add(rotationInterval)
+			time.Sleep(time.Until(next))
+		}
+		heardMMDVM(browser.Drain(drainWait)).checkN(t, "the browser hotspot", 8201, bursts)
+		assert.Equal(t, 1, browser.Moves(), "the browser hotspot did not move")
+		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
+		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
+	})
+}

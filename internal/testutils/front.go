@@ -24,6 +24,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +44,9 @@ type UDPFront struct {
 	backends []*frontBackend
 	sessions map[string]*frontSession
 	moves    int
-	wg       sync.WaitGroup
+	// holdUntil drops the packets of clients with no session until then.
+	holdUntil time.Time
+	wg        sync.WaitGroup
 }
 
 type frontBackend struct {
@@ -94,6 +97,29 @@ func (f *UDPFront) Drain(addr string) {
 	if b := f.find(addr); b != nil {
 		b.draining = true
 	}
+}
+
+// Cut marks the backend at addr as draining and ends its sessions at
+// once, as Envoy Gateway does with the sessions of a pod that leaves its
+// endpoints, and drops the packets of their clients for hold before it
+// opens them new sessions. What the backend sends meanwhile is lost.
+func (f *UDPFront) Cut(addr string, hold time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b := f.find(addr)
+	if b == nil {
+		return
+	}
+	b.draining = true
+	for key, s := range f.sessions {
+		if s.backend == b {
+			_ = s.up.Close()
+			b.sessions--
+			f.moves++
+			delete(f.sessions, key)
+		}
+	}
+	f.holdUntil = time.Now().Add(hold)
 }
 
 // Remove removes the backend at addr and ends its sessions.
@@ -167,6 +193,9 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
 	s, ok := f.sessions[client.String()]
 	if ok && !s.backend.draining {
 		return s
+	}
+	if !ok && time.Now().Before(f.holdUntil) {
+		return nil
 	}
 	b := f.pick()
 	if b == nil {

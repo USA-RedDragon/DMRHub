@@ -21,6 +21,7 @@ package websocket_test
 
 import (
 	"context"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -49,22 +50,24 @@ func TestUserChangeDuringAWriteStillSendsTheCloseFrame(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
+	big := []byte(strings.Repeat("x", 16<<20))
+	got := make([]byte, len(big))
 	conn := dialWS(t, server.URL)
 	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(64 << 20)
+	serverCtx := <-ws.contexts
 	w := <-ws.writers
 
-	big := []byte(strings.Repeat("x", 32<<20))
 	w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: big})
-	time.Sleep(200 * time.Millisecond)
-	require.NoError(t, websocket.PublishUserChanged(ps, 7))
-	time.Sleep(200 * time.Millisecond)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, got, err := conn.Read(ctx)
+	_, r, err := conn.Reader(ctx)
+	require.NoError(t, err, "the message starts")
+	require.NoError(t, websocket.PublishUserChanged(ps, 7))
+	<-serverCtx.Done()
+
+	_, err = io.ReadFull(r, got)
 	require.NoError(t, err, "the message being written when the user changed arrives whole")
-	require.Len(t, got, len(big))
 	_, _, err = conn.Read(ctx)
 	require.Equal(t, coderWS.StatusPolicyViolation, coderWS.CloseStatus(err), "then the close frame: %v", err)
 }

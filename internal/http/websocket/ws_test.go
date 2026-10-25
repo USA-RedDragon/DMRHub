@@ -269,6 +269,7 @@ func TestWriterDoesNotBlockAfterClose(t *testing.T) {
 
 type captureWebsocket struct {
 	writers  chan websocket.Writer
+	contexts chan context.Context
 	messages chan []byte
 	closed   chan struct{}
 }
@@ -276,6 +277,7 @@ type captureWebsocket struct {
 func newCaptureWebsocket() *captureWebsocket {
 	return &captureWebsocket{
 		writers:  make(chan websocket.Writer, 10),
+		contexts: make(chan context.Context, 10),
 		messages: make(chan []byte, 10),
 		closed:   make(chan struct{}, 10),
 	}
@@ -285,7 +287,8 @@ func (c *captureWebsocket) OnMessage(_ context.Context, _ *http.Request, _ webso
 	c.messages <- msg
 }
 
-func (c *captureWebsocket) OnConnect(_ context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+func (c *captureWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+	c.contexts <- ctx
 	c.writers <- w
 	return func() { c.closed <- struct{}{} }
 }

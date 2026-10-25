@@ -179,3 +179,5 @@ pprof:
   port: 6060
 # API key for the Have I Been Pwned service, used for checking if passwords have been compromised
 # hibp-api-key: ""
+# Approve new users when they register, so they can log in at once without waiting for an admin
+auto-approve-users: false

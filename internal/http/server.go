@@ -39,12 +39,14 @@ import (
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
+	v1PluginsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/cors"
@@ -72,9 +74,10 @@ const rateLimitLimit = 50
 type Option func(*options)
 
 type options struct {
-	applier    v1ConfigControllers.Applier
-	hibpClient *http.Client
-	mailer     smtp.Mailer
+	applier      v1ConfigControllers.Applier
+	hibpClient   *http.Client
+	mailer       smtp.Mailer
+	pluginEngine *wasm.Engine
 }
 
 // WithConfigApplier makes the config API put a saved config into effect
@@ -87,6 +90,12 @@ func WithConfigApplier(a v1ConfigControllers.Applier) Option {
 // client.
 func WithHIBPClient(client *http.Client) Option {
 	return func(o *options) { o.hibpClient = client }
+}
+
+// WithPluginEngine makes the plugins API check uploaded plugins with e,
+// whose cache then holds them for the plugins inside DMRHub.
+func WithPluginEngine(e *wasm.Engine) Option {
+	return func(o *options) { o.pluginEngine = e }
 }
 
 // WithMailer makes the password reset emails go out through m instead of
@@ -166,6 +175,11 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 		mailer = smtp.NewMailer(config)
 	}
 	r.Use(middleware.Provider(v1AuthControllers.MailerKey, mailer))
+	engine := o.pluginEngine
+	if engine == nil {
+		engine = wasm.NewEngine(wasm.DefaultLimits())
+	}
+	r.Use(middleware.Provider(v1PluginsControllers.EngineKey, engine))
 	// CORS
 	var configuredCORS gin.HandlerFunc
 	if config.HTTP.CORS.Enabled {

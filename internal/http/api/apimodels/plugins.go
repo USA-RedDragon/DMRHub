@@ -31,12 +31,27 @@ type PluginRange struct {
 	Last  uint `json:"last"`
 }
 
-// AdminPlugin is a plugin as admins see it.
+// PluginHost is a host that a plugin inside DMRHub asks to reach, why, and
+// whether an admin allowed it.
+type PluginHost struct {
+	Address string `json:"address"`
+	Reason  string `json:"reason"`
+	Allowed bool   `json:"allowed"`
+}
+
+// AdminPlugin is a plugin as admins see it. Kind is "external" for a
+// plugin that runs as its own program, and "builtin" or "uploaded" for one
+// that runs inside DMRHub.
 type AdminPlugin struct {
 	ID             uint          `json:"id"`
 	Name           string        `json:"name"`
+	Kind           string        `json:"kind"`
+	Version        string        `json:"version"`
+	Author         string        `json:"author"`
+	Description    string        `json:"description"`
 	Enabled        bool          `json:"enabled"`
 	Ranges         []PluginRange `json:"ranges"`
+	Hosts          []PluginHost  `json:"hosts"`
 	Online         bool          `json:"online"`
 	ConnectedSince *time.Time    `json:"connected_since"`
 	LastSeenAt     *time.Time    `json:"last_seen_at"`
@@ -48,11 +63,15 @@ type AdminPlugin struct {
 // NewAdminPlugin returns the admin form of p at now.
 func NewAdminPlugin(p *models.Plugin, callsToday int64, now time.Time) AdminPlugin {
 	out := AdminPlugin{
-		ID: p.ID, Name: p.Name, Enabled: p.Enabled, Ranges: make([]PluginRange, len(p.Ranges)), Online: p.Online(now),
+		ID: p.ID, Name: p.Name, Kind: p.Kind, Version: p.Version, Author: p.Author, Description: p.Description,
+		Enabled: p.Enabled, Ranges: make([]PluginRange, len(p.Ranges)), Hosts: make([]PluginHost, len(p.Hosts)), Online: p.Online(now),
 		LastSeenAt: p.LastSeenAt, TokenCreatedAt: p.TokenCreatedAt, CallsToday: callsToday,
 	}
 	for i, r := range p.Ranges {
 		out.Ranges[i] = PluginRange{First: r.First, Last: r.Last}
+	}
+	for i, h := range p.Hosts {
+		out.Hosts[i] = PluginHost{Address: h.Address, Reason: h.Reason, Allowed: h.Allowed}
 	}
 	if out.Online {
 		out.ConnectedSince, out.Address = p.LastConnectedAt, p.LastAddress
@@ -68,10 +87,22 @@ type PluginConnection struct {
 	OwnCertificate bool   `json:"own_certificate"`
 }
 
-// PluginList is the plugins, by name, and how they reach the hub.
+// PluginList is the plugins, by name, how they reach the hub, and whether
+// plugins run inside DMRHub.
 type PluginList struct {
 	Plugins    []AdminPlugin    `json:"plugins"`
 	Connection PluginConnection `json:"connection"`
+	InProcess  bool             `json:"in_process"`
+}
+
+// PluginManifest is what an uploaded plugin says it is and asks for.
+type PluginManifest struct {
+	Name        string        `json:"name"`
+	Version     string        `json:"version"`
+	Author      string        `json:"author"`
+	Description string        `json:"description"`
+	Ranges      []PluginRange `json:"ranges"`
+	Hosts       []PluginHost  `json:"hosts"`
 }
 
 // PluginPost adds a plugin.
@@ -80,11 +111,13 @@ type PluginPost struct {
 	Ranges []PluginRange `json:"ranges"`
 }
 
-// PluginPut changes a plugin.
+// PluginPut changes a plugin. AllowedHosts, when set, are the hosts of a
+// plugin inside DMRHub that it may reach.
 type PluginPut struct {
-	Name    string        `json:"name" binding:"required"`
-	Enabled *bool         `json:"enabled" binding:"required"`
-	Ranges  []PluginRange `json:"ranges"`
+	Name         string        `json:"name" binding:"required"`
+	Enabled      *bool         `json:"enabled" binding:"required"`
+	Ranges       []PluginRange `json:"ranges"`
+	AllowedHosts *[]string     `json:"allowed_hosts"`
 }
 
 // PluginToken is a plugin with its token, which is shown only once.

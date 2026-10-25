@@ -201,6 +201,9 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Admin.PUT("/plugins/:id", v1PluginsControllers.PUTPlugin)
 	v1Admin.DELETE("/plugins/:id", v1PluginsControllers.DELETEPlugin)
 	v1Admin.POST("/plugins/:id/token", v1PluginsControllers.POSTPluginToken)
+	v1Admin.POST("/plugins/inspect", v1PluginsControllers.POSTPluginInspect)
+	v1Admin.POST("/plugins/upload", v1PluginsControllers.POSTPluginUpload)
+	v1Admin.POST("/plugins/:id/module", v1PluginsControllers.POSTPluginModule)
 	v1Admin.GET("/messages/:id", v1MessagesControllers.GETAdminMessage)
 
 	v1Lastheard := group.Group("/lastheard")

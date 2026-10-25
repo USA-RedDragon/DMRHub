@@ -149,6 +149,7 @@ func GETPlugins(c *gin.Context) {
 		out.Plugins = append(out.Plugins, v)
 	}
 	out.Connection = connection(cfg)
+	out.InProcess = cfg.DMR.Plugins.InProcess
 	c.JSON(http.StatusOK, out)
 }
 
@@ -196,6 +197,9 @@ func PUTPlugin(c *gin.Context) {
 		return
 	}
 	p, err := models.UpdatePlugin(db, id, req.Name, *req.Enabled, rangesOf(req.Ranges))
+	if err == nil && req.AllowedHosts != nil {
+		p, err = models.SetAllowedPluginHosts(db, id, *req.AllowedHosts)
+	}
 	if err != nil {
 		if !badInput(c, err) {
 			failed(c, "cannot change a plugin", err)
@@ -220,6 +224,9 @@ func POSTPluginToken(c *gin.Context) {
 	}
 	id, ok := idParam(c)
 	if !ok {
+		return
+	}
+	if !external(c, db, id, msgNoToken) {
 		return
 	}
 	now := time.Now()
@@ -252,6 +259,10 @@ func DELETEPlugin(c *gin.Context) {
 	}
 	id, ok := idParam(c)
 	if !ok {
+		return
+	}
+	if p, err := models.FindPlugin(db, id); err == nil && p.Kind == models.PluginBuiltin {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgNoRemove})
 		return
 	}
 	if err := models.DeletePlugin(db, id); err != nil {

@@ -213,3 +213,67 @@ func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+// TestWaitMovedWaitsForTheHandOverOfAClaimItMissed claims a repeater in the
+// KV store only, as when the claim on pubsub is late or lost. WaitMoved
+// must not return before the servers handed the repeater over, or the
+// replica stops and the packets that it sent after the move are lost.
+func TestWaitMovedWaitsForTheHandOverOfAClaimItMissed(t *testing.T) {
+	t.Parallel()
+	r, database, store := replicas(t, 2)
+	seedUser(t, database, 1000001, "N0CALL")
+	seedRepeater(t, database, 100001, 1000001)
+	ctx := context.Background()
+	one := r[0].hub
+	handed := make(chan uint, 1)
+	one.OnClaimedElsewhere(func(id uint, _ time.Time) {
+		time.Sleep(100 * time.Millisecond)
+		handed <- id
+	})
+	one.ActivateRepeater(ctx, 100001)
+	r[0].reg.MarkDraining(ctx)
+	require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-2")))
+
+	wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	assert.Zero(t, one.WaitMoved(wctx))
+	select {
+	case id := <-handed:
+		assert.Equal(t, uint(100001), id)
+	default:
+		t.Fatal("WaitMoved returned before the repeater was handed over")
+	}
+}
+
+// TestWaitMovedWaitsForTheHandOverOfAClaim claims a repeater on another
+// replica. WaitMoved must return only once the servers handed it over.
+func TestWaitMovedWaitsForTheHandOverOfAClaim(t *testing.T) {
+	t.Parallel()
+	one, r1, two, database := twoReplicas(t)
+	seedUser(t, database, 1000001, "N0CALL")
+	seedRepeater(t, database, 100001, 1000001)
+	ctx := context.Background()
+	handed := make(chan uint, 1)
+	one.OnClaimedElsewhere(func(id uint, _ time.Time) {
+		time.Sleep(100 * time.Millisecond)
+		handed <- id
+	})
+	one.ActivateRepeater(ctx, 100001)
+	r1.MarkDraining(ctx)
+
+	left := make(chan int, 1)
+	go func() { left <- one.WaitMoved(ctx) }()
+	time.Sleep(50 * time.Millisecond)
+	two.ActivateRepeater(ctx, 100001)
+	select {
+	case n := <-left:
+		assert.Zero(t, n)
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitMoved did not return after the repeater moved")
+	}
+	select {
+	case <-handed:
+	default:
+		t.Fatal("WaitMoved returned before the repeater was handed over")
+	}
+}

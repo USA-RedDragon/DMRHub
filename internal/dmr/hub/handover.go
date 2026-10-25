@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -123,6 +124,7 @@ func (h *Hub) OnClaimedElsewhere(fn func(repeaterID uint, since time.Time)) (sto
 	}
 }
 
+//nolint:contextcheck // the claims are followed for the life of the hub, past any caller
 func (h *Hub) followClaims(sub pubsub.Subscription) {
 	defer func() { _ = sub.Close() }()
 	ch := sub.Channel()
@@ -138,24 +140,41 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 			if !ok || instance == h.instanceID {
 				continue
 			}
-			if _, active := h.subscriptionMgr.subscriptions.Load(id); !active {
-				continue
-			}
-			h.claimedMu.Lock()
-			fns := make([]func(uint, time.Time), 0, len(h.claimed))
-			for _, fn := range h.claimed {
-				fns = append(fns, fn)
-			}
-			h.claimedMu.Unlock()
-			for _, fn := range fns {
-				h.handing.Add()
-				go func() {
-					defer h.handing.Done()
-					fn(id, since)
-				}()
-			}
+			h.handOff(context.Background(), id, since)
 		}
 	}
+}
+
+// handOff runs the claim callbacks for the repeater id, which another
+// replica claimed for a packet that it got at since, when the repeater is
+// active here. Once they are done, it stops the subscriptions of the
+// repeater here when no server did and another replica still owns it.
+// WaitMoved waits for it.
+func (h *Hub) handOff(ctx context.Context, id uint, since time.Time) {
+	if _, active := h.subscriptionMgr.subscriptions.Load(id); !active {
+		return
+	}
+	h.claimedMu.Lock()
+	fns := make([]func(uint, time.Time), 0, len(h.claimed))
+	for _, fn := range h.claimed {
+		fns = append(fns, fn)
+	}
+	h.claimedMu.Unlock()
+	h.handing.Add()
+	go func() {
+		defer h.handing.Done()
+		var wg sync.WaitGroup
+		for _, fn := range fns {
+			wg.Go(func() { fn(id, since) })
+		}
+		wg.Wait()
+		if _, active := h.subscriptionMgr.subscriptions.Load(id); !active {
+			return
+		}
+		if owner, ok := h.owner(ctx, id); ok && owner != h.instanceID {
+			h.deactivateRepeater(ctx, id)
+		}
+	}()
 }
 
 func (h *Hub) publishClaim(repeaterID uint, since time.Time) {
@@ -195,42 +214,37 @@ func (h *Hub) activeRepeaters() map[uint]bool {
 	return out
 }
 
-// WaitMoved blocks until another replica has claimed every repeater that
-// is active on this hub, or a repeater has left this hub, or ctx ends. It
-// returns the number of repeaters that are still here. A draining replica
+// WaitMoved blocks until every repeater that is active on this hub has
+// left it, or ctx ends, and returns the number of repeaters that are still
+// here. A repeater leaves when its session ends, or when another replica
+// claims it and the servers here have handed it over. A draining replica
 // calls it before it stops, so that it keeps serving each repeater until
-// the repeater's next packet has reached another replica.
+// the repeater's next packet has reached another replica and it has handed
+// over what it sent after that.
 func (h *Hub) WaitMoved(ctx context.Context) int {
 	if h.instanceID == "" || h.pubsub == nil {
 		return len(h.activeRepeaters())
 	}
-	sub := h.pubsub.Subscribe(claimedTopic)
-	defer func() { _ = sub.Close() }()
 	pending := h.activeRepeaters()
-	h.dropClaimed(ctx, pending)
+	noticed := map[uint]time.Time{}
 	recheck := time.NewTicker(claimRecheck)
 	defer recheck.Stop()
-	ch := sub.Channel()
-	for len(pending) > 0 {
-		select {
-		case <-ctx.Done():
-			return len(pending)
-		case <-recheck.C:
-			h.dropClaimed(ctx, pending)
-		case <-h.left:
-		case msg, ok := <-ch:
-			if !ok {
-				return len(pending)
-			}
-			if id, instance, _, ok := parseClaim(msg); ok && instance != h.instanceID {
-				delete(pending, id)
-			}
-		}
+	for {
 		active := h.activeRepeaters()
 		for id := range pending {
 			if !active[id] {
 				delete(pending, id)
 			}
+		}
+		if len(pending) == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return len(pending)
+		case <-recheck.C:
+			h.handOffMissed(ctx, pending, noticed)
+		case <-h.left:
 		}
 	}
 	h.waitHanding(ctx)
@@ -251,14 +265,29 @@ func (h *Hub) waitHanding(ctx context.Context) {
 	}
 }
 
-// claimRecheck is how often WaitMoved reads the owners again, in case it
-// missed a claim on pubsub.
+// claimRecheck is how often WaitMoved reads the owners again, in case a
+// claim on pubsub was lost.
 const claimRecheck = time.Second
 
-func (h *Hub) dropClaimed(ctx context.Context, pending map[uint]bool) {
+// handOffMissed hands off each pending repeater that the KV store has
+// named another owner of at two rechecks in a row, as if its claim had
+// come at the first of them. A claim on pubsub follows its KV record at
+// once, so a repeater that is still here a recheck later lost its claim.
+func (h *Hub) handOffMissed(ctx context.Context, pending map[uint]bool, noticed map[uint]time.Time) {
 	for id := range pending {
-		if owner, ok := h.owner(ctx, id); ok && owner != h.instanceID {
-			delete(pending, id)
+		owner, ok := h.owner(ctx, id)
+		if !ok || owner == h.instanceID {
+			delete(noticed, id)
+			continue
+		}
+		at, seen := noticed[id]
+		switch {
+		case !seen:
+			noticed[id] = time.Now()
+		case !at.IsZero():
+			slog.Warn("Handing off a repeater whose claim did not come", "repeaterID", id, "owner", owner)
+			h.handOff(context.WithoutCancel(ctx), id, at)
+			noticed[id] = time.Time{}
 		}
 	}
 }

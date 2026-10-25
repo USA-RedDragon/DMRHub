@@ -20,9 +20,11 @@
 package auth_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
 	"time"
@@ -254,4 +256,38 @@ func TestForgotPasswordNeedsEmail(t *testing.T) {
 		require.NotNil(t, features.PasswordReset)
 		assert.Equal(t, on, *features.PasswordReset)
 	}
+}
+
+func forgotFrom(t *testing.T, router *gin.Engine, addr, user string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{"user": user})
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, forgotPath, bytes.NewReader(body))
+	require.NoError(t, err)
+	req.RemoteAddr = addr
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.JSONEq(t, resetSent, w.Body.String())
+}
+
+func TestForgotPasswordLimitsAnIPv6NetworkAsOneAddress(t *testing.T) {
+	t.Parallel()
+	router, db, mailer := resetRouter(t, true)
+	for i := range 10 {
+		forgotFrom(t, router, fmt.Sprintf("[2001:db8:1:2::%x]:40000", i+1), "nobody")
+	}
+	forgotFrom(t, router, "[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:40000", "jdoe")
+	assert.Zero(t, resets(t, db, 1000001), "the 11th request from one /64 is over the limit")
+
+	forgotFrom(t, router, "[2001:db8:1:3::1]:40000", "jdoe")
+	mailer.next(t)
+	assert.Equal(t, int64(1), resets(t, db, 1000001), "another /64 has a limit of its own")
+
+	for i := range 10 {
+		forgotFrom(t, router, fmt.Sprintf("192.0.2.%d:40000", i+1), "nobody")
+	}
+	forgotFrom(t, router, "192.0.2.11:40000", "jdoe")
+	mailer.next(t)
+	assert.Equal(t, int64(2), resets(t, db, 1000001), "each IPv4 address has a limit of its own")
 }

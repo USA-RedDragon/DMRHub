@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ const (
 	resetsPerAccount = 3
 	resetsPerIP      = 10
 	resetLimitWindow = time.Hour
+	ipv6HostBits     = 64
 )
 
 // ResetLimits caps the password reset emails per account and per client
@@ -60,7 +62,7 @@ type ResetLimits struct {
 }
 
 // NewResetLimits returns the limits of 3 password reset emails per account
-// and 10 requests per client address, each per hour.
+// and 10 requests per client IPv4 address or IPv6 /64, each per hour.
 func NewResetLimits(db *gorm.DB) *ResetLimits {
 	return &ResetLimits{
 		account: ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: db, Rate: resetLimitWindow, Limit: resetsPerAccount}),
@@ -114,7 +116,7 @@ func sendReset(c *gin.Context, db *gorm.DB, limits *ResetLimits, name string, no
 	if !ok {
 		return
 	}
-	if limits.ip.Limit("password-reset:ip:"+c.ClientIP(), c).RateLimited {
+	if limits.ip.Limit("password-reset:ip:"+clientNetwork(c.ClientIP()), c).RateLimited {
 		return
 	}
 	user, found, err := findResetUser(db, name)
@@ -148,6 +150,24 @@ func sendReset(c *gin.Context, db *gorm.DB, limits *ResetLimits, name string, no
 			slog.Error("Could not send a password reset email", "user", id, "error", err)
 		}
 	}(user.ID, user.Email)
+}
+
+// clientNetwork returns the IPv4 address ip, or the /64 network of the
+// IPv6 address ip, since one host often holds a whole IPv6 /64.
+func clientNetwork(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	prefix, err := addr.WithZone("").Prefix(ipv6HostBits)
+	if err != nil {
+		return ip
+	}
+	return prefix.String()
 }
 
 func findResetUser(db *gorm.DB, name string) (models.User, bool, error) {

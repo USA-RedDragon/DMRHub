@@ -60,8 +60,16 @@ type SessionPeer struct {
 }
 
 // NewSessionPeer returns a SessionPeer for the repeater id with the
-// password and the RPTO options, which may be empty.
+// password and the RPTO options, which may be empty. It pings every 200 ms
+// and logs in again after 5 s without an answer.
 func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
+	return NewSessionPeerTimed(id, password, options, 200*time.Millisecond, 5*time.Second)
+}
+
+// NewSessionPeerTimed is NewSessionPeer with the time between two pings, or
+// two sends of a login step, and the time without an answer after which it
+// logs in again, as MMDVMHost pings every 10 s.
+func NewSessionPeerTimed(id uint32, password, options string, retry, timeout time.Duration) (*SessionPeer, error) {
 	var cfg dmrd.MMDVMConfig
 	cfg.Reset()
 	cfg.SetID(id)
@@ -83,7 +91,7 @@ func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building RPTC: %w", err)
 	}
-	return newSessionPeer(dmrd.DialectMMDVM, id, password, cfg[:], options)
+	return newSessionPeer(dmrd.DialectMMDVM, id, password, cfg[:], options, retry, timeout)
 }
 
 // NewHBRPSessionPeer returns a SessionPeer for the repeater id that speaks
@@ -116,18 +124,18 @@ func NewHBRPSessionPeerCalled(id uint32, password, callsign string) (*SessionPee
 	if err != nil {
 		return nil, fmt.Errorf("building RPTC: %w", err)
 	}
-	return newSessionPeer(dmrd.DialectHBRP, id, password, cfg[:], "")
+	return newSessionPeer(dmrd.DialectHBRP, id, password, cfg[:], "", 200*time.Millisecond, 5*time.Second)
 }
 
-func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, options string) (*SessionPeer, error) {
+func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, options string, retry, timeout time.Duration) (*SessionPeer, error) {
 	peer, err := dmrdsession.NewPeer(&dmrdsession.PeerConfig{
 		Dialect:  d,
 		ID:       id,
 		Password: []byte(password),
 		Config:   cfg,
 		Options:  []byte(options),
-		Retry:    200 * time.Millisecond,
-		Timeout:  5 * time.Second,
+		Retry:    retry,
+		Timeout:  timeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("making session peer: %w", err)

@@ -59,6 +59,9 @@ type IntegrationStack struct {
 	MMDVMAddr        string // host:port of the MMDVM server
 	IPSCAddr         string // host:port of the IPSC server
 	OpenBridgeAddr   string // host:port of the OpenBridge server
+	// WebTransportAddr is the host:port of the WebTransport listener of
+	// the MMDVM server, empty when it is off.
+	WebTransportAddr string
 
 	plugins *Plugins
 }
@@ -171,6 +174,7 @@ type Replica struct {
 	MMDVMAddr        string
 	IPSCAddr         string
 	OpenBridgeAddr   string
+	WebTransportAddr string
 }
 
 // SpawnSecondReplica creates a second Hub with MMDVM, IPSC and OpenBridge
@@ -188,6 +192,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 
 	cfg2 := *s.Config
 	cfg2.DMR.MMDVM.Port = 0
+	cfg2.DMR.MMDVM.WebTransport.Port = 0
 	cfg2.DMR.IPSC.Port = 0
 	cfg2.DMR.OpenBridge.Port = 0
 
@@ -220,7 +225,31 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 		MMDVMAddr:        mmdvm2.Server.LocalAddr().String(),
 		IPSCAddr:         ipsc2.Addr().String(),
 		OpenBridgeAddr:   ob2.Server.LocalAddr().String(),
+		WebTransportAddr: addrOf(mmdvm2.WebTransportAddr()),
 	}
+}
+
+// Replica returns the first replica of the stack, the one that
+// SetupIntegrationStack made, as a Replica.
+func (s *IntegrationStack) Replica() *Replica {
+	return &Replica{
+		Hub:              s.Hub,
+		CallTracker:      s.CallTracker,
+		MMDVMServer:      s.MMDVMServer,
+		IPSCServer:       s.IPSCServer,
+		OpenBridgeServer: s.OpenBridgeServer,
+		MMDVMAddr:        s.MMDVMAddr,
+		IPSCAddr:         s.IPSCAddr,
+		OpenBridgeAddr:   s.OpenBridgeAddr,
+		WebTransportAddr: s.WebTransportAddr,
+	}
+}
+
+func addrOf(a net.Addr) string {
+	if a == nil {
+		return ""
+	}
+	return a.String()
 }
 
 // SpawnFullReplica starts a second replica, as SpawnSecondReplica does, and
@@ -294,6 +323,7 @@ func (s *IntegrationStack) StartServers(t *testing.T) {
 	s.MMDVMAddr = s.MMDVMServer.Server.LocalAddr().String()
 	s.IPSCAddr = s.IPSCServer.Addr().String()
 	s.OpenBridgeAddr = s.OpenBridgeServer.Server.LocalAddr().String()
+	s.WebTransportAddr = addrOf(s.MMDVMServer.WebTransportAddr())
 }
 
 // SeedUser creates a User in the DB.

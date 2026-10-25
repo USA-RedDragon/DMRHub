@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,7 @@ const (
 	reasonUserChanged     = "user changed"
 	reasonLoggedOut       = "logged out"
 	reasonPasswordChanged = "password changed"
+	reasonAppRemoved      = "app removed"
 )
 
 // UserTopic is the pubsub topic that tells every replica that the user
@@ -67,10 +69,17 @@ func PublishPasswordChanged(ps pubsub.PubSub, userID uint, keepSessionID string)
 	return publishUserEvent(ps, userID, userEvent{Reason: reasonPasswordChanged, Except: sessionKey(keepSessionID)})
 }
 
+// PublishAppRemoved closes, on every replica, the websockets that an app
+// of the user userID opened with a token of the grant grantID.
+func PublishAppRemoved(ps pubsub.PubSub, userID uint, grantID string) error {
+	return publishUserEvent(ps, userID, userEvent{Reason: reasonAppRemoved, Grant: grantID})
+}
+
 type userEvent struct {
 	Reason string `json:"reason"`
 	Only   string `json:"only,omitempty"`
 	Except string `json:"except,omitempty"`
+	Grant  string `json:"grant,omitempty"`
 }
 
 func publishUserEvent(ps pubsub.PubSub, userID uint, event userEvent) error {
@@ -95,6 +104,7 @@ func sessionKey(sessionID string) string {
 type userWatch struct {
 	subscription pubsub.Subscription
 	session      string
+	grant        string
 }
 
 // WatchUser subscribes a websocket request of a logged-in user to its
@@ -109,7 +119,11 @@ func WatchUser(ps pubsub.PubSub) gin.HandlerFunc {
 			return
 		}
 		subscription := ps.Subscribe(UserTopic(userID))
-		c.Set(userWatchKey, &userWatch{subscription: subscription, session: sessionKey(session.ID())})
+		watch := &userWatch{subscription: subscription, session: sessionKey(session.ID())}
+		if g, ok := utils.Grant(c); ok {
+			watch.grant = g.ID
+		}
+		c.Set(userWatchKey, watch)
 		c.Next()
 		if err := subscription.Close(); err != nil {
 			slog.Error("Failed to close the user subscription of a websocket", "error", err)
@@ -146,8 +160,11 @@ func (w *userWatch) closes(msg []byte) (error, bool) {
 	if event.Except != "" && event.Except == w.session {
 		return nil, false
 	}
+	if event.Grant != "" && event.Grant != w.grant {
+		return nil, false
+	}
 	switch event.Reason {
-	case reasonLoggedOut, reasonPasswordChanged:
+	case reasonLoggedOut, reasonPasswordChanged, reasonAppRemoved:
 		return policyCloseError{reason: event.Reason}, true
 	default:
 		return errUserChanged, true

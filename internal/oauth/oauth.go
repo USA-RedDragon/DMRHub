@@ -388,29 +388,33 @@ func (s *Server) Authenticate(access string) (models.OAuthGrant, error) {
 }
 
 // Revoke ends the grant of the access or refresh token of the app
-// clientID. Tokens that are unknown or of another app are ignored.
-func (s *Server) Revoke(token, clientID string) error {
+// clientID and returns that grant. Tokens that are unknown or of another
+// app are ignored, and the returned bool is false.
+func (s *Server) Revoke(token, clientID string) (models.OAuthGrant, bool, error) {
 	var grantID string
 	if c, ok := s.parse(token); ok {
 		grantID = c.Grant
 	} else {
 		var row models.OAuthRefreshToken
 		if err := s.db.Where("hash = ?", hash(token)).Take(&row).Error; err != nil {
-			return ignoreNotFound(err)
+			return models.OAuthGrant{}, false, ignoreNotFound(err)
 		}
 		grantID = row.GrantID
 	}
 	grant, err := activeGrant(s.db, grantID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidGrant) {
-			return nil
+			return models.OAuthGrant{}, false, nil
 		}
-		return err
+		return models.OAuthGrant{}, false, err
 	}
 	if grant.ClientID != clientID {
-		return nil
+		return models.OAuthGrant{}, false, nil
 	}
-	return s.revokeGrant(s.db, grant.ID)
+	if err := s.revokeGrant(s.db, grant.ID); err != nil {
+		return models.OAuthGrant{}, false, err
+	}
+	return grant, true, nil
 }
 
 // Grants returns the apps that the user userID allowed.

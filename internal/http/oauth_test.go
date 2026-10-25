@@ -24,10 +24,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -388,5 +390,64 @@ func TestOAuthTokenGetsOnlyTheFramesOfItsScopesOnTheMessagesWebsocket(t *testing
 			got = append(got, text)
 		}
 		assert.Equal(t, []string{want}, got, scope)
+	}
+}
+
+func TestOAuthRemovingAnAppClosesItsWebsockets(t *testing.T) {
+	t.Parallel()
+	e := newOAuthEnv(t)
+	server := httptest.NewServer(e.router)
+	defer server.Close()
+	var admin models.User
+	require.NoError(t, e.tdb.DB().Where("username = ?", "Admin").Take(&admin).Error)
+
+	user, resp := testutils.DialWS(t, server.URL, "/ws/messages", e.jar)
+	require.NotNil(t, user, "status %d", resp.StatusCode)
+	defer user.Close()
+
+	removals := []struct {
+		name   string
+		remove func(tok tokenResponse)
+	}{
+		{"revoke", func(tok tokenResponse) {
+			w := e.form(t, "/api/v1/oauth/revoke", url.Values{"token": {tok.RefreshToken}, "client_id": {appOrigin}})
+			require.Equal(t, http.StatusOK, w.Code)
+		}},
+		{"remove", func(_ tokenResponse) {
+			w := testutils.Do(t, e.router, e.jar, http.MethodGet, "/api/v1/oauth/apps", nil)
+			var apps []struct {
+				ID string `json:"id"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &apps))
+			require.Len(t, apps, 1)
+			w = testutils.Do(t, e.router, e.jar, http.MethodDelete, "/api/v1/oauth/apps/"+apps[0].ID, nil)
+			require.Equal(t, http.StatusOK, w.Code)
+		}},
+	}
+	for _, r := range removals {
+		tok := e.token(t, "messages:read")
+		conn, resp := testutils.DialWSProtocols(t, server.URL, "/ws/messages", appOrigin, "dmrhub", "dmrhub.bearer."+tok.AccessToken)
+		require.NotNil(t, conn, "status %d", resp.StatusCode)
+		conn.WriteText(t, "PING")
+		text, err := conn.ReadText(3 * time.Second)
+		require.NoError(t, err)
+		require.Equal(t, "PONG", text)
+
+		r.remove(tok)
+		text, err = conn.ReadText(3 * time.Second)
+		if err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+			require.NoError(t, e.tdb.PubSub().Publish(messages.Topic(admin.ID), []byte(`{"boxes":["inbox"]}`)))
+			got, _ := conn.ReadText(2 * time.Second)
+			require.Failf(t, "socket still open", "%s: 3 s after the app was removed its socket is open (first frame %q) and still gets %q", r.name, text, got)
+		}
+		var closed *testutils.WSCloseError
+		require.ErrorAs(t, err, &closed, r.name)
+		assert.Equal(t, 1008, closed.Code, r.name)
+		assert.Equal(t, "app removed", closed.Reason, r.name)
+
+		user.WriteText(t, "PING")
+		text, err = user.ReadText(3 * time.Second)
+		require.NoError(t, err, "%s: the user's own socket was closed", r.name)
+		require.Equal(t, "PONG", text, r.name)
 	}
 }

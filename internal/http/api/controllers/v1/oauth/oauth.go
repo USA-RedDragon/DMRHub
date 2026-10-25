@@ -32,7 +32,9 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -271,12 +273,27 @@ func POSTRevoke(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := srv.Revoke(c.PostForm("token"), c.PostForm("client_id")); err != nil {
+	grant, revoked, err := srv.Revoke(c.PostForm("token"), c.PostForm("client_id"))
+	if err != nil {
 		slog.Error("Failed to revoke a token", "error", err)
 		c.JSON(http.StatusServiceUnavailable, gin.H{errorKey: "temporarily_unavailable"})
 		return
 	}
+	if revoked {
+		closeAppSockets(c, grant.UserID, grant.ID)
+	}
 	c.Status(http.StatusOK)
+}
+
+func closeAppSockets(c *gin.Context, userID uint, grantID string) {
+	ps, ok := c.Value("PubSub").(pubsub.PubSub)
+	if !ok {
+		slog.Error("PubSub not found in context, the websockets of a removed app stay open", "user", userID)
+		return
+	}
+	if err := websocket.PublishAppRemoved(ps, userID, grantID); err != nil {
+		slog.Error("Failed to close the websockets of a removed app", "user", userID, "error", err)
+	}
 }
 
 // App is an app that the user allowed, as the Settings page lists it.
@@ -338,6 +355,7 @@ func DELETEApp(c *gin.Context) {
 		slog.Error("Failed to remove an app", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 	default:
+		closeAppSockets(c, uid, c.Param("id"))
 		c.JSON(http.StatusOK, gin.H{"message": "App removed"})
 	}
 }

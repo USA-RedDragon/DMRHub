@@ -29,11 +29,17 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
 // One replica, the holder of the egress lease in the KV store, sends all
 // OpenBridge egress, so that peers see one source address. The others hand
-// their egress to it over pubsub. When the holder stops or dies, another
+// their egress to it over pubsub. A holder that stops in a handoff gives
+// the lease up with a release on the egress topic; another replica takes
+// it at once and says so with a taken message on the same topic. Since the
+// topic has one order, the old holder sends each packet that comes before
+// the taken message and the new holder each one that comes after it, so a
+// packet is sent once and none is lost. When the holder dies, another
 // replica takes the lease within EgressLeaseTTL plus one renewal; egress in
 // that gap is dropped, never held.
 const (
@@ -46,6 +52,35 @@ const (
 
 	quenchTopic = "openbridge:quench"
 	outboxSize  = 1024
+
+	// takeWait is the longest time a replica that took the lease waits for
+	// its taken message before it sends.
+	takeWait = time.Second
+	// handoverWait is the longest time a holder that gives the lease up
+	// keeps sending while it waits for another replica to take it.
+	handoverWait = 2 * time.Second
+	// handoverCheck is how often a holder that gives the lease up looks
+	// whether a replica took it without a taken message, as one of an
+	// older DMRHub does.
+	handoverCheck = 100 * time.Millisecond
+)
+
+// The roles of a replica in the egress lease.
+const (
+	roleFollower int32 = iota
+	roleLeader
+	// roleTaking is a replica that took the lease and waits for its taken
+	// message before it sends.
+	roleTaking
+	// roleReleasing is a holder that gave the lease up and sends until the
+	// taken message of another replica.
+	roleReleasing
+)
+
+// The kinds of the messages on the egress topic besides packets.
+const (
+	kindRelease = "release"
+	kindTaken   = "taken"
 )
 
 // outMessage is a message that an outbox publishes.
@@ -55,13 +90,15 @@ type outMessage struct {
 }
 
 // egressJob is a packet that a replica without the lease hands to the
-// holder.
+// holder, or, with a Kind, a message about the lease from Replica.
 type egressJob struct {
 	Peer     uint   `json:"peer"`
 	Packet   []byte `json:"packet"`
 	Server   uint32 `json:"server"`
 	Repeater uint32 `json:"repeater"`
 	Hops     uint8  `json:"hops"`
+	Kind     string `json:"kind,omitempty"`
+	Replica  string `json:"replica,omitempty"`
 }
 
 func newReplicaID() string {
@@ -72,9 +109,10 @@ func newReplicaID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// IsEgressLeader reports whether this replica holds the egress lease.
+// IsEgressLeader reports whether this replica holds the egress lease and
+// sends.
 func (s *Server) IsEgressLeader() bool {
-	return s.leader.Load()
+	return s.role.Load() == roleLeader
 }
 
 // holdLease takes the egress lease when it is free and renews it when this
@@ -107,30 +145,132 @@ func (s *Server) runLease(ctx context.Context) {
 	ticker := time.NewTicker(egressLeaseRenew)
 	defer ticker.Stop()
 	for {
-		was := s.leader.Load()
-		now := s.holdLease(ctx)
-		s.leader.Store(now)
-		if now != was {
-			slog.Info("OpenBridge egress lease", "held", now, "replica", s.id)
-		}
 		select {
 		case <-s.done:
 			return
 		case <-ticker.C:
+		case <-s.released:
 		}
+		s.renewLease(ctx)
 	}
+}
+
+// renewLease takes or renews the lease and moves the role of the replica
+// on: a replica that takes the lease announces it and waits for its
+// announcement before it sends, and one that lost the lease stops sending.
+func (s *Server) renewLease(ctx context.Context) {
+	s.roleMu.Lock()
+	defer s.roleMu.Unlock()
+	role := s.role.Load()
+	if role == roleReleasing {
+		return
+	}
+	held := s.holdLease(ctx)
+	switch {
+	case held && role == roleFollower:
+		s.beginTaking()
+	case held && role == roleTaking && time.Since(s.takingAt) >= takeWait:
+		s.setRole(roleLeader)
+	case !held && role != roleFollower:
+		s.setRole(roleFollower)
+	}
+}
+
+// beginTaking says on the egress topic that this replica took the lease,
+// and sends once that message comes back. Without pubsub, as one replica,
+// it sends at once. The caller holds s.roleMu.
+func (s *Server) beginTaking() {
+	if s.pubsub == nil {
+		s.setRole(roleLeader)
+		return
+	}
+	s.takingAt = time.Now()
+	s.setRole(roleTaking)
+	if err := s.publishControl(kindTaken); err != nil {
+		slog.Error("Error announcing the OpenBridge egress lease", "error", err)
+		s.setRole(roleLeader)
+	}
+}
+
+func (s *Server) setRole(role int32) {
+	if old := s.role.Swap(role); old != role {
+		slog.Info("OpenBridge egress lease", "held", role != roleFollower, "sends", role == roleLeader || role == roleReleasing, "replica", s.id)
+	}
+}
+
+func (s *Server) publishControl(kind string) error {
+	b, err := json.Marshal(egressJob{Kind: kind, Replica: s.id})
+	if err != nil {
+		return fmt.Errorf("encoding an OpenBridge lease message: %w", err)
+	}
+	if err := s.pubsub.Publish(egressTopic, b); err != nil {
+		return fmt.Errorf("publishing an OpenBridge lease message: %w", err)
+	}
+	return nil
+}
+
+// sends reports whether this replica sends the packets on the egress
+// topic as they come.
+func (s *Server) sends() bool {
+	role := s.role.Load()
+	return role == roleLeader || role == roleReleasing
 }
 
 // releaseLease gives the lease up at a stop, so that another replica takes
 // it at its next renewal.
 func (s *Server) releaseLease(ctx context.Context) {
-	if s.kv == nil || !s.leader.Load() {
+	if s.kv == nil {
 		return
 	}
-	s.leader.Store(false)
+	s.roleMu.Lock()
+	role := s.role.Load()
+	s.setRole(roleFollower)
+	s.roleMu.Unlock()
+	if role == roleLeader || role == roleTaking {
+		s.deleteLease(ctx)
+	}
+}
+
+func (s *Server) deleteLease(ctx context.Context) {
 	if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && string(v) == s.id {
 		if err := s.kv.Delete(ctx, egressLeaseKey); err != nil {
 			slog.Error("Error giving up the OpenBridge egress lease", "error", err)
+		}
+	}
+}
+
+// handOver gives the lease of a holder that stops to another replica
+// without a gap: it releases the lease and keeps sending the packets on
+// the egress topic, its own too, until another replica says it took the
+// lease, or a replica holds it, or handoverWait passes.
+func (s *Server) handOver(ctx context.Context) {
+	s.roleMu.Lock()
+	if s.kv == nil || s.pubsub == nil || s.role.Load() != roleLeader {
+		s.roleMu.Unlock()
+		return
+	}
+	s.setRole(roleReleasing)
+	s.roleMu.Unlock()
+	s.deleteLease(ctx)
+	if err := s.publishControl(kindRelease); err != nil {
+		slog.Error("Error handing the OpenBridge egress lease over", "error", err)
+		return
+	}
+	check := time.NewTicker(handoverCheck)
+	defer check.Stop()
+	deadline := time.NewTimer(handoverWait)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-s.handedOver:
+			return
+		case <-deadline.C:
+			slog.Warn("No replica took the OpenBridge egress lease in time")
+			return
+		case <-check.C:
+			if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && len(v) > 0 && string(v) != s.id {
+				return
+			}
 		}
 	}
 }
@@ -172,9 +312,8 @@ func (s *Server) runOutbox(out chan outMessage) {
 	}
 }
 
-func (s *Server) consumeEgress() {
+func (s *Server) consumeEgress(sub pubsub.Subscription) {
 	defer s.wg.Done()
-	sub := s.pubsub.Subscribe(egressTopic)
 	defer func() { _ = sub.Close() }()
 	ch := sub.Channel()
 	for {
@@ -185,12 +324,16 @@ func (s *Server) consumeEgress() {
 			if !ok {
 				return
 			}
-			if !s.leader.Load() {
-				continue
-			}
 			var j egressJob
 			if err := json.Unmarshal(msg, &j); err != nil {
 				slog.Error("Error decoding OpenBridge egress", "error", err)
+				continue
+			}
+			if j.Kind != "" {
+				s.leaseMessage(j)
+				continue
+			}
+			if !s.sends() {
 				continue
 			}
 			packet, ok := models.UnpackPacket(j.Packet)
@@ -198,6 +341,26 @@ func (s *Server) consumeEgress() {
 				continue
 			}
 			s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
+		}
+	}
+}
+
+// leaseMessage takes a release or taken message from the egress topic.
+func (s *Server) leaseMessage(j egressJob) {
+	s.roleMu.Lock()
+	defer s.roleMu.Unlock()
+	role := s.role.Load()
+	switch {
+	case j.Kind == kindTaken && j.Replica == s.id && role == roleTaking:
+		s.setRole(roleLeader)
+	case j.Kind == kindTaken && j.Replica != s.id && role == roleReleasing:
+		s.handedOverOnce.Do(func() { close(s.handedOver) })
+	case j.Kind == kindTaken && j.Replica != s.id && role == roleLeader:
+		s.setRole(roleFollower)
+	case j.Kind == kindRelease && j.Replica != s.id && role == roleFollower:
+		select {
+		case s.released <- struct{}{}:
+		default:
 		}
 	}
 }

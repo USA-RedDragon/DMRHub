@@ -105,9 +105,15 @@ type Server struct {
 	eventsOut  chan outMessage
 	outDropped atomic.Uint64
 
-	kv     kv.KV
-	id     string
-	leader atomic.Bool
+	kv   kv.KV
+	id   string
+	role atomic.Int32
+	// roleMu orders the changes of role.
+	roleMu         sync.Mutex
+	takingAt       time.Time
+	released       chan struct{}
+	handedOver     chan struct{}
+	handedOverOnce sync.Once
 }
 
 type peerTable struct {
@@ -281,6 +287,8 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
 		id:            newReplicaID(),
+		released:      make(chan struct{}, 1),
+		handedOver:    make(chan struct{}),
 	}, nil
 }
 
@@ -302,12 +310,13 @@ func (s *Server) Start(ctx context.Context) error {
 		s.unwatch = s.hub.OnPeerChange(func(uint) { s.peers.Reload(struct{}{}) })
 	}
 
-	s.leader.Store(s.holdLease(ctx))
+	egress := s.pubsub.Subscribe(egressTopic)
+	s.renewLease(ctx)
 	s.wg.Add(8)
 	go s.consumeHubPackets()
 	go s.keepalive()
 	go s.runLease(context.WithoutCancel(ctx))
-	go s.consumeEgress()
+	go s.consumeEgress(egress)
 	go s.consumeQuenches()
 	go s.runOutbox(s.egressOut)
 	go s.runOutbox(s.eventsOut)
@@ -345,6 +354,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		slog.Info("Stopping OpenBridge server")
 
+		if servers.IsGracefulHandoff(ctx) {
+			s.handOver(ctx)
+		}
 		close(s.done)
 		if s.unwatch != nil {
 			s.unwatch()
@@ -389,7 +401,7 @@ func (s *Server) keepalive() {
 			return
 		case <-ticker.C:
 		}
-		if !s.leader.Load() {
+		if !s.IsEgressLeader() {
 			continue
 		}
 		peers, err := models.ListPeers(s.DB)
@@ -459,7 +471,7 @@ func (s *Server) sendPacketToPeer(peerID uint, packet models.Packet, org origin)
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
-	if !s.leader.Load() {
+	if !s.IsEgressLeader() {
 		s.handOff(peerID, packet, org)
 		return
 	}

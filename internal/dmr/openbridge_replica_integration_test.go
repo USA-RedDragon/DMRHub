@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -165,5 +166,54 @@ func TestOpenBridgeQuenchAcrossReplicas(t *testing.T) {
 
 		require.NoError(t, r.on2.SendDMRD(makeGroupVoicePacket(1000001, 1, 9802, false)))
 		assert.Len(t, dataOf(r.peer.DrainBridges(drainWait), 9802), 1, "another stream still goes to the peer")
+	})
+}
+
+// TestOpenBridgeEgressHandoverLosesNothing stops the replica that holds
+// the egress lease, as a rolling restart does, in the middle of a call that
+// the other replica routes. The peer must get every burst of the call
+// once: the holder hands the lease over without a gap.
+func TestOpenBridgeEgressHandoverLosesNothing(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		r := startReplicaOB(t, stack)
+		leader, _, _ := r.leader(t)
+		talker := r.on1
+		if leader == r.stack.OpenBridgeServer {
+			talker = r.on2
+		}
+
+		const bursts = 60
+		const stream = 9800
+		stopped := make(chan struct{})
+		for i := range bursts {
+			p := makeGroupVoicePacket(1000001, 1, stream, false)
+			p.Seq = uint(i)
+			require.NoError(t, talker.SendDMRD(p))
+			if i == bursts/3 {
+				go func() {
+					defer close(stopped)
+					_ = leader.Stop(servers.WithGracefulHandoff(t.Context(), true))
+				}()
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		<-stopped
+		seen := map[uint8]int{}
+		for _, b := range dataOf(r.peer.DrainBridges(drainWait), stream) {
+			seen[b.Data.Seq]++
+		}
+		var lost, twice []int
+		for i := range bursts {
+			switch seen[uint8(i)] {
+			case 0:
+				lost = append(lost, i)
+			case 1:
+			default:
+				twice = append(twice, i)
+			}
+		}
+		assert.Empty(t, lost, "bursts the peer never got")
+		assert.Empty(t, twice, "bursts the peer got more than once")
 	})
 }

@@ -37,3 +37,7 @@ export async function getMe(): Promise<Me> {
 export async function changePassword(id: number, current: string, password: string): Promise<void> {
   await API.patch(`/users/${id}`, { password, current_password: current });
 }
+
+export async function setUserPassword(id: number, password: string): Promise<void> {
+  await API.patch(`/users/${id}`, { password });
+}

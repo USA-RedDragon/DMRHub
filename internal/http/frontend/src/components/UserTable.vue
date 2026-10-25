@@ -33,6 +33,12 @@
     @update:page-index="handlePageIndexUpdate"
     @update:page-size="handlePageSizeUpdate"
   />
+  <ResetPasswordDialog
+    v-if="resetting"
+    v-model:open="resetOpen"
+    :user-id="resetting.id"
+    :callsign="resetting.callsign"
+  />
 </template>
 
 <script lang="ts">
@@ -49,6 +55,7 @@ import { useUserStore, useSettingsStore } from '@/store';
 import API from '@/services/API';
 import { buttonVariants } from '@/components/ui/button';
 import RelativeTimestamp from './RelativeTimestamp.vue';
+import ResetPasswordDialog from './users/ResetPasswordDialog.vue';
 
 type UserRow = {
   id: number;
@@ -69,6 +76,7 @@ export default {
   },
   components: {
     DataTable,
+    ResetPasswordDialog,
   },
   data: function() {
     return {
@@ -79,6 +87,8 @@ export default {
       rows: 30,
       now: Date.now(),
       timeInterval: null as ReturnType<typeof setInterval> | null,
+      resetting: null as UserRow | null,
+      resetOpen: false,
     };
   },
   mounted() {
@@ -267,6 +277,10 @@ export default {
         this.fetchData();
       }
     },
+    resetPassword(user: UserRow) {
+      this.resetting = user;
+      this.resetOpen = true;
+    },
     editUser(userID: number) {
       for (let i = 0; i < this.users.length; i++) {
         const u = this.users[i];
@@ -373,6 +387,9 @@ export default {
               !user.editing
                 ? actionButton('Edit', () => this.editUser(user.id))
                 : actionButton('Save Changes', () => this.finishEditingUser(user)),
+              !user.editing && user.id !== this.userStore.id
+                ? actionButton('Reset password', () => this.resetPassword(user))
+                : null,
               user.editing
                 ? actionButton('Cancel', () => this.cancelEditingUser(user))
                 : actionButton('Delete', () => this.deleteUser(user)),

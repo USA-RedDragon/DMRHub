@@ -38,6 +38,7 @@ var (
 	ErrEmailDisabled     = errors.New("email is disabled, but an email was attempted to be sent")
 	ErrInvalidAuthMethod = errors.New("invalid SMTP auth method")
 	ErrSendingEmail      = errors.New("error sending email")
+	ErrHeaderLineBreak   = errors.New("an email header has a line break")
 )
 
 func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) error {
@@ -69,6 +70,62 @@ func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) e
 }
 
 func send(config *configPkg.Config, toEmail string, subject string, body string) error {
+	msg := fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTP.From) +
+		fmt.Sprintf("To: %s\r\n", toEmail) +
+		fmt.Sprintf("Subject: %s\r\n", subject) +
+		"Mime-Version: 1.0;\r\n" +
+		"Content-Type: text/html; charset=\"ISO-8859-1\";\r\n" +
+		"Content-Transfer-Encoding: 7bit;\r\n" +
+		"\r\n<html><body>" +
+		html.EscapeString(body) +
+		"\r\n</body></html>\r\n"
+	return deliver(config, toEmail, msg)
+}
+
+// Mailer sends plain text email.
+type Mailer interface {
+	SendText(toEmail, subject, body string) error
+}
+
+// NewMailer returns the Mailer that sends with the SMTP settings of
+// config.
+func NewMailer(config *configPkg.Config) Mailer {
+	return textMailer{config: config}
+}
+
+type textMailer struct {
+	config *configPkg.Config
+}
+
+func (m textMailer) SendText(toEmail, subject, body string) error {
+	msg, err := textMessage(m.config, toEmail, subject, body)
+	if err != nil {
+		return err
+	}
+	return deliver(m.config, toEmail, msg)
+}
+
+// textMessage returns the plain text email of body to toEmail, with CRLF
+// line ends. A header value with a line break is refused, so that it
+// cannot add headers.
+func textMessage(config *configPkg.Config, toEmail, subject, body string) (string, error) {
+	for _, v := range []string{config.NetworkName, config.SMTP.From, toEmail, subject} {
+		if strings.ContainsAny(v, "\r\n") {
+			return "", ErrHeaderLineBreak
+		}
+	}
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	return fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTP.From) +
+		fmt.Sprintf("To: %s\r\n", toEmail) +
+		fmt.Sprintf("Subject: %s\r\n", subject) +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/plain; charset=\"UTF-8\"\r\n" +
+		"Content-Transfer-Encoding: 8bit\r\n" +
+		"\r\n" +
+		strings.Join(lines, "\r\n") + "\r\n", nil
+}
+
+func deliver(config *configPkg.Config, toEmail string, msg string) error {
 	if !config.SMTP.Enabled {
 		slog.Error("Email is disabled, but an email was attempted to be sent")
 		return ErrEmailDisabled
@@ -87,17 +144,6 @@ func send(config *configPkg.Config, toEmail string, subject string, body string)
 		return ErrInvalidAuthMethod
 	}
 
-	msg := strings.NewReader(fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTP.From) +
-		fmt.Sprintf("To: %s\r\n", toEmail) +
-		fmt.Sprintf("Subject: %s\r\n", subject) +
-		"Mime-Version: 1.0;\r\n" +
-		"Content-Type: text/html; charset=\"ISO-8859-1\";\r\n" +
-		"Content-Transfer-Encoding: 7bit;\r\n" +
-		"\r\n<html><body>" +
-		html.EscapeString(body) +
-		"\r\n</body></html>\r\n",
-	)
-
 	switch config.SMTP.TLS {
 	case configPkg.SMTPTLSNone, configPkg.SMTPTLSStartTLS:
 		err := smtp.SendMail(
@@ -105,7 +151,7 @@ func send(config *configPkg.Config, toEmail string, subject string, body string)
 			auth,
 			config.SMTP.From,
 			[]string{toEmail},
-			msg)
+			strings.NewReader(msg))
 		if err != nil {
 			slog.Error("Error sending email", "error", err)
 			return ErrSendingEmail
@@ -116,7 +162,7 @@ func send(config *configPkg.Config, toEmail string, subject string, body string)
 			auth,
 			config.SMTP.From,
 			[]string{toEmail},
-			msg)
+			strings.NewReader(msg))
 		if err != nil {
 			slog.Error("Error sending email with TLS", "error", err)
 			return ErrSendingEmail

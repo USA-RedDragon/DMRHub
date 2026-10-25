@@ -46,7 +46,7 @@ type User struct {
 	// SMSStorageSince is when the user last turned SMS Storage on.
 	SMSStorageSince *time.Time `json:"-" gorm:"<-:create"`
 	// SharePositions reports that the user shows the positions of their
-	// radios to the other users who share theirs. Only SetSharePositions
+	// radios to every other user. Only SetSharePositions
 	// writes it.
 	SharePositions bool           `json:"-" gorm:"<-:create;not null;default:false"`
 	CreatedAt      time.Time      `json:"created_at"`

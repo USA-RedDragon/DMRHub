@@ -120,7 +120,9 @@ func TestAPositionGoesToItsOwnerOnlyUntilTheyShare(t *testing.T) {
 	require.Len(t, theirs, 1)
 	assert.True(t, theirs[0].Position.Shared)
 	assert.Equal(t, "KI5VMF", theirs[0].Position.Callsign)
-	assert.Empty(t, frames(t, subs[private]), "this user does not share")
+	viewer := frames(t, subs[private])
+	require.Len(t, viewer, 1, "a user who does not share still sees shared radios")
+	assert.True(t, viewer[0].Position.Shared)
 	assert.Empty(t, frames(t, subs[blocked]), "this user is suspended")
 }
 

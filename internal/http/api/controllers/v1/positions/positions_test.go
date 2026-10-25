@@ -107,15 +107,13 @@ func TestPositionsListsTheViewersRadiosOfTheLastDay(t *testing.T) {
 	assert.Equal(t, uint8(2), p.Slot)
 }
 
-func TestPositionsOfAnotherUsersRadioAreHiddenUnlessBothShare(t *testing.T) {
+func TestPositionsOfAnotherUsersRadioAreHiddenUnlessItsOwnerShares(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.track(other, time.Hour)
 	assert.Equal(t, http.StatusNotFound, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d", other), nil))
 
 	require.NoError(t, models.SetSharePositions(e.db, other, true))
-	assert.Equal(t, http.StatusNotFound, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d", other), nil), "the viewer does not share")
-	require.NoError(t, models.SetSharePositions(e.db, owner, true))
 	var r apimodels.RadioPositions
 	require.Equal(t, http.StatusOK, e.get(e.jar, fmt.Sprintf("/api/v1/positions/%d", other), &r))
 	require.NotNil(t, r.Latest)

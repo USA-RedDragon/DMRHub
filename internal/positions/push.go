@@ -45,7 +45,7 @@ func Topic(userID uint) string {
 }
 
 // Pusher publishes each new position to the owner of its radio and, when
-// the owner shares, to the other users who share theirs.
+// the owner shares, to every other user.
 type Pusher struct {
 	db     *gorm.DB
 	pubsub pubsub.PubSub
@@ -85,9 +85,9 @@ func (p *Pusher) Push(pos models.Position) {
 		return
 	}
 	var viewers []uint
-	err = p.db.Model(&models.User{}).Where("share_positions = ? AND approved = ? AND suspended = ? AND id <> ?", true, true, false, owner.ID).Pluck("id", &viewers).Error
+	err = p.db.Model(&models.User{}).Where("approved = ? AND suspended = ? AND id <> ?", true, false, owner.ID).Pluck("id", &viewers).Error
 	if err != nil {
-		slog.Error("Position push: cannot list the users who share", "error", err)
+		slog.Error("Position push: cannot list the users", "error", err)
 		return
 	}
 	view.Shared, view.Callsign = true, owner.Callsign

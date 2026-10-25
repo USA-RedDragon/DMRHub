@@ -145,11 +145,21 @@ func TestLatestPositionsFollowSharing(t *testing.T) {
 	assert.Equal(t, []uint{3191868}, ids(3191868), "private by default")
 
 	require.NoError(t, models.SetSharePositions(database, 3140598, true))
-	assert.Equal(t, []uint{3191868}, ids(3191868), "a user who does not share sees no shared radios")
+	assert.ElementsMatch(t, []uint{3191868, 3140598}, ids(3191868), "a user who does not share still sees shared radios")
+	assert.ElementsMatch(t, []uint{3100001, 3140598}, ids(3100001))
+	assert.Equal(t, []uint{3140598}, ids(3140598), "the radios of users who do not share stay private")
 	require.NoError(t, models.SetSharePositions(database, 3191868, true))
-	assert.ElementsMatch(t, []uint{3191868, 3140598}, ids(3191868))
 	assert.ElementsMatch(t, []uint{3140598, 3191868}, ids(3140598))
-	assert.Equal(t, []uint{3100001}, ids(3100001))
+	assert.ElementsMatch(t, []uint{3100001, 3140598, 3191868}, ids(3100001))
+
+	for viewer, radio := range map[uint]uint{3100001: 3140598, 3140598: 3191868} {
+		sees, err := models.SeesPositions(database, viewer, radio)
+		require.NoError(t, err)
+		assert.True(t, sees, "%d sees the shared radio %d", viewer, radio)
+	}
+	sees, err := models.SeesPositions(database, 3140598, 3100001)
+	require.NoError(t, err)
+	assert.False(t, sees, "a radio whose owner does not share stays private")
 }
 
 func TestSetPositionOptionsKeepsTrackingAndNeedsItForAPRS(t *testing.T) {

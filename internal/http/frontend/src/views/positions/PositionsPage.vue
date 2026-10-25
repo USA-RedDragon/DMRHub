@@ -119,7 +119,7 @@
           <div class="mt-auto flex items-center justify-between gap-3 border-t pt-4">
             <div class="flex flex-col gap-0.5">
               <span id="share-label" class="text-sm font-medium">Share my positions</span>
-              <span class="text-[13px] text-muted-foreground">Other users who share theirs see your radios, and you see theirs.</span>
+              <span class="text-[13px] text-muted-foreground">Every logged-in user sees your radios on this map.</span>
             </div>
             <Switch
               aria-labelledby="share-label"

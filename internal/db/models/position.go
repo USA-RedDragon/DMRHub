@@ -180,7 +180,7 @@ func SetPositionOptions(db *gorm.DB, userID, radioID uint, o PositionOptions) er
 }
 
 // SetSharePositions sets whether the user userID shares the positions of
-// their radios with the other users who share theirs.
+// their radios with every other user.
 func SetSharePositions(db *gorm.DB, userID uint, share bool) error {
 	if err := db.Exec("UPDATE users SET share_positions = ? WHERE id = ?", share, userID).Error; err != nil {
 		return fmt.Errorf("could not set position sharing of %d: %w", userID, err)
@@ -214,19 +214,11 @@ func StorePosition(db *gorm.DB, p Position) (bool, error) {
 }
 
 // LatestPositions returns the newest position after since of each radio
-// that viewer may see: their own, and when they share, those of the
-// other users who share.
+// that viewer may see: their own, and those of the users who share.
 func LatestPositions(db *gorm.DB, viewer uint, since time.Time) ([]Position, error) {
-	var share bool
-	if err := db.Model(&User{}).Where("id = ?", viewer).Select("share_positions").Scan(&share).Error; err != nil {
-		return nil, fmt.Errorf("could not read position sharing of %d: %w", viewer, err)
-	}
-	owners := db.Model(&PositionSetting{}).Select("radio_id").Where("user_id = ?", viewer)
-	if share {
-		owners = db.Model(&PositionSetting{}).Select("position_settings.radio_id").
-			Joins("JOIN users ON users.id = position_settings.user_id").
-			Where("position_settings.user_id = ? OR users.share_positions = ?", viewer, true)
-	}
+	owners := db.Model(&PositionSetting{}).Select("position_settings.radio_id").
+		Joins("JOIN users ON users.id = position_settings.user_id").
+		Where("position_settings.user_id = ? OR users.share_positions = ?", viewer, true)
 	newest := db.Model(&Position{}).Select("radio_id, MAX(received_at) AS received_at").
 		Where("received_at >= ? AND radio_id IN (?)", since.UTC(), owners).Group("radio_id")
 	var out []Position
@@ -271,7 +263,7 @@ func PositionOwner(db *gorm.DB, radioID uint) (uint, bool, error) {
 }
 
 // SeesPositions reports whether viewer may see the positions of radioID:
-// they track it, or they and its owner both share their positions.
+// they track it, or its owner shares their positions.
 func SeesPositions(db *gorm.DB, viewer, radioID uint) (bool, error) {
 	owner, ok, err := PositionOwner(db, radioID)
 	if err != nil || !ok {
@@ -281,11 +273,11 @@ func SeesPositions(db *gorm.DB, viewer, radioID uint) (bool, error) {
 		return true, nil
 	}
 	var n int64
-	err = db.Model(&User{}).Where("id IN ? AND share_positions = ?", []uint{viewer, owner}, true).Count(&n).Error
+	err = db.Model(&User{}).Where("id = ? AND share_positions = ?", owner, true).Count(&n).Error
 	if err != nil {
 		return false, fmt.Errorf("could not read position sharing: %w", err)
 	}
-	return n == 2, nil
+	return n == 1, nil
 }
 
 // TracksPositions reports whether userID tracks the position of any radio.

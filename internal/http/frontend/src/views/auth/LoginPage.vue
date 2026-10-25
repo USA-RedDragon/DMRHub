@@ -60,10 +60,18 @@
             <router-link to="/register">Register here</router-link>
           </p>
         </CardContent>
-        <CardFooter>
+        <CardFooter class="flex-col items-start gap-4">
           <div class="card-footer">
             <ShadButton type="submit" variant="outline" size="sm">Login</ShadButton>
           </div>
+          <router-link
+            v-if="settingsStore.passwordResetEnabled"
+            to="/forgot-password"
+            class="text-sm text-primary underline underline-offset-[0.2rem]"
+            data-test="forgot-password"
+          >
+            Forgot your password?
+          </router-link>
         </CardFooter>
       </Card>
     </form>
@@ -87,7 +95,7 @@ import { useVuelidate } from '@vuelidate/core';
 import { required } from '@vuelidate/validators';
 
 import { mapStores } from 'pinia';
-import { useUserStore } from '@/store';
+import { useSettingsStore, useUserStore } from '@/store';
 
 export default {
   components: {
@@ -104,7 +112,9 @@ export default {
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},
-  mounted() {},
+  mounted() {
+    this.settingsStore.fetchConfig();
+  },
   data: function() {
     return {
       username: '',
@@ -172,7 +182,7 @@ export default {
     },
   },
   computed: {
-    ...mapStores(useUserStore),
+    ...mapStores(useUserStore, useSettingsStore),
   },
 };
 </script>

@@ -79,6 +79,16 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/auth/LoginPage.vue'),
     },
     {
+      path: '/forgot-password',
+      name: 'ForgotPassword',
+      component: () => import('@/views/auth/ForgotPasswordPage.vue'),
+    },
+    {
+      path: '/reset-password',
+      name: 'ResetPassword',
+      component: () => import('@/views/auth/ResetPasswordPage.vue'),
+    },
+    {
       path: '/register',
       name: 'Register',
       sitemap: {

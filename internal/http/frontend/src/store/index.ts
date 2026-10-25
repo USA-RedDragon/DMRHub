@@ -34,6 +34,7 @@ interface UserState {
 interface SettingsState {
   ipscEnabled: boolean;
   openBridgeEnabled: boolean;
+  passwordResetEnabled: boolean;
   loaded: boolean;
 }
 
@@ -57,6 +58,7 @@ export const useSettingsStore = defineStore('settings', {
   state: (): SettingsState => ({
     ipscEnabled: false,
     openBridgeEnabled: false,
+    passwordResetEnabled: false,
     loaded: false,
   }),
   getters: {},
@@ -68,6 +70,7 @@ export const useSettingsStore = defineStore('settings', {
         const res = await API.get('/network/features');
         this.ipscEnabled = res.data?.ipsc ?? false;
         this.openBridgeEnabled = res.data?.openbridge ?? false;
+        this.passwordResetEnabled = res.data?.password_reset ?? false;
         this.loaded = true;
       } catch {
         // Config endpoint unavailable; leave defaults

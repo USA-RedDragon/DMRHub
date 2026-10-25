@@ -38,6 +38,19 @@ export async function changePassword(id: number, current: string, password: stri
   await API.patch(`/users/${id}`, { password, current_password: current });
 }
 
+export async function forgotPassword(user: string): Promise<void> {
+  await API.post('/auth/forgot-password', { user });
+}
+
+export async function checkResetLink(token: string): Promise<string> {
+  const res = await API.post('/auth/reset-password/check', { token });
+  return res.data.callsign;
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await API.post('/auth/reset-password', { token, password });
+}
+
 export async function setUserPassword(id: number, password: string): Promise<void> {
   await API.patch(`/users/${id}`, { password });
 }

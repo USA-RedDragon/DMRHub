@@ -7,11 +7,11 @@ src/components/ModeToggle.vue	13	10
 src/components/RelativeTimestamp.vue	7	3
 src/components/Repeater.vue	7	0
 src/components/RepeaterTable.vue	203	136
-src/components/Talkgroup.vue	5	4
+src/components/Talkgroup.vue	5	5
 src/components/TalkgroupTable.vue	165	100
 src/components/TransmissionType.vue	5	5
 src/components/TypeFilter.vue	7	5
-src/components/User.vue	9	5
+src/components/User.vue	9	6
 src/components/UserRegistrationCard.vue	14	10
 src/components/UserTable.vue	144	89
 src/components/setup/DMR/IPSCSettings.vue	9	5
@@ -24,7 +24,7 @@ src/components/setup/DMR/TranscodingSettings.vue	59	42
 src/components/setup/DMR/WebTransportSettings.vue	8	2
 src/components/setup/DMRSettings.vue	31	12
 src/components/setup/DatabaseSettings.vue	16	9
-src/components/setup/GeneralSettings.vue	18	10
+src/components/setup/GeneralSettings.vue	20	11
 src/components/setup/HTTP/CORSSettings.vue	6	2
 src/components/setup/HTTP/RobotsTXTSettings.vue	13	2
 src/components/setup/HTTPSettings.vue	15	8
@@ -99,8 +99,8 @@ src/router/routes.ts	39	18
 src/services/API.ts	10	10
 src/services/net.ts	29	20
 src/services/repeater.ts	15	2
-src/services/talkgroup.ts	15	8
-src/services/userdb.ts	15	8
+src/services/talkgroup.ts	15	11
+src/services/userdb.ts	15	11
 src/services/util.ts	7	6
 src/services/ws.ts	51	30
 src/store/index.ts	11	11

@@ -34,5 +34,5 @@ import (
 )
 
 func main() {
-	plugin.Main(parrot.Serve)
+	plugin.MainWith(parrot.Hello(), parrot.Serve)
 }

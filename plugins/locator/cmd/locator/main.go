@@ -34,5 +34,5 @@ import (
 )
 
 func main() {
-	plugin.Main(locator.Serve)
+	plugin.MainWith(locator.Hello(), locator.Serve)
 }

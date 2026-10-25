@@ -129,6 +129,12 @@ dmr:
     # cert-file: ""
     # TLS key file of the certificate file
     # key-file: ""
+  # Conversion of calls between Codec2 and AMBE
+  transcoding:
+    # AMBE servers (AMBEserver protocol, usually UDP port 2460) that convert calls between Codec2 and AMBE, in the order a call tries them. Each converted call holds one server for its whole length. None turns transcoding off, and calls pass through in their own codec
+    # ambe-servers:
+    #   - address: ""
+    #     calls: 0
 # SMTP configuration for sending emails
 smtp:
   # Enable SMTP support for sending emails

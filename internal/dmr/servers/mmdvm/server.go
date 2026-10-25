@@ -96,11 +96,7 @@ const bufferSize = 4 << 20
 
 // MakeServer creates a new DMR server.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, version, commit string) (Server, error) {
-	socketAddr := net.UDPAddr{
-		IP:   net.ParseIP(config.DMR.MMDVM.Bind),
-		Port: config.DMR.MMDVM.Port,
-	}
-	server, err := net.ListenUDP("udp", &socketAddr)
+	server, socketAddr, err := servers.ListenUDP(config.DMR.MMDVM.Bind, config.DMR.MMDVM.Port)
 	if err != nil {
 		return Server{}, fmt.Errorf("%w: %w", ErrOpenSocket, err)
 	}

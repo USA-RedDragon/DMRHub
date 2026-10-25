@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
@@ -68,7 +69,7 @@ type webTransport struct {
 }
 
 func listenWebTransport(bind string, port int, certs *wtcert.Source) (*webTransport, error) {
-	udp, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(bind), Port: port})
+	udp, _, err := servers.ListenUDP(bind, port)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOpenSocket, err)
 	}

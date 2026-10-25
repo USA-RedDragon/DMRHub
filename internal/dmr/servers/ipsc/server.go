@@ -153,10 +153,7 @@ func (s *IPSCServer) Listen() error {
 	if s.udp != nil {
 		return nil
 	}
-	udp, err := net.ListenUDP("udp", &net.UDPAddr{
-		IP:   net.ParseIP(s.cfg.DMR.IPSC.Bind),
-		Port: s.cfg.DMR.IPSC.Port,
-	})
+	udp, _, err := servers.ListenUDP(s.cfg.DMR.IPSC.Bind, s.cfg.DMR.IPSC.Port)
 	if err != nil {
 		return fmt.Errorf("error starting UDP listener: %w", err)
 	}

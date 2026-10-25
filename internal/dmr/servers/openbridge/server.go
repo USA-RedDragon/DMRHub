@@ -25,8 +25,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -197,24 +196,9 @@ func (b *bridge) sign(p []byte) error {
 // the source quenches that replicas share; with a nil kvStore the server
 // works alone.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kvStore kv.KV) (Server, error) {
-	bind := strings.TrimSuffix(strings.TrimPrefix(config.DMR.OpenBridge.Bind, "["), "]")
-	bindAddress, err := net.ResolveUDPAddr("udp", net.JoinHostPort(bind, strconv.Itoa(config.DMR.OpenBridge.Port)))
+	server, socketAddress, err := servers.ListenUDP(config.DMR.OpenBridge.Bind, config.DMR.OpenBridge.Port)
 	if err != nil {
-		return Server{}, fmt.Errorf("error resolving OpenBridge bind address: %w", err)
-	}
-	server, err := net.ListenUDP("udp", bindAddress)
-	if err != nil {
-		return Server{}, fmt.Errorf("error opening UDP Socket: %w", err)
-	}
-	local, ok := server.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		_ = server.Close()
-		return Server{}, fmt.Errorf("error reading UDP Socket address: unexpected %T", server.LocalAddr())
-	}
-	socketAddress := *bindAddress
-	socketAddress.Port = local.Port
-	if socketAddress.IP == nil {
-		socketAddress.IP = local.IP
+		return Server{}, fmt.Errorf("error opening OpenBridge socket: %w", err)
 	}
 
 	err = server.SetReadBuffer(bufferSize)

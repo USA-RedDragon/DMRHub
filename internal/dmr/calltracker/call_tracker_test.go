@@ -197,13 +197,13 @@ func smsBursts(t *testing.T, text *sms.Text) []layer2.RawBurst {
 	return bursts
 }
 
-func preambles(t *testing.T, src, dst uint, n int) []layer2.RawBurst {
+func preambles(t *testing.T, n int) []layer2.RawBurst {
 	t.Helper()
 	out := make([]layer2.RawBurst, 0, n)
 	for i := range n {
 		var c pdu.CSBK
 		c.LastBlock = true
-		require.NoError(t, c.SetPreamble(pdu.PreamblePDU{Data: true, CSBKBlocksToFollow: byte(n - 1 - i), TargetAddress: uint32(dst), SourceAddress: uint32(src)}))
+		require.NoError(t, c.SetPreamble(pdu.PreamblePDU{Data: true, CSBKBlocksToFollow: byte(n - 1 - i), TargetAddress: uint32(userA), SourceAddress: uint32(userB)}))
 		out = append(out, burstOf(t, &c))
 	}
 	return out
@@ -383,7 +383,7 @@ func TestTrackSMSWithPreambles(t *testing.T) {
 	ct, database, _ := newTracker(t)
 
 	s := newSender(t, ct, userB, userA, false, 7008)
-	s.data(preambles(t, userB, userA, 4)...)
+	s.data(preambles(t, 4)...)
 	s.data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})...)
 
 	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})
@@ -942,7 +942,7 @@ func TestBackToBackTransmissionsOnOneSlotEachGetTheirOwnRow(t *testing.T) {
 	}{
 		{65600, burstsOf(burstOf(t, &check)), models.CallKindCSBK},
 		{65601, text("ONE"), models.CallKindData},
-		{65602, append(preambles(t, userB, userA, 2), text("TWO")...), models.CallKindData},
+		{65602, append(preambles(t, 2), text("TWO")...), models.CallKindData},
 		{65603, burstsOf(burstOf(t, &check)), models.CallKindCSBK},
 		{65604, text("THREE"), models.CallKindData},
 	}
@@ -965,9 +965,9 @@ func TestTheEndOfAMessageDoesNotSplitTheNextOnTheSlot(t *testing.T) {
 	text := func(body string) []layer2.RawBurst {
 		return smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Body: []byte(body)})
 	}
-	newSender(t, ct, userB, userA, false, 65558).data(append(preambles(t, userB, userA, 5), text("STRESS 9")...)...)
+	newSender(t, ct, userB, userA, false, 65558).data(append(preambles(t, 5), text("STRESS 9")...)...)
 	next := newSender(t, ct, userB, userA, false, 65559)
-	bursts := append(preambles(t, userB, userA, 5), text(strings.Repeat("STRESS 10 ", 12))...)
+	bursts := append(preambles(t, 5), text(strings.Repeat("STRESS 10 ", 12))...)
 	require.Greater(t, len(bursts), 25)
 	for _, b := range bursts {
 		next.data(b)
@@ -996,7 +996,7 @@ func TestASlowStoreDoesNotSplitTransmissions(t *testing.T) {
 	const n = 6
 	for i := range uint(n) {
 		s := newSender(t, ct, userB, userA, false, 65900+i)
-		for _, b := range append(preambles(t, userB, userA, 5), smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("slow")})...) {
+		for _, b := range append(preambles(t, 5), smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("slow")})...) {
 			s.data(b)
 			time.Sleep(60 * time.Millisecond)
 		}

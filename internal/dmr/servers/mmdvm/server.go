@@ -58,6 +58,7 @@ type Server struct {
 	Server        *net.UDPConn
 	DB            *gorm.DB
 	kvClient      *servers.KVClient
+	kv            kv.KV
 	pubsub        pubsub.PubSub
 	hub           *hub.Hub
 	Version       string
@@ -101,6 +102,9 @@ type Server struct {
 	epoch    time.Time
 	// newSalt, when set, makes the login salts in place of crypto/rand.
 	newSalt func() (uint32, error)
+	// resumeKey signs the tokens that let a browser hotspot move to another
+	// replica.
+	resumeKey []byte
 
 	pingMu      sync.Mutex
 	pings       map[uint]time.Time
@@ -154,6 +158,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		DB:            db,
 		pubsub:        pubsub,
 		kvClient:      servers.MakeKVClient(kv),
+		kv:            kv,
 		hub:           hub,
 		Version:       version,
 		Commit:        commit,
@@ -163,6 +168,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		transports:    xsync.NewMap[string, transport](),
 		egressMiss:    xsync.NewMap[uint, time.Time](),
 		done:          make(chan struct{}),
+		resumeKey:     resumeKey(config.GetDerivedSecret()),
 	}, nil
 }
 
@@ -312,6 +318,8 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.serve(udpTransport, s.Server, s.Buffer)
 
 	if s.wt != nil {
+		resume := s.resumeWebTransport
+		s.wt.onResume.Store(&resume)
 		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)
 		s.wg.Add(1)

@@ -142,21 +142,24 @@ func checkIPSCCalls(t *testing.T, bursts []testutils.IPSCBurst, calls ...rotatio
 }
 
 // TestRotationMidCall runs two replicas behind UDPFronts, as the pods of
-// DMRHub behind Envoy Gateway, with MMDVM repeaters, an IPSC peer and an
-// OpenBridge peer on them, and two calls in progress. It then rolls the
-// replicas as Kubernetes does: a new replica starts, the first one stops,
-// and then the second. No repeater or peer may log in again, and every
-// listener must get every burst of both calls once.
+// DMRHub behind Envoy Gateway, with MMDVM repeaters, a browser hotspot over
+// WebTransport, an IPSC peer and an OpenBridge peer on them, and two calls
+// in progress. It then rolls the replicas as Kubernetes does: a new
+// replica starts, the first one stops, and then the second. No repeater or
+// peer may log in again, and every listener must get every burst of both
+// calls once.
 func TestRotationMidCall(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedUser(t, 1000002, "N0CALM")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedTalkgroup(t, 2, "TG2")
-		for _, id := range []uint{100001, 100002, 100003} {
+		for _, id := range []uint{100001, 100002, 100003, 100004} {
 			stack.SeedMMDVMRepeater(t, id, 1000001, testPassword)
 		}
+		stack.AssignTS1StaticTG(t, 100004, 1)
+		stack.AssignTS2StaticTG(t, 100004, 2)
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		stack.AssignTS2StaticTG(t, 100002, 2)
 		stack.AssignTS1StaticTG(t, 100003, 1)
@@ -178,7 +181,7 @@ func TestRotationMidCall(t *testing.T) {
 		stack.SeedPeer(t, 500002, 1000001, obPassword, obAddr.IP.String(), obAddr.Port, true, true)
 		stack.SeedPeerRule(t, 500002, false, 1000001, 1000002)
 
-		fronts := testutils.Fronts{MMDVM: testutils.NewUDPFront(t), IPSC: testutils.NewUDPFront(t)}
+		fronts := testutils.Fronts{MMDVM: testutils.NewUDPFront(t), IPSC: testutils.NewUDPFront(t), WebTransport: testutils.NewUDPFront(t)}
 		fronts.Add(t, a)
 		peer := func(id uint32, retry, timeout time.Duration) *testutils.SessionPeer {
 			p, err := testutils.NewSessionPeerTimed(id, testPassword, "", retry, timeout)
@@ -190,6 +193,11 @@ func TestRotationMidCall(t *testing.T) {
 		}
 		talkerA := peer(100001, 200*time.Millisecond, 5*time.Second)
 		slow := peer(100003, 3*time.Second, 15*time.Second)
+		browser, err := testutils.NewWebTransportPeer(100004, testPassword)
+		require.NoError(t, err)
+		require.NoError(t, browser.Connect(fronts.WebTransport.Addr()))
+		t.Cleanup(browser.Close)
+		require.NoError(t, browser.WaitReady(handshakeWait))
 		ipscPeer := testutils.NewIPSCClient(200001, ipscAuthKey)
 		require.NoError(t, ipscPeer.Connect(fronts.IPSC.Addr()))
 		t.Cleanup(ipscPeer.Close)
@@ -208,10 +216,11 @@ func TestRotationMidCall(t *testing.T) {
 		time.Sleep(1500 * time.Millisecond)
 		c := stack.SpawnFullReplica(t)
 		regC := testutils.Register(t, c.Hub, stack.KV)
-		fronts.Add(t, c)
+		testutils.Fronts{MMDVM: fronts.MMDVM, IPSC: fronts.IPSC}.Add(t, c)
 		_ = regC
 		t.Logf("%s: the first replica stops", time.Since(start).Round(time.Millisecond))
 		a.Terminate(t, regA, fronts, rotationDrain)
+		fronts.WebTransport.Add(t, c.WebTransportAddr)
 		t.Logf("%s: the first replica stopped, the second stops", time.Since(start).Round(time.Millisecond))
 		b.Terminate(t, regB, fronts, rotationDrain)
 		t.Logf("%s: the second replica stopped", time.Since(start).Round(time.Millisecond))
@@ -226,12 +235,18 @@ func TestRotationMidCall(t *testing.T) {
 			assert.Equal(t, 1, p.p.Ups(), "%s logged in again", p.name)
 		}
 		assert.Zero(t, ipscPeer.Downs(), "the IPSC peer lost its registration")
+		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
+		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
+		assert.Equal(t, 2, browser.Moves(), "the browser hotspot did not move at each rotation")
 
 		heardMMDVM(talkerA.Drain(settleDuration)).check(t, "repeater 100001", one.stream)
 		heardMMDVM(talkerB.Drain(settleDuration)).check(t, "repeater 100002", two.stream)
 		slowHeard := heardMMDVM(slow.Drain(settleDuration))
 		slowHeard.check(t, "repeater 100003", one.stream)
 		slowHeard.check(t, "repeater 100003", two.stream)
+		browserHeard := heardMMDVM(browser.Drain(settleDuration))
+		browserHeard.check(t, "the browser hotspot", one.stream)
+		browserHeard.check(t, "the browser hotspot", two.stream)
 
 		checkIPSCCalls(t, ipscPeer.Drain(settleDuration), one, two)
 
@@ -241,6 +256,6 @@ func TestRotationMidCall(t *testing.T) {
 		}
 		obHeard.check(t, "the OpenBridge peer", one.stream)
 		obHeard.check(t, "the OpenBridge peer", two.stream)
-		t.Logf("moves: MMDVM %d, IPSC %d", fronts.MMDVM.Moves(), fronts.IPSC.Moves())
+		t.Logf("moves: MMDVM %d, IPSC %d, WebTransport %d", fronts.MMDVM.Moves(), fronts.IPSC.Moves(), fronts.WebTransport.Moves())
 	})
 }

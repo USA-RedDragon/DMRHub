@@ -65,6 +65,7 @@ func (r *Replica) Terminate(t *testing.T, reg *servers.InstanceRegistry, f Front
 	ctx := context.Background()
 	reg.MarkDraining(ctx)
 	f.each(r, func(front *UDPFront, addr string) { front.Drain(addr) })
+	r.MMDVMServer.DrainWebTransport(ctx)
 	manager.New(manager.Deps{Hub: r.Hub}).Drain(ctx, reg, timeout)
 	r.Hub.StartDraining()
 	r.Hub.WaitForCalls()

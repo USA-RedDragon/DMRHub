@@ -211,6 +211,9 @@ func (m *Manager) Drain(ctx context.Context, reg Registry, timeout time.Duration
 		return 0
 	}
 	reg.MarkDraining(ctx)
+	if s, ok := m.Server(MMDVM).(*mmdvm.Server); ok {
+		s.DrainWebTransport(ctx)
+	}
 	if timeout <= 0 {
 		return 0
 	}

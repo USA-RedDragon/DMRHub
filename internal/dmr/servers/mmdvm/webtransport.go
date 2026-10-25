@@ -20,17 +20,22 @@
 package mmdvm
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -70,7 +75,20 @@ type webTransport struct {
 	done     chan struct{}
 	once     sync.Once
 	wg       sync.WaitGroup
+
+	// draining refuses new sessions, so that browsers that move go to
+	// another replica.
+	draining atomic.Bool
+	// onResume takes the resume request of a session.
+	onResume atomic.Pointer[func(wtAddr, string) wtResume]
 }
+
+// controlWait is the longest time the listener waits to open or read a
+// control stream.
+const controlWait = 5 * time.Second
+
+// maxControl is the longest control message, in octets.
+const maxControl = 1024
 
 // listenWebTransport listens for WebTransport sessions on the UDP port.
 // The replicas share secret, from which they make one stateless reset key,
@@ -147,6 +165,10 @@ func (t *webTransport) Addr() net.Addr {
 }
 
 func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
+	if t.draining.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	sess, err := t.srv.Upgrade(w, r)
 	if err != nil {
 		slog.Debug("WebTransport session not accepted", "remoteAddr", r.RemoteAddr, "error", err)
@@ -158,7 +180,67 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 	addr := wtAddr(hex.EncodeToString(id[:]))
 	t.sessions.Store(string(addr), sess)
 	slog.Debug("WebTransport session opened", "session", addr, "remoteAddr", r.RemoteAddr)
-	go t.read(sess.Context(), addr, sess) //nolint:contextcheck // the request context ends when this handler returns, the session lives on
+	go t.read(sess.Context(), addr, sess)    //nolint:contextcheck // the request context ends when this handler returns, the session lives on
+	go t.control(sess.Context(), addr, sess) //nolint:contextcheck // the request context ends when this handler returns, the session lives on
+}
+
+// control answers the resume requests that the browser sends on streams
+// of the session.
+func (t *webTransport) control(ctx context.Context, addr wtAddr, sess *webtransport.Session) {
+	for {
+		str, err := sess.AcceptStream(ctx)
+		if err != nil {
+			return
+		}
+		go t.answer(addr, str)
+	}
+}
+
+func (t *webTransport) answer(addr wtAddr, str *webtransport.Stream) {
+	defer func() { _ = str.Close() }()
+	_ = str.SetDeadline(time.Now().Add(controlWait))
+	line, err := bufio.NewReader(io.LimitReader(str, maxControl)).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return
+	}
+	var req wtResume
+	reply := wtResume{Reason: "bad request"}
+	if json.Unmarshal(line, &req) == nil && req.Resume != "" {
+		if fn := t.onResume.Load(); fn != nil {
+			reply = (*fn)(addr, req.Resume)
+		}
+	}
+	b, err := json.Marshal(reply)
+	if err != nil {
+		return
+	}
+	_, _ = str.Write(append(b, '\n'))
+}
+
+// notify sends msg on a new stream to the session at addr.
+func (t *webTransport) notify(ctx context.Context, addr wtAddr, msg any) error {
+	sess, ok := t.sessions.Load(string(addr))
+	if !ok {
+		return errNoSession
+	}
+	ctx, cancel := context.WithTimeout(ctx, controlWait)
+	defer cancel()
+	str, err := sess.OpenUniStreamSync(ctx)
+	if err != nil {
+		return fmt.Errorf("opening a WebTransport stream: %w", err)
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("encoding a WebTransport message: %w", err)
+	}
+	_ = str.SetWriteDeadline(time.Now().Add(controlWait))
+	if _, err := str.Write(append(b, '\n')); err != nil {
+		return fmt.Errorf("sending a WebTransport message: %w", err)
+	}
+	if err := str.Close(); err != nil {
+		return fmt.Errorf("closing a WebTransport stream: %w", err)
+	}
+	return nil
 }
 
 func (t *webTransport) read(ctx context.Context, addr wtAddr, sess *webtransport.Session) {

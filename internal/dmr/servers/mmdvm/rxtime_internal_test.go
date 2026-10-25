@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -65,6 +66,7 @@ func TestAPacketIsStampedWhenItArrives(t *testing.T) {
 	ping := make([]byte, 11)
 	copy(ping, "RPTPING")
 	binary.BigEndian.PutUint32(ping[7:], 100001)
+	awaitStamps(t, s.Server, c)
 	sent := time.Now()
 	_, err = c.Write(ping)
 	require.NoError(t, err)
@@ -78,4 +80,28 @@ func TestAPacketIsStampedWhenItArrives(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the packet did not come")
 	}
+}
+
+// awaitStamps waits until the kernel stamps the packets of c as they come.
+// It turns the stamps on for every socket a moment after the first socket
+// asks, and until then stamps a packet when it is read.
+func awaitStamps(t *testing.T, c *net.UDPConn, peer *net.UDPConn) {
+	t.Helper()
+	if !servers.StampArrivals(c) {
+		t.Fatal("the kernel does not stamp the packets")
+	}
+	buf := make([]byte, 1500)
+	oob := make([]byte, servers.RxOOBLen)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		sent := time.Now()
+		if _, err := peer.Write([]byte("probe")); err != nil {
+			t.Fatalf("probe: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+		if _, _, at, err := servers.ReadStamped(c, true, buf, oob); err == nil && at.Sub(sent) < 10*time.Millisecond {
+			return
+		}
+	}
+	t.Fatal("the kernel does not stamp the packets")
 }

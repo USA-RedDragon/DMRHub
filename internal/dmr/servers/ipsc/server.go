@@ -80,8 +80,11 @@ type IPSCServer struct {
 	timesClosed  bool
 	timesWG      sync.WaitGroup
 
-	// heard is when the server read the packet that it handles.
+	// heard is when the packet that the server handles came.
 	heard time.Time
+	// stamped reports that the kernel stamps the packets of udp with the
+	// time they came.
+	stamped bool
 
 	movingMu   sync.Mutex
 	moving     map[uint32]*moving
@@ -202,6 +205,7 @@ func (s *IPSCServer) Listen() error {
 		return fmt.Errorf("error starting UDP listener: %w", err)
 	}
 	s.udp = udp
+	s.stamped = servers.StampArrivals(udp)
 	return nil
 }
 
@@ -322,8 +326,9 @@ func (s *IPSCServer) tick(ctx context.Context, now time.Duration) {
 func (s *IPSCServer) handler(ctx context.Context) {
 	defer s.wg.Done()
 	buf := make([]byte, ipscsession.MaxPacket)
+	oob := make([]byte, servers.RxOOBLen)
 	for {
-		n, addr, err := s.udp.ReadFromUDP(buf)
+		n, addr, at, err := servers.ReadStamped(s.udp, s.stamped, buf, oob)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -334,14 +339,18 @@ func (s *IPSCServer) handler(ctx context.Context) {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		if err := s.handlePacket(ctx, data, addr); err != nil && !errors.Is(err, ErrPacketIgnored) {
+		if err := s.handlePacketAt(ctx, data, addr, at); err != nil && !errors.Is(err, ErrPacketIgnored) {
 			slog.Warn("error handling IPSC packet", "peer", addr, "error", err, "length", len(data))
 		}
 	}
 }
 
 func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UDPAddr) error {
-	heard := time.Now()
+	return s.handlePacketAt(ctx, data, addr, time.Now())
+}
+
+// handlePacketAt handles the packet data from addr, which came at heard.
+func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.UDPAddr, heard time.Time) error {
 	if s.stopped.Load() {
 		return ErrPacketIgnored
 	}

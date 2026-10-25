@@ -139,7 +139,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		return Server{}, fmt.Errorf("%w: %w", ErrSocketBuffer, err)
 	}
 
-	stamped := stampArrivals(server)
+	stamped := servers.StampArrivals(server)
 
 	var wt *webTransport
 	if c := config.DMR.MMDVM.WebTransport; c.Enabled {
@@ -365,24 +365,19 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 	}
 }
 
-// readerFor returns a func that reads a packet of t and the time it came:
-// for a UDP socket the time the kernel got it, where the kernel says, so
-// that a reader that runs late does not make the packet late.
+// readerFor returns a func that reads a packet of t and the time it came,
+// as servers.ReadStamped tells it for the UDP socket.
 func (s *Server) readerFor(t transport) func([]byte) (int, net.Addr, time.Time, error) {
 	c, ok := t.(*net.UDPConn)
-	if !ok || c != s.Server || !s.stamped {
+	if !ok || c != s.Server {
 		return func(b []byte) (int, net.Addr, time.Time, error) {
 			n, addr, err := t.ReadFrom(b)
 			return n, addr, time.Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
 		}
 	}
-	oob := make([]byte, rxOOBLen)
+	oob := make([]byte, servers.RxOOBLen)
 	return func(b []byte) (int, net.Addr, time.Time, error) {
-		n, oobn, _, addr, err := c.ReadMsgUDP(b, oob)
-		at, stamped := arrival(oob[:oobn])
-		if !stamped {
-			at = time.Now()
-		}
+		n, addr, at, err := servers.ReadStamped(c, s.stamped, b, oob)
 		if err != nil {
 			return n, nil, at, err //nolint:wrapcheck // the caller looks for net.ErrClosed
 		}

@@ -19,7 +19,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package mmdvm
+package servers
 
 import (
 	"encoding/binary"
@@ -28,12 +28,12 @@ import (
 	"time"
 )
 
-// rxOOBLen is the room for the control message of a receive time.
-const rxOOBLen = 64
+// RxOOBLen is the room for the control message of a receive time.
+const RxOOBLen = 64
 
-// stampArrivals asks the kernel to stamp each packet that c gets with the
+// StampArrivals asks the kernel to stamp each packet that c gets with the
 // time it came, and reports whether it does.
-func stampArrivals(c *net.UDPConn) bool {
+func StampArrivals(c *net.UDPConn) bool {
 	raw, err := c.SyscallConn()
 	if err != nil {
 		return false
@@ -47,9 +47,9 @@ func stampArrivals(c *net.UDPConn) bool {
 	return serr == nil
 }
 
-// arrival returns the time in the control messages oob at which the
+// Arrival returns the time in the control messages oob at which the
 // kernel got a packet.
-func arrival(oob []byte) (time.Time, bool) {
+func Arrival(oob []byte) (time.Time, bool) {
 	msgs, err := syscall.ParseSocketControlMessage(oob)
 	if err != nil {
 		return time.Time{}, false

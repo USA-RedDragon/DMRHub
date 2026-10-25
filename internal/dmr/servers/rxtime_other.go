@@ -19,15 +19,18 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package mmdvm
+package servers
 
 import (
 	"net"
 	"time"
 )
 
-const rxOOBLen = 0
+// RxOOBLen is the room for the control message of a receive time.
+const RxOOBLen = 0
 
-func stampArrivals(*net.UDPConn) bool { return false }
+// StampArrivals reports false, as only Linux stamps the packets.
+func StampArrivals(*net.UDPConn) bool { return false }
 
-func arrival([]byte) (time.Time, bool) { return time.Time{}, false }
+// Arrival reports no time, as only Linux stamps the packets.
+func Arrival([]byte) (time.Time, bool) { return time.Time{}, false }

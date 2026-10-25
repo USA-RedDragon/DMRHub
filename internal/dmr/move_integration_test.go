@@ -197,3 +197,41 @@ func TestMMDVMOptionsNeedALoginAfterAMove(t *testing.T) {
 		assert.Empty(t, ts2, "options of a moved session changed the static talkgroups")
 	})
 }
+
+// TestMMDVMLoginElsewhereEndsTheOldSession logs a repeater in to one
+// replica and then to the other from another address. The first replica
+// must end its session, so that only the second sends the calls to the
+// repeater.
+func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100002, 1)
+		testutils.Register(t, stack.Hub, stack.KV)
+		second := stack.SpawnSecondReplica(t)
+		testutils.Register(t, second.Hub, stack.KV)
+		stack.StartServers(t)
+
+		old := testutils.NewMMDVMClient(100002, "", testPassword)
+		require.NoError(t, old.Connect(stack.MMDVMAddr))
+		defer old.Close()
+		require.NoError(t, old.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+		fresh := testutils.NewMMDVMClient(100002, "", testPassword)
+		require.NoError(t, fresh.Connect(second.MMDVMAddr))
+		defer fresh.Close()
+		require.NoError(t, fresh.WaitReady(handshakeWait))
+		talker := testutils.NewMMDVMClient(100001, "", testPassword)
+		require.NoError(t, talker.Connect(second.MMDVMAddr))
+		defer talker.Close()
+		require.NoError(t, talker.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+
+		sendGroupCall(t, talker.SendDMRD, 1, 7401, false)
+		assert.NotEmpty(t, fresh.Drain(drainWait), "the new session gets the call")
+		assert.Empty(t, old.Drain(settleDuration), "the old session still got the call")
+	})
+}

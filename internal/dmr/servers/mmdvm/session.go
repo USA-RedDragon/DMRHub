@@ -862,6 +862,30 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 	s.run(ctx, now, l, l.m.Resume(now, id, buf[:0]))
 }
 
+// dropMoved ends the session of the repeater id here, without a word to the
+// repeater, when another replica claims it: the repeater moved there, or
+// logged in there again.
+func (s *Server) dropMoved(id uint) {
+	if id > math.MaxUint32 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l, ok := s.byID[uint32(id)]
+	if !ok {
+		return
+	}
+	slog.Info("Repeater session moved to another replica", "repeaterID", id, "remoteAddr", l.ep.String())
+	s.stopBeacon(l)
+	delete(s.byID, uint32(id))
+	s.connected.Delete(id)
+	l.m.Reset()
+	s.forget(l)
+	if s.hub != nil {
+		s.records.Do(id, func() { s.hub.DeactivateRepeater(context.Background(), id) })
+	}
+}
+
 // mayResumeForEgress reports whether resumeForEgress may try the repeater
 // id now.
 func (s *Server) mayResumeForEgress(id uint) bool {

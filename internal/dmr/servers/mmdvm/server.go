@@ -65,6 +65,7 @@ type Server struct {
 	incomingChan  chan models.RawDMRPacket
 	outgoingChan  chan models.RawDMRPacket
 	hubHandle     *hub.ServerHandle
+	stopClaims    func()
 	wt            *webTransport
 	connected     *xsync.Map[uint, endpoint]
 	transports    *xsync.Map[string, transport]
@@ -187,6 +188,9 @@ func (s *Server) Stop(ctx context.Context) error {
 		if s.hub != nil {
 			s.hub.UnregisterServer(models.RepeaterTypeMMDVM)
 		}
+		if s.stopClaims != nil {
+			s.stopClaims()
+		}
 
 		// When other DMRHub instances are alive, skip sending MSTCL so
 		// repeaters seamlessly migrate to the surviving instance instead of
@@ -278,6 +282,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Name: models.RepeaterTypeMMDVM,
 		Role: hub.RoleRepeater,
 	})
+	s.stopClaims = s.hub.OnClaimedElsewhere(s.dropMoved)
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 

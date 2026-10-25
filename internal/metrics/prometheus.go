@@ -61,6 +61,14 @@ const DropReasonStreamFromOtherSource = "stream_from_other_source"
 // over the rate that one repeater slot can carry.
 const DropReasonSlotRate = "slot_rate"
 
+// DropReasonIPSCBurst is the IngressDroppedBurstsTotal reason for a burst
+// from an IPSC peer that does not encode as a DMRD burst.
+const DropReasonIPSCBurst = "ipsc_burst"
+
+// DropReasonIPSCFullLC is the IngressDroppedBurstsTotal reason for a voice
+// header or terminator from an IPSC peer whose Full LC cannot be sealed.
+const DropReasonIPSCFullLC = "ipsc_full_lc"
+
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
 	metricsInstance *Metrics  //nolint:gochecknoglobals

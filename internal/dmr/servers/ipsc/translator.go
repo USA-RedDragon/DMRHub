@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
@@ -55,6 +56,28 @@ type IPSCTranslator struct {
 
 	rawBlocksAnXPRDrops bool
 	onUndeliverable     func(pkt models.Packet, reason string)
+
+	dropLogNext  time.Time
+	dropUnlogged int
+}
+
+const dropLogEvery = time.Second
+
+// dropped counts and logs u, a burst from an IPSC peer that cannot go to
+// the hub. It logs at most once a second, with the number of bursts it did
+// not log since. The caller holds t.mu.
+func (t *IPSCTranslator) dropped(u *ipscwire.User, reason string, err error) {
+	metrics.NewMetrics().IncrementIngressDropped(reason)
+	now := time.Now()
+	if now.Before(t.dropLogNext) {
+		t.dropUnlogged++
+		return
+	}
+	t.dropLogNext = now.Add(dropLogEvery)
+	slog.Info("Burst from an IPSC peer cannot go to the hub",
+		"peer", u.ID, "src", u.Source, "dst", u.Destination, "burstType", u.Burst,
+		"reason", reason, "error", err, "unlogged", t.dropUnlogged)
+	t.dropUnlogged = 0
 }
 
 // sendRawBlocksAnXPRDrops sends to IPSC peers, as undecodable blocks (burst
@@ -625,11 +648,12 @@ const endedCallHold = 2 * time.Second
 // out.
 func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base models.Packet, rss *reverseStreamState) []models.Packet {
 	if dt.CarriesFullLC() && !fixFullLC(u, dt, base.GroupCall) {
+		t.dropped(u, metrics.DropReasonIPSCFullLC, nil)
 		return nil
 	}
 	raw, err := u.RawBurst(0, layer2.SyncSourceBS)
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot build data burst", "dtype", dt, "error", err)
+		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
 	now := time.Since(t.epoch)
@@ -658,7 +682,7 @@ func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base m
 func (t *IPSCTranslator) rawToMMDVM(u *ipscwire.User, base models.Packet, rss *reverseStreamState) []models.Packet {
 	raw, err := u.RawBurst(0, layer2.SyncSourceBS)
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot build undecodable data block", "error", err)
+		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
 	now := time.Since(t.epoch)
@@ -717,7 +741,7 @@ func fixFullLC(u *ipscwire.User, dt enums.DataType, groupCall bool) bool {
 func (t *IPSCTranslator) voiceToMMDVM(u *ipscwire.User, base models.Packet, rss *reverseStreamState) []models.Packet {
 	raw, err := u.RawBurst(0, layer2.SyncSourceMS)
 	if err != nil {
-		slog.Debug("IPSCTranslator: cannot build voice burst", "error", err)
+		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
 	now := time.Since(t.epoch)

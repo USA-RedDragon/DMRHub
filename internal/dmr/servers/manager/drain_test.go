@@ -50,6 +50,10 @@ func TestDrainWaitsForTheRepeatersToMove(t *testing.T) {
 	defer c.Close()
 	require.NoError(t, c.WaitReady(wait))
 	ctx := context.Background()
+	require.Eventually(t, func() bool {
+		v, err := l.KV.Get(ctx, "dmrhub:peer_owner:100001")
+		return err == nil && len(v) > 0
+	}, wait, 10*time.Millisecond, "the hub took the repeater on")
 
 	lone := &fakeRegistry{}
 	start := time.Now()

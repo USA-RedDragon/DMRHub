@@ -135,6 +135,8 @@ dmr:
     # ambe-servers:
     #   - address: ""
     #     calls: 0
+  # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once
+  drain-timeout: 25
 # SMTP configuration for sending emails
 smtp:
   # Enable SMTP support for sending emails

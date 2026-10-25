@@ -149,6 +149,7 @@ type Hub struct {
 	streamTalkgroups      *xsync.Map[streamTarget, time.Time]
 	streamPeers           *xsync.Map[streamTarget, streamPeerSet]
 	streamClaims          *xsync.Map[claimKey, streamClaim]
+	claimTiming           atomic.Pointer[[2]time.Duration]
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
 	slotRateOff atomic.Bool

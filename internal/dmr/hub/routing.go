@@ -53,7 +53,7 @@ func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName s
 // that a transmission that starts right after another on a slot does not
 // overtake the end of that one.
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
-	if !h.AdmitSlotRate(packet, sourceName) || !h.AdmitStream(packet, sourceName) {
+	if !h.AdmitSlotRate(packet, sourceName) || !h.AdmitStream(ctx, packet, sourceName) {
 		return
 	}
 	h.trackCall(ctx, &packet, sourceName)

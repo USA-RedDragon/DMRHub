@@ -20,13 +20,17 @@
 package hub
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
-	"github.com/puzpuzpuz/xsync/v4"
 )
 
 // streamIdle is the time after the last packet of a stream at which the
@@ -37,6 +41,10 @@ const streamIdle = 2 * time.Second
 // last burst from it, so that copies looping back after the terminator are
 // still dropped.
 const streamClaimHold = 30 * time.Second
+
+const streamClaimRecheck = 5 * time.Second
+
+const streamClaimKeyPrefix = "dmrhub:stream_claim:"
 
 // inflight counts work that shutdown must wait for. Unlike a
 // sync.WaitGroup, Add may run while Wait waits.
@@ -125,6 +133,19 @@ type streamSource struct {
 	repeater uint
 }
 
+func (s streamSource) String() string {
+	return s.server + "/" + strconv.FormatUint(uint64(s.repeater), 10)
+}
+
+func parseStreamSource(v string) streamSource {
+	i := strings.LastIndexByte(v, '/')
+	if i < 0 {
+		return streamSource{server: v}
+	}
+	id, _ := strconv.ParseUint(v[i+1:], 10, 64)
+	return streamSource{server: v[:i], repeater: uint(id)}
+}
+
 // claimKey is a stream of one radio. Some clients reuse stream IDs, such as
 // DroidStar, which calls rand() without srand(), so every instance sends the
 // same sequence; a loop keeps the source radio.
@@ -132,34 +153,58 @@ type claimKey struct {
 	stream, src uint
 }
 
-type streamClaim struct {
-	source streamSource
-	last   time.Time
+func (k claimKey) kvKey() string {
+	return streamClaimKeyPrefix + strconv.FormatUint(uint64(k.stream), 10) + ":" + strconv.FormatUint(uint64(k.src), 10)
 }
 
+type streamClaim struct {
+	source  streamSource
+	checked time.Time
+	renewed time.Time
+}
+
+var errNoClaimStore = errors.New("no KV store for stream claims")
+
 // AdmitStream reports whether the hub takes packet in. The first source of
-// a stream of a radio owns it until streamClaimHold passes with no burst from that
-// source. The same stream from another source meanwhile is a loop or a
-// second path to the same call, so it is dropped, counted and logged once
-// per stream, as FreeDMR's LoopControl does. A repeater that reconnects or
-// moves to another replica keeps its ID, so it keeps its stream.
-func (h *Hub) AdmitStream(packet models.Packet, sourceName string) bool {
+// a stream of a radio owns it until at least streamClaimHold passes with no
+// burst from that source. The same stream from another source meanwhile is
+// a loop or a second path to the same call, so it is dropped, counted and
+// logged once per stream, as FreeDMR's LoopControl does. The claim is in
+// the KV store, so it holds across replicas; a hub checks it once per
+// streamClaimRecheck for each source of a stream, and a claim lasts
+// streamClaimHold plus streamClaimRecheck after its owner's last check, so
+// it outlasts the last burst by at least streamClaimHold. A repeater that
+// reconnects or moves to another replica keeps its ID, so it keeps its
+// stream.
+func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName string) bool {
 	if packet.StreamID == 0 {
 		return true
 	}
 	src := streamSource{server: sourceName, repeater: packet.Repeater}
+	key := claimKey{stream: packet.StreamID, src: packet.Src}
 	now := time.Now()
-	var owner streamSource
-	admitted := true
-	h.streamClaims.Compute(claimKey{stream: packet.StreamID, src: packet.Src}, func(old streamClaim, loaded bool) (streamClaim, xsync.ComputeOp) {
-		if loaded && old.source != src && now.Sub(old.last) <= streamClaimHold {
-			owner = old.source
-			admitted = false
-			return old, xsync.CancelOp
+	hold, recheck := h.claimTimes()
+	cached, known := h.streamClaims.Load(key)
+	owner := cached.source
+	if !known || now.Sub(cached.checked) >= recheck {
+		owned := known && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold
+		shared, err := h.sharedClaim(ctx, key, src, owned, hold+recheck)
+		switch {
+		case err == nil && shared == src:
+			owner = src
+			h.streamClaims.Store(key, streamClaim{source: src, checked: now, renewed: now})
+		case err == nil:
+			owner = shared
+			h.streamClaims.Store(key, streamClaim{source: shared, checked: now})
+		case !known || cached.source == src || now.Sub(cached.checked) > hold+recheck:
+			owner = src
+			h.streamClaims.Store(key, streamClaim{source: src, checked: now, renewed: now})
 		}
-		return streamClaim{source: src, last: now}, xsync.UpdateOp
-	})
-	if admitted {
+		if err != nil && !errors.Is(err, errNoClaimStore) {
+			slog.Warn("Failed to check the shared claim of a stream", "stream", packet.StreamID, "src", packet.Src, "error", err)
+		}
+	}
+	if owner == src {
 		return true
 	}
 	metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonStreamFromOtherSource)
@@ -172,9 +217,46 @@ func (h *Hub) AdmitStream(packet models.Packet, sourceName string) bool {
 	return false
 }
 
+func (h *Hub) sharedClaim(ctx context.Context, key claimKey, src streamSource, owned bool, ttl time.Duration) (streamSource, error) {
+	if h.kv == nil {
+		return streamSource{}, errNoClaimStore
+	}
+	k := key.kvKey()
+	if owned && h.kv.Expire(ctx, k, ttl) == nil {
+		return src, nil
+	}
+	for range 2 {
+		set, err := h.kv.SetNX(ctx, k, src.String(), ttl)
+		if err != nil {
+			return streamSource{}, fmt.Errorf("claim stream: %w", err)
+		}
+		if set {
+			return src, nil
+		}
+		v, err := h.kv.Get(ctx, k)
+		if err != nil {
+			continue
+		}
+		owner := parseStreamSource(string(v))
+		if owner == src && h.kv.Expire(ctx, k, ttl) != nil {
+			continue
+		}
+		return owner, nil
+	}
+	return streamSource{}, errors.New("claim stream: the claim expired while it was read")
+}
+
+func (h *Hub) claimTimes() (hold, recheck time.Duration) {
+	if t := h.claimTiming.Load(); t != nil {
+		return t[0], t[1]
+	}
+	return streamClaimHold, streamClaimRecheck
+}
+
 func (h *Hub) pruneStreamClaims(now time.Time) {
+	hold, recheck := h.claimTimes()
 	h.streamClaims.Range(func(k claimKey, v streamClaim) bool {
-		if now.Sub(v.last) > streamClaimHold {
+		if now.Sub(v.checked) > hold+recheck {
 			h.streamClaims.Delete(k)
 		}
 		return true

@@ -152,3 +152,85 @@ func loopDrops(t *testing.T) float64 {
 	}
 	return 0
 }
+
+// TestStreamLoopIsDroppedAcrossReplicas builds the loop of
+// TestStreamLoopIsDropped over two replicas: the talker and the listener are
+// on one replica, and the hotspot that sends every burst straight back is on
+// the other. The replica of the looping hotspot must drop the copies, so the
+// listener gets the call once.
+func TestStreamLoopIsDroppedAcrossReplicas(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		const stream = 7002
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100003, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100002, 1)
+		stack.AssignTS1StaticTG(t, 100003, 1)
+		second := stack.SpawnSecondReplica(t)
+		stack.StartServers(t)
+
+		talker := testutils.NewMMDVMClient(100001, "", testPassword)
+		looper := testutils.NewMMDVMClient(100002, "", testPassword)
+		listener := testutils.NewMMDVMClient(100003, "", testPassword)
+		for c, addr := range map[*testutils.MMDVMClient]string{talker: stack.MMDVMAddr, looper: second.MMDVMAddr, listener: stack.MMDVMAddr} {
+			require.NoError(t, c.Connect(addr))
+			defer c.Close()
+			require.NoError(t, c.WaitReady(handshakeWait))
+		}
+		time.Sleep(settleDuration)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		var mu sync.Mutex
+		got := map[string]int{}
+		var wg sync.WaitGroup
+		echo := func(name string, ch <-chan models.Packet, send func(models.Packet) error) {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case p := <-ch:
+					if p.StreamID != stream {
+						continue
+					}
+					mu.Lock()
+					got[name]++
+					mu.Unlock()
+					if send != nil {
+						_ = send(p)
+					}
+				}
+			}
+		}
+		wg.Add(3)
+		go echo("looper", looper.ReceivedPackets(), looper.SendDMRD)
+		go echo("listener", listener.ReceivedPackets(), nil)
+		go echo("talker", talker.ReceivedPackets(), nil)
+
+		call := []models.Packet{
+			makeBurst(1000001, 1, stream, true, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader), 0),
+			makeGroupVoicePacket(1000001, 1, stream, false),
+			makeGroupVoiceTermPacket(1000001, 1, stream, false),
+		}
+		for _, p := range call {
+			require.NoError(t, talker.SendDMRD(p))
+			time.Sleep(60 * time.Millisecond)
+		}
+		time.Sleep(drainWait)
+		cancel()
+		wg.Wait()
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Equal(t, len(call), got["looper"], "the looping hotspot must get each burst once")
+		assert.Equal(t, len(call), got["listener"], "the listener must get each burst once, not the looped copies")
+		assert.Zero(t, got["talker"], "the talker must not get its own call back")
+
+		var calls []models.Call
+		require.NoError(t, stack.DB.Where("stream_id = ?", stream).Find(&calls).Error)
+		require.Len(t, calls, 1, "the call must be tracked once")
+	})
+}

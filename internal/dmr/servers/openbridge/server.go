@@ -529,7 +529,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	if !s.hub.AdmitStream(packet, "openbridge") {
+	if !s.hub.AdmitStream(ctx, packet, "openbridge") {
 		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
 		return
 	}

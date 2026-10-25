@@ -21,6 +21,7 @@ package hub
 
 import (
 	"context"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
@@ -42,6 +43,14 @@ func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 func (h *Hub) ForgetCachedRepeater(id uint) {
 	h.repeaters.invalidate(id)
 }
+
+// SetStreamClaimTiming replaces streamClaimHold and streamClaimRecheck.
+func (h *Hub) SetStreamClaimTiming(hold, recheck time.Duration) {
+	h.claimTiming.Store(&[2]time.Duration{hold, recheck})
+}
+
+// StreamClaimHold is streamClaimHold.
+const StreamClaimHold = streamClaimHold
 
 // LiftSlotRate lets the test send faster than one repeater slot can, or
 // limits it again.

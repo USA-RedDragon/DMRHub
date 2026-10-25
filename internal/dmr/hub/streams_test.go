@@ -20,12 +20,17 @@
 package hub_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAdmitStreamKeepsAStreamWithItsFirstSource(t *testing.T) {
@@ -37,18 +42,80 @@ func TestAdmitStreamKeepsAStreamWithItsFirstSource(t *testing.T) {
 		return p
 	}
 
-	assert.True(t, h.AdmitStream(burst(42, 100001), models.RepeaterTypeMMDVM))
-	assert.True(t, h.AdmitStream(burst(42, 100001), models.RepeaterTypeMMDVM), "the source of the stream keeps it, also after a reconnect")
-	assert.False(t, h.AdmitStream(burst(42, 100002), models.RepeaterTypeMMDVM), "another repeater with the same stream is a loop")
-	assert.False(t, h.AdmitStream(burst(42, 100001), "openbridge"), "a peer with the same ID on another server is another source")
-	assert.False(t, h.AdmitStream(burst(42, 100001), models.RepeaterTypeIPSC))
-	assert.True(t, h.AdmitStream(burst(42, 100001), models.RepeaterTypeMMDVM), "dropped copies do not take the stream over")
-	assert.True(t, h.AdmitStream(burst(43, 100002), models.RepeaterTypeMMDVM), "other streams are not affected")
+	assert.True(t, h.AdmitStream(t.Context(), burst(42, 100001), models.RepeaterTypeMMDVM))
+	assert.True(t, h.AdmitStream(t.Context(), burst(42, 100001), models.RepeaterTypeMMDVM), "the source of the stream keeps it, also after a reconnect")
+	assert.False(t, h.AdmitStream(t.Context(), burst(42, 100002), models.RepeaterTypeMMDVM), "another repeater with the same stream is a loop")
+	assert.False(t, h.AdmitStream(t.Context(), burst(42, 100001), "openbridge"), "a peer with the same ID on another server is another source")
+	assert.False(t, h.AdmitStream(t.Context(), burst(42, 100001), models.RepeaterTypeIPSC))
+	assert.True(t, h.AdmitStream(t.Context(), burst(42, 100001), models.RepeaterTypeMMDVM), "dropped copies do not take the stream over")
+	assert.True(t, h.AdmitStream(t.Context(), burst(43, 100002), models.RepeaterTypeMMDVM), "other streams are not affected")
 	other := burst(42, 100003)
 	other.Src = 1000002
-	assert.True(t, h.AdmitStream(other, models.RepeaterTypeMMDVM), "another radio may use the same stream ID")
-	assert.True(t, h.AdmitStream(burst(0, 100001), models.RepeaterTypeMMDVM))
-	assert.True(t, h.AdmitStream(burst(0, 100002), models.RepeaterTypeMMDVM), "stream 0 carries no stream identity")
+	assert.True(t, h.AdmitStream(t.Context(), other, models.RepeaterTypeMMDVM), "another radio may use the same stream ID")
+	assert.True(t, h.AdmitStream(t.Context(), burst(0, 100001), models.RepeaterTypeMMDVM))
+	assert.True(t, h.AdmitStream(t.Context(), burst(0, 100002), models.RepeaterTypeMMDVM), "stream 0 carries no stream identity")
+}
+
+func replicaHubs(t *testing.T) (*hub.Hub, *hub.Hub) {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	shared, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	one, two := hub.NewHub(nil, shared, nil, nil), hub.NewHub(nil, shared, nil, nil)
+	t.Cleanup(func() {
+		one.Stop(context.Background())
+		two.Stop(context.Background())
+		_ = shared.Close()
+	})
+	return one, two
+}
+
+func TestAdmitStreamKeepsAStreamWithItsFirstSourceAcrossReplicas(t *testing.T) {
+	t.Parallel()
+	one, two := replicaHubs(t)
+	burst := func(repeater uint) models.Packet {
+		p := makeVoicePacket(1, 42, true, false)
+		p.Repeater = repeater
+		return p
+	}
+
+	assert.True(t, one.AdmitStream(t.Context(), burst(100001), models.RepeaterTypeMMDVM))
+	assert.False(t, two.AdmitStream(t.Context(), burst(100002), models.RepeaterTypeMMDVM), "another source on another replica is a loop")
+	assert.True(t, two.AdmitStream(t.Context(), burst(100001), models.RepeaterTypeMMDVM), "the source keeps its stream when it moves to another replica")
+	assert.True(t, one.AdmitStream(t.Context(), burst(100001), models.RepeaterTypeMMDVM))
+	assert.False(t, one.AdmitStream(t.Context(), burst(100002), models.RepeaterTypeMMDVM))
+}
+
+func TestAStreamStaysWithItsSourceForTheHold(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 30*time.Second, hub.StreamClaimHold)
+	const hold, recheck = time.Second, 50 * time.Millisecond
+	one, two := replicaHubs(t)
+	one.SetStreamClaimTiming(hold, recheck)
+	two.SetStreamClaimTiming(hold, recheck)
+	ctx := t.Context()
+	burst := func(repeater uint) models.Packet {
+		p := makeVoicePacket(1, 42, true, false)
+		p.Repeater = repeater
+		return p
+	}
+	owner, copied := burst(100001), burst(100002)
+
+	for start := time.Now(); time.Since(start) < 2*hold; time.Sleep(recheck) {
+		require.True(t, one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM), "a call longer than the hold keeps its source")
+		require.False(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "a copy during the call is dropped")
+		require.False(t, one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM))
+	}
+	last := time.Now()
+
+	time.Sleep(hold * 2 / 5)
+	assert.False(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "a copy that loops back within the hold after the last burst is dropped")
+	assert.False(t, one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM))
+
+	time.Sleep(time.Until(last.Add(hold + recheck + 250*time.Millisecond)))
+	assert.True(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "after the hold with no burst from the source, dropped copies do not keep the claim")
+	assert.False(t, one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM), "the new source owns the stream on every replica")
 }
 
 func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {

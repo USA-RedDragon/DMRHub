@@ -147,27 +147,41 @@ func (s *KVClient) ListRepeaters(ctx context.Context) ([]uint, error) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.listRepeaters")
 	defer span.End()
 
-	var cursor uint64
+	keys, err := scanAll(ctx, s.kv, repeaterKeyPrefix+"*")
+	if err != nil {
+		return nil, ErrNoSuchRepeater
+	}
 	var repeaters []uint
-	for {
-		keys, _, err := s.kv.Scan(ctx, cursor, repeaterKeyPrefix+"*", 0)
+	for _, key := range keys {
+		repeaterNum, err := strconv.Atoi(strings.Replace(key, repeaterKeyPrefix, "", 1))
 		if err != nil {
-			return nil, ErrNoSuchRepeater
+			return nil, ErrCastRepeater
 		}
-		for _, key := range keys {
-			repeaterNum, err := strconv.Atoi(strings.Replace(key, repeaterKeyPrefix, "", 1))
-			if err != nil {
-				return nil, ErrCastRepeater
-			}
-			if repeaterNum < 0 {
-				return nil, ErrCastRepeater
-			}
-			repeaters = append(repeaters, uint(repeaterNum))
+		if repeaterNum < 0 {
+			return nil, ErrCastRepeater
 		}
-
-		if cursor == 0 {
-			break
-		}
+		repeaters = append(repeaters, uint(repeaterNum))
 	}
 	return repeaters, nil
+}
+
+// scanPage is how many keys scanAll asks the KV store for at a time.
+const scanPage = 1000
+
+// scanAll returns every key of store that matches match. A Redis scan
+// returns its keys in pages, and the keys that match may be on any of them.
+func scanAll(ctx context.Context, store kv.KV, match string) ([]string, error) {
+	var out []string
+	var cursor uint64
+	for {
+		keys, next, err := store.Scan(ctx, cursor, match, scanPage)
+		if err != nil {
+			return nil, fmt.Errorf("scanning %s: %w", match, err)
+		}
+		out = append(out, keys...)
+		if next == 0 {
+			return out, nil
+		}
+		cursor = next
+	}
 }

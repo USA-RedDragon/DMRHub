@@ -132,7 +132,7 @@ func InstanceDraining(ctx context.Context, store kv.KV, id string) bool {
 // live registration in KV. This is used during shutdown to decide whether to
 // send disconnect messages.
 func (r *InstanceRegistry) OtherInstancesExist(ctx context.Context) bool {
-	keys, _, err := r.kv.Scan(ctx, 0, instanceKeyPrefix+"*", 0)
+	keys, err := scanAll(ctx, r.kv, instanceKeyPrefix+"*")
 	if err != nil {
 		slog.Warn("failed to scan for other instances", "error", err)
 		// If we can't tell, be safe and send disconnect messages

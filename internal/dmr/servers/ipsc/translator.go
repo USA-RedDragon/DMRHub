@@ -277,6 +277,35 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 	return results
 }
 
+// snapshot returns the state of the call of the stream, and a state that
+// is Ended when the call ended.
+func (t *IPSCTranslator) snapshot(streamID uint32) streamSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	ss, ok := t.streams[streamID]
+	if !ok {
+		return streamSnapshot{Ended: true}
+	}
+	return streamSnapshot{CallControl: ss.callControl, RTPSeq: ss.rtpSeq, RTPTimestamp: ss.rtpTimestamp, CallSeq: ss.ipscSeq, LC: ss.lc, HaveLC: ss.haveLC}
+}
+
+// Continue makes the call of the stream go on from st, the state of the
+// translator of another replica that sent the call to the peer before.
+func (t *IPSCTranslator) Continue(streamID uint32, st streamSnapshot) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.streams[streamID] = &streamState{
+		callControl:  st.CallControl,
+		rtpSeq:       st.RTPSeq,
+		rtpTimestamp: st.RTPTimestamp,
+		ipscSeq:      st.CallSeq,
+		headersSent:  3,
+		lastActivity: time.Now(),
+		lc:           st.LC,
+		haveLC:       st.HaveLC,
+	}
+}
+
 // CleanupStream removes state for a given stream (e.g. on timeout).
 func (t *IPSCTranslator) CleanupStream(streamID uint32) {
 	t.mu.Lock()

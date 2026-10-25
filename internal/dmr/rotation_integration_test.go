@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,9 +115,35 @@ func heardMMDVM(pkts []models.Packet) heard {
 	return h
 }
 
+// checkIPSCCalls checks that the IPSC peer got every packet of each call
+// in one call, as an XPR 8400 needs it: one call control, and an RTP
+// sequence number one more than the one before on each packet.
+func checkIPSCCalls(t *testing.T, bursts []testutils.IPSCBurst, calls ...rotationCall) {
+	t.Helper()
+	for _, c := range calls {
+		var n int
+		var control uint32
+		var last uint16
+		for _, b := range bursts {
+			if b.Dst != c.tg {
+				continue
+			}
+			u, err := ipscwire.DecodeUser(b.Data)
+			require.NoError(t, err)
+			if n > 0 {
+				assert.Equal(t, control, u.CallControl, "packet %d of the call to TG %d has another call control", n, c.tg)
+				assert.Equal(t, last+1, u.RTP.Seq, "packet %d of the call to TG %d skips in the RTP sequence", n, c.tg)
+			}
+			control, last = u.CallControl, u.RTP.Seq
+			n++
+		}
+		assert.Equal(t, rotationBursts, n, "the IPSC peer got %d packets of the call to TG %d", n, c.tg)
+	}
+}
+
 // TestRotationMidCall runs two replicas behind UDPFronts, as the pods of
-// DMRHub behind Envoy Gateway, with MMDVM repeaters and an OpenBridge peer
-// on them, and two calls in progress. It then rolls the
+// DMRHub behind Envoy Gateway, with MMDVM repeaters, an IPSC peer and an
+// OpenBridge peer on them, and two calls in progress. It then rolls the
 // replicas as Kubernetes does: a new replica starts, the first one stops,
 // and then the second. No repeater or peer may log in again, and every
 // listener must get every burst of both calls once.
@@ -134,6 +161,9 @@ func TestRotationMidCall(t *testing.T) {
 		stack.AssignTS2StaticTG(t, 100002, 2)
 		stack.AssignTS1StaticTG(t, 100003, 1)
 		stack.AssignTS2StaticTG(t, 100003, 2)
+		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+		stack.AssignTS1StaticTG(t, 200001, 1)
+		stack.AssignTS2StaticTG(t, 200001, 2)
 
 		regA := testutils.Register(t, stack.Hub, stack.KV)
 		b := stack.SpawnFullReplica(t)
@@ -148,7 +178,7 @@ func TestRotationMidCall(t *testing.T) {
 		stack.SeedPeer(t, 500002, 1000001, obPassword, obAddr.IP.String(), obAddr.Port, true, true)
 		stack.SeedPeerRule(t, 500002, false, 1000001, 1000002)
 
-		fronts := testutils.Fronts{MMDVM: testutils.NewUDPFront(t)}
+		fronts := testutils.Fronts{MMDVM: testutils.NewUDPFront(t), IPSC: testutils.NewUDPFront(t)}
 		fronts.Add(t, a)
 		peer := func(id uint32, retry, timeout time.Duration) *testutils.SessionPeer {
 			p, err := testutils.NewSessionPeerTimed(id, testPassword, "", retry, timeout)
@@ -160,6 +190,10 @@ func TestRotationMidCall(t *testing.T) {
 		}
 		talkerA := peer(100001, 200*time.Millisecond, 5*time.Second)
 		slow := peer(100003, 3*time.Second, 15*time.Second)
+		ipscPeer := testutils.NewIPSCClient(200001, ipscAuthKey)
+		require.NoError(t, ipscPeer.Connect(fronts.IPSC.Addr()))
+		t.Cleanup(ipscPeer.Close)
+		require.NoError(t, ipscPeer.WaitReady(handshakeWait))
 		fronts.Add(t, b)
 		talkerB := peer(100002, 200*time.Millisecond, 5*time.Second)
 		time.Sleep(settleDuration)
@@ -191,6 +225,7 @@ func TestRotationMidCall(t *testing.T) {
 			assert.Zero(t, p.p.Downs(), "%s lost its session", p.name)
 			assert.Equal(t, 1, p.p.Ups(), "%s logged in again", p.name)
 		}
+		assert.Zero(t, ipscPeer.Downs(), "the IPSC peer lost its registration")
 
 		heardMMDVM(talkerA.Drain(settleDuration)).check(t, "repeater 100001", one.stream)
 		heardMMDVM(talkerB.Drain(settleDuration)).check(t, "repeater 100002", two.stream)
@@ -198,12 +233,14 @@ func TestRotationMidCall(t *testing.T) {
 		slowHeard.check(t, "repeater 100003", one.stream)
 		slowHeard.check(t, "repeater 100003", two.stream)
 
+		checkIPSCCalls(t, ipscPeer.Drain(settleDuration), one, two)
+
 		obHeard := heard{}
 		for _, br := range ob.DrainBridges(settleDuration) {
 			obHeard.add(uint(br.Data.Stream), uint(br.Data.Seq))
 		}
 		obHeard.check(t, "the OpenBridge peer", one.stream)
 		obHeard.check(t, "the OpenBridge peer", two.stream)
-		t.Logf("moves: MMDVM %d", fronts.MMDVM.Moves())
+		t.Logf("moves: MMDVM %d, IPSC %d", fronts.MMDVM.Moves(), fronts.IPSC.Moves())
 	})
 }

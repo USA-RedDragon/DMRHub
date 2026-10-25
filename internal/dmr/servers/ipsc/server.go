@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,13 @@ type IPSCServer struct {
 	timesClosed  bool
 	timesWG      sync.WaitGroup
 
+	// heard is when the server read the packet that it handles.
+	heard time.Time
+
+	movingMu   sync.Mutex
+	moving     map[uint32]*moving
+	stopClaims func()
+
 	wg       sync.WaitGroup
 	done     chan struct{}
 	stopped  atomic.Bool
@@ -94,7 +102,12 @@ type burst struct {
 // peerState is what DMRHub keeps for a registered peer.
 type peerState struct {
 	lastDBWrite time.Time
+	lastClaim   time.Time
 }
+
+// claimRenew is how often a peer that sends keeps the claim of this
+// replica on it alive.
+const claimRenew = time.Minute
 
 var (
 	ErrPacketIgnored  = errors.New("packet ignored")
@@ -202,6 +215,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 		Role: hub.RoleRepeater,
 	})
 	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
+	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
 
 	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
 		for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
@@ -242,6 +256,9 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		}
 		if s.unwatch != nil {
 			s.unwatch()
+		}
+		if s.stopClaims != nil {
+			s.stopClaims()
 		}
 		s.pacer.drain(pacerDrainTimeout)
 
@@ -324,6 +341,7 @@ func (s *IPSCServer) handler(ctx context.Context) {
 }
 
 func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UDPAddr) error {
+	heard := time.Now()
 	if s.stopped.Load() {
 		return ErrPacketIgnored
 	}
@@ -351,6 +369,7 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	}
 
 	s.mu.Lock()
+	s.heard = heard
 	now := s.now()
 	out := s.m.Packet(now, from, data, kp, s.out[:0])
 	if kp == nil && unregistered(out) && raw.Opcode != ipscwire.OpDeregisterRequest {
@@ -362,6 +381,11 @@ func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UD
 	s.apply(ctx, out)
 	if p, ok := s.peers[raw.ID]; ok {
 		s.updateRepeaterDBTimes(p, uint(raw.ID), false)
+		if s.hub != nil && time.Since(p.lastClaim) >= claimRenew {
+			p.lastClaim = time.Now()
+			id := uint(raw.ID)
+			s.peerJobs.Do(id, func() { s.hub.RenewOwnership(ctx, id) })
+		}
 	}
 	bursts := s.takeBursts()
 	s.mu.Unlock()
@@ -386,12 +410,21 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			}
 		case ipscsession.OutputUp:
 			slog.Info("IPSC peer registered", "peerID", o.ID)
-			p := &peerState{}
+			p := &peerState{lastClaim: time.Now()}
 			s.peers[o.ID] = p
 			s.updateRepeaterDBTimes(p, uint(o.ID), true)
 			if s.hub != nil {
-				id := uint(o.ID)
-				s.peerJobs.Do(id, func() { s.hub.ActivateRepeater(ctx, id) })
+				id, peer := uint(o.ID), o.ID
+				since := s.heard
+				if since.IsZero() {
+					since = time.Now()
+				}
+				s.peerJobs.Do(id, func() {
+					if s.hub.OwnerLeaving(ctx, id) {
+						s.awaitHandover(peer)
+					}
+					s.hub.ActivateRepeaterSince(ctx, id, since)
+				})
 			}
 		case ipscsession.OutputDown:
 			slog.Info("IPSC peer down", "peerID", o.ID, "reason", o.Reason)
@@ -515,7 +548,11 @@ func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {
 func (s *IPSCServer) consumeHubPackets() {
 	defer s.wg.Done()
 	for rp := range s.hubHandle.Packets {
-		s.sendTo(uint32(rp.RepeaterID), rp.Packet) //nolint:gosec
+		if rp.Barrier != nil {
+			close(rp.Barrier)
+			continue
+		}
+		s.route(rp)
 	}
 }
 
@@ -523,8 +560,22 @@ func (s *IPSCServer) consumeHubPackets() {
 // its own translator, so one stream sent to two peers keeps two states.
 func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
 	k := slotKey{peer: repeaterID, slot: pkt.Slot}
-	for _, frame := range s.egressTranslator(repeaterID).TranslateToIPSC(pkt) {
-		s.pacer.enqueue(k, pkt.StreamID, frame, frameEndsCall(frame), pkt)
+	t := s.egressTranslator(repeaterID)
+	frames := t.TranslateToIPSC(pkt)
+	if len(frames) == 0 {
+		return
+	}
+	var state *streamSnapshot
+	if pkt.StreamID <= math.MaxUint32 {
+		st := t.snapshot(uint32(pkt.StreamID))
+		state = &st
+	}
+	for i, frame := range frames {
+		var last *streamSnapshot
+		if i == len(frames)-1 {
+			last = state
+		}
+		s.pacer.enqueue(k, pkt.StreamID, frame, frameEndsCall(frame), pkt, last)
 	}
 }
 

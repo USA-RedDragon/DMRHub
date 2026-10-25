@@ -235,3 +235,54 @@ func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
 		assert.Empty(t, old.Drain(settleDuration), "the old session still got the call")
 	})
 }
+
+// TestIPSCMovesFromADrainingReplica drains the replica of two IPSC peers,
+// one with a key and one without, behind a UDPFront. The peers must keep
+// their registration and get the calls from the other replica.
+func TestIPSCMovesFromADrainingReplica(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+		stack.SeedIPSCRepeater(t, 200002, 1000001, "")
+		stack.AssignTS1StaticTG(t, 200001, 1)
+		stack.AssignTS1StaticTG(t, 200002, 1)
+		first := testutils.Register(t, stack.Hub, stack.KV)
+		second := stack.SpawnSecondReplica(t)
+		testutils.Register(t, second.Hub, stack.KV)
+		stack.StartServers(t)
+
+		front := testutils.NewUDPFront(t)
+		front.Add(t, stack.IPSCAddr)
+		peers := make([]*testutils.IPSCClient, 0, 2)
+		for _, p := range []struct {
+			id  uint32
+			key string
+		}{{200001, ipscAuthKey}, {200002, ""}} {
+			c := testutils.NewIPSCClient(p.id, p.key)
+			require.NoError(t, c.Connect(front.Addr()))
+			t.Cleanup(c.Close)
+			require.NoError(t, c.WaitReady(handshakeWait))
+			peers = append(peers, c)
+		}
+		talker := testutils.NewMMDVMClient(100001, "", testPassword)
+		require.NoError(t, talker.Connect(second.MMDVMAddr))
+		defer talker.Close()
+		require.NoError(t, talker.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+		front.Add(t, second.IPSCAddr)
+
+		first.MarkDraining(t.Context())
+		front.Drain(stack.IPSCAddr)
+		time.Sleep(2500 * time.Millisecond)
+		require.Equal(t, 2, front.Moves(), "the front moved both peers")
+
+		sendGroupCall(t, talker.SendDMRD, 1, 7501, false)
+		for _, c := range peers {
+			assert.Zero(t, c.Downs(), "peer %d lost its registration", c.PeerID)
+			assert.NotEmpty(t, c.Drain(drainWait), "peer %d got no call from the other replica", c.PeerID)
+		}
+	})
+}

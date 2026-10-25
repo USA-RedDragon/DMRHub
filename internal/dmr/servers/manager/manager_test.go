@@ -49,7 +49,9 @@ const (
 // call that the hub routes to the MMDVM repeater. The IPSC repeater is
 // linked to the talkgroup of the call from the start, so that the call
 // adds no subscription of its own. Each new MMDVM server
-// takes a login. Afterwards the goroutines are back to what they were.
+// takes a login. OpenBridge binds port 0 each time it comes back on, since
+// any socket on the host may take a fixed port while it is off. Afterwards
+// the goroutines are back to what they were.
 func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest // counts the goroutines of the process
 	l := testutils.SetupLiveStack(t)
 	l.SeedUser(t, 1000001, "N0CALL")
@@ -86,6 +88,7 @@ func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest /
 		next := *l.Config
 		next.DMR.MMDVM.Port = testutils.FreeUDPPort(t)
 		next.DMR.OpenBridge.Enabled = i%2 == 1
+		next.DMR.OpenBridge.Port = 0
 		require.Empty(t, l.Manager.Apply(&next))
 		*l.Config = next
 		mc.Close()

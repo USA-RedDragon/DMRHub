@@ -40,6 +40,7 @@ import (
 type replica struct {
 	hub *hub.Hub
 	reg *servers.InstanceRegistry
+	ps  pubsub.PubSub
 }
 
 // replicas returns n hubs that share a database, a KV store and pubsub,
@@ -72,7 +73,7 @@ func replicas(t *testing.T, n int) ([]replica, *gorm.DB, kv.KV) {
 			r.Deregister(context.Background())
 			h.Stop(context.Background())
 		})
-		out[i] = replica{hub: h, reg: r}
+		out[i] = replica{hub: h, reg: r, ps: ps}
 	}
 	return out, database, store
 }
@@ -211,6 +212,32 @@ func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	case id := <-gone:
 		t.Fatalf("the old owner was told of %d too", id)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestAClaimOlderThanOurOwnEndsNothing claims a repeater, and then gets a
+// claim of another replica for a packet that came before the one that made
+// this replica claim it, while the KV store still names the other replica,
+// as when that claim comes late and this replica has not yet written its
+// own. The claim is stale and must not end the new session here.
+func TestAClaimOlderThanOurOwnEndsNothing(t *testing.T) {
+	t.Parallel()
+	r, database, store := replicas(t, 2)
+	seedUser(t, database, 1000001, "N0CALL")
+	seedRepeater(t, database, 100001, 1000001)
+	ctx := context.Background()
+	two := r[1].hub
+	told := make(chan uint, 1)
+	two.OnClaimedElsewhere(func(id uint, _ time.Time) { told <- id })
+	at := time.Now()
+	two.ActivateRepeaterSince(ctx, 100001, at)
+	require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-1")))
+	msg := fmt.Sprintf("100001 replica-1 %d", at.Add(-time.Millisecond).UnixNano())
+	require.NoError(t, r[1].ps.Publish("hub:claimed", []byte(msg)))
+	select {
+	case id := <-told:
+		t.Fatalf("a claim older than this replica's own ended its session of %d", id)
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 

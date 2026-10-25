@@ -189,6 +189,9 @@ type Hub struct {
 	claimedMu   sync.Mutex
 	claimed     map[int]func(repeaterID uint, since time.Time)
 	claimedNext int
+	// claimedAt is the time of the last claim of each repeater that this
+	// replica made, set before the repeater is active here.
+	claimedAt *xsync.Map[uint, time.Time]
 }
 
 // NewHub creates a new Hub.
@@ -219,6 +222,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamPeers = xsync.NewMap[streamTarget, streamPeerSet]()
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.claimWaits = xsync.NewMap[claimWaitKey, *claimWait]()
+	h.claimedAt = xsync.NewMap[uint, time.Time]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.transcoder = transcode.NewService(kvStore)
@@ -466,6 +470,7 @@ func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
 // replica that served the repeater before since, so that it can hand over
 // what it sent after it, which a repeater that moved never got.
 func (h *Hub) ActivateRepeaterSince(ctx context.Context, repeaterID uint, since time.Time) {
+	h.claimedAt.Store(repeaterID, since)
 	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 	h.claimPeerOwnership(ctx, repeaterID, since)

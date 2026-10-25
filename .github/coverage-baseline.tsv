@@ -58,7 +58,7 @@ internal/dmr/hub/hub.go	110	93
 internal/dmr/hub/lastseen.go	75	67
 internal/dmr/hub/publishing.go	51	38
 internal/dmr/hub/repeater_cache.go	90	82
-internal/dmr/hub/routing.go	104	99
+internal/dmr/hub/routing.go	104	97
 internal/dmr/hub/slotrate.go	34	34
 internal/dmr/hub/streams.go	62	59
 internal/dmr/hub/subscription_manager.go	269	220
@@ -68,14 +68,14 @@ internal/dmr/hub/undeliverable.go	10	10
 internal/dmr/netscheduler/scheduler.go	100	20
 internal/dmr/rules/rules.go	16	14
 internal/dmr/servers/instance_registry.go	43	32
-internal/dmr/servers/ipsc/pacer.go	138	127
+internal/dmr/servers/ipsc/pacer.go	138	128
 internal/dmr/servers/ipsc/server.go	226	204
 internal/dmr/servers/ipsc/translator.go	317	280
 internal/dmr/servers/kvclient.go	71	47
 internal/dmr/servers/manager/manager.go	124	96
 internal/dmr/servers/mmdvm/options.go	130	120
 internal/dmr/servers/mmdvm/server.go	133	116
-internal/dmr/servers/mmdvm/session.go	324	275
+internal/dmr/servers/mmdvm/session.go	324	274
 internal/dmr/servers/mmdvm/transport.go	11	9
 internal/dmr/servers/mmdvm/webtransport.go	70	59
 internal/dmr/servers/openbridge/replicas.go	81	63
@@ -137,7 +137,7 @@ internal/http/setupwizard/middleware/makedb.go	11	0
 internal/http/setupwizard/middleware/setupwizard.go	6	0
 internal/http/setupwizard/routes.go	12	0
 internal/http/websocket/user.go	43	38
-internal/http/websocket/writer.go	16	13
+internal/http/websocket/writer.go	16	15
 internal/http/websocket/ws.go	93	87
 internal/kv/kv.go	6	5
 internal/kv/memory.go	175	167
@@ -151,7 +151,7 @@ internal/oauth/oauth.go	228	186
 internal/oauth/scopes.go	26	24
 internal/plugins/burst.go	36	34
 internal/plugins/cert.go	48	44
-internal/plugins/registry.go	56	48
+internal/plugins/registry.go	56	49
 internal/plugins/server.go	37	32
 internal/plugins/service.go	193	158
 internal/plugins/tracking.go	45	38

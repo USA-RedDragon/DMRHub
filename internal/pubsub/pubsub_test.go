@@ -20,8 +20,10 @@
 package pubsub_test
 
 import (
-	"fmt"
 	"context"
+	"fmt"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -429,5 +431,49 @@ func TestSubscribeIsActiveWhenItReturns(t *testing.T) {
 				t.Fatalf("%d of 200 messages published right after Subscribe were lost", missed)
 			}
 		})
+	}
+}
+
+// TestSubscribersSeeOneOrder publishes to one topic from several
+// goroutines at once. Every subscriber must get the messages in the same
+// order, as Redis delivers them, since the replicas of a hub agree on who
+// sends what by the order of the messages on one topic.
+func TestSubscribersSeeOneOrder(t *testing.T) {
+	t.Parallel()
+	ps := makeTestPubSub(t)
+	const subs, writers, each = 4, 8, 12
+	all := make([]pubsub.Subscription, 0, subs)
+	for range subs {
+		all = append(all, ps.Subscribe("order"))
+	}
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range each {
+				_ = ps.Publish("order", []byte{byte(w), byte(i)})
+			}
+		}()
+	}
+	wg.Wait()
+	var first []string
+	for n, sub := range all {
+		var got []string
+		for range writers * each {
+			select {
+			case m := <-sub.Channel():
+				got = append(got, string(m))
+			case <-time.After(time.Second):
+				t.Fatalf("subscriber %d got %d messages", n, len(got))
+			}
+		}
+		if n == 0 {
+			first = got
+			continue
+		}
+		if !slices.Equal(first, got) {
+			t.Fatalf("subscriber %d got another order than subscriber 0", n)
+		}
 	}
 }

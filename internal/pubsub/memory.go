@@ -35,9 +35,14 @@ func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {
 type inMemoryPubSub struct {
 	mu     sync.RWMutex
 	topics map[string][]*inMemorySubscription
+	// publishing makes one Publish at a time, so that every subscriber of
+	// a topic gets its messages in the same order, as with Redis.
+	publishing sync.Mutex
 }
 
 func (ps *inMemoryPubSub) Publish(topic string, message []byte) error {
+	ps.publishing.Lock()
+	defer ps.publishing.Unlock()
 	ps.mu.RLock()
 	subs := ps.topics[topic]
 	for _, sub := range subs {

@@ -132,6 +132,23 @@ func requireCodecRow(t *testing.T, stack *testutils.IntegrationStack, stream uin
 	require.Equal(t, want, got, "call row of stream %d", stream)
 }
 
+// requireCallCodec waits for the finished voice row of stream and checks
+// its codec and Codec2 mode.
+func requireCallCodec(t *testing.T, stack *testutils.IntegrationStack, stream uint, codec string, mode int) {
+	t.Helper()
+	var c models.Call
+	assert.Eventually(t, func() bool {
+		var calls []models.Call
+		if err := stack.DB.Where("stream_id = ? AND kind = ?", stream, models.CallKindVoice).Find(&calls).Error; err != nil || len(calls) != 1 {
+			return false
+		}
+		c = calls[0]
+		return !c.Active && c.Codec == codec && c.Codec2Mode == mode
+	}, tcRowWait, 50*time.Millisecond, "call row of stream %d", stream)
+	require.Equal(t, codec, c.Codec, "codec of stream %d", stream)
+	require.Equal(t, mode, c.Codec2Mode, "Codec2 mode of stream %d", stream)
+}
+
 func repeaterOf(t *testing.T, stack *testutils.IntegrationStack, id uint) models.Repeater {
 	t.Helper()
 	var r models.Repeater
@@ -139,18 +156,68 @@ func repeaterOf(t *testing.T, stack *testutils.IntegrationStack, id uint) models
 	return r
 }
 
-// requireHeard waits until timeslot 1 of the repeater id heard codec, in
-// mode.
-func requireHeard(t *testing.T, stack *testutils.IntegrationStack, id uint, codec string, mode int) models.Repeater {
+// requireSlotHeard waits until the timeslot of the Codec2 hotspot tcC2Rpt,
+// TS2 for slot2, heard codec, in mode.
+func requireSlotHeard(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, codec string, mode int) models.Repeater {
 	t.Helper()
 	var r models.Repeater
+	heard := func() (string, int) {
+		if slot2 {
+			return r.TS2HeardCodec, r.TS2HeardCodec2Mode
+		}
+		return r.TS1HeardCodec, r.TS1HeardCodec2Mode
+	}
 	assert.Eventually(t, func() bool {
-		r = repeaterOf(t, stack, id)
-		return r.TS1HeardCodec == codec && r.TS1HeardCodec2Mode == mode
+		r = repeaterOf(t, stack, tcC2Rpt)
+		c, m := heard()
+		return c == codec && m == mode
 	}, tcRowWait, 20*time.Millisecond)
-	require.Equal(t, codec, r.TS1HeardCodec, "codec heard on TS1 of %d", id)
-	require.Equal(t, mode, r.TS1HeardCodec2Mode, "Codec2 mode heard on TS1 of %d", id)
+	c, m := heard()
+	require.Equal(t, codec, c, "codec heard on TS2 %t", slot2)
+	require.Equal(t, mode, m, "Codec2 mode heard on TS2 %t", slot2)
 	return r
+}
+
+// badEmbeddedLC returns the embedded LC fragments of bursts B to E of a
+// BPTC codeword without bit errors that carries lc with a 5-bit checksum
+// that does not match it. The code is linear, so the XOR of the codewords
+// of a, b and lc^a^b carries lc with the XOR of their checksums.
+func badEmbeddedLC(t *testing.T, lc pdu.LCBytes) [4][4]byte {
+	t.Helper()
+	for k := range 64 {
+		var a, b, c [9]byte
+		a[0], b[8] = byte(k+1), byte(3*k+5)
+		for i := range c {
+			c[i] = lc[i] ^ a[i] ^ b[i]
+		}
+		fa, fb, fc := layer2.EncodeEmbeddedLC(a), layer2.EncodeEmbeddedLC(b), layer2.EncodeEmbeddedLC(c)
+		var f [4][4]byte
+		for i := range f {
+			for j := range f[i] {
+				f[i][j] = fa[i][j] ^ fb[i][j] ^ fc[i][j]
+			}
+		}
+		if got, res := layer2.DecodeEmbeddedLC(f); got == lc && res.Uncorrectable {
+			return f
+		}
+	}
+	require.FailNow(t, "no codeword with a bad checksum")
+	return [4][4]byte{}
+}
+
+// withEmbedded returns the packets of a call with the embedded LC of
+// bursts B to E of every superframe set to f.
+func withEmbedded(pkts []models.Packet, f [4][4]byte) []models.Packet {
+	out := make([]models.Packet, len(pkts))
+	for i, p := range pkts {
+		if isVoice(p) && p.DTypeOrVSeq >= 1 && p.DTypeOrVSeq <= 4 {
+			raw := layer2.RawBurst(p.DMRData)
+			raw.SetEmbeddedData(f[p.DTypeOrVSeq-1])
+			p.DMRData = raw
+		}
+		out[i] = p
+	}
+	return out
 }
 
 // badHeader returns raw, a Voice LC Header, with a bit of its LC flipped
@@ -163,14 +230,16 @@ func badHeader(raw layer2.RawBurst) layer2.RawBurst {
 }
 
 // TestCodecDetection sends calls from a hotspot and an OpenBridge peer.
-// A call is Codec2 only when it starts with a Voice LC Header with a valid
-// LC and the FID 0xC2, and the hotspot timeslot keeps that codec, and its
-// Codec2 mode, until an AMBE call. A call without a header takes the codec
-// of its timeslot; its voice bits never make it Codec2.
+// A call is Codec2 only when its Voice LC Header with a valid LC, or
+// without one its first embedded LC that passes its checksum, has the FID
+// 0xC2, and the hotspot timeslot keeps that codec, and its Codec2 mode,
+// until an AMBE call. A call without either takes the codec of its
+// timeslot and teaches nothing; its voice bits never make it Codec2.
 func TestCodecDetection(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, tcTalker, "N0CALL")
+		stack.SeedUser(t, tcOther, "N1CALL")
 		stack.SeedTalkgroup(t, tcTG, "TG")
 		stack.SeedMMDVMRepeater(t, tcC2Rpt, tcTalker, testPassword)
 		stack.SeedMMDVMRepeater(t, tcAMBERpt, tcTalker, testPassword)
@@ -197,26 +266,27 @@ func TestCodecDetection(t *testing.T) {
 			pkts := cc.tx.packets(stream)
 			send(t, c2.SendDMRD, pkts)
 			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400)})
-			r := requireHeard(t, stack, tcC2Rpt, models.CodecCodec2, int(codec2.Mode2400))
+			r := requireSlotHeard(t, stack, false, models.CodecCodec2, int(codec2.Mode2400))
 			require.NotNil(t, r.TS1HeardAt)
 			heardAt = r.TS1HeardAt
 			assert.Empty(t, r.TS2HeardCodec, "the other slot heard nothing")
 		})
 
-		step(t, "a-call-without-header-takes-the-slot-codec", func(t *testing.T) {
+		step(t, "a-call-whose-embedded-lc-fails-its-checksum-takes-the-slot-codec", func(t *testing.T) {
 			stream += 16
-			cc := voiceCall(t, tcLC(t, ts1, enums.FIDStandardized), ts1, tcAMBESlots(1))
-			send(t, c2.SendDMRD, cc.tx.packets(stream)[1:])
+			lc := tcLC(t, ts1, enums.FIDStandardized)
+			cc := voiceCall(t, lc, ts1, tcAMBESlots(1))
+			send(t, c2.SendDMRD, withEmbedded(cc.tx.packets(stream)[1:], badEmbeddedLC(t, lc)))
 			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2})
-			r := requireHeard(t, stack, tcC2Rpt, models.CodecCodec2, int(codec2.Mode2400))
-			assert.Equal(t, heardAt, r.TS1HeardAt, "a call without a header is not heard as a codec")
+			r := requireSlotHeard(t, stack, false, models.CodecCodec2, int(codec2.Mode2400))
+			assert.Equal(t, heardAt, r.TS1HeardAt, "a call without a valid LC is not heard as a codec")
 		})
 
 		ts2 := ts1
 		step(t, "a-header-that-fails-its-check-is-not-codec2", func(t *testing.T) {
 			stream += 16
 			cc := newC2Call(t, ts2, true, tcBursts, uint64(stream))
-			pkts := cc.tx.packets(stream)
+			pkts := withEmbedded(cc.tx.packets(stream), badEmbeddedLC(t, cc.lc))
 			pkts[0].DMRData = badHeader(layer2.RawBurst(pkts[0].DMRData))
 			send(t, c2.SendDMRD, pkts)
 			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecAMBE})
@@ -225,11 +295,31 @@ func TestCodecDetection(t *testing.T) {
 
 		step(t, "codec2-voice-bits-without-header-are-not-codec2", func(t *testing.T) {
 			stream += 16
-			cc := newC2Call(t, ts2, true, tcBursts, uint64(stream))
-			pkts := cc.tx.packets(stream)[1:]
-			send(t, c2.SendDMRD, pkts)
+			cc := voiceCall(t, tcLC(t, ts2, enums.FIDStandardized), ts2, c2Slots(uint64(stream), tcFrames))
+			cc.tx.slot2 = true
+			send(t, c2.SendDMRD, cc.tx.packets(stream)[1:])
 			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecAMBE})
-			assert.Empty(t, repeaterOf(t, stack, tcC2Rpt).TS2HeardCodec)
+			requireSlotHeard(t, stack, true, models.CodecAMBE, 0)
+		})
+
+		step(t, "a-codec2-call-whose-header-is-lost-is-codec2", func(t *testing.T) {
+			stream += 16
+			cc := newC2Call(t, ts2, true, tcBursts, uint64(stream))
+			send(t, c2.SendDMRD, cc.tx.packets(stream)[1:])
+			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400)})
+			requireSlotHeard(t, stack, true, models.CodecCodec2, int(codec2.Mode2400))
+		})
+
+		step(t, "a-private-codec2-call-whose-header-is-lost-is-codec2", func(t *testing.T) {
+			require.NoError(t, stack.DB.Exec("UPDATE repeaters SET ts2_heard_codec = ? WHERE id = ?", models.CodecAMBE, tcC2Rpt).Error)
+			stack.Hub.CodecChanged(tcC2Rpt)
+			stream += 16
+			c := call{dst: tcOther, src: tcTalker}
+			cc := voiceCall(t, tcLC(t, c, 0xC2), c, c2Slots(uint64(stream), tcFrames))
+			cc.tx.slot2 = true
+			send(t, c2.SendDMRD, cc.tx.packets(stream)[1:])
+			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400)})
+			requireSlotHeard(t, stack, true, models.CodecCodec2, int(codec2.Mode2400))
 		})
 
 		step(t, "an-ambe-call-clears-the-slot", func(t *testing.T) {
@@ -237,7 +327,7 @@ func TestCodecDetection(t *testing.T) {
 			cc := voiceCall(t, tcLC(t, ts1, enums.FIDStandardized), ts1, tcAMBESlots(2))
 			send(t, c2.SendDMRD, cc.tx.packets(stream))
 			requireCodecRow(t, stack, stream, tcRow{codec: models.CodecAMBE})
-			r := requireHeard(t, stack, tcC2Rpt, models.CodecAMBE, int(codec2.Mode2400))
+			r := requireSlotHeard(t, stack, false, models.CodecAMBE, int(codec2.Mode2400))
 			require.NotNil(t, r.TS1HeardAt)
 			assert.True(t, r.TS1HeardAt.After(*heardAt))
 			assert.Equal(t, models.CodecAMBE, r.SlotCodec(false))

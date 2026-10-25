@@ -247,9 +247,10 @@ func (n *tcNet) send(t *testing.T, c *testutils.MMDVMClient, cc c2Call, stream u
 // A Codec2 call reaches every AMBE target, IPSC and the AMBE-only peer
 // converted once, and the Codec2 targets unchanged; an AMBE call reaches
 // the Codec2 timeslots converted once, in the Codec2 mode last heard on
-// them. A slot is Codec2 only after a call with a Codec2 header, never
-// from its voice bits, and an AMBE call clears it. When the AMBE server stops answering, the audio
-// goes out as silence and the call row counts it.
+// them. A slot is Codec2 only after a call with a Codec2 header, or one
+// whose header is lost with a Codec2 embedded LC, never from its voice
+// bits, and an AMBE call clears it. When the AMBE server stops answering,
+// the audio goes out as silence and the call row counts it.
 func TestTranscoding(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -329,7 +330,7 @@ func TestTranscoding(t *testing.T) {
 			before := n.heard(t, tcAMBETalkRpt)
 			c := call{group: true, dst: tcTG, src: tcOther}
 			stream := n.nextStream()
-			cc := newC2Call(t, c, false, tcBursts, uint64(stream))
+			cc := voiceCall(t, tcLC(t, c, enums.FIDStandardized), c, c2Slots(uint64(stream), tcFrames))
 			sent := cc.tx.packets(stream)[1:]
 			sendC2(t, n.ambeTalk.SendDMRD, sent)
 			g := n.drain(callWait(sent))
@@ -337,8 +338,29 @@ func TestTranscoding(t *testing.T) {
 			require.Len(t, ofStream(g.c2Listen, stream), len(sent), "the Codec2 slot gets the call as AMBE converted")
 			n.requireRow(t, stream, tcRow{codec: models.CodecAMBE, sentCodec2: 1})
 			after := n.heard(t, tcAMBETalkRpt)
-			assert.Equal(t, models.CodecAMBE, after.TS1HeardCodec, "a call without a header must not make the slot Codec2")
-			assert.Equal(t, before.TS1HeardAt, after.TS1HeardAt)
+			assert.Equal(t, models.CodecAMBE, before.TS1HeardCodec)
+			assert.Equal(t, models.CodecAMBE, after.TS1HeardCodec, "Codec2 voice bits must not make the slot Codec2")
+		})
+
+		step(t, "a-codec2-call-whose-header-is-lost-teaches-the-slot", func(t *testing.T) {
+			require.Equal(t, models.CodecAMBE, n.heard(t, tcC2Rpt).TS1HeardCodec)
+			stream := n.nextStream()
+			cc := newC2Call(t, group, false, tcBursts, uint64(stream))
+			sent := cc.tx.packets(stream)[1:]
+			sendC2(t, n.c2.SendDMRD, sent)
+			g := n.drain(callWait(sent))
+			got := ofStream(g.ambeListen, stream)
+			require.Len(t, got, len(sent))
+			requireEmbeddedLC(t, got[12:], lc0)
+			requireCallCodec(t, stack, stream, models.CodecCodec2, int(codec2.Mode2400))
+			requireSlotHeard(t, stack, false, models.CodecCodec2, int(codec2.Mode2400))
+
+			before := n.ambe.Decodes()
+			sent, g, cc, stream = ambeCall(t, n.ambeTalk, tcOther, 4)
+			lc2 := cc.lc
+			lc2.SetFID(0xC2)
+			requireCopy(t, sent, ofStream(g.c2, stream), tcC2Rpt, lc2, codec2CopySlots(t, codec2.Mode2400, cc.slots))
+			assert.Equal(t, tcFrames, n.ambe.Decodes()-before, "the AMBE call was not converted once")
 		})
 
 		step(t, "a-terminator-that-fails-its-check-reaches-every-target", func(t *testing.T) {
@@ -434,6 +456,85 @@ func TestTranscodingPrivateCall(t *testing.T) {
 		lc2.SetFID(0xC2)
 		requireCopy(t, sent, ofStream(g.c2, stream), tcC2Rpt, lc2, codec2CopySlots(t, codec2.Mode2400, rc.slots))
 		n.requireRow(t, stream, tcRow{codec: models.CodecAMBE, sentCodec2: 1})
+	})
+}
+
+// TestTranscodingPrivateCallWithoutHeader sends a private Codec2 call
+// whose Voice LC Header is lost from the Codec2 hotspot, whose timeslot is
+// AMBE. The embedded LC makes the call Codec2 and teaches the timeslot, so
+// the AMBE reply reaches the caller converted to Codec2.
+func TestTranscodingPrivateCallWithoutHeader(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		n := newTCNet(t, stack)
+		keyUp(t, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
+		n.drain(300 * time.Millisecond)
+
+		c := call{dst: tcOther, src: tcTalker}
+		stream := n.nextStream()
+		cc := voiceCall(t, tcLC(t, c, 0xC2), c, c2Slots(uint64(stream), tcFrames))
+		sent := cc.tx.packets(stream)[1:]
+		sendC2(t, n.c2.SendDMRD, sent)
+		g := n.drain(callWait(sent))
+		lc0 := cc.lc
+		lc0.SetFID(enums.FIDStandardized)
+		got := ofStream(g.ambeTalk, stream)
+		require.Len(t, got, len(sent))
+		requireEmbeddedLC(t, got[12:], lc0)
+		requireCallCodec(t, stack, stream, models.CodecCodec2, int(codec2.Mode2400))
+		requireSlotHeard(t, stack, false, models.CodecCodec2, int(codec2.Mode2400))
+
+		r := call{dst: tcTalker, src: tcOther}
+		stream = n.nextStream()
+		rc := voiceCall(t, tcLC(t, r, enums.FIDStandardized), r, tcAMBESlots(9))
+		sent, g = n.send(t, n.ambeTalk, rc, stream)
+		lc2 := rc.lc
+		lc2.SetFID(0xC2)
+		requireCopy(t, sent, ofStream(g.c2, stream), tcC2Rpt, lc2, codec2CopySlots(t, codec2.Mode2400, rc.slots))
+		n.requireRow(t, stream, tcRow{codec: models.CodecAMBE, sentCodec2: 1})
+	})
+}
+
+// TestTranscodingParrotWithoutHeader calls the parrot with a Codec2 call
+// whose Voice LC Header is lost, from a timeslot that was AMBE. The reply
+// must reach the caller in Codec2, as the parrot recorded it.
+func TestTranscodingParrotWithoutHeader(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		n := newTCNet(t, stack)
+		runParrot(t, stack)
+		c := call{dst: uint32(parrotID), src: tcTalker}
+		stream := n.nextStream()
+		cc := voiceCall(t, tcLC(t, c, 0xC2), c, c2Slots(uint64(stream), tcFrames))
+		sent := cc.tx.packets(stream)[1:]
+		sendC2(t, n.c2.SendDMRD, sent)
+
+		var reply []models.Packet
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			got := ofCall(n.c2.Drain(time.Second), parrotID, tcTalker)
+			reply = append(reply, got...)
+			if len(reply) > 0 && len(got) == 0 {
+				break
+			}
+		}
+		require.Greater(t, len(reply), 2, "reply packets")
+
+		want := cc.lc
+		require.NoError(t, want.SetCall(false, tcTalker, uint32(parrotID)))
+		requireC2LC(t, layer2.RawBurst(reply[0].DMRData), enums.DataTypeVoiceLCHeader, want)
+		requireC2LC(t, layer2.RawBurst(reply[len(reply)-1].DMRData), enums.DataTypeTerminatorWithLC, want)
+		recorded := map[[9]byte]bool{}
+		for _, s := range cc.slots {
+			recorded[s] = true
+		}
+		for i, p := range reply[1 : len(reply)-1] {
+			require.True(t, isVoice(p), "packet %d is not voice", i+1)
+			for k, s := range layer2.RawBurst(p.DMRData).VoiceSlots() {
+				require.True(t, recorded[s], "packet %d slot %d %x is not a recorded Codec2 slot", i+1, k, s)
+			}
+		}
+		requireCallCodec(t, stack, stream, models.CodecCodec2, int(codec2.Mode2400))
 	})
 }
 

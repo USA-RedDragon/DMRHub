@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder/codec2"
 )
 
@@ -48,6 +49,8 @@ const (
 type streamCodec struct {
 	codec     transcode.Codec
 	header    bool
+	embedded  bool
+	lcs       transcode.EmbeddedCodec
 	encrypted bool
 	learns    bool
 	repeater  uint
@@ -86,12 +89,14 @@ type heardNote struct {
 
 // observeCodec sets packet.Codec to the codec of its stream, which the
 // Voice LC Header of the stream decides: Codec2 for the FID 0xC2, AMBE
-// for any other. A stream without a header takes the codec of the
-// timeslot it comes from, and AMBE from a network peer. A header from a
-// repeater timeslot records the codec on the timeslot, and the Codec2
-// mode that the frames of a Codec2 call show. A call without a header
-// teaches nothing. It returns nil for a burst of a stream that has had no
-// voice.
+// for any other. A stream without a valid header takes the codec from the
+// first embedded voice LC that passes its checksum, in the same way; its
+// bursts before that LC take the codec of the timeslot they come from, and
+// AMBE from a network peer. A header later in the stream still decides.
+// The LC that decides the codec of a call from a repeater timeslot records
+// the codec on the timeslot, and the Codec2 mode that the frames of a
+// Codec2 call show. A call without such an LC teaches nothing. It returns
+// nil for a burst of a stream that has had no voice.
 func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCodec {
 	now := time.Now()
 	voice := transcode.IsVoice(packet) || isVoiceLC(packet)
@@ -118,14 +123,11 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 	}
 	if codec, lc, ok := transcode.HeaderCodec(packet); ok && !sc.header {
 		sc.header = true
-		if sc.codec != codec {
-			sc.setTranscoder(nil)
-			sc.needAt = time.Time{}
-		}
-		sc.codec = codec
-		sc.encrypted = transcode.Encrypted(lc)
-		if sc.learns {
-			h.noteHeard(heardNote{repeater: sc.repeater, slot: sc.slot, codec: codec, at: now})
+		h.decideCodec(sc, codec, lc, now)
+	} else if !sc.header && !sc.embedded {
+		if codec, lc, ok := sc.lcs.Add(packet); ok {
+			sc.embedded = true
+			h.decideCodec(sc, codec, lc, now)
 		}
 	}
 	if dt, ok := transcode.DataTypeOf(packet); ok && dt == enums.DataTypePIHeader {
@@ -138,7 +140,7 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		sc.codec = h.slotCodec(sc)
 	}
 	packet.Codec = uint8(sc.codec)
-	if sc.header && sc.codec == transcode.CodecCodec2 && transcode.IsVoice(packet) && sc.mode == codec2.ModeAuto {
+	if (sc.header || sc.embedded) && sc.codec == transcode.CodecCodec2 && transcode.IsVoice(packet) && sc.mode == codec2.ModeAuto {
 		for _, s := range layer2.RawBurst(packet.DMRData).VoiceSlots() {
 			sc.det.Add(s)
 		}
@@ -155,6 +157,23 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		h.noteCallCodec(packet, sc)
 	}
 	return sc
+}
+
+// decideCodec makes codec, from the voice LC lc of a header or of the
+// embedded LC, the codec of the stream and of its call row, and records it
+// on the timeslot of a stream that teaches it.
+func (h *Hub) decideCodec(sc *streamCodec, codec transcode.Codec, lc pdu.LCBytes, now time.Time) {
+	if sc.codec != codec {
+		sc.setTranscoder(nil)
+		sc.needAt = time.Time{}
+		sc.mode, sc.det = codec2.ModeAuto, transcode.ModeDetector{}
+		sc.noted = false
+	}
+	sc.codec = codec
+	sc.encrypted = transcode.Encrypted(lc)
+	if sc.learns {
+		h.noteHeard(heardNote{repeater: sc.repeater, slot: sc.slot, codec: codec, at: now})
+	}
 }
 
 func (h *Hub) noteCallCodec(packet *models.Packet, sc *streamCodec) {

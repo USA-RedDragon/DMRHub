@@ -74,7 +74,7 @@ var memoryDBs atomic.Uint64
 
 func useMemoryDB(cfg *config.Config) {
 	cfg.Database.Database = fmt.Sprintf("file:testdb_%d", memoryDBs.Add(1))
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}
 }
 
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {

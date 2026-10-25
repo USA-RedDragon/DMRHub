@@ -140,11 +140,16 @@ func setup(t *testing.T) *gin.Engine {
 	group(5, models.CallKindCSBK, "preamble", bob)
 
 	rptr := aliceRptr
+	registered := func(id uint) *uint {
+		if id != alice && id != bob {
+			return nil
+		}
+		return &id
+	}
 	priv := func(i int, src, dst uint) {
-		toUser := dst
 		require.NoError(t, database.Create(&models.Call{
 			StreamID: uint(i), StartTime: base.Add(time.Duration(i) * time.Minute), Kind: models.CallKindVoice,
-			SourceID: src, UserID: &src, RepeaterID: &rptr, IngressID: rptr, DestinationID: dst, IsToUser: true, ToUserID: &toUser,
+			SourceID: src, UserID: registered(src), RepeaterID: &rptr, IngressID: rptr, DestinationID: dst, IsToUser: true, ToUserID: registered(dst),
 		}).Error)
 	}
 	priv(10, bob, alice)

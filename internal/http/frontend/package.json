@@ -46,7 +46,7 @@
     "@cypress/code-coverage": "4.0.3",
     "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "4.3.3",
-    "@tsconfig/node22": "22.0.6",
+    "@tsconfig/node24": "24.0.0",
     "@types/jsdom": "30.0.0",
     "@unhead/vue": "3.4.3",
     "@vitejs/plugin-vue": "6.0.10",

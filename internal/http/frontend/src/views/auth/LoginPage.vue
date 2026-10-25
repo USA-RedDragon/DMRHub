@@ -142,7 +142,12 @@ export default {
             this.userStore.admin = res.data.admin;
             this.userStore.superAdmin = res.data.superAdmin;
             this.userStore.created_at = res.data.created_at;
+            this.userStore.mustChangePassword = res.data.must_change_password === true;
             this.userStore.loggedIn = true;
+            if (this.userStore.mustChangePassword) {
+              this.$router.push('/settings');
+              return;
+            }
             this.$router.push(safeNext(this.$route.query.next));
           });
         })

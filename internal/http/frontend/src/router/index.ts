@@ -17,8 +17,23 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router';
 import { routes, setupwizardRoutes } from './routes';
+import { useUserStore } from '@/store';
+
+const passwordPages = ['/settings', '/login', '/forgot-password', '/reset-password'];
+
+/**
+ * Sends a user whose password an admin set to Settings, until they choose
+ * their own password there.
+ */
+export function ownPasswordGuard(to: RouteLocationNormalized) {
+  const user = useUserStore();
+  if (user.loggedIn && user.mustChangePassword && !passwordPages.includes(to.path)) {
+    return { path: '/settings' };
+  }
+  return true;
+}
 
 export default (setupwizard: boolean) => {
   if (setupwizard) {
@@ -32,6 +47,7 @@ export default (setupwizard: boolean) => {
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: routes(),
   });
+  router.beforeEach(ownPasswordGuard);
 
   return router;
 };

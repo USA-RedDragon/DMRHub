@@ -30,9 +30,9 @@
     </Card>
 
     <template v-else-if="state === 'ready'">
-      <PasswordCard :user-id="userID" />
+      <PasswordCard :user-id="userID" :must-change="mustChange" @changed="onPasswordChanged" />
 
-      <Card data-test="sms-storage-card">
+      <Card v-if="!mustChange" data-test="sms-storage-card">
         <CardHeader>
           <CardTitle>SMS Storage</CardTitle>
           <CardDescription>Show the text messages sent to and from your radio IDs on the Messages page.</CardDescription>
@@ -76,7 +76,7 @@
         </CardContent>
       </Card>
 
-      <Card data-test="radio-ids-card">
+      <Card v-if="!mustChange" data-test="radio-ids-card">
         <CardHeader>
           <CardTitle>Radio IDs</CardTitle>
           <CardDescription>
@@ -141,7 +141,7 @@
         </CardContent>
       </Card>
 
-      <AppsCard />
+      <AppsCard v-if="!mustChange" />
     </template>
 
     <Card v-else-if="state === 'error'">
@@ -178,6 +178,7 @@ import {
   type RadioID,
 } from '@/services/settings';
 import { getMe } from '@/services/password';
+import { useUserStore } from '@/store';
 
 useHead({ title: 'Settings' });
 
@@ -187,6 +188,8 @@ const privacyText =
 
 const state = ref<'loading' | 'anon' | 'ready' | 'error'>('loading');
 const userID = ref(0);
+const mustChange = ref(false);
+const userStore = useUserStore();
 const smsStorage = ref(false);
 const confirmOff = ref(false);
 const justEnabled = ref(false);
@@ -203,6 +206,12 @@ const load = async () => {
   try {
     const me = await getMe();
     userID.value = me.id;
+    mustChange.value = me.must_change_password === true;
+    userStore.mustChangePassword = mustChange.value;
+    if (mustChange.value) {
+      state.value = 'ready';
+      return;
+    }
     const [settings, ids] = await Promise.all([getSettings(), getRadioIDs()]);
     smsStorage.value = settings.sms_storage;
     radioIDs.value = ids;
@@ -288,6 +297,15 @@ const remove = async (id: number) => {
   } finally {
     saving.value = false;
   }
+};
+
+const onPasswordChanged = () => {
+  if (!mustChange.value) {
+    return;
+  }
+  mustChange.value = false;
+  userStore.mustChangePassword = false;
+  load();
 };
 
 onMounted(load);

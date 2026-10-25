@@ -28,6 +28,7 @@ interface UserState {
   superAdmin: boolean;
   created_at: string;
   hasOpenBridgePeers: boolean;
+  mustChangePassword: boolean;
 }
 
 interface SettingsState {
@@ -46,6 +47,7 @@ export const useUserStore = defineStore('user', {
     superAdmin: false,
     created_at: '',
     hasOpenBridgePeers: false,
+    mustChangePassword: false,
   }),
   getters: {},
   actions: {},

@@ -61,6 +61,7 @@ const fetchData = () => {
       userStore.admin = res.data.admin;
       userStore.superAdmin = res.data.superAdmin;
       userStore.created_at = res.data.created_at;
+      userStore.mustChangePassword = res.data.must_change_password === true;
       userStore.loggedIn = true;
     })
     .catch(() => {

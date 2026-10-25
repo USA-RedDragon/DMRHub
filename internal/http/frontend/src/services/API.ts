@@ -36,6 +36,12 @@ instance.interceptors.response.use(
     }
 
     const status = error.response.status;
+    if (status === 403 && error.response.data?.must_change_password === true) {
+      if (window.location.pathname !== '/settings') {
+        window.location.pathname = '/settings';
+      }
+      return Promise.reject(error);
+    }
     if (
       window.location.pathname !== '/login' &&
       window.location.pathname !== '/' &&

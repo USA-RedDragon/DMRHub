@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/services/API', () => ({
   default: {
@@ -73,6 +74,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
+    setActivePinia(createPinia());
   });
 
   it('asks a visitor who is not logged in to log in', async () => {

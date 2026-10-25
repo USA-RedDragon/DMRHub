@@ -24,7 +24,15 @@
     <CardHeader>
       <CardTitle>Password</CardTitle>
     </CardHeader>
-    <CardContent>
+    <CardContent class="flex flex-col gap-4">
+      <p
+        v-if="mustChange"
+        role="alert"
+        class="rounded-lg border border-yellow-500/50 bg-yellow-500/10 px-4 py-3 text-sm"
+        data-test="password-must-change"
+      >
+        An admin set a temporary password for you. Choose your own password to keep using DMRHub.
+      </p>
       <form class="flex flex-col gap-4" novalidate @submit.prevent="submit">
         <div class="flex min-w-0 flex-col gap-1">
           <label for="pw-current" class="text-sm">Current password</label>
@@ -58,7 +66,7 @@ import { Input as ShadInput } from '@/components/ui/input';
 import { changePassword } from '@/services/password';
 import { errorText } from '@/services/settings';
 
-const props = defineProps<{ userId: number }>();
+const props = defineProps<{ userId: number; mustChange?: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
 
 const current = ref('');

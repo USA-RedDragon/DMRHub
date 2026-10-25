@@ -19,7 +19,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -152,18 +151,16 @@ func sendReset(c *gin.Context, db *gorm.DB, limits *ResetLimits, name string, no
 }
 
 func findResetUser(db *gorm.DB, name string) (models.User, bool, error) {
-	var user models.User
-	err := db.Where("username = ?", name).First(&user).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		err = db.Where("callsign = ?", strings.ToUpper(name)).First(&user).Error
+	for _, q := range []struct{ column, value string }{{"username", name}, {"callsign", strings.ToUpper(name)}} {
+		var users []models.User
+		if err := db.Where(q.column+" = ?", q.value).Limit(1).Find(&users).Error; err != nil {
+			return models.User{}, false, fmt.Errorf("could not find user %q: %w", name, err)
+		}
+		if len(users) == 1 {
+			return users[0], true, nil
+		}
 	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return models.User{}, false, nil
-	}
-	if err != nil {
-		return models.User{}, false, fmt.Errorf("could not find user %q: %w", name, err)
-	}
-	return user, true, nil
+	return models.User{}, false, nil
 }
 
 // POSTResetPasswordCheck answers the callsign of the account of a working

@@ -22,7 +22,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -71,23 +70,29 @@ func CreatePasswordReset(db *gorm.DB, id uint, now time.Time) (string, error) {
 // PasswordResetUser returns the user of the link token, and false when
 // the link does not work at now.
 func PasswordResetUser(db *gorm.DB, token string, now time.Time) (User, bool, error) {
-	var reset PasswordReset
-	err := db.Where("token_hash = ? AND expires_at > ?", hashPasswordResetToken(token), now.UTC()).First(&reset).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return User{}, false, nil
+	reset, found, err := workingPasswordReset(db, token, now)
+	if err != nil || !found {
+		return User{}, false, err
 	}
-	if err != nil {
-		return User{}, false, fmt.Errorf("could not find a password reset: %w", err)
-	}
-	var user User
-	err = db.First(&user, reset.UserID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return User{}, false, nil
-	}
-	if err != nil {
+	var users []User
+	if err := db.Where("id = ?", reset.UserID).Limit(1).Find(&users).Error; err != nil {
 		return User{}, false, fmt.Errorf("could not find the user of a password reset: %w", err)
 	}
-	return user, true, nil
+	if len(users) == 0 {
+		return User{}, false, nil
+	}
+	return users[0], true, nil
+}
+
+func workingPasswordReset(db *gorm.DB, token string, now time.Time) (PasswordReset, bool, error) {
+	var resets []PasswordReset
+	if err := db.Where("token_hash = ? AND expires_at > ?", hashPasswordResetToken(token), now.UTC()).Limit(1).Find(&resets).Error; err != nil {
+		return PasswordReset{}, false, fmt.Errorf("could not find a password reset: %w", err)
+	}
+	if len(resets) == 0 {
+		return PasswordReset{}, false, nil
+	}
+	return resets[0], true, nil
 }
 
 // ResetPassword gives the user of the link token the password hash hash,
@@ -96,13 +101,9 @@ func PasswordResetUser(db *gorm.DB, token string, now time.Time) (User, bool, er
 func ResetPassword(db *gorm.DB, token, hash string, now time.Time) (uint, bool, error) {
 	var id uint
 	err := db.Transaction(func(tx *gorm.DB) error {
-		var reset PasswordReset
-		err := tx.Where("token_hash = ? AND expires_at > ?", hashPasswordResetToken(token), now.UTC()).First(&reset).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("could not find a password reset: %w", err)
+		reset, found, err := workingPasswordReset(tx, token, now)
+		if err != nil || !found {
+			return err
 		}
 		used := tx.Where("id = ?", reset.ID).Delete(&PasswordReset{})
 		if used.Error != nil {

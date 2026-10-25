@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
@@ -82,6 +83,7 @@ type Server struct {
 	Tracer        trace.Tracer
 
 	DB       *gorm.DB
+	peers    *lookup.Cache[struct{}, peerTable]
 	pubsub   pubsub.PubSub
 	hub      *hub.Hub
 	serverID uint32
@@ -102,6 +104,52 @@ type Server struct {
 	kv     kv.KV
 	id     string
 	leader atomic.Bool
+}
+
+type peerTable struct {
+	byID map[uint]*knownPeer
+	all  []*knownPeer
+}
+
+type knownPeer struct {
+	models.Peer
+	ingress []models.PeerRule
+	egress  []models.PeerRule
+}
+
+func loadPeerTable(db *gorm.DB) (peerTable, error) {
+	peers, err := models.ListPeers(db)
+	if err != nil {
+		return peerTable{}, fmt.Errorf("listing peers: %w", err)
+	}
+	t := peerTable{byID: make(map[uint]*knownPeer, len(peers))}
+	for _, p := range peers {
+		k := &knownPeer{Peer: p}
+		if p.Ingress {
+			if k.ingress, err = models.ListIngressRulesForPeer(db, p.ID); err != nil {
+				return peerTable{}, fmt.Errorf("listing the ingress rules of peer %d: %w", p.ID, err)
+			}
+		}
+		if p.Egress {
+			if k.egress, err = models.ListEgressRulesForPeer(db, p.ID); err != nil {
+				return peerTable{}, fmt.Errorf("listing the egress rules of peer %d: %w", p.ID, err)
+			}
+		}
+		t.byID[p.ID] = k
+		t.all = append(t.all, k)
+	}
+	return t, nil
+}
+
+func (s *Server) peerTable() (peerTable, error) {
+	if s.peers == nil {
+		return loadPeerTable(s.DB)
+	}
+	t, err := s.peers.Get(struct{}{})
+	if err != nil {
+		return peerTable{}, fmt.Errorf("looking up the peers: %w", err)
+	}
+	return t, nil
 }
 
 // quench is a stream that a peer asked with a BCSQ not to get.
@@ -218,6 +266,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		hub:           hub,
 		Server:        server,
 		DB:            db,
+		peers:         lookup.New("openbridge peers", lookup.TTL, func(struct{}) (peerTable, error) { return loadPeerTable(db) }),
 		pubsub:        pubsub,
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		serverID:      config.DMR.OpenBridge.ServerID,
@@ -408,11 +457,17 @@ func (s *Server) sendNow(ctx context.Context, peerID uint, packet models.Packet,
 		return
 	}
 	slog.Debug("Sending OpenBridge packet", "packet", packet.String(), "peerID", peerID)
-	peer, err := models.FindPeerByID(s.DB, peerID)
+	table, err := s.peerTable()
 	if err != nil {
 		slog.Error("Error getting peer from DB", "peerID", peerID, "error", err)
 		return
 	}
+	known, ok := table.byID[peerID]
+	if !ok {
+		slog.Error("Error getting peer from DB", "peerID", peerID, "error", gorm.ErrRecordNotFound)
+		return
+	}
+	peer := known.Peer
 	// OpenBridge is always TS1
 	packet.Slot = false
 	packet.Repeater = peerID
@@ -475,21 +530,17 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	peerID := uint(bridge.Data.Repeater)
 	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)
 
-	exists, err := models.PeerIDExists(s.DB, peerID)
+	table, err := s.peerTable()
 	if err != nil {
 		slog.Error("Failed to check peer existence", "peerID", peerID, "error", err)
 		return
 	}
-	if !exists {
+	known, ok := table.byID[peerID]
+	if !ok {
 		slog.Error("Unknown peer ID", "peerID", peerID)
 		return
 	}
-
-	peer, err := models.FindPeerByID(s.DB, peerID)
-	if err != nil {
-		slog.Error("Failed to find peer", "peerID", peerID, "error", err)
-		return
-	}
+	peer := known.Peer
 
 	b, err := s.bridgeFor(peer)
 	if err != nil {
@@ -520,12 +571,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		}
 	}
 
-	should, err := rules.PeerShouldIngress(s.DB, &peer, &packet)
-	if err != nil {
-		slog.Error("Failed to check peer ingress rules", "peerID", peerID, "error", err)
-		return
-	}
-	if !should {
+	if !peer.Ingress || !rules.IngressAllows(known.ingress, &packet) {
 		return
 	}
 
@@ -535,21 +581,11 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	}
 
 	// We need to send this packet to all peers except the one that sent it
-	peers, err := models.ListPeers(s.DB)
-	if err != nil {
-		slog.Error("Failed to list peers", "error", err)
-		return
-	}
-	for _, p := range peers {
+	for _, p := range table.all {
 		if p.ID == peerID {
 			continue
 		}
-		should, err := rules.PeerShouldEgress(s.DB, p, &packet)
-		if err != nil {
-			slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
-			continue
-		}
-		if should {
+		if p.Egress && rules.EgressAllows(p.egress, &packet) {
 			s.sendPacketToPeer(ctx, p.ID, packet, org)
 		}
 	}
@@ -569,12 +605,13 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 // whose key signed it. A BCSQ asks not to get a stream; BCKA, BCST and BCVE
 // change nothing here.
 func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
-	peers, err := models.ListPeers(s.DB)
+	table, err := s.peerTable()
 	if err != nil {
 		slog.Error("Failed to list peers", "error", err)
 		return
 	}
-	for _, p := range peers {
+	for _, k := range table.all {
+		p := k.Peer
 		if remoteAddr == nil || p.IP != remoteAddr.IP.String() || (p.Port != 0 && p.Port != remoteAddr.Port) {
 			continue
 		}

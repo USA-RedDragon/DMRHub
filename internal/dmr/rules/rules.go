@@ -54,11 +54,18 @@ func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (b
 		if err != nil {
 			return false, fmt.Errorf("failed to list ingress rules for peer %d: %w", peer.ID, err)
 		}
-		for _, rule := range ingressRules {
-			if rule.SubjectIDMin <= packet.Dst && rule.SubjectIDMax >= packet.Dst {
-				return true, nil
-			}
-		}
+		return IngressAllows(ingressRules, packet), nil
 	}
 	return false, nil
+}
+
+// IngressAllows reports whether one of the ingress rules of a peer covers
+// the destination of packet.
+func IngressAllows(ingressRules []models.PeerRule, packet *models.Packet) bool {
+	for _, rule := range ingressRules {
+		if rule.SubjectIDMin <= packet.Dst && rule.SubjectIDMax >= packet.Dst {
+			return true
+		}
+	}
+	return false
 }

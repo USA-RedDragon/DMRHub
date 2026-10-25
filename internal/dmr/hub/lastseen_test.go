@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -197,15 +198,38 @@ func TestPrivateStreamKeepsItsTargetWhenTheRadioMoves(t *testing.T) {
 	expectAt(t, srv, 100004, "a new stream goes where the radio is now")
 }
 
-func countTableQueries(t *testing.T, database *gorm.DB, table string) *atomic.Int64 {
+// queryCount counts the queries of a table from the time it was made.
+type queryCount struct {
+	n    *atomic.Int64
+	base int64
+}
+
+func (c queryCount) Load() int64 {
+	return c.n.Load() - c.base
+}
+
+// countedQueries holds the query counters of each test database, which
+// makeTestHubWrapping registers before the hub runs, as a gorm callback
+// may not be registered while other goroutines query.
+var countedQueries = xsync.NewMap[*gorm.DB, *xsync.Map[string, *atomic.Int64]]() //nolint:gochecknoglobals // the counters of the databases of all the tests of the package
+
+func registerQueryCounter(t testing.TB, database *gorm.DB) {
 	t.Helper()
-	var n atomic.Int64
-	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_"+table, func(tx *gorm.DB) {
-		if tx.Statement.Table == table {
-			n.Add(1)
-		}
+	tables := xsync.NewMap[string, *atomic.Int64]()
+	countedQueries.Store(database, tables)
+	t.Cleanup(func() { countedQueries.Delete(database) })
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_tables", func(tx *gorm.DB) {
+		n, _ := tables.LoadOrStore(tx.Statement.Table, &atomic.Int64{})
+		n.Add(1)
 	}))
-	return &n
+}
+
+func countTableQueries(t *testing.T, database *gorm.DB, table string) queryCount {
+	t.Helper()
+	tables, ok := countedQueries.Load(database)
+	require.True(t, ok, "the database counts no queries")
+	c, _ := tables.LoadOrStore(table, &atomic.Int64{})
+	return queryCount{n: c, base: c.Load()}
 }
 
 func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {

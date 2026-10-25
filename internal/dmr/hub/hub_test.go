@@ -89,6 +89,7 @@ func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
+	registerQueryCounter(t, database)
 
 	inner, err := pubsub.MakePubSub(context.Background(), &defConfig)
 	require.NoError(t, err)

@@ -30,6 +30,8 @@
     </Card>
 
     <template v-else-if="state === 'ready'">
+      <PasswordCard :user-id="userID" />
+
       <Card data-test="sms-storage-card">
         <CardHeader>
           <CardTitle>SMS Storage</CardTitle>
@@ -163,6 +165,7 @@ import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppsCard from '@/components/users/AppsCard.vue';
+import PasswordCard from '@/components/users/PasswordCard.vue';
 import { badgeClass } from '@/lib/badge';
 import {
   addRadioID,
@@ -174,6 +177,7 @@ import {
   setSMSStorage,
   type RadioID,
 } from '@/services/settings';
+import { getMe } from '@/services/password';
 
 useHead({ title: 'Settings' });
 
@@ -182,6 +186,7 @@ const privacyText =
   'Messages page, up to the 250 newest in each box.';
 
 const state = ref<'loading' | 'anon' | 'ready' | 'error'>('loading');
+const userID = ref(0);
 const smsStorage = ref(false);
 const confirmOff = ref(false);
 const justEnabled = ref(false);
@@ -196,6 +201,8 @@ const shortDate = (value: string) => format(new Date(value), 'MMM d, h:mm a');
 
 const load = async () => {
   try {
+    const me = await getMe();
+    userID.value = me.id;
     const [settings, ids] = await Promise.all([getSettings(), getRadioIDs()]);
     smsStorage.value = settings.sms_storage;
     radioIDs.value = ids;

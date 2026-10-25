@@ -47,6 +47,9 @@ const privacy =
 
 function serve(smsStorage: boolean, ids = [accountID, addedID]) {
   mockAPI.get.mockImplementation((url: string) => {
+    if (url === '/users/me') {
+      return Promise.resolve({ data: { id: 3191868, callsign: 'KI5VMF', must_change_password: false } });
+    }
     if (url === '/users/me/settings') {
       return Promise.resolve({ data: { sms_storage: smsStorage } });
     }
@@ -79,6 +82,14 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-test="sms-storage-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="apps-card"]').exists()).toBe(false);
+  });
+
+  it('shows the Password card first, for the logged-in user', async () => {
+    serve(false);
+    const wrapper = await mountPage();
+    const cards = wrapper.findAll('[data-test$="-card"]').map((c) => c.attributes('data-test'));
+    expect(cards[0]).toBe('password-card');
+    expect(wrapper.find('[data-test="password-card"]').text()).toContain('Change password');
   });
 
   it('shows the apps that can use the account', async () => {

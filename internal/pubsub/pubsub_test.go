@@ -20,6 +20,7 @@
 package pubsub_test
 
 import (
+	"fmt"
 	"context"
 	"testing"
 	"time"
@@ -387,6 +388,45 @@ func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
 				case <-time.After(2 * time.Second):
 					t.Fatalf("message %d did not come", i)
 				}
+			}
+		})
+	}
+}
+
+// TestSubscribeIsActiveWhenItReturns publishes right after each Subscribe.
+// Each message must come, so that a caller can subscribe and then tell
+// others to send, as a replica that takes a repeater over does.
+func TestSubscribeIsActiveWhenItReturns(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			if err != nil {
+				t.Fatal(err)
+			}
+			be.Setup(t, &cfg)
+			ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ps.Close() })
+			missed := 0
+			for i := range 200 {
+				topic := fmt.Sprintf("at-once-%d", i)
+				sub := ps.Subscribe(topic)
+				if err := ps.Publish(topic, []byte{1}); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-sub.Channel():
+				case <-time.After(time.Second):
+					missed++
+				}
+				_ = sub.Close()
+			}
+			if missed > 0 {
+				t.Fatalf("%d of 200 messages published right after Subscribe were lost", missed)
 			}
 		})
 	}

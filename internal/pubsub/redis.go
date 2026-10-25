@@ -22,8 +22,10 @@ package pubsub
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/consts"
@@ -78,9 +80,22 @@ func (ps redisPubSub) Publish(topic string, message []byte) error {
 	return nil
 }
 
+// subscribeWait is the longest time Subscribe waits for Redis to confirm a
+// subscription.
+const subscribeWait = time.Second
+
+// Subscribe subscribes to topic and returns once Redis confirms it, so
+// that every message published after it returns comes. When Redis does
+// not confirm it in time, the subscription still starts, as go-redis
+// subscribes again on its own.
 func (ps redisPubSub) Subscribe(topic string) Subscription {
 	ctx := context.Background()
 	sub := ps.client.Subscribe(ctx, topic)
+	wait, cancel := context.WithTimeout(ctx, subscribeWait)
+	if _, err := sub.Receive(wait); err != nil {
+		slog.Warn("Redis did not confirm a subscription", "topic", topic, "error", err)
+	}
+	cancel()
 	in := sub.Channel()
 	out := make(chan []byte)
 	done := make(chan struct{})

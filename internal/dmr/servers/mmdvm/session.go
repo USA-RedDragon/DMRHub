@@ -62,6 +62,10 @@ type link struct {
 	// looking reports that the password of a login of the link is being
 	// looked up, or its config saved.
 	looking bool
+	// moved reports that the session was taken over from a draining
+	// replica at a new address, with no login since. Its options are not
+	// taken, as nothing but the address vouches for it.
+	moved bool
 }
 
 func (s *Server) now() time.Duration {
@@ -105,11 +109,19 @@ func storedDialect(repeater models.Repeater) dmrd.Dialect {
 	return dmrd.DialectMMDVM
 }
 
+// kvRecord is the KV record of a repeater, as looked up before the packet
+// that needs it is handled. moved reports that the packet may resume the
+// session from a new address, as moved decides.
+type kvRecord struct {
+	repeater models.Repeater
+	moved    bool
+}
+
 // recordFunc returns the KV record of the repeater id, as looked up before
 // the packet that needs it is handled.
-type recordFunc func(id uint32) (models.Repeater, bool)
+type recordFunc func(id uint32) (kvRecord, bool)
 
-func noRecord(uint32) (models.Repeater, bool) { return models.Repeater{}, false }
+func noRecord(uint32) (kvRecord, bool) { return kvRecord{}, false }
 
 // maxHeldPerAddress is the most packets from one address that wait for the
 // KV record of their repeater.
@@ -124,8 +136,8 @@ func dialectFor(ep endpoint, p []byte, record recordFunc) dmrd.Dialect {
 		return d
 	}
 	if id, ok := dmrd.RepeaterID(p, dmrd.DialectMMDVM); ok {
-		if repeater, ok := record(id); ok && ep.matchesKV(repeater.IP, repeater.Port) {
-			return storedDialect(repeater)
+		if rec, ok := record(id); ok && (rec.moved || ep.matchesKV(rec.repeater.IP, rec.repeater.Port)) {
+			return storedDialect(rec.repeater)
 		}
 	}
 	return dmrd.DialectMMDVM
@@ -164,10 +176,14 @@ func (s *Server) recordNeeded(l *link, data []byte) (uint32, bool) {
 
 // resolve looks up the KV record of the repeater id off the listener, then
 // handles the packets from remote that waited for it, in order.
-func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32) {
+func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32, data []byte) {
 	defer s.lookups.Done()
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-	record := func(x uint32) (models.Repeater, bool) { return repeater, err == nil && x == id }
+	rec := kvRecord{repeater: repeater}
+	if err == nil {
+		rec.moved = s.moved(ctx, remote, data, repeater, id)
+	}
+	record := func(x uint32) (kvRecord, bool) { return rec, err == nil && x == id }
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	held := s.resolving[key]
@@ -279,7 +295,7 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 		}
 		s.resolving[key] = [][]byte{data}
 		s.lookups.Add(1)
-		go s.resolve(ctx, remote, key, id)
+		go s.resolve(ctx, remote, key, id, data)
 		return
 	}
 	s.handleLocked(ctx, remote, data, noRecord)
@@ -433,6 +449,7 @@ func (s *Server) lookup(ctx context.Context, l *link, id uint32) {
 		return
 	}
 	slog.Debug("Login from Repeater ID", "repeaterID", id)
+	l.moved = false
 	if s.known != nil {
 		s.known[id] = true
 	}
@@ -716,6 +733,9 @@ func (s *Server) ping(ctx context.Context, l *link) {
 		repeater.LastPing = now
 		repeater.IP, repeater.Port = ip, port
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+		if s.hub != nil {
+			s.hub.RenewOwnership(ctx, repeaterID)
+		}
 	})
 	s.notePing(repeaterID, now)
 }
@@ -782,12 +802,58 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 	if !ok {
 		return
 	}
-	repeater, found := record(id)
-	if !found || repeater.Connection != models.RepeaterStateConnected ||
-		!l.ep.matchesKV(repeater.IP, repeater.Port) || storedDialect(repeater) != l.dialect {
+	rec, found := record(id)
+	repeater := rec.repeater
+	if !found || repeater.Connection != models.RepeaterStateConnected || storedDialect(repeater) != l.dialect {
+		return
+	}
+	moved := !l.ep.matchesKV(repeater.IP, repeater.Port)
+	if moved && !rec.moved {
 		return
 	}
 	s.resumeLink(ctx, now, l, id)
+	if s.byID[id] != l {
+		return
+	}
+	l.moved = moved
+	if moved {
+		ip, port := l.ep.kvAddr()
+		s.records.Do(uint(id), func() {
+			repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+			if err != nil {
+				return
+			}
+			repeater.IP, repeater.Port = ip, port
+			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+		})
+	}
+}
+
+// moved reports whether the repeater id, whose KV record holds another
+// address, moved to ep in a rolling restart, so that the packet data from
+// ep may resume its session. A load balancer in front of the replicas,
+// such as the UDP proxy of Envoy Gateway, sends the packets of a repeater
+// from a new port when it moves the repeater away from a replica that
+// drains, so the record cannot match. The move is taken only from the IP
+// of the record, only while the replica that holds the session drains,
+// and by one replica only; a second address that claims the repeater then
+// finds a replica serving it and must log in. It runs off the listener,
+// before the packet is handled.
+func (s *Server) moved(ctx context.Context, ep endpoint, data []byte, repeater models.Repeater, id uint32) bool {
+	d := storedDialect(repeater)
+	if s.hub == nil || repeater.Connection != models.RepeaterStateConnected || ep.matchesKV(repeater.IP, repeater.Port) ||
+		!resumable(data, d) || dmrd.Classify(data, d) == dmrd.CommandRPTO {
+		return false
+	}
+	ip, port := ep.kvAddr()
+	if port == 0 || repeater.Port == 0 || ip != repeater.IP {
+		return false
+	}
+	if !s.hub.TakeOver(ctx, uint(id)) {
+		return false
+	}
+	slog.Info("Repeater moved from a draining replica", "repeaterID", id, "from", fmt.Sprintf("%s:%d", repeater.IP, repeater.Port), "to", ep.String())
+	return true
 }
 
 func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id uint32) {

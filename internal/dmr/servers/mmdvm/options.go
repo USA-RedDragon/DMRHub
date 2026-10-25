@@ -46,6 +46,10 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 		slog.Info("Ignoring options that are not from the session of the repeater", "repeaterID", o.ID, "remoteAddr", l.ep.String())
 		return
 	}
+	if l.moved {
+		slog.Info("Ignoring options of a session that moved from another replica until it logs in", "repeaterID", o.ID, "remoteAddr", l.ep.String())
+		return
+	}
 	text := o.Packet
 	slog.Info("Repeater options", "repeaterID", o.ID, "options", string(text))
 	if len(text) > dmrd.MaxFreeDMROptionsLen {

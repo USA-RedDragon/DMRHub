@@ -38,6 +38,8 @@ No two plugins share an ID. DMRHub gives no IDs to a plugin on its own: the admi
 
 When DMRHub runs as several replicas, a plugin connects to any one of them. A newer connection of the same plugin ends the older one.
 
+When a replica stops and other replicas run, as in a rolling update, the replica first drains its plugins. It tells each plugin connected to it that it stops, and from then on refuses new plugin connections. A plugin built with the plugin SDK of this version then opens a second connection, which reaches another replica, while it keeps the first one. When the new connection is up, the plugin sends on it, and the old replica ends the old connection about a second later. A burst that comes on both connections reaches the plugin once. The plugin sees no disconnection, and no call to its IDs is lost. The replica waits for this as long as it drains its repeaters (`dmr.drain-timeout`, 25 seconds by default). A plugin built with an older SDK does not know this message. It connects again as before when its connection ends, and the calls to its IDs in that gap are lost.
+
 ## The plugins that come with DMRHub
 
 The release archives and the Docker image include two plugins. Each takes the hub's address and the fingerprint as flags or environment variables, and its token from the environment:

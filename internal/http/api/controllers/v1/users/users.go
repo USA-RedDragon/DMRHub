@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
@@ -570,6 +571,10 @@ func PATCHUser(c *gin.Context) {
 		}
 
 		actorID, _ := sessions.Default(c).Get("user_id").(uint)
+		if json.Password == "" && actorID == user.ID && user.MustChangePassword {
+			c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgMustChangePassword, "must_change_password": true})
+			return
+		}
 		if json.Password != "" && actorID == user.ID {
 			if json.CurrentPassword == "" {
 				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Enter your current password."})
@@ -578,6 +583,10 @@ func PATCHUser(c *gin.Context) {
 			verified, verifyErr := utils.VerifyPassword(json.CurrentPassword, user.Password, config.PasswordSalt)
 			if verifyErr != nil || !verified {
 				c.JSON(http.StatusBadRequest, gin.H{errorKey: "The current password is wrong."})
+				return
+			}
+			if json.Password == json.CurrentPassword {
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "The new password must not be the current one."})
 				return
 			}
 		}

@@ -243,3 +243,29 @@ func TestATemporaryPasswordOpensOnlyThePasswordChange(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodPost, "/api/v1/auth/logout", nil).Code)
 }
+
+func TestATemporaryPasswordMustBeReplaced(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	user := testutils.SeedAccount(t, tdb.DB(), 1000001, "N0CALL", "n0call")
+	admin := testutils.Login(t, router, "Admin")
+	w := testutils.Do(t, router, admin, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	jar, code := loginWith(t, router, "n0call", "Qm4tVx8rKp2Hw9Ns")
+	require.Equal(t, http.StatusOK, code)
+
+	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"username": "someone-else"})
+	assert.Equal(t, http.StatusForbidden, w.Code, "only the password change is open")
+	assert.JSONEq(t, `{"error":"An admin set a temporary password for you. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String())
+
+	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns", "current_password": "Qm4tVx8rKp2Hw9Ns"})
+	assert.Equal(t, http.StatusBadRequest, w.Code, "the admin knows the temporary password")
+	assert.JSONEq(t, `{"error":"The new password must not be the current one."}`, w.Body.String())
+	assert.True(t, mustChange(t, router, jar))
+
+	var stored models.User
+	require.NoError(t, tdb.DB().First(&stored, user.ID).Error)
+	assert.Equal(t, "n0call", stored.Username)
+}

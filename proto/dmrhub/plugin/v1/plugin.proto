@@ -32,7 +32,89 @@ message ConnectRequest {
     Subscribe subscribe = 2;
     // A position that a radio reported to the plugin.
     Position position = 3;
+    // Who the plugin is. A plugin that runs inside DMRHub sends it first,
+    // before the hub sends the Welcome. A plugin that runs as its own
+    // program may send it after the Welcome, so that the Plugins page shows
+    // its version.
+    Hello hello = 4;
+    // A request on a network connection of a plugin that runs inside
+    // DMRHub. The hub ignores it from a plugin that runs as its own
+    // program, which reaches the network by itself.
+    NetRequest net = 5;
   }
+}
+
+// Hello tells the hub who a plugin is, and what it asks for.
+message Hello {
+  // The name the Plugins page shows, at most 64 characters.
+  string name = 1;
+  // The version of the plugin, at most 32 characters.
+  string version = 2;
+  // Who wrote the plugin, at most 64 characters.
+  string author = 3;
+  // What the plugin does, in a sentence or two, at most 500 characters.
+  string description = 4;
+  // The IDs the plugin asks for. The admin gives it its IDs, starting from
+  // these.
+  repeated IDRange ids = 5;
+  // The hosts a plugin that runs inside DMRHub asks to reach. It reaches
+  // only those that an admin allows.
+  repeated Host hosts = 6;
+}
+
+// Host is a host that a plugin asks to reach, and why.
+message Host {
+  // The host name or IP address and the TCP port, such as
+  // "nets.example.org:443".
+  string address = 1;
+  // Why the plugin reaches it, in a sentence, at most 200 characters.
+  string reason = 2;
+}
+
+// NetRequest is a request of a plugin that runs inside DMRHub on one of its
+// TCP connections. The hub answers each with a NetResponse of the same
+// connection and operation. A connection has at most one read and one
+// write at a time.
+message NetRequest {
+  // The plugin's number of the connection. Open gives it to a new
+  // connection.
+  uint32 conn = 1;
+  oneof op {
+    // Open connects to a host that an admin allowed, as host:port.
+    string open = 2;
+    // Read asks for at most this many bytes, at most 16384.
+    uint32 read = 3;
+    // Write sends these bytes, at most 16384.
+    bytes write = 4;
+    // Close closes the connection.
+    NetClose close = 5;
+  }
+}
+
+// NetClose closes a connection.
+message NetClose {}
+
+// NetOp is the operation that a NetResponse answers.
+enum NetOp {
+  NET_OP_UNSPECIFIED = 0;
+  NET_OP_OPEN = 1;
+  NET_OP_READ = 2;
+  NET_OP_WRITE = 3;
+  NET_OP_CLOSE = 4;
+}
+
+// NetResponse answers a NetRequest.
+message NetResponse {
+  uint32 conn = 1;
+  NetOp op = 2;
+  // The bytes that a read got.
+  bytes data = 3;
+  // How many bytes a write sent.
+  uint32 written = 4;
+  // Why the operation failed, or empty when it worked.
+  string error = 5;
+  // The host closed its side: a read gets no more bytes.
+  bool eof = 6;
 }
 
 // Subscribe asks the hub for more than the calls to the plugin's IDs. A
@@ -95,6 +177,8 @@ message ConnectResponse {
     Heard heard = 7;
     // The hub stops soon.
     Draining draining = 8;
+    // The answer to a NetRequest of a plugin that runs inside DMRHub.
+    NetResponse net = 9;
   }
 }
 

@@ -90,3 +90,25 @@ func TestLiveConfigAppliesTheLogLevel(t *testing.T) { //nolint:paralleltest // s
 		t.Fatal("warnings are on after a change of the log level to error")
 	}
 }
+
+type fakeInside struct {
+	calls []bool
+}
+
+func (f *fakeInside) SetOn(_ context.Context, on bool) error {
+	f.calls = append(f.calls, on)
+	return nil
+}
+
+func TestLiveConfigTurnsThePluginsInsideOnAndOff(t *testing.T) {
+	t.Parallel()
+	in := &fakeInside{}
+	l := liveConfig{dmr: manager.New(manager.Deps{}), inside: in}
+	l.Apply(&config.Config{LogLevel: config.LogLevelInfo, DMR: config.DMR{Plugins: config.Plugins{InProcess: false}}})
+	l.Apply(&config.Config{LogLevel: config.LogLevelInfo, DMR: config.DMR{Plugins: config.Plugins{InProcess: true}}})
+	if len(in.calls) != 2 || in.calls[0] || !in.calls[1] {
+		t.Fatalf("the plugins inside were turned %v, want off then on", in.calls)
+	}
+	l = liveConfig{dmr: manager.New(manager.Deps{})}
+	l.Apply(&config.Config{LogLevel: config.LogLevelInfo})
+}

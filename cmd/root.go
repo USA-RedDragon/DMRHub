@@ -44,6 +44,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins/inside"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -317,6 +319,7 @@ type serverManager struct {
 	purger       *retention.Purger
 	aprs         *positions.Gateway
 	plugins      *plugins.Server
+	inside       *inside.Manager
 	kv           kv.KV
 	pubsub       pubsub.PubSub
 	database     *gorm.DB
@@ -367,12 +370,23 @@ func (sm *serverManager) drain(ctx context.Context) {
 // liveConfig puts the settings that the Setup page saves into effect: the
 // DMR servers and the log level.
 type liveConfig struct {
-	dmr *manager.Manager
+	dmr    *manager.Manager
+	inside insideSwitch
+}
+
+// insideSwitch turns the plugins inside DMRHub on and off.
+type insideSwitch interface {
+	SetOn(ctx context.Context, on bool) error
 }
 
 func (l liveConfig) Apply(next *config.Config) []manager.ApplyError {
 	errs := l.dmr.Apply(next)
 	setupLogger(next)
+	if l.inside != nil {
+		if err := l.inside.SetOn(context.Background(), next.DMR.Plugins.InProcess); err != nil {
+			slog.Error("Plugins inside DMRHub could not take the new setting", "error", err)
+		}
+	}
 	return errs
 }
 
@@ -390,6 +404,9 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	}
 	if sm.aprs != nil {
 		sm.aprs.Stop()
+	}
+	if sm.inside != nil {
+		sm.inside.Stop(ctx)
 	}
 	sm.plugins.Stop()
 	if sm.purger != nil {
@@ -460,8 +477,20 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}
+	live := liveConfig{dmr: sm.dmr}
+	pluginEngine := wasm.NewEngine(wasm.DefaultLimits())
+	if sm.plugins != nil {
+		sm.inside = inside.NewManager(inside.Deps{
+			DB: database, PubSub: pubsubClient, KV: kvStore, Instance: instanceID, Version: version,
+			Service: sm.plugins.Service(), Registry: sm.plugins.Registry(), Engine: pluginEngine,
+		})
+		if err := sm.inside.Start(ctx, cfg.DMR.Plugins.InProcess); err != nil {
+			return nil, fmt.Errorf("failed to start the plugins inside DMRHub: %w", err)
+		}
+		live.inside = sm.inside
+	}
 
-	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(liveConfig{dmr: sm.dmr}))
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(live), http.WithPluginEngine(pluginEngine))
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

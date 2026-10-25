@@ -416,6 +416,7 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 			assert.Equal(t, tc.dialect, l.dialect)
 
 			r.s.closeSessions(context.Background())
+			r.s.records.Wait()
 			r.expect(tc.dialect, dmrd.CommandMSTCL)
 			store()
 			addr, ok := r.s.resumeForEgress(context.Background(), 311865)

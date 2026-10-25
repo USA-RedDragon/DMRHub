@@ -21,6 +21,7 @@ package dmr_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -36,10 +37,14 @@ import (
 
 const slowRedisCall = 500 * time.Millisecond
 
-// slowRedis makes the KV calls on the source quenches of OpenBridge and the
-// publishes of its peer events and egress hand-offs take slowRedisCall
-// each, ignoring their contexts, as a hung Redis does.
-type slowRedis struct{ on atomic.Bool }
+// slowRedis makes the KV calls on the keys with prefix and the publishes
+// to topics take slowRedisCall each, ignoring their contexts, as a hung
+// Redis does.
+type slowRedis struct {
+	on     atomic.Bool
+	prefix string
+	topics []string
+}
 
 func (s *slowRedis) wait(slow bool) {
 	if slow && s.on.Load() {
@@ -52,26 +57,29 @@ type slowRedisKV struct {
 	s *slowRedis
 }
 
-func slowKey(key string) bool { return strings.HasPrefix(key, "dmrhub:openbridge:quench:") }
-
 func (k slowRedisKV) Has(ctx context.Context, key string) (bool, error) {
-	k.s.wait(slowKey(key))
+	k.s.wait(strings.HasPrefix(key, k.s.prefix))
 	return k.KV.Has(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Get(ctx context.Context, key string) ([]byte, error) {
-	k.s.wait(slowKey(key))
+	k.s.wait(strings.HasPrefix(key, k.s.prefix))
 	return k.KV.Get(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Set(ctx context.Context, key string, value []byte) error {
-	k.s.wait(slowKey(key))
+	k.s.wait(strings.HasPrefix(key, k.s.prefix))
 	return k.KV.Set(ctx, key, value) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
-	k.s.wait(slowKey(key))
+	k.s.wait(strings.HasPrefix(key, k.s.prefix))
 	return k.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
+}
+
+func (k slowRedisKV) Delete(ctx context.Context, key string) error {
+	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	return k.KV.Delete(ctx, key) //nolint:wrapcheck
 }
 
 type slowRedisPubSub struct {
@@ -80,16 +88,16 @@ type slowRedisPubSub struct {
 }
 
 func (p slowRedisPubSub) Publish(topic string, message []byte) error {
-	p.s.wait(topic == "hub:events:peers" || topic == "openbridge:egress")
+	p.s.wait(slices.Contains(p.s.topics, topic))
 	return p.PubSub.Publish(topic, message) //nolint:wrapcheck
 }
 
-func forAllSlowRedisBackends(t *testing.T, f func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis)) {
+func forAllSlowRedisBackends(t *testing.T, prefix string, topics []string, f func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis)) {
 	t.Helper()
 	for _, be := range allBackends() {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
-			slow := &slowRedis{}
+			slow := &slowRedis{prefix: prefix, topics: topics}
 			be.WrapKV = func(k kv.KV) kv.KV { return slowRedisKV{KV: k, s: slow} }
 			be.WrapPubSub = func(p pubsub.PubSub) pubsub.PubSub { return slowRedisPubSub{PubSub: p, s: slow} }
 			f(t, testutils.SetupIntegrationStack(t, be), slow)
@@ -104,7 +112,7 @@ func forAllSlowRedisBackends(t *testing.T, f func(t *testing.T, stack *testutils
 // after another must stop its stream at once.
 func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 	t.Parallel()
-	forAllSlowRedisBackends(t, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
+	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
@@ -185,7 +193,7 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 // reach the local repeater in less than half of that.
 func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 	t.Parallel()
-	forAllSlowRedisBackends(t, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
+	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
 		r := startReplicaOB(t, stack)
 		_, _, otherAddr := r.leader(t)
 		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)

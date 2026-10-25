@@ -70,14 +70,25 @@ type Server struct {
 	transports    *xsync.Map[string, transport]
 	egressMiss    *xsync.Map[uint, time.Time]
 	lookups       sync.WaitGroup
-	stopped       atomic.Bool
-	wg            sync.WaitGroup
-	done          chan struct{}
-	stopOnce      sync.Once
+	// records runs the KV, database and hub work of each repeater off the
+	// listener.
+	records servers.RepeaterQueue
+	// egressWaits holds the packets for each repeater that is being
+	// resumed for egress.
+	egressMu    sync.Mutex
+	egressWaits map[uint][]models.Packet
+	egressWG    sync.WaitGroup
+	stopped     atomic.Bool
+	wg          sync.WaitGroup
+	done        chan struct{}
+	stopOnce    sync.Once
 
 	mu    sync.Mutex
 	links map[string]*link
 	byID  map[uint32]*link
+	// resolving holds the packets from each address that wait for the KV
+	// record of their repeater.
+	resolving map[string][][]byte
 	// known holds the IDs of the repeaters, once loaded; see login.
 	known    map[uint32]bool
 	misses   int
@@ -206,6 +217,8 @@ func (s *Server) Stop(ctx context.Context) error {
 
 	s.wg.Wait()
 	s.lookups.Wait()
+	s.egressWG.Wait()
+	s.records.Wait()
 	s.closePings()
 	return nil
 }
@@ -372,16 +385,59 @@ func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.
 	// Only send to repeaters with active local sessions on this replica.
 	// In multi-replica deployments, all replicas receive pubsub messages but
 	// only the replica holding the UDP session should transmit.
+	s.egressMu.Lock()
+	if held, ok := s.egressWaits[repeaterID]; ok {
+		if len(held) < maxHeldPerAddress {
+			s.egressWaits[repeaterID] = append(held, packet)
+		}
+		s.egressMu.Unlock()
+		return
+	}
 	ep, ok := s.connected.Load(repeaterID)
 	if !ok {
-		ep, ok = s.resumeForEgress(ctx, repeaterID)
-		if !ok {
+		if !s.mayResumeForEgress(repeaterID) {
+			s.egressMu.Unlock()
 			return
 		}
+		if s.egressWaits == nil {
+			s.egressWaits = map[uint][]models.Packet{}
+		}
+		s.egressWaits[repeaterID] = []models.Packet{packet}
+		s.egressMu.Unlock()
+		s.egressWG.Add(1)
+		go s.resumeAndSend(ctx, repeaterID)
+		return
 	}
+	s.egressMu.Unlock()
+	s.send(ep, repeaterID, packet)
+}
+
+func (s *Server) send(ep endpoint, repeaterID uint, packet models.Packet) {
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
 	select {
 	case s.outgoingChan <- rawPacketFrom(ep, packet.Encode()):
 	case <-s.done:
+	}
+}
+
+// resumeAndSend resumes the session of the repeater id for egress off the
+// hub consumer, then sends the packets that waited for it, in order.
+func (s *Server) resumeAndSend(ctx context.Context, id uint) {
+	defer s.egressWG.Done()
+	ep, ok := s.resumeForEgress(ctx, id)
+	for {
+		s.egressMu.Lock()
+		held := s.egressWaits[id]
+		if len(held) == 0 {
+			delete(s.egressWaits, id)
+			s.egressMu.Unlock()
+			return
+		}
+		packet := held[0]
+		s.egressWaits[id] = held[1:]
+		s.egressMu.Unlock()
+		if ok {
+			s.send(ep, id, packet)
+		}
 	}
 }

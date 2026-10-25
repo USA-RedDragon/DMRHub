@@ -105,21 +105,79 @@ func storedDialect(repeater models.Repeater) dmrd.Dialect {
 	return dmrd.DialectMMDVM
 }
 
+// recordFunc returns the KV record of the repeater id, as looked up before
+// the packet that needs it is handled.
+type recordFunc func(id uint32) (models.Repeater, bool)
+
+func noRecord(uint32) (models.Repeater, bool) { return models.Repeater{}, false }
+
+// maxHeldPerAddress is the most packets from one address that wait for the
+// KV record of their repeater.
+const maxHeldPerAddress = 64
+
 // dialectFor returns the dialect of the session that the packet p from
 // addr starts: the dialect of p, or for a DMRD the dialect of the session
 // that the KV store records for its repeater at addr, or else the MMDVM
 // network protocol.
-func (s *Server) dialectFor(ctx context.Context, ep endpoint, p []byte) dmrd.Dialect {
+func dialectFor(ep endpoint, p []byte, record recordFunc) dmrd.Dialect {
 	if d, ok := packetDialect(p); ok {
 		return d
 	}
-	if id, ok := dmrd.RepeaterID(p, dmrd.DialectMMDVM); ok && s.kvClient != nil {
-		repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-		if err == nil && ep.matchesKV(repeater.IP, repeater.Port) {
+	if id, ok := dmrd.RepeaterID(p, dmrd.DialectMMDVM); ok {
+		if repeater, ok := record(id); ok && ep.matchesKV(repeater.IP, repeater.Port) {
 			return storedDialect(repeater)
 		}
 	}
 	return dmrd.DialectMMDVM
+}
+
+// resumable reports whether a packet data in dialect d may resume the
+// session that another replica had.
+func resumable(data []byte, d dmrd.Dialect) bool {
+	switch dmrd.Classify(data, d) { //nolint:exhaustive
+	case dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTPING, dmrd.CommandMSTPING, dmrd.CommandRPTO:
+		return true
+	default:
+		return false
+	}
+}
+
+// recordNeeded returns the ID of the repeater whose KV record the packet
+// data needs, to pick the dialect of a new session or to resume one, when
+// l, the session at its address or nil, is idle.
+func (s *Server) recordNeeded(l *link, data []byte) (uint32, bool) {
+	if s.kvClient == nil || (l != nil && l.m.State() != dmrdsession.StateIdle) {
+		return 0, false
+	}
+	d, known := packetDialect(data)
+	if l != nil {
+		d, known = l.dialect, true
+	}
+	if !known {
+		return dmrd.RepeaterID(data, dmrd.DialectMMDVM)
+	}
+	if !resumable(data, d) {
+		return 0, false
+	}
+	return dmrd.RepeaterID(data, d)
+}
+
+// resolve looks up the KV record of the repeater id off the listener, then
+// handles the packets from remote that waited for it, in order.
+func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32) {
+	defer s.lookups.Done()
+	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+	record := func(x uint32) (models.Repeater, bool) { return repeater, err == nil && x == id }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	held := s.resolving[key]
+	delete(s.resolving, key)
+	if s.stopped.Load() {
+		return
+	}
+	for _, data := range held {
+		s.handleLocked(ctx, remote, data, record)
+	}
 }
 
 func newMaster(d dmrd.Dialect) (*dmrdsession.Master, error) {
@@ -185,10 +243,11 @@ func (s *Server) forget(l *link) {
 }
 
 // handlePacket handles the packet data from remoteAddr as the listener
-// does, and waits for the logins that it started.
+// does, and waits for the lookups and the repeater jobs that it started.
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
 	s.handleFrom(ctx, udpEndpoint(remoteAddr), data)
 	s.lookups.Wait()
+	s.records.Wait()
 }
 
 func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
@@ -204,10 +263,35 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 	if s.stopped.Load() {
 		return
 	}
+	key := remote.String()
+	if held, ok := s.resolving[key]; ok {
+		if len(held) < maxHeldPerAddress {
+			s.resolving[key] = append(held, data)
+		}
+		return
+	}
+	if id, ok := s.recordNeeded(s.links[key], data); ok {
+		if len(s.resolving) >= maxPending {
+			return
+		}
+		if s.resolving == nil {
+			s.resolving = map[string][][]byte{}
+		}
+		s.resolving[key] = [][]byte{data}
+		s.lookups.Add(1)
+		go s.resolve(ctx, remote, key, id)
+		return
+	}
+	s.handleLocked(ctx, remote, data, noRecord)
+}
+
+// handleLocked handles the packet data from remote with s.mu held. record
+// returns the KV records that recordNeeded asked for.
+func (s *Server) handleLocked(ctx context.Context, remote endpoint, data []byte, record recordFunc) {
 	l, ok := s.links[remote.String()]
 	if !ok {
 		var err error
-		if l, err = s.linkAt(remote, s.dialectFor(ctx, remote, data)); err != nil {
+		if l, err = s.linkAt(remote, dialectFor(remote, data, record)); err != nil {
 			slog.Error("Error making session", "remoteAddr", remote.String(), "error", err)
 			return
 		}
@@ -219,7 +303,7 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 	}
 	now := s.now()
 	if l.m.State() == dmrdsession.StateIdle {
-		s.resume(ctx, now, l, data)
+		s.resume(ctx, now, l, data, record)
 	}
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	s.run(ctx, now, l, l.m.Packet(now, data, buf[:0]))
@@ -464,7 +548,7 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
 		return false
 	}
-	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+	s.records.Do(repeaterID, func() { s.kvClient.StoreRepeater(ctx, repeaterID, repeater) })
 	slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
 	return true
 }
@@ -481,7 +565,7 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 	ep, d := l.ep, l.dialect
 	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
 	if s.hub != nil {
-		s.hub.ActivateRepeater(ctx, uint(id))
+		s.records.Do(uint(id), func() { s.hub.ActivateRepeater(ctx, uint(id)) })
 	}
 }
 
@@ -513,20 +597,31 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	s.stopBeacon(l)
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
-	if (o.Reason != dmrdsession.ReasonTimeout || s.kvStale(ctx, o.ID)) && !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
-		slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
-	}
-	if s.hub != nil {
-		s.hub.DeactivateRepeater(ctx, uint(o.ID))
-	}
+	downAt := time.Now()
+	s.records.Do(uint(o.ID), func() {
+		if s.kvOwned(ctx, o, downAt) && !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
+			slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
+		}
+		if s.hub != nil {
+			s.hub.DeactivateRepeater(ctx, uint(o.ID))
+		}
+	})
 }
 
-// kvStale reports whether the KV record of the repeater id has no ping
-// within the session timeout. A fresh record after a timeout here means
-// that another replica took the session over and keeps the record.
-func (s *Server) kvStale(ctx context.Context, id uint32) bool {
-	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-	return err != nil || time.Since(repeater.LastPing) >= dmrdsession.TimeoutDefault
+// kvOwned reports whether the KV record of the repeater of the session
+// that o ended at downAt is still the record of that session. A record
+// with a ping after downAt, or after a timeout a record with a ping within
+// the session timeout, means that another replica took the session over
+// and keeps the record.
+func (s *Server) kvOwned(ctx context.Context, o dmrdsession.Output, downAt time.Time) bool {
+	repeater, err := s.kvClient.GetRepeater(ctx, uint(o.ID))
+	if err != nil {
+		return true
+	}
+	if repeater.LastPing.After(downAt) {
+		return false
+	}
+	return o.Reason != dmrdsession.ReasonTimeout || time.Since(repeater.LastPing) >= dmrdsession.TimeoutDefault
 }
 
 func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
@@ -572,18 +667,23 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
 	}
 }
 
+// ping counts a ping of the repeater of l in its KV record, after the
+// other jobs of the repeater, and queues its time for the database.
 func (s *Server) ping(ctx context.Context, l *link) {
 	repeaterID := uint(l.m.ID())
 	now := time.Now()
-	repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
-	if err != nil {
-		slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
-		return
-	}
-	repeater.PingsReceived++
-	repeater.LastPing = now
-	repeater.IP, repeater.Port = l.ep.kvAddr()
-	s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+	ip, port := l.ep.kvAddr()
+	s.records.Do(repeaterID, func() {
+		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
+		if err != nil {
+			slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
+			return
+		}
+		repeater.PingsReceived++
+		repeater.LastPing = now
+		repeater.IP, repeater.Port = ip, port
+		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+	})
 	s.notePing(repeaterID, now)
 }
 
@@ -641,18 +741,16 @@ func (s *Server) closePings() {
 // resume takes over the session of a repeater that logged in to another
 // DMRHub replica from the same address, as the KV store records it, so
 // that a rolling restart does not make the repeater log in again.
-func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte) {
-	switch dmrd.Classify(data, l.dialect) { //nolint:exhaustive
-	case dmrd.CommandDMRD, dmrd.CommandDMRA, dmrd.CommandDMRG, dmrd.CommandRPTPING, dmrd.CommandMSTPING, dmrd.CommandRPTO:
-	default:
+func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []byte, record recordFunc) {
+	if !resumable(data, l.dialect) {
 		return
 	}
 	id, ok := dmrd.RepeaterID(data, l.dialect)
 	if !ok {
 		return
 	}
-	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-	if err != nil || repeater.Connection != models.RepeaterStateConnected ||
+	repeater, found := record(id)
+	if !found || repeater.Connection != models.RepeaterStateConnected ||
 		!l.ep.matchesKV(repeater.IP, repeater.Port) || storedDialect(repeater) != l.dialect {
 		return
 	}
@@ -665,16 +763,23 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 	s.run(ctx, now, l, l.m.Resume(now, id, buf[:0]))
 }
 
+// mayResumeForEgress reports whether resumeForEgress may try the repeater
+// id now.
+func (s *Server) mayResumeForEgress(id uint) bool {
+	if id > math.MaxUint32 || s.stopped.Load() {
+		return false
+	}
+	at, ok := s.egressMiss.Load(id)
+	return !ok || time.Since(at) >= egressResumeRetry
+}
+
 // resumeForEgress resumes the session of a repeater that the hub has a
 // packet for and that this server has no session of, as after a handoff,
 // when the KV store records it as connected and the hub of this server
 // owns it. It returns the address of the repeater. Without it, a repeater
 // that only listens would get nothing until its next ping.
 func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) {
-	if id > math.MaxUint32 || s.stopped.Load() {
-		return endpoint{}, false
-	}
-	if at, ok := s.egressMiss.Load(id); ok && time.Since(at) < egressResumeRetry {
+	if id > math.MaxUint32 || !s.mayResumeForEgress(id) {
 		return endpoint{}, false
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, id)

@@ -77,7 +77,11 @@ func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]t
 
 func worstDelays(t *testing.T, stream uint, send func(uint) []time.Time, targets ...<-chan models.Packet) []time.Duration {
 	t.Helper()
-	const bursts = 8
+	return worstBursts(t, stream, 8, send, targets...)
+}
+
+func worstBursts(t *testing.T, stream uint, bursts int, send func(uint) []time.Time, targets ...<-chan models.Packet) []time.Duration {
+	t.Helper()
 	watches := make([]<-chan map[uint]time.Time, len(targets))
 	for i, got := range targets {
 		watches[i] = watchStream(got, stream, bursts)

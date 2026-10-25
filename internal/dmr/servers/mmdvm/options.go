@@ -58,12 +58,15 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 		slog.Info("Repeater options have a value that is not valid", "repeaterID", id, "error", err)
 	}
 	logIgnoredOptions(id, text, &parsed)
-	statics := s.applyStatics(ctx, id, text)
-	dial1 := s.dial(ctx, id, false, parsed.DialTS1)
-	dial2 := s.dial(ctx, id, true, parsed.DialTS2)
-	if !statics && !dial1 && !dial2 {
-		slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
-	}
+	text = append([]byte(nil), text...)
+	s.records.Do(id, func() {
+		statics := s.applyStatics(ctx, id, text)
+		dial1 := s.dial(ctx, id, false, parsed.DialTS1)
+		dial2 := s.dial(ctx, id, true, parsed.DialTS2)
+		if !statics && !dial1 && !dial2 {
+			slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
+		}
+	})
 }
 
 // applyStatics saves the static talkgroups that text sets and reloads the

@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
@@ -57,6 +58,7 @@ type IPSCServer struct {
 	epoch   time.Time
 
 	keyFor func(peerID uint32) (key [20]byte, useAuth bool, err error)
+	keys   *lookup.Cache[uint32, peerAuthKey]
 
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
 	bursts       []burst
@@ -130,27 +132,45 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		s.m = m
 		s.out = make([]ipscsession.Output, 0, m.MaxOutputs())
 	}
+	s.keys = lookup.New("ipsc keys", lookup.TTL, s.loadPeerAuthKey)
 	s.keyFor = s.lookupPeerAuthKey
 	return s
 }
 
+type peerAuthKey struct {
+	key     [20]byte
+	useAuth bool
+	err     error
+}
+
 func (s *IPSCServer) lookupPeerAuthKey(peerID uint32) ([20]byte, bool, error) {
+	k, err := s.keys.Get(peerID)
+	if err != nil {
+		return [20]byte{}, false, fmt.Errorf("looking up the key of peer %d: %w", peerID, err)
+	}
+	return k.key, k.useAuth, k.err
+}
+
+func (s *IPSCServer) loadPeerAuthKey(peerID uint32) (peerAuthKey, error) {
 	if s.db == nil {
-		return [20]byte{}, false, fmt.Errorf("no database configured: %w", ErrUnknownPeer)
+		return peerAuthKey{err: fmt.Errorf("no database configured: %w", ErrUnknownPeer)}, nil
 	}
 	var repeater models.Repeater
 	err := s.db.Where("id = ? AND type = ?", peerID, models.RepeaterTypeIPSC).First(&repeater).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return peerAuthKey{err: fmt.Errorf("repeater %d not found: %w", peerID, err)}, nil
+	}
 	if err != nil {
-		return [20]byte{}, false, fmt.Errorf("repeater %d not found: %w", peerID, err)
+		return peerAuthKey{}, fmt.Errorf("repeater %d not found: %w", peerID, err)
 	}
 	if repeater.Password == "" {
-		return [20]byte{}, false, nil
+		return peerAuthKey{}, nil
 	}
 	key, err := ipscauth.ParseKey(repeater.Password)
 	if err != nil {
-		return [20]byte{}, false, fmt.Errorf("repeater %d has an auth key that is not hex: %w", peerID, ErrInvalidAuthKey)
+		return peerAuthKey{err: fmt.Errorf("repeater %d has an auth key that is not hex: %w: %w", peerID, ErrInvalidAuthKey, err)}, nil
 	}
-	return key, true, nil
+	return peerAuthKey{key: key, useAuth: true}, nil
 }
 
 // Listen opens the socket of the server. Start calls it when it was not

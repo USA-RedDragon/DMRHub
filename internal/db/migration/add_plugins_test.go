@@ -53,8 +53,8 @@ func TestAddPluginsCreatesItsTables(t *testing.T) {
 			})
 
 			m := database.Migrator()
-			require.NoError(t, m.DropTable(&models.PluginRange{}, &models.Plugin{}))
-			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610240100").Error)
+			require.NoError(t, m.DropTable(&models.PluginHost{}, &models.PluginModule{}, &models.PluginRange{}, &models.Plugin{}))
+			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id IN ?", []string{"202610240100", "202610251100"}).Error)
 			require.NoError(t, migration.Migrate(database, &cfg))
 
 			assert.True(t, m.HasTable(&models.Plugin{}))

@@ -61,7 +61,8 @@ var (
 )
 
 // Plugin is a program that answers the calls to its IDs over the plugin
-// protocol. Only the hash of its token is kept.
+// protocol: one that runs as its own program, or a built-in or uploaded
+// one that runs inside DMRHub. Only the hash of its token is kept.
 type Plugin struct {
 	ID              uint      `gorm:"primaryKey"`
 	Name            string    `gorm:"size:64;not null;uniqueIndex"`
@@ -72,7 +73,14 @@ type Plugin struct {
 	LastSeenAt      *time.Time
 	LastAddress     string        `gorm:"size:64"`
 	Session         string        `gorm:"size:32;not null;default:''"`
+	Kind            string        `gorm:"size:16;not null;default:'external'"`
+	Builtin         string        `gorm:"size:32;not null;default:''"`
+	Version         string        `gorm:"size:32;not null;default:''"`
+	Author          string        `gorm:"size:64;not null;default:''"`
+	Description     string        `gorm:"size:500;not null;default:''"`
+	ModuleHash      []byte        `gorm:"size:32"`
 	Ranges          []PluginRange `gorm:"constraint:OnDelete:CASCADE"`
+	Hosts           []PluginHost  `gorm:"constraint:OnDelete:CASCADE"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -177,7 +185,7 @@ func replacePluginRanges(tx *gorm.DB, id uint, ranges []PluginRange) error {
 // is shown only now.
 func CreatePlugin(db *gorm.DB, name string, ranges []PluginRange, now time.Time) (Plugin, string, error) {
 	token, hash := newPluginToken()
-	p := Plugin{Name: name, TokenHash: hash, TokenCreatedAt: now.UTC(), Enabled: true}
+	p := Plugin{Name: name, TokenHash: hash, TokenCreatedAt: now.UTC(), Enabled: true, Kind: PluginExternal}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := checkPluginName(tx, 0, name); err != nil {
 			return err
@@ -185,7 +193,7 @@ func CreatePlugin(db *gorm.DB, name string, ranges []PluginRange, now time.Time)
 		if err := checkPluginRanges(tx, 0, ranges); err != nil {
 			return err
 		}
-		if err := tx.Omit("Ranges").Create(&p).Error; err != nil {
+		if err := tx.Omit("Ranges", "Hosts").Create(&p).Error; err != nil {
 			return fmt.Errorf("could not add the plugin: %w", err)
 		}
 		return replacePluginRanges(tx, p.ID, ranges)
@@ -241,6 +249,12 @@ func DeletePlugin(db *gorm.DB, id uint) error {
 		if err := tx.Where("plugin_id = ?", id).Delete(&PluginRange{}).Error; err != nil {
 			return fmt.Errorf("could not delete the plugin ID ranges: %w", err)
 		}
+		if err := tx.Where("plugin_id = ?", id).Delete(&PluginHost{}).Error; err != nil {
+			return fmt.Errorf("could not delete the plugin hosts: %w", err)
+		}
+		if err := tx.Where("plugin_id = ?", id).Delete(&PluginModule{}).Error; err != nil {
+			return fmt.Errorf("could not delete the plugin module: %w", err)
+		}
 		res := tx.Delete(&Plugin{}, id)
 		if res.Error != nil {
 			return fmt.Errorf("could not delete the plugin: %w", res.Error)
@@ -259,7 +273,7 @@ func DeletePlugin(db *gorm.DB, id uint) error {
 // FindPlugin returns the plugin id with its ranges.
 func FindPlugin(db *gorm.DB, id uint) (Plugin, error) {
 	var found []Plugin
-	if err := db.Preload("Ranges", func(q *gorm.DB) *gorm.DB { return q.Order("first_id") }).Where("id = ?", id).Limit(1).Find(&found).Error; err != nil {
+	if err := preloadPlugin(db).Where("id = ?", id).Limit(1).Find(&found).Error; err != nil {
 		return Plugin{}, fmt.Errorf("could not find the plugin: %w", err)
 	}
 	if len(found) == 0 {
@@ -271,7 +285,7 @@ func FindPlugin(db *gorm.DB, id uint) (Plugin, error) {
 // ListPlugins returns every plugin with its ranges, by name.
 func ListPlugins(db *gorm.DB) ([]Plugin, error) {
 	var out []Plugin
-	if err := db.Preload("Ranges", func(q *gorm.DB) *gorm.DB { return q.Order("first_id") }).Order("name").Find(&out).Error; err != nil {
+	if err := preloadPlugin(db).Order("name").Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("could not list the plugins: %w", err)
 	}
 	return out, nil
@@ -284,7 +298,7 @@ func PluginByToken(db *gorm.DB, token string) (Plugin, bool, error) {
 		return Plugin{}, false, nil
 	}
 	var found []Plugin
-	if err := db.Preload("Ranges", func(q *gorm.DB) *gorm.DB { return q.Order("first_id") }).Where("token_hash = ?", hashPluginToken(token)).Limit(1).Find(&found).Error; err != nil {
+	if err := preloadPlugin(db).Where("token_hash = ?", hashPluginToken(token)).Limit(1).Find(&found).Error; err != nil {
 		return Plugin{}, false, fmt.Errorf("could not find the plugin of a token: %w", err)
 	}
 	if len(found) == 0 {

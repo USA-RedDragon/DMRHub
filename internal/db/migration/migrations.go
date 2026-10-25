@@ -65,5 +65,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_password_resets_migration_202610242100(db, cfg),
 		clear_deleted_net_users_migration_202610251000(db, cfg),
 		delete_deleted_user_access_migration_202610251010(db, cfg),
+		add_plugin_kinds_migration_202610251100(db, cfg),
 	}
 }

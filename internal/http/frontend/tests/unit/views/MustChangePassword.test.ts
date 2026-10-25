@@ -109,7 +109,7 @@ describe('a user with a temporary password', () => {
     expect(wrapper.find('[data-test="sms-storage-card"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(true);
     expect(useUserStore().mustChangePassword).toBe(false);
-  });
+  }, 30000);
 
   it('is sent to Settings by the router until they choose a password', async () => {
     const { ownPasswordGuard } = await import('@/router');

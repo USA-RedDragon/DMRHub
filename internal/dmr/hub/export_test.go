@@ -46,6 +46,14 @@ func (h *Hub) ForgetCachedRepeater(id uint) {
 	h.repeaters.drop(id)
 }
 
+// AdmitStream reports whether the hub takes packet in, waiting for the
+// answer of admitStream.
+func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName string) bool {
+	answer := make(chan bool, 1)
+	h.admitStream(ctx, packet, sourceName, func(ok bool) { answer <- ok })
+	return <-answer
+}
+
 // SetStreamClaimTiming replaces streamClaimHold and streamClaimRecheck.
 func (h *Hub) SetStreamClaimTiming(hold, recheck time.Duration) {
 	h.claimTiming.Store(&[2]time.Duration{hold, recheck})
@@ -53,6 +61,9 @@ func (h *Hub) SetStreamClaimTiming(hold, recheck time.Duration) {
 
 // StreamClaimHold is streamClaimHold.
 const StreamClaimHold = streamClaimHold
+
+// StreamClaimWait is streamClaimWait.
+const StreamClaimWait = streamClaimWait
 
 // LiftSlotRate lets the test send faster than one repeater slot can, or
 // limits it again.

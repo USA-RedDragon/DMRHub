@@ -80,6 +80,11 @@ func (w *watchedPubSub) Subscribe(topic string) pubsub.Subscription {
 
 func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
+	return makeTestHubWrappingKV(t, wrap, func(k kv.KV) kv.KV { return k })
+}
+
+func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(kv.KV) kv.KV) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -95,8 +100,9 @@ func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (
 	require.NoError(t, err)
 	ps := wrap(inner)
 
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	innerKV, err := kv.MakeKV(context.Background(), &defConfig)
 	require.NoError(t, err)
+	kvStore := wrapKV(innerKV)
 
 	ct := calltracker.NewCallTracker(database.WithContext(context.WithValue(context.Background(), trackerQuery{}, true)), ps, kvStore)
 

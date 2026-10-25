@@ -582,29 +582,25 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	if !s.hub.AdmitStream(ctx, packet, "openbridge") {
-		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
-		return
-	}
-
-	// We need to send this packet to all peers except the one that sent it
-	for _, p := range table.all {
-		if p.ID == peerID {
-			continue
+	talkgroup, stream := bridge.Data.Destination, bridge.Data.Stream
+	s.hub.RouteStream(ctx, packet, "openbridge", func(admitted bool) {
+		if !admitted {
+			s.sendQuench(peer, b, talkgroup, stream, remoteAddr)
+			return
 		}
-		if p.Egress && rules.EgressAllows(p.egress, &packet) {
-			s.sendPacketToPeer(ctx, p.ID, packet, org)
+		for _, p := range table.all {
+			if p.ID == peerID {
+				continue
+			}
+			if p.Egress && rules.EgressAllows(p.egress, &packet) {
+				s.sendPacketToPeer(ctx, p.ID, packet, org)
+			}
 		}
-	}
-
-	// Route to local repeaters via Hub
-	s.hub.RoutePacket(ctx, packet, "openbridge")
-
-	// Publish peer activity event for WebSocket consumers
-	peerEvent := fmt.Sprintf(`{"peer_id":%d,"event":"active","src":%d,"dst":%d}`, peerID, packet.Src, packet.Dst)
-	if err := s.pubsub.Publish("hub:events:peers", []byte(peerEvent)); err != nil {
-		slog.Error("Error publishing peer event", "error", err)
-	}
+		peerEvent := fmt.Sprintf(`{"peer_id":%d,"event":"active","src":%d,"dst":%d}`, peerID, packet.Src, packet.Dst)
+		if err := s.pubsub.Publish("hub:events:peers", []byte(peerEvent)); err != nil {
+			slog.Error("Error publishing peer event", "error", err)
+		}
+	})
 }
 
 // handleControl takes a control packet of FreeDMR's enhanced OpenBridge.

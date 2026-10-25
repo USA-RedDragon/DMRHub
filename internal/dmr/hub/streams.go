@@ -44,6 +44,10 @@ const streamClaimHold = 30 * time.Second
 
 const streamClaimRecheck = 5 * time.Second
 
+// streamClaimWait is the longest that the bursts of a new source of a
+// stream wait for the KV store to answer for the claim of the stream.
+const streamClaimWait = 250 * time.Millisecond
+
 const streamClaimKeyPrefix = "dmrhub:stream_claim:"
 
 // inflight counts work that shutdown must wait for. Unlike a
@@ -163,55 +167,170 @@ type streamClaim struct {
 	renewed time.Time
 }
 
-var errNoClaimStore = errors.New("no KV store for stream claims")
+var (
+	errNoClaimStore = errors.New("no KV store for stream claims")
+	errClaimSlow    = errors.New("the KV store took too long")
+)
 
-// AdmitStream reports whether the hub takes packet in. The first source of
-// a stream of a radio owns it until at least streamClaimHold passes with no
-// burst from that source. The same stream from another source meanwhile is
-// a loop or a second path to the same call, so it is dropped, counted and
-// logged once per stream, as FreeDMR's LoopControl does. The claim is in
-// the KV store, so it holds across replicas; a hub checks it once per
-// streamClaimRecheck for each source of a stream, and a claim lasts
-// streamClaimHold plus streamClaimRecheck after its owner's last check, so
-// it outlasts the last burst by at least streamClaimHold. A repeater that
-// reconnects or moves to another replica keeps its ID, so it keeps its
-// stream.
-func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName string) bool {
+// claimWaitKey is a source of a stream of a radio.
+type claimWaitKey struct {
+	claim  claimKey
+	source streamSource
+}
+
+type heldBurst struct {
+	packet models.Packet
+	then   func(bool)
+}
+
+// claimWait holds the bursts of a source of a stream while the hub checks
+// the claim of the stream in the KV store.
+type claimWait struct {
+	mu   sync.Mutex
+	held []heldBurst
+	done bool
+}
+
+func (w *claimWait) hold(b heldBurst) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.done {
+		return false
+	}
+	w.held = append(w.held, b)
+	return true
+}
+
+// admitStream calls then with whether the hub takes packet in. The first
+// source of a stream of a radio owns it until at least streamClaimHold
+// passes with no burst from that source. The same stream from another
+// source meanwhile is a loop or a second path to the same call, so it is
+// dropped, counted and logged once per stream, as FreeDMR's LoopControl
+// does. The claim is in the KV store, so it holds across replicas; a hub
+// checks it once per streamClaimRecheck for each source of a stream, and a
+// claim lasts streamClaimHold plus streamClaimRecheck after its owner's
+// last check, so it outlasts the last burst by at least streamClaimHold. A
+// repeater that reconnects or moves to another replica keeps its ID, so it
+// keeps its stream.
+//
+// The caller never waits on the KV store. The owner of a stream keeps
+// it while its claim is renewed there. For any other source, the bursts of
+// that source of the stream wait for at most streamClaimWait while the
+// claim is checked, and then is called for them on another goroutine, in
+// the order they came. A KV store that is slower than that or fails leaves
+// the decision to this hub alone.
+func (h *Hub) admitStream(ctx context.Context, packet models.Packet, sourceName string, then func(bool)) {
 	if packet.StreamID == 0 {
-		return true
+		then(true)
+		return
 	}
 	src := streamSource{server: sourceName, repeater: packet.Repeater}
-	key := claimKey{stream: packet.StreamID, src: packet.Src}
-	now := time.Now()
-	hold, recheck := h.claimTimes()
-	cached, known := h.streamClaims.Load(key)
-	owner := cached.source
-	if !known || now.Sub(cached.checked) >= recheck {
-		owned := known && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold
-		shared, err := h.sharedClaim(ctx, key, src, owned, hold+recheck)
-		switch {
-		case err == nil && shared == src:
-			owner = src
-			h.streamClaims.Store(key, streamClaim{source: src, checked: now, renewed: now})
-		case err == nil:
-			owner = shared
-			h.streamClaims.Store(key, streamClaim{source: shared, checked: now})
-		case !known || cached.source == src || now.Sub(cached.checked) > hold+recheck:
-			owner = src
-			h.streamClaims.Store(key, streamClaim{source: src, checked: now, renewed: now})
+	key := claimWaitKey{claim: claimKey{stream: packet.StreamID, src: packet.Src}, source: src}
+	burst := heldBurst{packet: packet, then: then}
+	for {
+		if w, ok := h.claimWaits.Load(key); ok {
+			if w.hold(burst) {
+				return
+			}
+			continue
 		}
-		if err != nil && !errors.Is(err, errNoClaimStore) {
-			slog.Warn("Failed to check the shared claim of a stream", "stream", packet.StreamID, "src", packet.Src, "error", err)
+		hold, recheck := h.claimTimes()
+		cached, known := h.streamClaims.Load(key.claim)
+		now := time.Now()
+		if known && now.Sub(cached.checked) < recheck {
+			then(h.admitFrom(packet, src, cached.source))
+			return
 		}
+		if known && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold {
+			h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: cached.renewed})
+			go h.askClaim(ctx, key, cached, known)
+			then(true)
+			return
+		}
+		w := &claimWait{held: []heldBurst{burst}}
+		if _, loaded := h.claimWaits.LoadOrStore(key, w); loaded {
+			continue
+		}
+		go h.checkClaim(ctx, key, w, cached, known)
+		return
 	}
+}
+
+type claimResult struct {
+	owner streamSource
+	err   error
+}
+
+func (h *Hub) checkClaim(ctx context.Context, key claimWaitKey, w *claimWait, cached streamClaim, known bool) {
+	owner := h.askClaim(ctx, key, cached, known)
+	for {
+		w.mu.Lock()
+		if len(w.held) == 0 {
+			h.claimWaits.Delete(key)
+			w.done = true
+			w.mu.Unlock()
+			return
+		}
+		b := w.held[0]
+		w.held = w.held[1:]
+		w.mu.Unlock()
+		b.then(h.admitFrom(b.packet, key.source, owner))
+	}
+}
+
+// askClaim takes or renews the claim of key.source in the KV store, waiting
+// for at most streamClaimWait, stores the answer and returns the owner.
+// cached and known are the claim that the hub knew before.
+func (h *Hub) askClaim(ctx context.Context, key claimWaitKey, cached streamClaim, known bool) streamSource {
+	hold, recheck := h.claimTimes()
+	src := key.source
+	owned := known && cached.source == src && !cached.renewed.IsZero() && time.Since(cached.renewed) < hold
+	ctx, cancel := context.WithTimeout(ctx, streamClaimWait)
+	defer cancel()
+	answer := make(chan claimResult, 1)
+	go func() {
+		owner, err := h.sharedClaim(ctx, key.claim, src, owned, hold+recheck)
+		answer <- claimResult{owner: owner, err: err}
+	}()
+	timer := time.NewTimer(streamClaimWait)
+	defer timer.Stop()
+	var r claimResult
+	select {
+	case r = <-answer:
+	case <-timer.C:
+		r.err = errClaimSlow
+	}
+
+	now := time.Now()
+	owner := cached.source
+	switch {
+	case r.err == nil && r.owner == src:
+		owner = src
+		h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: now})
+	case r.err == nil:
+		owner = r.owner
+		h.streamClaims.Store(key.claim, streamClaim{source: r.owner, checked: now})
+	case !known || cached.source == src || now.Sub(cached.checked) > hold+recheck:
+		owner = src
+		h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: now})
+	}
+	if r.err != nil && !errors.Is(r.err, errNoClaimStore) {
+		slog.Warn("Failed to check the shared claim of a stream", "stream", key.claim.stream, "src", key.claim.src, "error", r.err)
+	}
+	return owner
+}
+
+// admitFrom reports whether owner is src, and counts and logs packet as a
+// dropped copy when it is not.
+func (h *Hub) admitFrom(packet models.Packet, src, owner streamSource) bool {
 	if owner == src {
 		return true
 	}
 	metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonStreamFromOtherSource)
-	if _, logged := h.loopLogged.LoadOrStore(packet.StreamID, now); !logged {
+	if _, logged := h.loopLogged.LoadOrStore(packet.StreamID, time.Now()); !logged {
 		slog.Warn("Dropping a stream that another source is already sending",
 			"stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst,
-			"server", sourceName, "repeaterID", packet.Repeater,
+			"server", src.server, "repeaterID", packet.Repeater,
 			"ownerServer", owner.server, "ownerRepeaterID", owner.repeater)
 	}
 	return false

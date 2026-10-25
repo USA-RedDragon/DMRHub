@@ -69,6 +69,10 @@ type IPSCServer struct {
 
 	pacer *pacer
 
+	// peerJobs activates and deactivates the peers in the hub off the
+	// listener and s.mu.
+	peerJobs servers.RepeaterQueue
+
 	timesMu      sync.Mutex
 	times        map[uint]repeaterTimes
 	writingTimes bool
@@ -252,6 +256,7 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		}
 	})
 	s.wg.Wait()
+	s.peerJobs.Wait()
 	s.closeTimes()
 	return nil
 }
@@ -385,13 +390,15 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			s.peers[o.ID] = p
 			s.updateRepeaterDBTimes(p, uint(o.ID), true)
 			if s.hub != nil {
-				s.hub.ActivateRepeater(ctx, uint(o.ID))
+				id := uint(o.ID)
+				s.peerJobs.Do(id, func() { s.hub.ActivateRepeater(ctx, id) })
 			}
 		case ipscsession.OutputDown:
 			slog.Info("IPSC peer down", "peerID", o.ID, "reason", o.Reason)
 			delete(s.peers, o.ID)
 			if s.hub != nil {
-				s.hub.DeactivateRepeater(ctx, uint(o.ID))
+				id := uint(o.ID)
+				s.peerJobs.Do(id, func() { s.hub.DeactivateRepeater(ctx, id) })
 			}
 		case ipscsession.OutputDropped:
 			slog.Debug("IPSC packet dropped", "peerID", o.ID, "peer", toUDPAddr(o.Addr), "reason", o.Reason)

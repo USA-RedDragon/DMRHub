@@ -1065,3 +1065,85 @@ func TestDeleteUserStopsTrafficToTheirRepeaters(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.False(t, delivery.GroupBurstReaches(t, 91, id))
 }
+
+func TestDeleteUserKeepsHistory(t *testing.T) {
+	t.Parallel()
+	sqliteFK := testutils.SQLiteMemoryBackend()
+	sqliteFK.Name = "sqlite-memory-fk"
+	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
+		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
+	}
+	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+			database := tdb.DB()
+
+			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+			_, _, adminJar := testutils.LoginAdmin(t, router)
+
+			const otherID, repeaterID, tgID, peerID = uint(3140001), uint(314000101), uint(91), uint(100010)
+			require.NoError(t, database.Create(&models.User{ID: otherID, Callsign: "N0CALL", Username: "other", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: repeaterID, Callsign: "N0CALL"}, OwnerID: otherID}).Error)
+
+			_, w := testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{ID: tgID, Name: "TG91", Description: "TG91"})
+			require.Equal(t, http.StatusOK, w.Code)
+			_, w = testutils.SetTalkgroupAdmins(t, router, tgID, adminJar, apimodels.TalkgroupAdminAction{UserIDs: []uint{user.DMRId}})
+			require.Equal(t, http.StatusOK, w.Code)
+			_, w = testutils.SetTalkgroupNCOs(t, router, tgID, adminJar, apimodels.TalkgroupAdminAction{UserIDs: []uint{user.DMRId, otherID}})
+			require.Equal(t, http.StatusOK, w.Code)
+
+			userID, rptID := user.DMRId, repeaterID
+			from := models.Call{StreamID: 1, StartTime: time.Now(), UserID: &userID, RepeaterID: &rptID, IngressID: rptID, SourceID: userID, IsToUser: true, ToUserID: new(otherID), DestinationID: otherID}
+			to := models.Call{StreamID: 2, StartTime: time.Now(), UserID: new(otherID), RepeaterID: &rptID, IngressID: rptID, SourceID: otherID, IsToUser: true, ToUserID: &userID, DestinationID: userID}
+			require.NoError(t, database.Create(&from).Error)
+			require.NoError(t, database.Create(&to).Error)
+
+			_, w = testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{ID: peerID, OwnerID: user.DMRId, IP: "10.0.0.10", Port: 62035, Ingress: true, Egress: true})
+			require.Equal(t, http.StatusOK, w.Code)
+			_, w = testutils.CreatePeerRule(t, router, peerID, adminJar, apimodels.PeerRulePost{Direction: true, SubjectIDMin: 1, SubjectIDMax: 100})
+			require.Equal(t, http.StatusOK, w.Code)
+
+			net, w := testutils.StartNet(t, router, userJar, apimodels.NetStartPost{TalkgroupID: tgID, Description: "net"})
+			require.Equal(t, http.StatusCreated, w.Code)
+			sn, w := testutils.CreateScheduledNet(t, router, userJar, apimodels.ScheduledNetPost{TalkgroupID: tgID, Name: "weekly", DayOfWeek: 1, TimeOfDay: "19:00", Timezone: "UTC"})
+			require.Equal(t, http.StatusCreated, w.Code)
+
+			resp, w := testutils.DeleteUser(t, router, user.DMRId, adminJar)
+			require.Equal(t, http.StatusOK, w.Code, resp.Error)
+			assert.Equal(t, "User deleted", resp.Message)
+
+			count := func(query string, args ...any) int64 {
+				t.Helper()
+				var n int64
+				require.NoError(t, database.Raw(query, args...).Scan(&n).Error)
+				return n
+			}
+			assert.Zero(t, count("SELECT COUNT(*) FROM users WHERE id = ?", user.DMRId))
+			assert.Equal(t, int64(1), count("SELECT COUNT(*) FROM calls WHERE id = ? AND user_id IS NULL AND to_user_id = ?", from.ID, otherID))
+			assert.Equal(t, int64(1), count("SELECT COUNT(*) FROM calls WHERE id = ? AND to_user_id IS NULL AND user_id = ?", to.ID, otherID))
+			assert.Equal(t, int64(1), count("SELECT COUNT(*) FROM nets WHERE id = ? AND started_by_user_id IS NULL", net.ID))
+			assert.Equal(t, int64(1), count("SELECT COUNT(*) FROM scheduled_nets WHERE id = ? AND created_by_user_id IS NULL", sn.ID))
+			assert.Zero(t, count("SELECT COUNT(*) FROM peers WHERE id = ?", peerID))
+			assert.Zero(t, count("SELECT COUNT(*) FROM peer_rules WHERE peer_id = ?", peerID))
+			assert.Zero(t, count("SELECT COUNT(*) FROM talkgroup_admins WHERE user_id = ?", user.DMRId))
+			assert.Zero(t, count("SELECT COUNT(*) FROM talkgroup_ncos WHERE user_id = ?", user.DMRId))
+			assert.Equal(t, int64(1), count("SELECT COUNT(*) FROM talkgroup_ncos WHERE user_id = ?", otherID))
+
+			got, w := testutils.GetNet(t, router, adminJar, net.ID)
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Zero(t, got.StartedByUser.ID)
+			w, body := testutils.ListNets(t, router, adminJar, "")
+			require.Equal(t, http.StatusOK, w.Code, string(body))
+
+			resp, w = testutils.DeleteUser(t, router, otherID, adminJar)
+			require.Equal(t, http.StatusOK, w.Code, resp.Error)
+			assert.Zero(t, count("SELECT COUNT(*) FROM repeaters WHERE id = ?", repeaterID))
+			assert.Zero(t, count("SELECT COUNT(*) FROM calls WHERE repeater_id = ?", repeaterID))
+			assert.Zero(t, count("SELECT COUNT(*) FROM talkgroup_ncos WHERE user_id = ?", otherID))
+		})
+	}
+}

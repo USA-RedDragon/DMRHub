@@ -27,8 +27,10 @@ import (
 )
 
 const (
-	colActive  = "active"
-	colEndTime = "end_time"
+	colActive          = "active"
+	colEndTime         = "end_time"
+	colStartedByUserID = "started_by_user_id"
+	colCreatedByUserID = "created_by_user_id"
 )
 
 //go:generate go run github.com/tinylib/msgp

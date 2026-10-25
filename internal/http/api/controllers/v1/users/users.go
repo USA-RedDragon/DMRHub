@@ -42,16 +42,17 @@ import (
 )
 
 const (
-	usersKey          = "users"
-	errorKey          = "error"
-	totalKey          = "total"
-	msgErrGettingUser = "Error getting user"
-	messageKey        = "message"
-	msgInvalidUserID  = "Invalid User ID"
-	msgNotLoggedIn    = "Not logged in"
-	msgErrSavingUser  = "Error saving user"
-	msgUserNotFound   = "User does not exist"
-	msgErrFindingUser = "Error finding user"
+	usersKey           = "users"
+	errorKey           = "error"
+	totalKey           = "total"
+	msgErrGettingUser  = "Error getting user"
+	messageKey         = "message"
+	msgInvalidUserID   = "Invalid User ID"
+	msgErrDeletingUser = "Error deleting user"
+	msgNotLoggedIn     = "Not logged in"
+	msgErrSavingUser   = "Error saving user"
+	msgUserNotFound    = "User does not exist"
+	msgErrFindingUser  = "Error finding user"
 )
 
 func GETUsers(c *gin.Context) {
@@ -714,19 +715,29 @@ func DELETEUser(c *gin.Context) {
 	repeaters, err := models.GetUserRepeaters(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error listing the repeaters of a user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrDeletingUser})
+		return
+	}
+
+	peers, err := models.GetUserPeers(db, uint(idUint64))
+	if err != nil {
+		slog.Error("Error listing the peers of a user", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrDeletingUser})
 		return
 	}
 
 	err = models.DeleteUser(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting user", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting user"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrDeletingUser})
 		return
 	}
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
 		for _, r := range repeaters {
 			dmrHub.ReloadRepeater(c.Request.Context(), r.ID)
+		}
+		for _, p := range peers {
+			dmrHub.PeerChanged(p.ID)
 		}
 	}
 	publishUserChanged(c, uint(idUint64))

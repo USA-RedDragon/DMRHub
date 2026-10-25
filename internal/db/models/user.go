@@ -21,7 +21,6 @@ package models
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"gorm.io/gorm"
@@ -139,23 +138,58 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 	return int(count), err
 }
 
+// DeleteUser deletes the user id and what they own in one transaction.
+// Their repeaters go with the calls through them, their peers with their
+// rules. Their other calls, nets and scheduled nets stay without the user.
 func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
-		tx.Where("owner_id = ?", id).Find(&repeaters)
-		for _, repeater := range repeaters {
-			tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, repeater.ID, repeater.ID).Delete(&Call{})
-			tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(repeater)
-			tx.Unscoped().Table("talkgroup_admins").Where("user_id = ?", id).Delete(&Talkgroup{})
-			tx.Unscoped().Table("talkgroup_ncos").Where("user_id = ?", id).Delete(&Talkgroup{})
+		if err := tx.Unscoped().Where("owner_id = ?", id).Find(&repeaters).Error; err != nil {
+			return fmt.Errorf("could not list the repeaters: %w", err)
 		}
-		tx.Where("user_id = ?", id).Delete(&UserRadioID{})
-		tx.Unscoped().Select(clause.Associations, "Repeaters").Delete(&User{ID: id})
+		for i := range repeaters {
+			r := &repeaters[i]
+			if err := tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, r.ID, r.ID).Delete(&Call{}).Error; err != nil {
+				return fmt.Errorf("could not delete the calls of repeater %d: %w", r.ID, err)
+			}
+			if err := tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(r).Error; err != nil {
+				return fmt.Errorf("could not delete repeater %d: %w", r.ID, err)
+			}
+		}
+		var peers []uint
+		if err := tx.Unscoped().Model(&Peer{}).Where("owner_id = ?", id).Pluck("id", &peers).Error; err != nil {
+			return fmt.Errorf("could not list the peers: %w", err)
+		}
+		for _, peer := range peers {
+			if err := DeletePeer(tx, peer); err != nil {
+				return err
+			}
+		}
+		for _, ref := range []struct {
+			model  any
+			column string
+		}{
+			{&Call{}, "user_id"},
+			{&Call{}, "to_user_id"},
+			{&Net{}, colStartedByUserID},
+			{&ScheduledNet{}, colCreatedByUserID},
+		} {
+			if err := tx.Unscoped().Model(ref.model).Where(ref.column+" = ?", id).UpdateColumn(ref.column, nil).Error; err != nil {
+				return fmt.Errorf("could not clear %s: %w", ref.column, err)
+			}
+		}
+		for _, table := range []string{"talkgroup_admins", "talkgroup_ncos", "user_radio_ids"} {
+			if err := tx.Exec("DELETE FROM "+table+" WHERE user_id = ?", id).Error; err != nil {
+				return fmt.Errorf("could not delete from %s: %w", table, err)
+			}
+		}
+		if err := tx.Unscoped().Delete(&User{ID: id}).Error; err != nil {
+			return fmt.Errorf("could not delete the user: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
-		slog.Error("Error deleting user", "error", err)
-		return fmt.Errorf("failed to delete user: %w", err)
+		return fmt.Errorf("failed to delete user %d: %w", id, err)
 	}
 	return nil
 }

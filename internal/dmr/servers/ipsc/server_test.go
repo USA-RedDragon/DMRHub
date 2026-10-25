@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -578,5 +579,61 @@ func TestPeersWithOwnKeys(t *testing.T) {
 		if !ok || string(body) != string(data) {
 			t.Fatal("user packet not signed with the key of the peer")
 		}
+	}
+}
+
+func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
+	t.Parallel()
+	dbConn, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "ipsc.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := dbConn.AutoMigrate(&models.Repeater{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := dbConn.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 9}, Type: models.RepeaterTypeIPSC}).Error; err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	slow := func(*gorm.DB) { time.Sleep(time.Second) }
+	if err := dbConn.Callback().Query().Before("gorm:query").Register("test:slow_query", slow); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	if err := dbConn.Callback().Update().Before("gorm:update").Register("test:slow_update", slow); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	s := NewIPSCServer(testConfig(), nil, dbConn)
+	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	s.udp = conn
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	srv, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("expected *net.UDPAddr from LocalAddr")
+	}
+	client, addr := dialServer(t, srv)
+
+	before := time.Now()
+	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 9), addr); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if took := time.Since(before); took > 200*time.Millisecond {
+		t.Errorf("the server took %s on a registration", took)
+	}
+	readUDP(t, client)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var row models.Repeater
+		err := dbConn.First(&row, 9).Error
+		if err == nil && !row.Connected.Before(before.Truncate(time.Second)) && !row.LastPing.Before(before.Truncate(time.Second)) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the repeater times are not written: %v %+v", err, row)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

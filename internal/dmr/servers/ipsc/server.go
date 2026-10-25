@@ -66,6 +66,12 @@ type IPSCServer struct {
 
 	pacer *pacer
 
+	timesMu      sync.Mutex
+	times        map[uint]repeaterTimes
+	writingTimes bool
+	timesClosed  bool
+	timesWG      sync.WaitGroup
+
 	wg       sync.WaitGroup
 	done     chan struct{}
 	stopped  atomic.Bool
@@ -221,6 +227,7 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		}
 	})
 	s.wg.Wait()
+	s.closeTimes()
 	return nil
 }
 
@@ -398,9 +405,14 @@ func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, 
 	s.burstHandler = handler
 }
 
-// updateRepeaterDBTimes writes the LastPing of the repeater, and on connect
-// its Connected time, at most once per dbWriteDebounceInterval otherwise.
-// The caller holds s.mu.
+type repeaterTimes struct {
+	ping, connected time.Time
+}
+
+// updateRepeaterDBTimes queues the LastPing of the repeater, and on connect
+// its Connected time, at most once per dbWriteDebounceInterval otherwise,
+// for the database, so that a slow store never holds up the packets of
+// every peer. The caller holds s.mu.
 func (s *IPSCServer) updateRepeaterDBTimes(p *peerState, repeaterID uint, isConnect bool) {
 	if s.db == nil {
 		return
@@ -409,20 +421,59 @@ func (s *IPSCServer) updateRepeaterDBTimes(p *peerState, repeaterID uint, isConn
 	if !isConnect && !p.lastDBWrite.IsZero() && now.Sub(p.lastDBWrite) < dbWriteDebounceInterval {
 		return
 	}
-	dbRepeater, err := models.FindRepeaterByID(s.db, repeaterID)
-	if err != nil {
-		slog.Debug("IPSC: repeater not found in DB for time update", "repeaterID", repeaterID)
-		return
-	}
-	dbRepeater.LastPing = now
-	if isConnect {
-		dbRepeater.Connected = now
-	}
-	if err := s.db.Save(&dbRepeater).Error; err != nil {
-		slog.Error("IPSC: error saving repeater times", "repeaterID", repeaterID, "error", err)
-		return
-	}
 	p.lastDBWrite = now
+	s.timesMu.Lock()
+	defer s.timesMu.Unlock()
+	if s.timesClosed {
+		return
+	}
+	if s.times == nil {
+		s.times = map[uint]repeaterTimes{}
+	}
+	t := s.times[repeaterID]
+	t.ping = now
+	if isConnect {
+		t.connected = now
+	}
+	s.times[repeaterID] = t
+	if s.writingTimes {
+		return
+	}
+	s.writingTimes = true
+	s.timesWG.Add(1)
+	go s.writeTimes()
+}
+
+func (s *IPSCServer) writeTimes() {
+	defer s.timesWG.Done()
+	for {
+		s.timesMu.Lock()
+		times := s.times
+		s.times = nil
+		if len(times) == 0 {
+			s.writingTimes = false
+			s.timesMu.Unlock()
+			return
+		}
+		s.timesMu.Unlock()
+		for id, t := range times {
+			cols := map[string]any{"last_ping": t.ping}
+			if !t.connected.IsZero() {
+				cols["connected"] = t.connected
+			}
+			if err := s.db.Model(&models.Repeater{}).Where("id = ?", id).UpdateColumns(cols).Error; err != nil {
+				slog.Error("IPSC: error saving repeater times", "repeaterID", id, "error", err)
+			}
+		}
+	}
+}
+
+// closeTimes stops taking repeater times and waits for the queued ones.
+func (s *IPSCServer) closeTimes() {
+	s.timesMu.Lock()
+	s.timesClosed = true
+	s.timesMu.Unlock()
+	s.timesWG.Wait()
 }
 
 func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {

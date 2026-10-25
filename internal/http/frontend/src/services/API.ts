@@ -47,6 +47,8 @@ instance.interceptors.response.use(
       window.location.pathname !== '/' &&
       window.location.pathname !== '/lastheard' &&
       window.location.pathname !== '/register' &&
+      window.location.pathname !== '/forgot-password' &&
+      window.location.pathname !== '/reset-password' &&
       window.location.pathname !== '/settings' &&
       window.location.pathname !== '/messages' &&
       window.location.pathname !== '/admin/messages' &&

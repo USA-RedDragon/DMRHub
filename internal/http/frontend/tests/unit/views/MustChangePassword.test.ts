@@ -149,6 +149,24 @@ describe('a user with a temporary password', () => {
     expect(location.pathname, 'not to the login page as for other 403 answers').toBe('/settings');
   });
 
+  it('leaves a visitor who is not logged in on the password reset pages', async () => {
+    const location = { pathname: '/reset-password' };
+    vi.stubGlobal('location', location);
+    const { default: API } = await import('@/services/API');
+    const handlers = (API.interceptors.response as unknown as {
+      handlers: { rejected: (e: unknown) => Promise<unknown> }[];
+    }).handlers;
+    const notLoggedIn = { response: { status: 401, data: { error: 'Authentication failed' } } };
+    for (const path of ['/reset-password', '/forgot-password']) {
+      location.pathname = path;
+      await expect(handlers[0]!.rejected(notLoggedIn)).rejects.toBe(notLoggedIn);
+      expect(location.pathname, 'the 401 of GET /users/me on page load').toBe(path);
+    }
+    location.pathname = '/repeaters';
+    await expect(handlers[0]!.rejected(notLoggedIn)).rejects.toBe(notLoggedIn);
+    expect(location.pathname).toBe('/login');
+  });
+
   it('is sent to Settings after logging in', async () => {
     const api = await settingsAPI();
     api.get.mockResolvedValue({ data: { id: 1000001, callsign: 'N0CALL', must_change_password: true } });

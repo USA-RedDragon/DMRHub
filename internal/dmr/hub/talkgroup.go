@@ -28,6 +28,12 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+func (h *Hub) queueLink(ctx context.Context, repeaterID uint, fn func()) {
+	if !h.links.Do(ctx, repeaterID, fn) && ctx.Err() == nil {
+		slog.Warn("Dropping a talkgroup link change of a backed-up repeater", "repeaterID", repeaterID)
+	}
+}
+
 // doUnlink handles talkgroup unlinking (TG 4000).
 func (h *Hub) doUnlink(ctx context.Context, packet models.Packet) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.doUnlink")

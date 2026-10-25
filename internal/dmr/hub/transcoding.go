@@ -73,11 +73,6 @@ func (sc *streamCodec) setTranscoder(tx *transcoder) {
 	}
 }
 
-type tgRepeaters struct {
-	ids []uint
-	at  time.Time
-}
-
 type copyReport struct {
 	stream uint
 	target string
@@ -232,15 +227,11 @@ func (h *Hub) anyAMBEPeer(ctx context.Context, packet models.Packet) bool {
 }
 
 func (h *Hub) talkgroupRepeaters(tg uint) []uint {
-	if e, ok := h.tgRepeaters.Load(tg); ok && time.Since(e.at) < tgRepeatersTTL {
-		return e.ids
-	}
-	ids, err := models.TalkgroupRepeaterIDs(h.db, tg)
+	ids, err := h.tgRepeaters.Get(tg)
 	if err != nil {
 		slog.Error("Cannot list the repeaters of a talkgroup", "talkgroupID", tg, "error", err)
 		return nil
 	}
-	h.tgRepeaters.Store(tg, tgRepeaters{ids: ids, at: time.Now()})
 	return ids
 }
 

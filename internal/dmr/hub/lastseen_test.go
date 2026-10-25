@@ -122,6 +122,7 @@ func TestTrustedRepeaterMovesRadio(t *testing.T) {
 	t.Parallel()
 	h, database, srv := lastSeenHub(t)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+	h.ReloadRepeater(context.Background(), 100004)
 
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
 	time.Sleep(200 * time.Millisecond)
@@ -142,6 +143,21 @@ func TestUntrustedCallRowDoesNotLocateRadio(t *testing.T) {
 	expectNone(t, srv, "a call on another user's untrusted hotspot must not locate the radio")
 }
 
+// TestPrivateTrafficFollowsASightingThatIsNotStoredYet answers a radio
+// right after it is heard, while a slow database holds the store of the
+// sighting.
+func TestPrivateTrafficFollowsASightingThatIsNotStoredYet(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	slow := slowDown(t, database)
+	slow.on.Store(true)
+	defer slow.on.Store(false)
+
+	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "private traffic goes where the radio was just heard")
+}
+
 func TestPrivateTrafficToUnregisteredRadioIsDropped(t *testing.T) {
 	t.Parallel()
 	h, _, srv := lastSeenHub(t)
@@ -156,10 +172,12 @@ func TestUntrustingRepeaterStopsRouting(t *testing.T) {
 	t.Parallel()
 	h, database, srv := lastSeenHub(t)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+	h.ReloadRepeater(context.Background(), 100004)
 
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100004, 1), models.RepeaterTypeMMDVM)
 	time.Sleep(200 * time.Millisecond)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", false, 100004).Error)
+	h.ReloadRepeater(context.Background(), 100004)
 
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 2), models.RepeaterTypeMMDVM)
 	expectNone(t, srv, "private traffic must not follow a sighting on a repeater that is no longer trusted")
@@ -181,6 +199,7 @@ func TestPrivateStreamKeepsItsTargetWhenTheRadioMoves(t *testing.T) {
 	t.Parallel()
 	h, database, srv := lastSeenHub(t)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+	h.ReloadRepeater(context.Background(), 100004)
 
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
 	time.Sleep(200 * time.Millisecond)

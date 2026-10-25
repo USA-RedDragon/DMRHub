@@ -113,23 +113,42 @@ func (h *Hub) peerSet(ctx context.Context, packet models.Packet) (streamPeerSet,
 	return set, true
 }
 
-func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]peerTarget, error) {
+type egressPeer struct {
+	peerTarget
+	rules []models.PeerRule
+}
+
+func (h *Hub) loadEgressPeers(struct{}) ([]egressPeer, error) {
 	peers, err := models.ListPeers(h.db)
 	if err != nil {
 		return nil, fmt.Errorf("listing peers: %w", err)
 	}
-	var out []peerTarget
+	var out []egressPeer
 	for _, p := range peers {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("listing peers: %w", ctx.Err())
-		}
-		should, err := rules.PeerShouldEgress(h.db, p, &packet)
-		if err != nil {
-			slog.Error("Failed to check peer egress rules", "peerID", p.ID, "error", err)
+		if !p.Egress {
 			continue
 		}
-		if should {
-			out = append(out, peerTarget{id: p.ID, codec2: p.Codec2})
+		egressRules, err := models.ListEgressRulesForPeer(h.db, p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("listing the egress rules of peer %d: %w", p.ID, err)
+		}
+		out = append(out, egressPeer{peerTarget: peerTarget{id: p.ID, codec2: p.Codec2}, rules: egressRules})
+	}
+	return out, nil
+}
+
+func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]peerTarget, error) {
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("listing peers: %w", ctx.Err())
+	}
+	peers, err := h.egressTable.Get(struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("looking up the peers: %w", err)
+	}
+	var out []peerTarget
+	for _, p := range peers {
+		if rules.EgressAllows(p.rules, &packet) {
+			out = append(out, p.peerTarget)
 		}
 	}
 	return out, nil

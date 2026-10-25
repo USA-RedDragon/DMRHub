@@ -229,6 +229,7 @@ func TestDynamicLinksOfBothSlotsAtOnce(t *testing.T) {
 	for round := range 20 {
 		require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100001).
 			Updates(map[string]any{"ts1_dynamic_talkgroup_id": nil, "ts2_dynamic_talkgroup_id": nil}).Error)
+		h.ReloadRepeater(context.Background(), 100001)
 		var wg sync.WaitGroup
 		for _, p := range []models.Packet{makeVoicePacket(2, 1, true, false), makeVoicePacket(3, 2, true, true)} {
 			wg.Add(1)

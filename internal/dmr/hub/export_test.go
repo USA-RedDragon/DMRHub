@@ -43,7 +43,7 @@ func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 // ForgetCachedRepeater drops the cached repeater, so that the next delivery
 // to it reads the database.
 func (h *Hub) ForgetCachedRepeater(id uint) {
-	h.repeaters.invalidate(id)
+	h.repeaters.drop(id)
 }
 
 // SetStreamClaimTiming replaces streamClaimHold and streamClaimRecheck.

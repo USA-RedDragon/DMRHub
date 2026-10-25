@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -137,9 +138,16 @@ type Hub struct {
 
 	peerEgress *streamorder.Queue
 	routing    *streamorder.Queue
+	links      *streamorder.Queue
+
+	talkgroupIDs *lookup.Cache[uint, bool]
+	userIDs      *lookup.Cache[uint, bool]
+	radioCalls   *lookup.Cache[uint, uint]
+	egressTable  *lookup.Cache[struct{}, []egressPeer]
 
 	sightings      chan sighting
 	sightedStreams *xsync.Map[sightingKey, time.Time]
+	heardOn        *xsync.Map[uint, heardAt]
 
 	undeliverable         atomic.Pointer[UndeliverableFunc]
 	undeliverableLogged   *xsync.Map[uint, time.Time]
@@ -164,7 +172,7 @@ type Hub struct {
 	transcoders  inflight
 	codecStreams *xsync.Map[uint, *streamCodec]
 	copyReports  *xsync.Map[copyReport, time.Time]
-	tgRepeaters  *xsync.Map[uint, tgRepeaters]
+	tgRepeaters  *lookup.Cache[uint, []uint]
 	codec2Slots  atomic.Pointer[[]uint]
 	heard        chan heardNote
 }
@@ -182,8 +190,14 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	}
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.routing = streamorder.New(routingQueueSize, h.done)
+	h.links = streamorder.New(routingQueueSize, h.done)
+	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
+	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
+	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
+	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
+	h.heardOn = xsync.NewMap[uint, heardAt]()
 	h.undeliverableLogged = xsync.NewMap[uint, time.Time]()
 	h.streamTargets = xsync.NewMap[streamTarget, targetAt]()
 	h.streamTalkgroups = xsync.NewMap[streamTarget, time.Time]()
@@ -194,7 +208,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.transcoder = transcode.NewService(kvStore)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
-	h.tgRepeaters = xsync.NewMap[uint, tgRepeaters]()
+	h.tgRepeaters = lookup.New("talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
 	h.heard = make(chan heardNote, heardQueue)
 	go h.runHeard()
 	go h.runSightings()
@@ -407,7 +421,7 @@ func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
 // Protocol servers should call this when a repeater connects.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
 	h.claimPeerOwnership(ctx, repeaterID)
-	h.repeaters.invalidate(repeaterID)
+	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 }
 

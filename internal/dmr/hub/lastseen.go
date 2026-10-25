@@ -47,6 +47,18 @@ type sightingKey struct {
 	src, stream uint
 }
 
+type heardAt struct {
+	repeater uint
+	at       time.Time
+}
+
+func (h *Hub) noteHeardOn(packet models.Packet, sourceName string) {
+	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
+		return
+	}
+	h.heardOn.Store(packet.Src, heardAt{repeater: packet.Repeater, at: time.Now()})
+}
+
 // noteSighting queues the place where the source of packet was heard, once
 // per stream. It never blocks.
 func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
@@ -74,9 +86,20 @@ func (h *Hub) runSightings() {
 			h.recordSighting(context.Background(), s)
 		case now := <-ticker.C:
 			pruneStreams(h.sightedStreams, now)
+			h.heardOn.Range(func(src uint, heard heardAt) bool {
+				if now.Sub(heard.at) > sightedStreamTTL {
+					h.heardOn.Delete(src)
+				}
+				return true
+			})
 			pruneStreams(h.undeliverableLogged, now)
 			pruneStreams(h.loopLogged, now)
 			pruneStreams(h.streamTalkgroups, now)
+			h.talkgroupIDs.Prune(now)
+			h.userIDs.Prune(now)
+			h.radioCalls.Prune(now)
+			h.egressTable.Prune(now)
+			h.repeaters.prune(now)
 			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
 				if now.Sub(v.at) > sightedStreamTTL {
 					h.streamPeers.Delete(k)
@@ -162,11 +185,25 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
 	if v, err := h.kv.Get(ctx, fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID)); err == nil {
 		if id, err := strconv.ParseUint(string(v), 10, 32); err == nil {
-			if _, ok := h.routableFor(userID, uint(id)); ok {
+			if rpt, err := h.routingRepeater(uint(id)); err == nil && (rpt.OwnerID == userID || rpt.Trusted) {
 				return uint(id), true
 			}
 		}
 	}
+	if heard, ok := h.heardOn.Load(userID); ok && time.Since(heard.at) < sightedStreamTTL {
+		if rpt, err := h.routingRepeater(heard.repeater); err == nil && (rpt.OwnerID == userID || rpt.Trusted) {
+			return heard.repeater, true
+		}
+	}
+	repeaterID, err := h.radioCalls.Get(userID)
+	if err != nil {
+		slog.Error("Error querying where a radio was last heard", "userID", userID, "error", err)
+		return 0, false
+	}
+	return repeaterID, repeaterID != 0
+}
+
+func (h *Hub) lastCallRepeater(userID uint) (uint, error) {
 	var repeaterID uint
 	err := h.db.Table("calls").
 		Select("calls.repeater_id").
@@ -177,10 +214,9 @@ func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
 		Limit(1).
 		Scan(&repeaterID).Error
 	if err != nil {
-		slog.Error("Error querying where a radio was last heard", "userID", userID, "error", err)
-		return 0, false
+		return 0, fmt.Errorf("querying the calls of radio %d: %w", userID, err)
 	}
-	return repeaterID, repeaterID != 0
+	return repeaterID, nil
 }
 
 func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {

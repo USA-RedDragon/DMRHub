@@ -32,13 +32,20 @@ func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) (boo
 		if err != nil {
 			return false, fmt.Errorf("failed to list egress rules for peer %d: %w", peer.ID, err)
 		}
-		for _, rule := range egressRules {
-			if rule.SubjectIDMin <= packet.Src && rule.SubjectIDMax >= packet.Src {
-				return true, nil
-			}
-		}
+		return EgressAllows(egressRules, packet), nil
 	}
 	return false, nil
+}
+
+// EgressAllows reports whether one of the egress rules of a peer covers
+// the source of packet.
+func EgressAllows(egressRules []models.PeerRule, packet *models.Packet) bool {
+	for _, rule := range egressRules {
+		if rule.SubjectIDMin <= packet.Src && rule.SubjectIDMax >= packet.Src {
+			return true
+		}
+	}
+	return false
 }
 
 func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (bool, error) {

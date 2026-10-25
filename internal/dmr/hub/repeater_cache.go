@@ -23,16 +23,20 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
+	"gorm.io/gorm"
 )
 
 const (
@@ -41,8 +45,9 @@ const (
 )
 
 type cachedRepeater struct {
-	rpt *models.Repeater
-	at  time.Time
+	rpt        *models.Repeater
+	at         time.Time
+	refreshing *atomic.Bool
 }
 
 type repeaterCache struct {
@@ -61,29 +66,57 @@ func (c *repeaterCache) generation() uint64 {
 	return c.gen
 }
 
+func (c *repeaterCache) bump() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gen++
+	return c.gen
+}
+
 func (c *repeaterCache) store(id uint, rpt *models.Repeater, gen uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.gen == gen {
-		c.entries.Store(id, cachedRepeater{rpt: rpt, at: time.Now()})
+		c.entries.Store(id, cachedRepeater{rpt: rpt, at: time.Now(), refreshing: &atomic.Bool{}})
 	}
 }
 
-func (c *repeaterCache) invalidate(id uint) {
+func (c *repeaterCache) drop(id uint) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.gen++
 	c.entries.Delete(id)
 }
 
+func (c *repeaterCache) prune(now time.Time) {
+	c.entries.Range(func(id uint, e cachedRepeater) bool {
+		if now.Sub(e.at) > lookup.Idle {
+			c.entries.Delete(id)
+		}
+		return true
+	})
+}
+
 // routingRepeater returns the repeater as the delivery path sees it. The
 // result is shared and must not be modified.
 func (h *Hub) routingRepeater(id uint) (*models.Repeater, error) {
-	if e, ok := h.repeaters.entries.Load(id); ok && time.Since(e.at) < repeaterCacheTTL {
+	if e, ok := h.repeaters.entries.Load(id); ok {
+		if time.Since(e.at) >= repeaterCacheTTL && e.refreshing.CompareAndSwap(false, true) {
+			go h.refreshRepeater(id, e)
+		}
+		if e.rpt == nil {
+			return nil, fmt.Errorf("finding repeater %d: %w", id, gorm.ErrRecordNotFound)
+		}
 		return e.rpt, nil
 	}
-	gen := h.repeaters.generation()
+	return h.loadRepeater(id, h.repeaters.generation())
+}
+
+func (h *Hub) loadRepeater(id uint, gen uint64) (*models.Repeater, error) {
 	rpt, err := models.FindRepeaterByID(h.db, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		h.repeaters.store(id, nil, gen)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("finding repeater %d: %w", id, err)
 	}
@@ -91,10 +124,31 @@ func (h *Hub) routingRepeater(id uint) (*models.Repeater, error) {
 	return &rpt, nil
 }
 
-// repeaterChanged drops the cached repeater here and tells the other
-// replicas to drop theirs and reload its subscriptions.
+func (h *Hub) refreshRepeater(id uint, old cachedRepeater) {
+	_, err := h.loadRepeater(id, h.repeaters.generation())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("Cannot reload a repeater, keeping the old one", "repeaterID", id, "error", err)
+		h.repeaters.entries.Compute(id, func(cur cachedRepeater, loaded bool) (cachedRepeater, xsync.ComputeOp) {
+			if loaded && cur.refreshing == old.refreshing {
+				return cachedRepeater{rpt: cur.rpt, at: time.Now(), refreshing: &atomic.Bool{}}, xsync.UpdateOp
+			}
+			return cur, xsync.CancelOp
+		})
+	}
+	old.refreshing.Store(false)
+}
+
+func (h *Hub) reloadRepeater(id uint) {
+	if _, err := h.loadRepeater(id, h.repeaters.bump()); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("Cannot reload a repeater", "repeaterID", id, "error", err)
+		h.repeaters.drop(id)
+	}
+}
+
+// repeaterChanged reloads the cached repeater here and tells the other
+// replicas to reload theirs and its subscriptions.
 func (h *Hub) repeaterChanged(id uint) {
-	h.repeaters.invalidate(id)
+	h.reloadRepeater(id)
 	if h.pubsub == nil {
 		return
 	}
@@ -123,7 +177,7 @@ func (h *Hub) listenRepeaterChanges(sub pubsub.Subscription) {
 			if !valid || origin == h.origin {
 				continue
 			}
-			h.repeaters.invalidate(id)
+			h.reloadRepeater(id)
 			h.reloadLocal(context.Background(), id)
 		}
 	}
@@ -200,7 +254,7 @@ func (h *Hub) resyncRepeater(id uint) {
 		return
 	}
 	slog.Info("Repeater subscriptions differ from the database, reloading", "repeaterID", id)
-	h.repeaters.invalidate(id)
+	h.reloadRepeater(id)
 	h.reloadLocal(context.Background(), id)
 }
 

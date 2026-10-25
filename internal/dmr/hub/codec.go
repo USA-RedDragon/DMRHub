@@ -243,7 +243,7 @@ func (h *Hub) recordHeard(n heardNote) {
 // repeater id. Call it after a change of the codec of one of its
 // timeslots.
 func (h *Hub) CodecChanged(id uint) {
-	h.repeaters.invalidate(id)
+	h.reloadRepeater(id)
 	h.loadCodec2Repeaters()
 	if h.pubsub == nil {
 		return
@@ -277,7 +277,7 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 			if !valid || origin == h.origin {
 				continue
 			}
-			h.repeaters.invalidate(id)
+			h.reloadRepeater(id)
 			h.loadCodec2Repeaters()
 		}
 	}
@@ -292,12 +292,7 @@ func (h *Hub) pruneCodecStreams(now time.Time) {
 		return true
 	})
 	pruneStreams(h.copyReports, now)
-	h.tgRepeaters.Range(func(tg uint, e tgRepeaters) bool {
-		if now.Sub(e.at) > tgRepeatersTTL {
-			h.tgRepeaters.Delete(tg)
-		}
-		return true
-	})
+	h.tgRepeaters.Prune(now)
 }
 
 // endCodecStream stops the transcoder of a stream at its terminator. The

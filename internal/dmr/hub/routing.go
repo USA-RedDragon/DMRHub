@@ -74,6 +74,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		defer h.endCodecStream(packet.StreamID)
 	}
 
+	h.noteHeardOn(packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 
 	sc := h.observeCodec(&packet, sourceName)
@@ -83,7 +84,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 
 	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer {
-		h.switchDynamicTalkgroup(ctx, packet)
+		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, packet) })
 	}
 
 	tx := h.prepareCopy(ctx, &packet, sc, sourceName)
@@ -129,7 +130,7 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 		return false
 	}
 	if packet.Dst == 4000 && isVoice {
-		h.doUnlink(ctx, packet)
+		h.queueLink(ctx, packet.Repeater, func() { h.doUnlink(ctx, packet) })
 		return true
 	}
 
@@ -158,7 +159,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	if _, ok := h.streamTalkgroups.Load(streamTarget{stream: packet.StreamID, dst: packet.Dst}); ok {
 		return false
 	}
-	exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
+	exists, err := h.talkgroupIDs.Get(packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if talkgroup exists", "error", err)
 		return true
@@ -171,7 +172,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 func (h *Hub) handleGroupCall(packet models.Packet) {
 	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
 	if _, ok := h.streamTalkgroups.Load(key); !ok {
-		exists, err := models.TalkgroupIDExists(h.db, packet.Dst)
+		exists, err := h.talkgroupIDs.Get(packet.Dst)
 		if err != nil {
 			slog.Error("Error checking if talkgroup exists", "error", err)
 			return
@@ -208,13 +209,12 @@ func (h *Hub) handlePrivateCall(ctx context.Context, packet models.Packet) bool 
 // routeToRepeater sends a private call packet to a specific repeater via
 // pubsub. It reports whether the repeater exists.
 func (h *Hub) routeToRepeater(packet models.Packet) bool {
-	exists, err := models.RepeaterIDExists(h.db, packet.Dst)
-	if err != nil {
-		slog.Error("Error checking if repeater exists", "error", err)
-		return false
-	}
-	if !exists {
-		slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
+	if _, err := h.routingRepeater(packet.Dst); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
+		} else {
+			slog.Error("Error checking if repeater exists", "error", err)
+		}
 		return false
 	}
 
@@ -243,16 +243,17 @@ func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bo
 	if at, ok := h.streamTargets.Load(key); ok {
 		return at.repeater, true
 	}
-	user, err := models.FindUserByID(h.db, packet.Dst)
+	exists, err := h.userIDs.Get(packet.Dst)
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			slog.Error("Error finding user", "error", err)
-		}
+		slog.Error("Error finding user", "error", err)
 		return 0, false
 	}
-	repeaterID, ok := h.locateRadio(ctx, user.ID)
+	if !exists {
+		return 0, false
+	}
+	repeaterID, ok := h.locateRadio(ctx, packet.Dst)
 	if !ok {
-		slog.Debug("Dropping private traffic to a radio with no known location", "userID", user.ID, "src", packet.Src)
+		slog.Debug("Dropping private traffic to a radio with no known location", "userID", packet.Dst, "src", packet.Src)
 		return 0, false
 	}
 	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})

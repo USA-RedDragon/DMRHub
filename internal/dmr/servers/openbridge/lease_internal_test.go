@@ -58,3 +58,22 @@ func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 	assert.LessOrEqual(t, gap, EgressLeaseTTL+egressLeaseRenew+200*time.Millisecond)
 	assert.False(t, a.holdLease(ctx), "the old holder does not get it back")
 }
+
+// TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage gives a holder's
+// lease up and lets another replica announce that it took it. The topic
+// has one order, and the new holder sends each packet that comes after its
+// taken message, so the old one must send none of them, or the peers get
+// them twice.
+func TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage(t *testing.T) {
+	t.Parallel()
+	s := &Server{id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	s.role.Store(roleReleasing)
+	require.True(t, s.sends(), "a holder that gave the lease up sends until it is taken")
+	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
+	select {
+	case <-s.handedOver:
+	default:
+		t.Fatal("the holder was not told that the lease was taken")
+	}
+	assert.False(t, s.sends(), "the old holder sends the packets after the taken message too")
+}

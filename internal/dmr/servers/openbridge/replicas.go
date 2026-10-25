@@ -354,6 +354,7 @@ func (s *Server) leaseMessage(j egressJob) {
 	case j.Kind == kindTaken && j.Replica == s.id && role == roleTaking:
 		s.setRole(roleLeader)
 	case j.Kind == kindTaken && j.Replica != s.id && role == roleReleasing:
+		s.setRole(roleFollower)
 		s.handedOverOnce.Do(func() { close(s.handedOver) })
 	case j.Kind == kindTaken && j.Replica != s.id && role == roleLeader:
 		s.setRole(roleFollower)

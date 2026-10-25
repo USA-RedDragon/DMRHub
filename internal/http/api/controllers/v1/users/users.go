@@ -178,12 +178,12 @@ func POSTUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 			return
 		}
-		body := fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
+		body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
 		if config.AutoApprove {
 			c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
 		} else {
 			c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
-			body += fmt.Sprintf("<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", config.HTTP.CanonicalHost)
+			body += fmt.Sprintf("\nTo approve them, open %s/admin/users/approval\n", strings.TrimRight(config.HTTP.CanonicalHost, "/"))
 		}
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(
@@ -252,7 +252,7 @@ func POSTUserDemote(c *gin.Context) {
 			config,
 			db,
 			"Admin user demotion",
-			fmt.Sprintf("An admin has been demoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+			fmt.Sprintf("An admin has been demoted.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
 			slog.Error("Error sending email", "function", "POSTUserDemote", "error", err)
@@ -309,7 +309,7 @@ func POSTUserPromote(c *gin.Context) {
 			config,
 			db,
 			"Admin user promotion",
-			fmt.Sprintf("An admin has been promoted.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", user.Username, strings.ToUpper(user.Callsign), user.ID),
+			fmt.Sprintf("An admin has been promoted.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, strings.ToUpper(user.Callsign), user.ID),
 		)
 		if err != nil {
 			slog.Error("Error sending email", "function", "POSTUserPromote", "error", err)

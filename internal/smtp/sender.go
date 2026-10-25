@@ -22,7 +22,6 @@ package smtp
 import (
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"strings"
 
@@ -41,10 +40,13 @@ var (
 	ErrHeaderLineBreak   = errors.New("an email header has a line break")
 )
 
+// SendToAdmins sends body as plain text to every admin with an email
+// address. Lines of body end with a newline.
 func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) error {
 	if !config.SMTP.Enabled {
 		return nil
 	}
+	mailer := NewMailer(config)
 	errGroup := errgroup.Group{}
 	users, err := models.FindUserAdmins(db)
 	if err != nil {
@@ -55,31 +57,13 @@ func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) e
 			continue
 		}
 		errGroup.Go(func() error {
-			return send(
-				config,
-				user.Email,
-				subject,
-				body,
-			)
+			return mailer.SendText(user.Email, subject, body)
 		})
 	}
 	if err := errGroup.Wait(); err != nil {
 		return fmt.Errorf("failed to send email to admins: %w", err)
 	}
 	return nil
-}
-
-func send(config *configPkg.Config, toEmail string, subject string, body string) error {
-	msg := fmt.Sprintf("From: %s <%s>\r\n", config.NetworkName, config.SMTP.From) +
-		fmt.Sprintf("To: %s\r\n", toEmail) +
-		fmt.Sprintf("Subject: %s\r\n", subject) +
-		"Mime-Version: 1.0;\r\n" +
-		"Content-Type: text/html; charset=\"ISO-8859-1\";\r\n" +
-		"Content-Transfer-Encoding: 7bit;\r\n" +
-		"\r\n<html><body>" +
-		html.EscapeString(body) +
-		"\r\n</body></html>\r\n"
-	return deliver(config, toEmail, msg)
 }
 
 // Mailer sends plain text email.

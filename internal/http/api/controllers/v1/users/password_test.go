@@ -269,3 +269,24 @@ func TestATemporaryPasswordMustBeReplaced(t *testing.T) {
 	require.NoError(t, tdb.DB().First(&stored, user.ID).Error)
 	assert.Equal(t, "n0call", stored.Username)
 }
+
+func TestAdminEmailsShowTheirLineBreaks(t *testing.T) {
+	t.Parallel()
+	var mails <-chan string
+	router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) {
+		mails = testutils.StartSMTPSink(t, c)
+		c.HTTP.CanonicalHost = "https://hub.example.com/"
+		c.NetworkName = "Test Hub"
+	})
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	require.NoError(t, tdb.DB().Model(&models.User{}).Where("username = ?", "Admin").Update("email", "admin@example.com").Error)
+
+	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "newuser", Password: "a-fine-password"})
+	require.Equal(t, http.StatusOK, w.Code, resp.Error)
+	mail := <-mails
+	assert.Contains(t, mail, "Content-Type: text/plain")
+	assert.Contains(t, mail, "\r\n\r\nA new user has registered.\r\n\r\nUsername: newuser\r\nCallsign: KI5VMF\r\nDMR ID: 3191868\r\n\r\nTo approve them, open https://hub.example.com/admin/users/approval\r\n")
+	assert.NotContains(t, mail, "&lt;")
+	assert.NotContains(t, mail, "<br>")
+}

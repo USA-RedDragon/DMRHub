@@ -23,3 +23,10 @@ import "time"
 
 const ConnsPerCPU = 10
 const MaxIdleTime = 10 * time.Minute
+
+// RedisTimeout bounds each read and each write of a call to Redis. A call
+// also returns at the deadline of its context, when that is sooner.
+const RedisTimeout = time.Second
+
+// RedisDialTimeout bounds a new connection to Redis.
+const RedisDialTimeout = 2 * time.Second

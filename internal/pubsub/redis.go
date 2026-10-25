@@ -33,12 +33,16 @@ import (
 
 func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisPubSub, err error) {
 	redis := redis.NewClient(&redis.Options{
-		Addr:            fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
-		Password:        config.Redis.Password,
-		PoolFIFO:        true,
-		PoolSize:        runtime.GOMAXPROCS(0) * consts.ConnsPerCPU,
-		MinIdleConns:    runtime.GOMAXPROCS(0),
-		ConnMaxIdleTime: consts.MaxIdleTime,
+		Addr:                  fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
+		Password:              config.Redis.Password,
+		PoolFIFO:              true,
+		PoolSize:              runtime.GOMAXPROCS(0) * consts.ConnsPerCPU,
+		MinIdleConns:          runtime.GOMAXPROCS(0),
+		ConnMaxIdleTime:       consts.MaxIdleTime,
+		DialTimeout:           consts.RedisDialTimeout,
+		ReadTimeout:           consts.RedisTimeout,
+		WriteTimeout:          consts.RedisTimeout,
+		ContextTimeoutEnabled: true,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

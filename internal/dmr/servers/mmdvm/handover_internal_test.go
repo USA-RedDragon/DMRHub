@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -57,14 +58,27 @@ func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 }
 
 // TestHandOverNoPacketSentBeforeTheMove sends a packet to a repeater
-// before it moves. The repeater has it, so the handover must not hold it.
+// well before it moves. The repeater has it, so the handover must not hold
+// it.
 func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 	t.Parallel()
 	s := queueServer()
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	time.Sleep(time.Millisecond)
-	assert.Empty(t, s.sentSince(1, time.Now()))
+	assert.Empty(t, s.sentSince(1, time.Now().Add(2*hub.MoveSlack)))
+}
+
+// TestHandOverAPacketSentJustBeforeTheClaim sends a packet to a repeater
+// a moment before the packet of the repeater reached the other replica.
+// The load balancer moved the repeater when it got that packet, a little
+// earlier, and may have dropped the packet to the repeater, so the
+// handover must hold it.
+func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+	s.writeOut(<-s.outgoingChan)
+	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond)), 1, "the handover misses the packet sent just before the claim")
 }
 
 // TestHandOverAPacketSentAfterTheMove sends a packet that was queued

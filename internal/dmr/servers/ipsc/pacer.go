@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 )
 
 const (
@@ -270,10 +271,11 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 }
 
 // handOver returns, for each call that the pacer sent to the peer, the
-// state after the last packet that went out before since, and the packets
-// that went out after it or not yet, in order. It drops what it holds for
-// the peer, which moved to another replica.
+// state after the last packet that went out hub.MoveSlack before since,
+// and the packets that went out after it or not yet, in order. It drops
+// what it holds for the peer, which moved to another replica.
 func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.Packet) {
+	since = since.Add(-hub.MoveSlack)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var calls []handedCall

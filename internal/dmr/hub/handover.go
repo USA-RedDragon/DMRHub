@@ -38,6 +38,14 @@ import (
 // nanoseconds when the packet that made the replica claim it came in.
 const claimedTopic = "hub:claimed"
 
+// MoveSlack is how long before the time of a claim the repeater may have
+// moved already. The load balancer moves the session of the repeater when
+// it gets the packet, which reaches the replica that claims it a little
+// later, and the clocks of two replicas differ a little, so what the old
+// replica sent in that time may be lost. The old replica hands it over
+// too. A repeater that got it drops the second copy of its last burst.
+const MoveSlack = 10 * time.Millisecond
+
 func ownerKey(repeaterID uint) string {
 	return fmt.Sprintf("%s%d", peerOwnerKeyPrefix, repeaterID)
 }

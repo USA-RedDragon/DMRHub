@@ -20,6 +20,7 @@
 package dmr_test
 
 import (
+	"bytes"
 	"sync"
 	"testing"
 	"time"
@@ -107,9 +108,19 @@ func (h heard) checkN(t *testing.T, who string, stream uint, n int) {
 	assert.Empty(t, twice, "%s got bursts of stream %d more than once", who, stream)
 }
 
+// heardMMDVM counts the bursts that an MMDVM repeater plays of pkts. A
+// replica that a repeater left hands over what it sent in the last
+// hub.MoveSlack before the move, which the repeater may have got, and
+// MMDVMHost drops a burst that repeats the last one of its call, so the
+// listener does too.
 func heardMMDVM(pkts []models.Packet) heard {
 	h := heard{}
+	last := map[uint]uint{}
 	for _, p := range pkts {
+		if seq, ok := last[p.StreamID]; ok && seq == p.Seq {
+			continue
+		}
+		last[p.StreamID] = p.Seq
 		h.add(p.StreamID, p.Seq)
 	}
 	return h
@@ -117,17 +128,24 @@ func heardMMDVM(pkts []models.Packet) heard {
 
 // checkIPSCCalls checks that the IPSC peer got every packet of each call
 // in one call, as an XPR 8400 needs it: one call control, and an RTP
-// sequence number one more than the one before on each packet.
+// sequence number one more than the one before on each packet. A packet
+// that repeats the one before it, as the handover of a move may send, is
+// a duplicate that an RTP receiver drops.
 func checkIPSCCalls(t *testing.T, bursts []testutils.IPSCBurst, calls ...rotationCall) {
 	t.Helper()
 	for _, c := range calls {
 		var n int
 		var control uint32
 		var last uint16
+		var prev []byte
 		for _, b := range bursts {
 			if b.Dst != c.tg {
 				continue
 			}
+			if bytes.Equal(b.Data, prev) {
+				continue
+			}
+			prev = b.Data
 			u, err := ipscwire.DecodeUser(b.Data)
 			require.NoError(t, err)
 			if n > 0 {

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 )
 
 // A repeater that moves from a draining replica to this one reaches this
@@ -110,10 +111,11 @@ func (s *Server) forgetPacket(id uint, p *sentPacket) {
 }
 
 // sentSince returns the packets to the repeater id that left at or after
-// since, or that still wait in the queue, and forgets the repeater. A
-// packet that waits leaves after the move, which the load balancer no
-// longer takes to the repeater.
+// hub.MoveSlack before since, or that still wait in the queue, and forgets
+// the repeater. A packet that waits leaves after the move, which the load
+// balancer no longer takes to the repeater.
 func (s *Server) sentSince(id uint, since time.Time) []models.Packet {
+	since = since.Add(-hub.MoveSlack)
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
 	var out []models.Packet

@@ -279,12 +279,14 @@ func askProduct(ctx context.Context, addr string) bool {
 		if err != nil {
 			return false
 		}
-		p, _, err := dvsi.Parse(buf[:n], true)
-		if err != nil {
-			continue
-		}
-		if _, ok := p.Response(dvsi.FieldProdID); ok {
-			return true
+		for _, parity := range []bool{true, false} {
+			p, _, err := dvsi.Parse(buf[:n], parity)
+			if err != nil {
+				continue
+			}
+			if _, ok := p.Response(dvsi.FieldProdID); ok {
+				return true
+			}
 		}
 	}
 }

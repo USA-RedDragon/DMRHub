@@ -509,6 +509,17 @@ func TestProbeShowsTheServerAnswers(t *testing.T) {
 	assert.False(t, answered(svc, 1), "the answer of another server shows for the new one")
 }
 
+// TestProbeTakesAReplyWithoutParity probes a server whose chip has parity
+// mode off, so its replies carry no parity field.
+func TestProbeTakesAReplyWithoutParity(t *testing.T) {
+	t.Parallel()
+	srv := testutils.StartFakeAMBEServer(t)
+	srv.SetControlParity(false)
+	svc := newService(t, srv.Addr())
+	require.Eventually(t, func() bool { return answered(svc, 0) }, 5*time.Second, 10*time.Millisecond)
+	assert.Empty(t, srv.Errors())
+}
+
 // TestEmbeddedLCThatDiffersFromTheHeader converts a call whose embedded LC
 // has other Service Options than its Voice LC Header. The copy must carry
 // the embedded LC with the FID of the copy from the second superframe on.

@@ -51,6 +51,7 @@ type FakeAMBEServer struct {
 	decodes atomic.Int64
 	encodes atomic.Int64
 	queries atomic.Int64
+	bare    atomic.Bool
 	mu      sync.Mutex
 	errs    []string
 	pcm     [][dvsi.FrameSamples]int16
@@ -87,6 +88,12 @@ func (f *FakeAMBEServer) SetAnswering(on bool) {
 // it takes 3 ms. Two clients at once then get each other's answers.
 func (f *FakeAMBEServer) SetLastClientOnly(on bool) {
 	f.lastOne.Store(on)
+}
+
+// SetControlParity makes the server end its control replies with the
+// parity field or leave it out, as a chip with parity mode off does.
+func (f *FakeAMBEServer) SetControlParity(on bool) {
+	f.bare.Store(!on)
 }
 
 // DropNext makes the server drop the replies to the next n frame
@@ -284,6 +291,9 @@ func (f *FakeAMBEServer) control(fields []byte, answering bool) []byte {
 			f.fail("control field 0x%02x", id)
 			return nil
 		}
+	}
+	if f.bare.Load() {
+		return append([]byte{dvsi.StartByte, byte(len(r) >> 8), byte(len(r)), byte(dvsi.TypeControl)}, r...)
 	}
 	return controlPacket(r)
 }

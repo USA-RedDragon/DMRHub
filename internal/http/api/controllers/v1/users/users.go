@@ -581,6 +581,19 @@ func PATCHUser(c *gin.Context) {
 				return
 			}
 		}
+		adminReset := json.Password != "" && actorID != user.ID
+		if adminReset && (user.Admin || user.SuperAdmin) {
+			actor, err := models.FindUserByID(db, actorID)
+			if err != nil {
+				slog.Error(msgErrFindingUser, "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+				return
+			}
+			if !actor.SuperAdmin {
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Only the System Admin can reset the password of an admin."})
+				return
+			}
+		}
 
 		if json.Callsign != "" {
 			// Check DMR ID is in the database
@@ -629,7 +642,7 @@ func PATCHUser(c *gin.Context) {
 			if hashedPassword == "" {
 				return nil
 			}
-			return models.SetPassword(tx, user.ID, hashedPassword)
+			return models.SetPassword(tx, user.ID, hashedPassword, adminReset)
 		})
 		if err != nil {
 			slog.Error("Error updating user", "error", err)

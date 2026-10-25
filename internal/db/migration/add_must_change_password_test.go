@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// DMRHub - Run a DMR network server in a single binary
+// Copyright (C) 2023-2026 Jacob McSwain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+package migration_test
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestAddMustChangePasswordKeepsEveryPassword migrates a database from
+// before admins could reset a password. Its users must come out without
+// the mark, so that nobody is locked out by the upgrade.
+func TestAddMustChangePasswordKeepsEveryPassword(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			require.NoError(t, err)
+			cfg.Database.Database = fmt.Sprintf("file:memdb_%p", t)
+			cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+			be.Setup(t, &cfg)
+			database, err := db.MakeDB(&cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				if sqlDB, err := database.DB(); err == nil {
+					_ = sqlDB.Close()
+				}
+			})
+
+			m := database.Migrator()
+			require.NoError(t, m.DropColumn(&models.User{}, "MustChangePassword"))
+			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610242000").Error)
+			require.NoError(t, database.Exec(
+				"INSERT INTO users (id, callsign, username, password, approved) VALUES (?, ?, ?, ?, ?)", 1000001, "N0CALL", "old", "hash", true,
+			).Error)
+
+			require.NoError(t, migration.Migrate(database, &cfg))
+
+			require.True(t, m.HasColumn(&models.User{}, "MustChangePassword"))
+			var user models.User
+			require.NoError(t, database.First(&user, 1000001).Error)
+			assert.False(t, user.MustChangePassword)
+			assert.Equal(t, "hash", user.Password)
+
+			require.NoError(t, models.SetPassword(database, 1000001, "new-hash", true))
+			require.NoError(t, database.First(&user, 1000001).Error)
+			assert.True(t, user.MustChangePassword)
+			user.Callsign = "N1CALL"
+			require.NoError(t, database.Save(&user).Error)
+			require.NoError(t, models.SetPassword(database, 1000001, "own-hash", false))
+			stale := user
+			stale.MustChangePassword = true
+			require.NoError(t, database.Save(&stale).Error)
+			require.NoError(t, database.First(&user, 1000001).Error)
+			assert.False(t, user.MustChangePassword, "a save of a stale copy must not mark the password again")
+			assert.Equal(t, "own-hash", user.Password, "a save of a stale copy must not undo the password")
+			assert.Equal(t, "N1CALL", user.Callsign)
+		})
+	}
+}

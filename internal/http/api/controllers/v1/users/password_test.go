@@ -22,6 +22,7 @@ package users_test
 import (
 	"crypto/sha1" //#nosec G505 -- HIBP range queries take SHA-1
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -126,4 +128,77 @@ func TestPasswordChangeNeedsTheCurrentPassword(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, other, http.MethodGet, "/api/v1/users/me", nil).Code, "the other sessions end")
 	_, w, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "n0call", Password: "a-new-password"})
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func mustChange(t *testing.T, router *gin.Engine, jar testutils.CookieJar) bool {
+	t.Helper()
+	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var me struct {
+		MustChangePassword *bool `json:"must_change_password"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &me))
+	require.NotNil(t, me.MustChangePassword, "GET /users/me tells whether the password must change")
+	return *me.MustChangePassword
+}
+
+func loginWith(t *testing.T, router *gin.Engine, username, password string) (testutils.CookieJar, int) {
+	t.Helper()
+	_, w, jar := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: username, Password: password})
+	return jar, w.Code
+}
+
+func TestAdminResetEndsEverySessionAndMarksTheAccount(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	user := testutils.SeedAccount(t, tdb.DB(), 1000001, "N0CALL", "n0call")
+	first := testutils.Login(t, router, "n0call")
+	second := testutils.Login(t, router, "n0call")
+	assert.False(t, mustChange(t, router, first))
+	admin := testutils.Login(t, router, "Admin")
+
+	w := testutils.Do(t, router, admin, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, first, http.MethodGet, "/api/v1/users/me", nil).Code)
+	assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, second, http.MethodGet, "/api/v1/users/me", nil).Code)
+	assert.Equal(t, http.StatusOK, testutils.Do(t, router, admin, http.MethodGet, "/api/v1/users/me", nil).Code, "the admin stays logged in")
+	assert.False(t, mustChange(t, router, admin))
+	_, code := loginWith(t, router, "n0call", testutils.TestPassword)
+	assert.Equal(t, http.StatusUnauthorized, code, "the old password is gone")
+
+	jar, code := loginWith(t, router, "n0call", "Qm4tVx8rKp2Hw9Ns")
+	require.Equal(t, http.StatusOK, code, "a user with a temporary password can log in")
+	assert.True(t, mustChange(t, router, jar))
+
+	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "my-own-password", "current_password": "Qm4tVx8rKp2Hw9Ns"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.False(t, mustChange(t, router, jar), "choosing their own password clears the mark")
+}
+
+func TestOnlyTheSystemAdminResetsAnAdmin(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	db := tdb.DB()
+	testutils.SeedAccount(t, db, 1000001, "N0CALL", "admin1")
+	other := testutils.SeedAccount(t, db, 1000002, "N1CALL", "admin2")
+	user := testutils.SeedAccount(t, db, 1000003, "N2CALL", "user3")
+	require.NoError(t, db.Model(&models.User{}).Where("id IN ?", []uint{1000001, 1000002}).Update("admin", true).Error)
+	admin := testutils.Login(t, router, "admin1")
+
+	w := testutils.Do(t, router, admin, http.MethodPatch, path(other.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"error":"Only the System Admin can reset the password of an admin."}`, w.Body.String())
+	_, code := loginWith(t, router, "admin2", testutils.TestPassword)
+	assert.Equal(t, http.StatusOK, code, "the refused reset must not change the password")
+
+	w = testutils.Do(t, router, admin, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	assert.Equal(t, http.StatusOK, w.Code, "an admin resets a user")
+
+	super := testutils.Login(t, router, "Admin")
+	w = testutils.Do(t, router, super, http.MethodPatch, path(other.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	assert.Equal(t, http.StatusOK, w.Code, "the System Admin resets an admin")
 }

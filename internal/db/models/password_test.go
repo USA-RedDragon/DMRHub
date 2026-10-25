@@ -37,7 +37,7 @@ func TestSavingAStaleUserKeepsTheNewPassword(t *testing.T) {
 	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a", Password: "old-hash"}).Error)
 	var stale models.User
 	require.NoError(t, database.First(&stale, 3191868).Error)
-	require.NoError(t, models.SetPassword(database, 3191868, "new-hash"))
+	require.NoError(t, models.SetPassword(database, 3191868, "new-hash", false))
 
 	stale.Suspended = true
 	require.NoError(t, database.Save(&stale).Error)

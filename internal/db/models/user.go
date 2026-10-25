@@ -50,10 +50,14 @@ type User struct {
 	// SharePositions reports that the user shows the positions of their
 	// radios to every other user. Only SetSharePositions
 	// writes it.
-	SharePositions bool           `json:"-" gorm:"<-:create;not null;default:false"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"-"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	SharePositions bool `json:"-" gorm:"<-:create;not null;default:false"`
+	// MustChangePassword reports that an admin set the password of the
+	// user, who must choose their own before they use the rest of
+	// DMRHub. Only SetPassword writes it.
+	MustChangePassword bool           `json:"must_change_password" gorm:"<-:create;not null;default:false"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"-"`
+	DeletedAt          gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {

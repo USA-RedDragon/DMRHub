@@ -25,9 +25,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// SetPassword gives the user id the password hash hash.
-func SetPassword(db *gorm.DB, id uint, hash string) error {
-	if err := db.Exec("UPDATE users SET password = ?, updated_at = ? WHERE id = ?", hash, time.Now(), id).Error; err != nil {
+// SetPassword gives the user id the password hash hash. mustChange marks
+// a password that an admin set, which the user must replace with their
+// own.
+func SetPassword(db *gorm.DB, id uint, hash string, mustChange bool) error {
+	if err := db.Exec("UPDATE users SET password = ?, must_change_password = ?, updated_at = ? WHERE id = ?", hash, mustChange, time.Now(), id).Error; err != nil {
 		return fmt.Errorf("could not set the password of user %d: %w", id, err)
 	}
 	return nil

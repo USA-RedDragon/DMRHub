@@ -335,7 +335,7 @@ type serverManager struct {
 func (sm *serverManager) stopDMRServers(ctx context.Context) {
 	graceful := false
 	if sm.registry != nil {
-		graceful = sm.registry.OtherInstancesExist(ctx)
+		graceful = sm.registry.OtherServingInstanceExists(ctx)
 		if graceful {
 			slog.Info("Other DMRHub instances detected, performing graceful handoff (skipping disconnect messages)")
 		} else {

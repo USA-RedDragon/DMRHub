@@ -169,6 +169,8 @@ func TestInstanceDrainingFollowsTheDrain(t *testing.T) {
 	require.True(t, r1.OtherInstancesExist(ctx), "a draining instance still runs")
 	require.NoError(t, r2.write(ctx))
 	require.True(t, InstanceDraining(ctx, store, "instance-2"), "the heartbeat keeps the drain")
+	require.False(t, r1.OtherServingInstanceExists(ctx), "a draining instance takes nothing over")
+	require.True(t, r2.OtherServingInstanceExists(ctx), "the first instance serves")
 	r2.Deregister(ctx)
 	require.False(t, InstanceDraining(ctx, store, "instance-2"), "a stopped instance hands nothing over")
 	require.False(t, InstanceDraining(ctx, store, "never-registered"))

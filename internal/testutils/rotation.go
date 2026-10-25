@@ -69,7 +69,7 @@ func (r *Replica) Terminate(t *testing.T, reg *servers.InstanceRegistry, f Front
 	manager.New(manager.Deps{Hub: r.Hub}).Drain(ctx, reg, timeout)
 	r.Hub.StartDraining()
 	r.Hub.WaitForCalls()
-	graceful := reg.OtherInstancesExist(ctx)
+	graceful := reg.OtherServingInstanceExists(ctx)
 	reg.Deregister(ctx)
 	stop := servers.WithGracefulHandoff(ctx, graceful)
 	for _, s := range []interface{ Stop(context.Context) error }{r.MMDVMServer, r.IPSCServer, r.OpenBridgeServer} {

@@ -147,6 +147,27 @@ func (r *InstanceRegistry) OtherInstancesExist(ctx context.Context) bool {
 	return false
 }
 
+// OtherServingInstanceExists reports whether another instance is
+// registered and does not drain, so that it can take the sessions of this
+// one over.
+func (r *InstanceRegistry) OtherServingInstanceExists(ctx context.Context) bool {
+	keys, err := scanAll(ctx, r.kv, instanceKeyPrefix+"*")
+	if err != nil {
+		slog.Warn("failed to scan for other instances", "error", err)
+		return false
+	}
+	myKey := instanceKeyPrefix + r.instanceID
+	for _, key := range keys {
+		if key == myKey {
+			continue
+		}
+		if v, err := r.kv.Get(ctx, key); err == nil && string(v) != drainingValue {
+			return true
+		}
+	}
+	return false
+}
+
 // Deregister removes this instance from the registry and stops the heartbeat.
 func (r *InstanceRegistry) Deregister(ctx context.Context) {
 	if r.cancel != nil {

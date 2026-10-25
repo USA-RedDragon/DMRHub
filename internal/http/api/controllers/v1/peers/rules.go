@@ -106,6 +106,7 @@ func POSTPeerRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
+	peerChanged(c, uint(peerID))
 
 	c.JSON(http.StatusOK, gin.H{messageKey: "Peer rule created", "rule": rule})
 }
@@ -154,6 +155,7 @@ func DELETEPeerRule(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
+	peerChanged(c, uint(peerID))
 
 	c.JSON(http.StatusOK, gin.H{messageKey: "Peer rule deleted"})
 }

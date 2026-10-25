@@ -100,6 +100,22 @@ func (c *Cache[K, V]) refresh(key K, old *entry[V]) {
 	})
 }
 
+// Reload loads the answer for key again when the Cache holds one, and
+// keeps the new answer. When the load fails, the Cache forgets the answer,
+// so that the next Get loads it.
+func (c *Cache[K, V]) Reload(key K) {
+	if _, ok := c.entries.Load(key); !ok {
+		return
+	}
+	v, err := c.load(key)
+	if err != nil {
+		slog.Error("Cannot reload a changed lookup, forgetting it", "lookup", c.name, "error", err)
+		c.entries.Delete(key)
+		return
+	}
+	c.entries.Store(key, newEntry(v, time.Now()))
+}
+
 // Drop forgets the answer for key, so that the next Get loads it.
 func (c *Cache[K, V]) Drop(key K) {
 	c.entries.Delete(key)

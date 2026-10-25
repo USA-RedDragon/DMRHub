@@ -149,6 +149,7 @@ func (h *Hub) reloadRepeater(id uint) {
 // replicas to reload theirs and its subscriptions.
 func (h *Hub) repeaterChanged(id uint) {
 	h.reloadRepeater(id)
+	h.watchers.call(repeaterChangedTopic, id)
 	if h.pubsub == nil {
 		return
 	}
@@ -178,6 +179,7 @@ func (h *Hub) listenRepeaterChanges(sub pubsub.Subscription) {
 				continue
 			}
 			h.reloadRepeater(id)
+			h.watchers.call(repeaterChangedTopic, id)
 			h.reloadLocal(context.Background(), id)
 		}
 	}

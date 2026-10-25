@@ -120,3 +120,16 @@ func TestDropAndPrune(t *testing.T) {
 	v, _ = c.Get(1)
 	assert.Equal(t, int64(3), v)
 }
+
+func TestReloadReplacesAFreshAnswerAndSkipsUnknownKeys(t *testing.T) {
+	t.Parallel()
+	var loads atomic.Int64
+	c := lookup.New("test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
+	c.Reload(1)
+	assert.Zero(t, loads.Load(), "a key nobody read is not loaded")
+	v, _ := c.Get(1)
+	assert.Equal(t, int64(1), v)
+	c.Reload(1)
+	v, _ = c.Get(1)
+	assert.Equal(t, int64(2), v, "a reload replaces an answer that is not stale yet")
+}

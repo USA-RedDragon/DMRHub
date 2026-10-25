@@ -178,6 +178,7 @@ func POSTUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 			return
 		}
+		publishUserChanged(c, user.ID)
 		body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
 		if config.AutoApprove {
 			c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
@@ -826,6 +827,11 @@ type userSelf struct {
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {
+	if v, ok := c.Get("Hub"); ok {
+		if h, ok := v.(*hub.Hub); ok && h != nil {
+			h.UserChanged(userID)
+		}
+	}
 	ps, ok := c.Value("PubSub").(pubsub.PubSub)
 	if !ok {
 		slog.Error("PubSub not found in context, the websockets of a changed user stay open", "user", userID)

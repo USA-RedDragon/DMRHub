@@ -27,6 +27,7 @@ import (
 	"strconv"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
@@ -162,6 +163,7 @@ func DELETEPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: err.Error()})
 		return
 	}
+	peerChanged(c, uint(idUint64))
 	c.JSON(http.StatusOK, gin.H{messageKey: "Peer deleted"})
 }
 
@@ -241,6 +243,7 @@ func PATCHPeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
+	peerChanged(c, peerID)
 
 	peer, err := models.FindPeerByID(db, peerID)
 	if err != nil {
@@ -351,6 +354,7 @@ func POSTPeer(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
+		peerChanged(c, peer.ID)
 		c.JSON(http.StatusOK, gin.H{messageKey: "Peer created", "password": peer.Password})
 
 		if config.SMTP.Enabled {
@@ -377,4 +381,19 @@ func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {
 		return false
 	}
 	return user.Admin && user.Approved && !user.Suspended
+}
+
+func peerChanged(c *gin.Context, peerID uint) {
+	if h, ok := dmrHubOf(c); ok {
+		h.PeerChanged(peerID)
+	}
+}
+
+func dmrHubOf(c *gin.Context) (*hub.Hub, bool) {
+	v, ok := c.Get("Hub")
+	if !ok {
+		return nil, false
+	}
+	h, ok := v.(*hub.Hub)
+	return h, ok && h != nil
 }

@@ -154,11 +154,12 @@ func DELETETalkgroup(c *gin.Context) {
 		return
 	}
 	// Reload affected repeaters so stale subscriptions are cleaned up
-	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok {
+	if dmrHub, ok := dmrHubOf(c); ok {
 		for _, rid := range affectedRepeaterIDs {
 			dmrHub.ReloadRepeater(c.Request.Context(), rid)
 		}
 	}
+	talkgroupChanged(c, uint(idUint64))
 	c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup deleted"})
 }
 
@@ -310,6 +311,7 @@ func PATCHTalkgroup(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingTalkgroup})
 			return
 		}
+		talkgroupChanged(c, talkgroup.ID)
 	}
 }
 
@@ -364,6 +366,22 @@ func POSTTalkgroup(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating talkgroup"})
 			return
 		}
+		talkgroupChanged(c, talkgroup.ID)
 		c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup created"})
 	}
+}
+
+func talkgroupChanged(c *gin.Context, id uint) {
+	if h, ok := dmrHubOf(c); ok {
+		h.TalkgroupChanged(id)
+	}
+}
+
+func dmrHubOf(c *gin.Context) (*hub.Hub, bool) {
+	v, ok := c.Get("Hub")
+	if !ok {
+		return nil, false
+	}
+	h, ok := v.(*hub.Hub)
+	return h, ok && h != nil
 }

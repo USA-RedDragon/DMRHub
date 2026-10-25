@@ -57,8 +57,9 @@ type IPSCServer struct {
 	peers   map[uint32]*peerState
 	epoch   time.Time
 
-	keyFor func(peerID uint32) (key [20]byte, useAuth bool, err error)
-	keys   *lookup.Cache[uint32, peerAuthKey]
+	keyFor  func(peerID uint32) (key [20]byte, useAuth bool, err error)
+	keys    *lookup.Cache[uint32, peerAuthKey]
+	unwatch func()
 
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
 	bursts       []burst
@@ -196,6 +197,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 		Name: models.RepeaterTypeIPSC,
 		Role: hub.RoleRepeater,
 	})
+	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
 
 	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
 		for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
@@ -233,6 +235,9 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 
 		if s.hub != nil {
 			s.hub.UnregisterServer(models.RepeaterTypeIPSC)
+		}
+		if s.unwatch != nil {
+			s.unwatch()
 		}
 		s.pacer.drain(pacerDrainTimeout)
 

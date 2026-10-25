@@ -84,6 +84,7 @@ type Server struct {
 
 	DB       *gorm.DB
 	peers    *lookup.Cache[struct{}, peerTable]
+	unwatch  func()
 	pubsub   pubsub.PubSub
 	hub      *hub.Hub
 	serverID uint32
@@ -293,6 +294,9 @@ func (s *Server) Start(ctx context.Context) error {
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
 	s.ingress = streamorder.New(ingressQueueSize, s.done)
+	if s.peers != nil {
+		s.unwatch = s.hub.OnPeerChange(func(uint) { s.peers.Reload(struct{}{}) })
+	}
 
 	s.leader.Store(s.holdLease(ctx))
 	s.wg.Add(5)
@@ -335,6 +339,9 @@ func (s *Server) Stop(ctx context.Context) error {
 		slog.Info("Stopping OpenBridge server")
 
 		close(s.done)
+		if s.unwatch != nil {
+			s.unwatch()
+		}
 		s.releaseLease(ctx)
 		s.hub.UnregisterServer("openbridge")
 

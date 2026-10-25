@@ -165,6 +165,7 @@ type Hub struct {
 
 	repeaters *repeaterCache
 	origin    string
+	watchers  watchers
 
 	plugins atomic.Pointer[Plugins]
 
@@ -218,6 +219,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
 		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
+		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, peerChangedTopic} {
+			go h.listenChanges(topic, ps.Subscribe(topic))
+		}
 	}
 	go h.resyncRepeaters()
 	if ct != nil {

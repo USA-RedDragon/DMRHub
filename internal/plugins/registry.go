@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -83,12 +84,15 @@ type owned struct {
 // on, and hands the bursts to their IDs to the replica that holds the
 // plugin's stream.
 type Registry struct {
-	db     *gorm.DB
-	pubsub pubsub.PubSub
-	ranges atomic.Pointer[[]owned]
+	db        *gorm.DB
+	pubsub    pubsub.PubSub
+	ranges    atomic.Pointer[[]owned]
+	outside   atomic.Bool
+	reloading sync.Mutex
 }
 
-// NewRegistry returns a Registry loaded from db.
+// NewRegistry returns a Registry loaded from db, with the plugins that run
+// inside DMRHub.
 func NewRegistry(db *gorm.DB, ps pubsub.PubSub) (*Registry, error) {
 	r := &Registry{db: db, pubsub: ps}
 	empty := []owned{}
@@ -101,13 +105,15 @@ func NewRegistry(db *gorm.DB, ps pubsub.PubSub) (*Registry, error) {
 
 // Reload reads the plugins and their IDs again.
 func (r *Registry) Reload() error {
+	r.reloading.Lock()
+	defer r.reloading.Unlock()
 	list, err := models.ListPlugins(r.db)
 	if err != nil {
 		return fmt.Errorf("could not load the plugins: %w", err)
 	}
 	var out []owned
 	for _, p := range list {
-		if !p.Enabled {
+		if !p.Enabled || (p.Kind != models.PluginExternal && r.outside.Load()) {
 			continue
 		}
 		for _, rg := range p.Ranges {
@@ -117,6 +123,13 @@ func (r *Registry) Reload() error {
 	slices.SortFunc(out, func(a, b owned) int { return int(a.first) - int(b.first) })
 	r.ranges.Store(&out)
 	return nil
+}
+
+// SetInProcess says whether the plugins that run inside DMRHub run on this
+// replica's hub. When they do not, nobody gets the calls to their IDs.
+func (r *Registry) SetInProcess(on bool) error {
+	r.outside.Store(!on)
+	return r.Reload()
 }
 
 // Follow reloads the Registry each time PublishChanged says the plugins

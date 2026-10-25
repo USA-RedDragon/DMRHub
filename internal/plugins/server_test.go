@@ -86,6 +86,7 @@ func TestAListenerThatIsOffStartsNothing(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
+	cfg.DMR.Plugins.InProcess = false
 	called := false
 	srv, err := plugins.Start(context.Background(), &cfg, nil, nil, nil, func(*plugins.Registry) { called = true }, nil)
 	require.NoError(t, err)

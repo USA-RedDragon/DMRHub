@@ -187,12 +187,15 @@ func tokenOf(ctx context.Context) string {
 }
 
 func (s *Service) authenticate(ctx context.Context) (models.Plugin, error) {
+	if id, inside := insideOf(ctx); inside {
+		return s.inside(id)
+	}
 	p, ok, err := models.PluginByToken(s.db, tokenOf(ctx))
 	if err != nil {
 		slog.Error("Plugins: cannot check a token", "error", err)
 		return models.Plugin{}, errTryLater
 	}
-	if !ok {
+	if !ok || p.Kind != models.PluginExternal {
 		return models.Plugin{}, errUnknownToken
 	}
 	if !p.Enabled {
@@ -341,6 +344,9 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 			default:
 				slog.Warn("Plugins: dropping a position of a plugin that sends too many", "plugin", p.Name)
 			}
+			continue
+		case *pluginv1.ConnectRequest_Hello:
+			s.hello(p, m.Hello)
 			continue
 		}
 		b := msg.GetBurst()

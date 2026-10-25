@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -606,21 +607,30 @@ func PATCHUser(c *gin.Context) {
 			user.Username = json.Username
 		}
 
+		var hashedPassword string
 		if json.Password != "" {
 			if status, msg := utils.CheckPwnedPassword(c, config.HIBPAPIKey, json.Password); status != 0 {
 				c.JSON(status, gin.H{errorKey: msg})
 				return
 			}
-			hashedPassword, hashErr := utils.HashPassword(json.Password, config.PasswordSalt)
+			var hashErr error
+			hashedPassword, hashErr = utils.HashPassword(json.Password, config.PasswordSalt)
 			if hashErr != nil {
 				slog.Error("Error hashing password", "error", hashErr)
 				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
 				return
 			}
-			user.Password = hashedPassword
 		}
 
-		err = db.Save(&user).Error
+		err = db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Save(&user).Error; err != nil {
+				return fmt.Errorf("could not save user %d: %w", user.ID, err)
+			}
+			if hashedPassword == "" {
+				return nil
+			}
+			return models.SetPassword(tx, user.ID, hashedPassword)
+		})
 		if err != nil {
 			slog.Error("Error updating user", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating user"})

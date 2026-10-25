@@ -75,6 +75,8 @@ const (
 	answerKeyPrefix = "dmrhub:calltracker:answer:"
 	responsesTopic  = "calltracker:responses"
 	dropsTopic      = "calltracker:drops"
+
+	undeliverableTopic = "calltracker:undeliverable"
 )
 
 // DataObserver is told of each data packet and each response that the
@@ -164,6 +166,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct.subscribe(responsesTopic, ct.remoteResponse)
 	ct.subscribe(dropsTopic, ct.remoteDrop)
 	ct.subscribe(convertedTopic, ct.remoteConverted)
+	ct.subscribe(undeliverableTopic, ct.remoteUndeliverable)
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -238,20 +241,52 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 // take the burst of p, a packet that Track got, on the transmission that
 // holds the burst. Call it after Track for the same packet. p.TrackID
 // names the burst; without it the mark goes on the latest transmission of
-// the stream. The hub counts the burst in its metrics.
+// the stream. The hub counts the burst in its metrics. Any replica may
+// call it: a call that another replica tracks gets the mark over pubsub.
 func (c *CallTracker) Undeliverable(p models.Packet, target string) {
-	if c.stopped.Load() {
+	n := undeliverableNote{Stream: p.StreamID, Track: p.TrackID, Target: target}
+	if c.markUndeliverable(n) || c.pubsub == nil || c.stopped.Load() {
 		return
 	}
-	idx := int(p.TrackID % shardCount)
-	if p.TrackID == 0 {
-		ref, ok := c.streams.Load(p.StreamID)
-		if !ok {
-			return
-		}
-		idx = ref.shard
+	msg, err := json.Marshal(n)
+	if err != nil {
+		return
 	}
-	c.enqueue(idx, task{fn: func(s *shard) { s.undeliverable(p.StreamID, p.TrackID, target) }})
+	if err := c.pubsub.Publish(undeliverableTopic, msg); err != nil {
+		slog.Error("CallTracker: cannot publish an undeliverable target", "error", err)
+	}
+}
+
+type undeliverableNote struct {
+	Stream uint   `json:"stream"`
+	Track  uint64 `json:"track"`
+	Target string `json:"target"`
+}
+
+func (c *CallTracker) remoteUndeliverable(msg []byte) {
+	var n undeliverableNote
+	if err := json.Unmarshal(msg, &n); err != nil || n.Target == "" {
+		return
+	}
+	c.markUndeliverable(n)
+}
+
+// markUndeliverable queues n on the worker of its call and reports whether
+// the call is tracked here.
+func (c *CallTracker) markUndeliverable(n undeliverableNote) bool {
+	if c.stopped.Load() {
+		return false
+	}
+	ref, ok := c.streams.Load(n.Stream)
+	if !ok {
+		return false
+	}
+	idx := ref.shard
+	if n.Track != 0 {
+		idx = int(n.Track % shardCount)
+	}
+	c.enqueue(idx, task{fn: func(s *shard) { s.undeliverable(n.Stream, n.Track, n.Target) }})
+	return true
 }
 
 // Flush waits until the workers handled every packet queued before it.

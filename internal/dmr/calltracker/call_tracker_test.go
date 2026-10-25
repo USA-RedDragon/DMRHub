@@ -665,6 +665,32 @@ func TestUndeliverableGoesToTheRowOfItsBurst(t *testing.T) {
 	assert.Empty(t, calls[1].Undeliverable)
 }
 
+func TestUndeliverableOnAnotherReplicaGoesToTheRowOfItsBurst(t *testing.T) {
+	t.Parallel()
+	one, two, database := newReplicas(t)
+
+	s := newSender(t, one, userB, userA, false, 7065)
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("first")})
+	var first models.Packet
+	for i, b := range bursts {
+		p := s.packet(dmrconst.FrameDataSync, uint(b.SlotType().DataType), b)
+		p.TrackID = one.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
+		if i == 0 {
+			first = p
+		}
+	}
+	s.data(smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Body: []byte("second")})...)
+	two.Undeliverable(first, "ipsc:1")
+
+	var calls []models.Call
+	require.Eventually(t, func() bool {
+		calls = waitDone(t, one, database, 2)
+		return len(calls[0].Undeliverable) > 0
+	}, 3*time.Second, 50*time.Millisecond, "the mark that replica two made never reached the row on replica one")
+	assert.Equal(t, []string{"ipsc:1"}, calls[0].Undeliverable)
+	assert.Empty(t, calls[1].Undeliverable)
+}
+
 type observer struct {
 	mu       sync.Mutex
 	payloads [][]byte

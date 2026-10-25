@@ -20,6 +20,7 @@
 package peers
 
 import (
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -333,19 +334,21 @@ func POSTPeer(c *gin.Context) {
 		}
 
 		var user models.User
-		db.First(&user, json.OwnerID)
-		if db.Error != nil {
-			slog.Error("Error getting user", "function", "POSTPeer", "userID", userID, "error", db.Error)
+		if err := db.First(&user, json.OwnerID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner does not exist"})
+				return
+			}
+			slog.Error("Error getting user", "function", "POSTPeer", "userID", userID, "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting user"})
 			return
 		}
 
-		// Find user by userID
 		peer.Owner = user
 		peer.OwnerID = json.OwnerID
-		db.Preload("Owner").Create(&peer)
-		if db.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: db.Error.Error()})
+		if err := db.Preload("Owner").Create(&peer).Error; err != nil {
+			slog.Error("Error creating peer", "function", "POSTPeer", "peerID", peer.ID, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "Peer created", "password": peer.Password})

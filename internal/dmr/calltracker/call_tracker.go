@@ -326,6 +326,10 @@ func (c *CallTracker) now() time.Duration {
 	return time.Since(c.epoch)
 }
 
+func (c *CallTracker) mono(at time.Time) time.Duration {
+	return at.Sub(c.epoch)
+}
+
 type chanKey struct {
 	server   string
 	repeater uint
@@ -789,6 +793,7 @@ type shard struct {
 	aliases  map[sourceKey]*sourceState
 	burst    *layer2.Burst
 	events   []data.Event
+	clock    time.Time
 }
 
 func newShard(t *CallTracker, idx int) *shard {
@@ -819,10 +824,17 @@ func (s *shard) run() {
 			case t.fn != nil:
 				t.fn(s)
 			default:
+				if t.at.After(s.clock) {
+					s.clock = t.at
+				}
 				s.handle(&t)
 			}
 		case <-ticker.C:
-			s.sweep(time.Now())
+			now := time.Now()
+			if len(s.in) > 0 {
+				now = s.clock
+			}
+			s.sweep(now)
 		}
 	}
 }
@@ -977,7 +989,7 @@ func (s *shard) finishAll() {
 }
 
 func (s *shard) sweep(now time.Time) {
-	mono := s.t.now()
+	mono := s.t.mono(now)
 	for _, r := range s.rows {
 		if now.Sub(r.last) >= r.hang {
 			if r.call.Kind == models.CallKindVoice {

@@ -982,6 +982,47 @@ func TestTheEndOfAMessageDoesNotSplitTheNextOnTheSlot(t *testing.T) {
 	assert.Equal(t, map[uint]int{65558: 1, 65559: 1}, byStream, "one row for each stream")
 }
 
+func TestASlowStoreDoesNotSplitTransmissions(t *testing.T) {
+	t.Parallel()
+	database, ps, kvStore := trackerDeps(t)
+	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("slow_store", func(tx *gorm.DB) {
+		if c, ok := tx.Statement.Dest.(*models.Call); ok && c.Kind == models.CallKindCSBK {
+			time.Sleep(1300 * time.Millisecond)
+		}
+	}))
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	t.Cleanup(ct.Stop)
+
+	const n = 6
+	for i := range uint(n) {
+		s := newSender(t, ct, userB, userA, false, 65900+i)
+		for _, b := range append(preambles(t, userB, userA, 5), smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("slow")})...) {
+			s.data(b)
+			time.Sleep(60 * time.Millisecond)
+		}
+	}
+
+	var calls []models.Call
+	require.Eventually(t, func() bool {
+		ct.Flush()
+		ct.Flush()
+		calls = rows(t, database)
+		for _, c := range calls {
+			if c.Active {
+				return false
+			}
+		}
+		return len(calls) >= n
+	}, 30*time.Second, 50*time.Millisecond)
+	byStream := map[uint][]models.CallKind{}
+	for _, c := range calls {
+		byStream[c.StreamID] = append(byStream[c.StreamID], c.Kind)
+	}
+	for i := range uint(n) {
+		assert.Equal(t, []models.CallKind{models.CallKindData}, byStream[65900+i], "stream %d", 65900+i)
+	}
+}
+
 func burstsOf(b ...layer2.RawBurst) []layer2.RawBurst {
 	return b
 }

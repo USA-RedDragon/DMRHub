@@ -89,7 +89,7 @@ func (s *shard) handle(t *task) {
 	s.heard(t)
 	pc := t.p
 	d := pc.Data()
-	h := d.Hint(s.t.now())
+	h := d.Hint(s.t.mono(t.at))
 
 	switch t.p.FrameType {
 	case dmrconst.FrameVoice, dmrconst.FrameVoiceSync:
@@ -142,7 +142,7 @@ func (s *shard) feed(t *task, ch *channel, h *layer2.Hint, cls *class) {
 			b = nil
 		}
 	}
-	s.events = rx.Decoded(s.t.now(), b, *h, s.events[:0])
+	s.events = rx.Decoded(s.t.mono(t.at), b, *h, s.events[:0])
 	s.apply(ch, t.p.StreamID, t, cls, s.events)
 }
 
@@ -157,7 +157,7 @@ func (s *shard) dataBurst(t *task, ch *channel, h *layer2.Hint) {
 		}
 		s.single(t, ch, &class{kind: models.CallKindUnknown, sub: sub})
 		if rx := ch.rxs[t.p.StreamID]; rx != nil {
-			s.events = rx.Decoded(s.t.now(), nil, *h, s.events[:0])
+			s.events = rx.Decoded(s.t.mono(t.at), nil, *h, s.events[:0])
 			s.apply(ch, t.p.StreamID, t, nil, s.events)
 		}
 		return

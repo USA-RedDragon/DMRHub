@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -346,12 +347,21 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 }
 
 // drain keeps this replica serving while the other replicas take its
-// sessions over, as manager.Manager.Drain does.
+// sessions over, as manager.Manager.Drain does. The plugins move to the
+// other replicas in the same time.
 func (sm *serverManager) drain(ctx context.Context) {
 	if sm.registry == nil {
 		return
 	}
-	sm.dmr.Drain(ctx, sm.registry, time.Duration(sm.cfg.DMR.DrainTimeout)*time.Second)
+	timeout := time.Duration(sm.cfg.DMR.DrainTimeout) * time.Second
+	var wg sync.WaitGroup
+	if sm.plugins != nil && timeout > 0 && sm.registry.OtherInstancesExist(ctx) {
+		pctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		wg.Go(func() { sm.plugins.Drain(pctx) })
+	}
+	sm.dmr.Drain(ctx, sm.registry, timeout)
+	wg.Wait()
 }
 
 // liveConfig puts the settings that the Setup page saves into effect: the

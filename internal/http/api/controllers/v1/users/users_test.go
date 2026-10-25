@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -36,6 +37,30 @@ import (
 )
 
 const testTimeout = 1 * time.Minute
+
+func TestRegisterWithAutoApproveLogsInAtOnce(t *testing.T) {
+	t.Parallel()
+
+	for _, auto := range []bool{true, false} {
+		router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { c.AutoApprove = auto })
+		require.NoError(t, err)
+
+		user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "autouser", Password: "password"}
+		resp, w := testutils.RegisterUser(t, router, user)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		login, lw, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "autouser", Password: "password"})
+		if auto {
+			assert.Equal(t, "Your account is ready. You can log in now.", resp.Message)
+			assert.Equal(t, http.StatusOK, lw.Code, "login with auto-approve: %s", login.Error)
+		} else {
+			assert.Equal(t, "User created, please wait for admin approval", resp.Message)
+			assert.Equal(t, http.StatusUnauthorized, lw.Code)
+			assert.Equal(t, "User is not approved", login.Error)
+		}
+		tdb.CloseDB()
+	}
+}
 
 func TestRegisterBadUser(t *testing.T) {
 	t.Parallel()

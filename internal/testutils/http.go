@@ -78,6 +78,12 @@ func useMemoryDB(cfg *config.Config) {
 }
 
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
+	return CreateTestDBRouterWithConfig(nil)
+}
+
+// CreateTestDBRouterWithConfig is CreateTestDBRouter with the config changed
+// by change before the router is made.
+func CreateTestDBRouterWithConfig(change func(*config.Config)) (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
@@ -87,6 +93,9 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	useMemoryDB(&defConfig)
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
+	if change != nil {
+		change(&defConfig)
+	}
 
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {

@@ -36,6 +36,18 @@
         </p>
         <span v-if="errors && errors['network-name']" class="p-error">{{ errors['network-name'] }}</span>
         <br />
+        <div class="checkbox-row">
+          <input id="auto-approve-users" type="checkbox" v-model="autoApprove" />
+          <label for="auto-approve-users">Approve new users automatically</label>
+        </div>
+        <p v-if="autoApprove" data-test="auto-approve-on">
+          A new user can log in as soon as they register. DMRHub still checks that the DMR ID and callsign match the
+          Radio ID database, unless that check is turned off. Admins get an email for each new user.
+        </p>
+        <p v-else data-test="auto-approve-off">
+          A new user waits until an admin approves them on the Approvals page under Admin.
+        </p>
+        <br />
         <label class="field-label" for="log-level">Log Level</label>
         <select id="log-level" v-model="logLevel" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['log-level']) || false }">
           <option v-for="option in [
@@ -132,6 +144,17 @@ export default {
         });
       },
     },
+    autoApprove: {
+      get() {
+        return !!(this.modelValue && this.modelValue['auto-approve-users']);
+      },
+      set(value: boolean) {
+        this.$emit('update:modelValue', {
+          ...this.modelValue,
+          'auto-approve-users': value,
+        });
+      },
+    },
     logLevel: {
       get() {
         return (this.modelValue && this.modelValue['log-level']) || '';
@@ -205,6 +228,12 @@ export default {
 </script>
 
 <style scoped>
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .field-label {
   display: block;
   margin-bottom: 0.25rem;

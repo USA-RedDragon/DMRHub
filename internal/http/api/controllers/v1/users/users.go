@@ -201,13 +201,12 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 
-		// store the user in the database with Active = false
 		user = models.User{
 			Username: json.Username,
 			Password: hashedPassword,
 			Callsign: strings.ToUpper(json.Callsign),
 			ID:       json.DMRId,
-			Approved: false,
+			Approved: config.AutoApprove,
 			Admin:    false,
 		}
 		err = db.Create(&user).Error
@@ -216,13 +215,19 @@ func POSTUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
+		body := fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
+		if config.AutoApprove {
+			c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
+		} else {
+			c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
+			body += fmt.Sprintf("<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", config.HTTP.CanonicalHost)
+		}
 		if config.SMTP.Enabled {
 			err = smtp.SendToAdmins(
 				config,
 				db,
 				"New user registration",
-				fmt.Sprintf("A new user has registered.<br><br>Username: %s<br>Callsign: %s<br>DMR ID: %d<br><br><a href=\"%s/admin/users/approval\">Click here</a> to see the approval dashboard", json.Username, strings.ToUpper(json.Callsign), json.DMRId, config.HTTP.CanonicalHost),
+				body,
 			)
 			if err != nil {
 				slog.Error("Error sending email", "function", "POSTUser", "error", err)

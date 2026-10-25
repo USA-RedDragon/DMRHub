@@ -156,18 +156,19 @@ type pProfShadow struct {
 }
 
 type configShadow struct {
-	LogLevel     *string         `json:"log-level"     toml:"log-level"     yaml:"log-level"`
-	Redis        *redisShadow    `json:"redis"         toml:"redis"         yaml:"redis"`
-	Database     *databaseShadow `json:"database"      toml:"database"      yaml:"database"`
-	Secret       *string         `json:"secret"        toml:"secret"        yaml:"secret"`
-	PasswordSalt *string         `json:"password-salt" toml:"password-salt" yaml:"password-salt"`
-	HTTP         *hTTPShadow     `json:"http"          toml:"http"          yaml:"http"`
-	DMR          *dMRShadow      `json:"dmr"           toml:"dmr"           yaml:"dmr"`
-	SMTP         *sMTPShadow     `json:"smtp"          toml:"smtp"          yaml:"smtp"`
-	NetworkName  *string         `json:"network-name"  toml:"network-name"  yaml:"network-name"`
-	Metrics      *metricsShadow  `json:"metrics"       toml:"metrics"       yaml:"metrics"`
-	PProf        *pProfShadow    `json:"pprof"         toml:"pprof"         yaml:"pprof"`
-	HIBPAPIKey   *string         `json:"hibp-api-key"  toml:"hibp-api-key"  yaml:"hibp-api-key"`
+	LogLevel     *string         `json:"log-level"          toml:"log-level"          yaml:"log-level"`
+	Redis        *redisShadow    `json:"redis"              toml:"redis"              yaml:"redis"`
+	Database     *databaseShadow `json:"database"           toml:"database"           yaml:"database"`
+	Secret       *string         `json:"secret"             toml:"secret"             yaml:"secret"`
+	PasswordSalt *string         `json:"password-salt"      toml:"password-salt"      yaml:"password-salt"`
+	HTTP         *hTTPShadow     `json:"http"               toml:"http"               yaml:"http"`
+	DMR          *dMRShadow      `json:"dmr"                toml:"dmr"                yaml:"dmr"`
+	SMTP         *sMTPShadow     `json:"smtp"               toml:"smtp"               yaml:"smtp"`
+	NetworkName  *string         `json:"network-name"       toml:"network-name"       yaml:"network-name"`
+	Metrics      *metricsShadow  `json:"metrics"            toml:"metrics"            yaml:"metrics"`
+	PProf        *pProfShadow    `json:"pprof"              toml:"pprof"              yaml:"pprof"`
+	HIBPAPIKey   *string         `json:"hibp-api-key"       toml:"hibp-api-key"       yaml:"hibp-api-key"`
+	AutoApprove  *bool           `json:"auto-approve-users" toml:"auto-approve-users" yaml:"auto-approve-users"`
 }
 
 // ConfigSchema returns the generated schema for Config.
@@ -617,6 +618,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 	if s.HIBPAPIKey != nil {
 		cfg.HIBPAPIKey = *s.HIBPAPIKey
 		set("hibp-api-key", configulator.LayerFile, file)
+	}
+	if s.AutoApprove != nil {
+		cfg.AutoApprove = *s.AutoApprove
+		set("auto-approve-users", configulator.LayerFile, file)
 	}
 	return nil
 }
@@ -1159,6 +1164,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.HIBPAPIKey = v
 		set("hibp-api-key", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "auto-approve-users"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "auto-approve-users",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.AutoApprove = p
+		set("auto-approve-users", configulator.LayerEnv, n)
+	}
 	return nil
 }
 
@@ -1242,6 +1260,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"pprof" + o.Separator + "trusted-proxies",
 		"pprof" + o.Separator + "port",
 		"hibp-api-key",
+		"auto-approve-users",
 	}
 	for i, name := range names {
 		if f := fs.Lookup(name); f != nil {
@@ -1328,6 +1347,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.StringSlice(names[67], nil, "List of trusted proxy IPs for the PProf server")
 	fs.Var(impl.NewInt(6060), names[68], "PProf server port")
 	fs.String(names[69], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[70], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -2172,6 +2192,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.HIBPAPIKey = v
 		set("hibp-api-key", configulator.LayerCLI, "--"+n)
 	}
+	if n := "auto-approve-users"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "auto-approve-users",
+				Source: "--" + n,
+			}
+		}
+		cfg.AutoApprove = v
+		set("auto-approve-users", configulator.LayerCLI, "--"+n)
+	}
 	return nil
 }
 
@@ -2389,6 +2421,19 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.HIBPAPIKey = &str
 			default:
 				return configJSONError("hibp-api-key", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "auto-approve-users":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.AutoApprove = &b
+			default:
+				return configJSONError("auto-approve-users", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -4257,6 +4302,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "pprof.trusted-proxies = %v\n", c.PProf.TrustedProxies)
 	fmt.Fprintf(&b, "pprof.port = %v\n", c.PProf.Port)
 	fmt.Fprintf(&b, "hibp-api-key = %v\n", c.HIBPAPIKey)
+	fmt.Fprintf(&b, "auto-approve-users = %v\n", c.AutoApprove)
 	return b.String()
 }
 

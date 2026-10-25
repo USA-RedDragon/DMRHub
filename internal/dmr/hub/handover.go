@@ -147,7 +147,8 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 
 // handOff runs the claim callbacks for the repeater id, which another
 // replica claimed for a packet that it got at since, when the repeater is
-// active here. Once they are done, it stops the subscriptions of the
+// active here and this replica did not claim it again since: a claim that
+// comes after this replica's own newer one is stale. Once they are done, it stops the subscriptions of the
 // repeater here when no server did and another replica still owns it.
 // WaitMoved waits for it.
 func (h *Hub) handOff(ctx context.Context, id uint, since time.Time) {
@@ -163,6 +164,9 @@ func (h *Hub) handOff(ctx context.Context, id uint, since time.Time) {
 	h.handing.Add()
 	go func() {
 		defer h.handing.Done()
+		if owner, ok := h.owner(ctx, id); ok && owner == h.instanceID {
+			return
+		}
 		var wg sync.WaitGroup
 		for _, fn := range fns {
 			wg.Go(func() { fn(id, since) })

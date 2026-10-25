@@ -50,7 +50,7 @@ declare -A tests=(
 
 mkdir -p "$results"
 bin="$results/stress.test"
-go test -tags stress -c -o "$bin" ./internal/stress/ || exit 1
+go test -tags stress,codec2wasm -c -o "$bin" ./internal/stress/ || exit 1
 
 status=0
 for backend in $backends; do

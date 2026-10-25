@@ -43,7 +43,7 @@ tmp=$(mktemp -d -p "$base")
 trap 'rm -rf "$tmp"' EXIT
 
 cd "$root"
-go test -c -o "$tmp/dmr.test" ./internal/dmr/
+go test -tags codec2wasm -c -o "$tmp/dmr.test" ./internal/dmr/
 cd internal/dmr
 unshare -r -n env TMPDIR="$tmp" DMRHUB_FREEDMR="$src" DMRHUB_FREEDMR_PYTHON="$python" \
 	bash -c 'ip link set lo up && exec "$0" -test.run "^TestExternalFreeDMR$" -test.v "$@"' "$tmp/dmr.test" "$@"

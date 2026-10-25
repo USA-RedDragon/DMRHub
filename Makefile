@@ -37,7 +37,7 @@ build-ci: install-deps
 
 run:
 	@echo "--> Running"
-	@go run .
+	@go run -tags codec2wasm .
 	@echo "--> Done"
 
 coverage:

@@ -10,6 +10,6 @@ do
     do
         echo "Fuzzing $func in $file"
         parentDir=$(dirname $file)
-        go test $parentDir -run=$func -fuzz=$func -fuzztime=5m -fuzzminimizetime=5m
+        go test -tags codec2wasm $parentDir -run=$func -fuzz=$func -fuzztime=5m -fuzzminimizetime=5m
     done
 done

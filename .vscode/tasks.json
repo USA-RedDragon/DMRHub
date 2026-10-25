@@ -44,7 +44,7 @@
     {
       "label": "Backend: Race Tests",
       "type": "shell",
-      "command": "go test -count 10 -race ./...",
+      "command": "go test -tags codec2wasm -count 10 -race ./...",
       "options": {
         "cwd": "${workspaceFolder}"
       },

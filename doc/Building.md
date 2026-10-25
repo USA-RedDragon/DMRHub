@@ -45,6 +45,8 @@ make lint
 
 Tests run with `CGO_ENABLED=0` and parallelism limited to 2.
 
+DMRHub converts Codec2 with the WebAssembly build of libcodec2. A build with cgo on, such as `go test -race`, needs `-tags codec2wasm` to use it; without the tag it links the system libcodec2 and fails where that is not installed.
+
 ## Frontend Development
 
 ```bash

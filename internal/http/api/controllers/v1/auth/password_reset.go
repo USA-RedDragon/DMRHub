@@ -192,7 +192,8 @@ func POSTResetPasswordCheck(c *gin.Context) {
 }
 
 // POSTResetPassword sets the password of the account of a password reset
-// link, uses up the link, and ends every session of the account.
+// link, uses up the link, and ends every session and app grant of the
+// account.
 func POSTResetPassword(c *gin.Context) {
 	db, ok := utils.GetDB(c)
 	if !ok {
@@ -239,7 +240,7 @@ func POSTResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgResetBadLink})
 		return
 	}
-	if !endEverySession(c, id) {
+	if !endEverySession(c, id) || !utils.RevokeUserGrants(c, id) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Password set, but the sessions could not be ended"})
 		return
 	}

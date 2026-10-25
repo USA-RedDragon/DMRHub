@@ -570,38 +570,9 @@ func PATCHUser(c *gin.Context) {
 			return
 		}
 
-		actorID, _ := sessions.Default(c).Get("user_id").(uint)
-		if json.Password == "" && actorID == user.ID && user.MustChangePassword {
-			c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgMustChangePassword, "must_change_password": true})
+		adminReset, ok := checkPasswordChange(c, db, json, user)
+		if !ok {
 			return
-		}
-		if json.Password != "" && actorID == user.ID {
-			if json.CurrentPassword == "" {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Enter your current password."})
-				return
-			}
-			verified, verifyErr := utils.VerifyPassword(json.CurrentPassword, user.Password, config.PasswordSalt)
-			if verifyErr != nil || !verified {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "The current password is wrong."})
-				return
-			}
-			if json.Password == json.CurrentPassword {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "The new password must not be the current one."})
-				return
-			}
-		}
-		adminReset := json.Password != "" && actorID != user.ID
-		if adminReset && (user.Admin || user.SuperAdmin) {
-			actor, err := models.FindUserByID(db, actorID)
-			if err != nil {
-				slog.Error(msgErrFindingUser, "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
-				return
-			}
-			if !actor.SuperAdmin {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Only the System Admin can reset the password of an admin."})
-				return
-			}
 		}
 
 		if json.Callsign != "" {
@@ -658,12 +629,63 @@ func PATCHUser(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error updating user"})
 			return
 		}
+		if adminReset && !utils.RevokeUserGrants(c, user.ID) {
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Password changed, but the apps of the user could not be signed out"})
+			return
+		}
 		if json.Password != "" && !endOtherSessions(c, user.ID) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Password changed, but the other sessions could not be ended"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
+}
+
+// checkPasswordChange answers the request and returns false when the
+// PATCH of user must not go on: a user with a temporary password who
+// does not change it, a change of one's own password without the right
+// current one or to the same one, or a reset of an admin by an admin who
+// is not the System Admin. adminReset reports a password that an admin
+// sets for another user.
+func checkPasswordChange(c *gin.Context, db *gorm.DB, json apimodels.UserPatch, user models.User) (adminReset bool, ok bool) {
+	config, ok := utils.GetConfig(c)
+	if !ok {
+		return false, false
+	}
+	actorID, _ := sessions.Default(c).Get("user_id").(uint)
+	if json.Password == "" && actorID == user.ID && user.MustChangePassword {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgMustChangePassword, "must_change_password": true})
+		return false, false
+	}
+	if json.Password != "" && actorID == user.ID {
+		if json.CurrentPassword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Enter your current password."})
+			return false, false
+		}
+		verified, verifyErr := utils.VerifyPassword(json.CurrentPassword, user.Password, config.PasswordSalt)
+		if verifyErr != nil || !verified {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "The current password is wrong."})
+			return false, false
+		}
+		if json.Password == json.CurrentPassword {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "The new password must not be the current one."})
+			return false, false
+		}
+	}
+	adminReset = json.Password != "" && actorID != user.ID
+	if adminReset && (user.Admin || user.SuperAdmin) {
+		actor, err := models.FindUserByID(db, actorID)
+		if err != nil {
+			slog.Error(msgErrFindingUser, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+			return false, false
+		}
+		if !actor.SuperAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Only the System Admin can reset the password of an admin."})
+			return false, false
+		}
+	}
+	return adminReset, true
 }
 
 func DELETEUser(c *gin.Context) {

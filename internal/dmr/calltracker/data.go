@@ -143,7 +143,7 @@ func (s *shard) feed(t *task, ch *channel, h *layer2.Hint, cls *class) {
 		}
 	}
 	s.events = rx.Decoded(s.t.now(), b, *h, s.events[:0])
-	s.apply(ch, t, cls, s.events)
+	s.apply(ch, t.p.StreamID, t, cls, s.events)
 }
 
 func (s *shard) dataBurst(t *task, ch *channel, h *layer2.Hint) {
@@ -158,7 +158,7 @@ func (s *shard) dataBurst(t *task, ch *channel, h *layer2.Hint) {
 		s.single(t, ch, &class{kind: models.CallKindUnknown, sub: sub})
 		if rx := ch.rxs[t.p.StreamID]; rx != nil {
 			s.events = rx.Decoded(s.t.now(), nil, *h, s.events[:0])
-			s.apply(ch, t, nil, s.events)
+			s.apply(ch, t.p.StreamID, t, nil, s.events)
 		}
 		return
 	}
@@ -466,7 +466,7 @@ func (s *shard) adoptPreambles(ch *channel, t *task, kind models.CallKind, sub s
 	return r
 }
 
-func (s *shard) messageRow(ch *channel, t *task, cls *class, m *data.Message) *row {
+func (s *shard) messageRow(ch *channel, stream uint, t *task, cls *class, m *data.Message) *row {
 	if t != nil {
 		return s.dataRow(ch, t, cls)
 	}
@@ -475,19 +475,19 @@ func (s *shard) messageRow(ch *channel, t *task, cls *class, m *data.Message) *r
 		return nil
 	}
 	for _, group := range []bool{false, true} {
-		if r := ch.data[dataKey{src: uint(src), dst: uint(dst), group: group}]; r != nil && !r.finished {
+		if r := ch.data[dataKey{src: uint(src), dst: uint(dst), group: group}]; r != nil && !r.finished && r.call.StreamID == stream {
 			return r
 		}
 	}
 	return nil
 }
 
-func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
+func (s *shard) apply(ch *channel, stream uint, t *task, cls *class, events []data.Event) {
 	for i := range events {
 		ev := &events[i]
 		switch ev.Kind {
 		case data.EventDelivered, data.EventReassembled:
-			r := s.messageRow(ch, t, cls, &ev.Message)
+			r := s.messageRow(ch, stream, t, cls, &ev.Message)
 			if r == nil {
 				continue
 			}
@@ -504,11 +504,13 @@ func (s *shard) apply(ch *channel, t *task, cls *class, events []data.Event) {
 				o.DataResponse(r.call, ev, r.last)
 			}
 		case data.EventCallEnd:
-			if r := ch.data[dataKey{src: uint(ev.Call.Source), dst: uint(ev.Call.Target), group: ev.Call.Group}]; r != nil && !r.finished {
+			if r := ch.data[dataKey{src: uint(ev.Call.Source), dst: uint(ev.Call.Target), group: ev.Call.Group}]; r != nil && !r.finished && r.call.StreamID == stream {
 				r.call.LostBlocks = uint(ev.Stats.Lost)
 			}
 			for _, r := range ch.data {
-				s.finish(r, r.last)
+				if r.call.StreamID == stream {
+					s.finish(r, r.last)
+				}
 			}
 		case data.EventCallStart, data.EventRespond:
 		}

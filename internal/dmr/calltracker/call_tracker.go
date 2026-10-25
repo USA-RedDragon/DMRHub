@@ -963,9 +963,9 @@ func (ch *channel) idle() bool {
 
 func (s *shard) finishAll() {
 	for _, ch := range s.channels {
-		for _, rx := range ch.rxs {
+		for stream, rx := range ch.rxs {
 			s.events = rx.Lost(s.t.now(), s.events[:0])
-			s.apply(ch, nil, nil, s.events)
+			s.apply(ch, stream, nil, nil, s.events)
 		}
 		for _, r := range ch.data {
 			s.finish(r, time.Time{})
@@ -990,7 +990,7 @@ func (s *shard) sweep(now time.Time) {
 		for stream, rx := range ch.rxs {
 			if at, ok := rx.Deadline(); ok && mono >= at {
 				s.events = rx.Tick(mono, s.events[:0])
-				s.apply(ch, nil, nil, s.events)
+				s.apply(ch, stream, nil, nil, s.events)
 			}
 			if _, waiting := rx.Deadline(); !waiting && rx.State() == data.StateIdle {
 				delete(ch.rxs, stream)

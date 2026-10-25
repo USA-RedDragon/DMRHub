@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -955,6 +956,30 @@ func TestBackToBackTransmissionsOnOneSlotEachGetTheirOwnRow(t *testing.T) {
 		assert.Equal(t, s.kind, calls[i].Kind, "stream %d", s.stream)
 		assert.Equal(t, uint(len(s.bursts)), calls[i].Bursts, "stream %d", s.stream)
 	}
+}
+
+func TestTheEndOfAMessageDoesNotSplitTheNextOnTheSlot(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	text := func(body string) []layer2.RawBurst {
+		return smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Body: []byte(body)})
+	}
+	newSender(t, ct, userB, userA, false, 65558).data(append(preambles(t, userB, userA, 5), text("STRESS 9")...)...)
+	next := newSender(t, ct, userB, userA, false, 65559)
+	bursts := append(preambles(t, userB, userA, 5), text(strings.Repeat("STRESS 10 ", 12))...)
+	require.Greater(t, len(bursts), 25)
+	for _, b := range bursts {
+		next.data(b)
+		time.Sleep(60 * time.Millisecond)
+	}
+
+	calls := waitDone(t, ct, database, 2)
+	byStream := map[uint]int{}
+	for _, c := range calls {
+		byStream[c.StreamID]++
+	}
+	assert.Equal(t, map[uint]int{65558: 1, 65559: 1}, byStream, "one row for each stream")
 }
 
 func burstsOf(b ...layer2.RawBurst) []layer2.RawBurst {

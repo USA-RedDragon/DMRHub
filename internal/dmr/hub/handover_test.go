@@ -78,16 +78,16 @@ func replicas(t *testing.T, n int) ([]replica, *gorm.DB, kv.KV) {
 }
 
 // twoReplicas returns two hubs that share a database, a KV store and
-// pubsub, each registered as a replica.
-func twoReplicas(t *testing.T) (*hub.Hub, *servers.InstanceRegistry, *hub.Hub, *servers.InstanceRegistry, *gorm.DB) {
+// pubsub, each registered as a replica, and the registry of the first.
+func twoReplicas(t *testing.T) (*hub.Hub, *servers.InstanceRegistry, *hub.Hub, *gorm.DB) {
 	t.Helper()
 	r, database, _ := replicas(t, 2)
-	return r[0].hub, r[0].reg, r[1].hub, r[1].reg, database
+	return r[0].hub, r[0].reg, r[1].hub, database
 }
 
 func TestWaitMovedReturnsWhenAnotherReplicaClaims(t *testing.T) {
 	t.Parallel()
-	one, r1, two, _, database := twoReplicas(t)
+	one, r1, two, database := twoReplicas(t)
 	seedUser(t, database, 1000001, "N0CALL")
 	seedRepeater(t, database, 100001, 1000001)
 	seedRepeater(t, database, 100002, 1000001)
@@ -119,7 +119,7 @@ func TestWaitMovedReturnsWhenAnotherReplicaClaims(t *testing.T) {
 
 func TestWaitMovedEndsWithItsContext(t *testing.T) {
 	t.Parallel()
-	one, _, _, _, database := twoReplicas(t)
+	one, _, _, database := twoReplicas(t)
 	seedUser(t, database, 1000001, "N0CALL")
 	seedRepeater(t, database, 100001, 1000001)
 	one.ActivateRepeater(context.Background(), 100001)
@@ -131,7 +131,7 @@ func TestWaitMovedEndsWithItsContext(t *testing.T) {
 
 func TestWaitMovedReturnsWhenARepeaterLeaves(t *testing.T) {
 	t.Parallel()
-	one, _, _, _, database := twoReplicas(t)
+	one, _, _, database := twoReplicas(t)
 	seedUser(t, database, 1000001, "N0CALL")
 	seedRepeater(t, database, 100001, 1000001)
 	ctx := context.Background()
@@ -186,15 +186,15 @@ func TestRenewOwnershipWritesTheClaimAgain(t *testing.T) {
 
 func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	t.Parallel()
-	one, _, two, _, database := twoReplicas(t)
+	one, _, two, database := twoReplicas(t)
 	seedUser(t, database, 1000001, "N0CALL")
 	seedRepeater(t, database, 100001, 1000001)
 	seedRepeater(t, database, 100002, 1000001)
 	ctx := context.Background()
 	gone := make(chan uint, 4)
-	one.OnClaimedElsewhere(func(id uint) { gone <- id })
+	one.OnClaimedElsewhere(func(id uint, _ time.Time) { gone <- id })
 	mine := make(chan uint, 4)
-	two.OnClaimedElsewhere(func(id uint) { mine <- id })
+	two.OnClaimedElsewhere(func(id uint, _ time.Time) { mine <- id })
 	one.ActivateRepeater(ctx, 100001)
 
 	two.ActivateRepeater(ctx, 100002)

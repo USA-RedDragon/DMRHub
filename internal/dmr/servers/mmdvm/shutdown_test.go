@@ -55,7 +55,7 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 		kvClient:     kvClient,
 		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan: make(chan models.RawDMRPacket, channelBufferSize),
+		outgoingChan: make(chan outgoing, channelBufferSize),
 	}
 
 	// Simulate server shutdown
@@ -104,7 +104,7 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 		kvClient:     kvClient,
 		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan: make(chan models.RawDMRPacket, channelBufferSize),
+		outgoingChan: make(chan outgoing, channelBufferSize),
 	}
 
 	s.stopped.Store(true)

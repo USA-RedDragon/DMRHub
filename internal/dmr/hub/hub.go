@@ -59,6 +59,9 @@ const (
 type RoutedPacket struct {
 	RepeaterID uint
 	Packet     models.Packet
+	// Barrier, when set, makes this a marker and no packet: the server
+	// closes it when it gets to it. See Hub.Barrier.
+	Barrier chan struct{}
 }
 
 // ServerConfig describes a server registering with the hub.
@@ -181,9 +184,11 @@ type Hub struct {
 	left chan struct{}
 
 	followClaimsOnce sync.Once
-	claimedMu        sync.Mutex
-	claimed          map[int]func(repeaterID uint)
-	claimedNext      int
+	// handing counts the claims of other replicas whose callbacks run.
+	handing     inflight
+	claimedMu   sync.Mutex
+	claimed     map[int]func(repeaterID uint, since time.Time)
+	claimedNext int
 }
 
 // NewHub creates a new Hub.
@@ -399,9 +404,9 @@ func (h *Hub) SetInstanceID(id string) {
 // claimPeerOwnership writes an ownership record for the given repeater in
 // the shared KV store and tells the other replicas, so that a replica that
 // served the repeater before ends its session there.
-func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint) {
+func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint, since time.Time) {
 	if h.writeOwner(ctx, repeaterID) {
-		h.publishClaim(repeaterID)
+		h.publishClaim(repeaterID, since)
 	}
 }
 
@@ -453,9 +458,17 @@ func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
 // It subscribes before it claims the repeater, so that the replica that
 // served the repeater before keeps sending to it until this one can.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
+	h.ActivateRepeaterSince(ctx, repeaterID, time.Now())
+}
+
+// ActivateRepeaterSince is ActivateRepeater for a repeater whose packet
+// that the server got at since made it active. The claim tells the
+// replica that served the repeater before since, so that it can hand over
+// what it sent after it, which a repeater that moved never got.
+func (h *Hub) ActivateRepeaterSince(ctx context.Context, repeaterID uint, since time.Time) {
 	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
-	h.claimPeerOwnership(ctx, repeaterID)
+	h.claimPeerOwnership(ctx, repeaterID, since)
 }
 
 // DeactivateRepeater cancels all pubsub subscriptions for a repeater.

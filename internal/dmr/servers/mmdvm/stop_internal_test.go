@@ -83,11 +83,11 @@ func TestSendPacketAfterStop(t *testing.T) {
 	t.Parallel()
 	s := Server{
 		connected:    xsync.NewMap[uint, endpoint](),
-		outgoingChan: make(chan models.RawDMRPacket, 1),
+		outgoingChan: make(chan outgoing, 1),
 		done:         make(chan struct{}),
 	}
 	s.connected.Store(1, udpEndpoint(net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}))
-	s.outgoingChan <- models.RawDMRPacket{}
+	s.outgoingChan <- outgoing{}
 	close(s.done)
 
 	sent := make(chan struct{})

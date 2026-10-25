@@ -19,7 +19,10 @@
 
 package models
 
-import "net"
+import (
+	"net"
+	"time"
+)
 
 // RawDMRPacket is a raw DMR packet
 //
@@ -39,4 +42,6 @@ type RawDMRPacket struct {
 	// address there. Neither is encoded.
 	Transport string   `msg:"-"`
 	Addr      net.Addr `msg:"-"`
+	// ReceivedAt is when the server read the packet. It is not encoded.
+	ReceivedAt time.Time `msg:"-"`
 }

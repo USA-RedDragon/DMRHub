@@ -66,6 +66,9 @@ type link struct {
 	// replica at a new address, with no login since. Its options are not
 	// taken, as nothing but the address vouches for it.
 	moved bool
+	// heard is when the server read the packet of the link that it
+	// handles.
+	heard time.Time
 }
 
 func (s *Server) now() time.Duration {
@@ -183,6 +186,9 @@ func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id ui
 	if err == nil {
 		rec.moved = s.moved(ctx, remote, data, repeater, id)
 	}
+	if rec.moved {
+		s.awaitHandover(ctx, uint(id))
+	}
 	record := func(x uint32) (kvRecord, bool) { return rec, err == nil && x == id }
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -191,8 +197,8 @@ func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id ui
 	if s.stopped.Load() {
 		return
 	}
-	for _, data := range held {
-		s.handleLocked(ctx, remote, data, record)
+	for _, p := range held {
+		s.handleLocked(ctx, remote, p.data, p.at, record)
 	}
 }
 
@@ -261,12 +267,12 @@ func (s *Server) forget(l *link) {
 // handlePacket handles the packet data from remoteAddr as the listener
 // does, and waits for the lookups and the repeater jobs that it started.
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
-	s.handleFrom(ctx, udpEndpoint(remoteAddr), data)
+	s.handleFrom(ctx, udpEndpoint(remoteAddr), data, time.Now())
 	s.lookups.Wait()
 	s.records.Wait()
 }
 
-func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
+func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte, at time.Time) {
 	if s.stopped.Load() {
 		return
 	}
@@ -282,7 +288,7 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 	key := remote.String()
 	if held, ok := s.resolving[key]; ok {
 		if len(held) < maxHeldPerAddress {
-			s.resolving[key] = append(held, data)
+			s.resolving[key] = append(held, heldPacket{data: data, at: at})
 		}
 		return
 	}
@@ -291,19 +297,27 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte) {
 			return
 		}
 		if s.resolving == nil {
-			s.resolving = map[string][][]byte{}
+			s.resolving = map[string][]heldPacket{}
 		}
-		s.resolving[key] = [][]byte{data}
+		s.resolving[key] = []heldPacket{{data: data, at: at}}
 		s.lookups.Add(1)
 		go s.resolve(ctx, remote, key, id, data)
 		return
 	}
-	s.handleLocked(ctx, remote, data, noRecord)
+	s.handleLocked(ctx, remote, data, at, noRecord)
 }
 
-// handleLocked handles the packet data from remote with s.mu held. record
-// returns the KV records that recordNeeded asked for.
-func (s *Server) handleLocked(ctx context.Context, remote endpoint, data []byte, record recordFunc) {
+// heldPacket is a packet that waits for a KV record, and at is when the
+// server read it.
+type heldPacket struct {
+	data []byte
+	at   time.Time
+}
+
+// handleLocked handles the packet data from remote, which the server read
+// at at, with s.mu held. record returns the KV records that recordNeeded
+// asked for.
+func (s *Server) handleLocked(ctx context.Context, remote endpoint, data []byte, at time.Time, record recordFunc) {
 	l, ok := s.links[remote.String()]
 	if !ok {
 		var err error
@@ -318,6 +332,7 @@ func (s *Server) handleLocked(ctx context.Context, remote endpoint, data []byte,
 		}
 	}
 	now := s.now()
+	l.heard = at
 	if l.m.State() == dmrdsession.StateIdle {
 		s.resume(ctx, now, l, data, record)
 	}
@@ -615,7 +630,11 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 	ep, d := l.ep, l.dialect
 	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
 	if s.hub != nil {
-		s.records.Do(uint(id), func() { s.hub.ActivateRepeater(ctx, uint(id)) })
+		since := l.heard
+		if since.IsZero() {
+			since = time.Now()
+		}
+		s.records.Do(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
 	}
 }
 
@@ -645,6 +664,7 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	}
 	slog.Info("Repeater session ended", "repeaterID", o.ID, "reason", o.Reason)
 	s.stopBeacon(l)
+	s.forgetSent(uint(o.ID))
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
 	downAt := time.Now()
@@ -865,14 +885,24 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 // dropMoved ends the session of the repeater id here, without a word to the
 // repeater, when another replica claims it: the repeater moved there, or
 // logged in there again.
-func (s *Server) dropMoved(id uint) {
-	if id > math.MaxUint32 {
+// It first stops the packets of the hub to the repeater and takes those
+// already on their way, so that the handover holds every packet that went
+// out after the move.
+func (s *Server) dropMoved(id uint, since time.Time) {
+	if id > math.MaxUint32 || s.hub == nil {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	l, ok := s.byID[uint32(id)]
+	s.mu.Unlock()
 	if !ok {
+		return
+	}
+	s.hub.StopFor(models.RepeaterTypeMMDVM, id)
+	s.handOver(id, since)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.byID[uint32(id)] != l {
 		return
 	}
 	slog.Info("Repeater session moved to another replica", "repeaterID", id, "remoteAddr", l.ep.String())
@@ -881,9 +911,6 @@ func (s *Server) dropMoved(id uint) {
 	s.connected.Delete(id)
 	l.m.Reset()
 	s.forget(l)
-	if s.hub != nil {
-		s.records.Do(id, func() { s.hub.DeactivateRepeater(context.Background(), id) })
-	}
 }
 
 // mayResumeForEgress reports whether resumeForEgress may try the repeater

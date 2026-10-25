@@ -33,7 +33,8 @@ import (
 )
 
 // claimedTopic carries each claim of a repeater by a replica, as
-// "<repeater ID> <instance ID>".
+// "<repeater ID> <instance ID> <since>", where since is the time in Unix
+// nanoseconds when the packet that made the replica claim it came in.
 const claimedTopic = "hub:claimed"
 
 func ownerKey(repeaterID uint) string {
@@ -102,14 +103,15 @@ func (h *Hub) TakeOver(ctx context.Context, repeaterID uint) bool {
 }
 
 // OnClaimedElsewhere calls fn with each repeater that is active on this
-// hub when another replica claims it. A server ends its own session of the
-// repeater then, without a word to the repeater, which another replica
-// serves now. The returned func stops the calls.
-func (h *Hub) OnClaimedElsewhere(fn func(repeaterID uint)) (stop func()) {
+// hub when another replica claims it, and the time when the packet that
+// made the other replica claim it came in there. A server ends its own
+// session of the repeater then, without a word to the repeater, which
+// another replica serves now. The returned func stops the calls.
+func (h *Hub) OnClaimedElsewhere(fn func(repeaterID uint, since time.Time)) (stop func()) {
 	h.claimedMu.Lock()
 	defer h.claimedMu.Unlock()
 	if h.claimed == nil {
-		h.claimed = map[int]func(uint){}
+		h.claimed = map[int]func(uint, time.Time){}
 	}
 	h.claimedNext++
 	n := h.claimedNext
@@ -132,7 +134,7 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 			if !ok {
 				return
 			}
-			id, instance, ok := parseClaim(msg)
+			id, instance, since, ok := parseClaim(msg)
 			if !ok || instance == h.instanceID {
 				continue
 			}
@@ -140,38 +142,48 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 				continue
 			}
 			h.claimedMu.Lock()
-			fns := make([]func(uint), 0, len(h.claimed))
+			fns := make([]func(uint, time.Time), 0, len(h.claimed))
 			for _, fn := range h.claimed {
 				fns = append(fns, fn)
 			}
 			h.claimedMu.Unlock()
 			for _, fn := range fns {
-				fn(id)
+				h.handing.Add()
+				go func() {
+					defer h.handing.Done()
+					fn(id, since)
+				}()
 			}
 		}
 	}
 }
 
-func (h *Hub) publishClaim(repeaterID uint) {
+func (h *Hub) publishClaim(repeaterID uint, since time.Time) {
 	if h.pubsub == nil {
 		return
 	}
-	msg := strconv.FormatUint(uint64(repeaterID), 10) + " " + h.instanceID
+	msg := strconv.FormatUint(uint64(repeaterID), 10) + " " + h.instanceID + " " + strconv.FormatInt(since.UnixNano(), 10)
 	if err := h.pubsub.Publish(claimedTopic, []byte(msg)); err != nil {
 		slog.Warn("failed to publish a repeater claim", "repeaterID", repeaterID, "error", err)
 	}
 }
 
-func parseClaim(b []byte) (uint, string, bool) {
-	id, instance, ok := strings.Cut(string(b), " ")
-	if !ok || instance == "" {
-		return 0, "", false
+func parseClaim(b []byte) (uint, string, time.Time, bool) {
+	f := strings.Fields(string(b))
+	if len(f) < 2 {
+		return 0, "", time.Time{}, false
 	}
-	n, err := strconv.ParseUint(id, 10, 64)
+	n, err := strconv.ParseUint(f[0], 10, 64)
 	if err != nil {
-		return 0, "", false
+		return 0, "", time.Time{}, false
 	}
-	return uint(n), instance, true
+	since := time.Now()
+	if len(f) > 2 {
+		if ns, err := strconv.ParseInt(f[2], 10, 64); err == nil {
+			since = time.Unix(0, ns)
+		}
+	}
+	return uint(n), f[1], since, true
 }
 
 func (h *Hub) activeRepeaters() map[uint]bool {
@@ -210,7 +222,7 @@ func (h *Hub) WaitMoved(ctx context.Context) int {
 			if !ok {
 				return len(pending)
 			}
-			if id, instance, ok := parseClaim(msg); ok && instance != h.instanceID {
+			if id, instance, _, ok := parseClaim(msg); ok && instance != h.instanceID {
 				delete(pending, id)
 			}
 		}
@@ -221,7 +233,22 @@ func (h *Hub) WaitMoved(ctx context.Context) int {
 			}
 		}
 	}
+	h.waitHanding(ctx)
 	return 0
+}
+
+// waitHanding waits until the servers handed over every repeater that
+// another replica claimed, or ctx ends.
+func (h *Hub) waitHanding(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		h.handing.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }
 
 // claimRecheck is how often WaitMoved reads the owners again, in case it

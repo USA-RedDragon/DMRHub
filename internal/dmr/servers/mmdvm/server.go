@@ -63,9 +63,13 @@ type Server struct {
 	Version       string
 	Commit        string
 	incomingChan  chan models.RawDMRPacket
-	outgoingChan  chan models.RawDMRPacket
+	outgoingChan  chan outgoing
 	hubHandle     *hub.ServerHandle
 	stopClaims    func()
+	sentMu        sync.Mutex
+	sent          map[uint][]*sentPacket
+	movingMu      sync.Mutex
+	moving        map[uint]*movingRepeater
 	wt            *webTransport
 	connected     *xsync.Map[uint, endpoint]
 	transports    *xsync.Map[string, transport]
@@ -89,7 +93,7 @@ type Server struct {
 	byID  map[uint32]*link
 	// resolving holds the packets from each address that wait for the KV
 	// record of their repeater.
-	resolving map[string][][]byte
+	resolving map[string][]heldPacket
 	// known holds the IDs of the repeaters, once loaded; see login.
 	known    map[uint32]bool
 	misses   int
@@ -154,7 +158,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Version:       version,
 		Commit:        commit,
 		incomingChan:  make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan:  make(chan models.RawDMRPacket, channelBufferSize),
+		outgoingChan:  make(chan outgoing, channelBufferSize),
 		connected:     xsync.NewMap[uint, endpoint](),
 		transports:    xsync.NewMap[string, transport](),
 		egressMiss:    xsync.NewMap[uint, time.Time](),
@@ -239,7 +243,7 @@ func (s *Server) listen(ctx context.Context) {
 		case <-ticker.C:
 			s.tick(ctx)
 		case packet := <-s.incomingChan:
-			s.handleFrom(ctx, endpointOf(packet), packet.Data)
+			s.handleFrom(ctx, endpointOf(packet), packet.Data, packet.ReceivedAt)
 		}
 	}
 }
@@ -250,8 +254,8 @@ func (s *Server) subscribePackets() {
 		select {
 		case <-s.done:
 			return
-		case packet := <-s.outgoingChan:
-			s.write(endpointOf(packet), packet.Data)
+		case o := <-s.outgoingChan:
+			s.writeOut(o)
 		}
 	}
 }
@@ -266,6 +270,10 @@ func (s *Server) consumeHubPackets(ctx context.Context) {
 		case rp, ok := <-s.hubHandle.Packets:
 			if !ok {
 				return
+			}
+			if rp.Barrier != nil {
+				close(rp.Barrier)
+				continue
 			}
 			s.sendPacket(ctx, rp.RepeaterID, rp.Packet)
 		}
@@ -331,8 +339,10 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 		}
 		data := make([]byte, length)
 		copy(data, buf[:length])
+		packet := rawPacketFrom(endpoint{transport: name, addr: remote}, data)
+		packet.ReceivedAt = time.Now()
 		select {
-		case s.incomingChan <- rawPacketFrom(endpoint{transport: name, addr: remote}, data):
+		case s.incomingChan <- packet:
 		case <-s.done:
 			return
 		}
@@ -387,6 +397,15 @@ func endpointOf(p models.RawDMRPacket) endpoint {
 }
 
 func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.Packet) {
+	if s.hold(repeaterID, packet) {
+		return
+	}
+	s.deliver(ctx, repeaterID, packet)
+}
+
+// deliver sends packet to the repeater repeaterID when this replica holds
+// its session.
+func (s *Server) deliver(ctx context.Context, repeaterID uint, packet models.Packet) {
 	// Only send to repeaters with active local sessions on this replica.
 	// In multi-replica deployments, all replicas receive pubsub messages but
 	// only the replica holding the UDP session should transmit.
@@ -419,9 +438,11 @@ func (s *Server) sendPacket(ctx context.Context, repeaterID uint, packet models.
 
 func (s *Server) send(ep endpoint, repeaterID uint, packet models.Packet) {
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
+	sent := s.remember(repeaterID, packet)
 	select {
-	case s.outgoingChan <- rawPacketFrom(ep, packet.Encode()):
+	case s.outgoingChan <- outgoing{raw: rawPacketFrom(ep, packet.Encode()), sent: sent}:
 	case <-s.done:
+		s.forgetPacket(repeaterID, sent)
 	}
 }
 
@@ -445,4 +466,21 @@ func (s *Server) resumeAndSend(ctx context.Context, id uint) {
 			s.send(ep, id, packet)
 		}
 	}
+}
+
+// outgoing is a packet that waits for the writer, and sent is the record
+// of it for a handover.
+type outgoing struct {
+	raw  models.RawDMRPacket
+	sent *sentPacket
+}
+
+// writeOut writes o, and first records when it left.
+func (s *Server) writeOut(o outgoing) {
+	if o.sent != nil {
+		s.sentMu.Lock()
+		o.sent.at = time.Now()
+		s.sentMu.Unlock()
+	}
+	s.write(endpointOf(o.raw), o.raw.Data)
 }

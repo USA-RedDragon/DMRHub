@@ -60,7 +60,7 @@ type link struct {
 	m       *dmrdsession.Master
 	beacon  *time.Timer
 	// looking reports that the password of a login of the link is being
-	// looked up.
+	// looked up, or its config saved.
 	looking bool
 }
 
@@ -366,12 +366,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 		case dmrdsession.OutputPong:
 			s.ping(ctx, l)
 		case dmrdsession.OutputConfig:
-			var buf [dmrdsession.MaxOutputs]dmrdsession.Output
-			if s.takeConfig(ctx, l, o.Packet) {
-				s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
-			} else {
-				s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
-			}
+			s.configLater(ctx, l, o.Packet)
 		}
 	}
 }
@@ -516,15 +511,53 @@ func (s *Server) password(repeaterID uint) (string, error) {
 	return repeater.Password, nil
 }
 
-func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
-	repeaterID := uint(l.m.ID())
+// configLater takes the RPTC data of l off the listener, as login looks up a
+// password, so that the database never holds up the packets of other
+// repeaters, such as when every repeater logs in again at once. Each link
+// takes one config at a time; the session answers a repeated RPTC once.
+func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
+	if l.looking {
+		return
+	}
+	l.looking = true
+	id, ep, d := l.m.ID(), l.ep, l.dialect
+	data = append([]byte(nil), data...)
+	s.lookups.Add(1)
+	go func() {
+		defer s.lookups.Done()
+		ok := s.takeConfig(ctx, id, ep, d, data)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		l.looking = false
+		if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id {
+			return
+		}
+		st := l.m.State()
+		if st != dmrdsession.StateConfig && st != dmrdsession.StateRunning {
+			return
+		}
+		now := s.now()
+		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+		if ok {
+			s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
+		} else {
+			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		}
+		s.forget(l)
+	}()
+}
+
+// takeConfig saves the RPTC data in dialect d of the repeater id at ep and
+// reports whether DMRHub accepts it.
+func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.Dialect, data []byte) bool {
+	repeaterID := uint(id)
 	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
 		return false
 	}
 	parse := repeater.ParseConfig
-	if l.dialect == dmrd.DialectHBRP {
+	if d == dmrd.DialectHBRP {
 		parse = repeater.ParseHBRPConfig
 	}
 	if err := parse(data, s.Version, s.Commit); err != nil {
@@ -532,11 +565,11 @@ func (s *Server) takeConfig(ctx context.Context, l *link, data []byte) bool {
 		return false
 	}
 	now := time.Now()
-	repeater.IP, repeater.Port = l.ep.kvAddr()
+	repeater.IP, repeater.Port = ep.kvAddr()
 	repeater.Connected = now
 	repeater.LastPing = now
 	repeater.Connection = models.RepeaterStateConnected
-	repeater.Dialect = l.dialect.String()
+	repeater.Dialect = d.String()
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {

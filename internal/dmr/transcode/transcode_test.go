@@ -692,3 +692,30 @@ func TestServerSlotsAreSharedThroughKV(t *testing.T) {
 	r, _ = sc.Convert(t.Context(), &in[1], time.Now().Add(transcode.Budget))
 	assert.False(t, r.Busy, "the slot did not come free")
 }
+
+// TestSetTimingGivesLaterCallsRoom answers each request after 30 ms, more
+// than an attempt waits by default, so a call loses its frames. A call that
+// starts after SetTiming gives the answers room is converted whole.
+func TestSetTimingGivesLaterCallsRoom(t *testing.T) {
+	t.Parallel()
+	srv := testutils.StartFakeAMBEServer(t)
+	srv.SetDelay(30 * time.Millisecond)
+	svc := newService(t, srv.Addr())
+	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 2*layer2.VoiceSlotsPerBurst))
+	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
+	require.NoError(t, err)
+	t.Cleanup(st.Close)
+	_, missed := convert(t, st, in)
+	assert.Positive(t, missed, "answers after 30 ms fit in the default attempt")
+
+	svc.SetTiming(2*time.Second, 500*time.Millisecond)
+	roomy, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
+	require.NoError(t, err)
+	t.Cleanup(roomy.Close)
+	assert.Equal(t, 2*time.Second, roomy.Budget())
+	for i := range in {
+		r, ok := roomy.Convert(t.Context(), &in[i], time.Now().Add(roomy.Budget()))
+		require.True(t, ok)
+		assert.Zero(t, r.Missed, "burst %d", i)
+	}
+}

@@ -94,16 +94,31 @@ func (s *server) answer() {
 type Service struct {
 	mu      sync.Mutex
 	kv      kv.KV
+	timing  atomic.Pointer[timing]
 	servers atomic.Pointer[[]*server]
 	closed  bool
 	wg      sync.WaitGroup
 }
 
+type timing struct {
+	budget, attempt time.Duration
+}
+
 // NewService returns a Service without an AMBE server that shares the
 // calls that hold each server in store. A nil store counts the calls of
-// this process only.
+// this process only. Its calls use Budget and AttemptTimeout.
 func NewService(store kv.KV) *Service {
-	return &Service{kv: store}
+	s := &Service{kv: store}
+	s.timing.Store(&timing{budget: Budget, attempt: AttemptTimeout})
+	return s
+}
+
+// SetTiming sets the time each burst of the calls that start later may take
+// to convert, and how long each request to an AMBE server waits for its
+// answer. A test that checks what a conversion makes, and not when, gives
+// them room on a slow machine.
+func (s *Service) SetTiming(budget, attempt time.Duration) {
+	s.timing.Store(&timing{budget: budget, attempt: attempt})
 }
 
 // SetServers sets the AMBE servers, in the order a call tries them. An
@@ -215,7 +230,8 @@ func (s *Service) NewStream(from, to Codec, mode codec2.Mode) (*Stream, error) {
 	if err != nil {
 		return nil, err //nolint:wrapcheck
 	}
-	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples)}, nil
+	tm := s.timing.Load()
+	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt}, nil
 }
 
 func warmCodec2() {

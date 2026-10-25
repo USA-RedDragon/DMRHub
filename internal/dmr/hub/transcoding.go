@@ -40,11 +40,20 @@ const (
 	// tgRepeatersTTL is how long the hub keeps the repeaters of a
 	// talkgroup for that answer.
 	tgRepeatersTTL = 2 * time.Second
-	// transcodeQueue is the bursts of one stream that may wait for the
-	// transcoder. A burst over it gets no copy, and its audio counts as
+	// transcodeQueue is the fewest bursts of one stream that may wait for
+	// the transcoder; queueLen holds as many as arrive within the budget
+	// of a burst. A burst over it gets no copy, and its audio counts as
 	// missed.
 	transcodeQueue = 8
+	burstPeriod    = 60 * time.Millisecond
 )
+
+// queueLen returns the bursts that may wait for a transcoder whose bursts
+// may each take budget: those that arrive while one is converted, and at
+// least transcodeQueue.
+func queueLen(budget time.Duration) int {
+	return max(transcodeQueue, int(budget/burstPeriod)+1)
+}
 
 func (sc *streamCodec) transcoder() *transcoder {
 	sc.mu.Lock()
@@ -312,7 +321,7 @@ type transcodeJob struct {
 }
 
 func (h *Hub) startTranscoder(ctx context.Context, st *transcode.Stream, sourceName string) *transcoder {
-	t := &transcoder{h: h, st: st, source: sourceName, in: make(chan transcodeJob, transcodeQueue), quit: make(chan struct{})}
+	t := &transcoder{h: h, st: st, source: sourceName, in: make(chan transcodeJob, queueLen(st.Budget())), quit: make(chan struct{})}
 	h.transcoders.Add()
 	h.calls.Add()
 	go t.run(context.WithoutCancel(ctx))
@@ -343,7 +352,7 @@ func (t *transcoder) queue(p models.Packet) {
 		return
 	}
 	select {
-	case t.in <- transcodeJob{packet: p, deadline: time.Now().Add(transcode.Budget)}:
+	case t.in <- transcodeJob{packet: p, deadline: time.Now().Add(t.st.Budget())}:
 	default:
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
 	}

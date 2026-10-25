@@ -95,8 +95,13 @@ type Stream struct {
 	emb     embeddedLC
 	failing bool
 	stale   bool
+	budget  time.Duration
+	attempt time.Duration
 	pcm     []int16
 }
+
+// Budget returns the time each burst of the call may take to convert.
+func (s *Stream) Budget() time.Duration { return s.budget }
 
 // From returns the codec of the call.
 func (s *Stream) From() Codec { return s.from }
@@ -266,7 +271,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 			break
 		}
 		if s.ambe == nil {
-			if time.Until(deadline) < AttemptTimeout {
+			if time.Until(deadline) < s.attempt {
 				break
 			}
 			tried = true
@@ -275,9 +280,9 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 				continue
 			}
 		}
-		need := AttemptTimeout
+		need := s.attempt
 		if s.stale {
-			need = 2 * AttemptTimeout
+			need = 2 * s.attempt
 		}
 		if time.Until(deadline) < need {
 			break
@@ -311,7 +316,7 @@ func (s *Stream) open(ctx context.Context, deadline time.Time) error {
 	if err != nil {
 		return err //nolint:wrapcheck
 	}
-	c, err := dvsi.New(conn, &dvsi.Config{Timeout: AttemptTimeout, NoReset: true})
+	c, err := dvsi.New(conn, &dvsi.Config{Timeout: s.attempt, NoReset: true})
 	if err != nil {
 		_ = conn.Close()
 		return err //nolint:wrapcheck

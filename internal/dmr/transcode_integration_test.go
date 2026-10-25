@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -71,6 +72,7 @@ func newTCNet(t *testing.T, stack *testutils.IntegrationStack) *tcNet {
 	require.NoError(t, models.SetRepeaterCodec(stack.DB, tcC2Listen, models.CodecCodec2, models.CodecSettingAuto))
 	stack.StartServers(t)
 	n := &tcNet{stack: stack, ambe: testutils.StartFakeAMBEServer(t), stream: 0xA0000}
+	roomy(stack.Hub)
 	stack.Hub.SetAMBEServers(ambeAt(n.ambe.Addr()))
 	n.c2, n.ambeListen, n.c2Listen = c2MMDVM(t, stack, tcC2Rpt), c2MMDVM(t, stack, tcAMBERpt), c2MMDVM(t, stack, tcC2Listen)
 	n.ambeTalk = c2MMDVM(t, stack, tcAMBETalkRpt)
@@ -371,6 +373,8 @@ func TestTranscoding(t *testing.T) {
 		})
 
 		step(t, "ambe-server-down", func(t *testing.T) {
+			stack.Hub.Transcoder().SetTiming(transcode.Budget, transcode.AttemptTimeout)
+			defer roomy(stack.Hub)
 			missed := missedSeconds()
 			n.ambe.SetAnswering(false)
 			defer n.ambe.SetAnswering(true)
@@ -451,6 +455,8 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
 		srv := testutils.StartFakeAMBEServer(t)
+		roomy(stack.Hub)
+		roomy(second.Hub)
 		stack.Hub.SetAMBEServers(ambeAt(srv.Addr()))
 		second.Hub.SetAMBEServers(ambeAt(srv.Addr()))
 
@@ -584,11 +590,45 @@ func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 		for i := range got {
 			assert.Equal(t, restSent[i].DMRData, got[i].DMRData, "packet %d of the call that was not converted", i)
 		}
-		assert.GreaterOrEqual(t, missedBusy()-busy, float64(tcFrames)*0.02-1e-9)
+		assert.GreaterOrEqual(t, missedBusy()-busy, float64(tcFrames)*0.02-1e-9, "the audio of the call that was not converted is counted")
 		assert.Empty(t, n.ambe.Errors())
 	})
 }
 
+// missedBusy returns the audio counted as busy, and as late: a burst
+// that waits behind a full queue is counted late before the transcoder
+// sees that the call has no server.
 func missedBusy() float64 {
-	return testutil.ToFloat64(metrics.NewMetrics().TranscodeMissedSecondsTotal.WithLabelValues(models.CodecAMBE, transcode.ReasonBusy))
+	m := metrics.NewMetrics().TranscodeMissedSecondsTotal
+	return testutil.ToFloat64(m.WithLabelValues(models.CodecAMBE, transcode.ReasonBusy)) + testutil.ToFloat64(m.WithLabelValues(models.CodecAMBE, transcode.ReasonLate))
+}
+
+// roomy gives the calls that the hub converts 2 s for each burst and
+// 500 ms for each answer of the AMBE server. The tests that check what a
+// conversion makes, rather than when, run next to many other tests on CI
+// machines with 2 to 4 cores, where the race detector and the coverage
+// counters slow every goroutine; there the fake AMBE server and the
+// transcoder can wait longer than the 18 ms of an attempt, and frames went
+// out as silence.
+func roomy(h *hub.Hub) {
+	h.Transcoder().SetTiming(2*time.Second, 500*time.Millisecond)
+}
+
+// TestABacklogWithinTheBudgetLosesNoBurst makes the AMBE server answer
+// after 30 ms, so each burst takes about 90 ms to convert while the call
+// sends one every 30 ms. With a 10 s budget every burst still fits it, so
+// the queue of the transcoder must hold the backlog: the AMBE hotspot gets
+// every burst, and no audio is lost.
+func TestABacklogWithinTheBudgetLosesNoBurst(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		n := newTCNet(t, stack)
+		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		n.ambe.SetDelay(30 * time.Millisecond)
+		stream := n.nextStream()
+		cc := newC2Call(t, call{group: true, dst: tcTG, src: tcTalker}, false, tcBursts, uint64(stream))
+		sent, g := n.send(t, n.c2, cc, stream)
+		assert.Len(t, ofStream(g.ambeListen, stream), len(sent), "bursts were dropped behind a full queue")
+		n.requireRow(t, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400), sentAMBE: 3})
+	})
 }

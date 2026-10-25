@@ -89,8 +89,9 @@ func GETNetworkWebTransport(c *gin.Context) {
 	})
 }
 
-// GETNetworkFeatures answers which optional servers are on, for the
-// frontend to show their pages without the admin-only config.
+// GETNetworkFeatures answers which optional servers are on, and whether
+// users can have a forgotten password emailed, for the frontend to show
+// their pages without the admin-only config.
 func GETNetworkFeatures(c *gin.Context) {
 	config, ok := utils.GetConfig(c)
 	if !ok {
@@ -98,8 +99,9 @@ func GETNetworkFeatures(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ipsc":       config.DMR.IPSC.Enabled,
-		"openbridge": config.DMR.OpenBridge.Enabled,
+		"ipsc":           config.DMR.IPSC.Enabled,
+		"openbridge":     config.DMR.OpenBridge.Enabled,
+		"password_reset": config.SMTP.Enabled,
 	})
 }
 

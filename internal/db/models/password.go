@@ -27,9 +27,18 @@ import (
 
 // SetPassword gives the user id the password hash hash. mustChange marks
 // a password that an admin set, which the user must replace with their
-// own.
+// own. Every password reset link of the user stops working.
 func SetPassword(db *gorm.DB, id uint, hash string, mustChange bool) error {
-	if err := db.Exec("UPDATE users SET password = ?, must_change_password = ?, updated_at = ? WHERE id = ?", hash, mustChange, time.Now(), id).Error; err != nil {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("UPDATE users SET password = ?, must_change_password = ?, updated_at = ? WHERE id = ?", hash, mustChange, time.Now(), id).Error; err != nil {
+			return fmt.Errorf("could not update the user: %w", err)
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&PasswordReset{}).Error; err != nil {
+			return fmt.Errorf("could not end the password resets: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("could not set the password of user %d: %w", id, err)
 	}
 	return nil

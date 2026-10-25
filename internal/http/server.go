@@ -36,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api"
+	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
@@ -45,6 +46,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -72,6 +74,7 @@ type Option func(*options)
 type options struct {
 	applier    v1ConfigControllers.Applier
 	hibpClient *http.Client
+	mailer     smtp.Mailer
 }
 
 // WithConfigApplier makes the config API put a saved config into effect
@@ -84,6 +87,12 @@ func WithConfigApplier(a v1ConfigControllers.Applier) Option {
 // client.
 func WithHIBPClient(client *http.Client) Option {
 	return func(o *options) { o.hibpClient = client }
+}
+
+// WithMailer makes the password reset emails go out through m instead of
+// the SMTP server of the config.
+func WithMailer(m smtp.Mailer) Option {
+	return func(o *options) { o.mailer = m }
 }
 
 func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, opts ...Option) Server {
@@ -152,6 +161,11 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	if o.hibpClient != nil {
 		r.Use(middleware.Provider(utils.HIBPClientKey, o.hibpClient))
 	}
+	mailer := o.mailer
+	if mailer == nil {
+		mailer = smtp.NewMailer(config)
+	}
+	r.Use(middleware.Provider(v1AuthControllers.MailerKey, mailer))
 	// CORS
 	var configuredCORS gin.HandlerFunc
 	if config.HTTP.CORS.Enabled {

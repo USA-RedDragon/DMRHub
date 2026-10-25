@@ -121,7 +121,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{})
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{})
 	if err != nil {
 		return db, fmt.Errorf("failed to migrate database: %w", err)
 	}

@@ -34,18 +34,22 @@ import (
 const MsgMustChangePassword = "An admin set a temporary password for you. Choose your own password in Settings first." //nolint:gosec // an error text, not a credential
 
 // ownPasswordRoutes are the routes that stay open to a user whose
-// password an admin set: logging in and out, reading their own account,
-// and the facts about the network that every page shows.
+// password an admin set: logging in and out, a forgotten password,
+// reading their own account, and the facts about the network that every
+// page shows.
 func ownPasswordRoutes() map[string]bool {
 	return map[string]bool{
-		"POST /api/v1/auth/login":      true,
-		"POST /api/v1/auth/logout":     true,
-		"GET /api/v1/users/me":         true,
-		"GET /api/v1/network/name":     true,
-		"GET /api/v1/network/features": true,
-		"GET /api/v1/version":          true,
-		"GET /api/v1/ping":             true,
-		"GET /api/v1/healthcheck":      true,
+		"POST /api/v1/auth/login":                true,
+		"POST /api/v1/auth/logout":               true,
+		"POST /api/v1/auth/forgot-password":      true,
+		"POST /api/v1/auth/reset-password":       true,
+		"POST /api/v1/auth/reset-password/check": true,
+		"GET /api/v1/users/me":                   true,
+		"GET /api/v1/network/name":               true,
+		"GET /api/v1/network/features":           true,
+		"GET /api/v1/version":                    true,
+		"GET /api/v1/ping":                       true,
+		"GET /api/v1/healthcheck":                true,
 	}
 }
 

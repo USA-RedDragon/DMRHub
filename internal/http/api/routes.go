@@ -66,7 +66,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	ownPassword := middleware.RequireOwnPassword()
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit, bearer, ownPassword)
-	v1(config, apiV1, userSuspension)
+	v1(config, apiV1, userSuspension, v1AuthControllers.NewResetLimits(db))
 
 	router.GET("/ws/lastheard", ratelimit, websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(pubsub)))
 
@@ -92,10 +92,13 @@ func requireOpenBridge(config *configPkg.Config) gin.HandlerFunc {
 	}
 }
 
-func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.HandlerFunc) {
+func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.HandlerFunc, resetLimits *v1AuthControllers.ResetLimits) {
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
+	v1Auth.POST("/forgot-password", v1AuthControllers.POSTForgotPassword(resetLimits))
+	v1Auth.POST("/reset-password/check", v1AuthControllers.POSTResetPasswordCheck)
+	v1Auth.POST("/reset-password", v1AuthControllers.POSTResetPassword)
 
 	v1OAuth := group.Group("/oauth")
 	v1OAuth.GET("/authorize", v1OAuthControllers.GETAuthorize)

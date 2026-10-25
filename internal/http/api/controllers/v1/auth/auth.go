@@ -35,7 +35,8 @@ import (
 )
 
 const (
-	errorKey = "error"
+	errorKey   = "error"
+	messageKey = "message"
 )
 
 // loginMinDuration is the minimum time the login handler will take once
@@ -137,7 +138,7 @@ func POSTLogin(c *gin.Context) {
 					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error saving session"})
 					return
 				}
-				c.JSON(http.StatusOK, gin.H{"message": "Logged in"})
+				c.JSON(http.StatusOK, gin.H{messageKey: "Logged in"})
 				return
 			}
 			c.JSON(http.StatusUnauthorized, gin.H{errorKey: "User is not approved"})
@@ -169,5 +170,5 @@ func POSTLogout(c *gin.Context) {
 			slog.Error("PubSub not found in context, the websockets of a logged out session stay open", "function", "POSTLogout")
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Logged out"})
 }

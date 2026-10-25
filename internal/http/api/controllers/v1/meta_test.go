@@ -106,10 +106,11 @@ func TestVersionRoute(t *testing.T) {
 func TestNetworkFeaturesRoute(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ ipsc, openbridge bool }{{true, false}, {false, true}} {
+	for _, tc := range []struct{ ipsc, openbridge, smtp bool }{{true, false, true}, {false, true, false}} {
 		router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
 			c.DMR.IPSC.Enabled = tc.ipsc
 			c.DMR.OpenBridge.Enabled = tc.openbridge
+			c.SMTP.Enabled = tc.smtp
 		})
 		if err != nil {
 			t.Fatalf("Failed to create test DB router: %v", err)
@@ -125,6 +126,6 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		var got map[string]any
 		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-		assert.Equal(t, map[string]any{"ipsc": tc.ipsc, "openbridge": tc.openbridge}, got)
+		assert.Equal(t, map[string]any{"ipsc": tc.ipsc, "openbridge": tc.openbridge, "password_reset": tc.smtp}, got)
 	}
 }

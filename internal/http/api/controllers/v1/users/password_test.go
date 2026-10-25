@@ -202,3 +202,44 @@ func TestOnlyTheSystemAdminResetsAnAdmin(t *testing.T) {
 	w = testutils.Do(t, router, super, http.MethodPatch, path(other.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
 	assert.Equal(t, http.StatusOK, w.Code, "the System Admin resets an admin")
 }
+
+func TestATemporaryPasswordOpensOnlyThePasswordChange(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	user := testutils.SeedAccount(t, tdb.DB(), 1000001, "N0CALL", "n0call")
+	testutils.SeedAccount(t, tdb.DB(), 1000002, "N1CALL", "n1call")
+	admin := testutils.Login(t, router, "Admin")
+	w := testutils.Do(t, router, admin, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	jar, code := loginWith(t, router, "n0call", "Qm4tVx8rKp2Hw9Ns")
+	require.Equal(t, http.StatusOK, code)
+
+	closed := []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/users/me/settings"},
+		{http.MethodGet, "/api/v1/users/me/radio-ids"},
+		{http.MethodGet, "/api/v1/repeaters/my"},
+		{http.MethodGet, "/api/v1/messages/inbox"},
+		{http.MethodGet, "/api/v1/lastheard"},
+		{http.MethodGet, "/api/v1/oauth/apps"},
+		{http.MethodGet, "/ws/calls"},
+		{http.MethodPatch, path(1000002)},
+	}
+	for _, r := range closed {
+		w := testutils.Do(t, router, jar, r.method, r.path, nil)
+		assert.Equal(t, http.StatusForbidden, w.Code, "%s %s", r.method, r.path)
+		assert.JSONEq(t, `{"error":"An admin set a temporary password for you. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String(), "%s %s", r.method, r.path)
+	}
+	for _, p := range []string{"/api/v1/users/me", "/api/v1/network/name", "/api/v1/network/features", "/api/v1/version"} {
+		assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodGet, p, nil).Code, p)
+	}
+	assert.Equal(t, http.StatusOK, testutils.Do(t, router, admin, http.MethodGet, "/api/v1/users/me/settings", nil).Code, "other users are not affected")
+
+	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "my-own-password", "current_password": "Qm4tVx8rKp2Hw9Ns"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	for _, p := range []string{"/api/v1/users/me/settings", "/api/v1/repeaters/my", "/api/v1/lastheard"} {
+		assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodGet, p, nil).Code, p)
+	}
+	assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodPost, "/api/v1/auth/logout", nil).Code)
+}

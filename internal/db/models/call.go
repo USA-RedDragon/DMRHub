@@ -137,6 +137,13 @@ type Call struct {
 	TranscodeBusy bool `json:"busy"`
 }
 
+// BeforeSave keeps StartTime in UTC, so that SQLite, which compares times
+// as text, filters the calls by their start right.
+func (c *Call) BeforeSave(*gorm.DB) error {
+	c.StartTime = c.StartTime.UTC()
+	return nil
+}
+
 func FindCalls(db *gorm.DB) ([]Call, error) {
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_talkgroup = ?", true).Order("start_time desc").Find(&calls).Error
@@ -211,7 +218,7 @@ func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool,
 func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) ([]Call, error) {
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
-		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
+		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).
 		Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
@@ -219,14 +226,14 @@ func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, end
 // CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window.
 func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).Count(&count).Error
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).Count(&count).Error
 	return int(count), err
 }
 
 // CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window.
 func CountUniqueUsersInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).
 		Distinct("user_id").Count(&count).Error
 	return int(count), err
 }

@@ -164,7 +164,7 @@ func purgeBursts(db *gorm.DB, cut time.Time) (int, error) {
 	total := 0
 	for {
 		var ids []uint
-		if err := db.Unscoped().Model(&models.Call{}).Where("start_time < ? AND call_data IS NOT NULL", cut).Order("id").Limit(batchSize).Pluck("id", &ids).Error; err != nil {
+		if err := db.Unscoped().Model(&models.Call{}).Where("start_time < ? AND call_data IS NOT NULL", cut.UTC()).Order("id").Limit(batchSize).Pluck("id", &ids).Error; err != nil {
 			return total, fmt.Errorf("retention: cannot find old bursts: %w", err)
 		}
 		if len(ids) == 0 {
@@ -184,7 +184,7 @@ func purgeTransmissions(db *gorm.DB, cut time.Time) (int, error) {
 	total := 0
 	for {
 		var ids []uint
-		if err := db.Unscoped().Model(&models.Call{}).Where("start_time < ? AND active = ?", cut, false).Order("id").Limit(batchSize).Pluck("id", &ids).Error; err != nil {
+		if err := db.Unscoped().Model(&models.Call{}).Where("start_time < ? AND active = ?", cut.UTC(), false).Order("id").Limit(batchSize).Pluck("id", &ids).Error; err != nil {
 			return total, fmt.Errorf("retention: cannot find old transmissions: %w", err)
 		}
 		if len(ids) == 0 {

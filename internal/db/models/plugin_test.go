@@ -148,3 +148,19 @@ func TestCallsToAPluginsIDsAreCounted(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
+
+// TestCallsAreCountedWhateverTheZoneOfTheirStart starts a call at 01:00 in
+// a zone 12 hours behind UTC and counts the calls since the start of that
+// day there. SQLite compares times as text, so a call stored in its own
+// zone sorts before the start of its day in UTC and is missed.
+func TestCallsAreCountedWhateverTheZoneOfTheirStart(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	zone := time.FixedZone("UTC-12", -12*60*60)
+	start := time.Date(2026, 10, 25, 1, 0, 0, 0, zone)
+	require.NoError(t, database.Create(&models.Call{StreamID: 1, StartTime: start, DestinationID: 9990}).Error)
+	n, err := models.CountCallsTo(database, []models.PluginRange{rng(9990, 9990)}, time.Date(2026, 10, 25, 0, 0, 0, 0, zone))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+}

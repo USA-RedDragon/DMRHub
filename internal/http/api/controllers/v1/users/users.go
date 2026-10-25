@@ -568,6 +568,19 @@ func PATCHUser(c *gin.Context) {
 			return
 		}
 
+		actorID, _ := sessions.Default(c).Get("user_id").(uint)
+		if json.Password != "" && actorID == user.ID {
+			if json.CurrentPassword == "" {
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Enter your current password."})
+				return
+			}
+			verified, verifyErr := utils.VerifyPassword(json.CurrentPassword, user.Password, config.PasswordSalt)
+			if verifyErr != nil || !verified {
+				c.JSON(http.StatusBadRequest, gin.H{errorKey: "The current password is wrong."})
+				return
+			}
+		}
+
 		if json.Callsign != "" {
 			// Check DMR ID is in the database
 			if userdb.ValidUserCallsign(user.ID, json.Callsign) {

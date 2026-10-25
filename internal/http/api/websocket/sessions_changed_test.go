@@ -65,7 +65,7 @@ func TestPasswordChangeEndsTheOtherSessionsOfTheUser(t *testing.T) {
 			bystander := open(t, e.replica, "/ws/calls", bystanderJar)
 
 			path := fmt.Sprintf("/api/v1/users/%d", id)
-			assert.Equal(t, http.StatusOK, e.request(t, jar, http.MethodPatch, path, map[string]string{"password": "a-new-password"}))
+			assert.Equal(t, http.StatusOK, e.request(t, jar, http.MethodPatch, path, map[string]string{"password": "a-new-password", "current_password": testutils.TestPassword}))
 			e.requireClosedFor(t, theirs, id, "password changed", "another session on the other replica")
 			e.requireClosedFor(t, theirsHere, id, "password changed", "another session on the same replica")
 			requireOpen(t, mine, "the session that changed the password")

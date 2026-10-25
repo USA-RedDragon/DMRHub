@@ -95,3 +95,35 @@ func TestPasswordChangeRefusesABreachedPassword(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	testutils.Login(t, router, "n0call")
 }
+
+func TestPasswordChangeNeedsTheCurrentPassword(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	user := testutils.SeedAccount(t, tdb.DB(), 1000001, "N0CALL", "n0call")
+	jar := testutils.Login(t, router, "n0call")
+	other := testutils.Login(t, router, "n0call")
+
+	for _, tc := range []struct {
+		current string
+		want    string
+	}{
+		{"", "Enter your current password."},
+		{"not-my-password", "The current password is wrong."},
+	} {
+		w := testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "a-new-password", "current_password": tc.current})
+		assert.Equal(t, http.StatusBadRequest, w.Code, tc.want)
+		assert.JSONEq(t, fmt.Sprintf(`{"error":%q}`, tc.want), w.Body.String())
+	}
+	_, w, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "n0call", Password: "a-new-password"})
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "a refused change must not set the password")
+	assert.Equal(t, http.StatusOK, testutils.Do(t, router, other, http.MethodGet, "/api/v1/users/me", nil).Code, "a refused change must not end sessions")
+
+	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "a-new-password", "current_password": testutils.TestPassword})
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil).Code, "the session that changed the password stays")
+	assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, other, http.MethodGet, "/api/v1/users/me", nil).Code, "the other sessions end")
+	_, w, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "n0call", Password: "a-new-password"})
+	assert.Equal(t, http.StatusOK, w.Code)
+}

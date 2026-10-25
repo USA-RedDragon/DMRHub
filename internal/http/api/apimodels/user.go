@@ -48,4 +48,8 @@ type UserPatch struct {
 	Callsign string `json:"callsign"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// CurrentPassword is the password that a user who changes their own
+	// password has now. An admin who sets the password of another user
+	// leaves it empty.
+	CurrentPassword string `json:"current_password"`
 }

@@ -905,7 +905,8 @@ func TestPATCHUserChangesPassword(t *testing.T) {
 
 	// PATCH with a new password
 	patchResp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{
-		Password: "newpassword123",
+		Password:        "newpassword123",
+		CurrentPassword: "password",
 	})
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "User updated", patchResp.Message)

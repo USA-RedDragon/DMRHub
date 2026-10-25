@@ -56,26 +56,29 @@ type Server struct {
 	config        *config.Config
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
-	DB            *gorm.DB
-	kvClient      *servers.KVClient
-	kv            kv.KV
-	pubsub        pubsub.PubSub
-	hub           *hub.Hub
-	Version       string
-	Commit        string
-	incomingChan  chan models.RawDMRPacket
-	outgoingChan  chan outgoing
-	hubHandle     *hub.ServerHandle
-	stopClaims    func()
-	sentMu        sync.Mutex
-	sent          map[uint][]*sentPacket
-	movingMu      sync.Mutex
-	moving        map[uint]*movingRepeater
-	wt            *webTransport
-	connected     *xsync.Map[uint, endpoint]
-	transports    *xsync.Map[string, transport]
-	egressMiss    *xsync.Map[uint, time.Time]
-	lookups       sync.WaitGroup
+	// stamped reports that the kernel stamps the packets of Server with
+	// the time they came.
+	stamped      bool
+	DB           *gorm.DB
+	kvClient     *servers.KVClient
+	kv           kv.KV
+	pubsub       pubsub.PubSub
+	hub          *hub.Hub
+	Version      string
+	Commit       string
+	incomingChan chan models.RawDMRPacket
+	outgoingChan chan outgoing
+	hubHandle    *hub.ServerHandle
+	stopClaims   func()
+	sentMu       sync.Mutex
+	sent         map[uint][]*sentPacket
+	movingMu     sync.Mutex
+	moving       map[uint]*movingRepeater
+	wt           *webTransport
+	connected    *xsync.Map[uint, endpoint]
+	transports   *xsync.Map[string, transport]
+	egressMiss   *xsync.Map[uint, time.Time]
+	lookups      sync.WaitGroup
 	// records runs the KV, database and hub work of each repeater off the
 	// listener.
 	records servers.RepeaterQueue
@@ -136,6 +139,8 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		return Server{}, fmt.Errorf("%w: %w", ErrSocketBuffer, err)
 	}
 
+	stamped := stampArrivals(server)
+
 	var wt *webTransport
 	if c := config.DMR.MMDVM.WebTransport; c.Enabled {
 		certs, err := wtcert.New(config.GetDerivedSecret(), c.CertFile, c.KeyFile)
@@ -155,6 +160,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		config:        config,
 		SocketAddress: socketAddr,
 		Server:        server,
+		stamped:       stamped,
 		DB:            db,
 		pubsub:        pubsub,
 		kvClient:      servers.MakeKVClient(kv),
@@ -333,8 +339,9 @@ func (s *Server) Start(ctx context.Context) error {
 // closed, and queues them for the sessions.
 func (s *Server) serve(name string, t transport, buf []byte) {
 	defer s.wg.Done()
+	read := s.readerFor(t)
 	for {
-		length, remote, err := t.ReadFrom(buf)
+		length, remote, at, err := read(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -349,12 +356,37 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 		data := make([]byte, length)
 		copy(data, buf[:length])
 		packet := rawPacketFrom(endpoint{transport: name, addr: remote}, data)
-		packet.ReceivedAt = time.Now()
+		packet.ReceivedAt = at
 		select {
 		case s.incomingChan <- packet:
 		case <-s.done:
 			return
 		}
+	}
+}
+
+// readerFor returns a func that reads a packet of t and the time it came:
+// for a UDP socket the time the kernel got it, where the kernel says, so
+// that a reader that runs late does not make the packet late.
+func (s *Server) readerFor(t transport) func([]byte) (int, net.Addr, time.Time, error) {
+	c, ok := t.(*net.UDPConn)
+	if !ok || c != s.Server || !s.stamped {
+		return func(b []byte) (int, net.Addr, time.Time, error) {
+			n, addr, err := t.ReadFrom(b)
+			return n, addr, time.Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
+		}
+	}
+	oob := make([]byte, rxOOBLen)
+	return func(b []byte) (int, net.Addr, time.Time, error) {
+		n, oobn, _, addr, err := c.ReadMsgUDP(b, oob)
+		at, stamped := arrival(oob[:oobn])
+		if !stamped {
+			at = time.Now()
+		}
+		if err != nil {
+			return n, nil, at, err //nolint:wrapcheck // the caller looks for net.ErrClosed
+		}
+		return n, addr, at, nil
 	}
 }
 

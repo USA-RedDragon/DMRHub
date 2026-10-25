@@ -84,7 +84,8 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 
 	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer {
-		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, packet) })
+		link := packet
+		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link) })
 	}
 
 	tx := h.prepareCopy(ctx, &packet, sc, sourceName)

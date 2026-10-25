@@ -1147,3 +1147,58 @@ func TestDeleteUserKeepsHistory(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteUserEndsTheirAccess(t *testing.T) {
+	t.Parallel()
+	sqliteFK := testutils.SQLiteMemoryBackend()
+	sqliteFK.Name = "sqlite-memory-fk"
+	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
+		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
+	}
+	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+			database := tdb.DB()
+
+			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+			_, _, adminJar := testutils.LoginAdmin(t, router)
+
+			now := time.Now()
+			require.NoError(t, database.Create(&models.OAuthGrant{ID: "grant", UserID: user.DMRId, ClientID: "app", CreatedAt: now, LastUsedAt: now}).Error)
+			require.NoError(t, database.Create(&models.OAuthRefreshToken{Hash: "refresh", GrantID: "grant", ExpiresAt: now.Add(time.Hour)}).Error)
+			require.NoError(t, database.Create(&models.OAuthCode{Hash: "code", UserID: user.DMRId, ClientID: "app", ExpiresAt: now.Add(time.Minute)}).Error)
+			_, err = models.CreatePasswordReset(database, user.DMRId, now)
+			require.NoError(t, err)
+			require.NoError(t, models.SetPositionTracking(database, user.DMRId, user.DMRId, true, now.Add(-time.Minute)))
+			stored, err := models.StorePosition(database, models.Position{RadioID: user.DMRId, Latitude: 32.7, Longitude: -96.8, Format: models.PositionFormatNMEA, ReceivedAt: now})
+			require.NoError(t, err)
+			require.True(t, stored)
+
+			count := func(query string, args ...any) int64 {
+				t.Helper()
+				var n int64
+				require.NoError(t, database.Raw(query, args...).Scan(&n).Error)
+				return n
+			}
+			require.NotZero(t, count("SELECT COUNT(*) FROM sessions WHERE user_id = ?", user.DMRId))
+
+			resp, w := testutils.DeleteUser(t, router, user.DMRId, adminJar)
+			require.Equal(t, http.StatusOK, w.Code, resp.Error)
+
+			for _, table := range []string{"sessions", "o_auth_grants", "o_auth_codes", "password_resets", "position_settings"} {
+				assert.Zero(t, count("SELECT COUNT(*) FROM "+table+" WHERE user_id = ?", user.DMRId), table)
+			}
+			assert.Zero(t, count("SELECT COUNT(*) FROM o_auth_refresh_tokens WHERE grant_id = ?", "grant"))
+			assert.Zero(t, count("SELECT COUNT(*) FROM positions WHERE radio_id = ?", user.DMRId))
+
+			again := apimodels.UserRegistration{DMRId: user.DMRId, Callsign: "KI5VMF", Username: "newuser", Password: "password"}
+			testutils.CreateAndLoginUser(t, router, again)
+			_, w = testutils.GetUserMe(t, router, userJar)
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+		})
+	}
+}

@@ -740,6 +740,11 @@ func DELETEUser(c *gin.Context) {
 			dmrHub.PeerChanged(p.ID)
 		}
 	}
+	if store, ok := c.Value("SessionStore").(*sessionstore.Store); ok {
+		if err := store.DeleteUserSessions(c.Request.Context(), uint(idUint64), ""); err != nil {
+			slog.Error("Failed to end the old sessions of a deleted user", "user", idUint64, "error", err)
+		}
+	}
 	publishUserChanged(c, uint(idUint64))
 	c.JSON(http.StatusOK, gin.H{messageKey: "User deleted"})
 }

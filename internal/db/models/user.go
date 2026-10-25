@@ -140,7 +140,9 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 
 // DeleteUser deletes the user id and what they own in one transaction.
 // Their repeaters go with the calls through them, their peers with their
-// rules. Their other calls, nets and scheduled nets stay without the user.
+// rules. Their sessions, app grants, password reset links and tracked
+// positions end. Their other calls, nets and scheduled nets stay without
+// the user.
 func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
@@ -176,6 +178,19 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		} {
 			if err := tx.Unscoped().Model(ref.model).Where(ref.column+" = ?", id).UpdateColumn(ref.column, nil).Error; err != nil {
 				return fmt.Errorf("could not clear %s: %w", ref.column, err)
+			}
+		}
+		tracked := tx.Model(&PositionSetting{}).Select("radio_id").Where("user_id = ?", id)
+		if err := tx.Where("radio_id IN (?)", tracked).Delete(&Position{}).Error; err != nil {
+			return fmt.Errorf("could not delete the positions: %w", err)
+		}
+		grants := tx.Model(&OAuthGrant{}).Select("id").Where("user_id = ?", id)
+		if err := tx.Where("grant_id IN (?)", grants).Delete(&OAuthRefreshToken{}).Error; err != nil {
+			return fmt.Errorf("could not delete the refresh tokens: %w", err)
+		}
+		for _, model := range []any{&PositionSetting{}, &OAuthGrant{}, &OAuthCode{}, &PasswordReset{}, &Session{}} {
+			if err := tx.Where("user_id = ?", id).Delete(model).Error; err != nil {
+				return fmt.Errorf("could not delete the %T rows: %w", model, err)
 			}
 		}
 		for _, table := range []string{"talkgroup_admins", "talkgroup_ncos", "user_radio_ids"} {

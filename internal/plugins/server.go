@@ -56,6 +56,7 @@ type Server struct {
 	grpc     *grpc.Server
 	listener net.Listener
 	registry *Registry
+	service  *Service
 	done     chan struct{}
 	stopOnce sync.Once
 }
@@ -91,9 +92,10 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 		),
 		listener: lis,
 		registry: registry,
+		service:  NewService(db, ps, registry, router, notify),
 		done:     make(chan struct{}),
 	}
-	pluginv1.RegisterPluginServiceServer(s.grpc, NewService(db, ps, registry, router, notify))
+	pluginv1.RegisterPluginServiceServer(s.grpc, s.service)
 	registry.Follow(s.done)
 	setPlugins(registry)
 	go func() {
@@ -113,6 +115,19 @@ func (s *Server) Registry() *Registry {
 // Addr returns the address the listener listens on.
 func (s *Server) Addr() net.Addr {
 	return s.listener.Addr()
+}
+
+// Drain moves the plugins with a stream on this replica to the other
+// replicas, as Service.Drain does, until ctx ends. Call it only when other
+// replicas run. It returns how many streams are left.
+func (s *Server) Drain(ctx context.Context) int {
+	if s == nil {
+		return 0
+	}
+	slog.Info("Plugins: draining")
+	left := s.service.Drain(ctx)
+	slog.Info("Plugins: drain finished", "streamsLeft", left)
+	return left
 }
 
 // Stop ends the streams of the plugins and closes the listener.

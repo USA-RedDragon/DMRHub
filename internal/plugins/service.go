@@ -28,6 +28,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -47,6 +48,11 @@ const sendQueue = 256
 // heartbeatEvery is how often a stream records that its plugin is still
 // there.
 const heartbeatEvery = 15 * time.Second
+
+// handoffGrace is how long a stream of a replica that drains keeps sending
+// the bursts after a newer stream of its plugin started. The bursts that
+// came before the newer stream subscribed reach the plugin this way.
+const handoffGrace = time.Second
 
 // streamError ends a plugin's stream with a gRPC code.
 type streamError struct {
@@ -71,6 +77,7 @@ var (
 	errDeleted      = &streamError{codes.PermissionDenied, "this plugin was deleted"}
 	errNewToken     = &streamError{codes.Unauthenticated, "the token of this plugin was replaced"}
 	errReplaced     = &streamError{codes.Aborted, "a newer connection of this plugin took over"}
+	errDraining     = &streamError{codes.Unavailable, "this replica stops; connect again"}
 )
 
 // Router routes the bursts that plugins send, like those of a repeater.
@@ -89,13 +96,84 @@ type Service struct {
 	notify    func(models.Position)
 	now       func() time.Time
 	heartbeat time.Duration
+	grace     time.Duration
+
+	mu       sync.Mutex
+	streams  map[*openStream]struct{}
+	draining bool
+	drained  chan struct{}
+}
+
+// openStream is a plugin's stream on this replica.
+type openStream struct {
+	send func(*pluginv1.ConnectResponse)
 }
 
 // NewService returns the plugin service. Bursts that plugins send go to
 // router; registry tells who owns each ID; notify gets each position that
 // a plugin sent and the hub stored.
 func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router, notify func(models.Position)) *Service {
-	return &Service{db: db, pubsub: ps, registry: registry, router: router, notify: notify, now: time.Now, heartbeat: heartbeatEvery}
+	return &Service{
+		db: db, pubsub: ps, registry: registry, router: router, notify: notify, now: time.Now, heartbeat: heartbeatEvery,
+		grace: handoffGrace, streams: map[*openStream]struct{}{}, drained: make(chan struct{}),
+	}
+}
+
+// open adds st to the open streams, and returns false when this replica
+// drains.
+func (s *Service) open(st *openStream) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.draining {
+		return false
+	}
+	s.streams[st] = struct{}{}
+	return true
+}
+
+func (s *Service) closed(st *openStream) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.streams, st)
+	if s.draining && len(s.streams) == 0 {
+		select {
+		case <-s.drained:
+		default:
+			close(s.drained)
+		}
+	}
+}
+
+func (s *Service) isDraining() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.draining
+}
+
+// Drain tells every plugin with a stream on this replica to connect again,
+// and refuses new streams from then on, so that the plugins move to the
+// other replicas. It waits until those streams ended or ctx ends, and
+// returns how many are left.
+func (s *Service) Drain(ctx context.Context) int {
+	s.mu.Lock()
+	if !s.draining {
+		s.draining = true
+		if len(s.streams) == 0 {
+			close(s.drained)
+		}
+	}
+	for st := range s.streams {
+		st.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Draining{Draining: &pluginv1.Draining{}}})
+	}
+	s.mu.Unlock()
+	select {
+	case <-s.drained:
+		return 0
+	case <-ctx.Done():
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.streams)
 }
 
 func tokenOf(ctx context.Context) string {
@@ -136,13 +214,31 @@ func sameRanges(a, b []models.PluginRange) bool {
 }
 
 // Connect serves the stream of one plugin. A newer stream of the same plugin,
-// on any replica, ends this one.
+// on any replica, ends this one; on a replica that drains, it ends after a
+// short grace.
 func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 	ctx := stream.Context()
+	if s.isDraining() {
+		return errDraining
+	}
 	p, err := s.authenticate(ctx)
 	if err != nil {
 		return err
 	}
+	out := make(chan *pluginv1.ConnectResponse, sendQueue)
+	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p)}}}
+	send := func(m *pluginv1.ConnectResponse) {
+		select {
+		case out <- m:
+		default:
+			slog.Warn("Plugins: dropping a message to a plugin that reads slowly", "plugin", p.Name)
+		}
+	}
+	open := &openStream{send: send}
+	if !s.open(open) {
+		return errDraining
+	}
+	defer s.closed(open)
 	var id [8]byte
 	_, _ = rand.Read(id[:])
 	session := hex.EncodeToString(id[:])
@@ -173,21 +269,16 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	out := make(chan *pluginv1.ConnectResponse, sendQueue)
-	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p)}}}
-	send := func(m *pluginv1.ConnectResponse) {
-		select {
-		case out <- m:
-		default:
-			slog.Warn("Plugins: dropping a message to a plugin that reads slowly", "plugin", p.Name)
-		}
-	}
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case m := <-out:
+				if m == nil {
+					cancel(errReplaced)
+					return
+				}
 				if err := stream.Send(m); err != nil {
 					cancel(err)
 					return
@@ -200,6 +291,12 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 	ranges <- p.Ranges
 	w := &watcher{
 		s: s, cancel: cancel, p: &p, session: session, kick: kick, in: in, changed: changed, send: send, ranges: ranges,
+		handOver: func() {
+			select {
+			case out <- nil:
+			case <-ctx.Done():
+			}
+		},
 		subscribe: make(chan bool, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{},
 	}
 	go w.watch(ctx)
@@ -261,14 +358,16 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 
 // watcher follows one plugin's stream.
 type watcher struct {
-	s         *Service
-	cancel    context.CancelCauseFunc
-	p         *models.Plugin
-	session   string
-	kick      pubsub.Subscription
-	in        pubsub.Subscription
-	changed   pubsub.Subscription
-	send      func(*pluginv1.ConnectResponse)
+	s       *Service
+	cancel  context.CancelCauseFunc
+	p       *models.Plugin
+	session string
+	kick    pubsub.Subscription
+	in      pubsub.Subscription
+	changed pubsub.Subscription
+	send    func(*pluginv1.ConnectResponse)
+	// handOver ends the stream after the messages queued for it.
+	handOver  func()
 	ranges    chan []models.PluginRange
 	subscribe chan bool
 	positions chan *pluginv1.Position
@@ -287,6 +386,7 @@ func (w *watcher) watch(ctx context.Context) {
 	current := w.p.Ranges
 	heartbeat := time.NewTicker(w.s.heartbeat)
 	defer heartbeat.Stop()
+	var handoff <-chan time.Time
 	for {
 		var tracking, heard <-chan []byte
 		if w.tracking != nil {
@@ -303,10 +403,17 @@ func (w *watcher) watch(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if string(b) != w.session {
+			if string(b) == w.session || handoff != nil {
+				continue
+			}
+			if !w.s.isDraining() {
 				w.cancel(errReplaced)
 				return
 			}
+			handoff = time.After(w.s.grace)
+		case <-handoff:
+			w.handOver()
+			return
 		case b, ok := <-w.in.Channel():
 			if !ok {
 				return

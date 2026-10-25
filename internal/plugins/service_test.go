@@ -77,6 +77,7 @@ type rig struct {
 	registry *plugins.Registry
 	router   *routed
 	lis      *bufconn.Listener
+	svc      *plugins.Service
 }
 
 func newRig(t *testing.T) *rig {
@@ -95,7 +96,8 @@ func newRig(t *testing.T) *rig {
 	registry.Follow(done)
 	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20)}
 	srv := grpc.NewServer()
-	pluginv1.RegisterPluginServiceServer(srv, plugins.NewService(database, ps, registry, r.router, r.notify))
+	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify)
+	pluginv1.RegisterPluginServiceServer(srv, r.svc)
 	go func() { _ = srv.Serve(r.lis) }()
 	t.Cleanup(func() {
 		srv.Stop()

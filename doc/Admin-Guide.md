@@ -163,7 +163,7 @@ Retention also deletes records from the admin search. Set a period that your loc
 
 ## Plugins
 
-Plugins answer the calls to the IDs you give them, such as the parrot at 9990 and the location server at 5050 to 5059. DMRHub does not answer those IDs itself. See [Plugins](plugins.md) to turn on the plugin listener, add the plugins and run them.
+Plugins answer the calls to the IDs you give them, such as the parrot at 9990 and the location server at 5050 to 5059. DMRHub runs the parrot, the location server and the plugins you upload inside itself, by default. See [Plugins](plugins.md) to upload plugins, and to run plugins as their own programs.
 
 ## Positions
 

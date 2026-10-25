@@ -20,7 +20,7 @@
 -->
 
 <template>
-  <Card class="max-w-lg" data-test="password-card">
+  <Card data-test="password-card">
     <CardHeader>
       <CardTitle>Password</CardTitle>
     </CardHeader>
@@ -33,7 +33,7 @@
       >
         An admin set a temporary password for you. Choose your own password to keep using DMRHub.
       </p>
-      <form class="flex flex-col gap-4" novalidate @submit.prevent="submit">
+      <form class="flex max-w-lg flex-col gap-4" novalidate @submit.prevent="submit">
         <div class="flex min-w-0 flex-col gap-1">
           <label for="pw-current" class="text-sm">Current password</label>
           <ShadInput id="pw-current" v-model="current" type="password" autocomplete="current-password" />

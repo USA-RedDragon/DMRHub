@@ -7,6 +7,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//go:build !wasip1
+
 // Package plugin connects a DMRHub plugin to its hub. A plugin answers the
 // calls to the DMR IDs an admin gave it, and sends calls only from those IDs.
 //
@@ -53,6 +55,9 @@ type Options struct {
 	// the Plugins page. Leave it empty when the hub has a certificate from a
 	// certificate authority.
 	Fingerprint string
+	// Hello, when set, tells the hub who the plugin is after it connects,
+	// such as its version for the Plugins page.
+	Hello *pluginv1.Hello
 }
 
 // ErrFingerprint is returned when the hub's certificate does not match the
@@ -215,6 +220,12 @@ func dialLeg(ctx context.Context, o Options, wait time.Duration) (*leg, error) {
 		return nil, ErrNoWelcome
 	}
 	l.welcome = first.GetWelcome()
+	if o.Hello != nil {
+		if err := l.stream.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Hello{Hello: o.Hello}}); err != nil {
+			l.close()
+			return nil, fmt.Errorf("could not send to the hub: %w", err)
+		}
+	}
 	return l, nil
 }
 

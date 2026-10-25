@@ -7,6 +7,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//go:build !wasip1
+
 package plugin
 
 import (

@@ -50,10 +50,13 @@ view-coverage:
 	@go tool cover -html=coverage.txt
 	@echo "--> Done"
 
+.PHONY: proto
 proto:
 	@echo "--> Generating the plugin protocol"
 	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 lint proto
 	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 generate
+	@awk '/^\/\/ Code generated/ && !done { print "//go:build !wasip1"; print ""; done = 1 } { print }' sdk/plugin/v1/plugin_grpc.pb.go > sdk/plugin/v1/plugin_grpc.pb.go.tmp
+	@mv sdk/plugin/v1/plugin_grpc.pb.go.tmp sdk/plugin/v1/plugin_grpc.pb.go
 	@echo "--> Done"
 
 lint:

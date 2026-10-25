@@ -7,6 +7,8 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+//go:build !wasip1
+
 package plugin
 
 import (
@@ -17,6 +19,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 )
 
 // Main runs a plugin's command: it reads the hub's address and
@@ -26,11 +30,20 @@ import (
 // connected with Run until it gets SIGINT or SIGTERM. It exits with status
 // 2 when the address or token is missing.
 func Main(serve func(context.Context, *Conn) error) {
+	MainWith(nil, serve)
+}
+
+// MainWith is Main for a plugin that tells the hub who it is with hello,
+// such as its version for the Plugins page. The same plugin built with
+// GOOS=wasip1 GOARCH=wasm runs inside DMRHub, where hello also gives the
+// IDs it asks for and the hosts it asks to reach.
+func MainWith(hello *pluginv1.Hello, serve func(context.Context, *Conn) error) {
 	o, err := optionsFrom(flag.CommandLine, os.Args[1:], os.Getenv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2) //nolint:revive // a command's bad usage
 	}
+	o.Hello = helloOf(hello)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	Run(ctx, o, serve)

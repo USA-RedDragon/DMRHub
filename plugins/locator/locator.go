@@ -101,6 +101,9 @@ type radio struct {
 	lastPos time.Time
 	retried bool
 	stopped time.Time
+	// registered is the link of an ARS registration that came while the
+	// radio was not tracked, so that tracking it starts the request.
+	registered *linkKey
 }
 
 // Locator is the location server. Its methods are safe for concurrent use.
@@ -260,6 +263,13 @@ func (l *Locator) track(t *pluginv1.Tracking) {
 		l.stopTracking(k, ln, r)
 		l.startTracking(k, ln, r)
 	}
+	if r.registered != nil {
+		k := *r.registered
+		r.registered = nil
+		if ln, ok := l.links[k]; ok && r.req == nil {
+			l.startTracking(k, ln, r)
+		}
+	}
 }
 
 func (l *Locator) untrack(id uint32, r *radio) {
@@ -418,10 +428,14 @@ func (l *Locator) registration(k linkKey, ln *link, payload []byte) {
 			return
 		}
 		l.queue(k, ln, ip.PortARS, buf)
+		r.registered = nil
 		if r.tracked {
 			l.startTracking(k, ln, r)
+		} else {
+			r.registered = &k
 		}
 	case ars.TypeDeviceDeregistration:
+		r.registered = nil
 		l.stopTracking(k, ln, r)
 	}
 }

@@ -142,13 +142,16 @@ func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
 	for _, p := range arsRegistration(t, 1000002, 5057, 100003) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	}
-	deadline := time.After(3 * time.Second)
-	for got := 0; got == 0; {
+	answered := time.After(20 * time.Second)
+	for quiet := time.After(3 * time.Second); quiet != nil; {
 		select {
 		case rp := <-srv.Packets:
 			require.Equal(t, uint(100003), rp.RepeaterID)
-		case <-deadline:
-			got = 1
+			quiet = time.After(2500 * time.Millisecond)
+		case <-quiet:
+			quiet = nil
+		case <-answered:
+			t.Fatal("the Locator did not stop answering the registration")
 		}
 	}
 

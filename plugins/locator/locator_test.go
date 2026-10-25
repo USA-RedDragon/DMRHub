@@ -327,6 +327,25 @@ func TestARSRegistrationOfATrackedRadioStartsATriggeredRequest(t *testing.T) {
 	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
 }
 
+// TestARSRegistrationBeforeTheTrackedListStartsARequest registers a radio
+// before the Locator has the list of tracked radios, as when the plugin
+// has just connected. The list then makes the radio tracked, and the
+// registration must start the triggered request at once.
+func TestARSRegistrationBeforeTheTrackedListStartsARequest(t *testing.T) {
+	t.Parallel()
+	l, o := newLocator(t)
+	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+	require.Len(t, waitAnswers(t, o, 1), 1, "the ack")
+	track(l, 900)
+	got := waitAnswers(t, o, 2)
+	require.Len(t, got, 2, "the tracked list did not start the request")
+	require.NotNil(t, got[1].lrrp)
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+	assert.Equal(t, uint32(900), got[1].lrrp.Request.Interval)
+	last := o.sent()[len(o.sent())-1]
+	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
+}
+
 func TestARSDeregistrationStopsTheTriggeredRequest(t *testing.T) {
 	t.Parallel()
 	l, o, req := registered(t, 600)

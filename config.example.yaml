@@ -117,9 +117,11 @@ dmr:
       # callsign: ""
       # APRS-IS server, as host:port
       server: "rotate.aprs2.net:14580"
-  # Listener of the plugins, which answer the calls to the IDs an admin gives them
+  # Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener
   plugins:
-    # Accept plugins
+    # Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program
+    in-process: true
+    # Accept plugins that run as their own programs
     enabled: false
     # Address the plugin listener binds to
     bind: "[::]"

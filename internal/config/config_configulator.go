@@ -100,11 +100,12 @@ type positionsShadow struct {
 }
 
 type pluginsShadow struct {
-	Enabled  *bool   `json:"enabled"   toml:"enabled"   yaml:"enabled"`
-	Bind     *string `json:"bind"      toml:"bind"      yaml:"bind"`
-	Port     *int    `json:"port"      toml:"port"      yaml:"port"`
-	CertFile *string `json:"cert-file" toml:"cert-file" yaml:"cert-file"`
-	KeyFile  *string `json:"key-file"  toml:"key-file"  yaml:"key-file"`
+	InProcess *bool   `json:"in-process" toml:"in-process" yaml:"in-process"`
+	Enabled   *bool   `json:"enabled"    toml:"enabled"    yaml:"enabled"`
+	Bind      *string `json:"bind"       toml:"bind"       yaml:"bind"`
+	Port      *int    `json:"port"       toml:"port"       yaml:"port"`
+	CertFile  *string `json:"cert-file"  toml:"cert-file"  yaml:"cert-file"`
+	KeyFile   *string `json:"key-file"   toml:"key-file"   yaml:"key-file"`
 }
 
 type aMBEServerShadow struct {
@@ -243,6 +244,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.positions.max-retention", configulator.LayerDefault, "default tag")
 	cfg.DMR.Positions.APRSIS.Server = "rotate.aprs2.net:14580"
 	set("dmr.positions.aprs-is.server", configulator.LayerDefault, "default tag")
+	cfg.DMR.Plugins.InProcess = true
+	set("dmr.plugins.in-process", configulator.LayerDefault, "default tag")
 	cfg.DMR.Plugins.Enabled = false
 	set("dmr.plugins.enabled", configulator.LayerDefault, "default tag")
 	cfg.DMR.Plugins.Bind = "[::]"
@@ -498,6 +501,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			}
 		}
 		if s.DMR.Plugins != nil {
+			if s.DMR.Plugins.InProcess != nil {
+				cfg.DMR.Plugins.InProcess = *s.DMR.Plugins.InProcess
+				set("dmr.plugins.in-process", configulator.LayerFile, file)
+			}
 			if s.DMR.Plugins.Enabled != nil {
 				cfg.DMR.Plugins.Enabled = *s.DMR.Plugins.Enabled
 				set("dmr.plugins.enabled", configulator.LayerFile, file)
@@ -1001,6 +1008,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Positions.APRSIS.Server = v
 		set("dmr.positions.aprs-is.server", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "in-process"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.in-process",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Plugins.InProcess = p
+		set("dmr.plugins.in-process", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "plugins", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1256,6 +1276,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "positions" + o.Separator + "max-retention",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "server",
+		"dmr" + o.Separator + "plugins" + o.Separator + "in-process",
 		"dmr" + o.Separator + "plugins" + o.Separator + "enabled",
 		"dmr" + o.Separator + "plugins" + o.Separator + "bind",
 		"dmr" + o.Separator + "plugins" + o.Separator + "port",
@@ -1344,32 +1365,33 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(30), names[43], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
 	fs.String(names[44], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
 	fs.String(names[45], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[46], false, "Accept plugins")
-	fs.String(names[47], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[48], "TCP port that plugins connect to")
-	fs.String(names[49], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[50], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[51], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[52], false, "Enable SMTP support for sending emails")
-	fs.String(names[53], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[54], "SMTP server port")
-	fs.String(names[55], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[56], "", "SMTP server username")
-	fs.String(names[57], "", "SMTP server password")
-	fs.String(names[58], "", "Email address to use as the sender")
-	fs.String(names[59], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[60], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[61], false, "Enable metrics collection and export")
-	fs.String(names[62], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[63], "Metrics server port")
-	fs.StringSlice(names[64], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[65], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[66], false, "Enable PProf profiling and debugging support")
-	fs.String(names[67], "[::]", "PProf server listen address")
-	fs.StringSlice(names[68], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[69], "PProf server port")
-	fs.String(names[70], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[71], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Bool(names[46], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[47], false, "Accept plugins that run as their own programs")
+	fs.String(names[48], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[49], "TCP port that plugins connect to")
+	fs.String(names[50], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[51], "", "TLS key file of the certificate file")
+	fs.Var(impl.NewInt(25), names[52], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[53], false, "Enable SMTP support for sending emails")
+	fs.String(names[54], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[55], "SMTP server port")
+	fs.String(names[56], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[57], "", "SMTP server username")
+	fs.String(names[58], "", "SMTP server password")
+	fs.String(names[59], "", "Email address to use as the sender")
+	fs.String(names[60], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[61], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[62], false, "Enable metrics collection and export")
+	fs.String(names[63], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[64], "Metrics server port")
+	fs.StringSlice(names[65], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[66], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[67], false, "Enable PProf profiling and debugging support")
+	fs.String(names[68], "[::]", "PProf server listen address")
+	fs.StringSlice(names[69], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[70], "PProf server port")
+	fs.String(names[71], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[72], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -1925,6 +1947,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Positions.APRSIS.Server = v
 		set("dmr.positions.aprs-is.server", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "plugins" + o.Separator + "in-process"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.plugins.in-process",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Plugins.InProcess = v
+		set("dmr.plugins.in-process", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "plugins" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -3730,6 +3764,19 @@ func (s *pluginsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			return nil
 		}
 		switch key := tok.String(); key {
+		case "in-process":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.InProcess = &b
+			default:
+				return configJSONError(path+".in-process", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
 		case "enabled":
 			v, err := dec.ReadToken()
 			if err != nil {
@@ -4331,6 +4378,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.positions.max-retention = %v\n", c.DMR.Positions.MaxRetention)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.callsign = %v\n", c.DMR.Positions.APRSIS.Callsign)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.server = %v\n", c.DMR.Positions.APRSIS.Server)
+	fmt.Fprintf(&b, "dmr.plugins.in-process = %v\n", c.DMR.Plugins.InProcess)
 	fmt.Fprintf(&b, "dmr.plugins.enabled = %v\n", c.DMR.Plugins.Enabled)
 	fmt.Fprintf(&b, "dmr.plugins.bind = %v\n", c.DMR.Plugins.Bind)
 	fmt.Fprintf(&b, "dmr.plugins.port = %v\n", c.DMR.Plugins.Port)

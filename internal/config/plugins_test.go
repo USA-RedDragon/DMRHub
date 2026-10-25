@@ -42,6 +42,32 @@ func TestPluginsDefaults(t *testing.T) {
 	}
 }
 
+func TestPluginsRunInsideDMRHubByDefault(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DMR.Plugins.InProcess {
+		t.Error("plugins do not run inside DMRHub by default")
+	}
+}
+
+func TestPluginsInsideDMRHubTurnOffFromTheEnvironment(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{"DMR_PLUGINS_IN_PROCESS": "false"}
+	cfg, err := configulator.New(config.ConfigSchema()).
+		WithEnvironmentVariables(&configulator.EnvironmentVariableOptions{Separator: "_"}).
+		WithEnviron(func(k string) (string, bool) { v, ok := env[k]; return v, ok }).
+		LoadWithoutValidation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DMR.Plugins.InProcess {
+		t.Error("DMR_PLUGINS_IN_PROCESS=false leaves the plugins inside DMRHub on")
+	}
+}
+
 func TestPluginsValidate(t *testing.T) {
 	t.Parallel()
 	valid := config.Plugins{Enabled: true, Bind: "[::]", Port: 3006, CertFile: "/tls/tls.crt", KeyFile: "/tls/tls.key"}

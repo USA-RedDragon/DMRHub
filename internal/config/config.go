@@ -124,7 +124,7 @@ type DMR struct {
 	RepeaterIDURL            string      `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
 	Retention                Retention   `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
 	Positions                Positions   `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
-	Plugins                  Plugins     `json:"plugins" name:"plugins" description:"Listener of the plugins, which answer the calls to the IDs an admin gives them"`
+	Plugins                  Plugins     `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
 	Transcoding              Transcoding `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
 	DrainTimeout             int         `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
 }
@@ -141,13 +141,15 @@ type AMBEServer struct {
 	Calls   int    `json:"calls" yaml:"calls" name:"calls" description:"Calls the server converts at once. 0 is no limit; use 1 for an AMBEserver with one DVSI chip, which answers only its last client"`
 }
 
-// Plugins holds the configuration of the listener that plugins connect to.
+// Plugins holds where the plugins run: inside DMRHub, and the listener that
+// the plugins that run as their own programs connect to.
 type Plugins struct {
-	Enabled  bool   `json:"enabled" name:"enabled" description:"Accept plugins" default:"false"`
-	Bind     string `json:"bind" name:"bind" description:"Address the plugin listener binds to" default:"[::]"`
-	Port     int    `json:"port" name:"port" description:"TCP port that plugins connect to" default:"3006"`
-	CertFile string `json:"cert-file" yaml:"cert-file" name:"cert-file" description:"TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint"`
-	KeyFile  string `json:"key-file" yaml:"key-file" name:"key-file" description:"TLS key file of the certificate file"`
+	InProcess bool   `json:"in-process" yaml:"in-process" name:"in-process" description:"Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program" default:"true"`
+	Enabled   bool   `json:"enabled" name:"enabled" description:"Accept plugins that run as their own programs" default:"false"`
+	Bind      string `json:"bind" name:"bind" description:"Address the plugin listener binds to" default:"[::]"`
+	Port      int    `json:"port" name:"port" description:"TCP port that plugins connect to" default:"3006"`
+	CertFile  string `json:"cert-file" yaml:"cert-file" name:"cert-file" description:"TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint"`
+	KeyFile   string `json:"key-file" yaml:"key-file" name:"key-file" description:"TLS key file of the certificate file"`
 }
 
 // Positions holds the limits of position tracking and the APRS-IS login

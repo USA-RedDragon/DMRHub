@@ -145,7 +145,12 @@ func deliver(config *configPkg.Config, toEmail string, msg string) error {
 	}
 
 	switch config.SMTP.TLS {
-	case configPkg.SMTPTLSNone, configPkg.SMTPTLSStartTLS:
+	case configPkg.SMTPTLSNone:
+		if err := sendPlain(config.SMTP.Host+":"+fmt.Sprint(config.SMTP.Port), auth, config.SMTP.From, toEmail, msg); err != nil {
+			slog.Error("Error sending email", "error", err)
+			return ErrSendingEmail
+		}
+	case configPkg.SMTPTLSStartTLS:
 		err := smtp.SendMail(
 			config.SMTP.Host+":"+fmt.Sprint(config.SMTP.Port),
 			auth,
@@ -169,5 +174,29 @@ func deliver(config *configPkg.Config, toEmail string, msg string) error {
 		}
 	}
 
+	return nil
+}
+
+// sendPlain sends msg without TLS, for the TLS mode none. smtp.SendMail
+// always asks for STARTTLS and fails on a server without it.
+func sendPlain(addr string, auth sasl.Client, from, toEmail, msg string) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("could not connect: %w", err)
+	}
+	defer func() {
+		_ = c.Close()
+	}()
+	if auth != nil {
+		if err := c.Auth(auth); err != nil {
+			return fmt.Errorf("could not authenticate: %w", err)
+		}
+	}
+	if err := c.SendMail(from, []string{toEmail}, strings.NewReader(msg)); err != nil {
+		return fmt.Errorf("could not send: %w", err)
+	}
+	if err := c.Quit(); err != nil {
+		return fmt.Errorf("could not quit: %w", err)
+	}
 	return nil
 }

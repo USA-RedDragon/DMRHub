@@ -438,14 +438,14 @@
             @update:open="setMenuOpen('admin', $event)"
           >
             <DropdownMenuTrigger as-child>
-              <router-link
-                to="/admin/setup"
+              <button
+                type="button"
                 class="desktop-nav-link"
-                :class="{ active: route.path.startsWith('/admin') }">
-              
+                :class="{ active: route.path.startsWith('/admin') }"
+              >
                 Admin
                 <ChevronDown class="h-3 w-3" />
-              </router-link>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               class="min-w-[10rem] rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"

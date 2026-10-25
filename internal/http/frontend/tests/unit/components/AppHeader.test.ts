@@ -30,4 +30,12 @@ describe('AppHeader', () => {
     const missing = links.filter((to) => router.resolve(to).matched.length === 0);
     expect(missing).toEqual([]);
   });
+
+  it('opens the Admin menu without going anywhere', () => {
+    const triggers = [...source.matchAll(/<DropdownMenuTrigger[\s\S]*?<\/DropdownMenuTrigger>/g)].map((m) => m[0]);
+    const admin = triggers.find((t) => /\bAdmin\b/.test(t));
+    expect(admin).toBeDefined();
+    expect(admin).not.toMatch(/router-link|\bto=|href=/);
+    expect(admin).toMatch(/<button[^>]*type="button"/);
+  });
 });

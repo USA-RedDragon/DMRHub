@@ -204,6 +204,10 @@ func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 		}
 	}
 	h.subscriptionMgr.subscriptions.Delete(repeaterID)
+	select {
+	case h.left <- struct{}{}:
+	default:
+	}
 }
 
 // stopAllRepeaters cancels all subscriptions for all repeaters (used at shutdown).

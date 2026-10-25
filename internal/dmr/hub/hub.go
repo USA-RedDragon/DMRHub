@@ -95,7 +95,7 @@ const (
 
 // peerOwnerKeyPrefix is the KV key prefix for tracking which instance owns
 // (has a live connection to) each repeater/peer. Written on ActivateRepeater,
-// read during parrot playback to detect peer migration.
+// read by OwnsRepeater and OwnerLeaving and when a replica drains.
 const peerOwnerKeyPrefix = "dmrhub:peer_owner:"
 
 // peerOwnerTTL is the TTL for peer ownership keys. Must be long enough to
@@ -177,6 +177,13 @@ type Hub struct {
 	tgRepeaters  *lookup.Cache[uint, []uint]
 	codec2Slots  atomic.Pointer[[]uint]
 	heard        chan heardNote
+	// left is signalled when a repeater leaves this hub, for WaitMoved.
+	left chan struct{}
+
+	followClaimsOnce sync.Once
+	claimedMu        sync.Mutex
+	claimed          map[int]func(repeaterID uint)
+	claimedNext      int
 }
 
 // NewHub creates a new Hub.
@@ -189,6 +196,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		servers:       make(map[string]*serverEntry),
 		activeStreams: make(map[uint]*activeStream),
 		done:          make(chan struct{}),
+		left:          make(chan struct{}, 1),
 	}
 	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
 	h.routing = streamorder.New(routingQueueSize, h.done)
@@ -383,23 +391,41 @@ func (h *Hub) Stop(ctx context.Context) {
 // peer ownership tracking in the shared KV store.
 func (h *Hub) SetInstanceID(id string) {
 	h.instanceID = id
+	if id != "" && h.pubsub != nil {
+		h.followClaimsOnce.Do(func() { go h.followClaims(h.pubsub.Subscribe(claimedTopic)) })
+	}
 }
 
 // claimPeerOwnership writes an ownership record for the given repeater in
-// the shared KV store. This lets other methods (e.g. parrot playback) detect
-// when a peer has migrated to a different instance.
+// the shared KV store and tells the other replicas, so that a replica that
+// served the repeater before ends its session there.
 func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint) {
-	if h.instanceID == "" {
-		return
+	if h.writeOwner(ctx, repeaterID) {
+		h.publishClaim(repeaterID)
 	}
-	key := fmt.Sprintf("%s%d", peerOwnerKeyPrefix, repeaterID)
+}
+
+// RenewOwnership keeps the ownership record of a repeater that this hub
+// serves alive. The servers call it when the repeater shows that it is
+// still here, such as at a ping, since the record expires after
+// peerOwnerTTL.
+func (h *Hub) RenewOwnership(ctx context.Context, repeaterID uint) {
+	h.writeOwner(ctx, repeaterID)
+}
+
+func (h *Hub) writeOwner(ctx context.Context, repeaterID uint) bool {
+	if h.instanceID == "" {
+		return false
+	}
+	key := ownerKey(repeaterID)
 	if err := h.kv.Set(ctx, key, []byte(h.instanceID)); err != nil {
 		slog.Warn("failed to claim peer ownership", "repeaterID", repeaterID, "error", err)
-		return
+		return false
 	}
 	if err := h.kv.Expire(ctx, key, peerOwnerTTL); err != nil {
 		slog.Warn("failed to set peer ownership TTL", "repeaterID", repeaterID, "error", err)
 	}
+	return true
 }
 
 // isLocalPeerOwner returns true if this instance currently owns the given
@@ -409,8 +435,7 @@ func (h *Hub) isLocalPeerOwner(ctx context.Context, repeaterID uint) bool {
 	if h.instanceID == "" {
 		return true // no instance tracking → always local
 	}
-	key := fmt.Sprintf("%s%d", peerOwnerKeyPrefix, repeaterID)
-	val, err := h.kv.Get(ctx, key)
+	val, err := h.kv.Get(ctx, ownerKey(repeaterID))
 	if err != nil {
 		return true // fail-open: assume local ownership
 	}
@@ -425,10 +450,12 @@ func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
 
 // ActivateRepeater sets up pubsub subscriptions for a repeater.
 // Protocol servers should call this when a repeater connects.
+// It subscribes before it claims the repeater, so that the replica that
+// served the repeater before keeps sending to it until this one can.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
-	h.claimPeerOwnership(ctx, repeaterID)
 	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
+	h.claimPeerOwnership(ctx, repeaterID)
 }
 
 // DeactivateRepeater cancels all pubsub subscriptions for a repeater.

@@ -152,10 +152,14 @@ func HeaderCodec(p *models.Packet) (Codec, pdu.LCBytes, bool) {
 	if !ok {
 		return CodecUnknown, lc, false
 	}
+	return codecOfLC(lc), lc, true
+}
+
+func codecOfLC(lc pdu.LCBytes) Codec {
 	if lc.FID() == Codec2FID {
-		return CodecCodec2, lc, true
+		return CodecCodec2
 	}
-	return CodecAMBE, lc, true
+	return CodecAMBE
 }
 
 // Encrypted reports whether the voice LC lc asks for privacy, so that its

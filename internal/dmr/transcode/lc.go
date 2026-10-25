@@ -20,6 +20,7 @@
 package transcode
 
 import (
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
@@ -55,8 +56,7 @@ type embeddedLC struct {
 	next *pdu.LCBytes
 	orig [4][4]byte
 	cp   [4][4]byte
-	frag [4][4]byte
-	got  uint8
+	asm  voiceLCAssembler
 }
 
 func (e *embeddedLC) setLC(lc pdu.LCBytes) {
@@ -77,27 +77,67 @@ func (e *embeddedLC) rewrite(raw *layer2.RawBurst, pos uint) {
 		e.setLC(*e.next)
 	}
 	d := raw.EmbeddedData()
-	e.learn(d, pos)
+	if l, ok := e.asm.add(d, pos); ok && (!e.have || l != e.lc) {
+		e.next = &l
+	}
 	if e.have && d == e.orig[pos-1] {
 		raw.SetEmbeddedData(e.cp[pos-1])
 	}
 }
 
-func (e *embeddedLC) learn(d [4]byte, pos uint) {
+// voiceLCAssembler joins the embedded LC fragments of voice bursts B to E
+// of one superframe into a voice LC.
+type voiceLCAssembler struct {
+	frag [4][4]byte
+	got  uint8
+}
+
+// add adds the fragment d of the voice burst at position pos, 1 for B to
+// 4 for E. At E of a superframe whose four fragments it has, it returns
+// the LC they carry, with ok true when the LC passes its 5-bit checksum
+// and is a group or unit to unit voice LC.
+func (a *voiceLCAssembler) add(d [4]byte, pos uint) (pdu.LCBytes, bool) {
+	if pos < 1 || pos > 4 {
+		return pdu.LCBytes{}, false
+	}
 	if pos == 1 {
-		e.got = 0
+		a.got = 0
 	}
-	e.frag[pos-1] = d
-	e.got |= 1 << (pos - 1)
-	if pos != 4 || e.got != 0xF {
-		return
+	a.frag[pos-1] = d
+	a.got |= 1 << (pos - 1)
+	if pos != 4 || a.got != 0xF {
+		return pdu.LCBytes{}, false
 	}
-	lc, res := layer2.DecodeEmbeddedLC(e.frag)
+	a.got = 0
+	lc, res := layer2.DecodeEmbeddedLC(a.frag)
 	if res.Uncorrectable {
-		return
+		return pdu.LCBytes{}, false
 	}
 	l := pdu.LCBytes(lc)
-	if f := l.FLCO(); (f == enums.FLCOGroupVoiceChannelUser || f == enums.FLCOUnitToUnitVoiceChannelUser) && (!e.have || l != e.lc) {
-		e.next = &l
+	if f := l.FLCO(); f != enums.FLCOGroupVoiceChannelUser && f != enums.FLCOUnitToUnitVoiceChannelUser {
+		return pdu.LCBytes{}, false
 	}
+	return l, true
+}
+
+// EmbeddedCodec learns the codec of a call from its embedded LC, for a
+// call whose Voice LC Header is lost. The zero EmbeddedCodec is ready to
+// use. It is not safe for concurrent use.
+type EmbeddedCodec struct {
+	asm voiceLCAssembler
+}
+
+// Add adds the voice burst p. When p completes the embedded voice LC of
+// its superframe and the LC passes its 5-bit checksum, Add returns the
+// codec of the call, Codec2 for the FID 0xC2 and AMBE for any other, and
+// the LC, with ok true. The codec never comes from the voice bits.
+func (e *EmbeddedCodec) Add(p *models.Packet) (Codec, pdu.LCBytes, bool) {
+	if !IsVoice(p) {
+		return CodecUnknown, pdu.LCBytes{}, false
+	}
+	lc, ok := e.asm.add(layer2.RawBurst(p.DMRData).EmbeddedData(), p.DTypeOrVSeq)
+	if !ok {
+		return CodecUnknown, lc, false
+	}
+	return codecOfLC(lc), lc, true
 }

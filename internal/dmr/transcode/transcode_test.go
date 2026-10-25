@@ -213,6 +213,38 @@ func TestHeaderCodec(t *testing.T) {
 	assert.False(t, ok, "a header whose LC fails its check gives no codec")
 }
 
+func TestEmbeddedCodec(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		fid  enums.FID
+		want transcode.Codec
+	}{{transcode.Codec2FID, transcode.CodecCodec2}, {enums.FIDStandardized, transcode.CodecAMBE}, {0x10, transcode.CodecAMBE}} {
+		pkts := call(t, voiceLC(t, tc.fid), ambeFrames(18))
+		var e transcode.EmbeddedCodec
+		for i, p := range pkts[:5] {
+			_, _, ok := e.Add(&p)
+			require.False(t, ok, "FID %#x: packet %d decides before burst E", tc.fid, i)
+		}
+		codec, lc, ok := e.Add(&pkts[5])
+		require.True(t, ok, "FID %#x: burst E completes the LC", tc.fid)
+		assert.Equal(t, tc.want, codec, "FID %#x", tc.fid)
+		assert.Equal(t, voiceLC(t, tc.fid), lc)
+	}
+
+	pkts := call(t, voiceLC(t, transcode.Codec2FID), ambeFrames(18))
+	raw := layer2.RawBurst(pkts[3].DMRData)
+	d := raw.EmbeddedData()
+	d[0] ^= 0xFF
+	d[2] ^= 0xFF
+	raw.SetEmbeddedData(d)
+	pkts[3].DMRData = raw
+	var e transcode.EmbeddedCodec
+	for i := range pkts[:7] {
+		_, _, ok := e.Add(&pkts[i])
+		require.False(t, ok, "packet %d: an LC that fails its check gives no codec", i)
+	}
+}
+
 func TestModeDetector(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []codec2.Mode{codec2.Mode2400, codec2.Mode3200} {

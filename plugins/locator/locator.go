@@ -187,14 +187,13 @@ func Serve(_ context.Context, conn *plugin.Conn) error {
 			}
 		case *pluginv1.ConnectResponse_Welcome:
 		default:
-			return errUnknown
+			slog.Debug("Locator: ignoring a message it does not know", "message", m)
 		}
 	}
 }
 
 var (
 	errNoIDs    = errors.New("the plugin has no IDs")
-	errUnknown  = errors.New("unknown message from the hub")
 	errNoReport = errors.New("no report")
 )
 

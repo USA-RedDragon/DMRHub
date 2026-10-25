@@ -23,7 +23,6 @@ package parrot
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -332,7 +331,7 @@ func Serve(_ context.Context, conn *plugin.Conn) error {
 			slog.Info("Parrot: new IDs", "ids", msg.Ranges.GetRanges())
 		case *pluginv1.ConnectResponse_Welcome:
 		default:
-			return errors.New("unknown message from the hub")
+			slog.Debug("Parrot: ignoring a message it does not know", "message", m)
 		}
 	}
 }

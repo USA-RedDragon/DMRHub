@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -37,6 +38,8 @@ const (
 	instanceTTL = 30 * time.Second
 	// instanceHeartbeat is how often each instance refreshes its TTL.
 	instanceHeartbeat = 10 * time.Second
+	// drainingValue is the value of the key of an instance that drains.
+	drainingValue = "draining"
 )
 
 // InstanceRegistry tracks running DMRHub server instances in the shared KV
@@ -48,6 +51,7 @@ type InstanceRegistry struct {
 	kv         kv.KV
 	instanceID string
 	cancel     context.CancelFunc
+	draining   atomic.Bool
 }
 
 // NewInstanceRegistry creates a registry entry for this instance and starts a
@@ -58,12 +62,8 @@ func NewInstanceRegistry(ctx context.Context, kv kv.KV, instanceID string) *Inst
 		instanceID: instanceID,
 	}
 
-	key := instanceKeyPrefix + instanceID
-	if err := kv.Set(ctx, key, []byte(instanceID)); err != nil {
+	if err := r.write(ctx); err != nil {
 		slog.Error("failed to register instance in KV", "instanceID", instanceID, "error", err)
-	}
-	if err := kv.Expire(ctx, key, instanceTTL); err != nil {
-		slog.Error("failed to set instance TTL", "instanceID", instanceID, "error", err)
 	}
 
 	hbCtx, cancel := context.WithCancel(ctx)
@@ -82,16 +82,50 @@ func (r *InstanceRegistry) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			key := instanceKeyPrefix + r.instanceID
-			// Re-set + expire to keep the key alive
-			if err := r.kv.Set(ctx, key, []byte(r.instanceID)); err != nil {
+			if err := r.write(ctx); err != nil {
 				slog.Warn("instance heartbeat: failed to refresh key", "error", err)
-			}
-			if err := r.kv.Expire(ctx, key, instanceTTL); err != nil {
-				slog.Warn("instance heartbeat: failed to refresh TTL", "error", err)
 			}
 		}
 	}
+}
+
+// write stores the key of the instance, with its state, for instanceTTL.
+func (r *InstanceRegistry) write(ctx context.Context) error {
+	key := instanceKeyPrefix + r.instanceID
+	value := r.instanceID
+	if r.draining.Load() {
+		value = drainingValue
+	}
+	if err := r.kv.Set(ctx, key, []byte(value)); err != nil {
+		return fmt.Errorf("failed to set the key: %w", err)
+	}
+	if err := r.kv.Expire(ctx, key, instanceTTL); err != nil {
+		return fmt.Errorf("failed to set the TTL: %w", err)
+	}
+	return nil
+}
+
+// ID returns the ID of the instance.
+func (r *InstanceRegistry) ID() string {
+	return r.instanceID
+}
+
+// MarkDraining records that the instance drains: it still serves its
+// sessions, but stops soon, so another instance may take them over.
+func (r *InstanceRegistry) MarkDraining(ctx context.Context) {
+	r.draining.Store(true)
+	if err := r.write(ctx); err != nil {
+		slog.Error("failed to mark the instance as draining", "instanceID", r.instanceID, "error", err)
+	}
+}
+
+// InstanceDraining reports whether the instance id is registered and
+// drains. It is false for an instance that serves, one that stopped or
+// died, and when the KV store cannot be read, so that only a replica that
+// is known to drain hands its sessions over.
+func InstanceDraining(ctx context.Context, store kv.KV, id string) bool {
+	v, err := store.Get(ctx, instanceKeyPrefix+id)
+	return err == nil && string(v) == drainingValue
 }
 
 // OtherInstancesExist returns true if any other instance (not this one) has a

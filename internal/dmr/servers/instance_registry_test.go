@@ -150,3 +150,27 @@ func TestInstanceRegistryDeregister(t *testing.T) {
 
 	r1.Deregister(ctx)
 }
+
+func TestInstanceDrainingFollowsTheDrain(t *testing.T) {
+	t.Parallel()
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	store, err := kv.MakeKV(context.Background(), &defConfig)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	r1 := NewInstanceRegistry(ctx, store, "instance-1")
+	defer r1.Deregister(ctx)
+	r2 := NewInstanceRegistry(ctx, store, "instance-2")
+
+	require.False(t, InstanceDraining(ctx, store, "instance-2"), "a registered instance serves")
+	r2.MarkDraining(ctx)
+	require.True(t, InstanceDraining(ctx, store, "instance-2"), "the instance drains")
+	require.True(t, r1.OtherInstancesExist(ctx), "a draining instance still runs")
+	require.NoError(t, r2.write(ctx))
+	require.True(t, InstanceDraining(ctx, store, "instance-2"), "the heartbeat keeps the drain")
+	r2.Deregister(ctx)
+	require.False(t, InstanceDraining(ctx, store, "instance-2"), "a stopped instance hands nothing over")
+	require.False(t, InstanceDraining(ctx, store, "never-registered"))
+	require.False(t, InstanceDraining(ctx, store, "instance-1"))
+}

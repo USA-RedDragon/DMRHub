@@ -39,6 +39,7 @@ import (
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
@@ -69,13 +70,20 @@ const rateLimitLimit = 50
 type Option func(*options)
 
 type options struct {
-	applier v1ConfigControllers.Applier
+	applier    v1ConfigControllers.Applier
+	hibpClient *http.Client
 }
 
 // WithConfigApplier makes the config API put a saved config into effect
 // with a.
 func WithConfigApplier(a v1ConfigControllers.Applier) Option {
 	return func(o *options) { o.applier = a }
+}
+
+// WithHIBPClient makes the password checks query HaveIBeenPwned with
+// client.
+func WithHIBPClient(client *http.Client) Option {
+	return func(o *options) { o.hibpClient = client }
 }
 
 func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, opts ...Option) Server {
@@ -140,6 +148,9 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	r.Use(middleware.Provider("Commit", commit))
 	if o.applier != nil {
 		r.Use(middleware.Provider(v1ConfigControllers.ApplierKey, o.applier))
+	}
+	if o.hibpClient != nil {
+		r.Use(middleware.Provider(utils.HIBPClientKey, o.hibpClient))
 	}
 	// CORS
 	var configuredCORS gin.HandlerFunc

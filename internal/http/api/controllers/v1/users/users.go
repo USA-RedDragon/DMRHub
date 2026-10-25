@@ -20,7 +20,6 @@
 package users
 
 import (
-	"crypto/sha1" //#nosec G505 -- False positive, we are not using this for crypto, just HIBP
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -38,7 +37,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	gopwned "github.com/mavjs/goPwned"
 )
 
 const (
@@ -151,46 +149,9 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 
-		if config.HIBPAPIKey != "" {
-			goPwned := gopwned.NewClient(nil, config.HIBPAPIKey)
-			h := sha1.New() //#nosec G401 -- False positive, we are not using this for crypto, just HIBP
-			h.Write([]byte(json.Password))
-			sha1HashedPW := fmt.Sprintf("%X", h.Sum(nil))
-			frange := sha1HashedPW[0:5]
-			lrange := sha1HashedPW[5:40]
-			karray, err := goPwned.GetPwnedPasswords(frange, false)
-			if err != nil {
-				// If the error message starts with "Too many requests", then tell the user to retry in one minute
-				if strings.HasPrefix(err.Error(), "Too many requests") {
-					c.JSON(http.StatusTooManyRequests, gin.H{errorKey: "Too many requests. Please try again in one minute"})
-					return
-				}
-				slog.Error("Error getting pwned passwords", "function", "POSTUser", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting pwned passwords"})
-				return
-			}
-			strKArray := string(karray)
-			respArray := strings.Split(strKArray, "\r\n")
-
-			var result int64
-			for _, resp := range respArray {
-				strArray := strings.Split(resp, ":")
-				test := strArray[0]
-
-				count, err := strconv.ParseInt(strArray[1], 0, 32)
-				if err != nil {
-					slog.Error("Error parsing pwned password count", "function", "POSTUser", "error", err)
-					c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error parsing pwned password count"})
-					return
-				}
-				if test == lrange {
-					result = count
-				}
-			}
-			if result > 0 {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password has been reported in a data breach. Please use another one"})
-				return
-			}
+		if status, msg := utils.CheckPwnedPassword(c, config.HIBPAPIKey, json.Password); status != 0 {
+			c.JSON(status, gin.H{errorKey: msg})
+			return
 		}
 
 		// argon2 the password
@@ -633,6 +594,10 @@ func PATCHUser(c *gin.Context) {
 		}
 
 		if json.Password != "" {
+			if status, msg := utils.CheckPwnedPassword(c, config.HIBPAPIKey, json.Password); status != 0 {
+				c.JSON(status, gin.H{errorKey: msg})
+				return
+			}
 			hashedPassword, hashErr := utils.HashPassword(json.Password, config.PasswordSalt)
 			if hashErr != nil {
 				slog.Error("Error hashing password", "error", hashErr)

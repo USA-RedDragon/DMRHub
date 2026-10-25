@@ -82,8 +82,8 @@ func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 }
 
 // CreateTestDBRouterWithConfig is CreateTestDBRouter with the config changed
-// by change before the router is made.
-func CreateTestDBRouterWithConfig(change func(*config.Config)) (*gin.Engine, *TestDB, error) {
+// by change before the router is made, and the router made with opts.
+func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Option) (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
@@ -134,7 +134,7 @@ func CreateTestDBRouterWithConfig(change func(*config.Config)) (*gin.Engine, *Te
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, nil, t.database, pubsub, ready, nil, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(context.TODO(), &defConfig, nil, t.database, pubsub, ready, nil, "test", "deadbeef", opts...), &t, nil
 }
 
 // CreateTestDBRouterWithHub creates a test router with a hub. Its in-memory

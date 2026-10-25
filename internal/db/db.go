@@ -20,6 +20,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -116,42 +117,16 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 		}
 	}
 
-	err = migration.Migrate(db, config)
+	unlock, err := lockMigrations(db, config)
 	if err != nil {
-		return db, fmt.Errorf("failed to migrate database: %w", err)
+		return db, err
 	}
-
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{})
+	err = migrate(db, config)
+	if unlockErr := unlock(); err == nil {
+		err = unlockErr
+	}
 	if err != nil {
-		return db, fmt.Errorf("failed to migrate database: %w", err)
-	}
-
-	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
-	var appSettings models.AppSettings
-	result := db.First(&appSettings)
-	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return db, fmt.Errorf("failed to query app settings: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		slog.Debug("App settings entry doesn't exist, creating it")
-		// The record doesn't exist, so create it
-		appSettings = models.AppSettings{
-			HasSeeded: false,
-		}
-		err := db.Create(&appSettings).Error
-		if err != nil {
-			return db, fmt.Errorf("failed to create app settings: %w", err)
-		}
-		slog.Debug("App settings created")
-	}
-
-	// If the record exists and HasSeeded is true, then we don't need to seed the database.
-	if !appSettings.HasSeeded {
-		appSettings.HasSeeded = true
-		err = db.Save(&appSettings).Error
-		if err != nil {
-			return db, fmt.Errorf("failed to save app settings: %w", err)
-		}
+		return db, err
 	}
 
 	sqlDB, err := db.DB()
@@ -163,4 +138,78 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	sqlDB.SetConnMaxIdleTime(consts.MaxIdleTime)
 
 	return
+}
+
+const migrationLockKey int64 = 0x444d524875624d67
+
+func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error) {
+	if config.Database.Driver != configPkg.DatabaseDriverPostgres {
+		return func() error { return nil }, nil
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to take the migration lock: %w", err)
+	}
+	return func() error {
+		_, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+		closeErr := conn.Close()
+		if err != nil {
+			return fmt.Errorf("failed to release the migration lock: %w", err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("failed to close the migration lock connection: %w", closeErr)
+		}
+		return nil
+	}, nil
+}
+
+func migrate(db *gorm.DB, config *configPkg.Config) error {
+	err := migration.Migrate(db, config)
+	if err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{})
+	if err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
+	var appSettings models.AppSettings
+	result := db.First(&appSettings)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to query app settings: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		slog.Debug("App settings entry doesn't exist, creating it")
+		// The record doesn't exist, so create it
+		appSettings = models.AppSettings{
+			HasSeeded: false,
+		}
+		err = db.Create(&appSettings).Error
+		if err != nil {
+			return fmt.Errorf("failed to create app settings: %w", err)
+		}
+		slog.Debug("App settings created")
+	}
+
+	// If the record exists and HasSeeded is true, then we don't need to seed the database.
+	if !appSettings.HasSeeded {
+		appSettings.HasSeeded = true
+		err = db.Save(&appSettings).Error
+		if err != nil {
+			return fmt.Errorf("failed to save app settings: %w", err)
+		}
+	}
+
+	return nil
 }

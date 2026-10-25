@@ -109,6 +109,31 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	assert.Equal(t, "0.0.0.0", server.SocketAddress.IP.String())
 }
 
+func TestMakeServerBracketedBindAddress(t *testing.T) {
+	t.Parallel()
+
+	for bind, want := range map[string]string{"[::]": "::", "[::1]": "::1", "127.0.0.1": "127.0.0.1"} {
+		t.Run(bind, func(t *testing.T) {
+			t.Parallel()
+
+			defConfig, err := configulator.New(config.ConfigSchema()).Default()
+			require.NoError(t, err)
+			defConfig.DMR.OpenBridge.Bind = bind
+			defConfig.DMR.OpenBridge.Port = 0
+
+			server, err := openbridge.MakeServer(&defConfig, nil, nil, nil, nil)
+			require.NoError(t, err)
+			defer func() { _ = server.Server.Close() }()
+
+			local, ok := server.Server.LocalAddr().(*net.UDPAddr)
+			require.True(t, ok)
+			assert.Equal(t, want, local.IP.String())
+			assert.Equal(t, want, server.SocketAddress.IP.String())
+			assert.Equal(t, local.Port, server.SocketAddress.Port)
+		})
+	}
+}
+
 // TestStopClosesSocketAndUnregistersHub verifies that Stop() properly closes
 // the UDP socket and unregisters the server from the hub. This is a regression
 // test for the bug where Stop() was a no-op, leaking the socket and leaving

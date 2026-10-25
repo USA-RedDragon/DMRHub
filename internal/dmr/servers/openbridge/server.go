@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -195,13 +197,24 @@ func (b *bridge) sign(p []byte) error {
 // the source quenches that replicas share; with a nil kvStore the server
 // works alone.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kvStore kv.KV) (Server, error) {
-	socketAddress := net.UDPAddr{
-		IP:   net.ParseIP(config.DMR.OpenBridge.Bind),
-		Port: config.DMR.OpenBridge.Port,
+	bind := strings.TrimSuffix(strings.TrimPrefix(config.DMR.OpenBridge.Bind, "["), "]")
+	bindAddress, err := net.ResolveUDPAddr("udp", net.JoinHostPort(bind, strconv.Itoa(config.DMR.OpenBridge.Port)))
+	if err != nil {
+		return Server{}, fmt.Errorf("error resolving OpenBridge bind address: %w", err)
 	}
-	server, err := net.ListenUDP("udp", &socketAddress)
+	server, err := net.ListenUDP("udp", bindAddress)
 	if err != nil {
 		return Server{}, fmt.Errorf("error opening UDP Socket: %w", err)
+	}
+	local, ok := server.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		_ = server.Close()
+		return Server{}, fmt.Errorf("error reading UDP Socket address: unexpected %T", server.LocalAddr())
+	}
+	socketAddress := *bindAddress
+	socketAddress.Port = local.Port
+	if socketAddress.IP == nil {
+		socketAddress.IP = local.IP
 	}
 
 	err = server.SetReadBuffer(bufferSize)

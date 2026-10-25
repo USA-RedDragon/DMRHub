@@ -93,8 +93,16 @@ message ConnectResponse {
     Tracking tracking = 6;
     // A radio with tracking on was heard on a repeater.
     Heard heard = 7;
+    // The hub stops soon.
+    Draining draining = 8;
   }
 }
+
+// Draining tells a plugin that the replica of the hub that holds its stream
+// stops soon. The plugin connects again while it keeps this stream: another
+// replica takes the plugin over, and the hub ends this stream once the new
+// one is up. Until then, the same burst can come on both streams.
+message Draining {}
 
 // Tracked is all the radios whose owners turned position tracking on.
 message Tracked {

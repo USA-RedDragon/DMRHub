@@ -119,9 +119,13 @@ type CallTracker struct {
 	recent   map[pair][]recentRow
 
 	observer atomic.Pointer[observerBox]
-	dropped  atomic.Uint64
-	metrics  *metrics.Metrics
-	bursts   atomic.Uint64
+	// outbox publishes the marks for the other replicas, so that the
+	// callers, which deliver bursts, never wait on pubsub.
+	outbox     chan outMark
+	outDropped atomic.Uint64
+	dropped    atomic.Uint64
+	metrics    *metrics.Metrics
+	bursts     atomic.Uint64
 }
 
 type observerBox struct{ o DataObserver }
@@ -157,6 +161,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 		recent:     map[pair][]recentRow{},
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
+		outbox:     make(chan outMark, outboxSize),
 	}
 	var seed [8]byte
 	_, _ = rand.Read(seed[:])
@@ -167,6 +172,9 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct.subscribe(dropsTopic, ct.remoteDrop)
 	ct.subscribe(convertedTopic, ct.remoteConverted)
 	ct.subscribe(undeliverableTopic, ct.remoteUndeliverable)
+	if pubsub != nil {
+		go ct.publishMarks()
+	}
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -252,8 +260,38 @@ func (c *CallTracker) Undeliverable(p models.Packet, target string) {
 	if err != nil {
 		return
 	}
-	if err := c.pubsub.Publish(undeliverableTopic, msg); err != nil {
-		slog.Error("CallTracker: cannot publish an undeliverable target", "error", err)
+	c.publishLater(undeliverableTopic, msg)
+}
+
+// outboxSize is the most marks that wait for pubsub.
+const outboxSize = 1024
+
+type outMark struct {
+	topic string
+	msg   []byte
+}
+
+// publishLater queues msg for the outbox. A full outbox drops it.
+func (c *CallTracker) publishLater(topic string, msg []byte) {
+	select {
+	case c.outbox <- outMark{topic: topic, msg: msg}:
+	default:
+		if n := c.outDropped.Add(1); n&(n-1) == 0 {
+			slog.Warn("CallTracker: outbox full, marks for other replicas dropped", "topic", topic, "dropped", n)
+		}
+	}
+}
+
+func (c *CallTracker) publishMarks() {
+	for {
+		select {
+		case <-c.done:
+			return
+		case m := <-c.outbox:
+			if err := c.pubsub.Publish(m.topic, m.msg); err != nil {
+				slog.Error("CallTracker: cannot publish a mark for other replicas", "topic", m.topic, "error", err)
+			}
+		}
 	}
 }
 

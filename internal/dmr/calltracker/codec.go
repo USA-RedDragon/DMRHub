@@ -72,9 +72,7 @@ func (c *CallTracker) Converted(p models.Packet, codec, target string) {
 	if err != nil {
 		return
 	}
-	if err := c.pubsub.Publish(convertedTopic, msg); err != nil {
-		slog.Error("CallTracker: cannot publish a converted target", "error", err)
-	}
+	c.publishLater(convertedTopic, msg)
 }
 
 func (c *CallTracker) remoteConverted(msg []byte) {

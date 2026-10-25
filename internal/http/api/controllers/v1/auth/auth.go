@@ -22,6 +22,7 @@ package auth
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,6 +105,10 @@ func POSTLogin(c *gin.Context) {
 		if json.Username != "" {
 			result := db.Find(&user, "username = ?", json.Username)
 			userFound = result.RowsAffected > 0
+			if !userFound {
+				result = db.Find(&user, "callsign = ?", strings.ToUpper(json.Username))
+				userFound = result.RowsAffected > 0
+			}
 		} else {
 			result := db.Find(&user, "callsign = ?", json.Callsign)
 			userFound = result.RowsAffected > 0

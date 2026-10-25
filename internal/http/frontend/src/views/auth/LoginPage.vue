@@ -24,10 +24,10 @@
     <form @submit.prevent="handleLogin(!v$.$invalid)">
       <Card>
         <CardHeader>
-          <CardTitle>Login</CardTitle>
+          <CardTitle>Log in</CardTitle>
         </CardHeader>
         <CardContent>
-          <label class="field-label" for="username">Username</label>
+          <label class="field-label" for="username">Username or callsign</label>
           <ShadInput
             id="username"
             type="text"
@@ -36,7 +36,7 @@
           />
           <span v-if="v$.username.$error && submitted">
             <span v-for="(error, index) of v$.username.$errors" :key="index">
-              <small class="field-error">{{ error.$message.replace("Value", "Username") }}</small>
+              <small class="field-error">{{ error.$message.replace("Value", "Username or callsign") }}</small>
             </span>
             <br />
           </span>
@@ -62,7 +62,7 @@
         </CardContent>
         <CardFooter class="flex-col items-start gap-4">
           <div class="card-footer">
-            <ShadButton type="submit" variant="outline" size="sm">Login</ShadButton>
+            <ShadButton type="submit" variant="outline" size="sm">Log in</ShadButton>
           </div>
           <router-link
             v-if="settingsStore.passwordResetEnabled"
@@ -108,7 +108,7 @@ export default {
     ShadInput,
   },
   head: {
-    title: 'Login',
+    title: 'Log in',
   },
   setup: () => ({ v$: useVuelidate() }),
   created() {},

@@ -79,6 +79,20 @@ describe('forgot password', () => {
     expect(paths).toContain('/reset-password');
   });
 
+  it('logs in by username or callsign, in the words of the mockup', async () => {
+    const wrapper = await mountLogin(false);
+    expect(wrapper.text()).toContain('Log in');
+    expect(wrapper.text()).not.toContain('Login');
+    expect(wrapper.find('label[for="username"]').text()).toBe('Username or callsign');
+    expect(wrapper.find('button[type="submit"]').text()).toBe('Log in');
+    mockAPI.post.mockResolvedValue({ data: { message: 'Logged in' } });
+    await wrapper.find('#username').setValue('n0call');
+    await wrapper.find('#password').setValue('a-password');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenCalledWith('/auth/login', { username: 'n0call', password: 'a-password' });
+  });
+
   it('links from the login page when email is on', async () => {
     const wrapper = await mountLogin(true);
     expect(mockAPI.get).toHaveBeenCalledWith('/network/features');

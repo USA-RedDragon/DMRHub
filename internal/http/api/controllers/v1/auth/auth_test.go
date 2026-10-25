@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSysadminLogin(t *testing.T) {
@@ -176,4 +177,26 @@ func TestLogoutGETNotAllowed(t *testing.T) {
 
 	// GET should be rejected (404 Not Found or 405 Method Not Allowed)
 	assert.NotEqual(t, 200, w.Code, "Logout via GET should not be allowed")
+}
+
+func TestLoginTakesAUsernameOrACallsign(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	testutils.SeedAccount(t, tdb.DB(), 1000001, "N0CALL", "jdoe")
+	testutils.SeedAccount(t, tdb.DB(), 1000002, "N1CALL", "n0call")
+
+	for _, name := range []string{"jdoe", "N0CALL", "n0call"} {
+		_, w, jar := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: name, Password: testutils.TestPassword})
+		require.Equal(t, http.StatusOK, w.Code, name)
+		me := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil)
+		want := "1000001"
+		if name == "n0call" {
+			want = "1000002"
+		}
+		assert.Contains(t, me.Body.String(), `"id":`+want, "%s: a username wins over a callsign", name)
+	}
+	_, w, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "N0CALL", Password: "wrong"})
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

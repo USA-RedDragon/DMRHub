@@ -20,6 +20,8 @@
 package apimodels
 
 type AuthLogin struct {
+	// Username is the username or, when no user has that username, the
+	// callsign of the user.
 	Username string `json:"username"`
 	Callsign string `json:"callsign"`
 	Password string `json:"password" binding:"required"`

@@ -126,6 +126,7 @@ type DMR struct {
 	Positions                Positions   `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
 	Plugins                  Plugins     `json:"plugins" name:"plugins" description:"Listener of the plugins, which answer the calls to the IDs an admin gives them"`
 	Transcoding              Transcoding `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
+	DrainTimeout             int         `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
 }
 
 // Transcoding holds the AMBE servers that convert calls between Codec2 and

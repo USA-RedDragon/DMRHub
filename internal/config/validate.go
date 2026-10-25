@@ -90,6 +90,8 @@ var (
 	ErrInvalidDMRMMDVMWebTransportPort = errors.New("the WebTransport port must be a port other than the MMDVM port")
 	// ErrInvalidPluginsPort indicates that the plugin port is not a port, or is the HTTP port.
 	ErrInvalidPluginsPort = errors.New("the plugin port must be a port other than the HTTP port")
+	// ErrInvalidDrainTimeout indicates that the drain timeout is negative.
+	ErrInvalidDrainTimeout = errors.New("the drain timeout must not be negative")
 	// ErrInvalidPluginsBind indicates that the plugin listener has no address.
 	ErrInvalidPluginsBind = errors.New("the plugin listener needs an address to bind to")
 	// ErrInvalidAMBEServer indicates that an AMBE server is not a host and port.
@@ -477,6 +479,10 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	errs = append(errs, d.Plugins.ValidateWithFields()...)
 	errs = append(errs, d.Transcoding.ValidateWithFields()...)
 
+	if d.DrainTimeout < 0 {
+		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})
+	}
+
 	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{
 			Field: "dmr.radio-id-url",
@@ -648,8 +654,9 @@ func (p Plugins) ValidateWithFields() (errs []ValidationError) {
 }
 
 const (
-	fieldPluginsPort = "dmr.plugins.port"
-	fieldAMBEServers = "dmr.transcoding.ambe-servers"
+	fieldPluginsPort  = "dmr.plugins.port"
+	fieldDrainTimeout = "dmr.drain-timeout"
+	fieldAMBEServers  = "dmr.transcoding.ambe-servers"
 )
 
 // ValidateWithFields validates the address and calls at once of each AMBE

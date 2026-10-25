@@ -30,6 +30,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -190,6 +191,35 @@ func (m *Manager) Stop(ctx context.Context) {
 	defer m.mu.Unlock()
 	m.stopped = true
 	m.stopAll(ctx)
+}
+
+// Registry is the record of the replicas of DMRHub that Drain needs.
+type Registry interface {
+	OtherInstancesExist(ctx context.Context) bool
+	MarkDraining(ctx context.Context)
+}
+
+// Drain keeps the servers running, as in a replica that stops in a rolling
+// restart, while the other replicas take its sessions over: a load
+// balancer moves each repeater at its next packet, and the replica that
+// gets it resumes the session, since reg marks this one as draining. It
+// returns once another replica holds every repeater of this one, or after
+// timeout, with the number of repeaters that are left. A lone instance
+// does not drain.
+func (m *Manager) Drain(ctx context.Context, reg Registry, timeout time.Duration) int {
+	if m.deps.Hub == nil || reg == nil || !reg.OtherInstancesExist(ctx) {
+		return 0
+	}
+	reg.MarkDraining(ctx)
+	if timeout <= 0 {
+		return 0
+	}
+	slog.Info("Draining: other replicas take over the sessions of this one", "timeout", timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	left := m.deps.Hub.WaitMoved(ctx)
+	slog.Info("Drain finished", "repeatersLeft", left)
+	return left
 }
 
 // Addr returns the address of server k, or nil when it does not run.

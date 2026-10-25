@@ -345,6 +345,15 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 	sm.dmr.Stop(servers.WithGracefulHandoff(ctx, graceful))
 }
 
+// drain keeps this replica serving while the other replicas take its
+// sessions over, as manager.Manager.Drain does.
+func (sm *serverManager) drain(ctx context.Context) {
+	if sm.registry == nil {
+		return
+	}
+	sm.dmr.Drain(ctx, sm.registry, time.Duration(sm.cfg.DMR.DrainTimeout)*time.Second)
+}
+
 // liveConfig puts the settings that the Setup page saves into effect: the
 // DMR servers and the log level.
 type liveConfig struct {
@@ -464,6 +473,8 @@ func setupShutdownHandlers(ctx context.Context, scheduler gocron.Scheduler, hub 
 
 	// Mark unhealthy immediately so Kubernetes stops routing traffic.
 	servers.ready.Store(false)
+
+	servers.drain(ctx)
 
 	// Stop the scheduler (independent of DMR shutdown).
 	go func() {

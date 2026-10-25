@@ -127,6 +127,7 @@ type dMRShadow struct {
 	Positions                *positionsShadow   `json:"positions"                   toml:"positions"                   yaml:"positions"`
 	Plugins                  *pluginsShadow     `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
 	Transcoding              *transcodingShadow `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
+	DrainTimeout             *int               `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
 }
 
 type sMTPShadow struct {
@@ -248,6 +249,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.plugins.bind", configulator.LayerDefault, "default tag")
 	cfg.DMR.Plugins.Port = 3006
 	set("dmr.plugins.port", configulator.LayerDefault, "default tag")
+	cfg.DMR.DrainTimeout = 25
+	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
 	set("smtp.enabled", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Port = 25
@@ -535,6 +538,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				cfg.DMR.Transcoding.AMBEServers = out
 				set("dmr.transcoding.ambe-servers", configulator.LayerFile, file)
 			}
+		}
+		if s.DMR.DrainTimeout != nil {
+			cfg.DMR.DrainTimeout = *s.DMR.DrainTimeout
+			set("dmr.drain-timeout", configulator.LayerFile, file)
 		}
 	}
 	if s.SMTP != nil {
@@ -1032,6 +1039,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Plugins.KeyFile = v
 		set("dmr.plugins.key-file", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.drain-timeout",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.DrainTimeout = int(p)
+		set("dmr.drain-timeout", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "smtp", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1241,6 +1261,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "plugins" + o.Separator + "port",
 		"dmr" + o.Separator + "plugins" + o.Separator + "cert-file",
 		"dmr" + o.Separator + "plugins" + o.Separator + "key-file",
+		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
 		"smtp" + o.Separator + "port",
@@ -1328,26 +1349,27 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(3006), names[48], "TCP port that plugins connect to")
 	fs.String(names[49], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
 	fs.String(names[50], "", "TLS key file of the certificate file")
-	fs.Bool(names[51], false, "Enable SMTP support for sending emails")
-	fs.String(names[52], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[53], "SMTP server port")
-	fs.String(names[54], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[55], "", "SMTP server username")
-	fs.String(names[56], "", "SMTP server password")
-	fs.String(names[57], "", "Email address to use as the sender")
-	fs.String(names[58], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[59], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[60], false, "Enable metrics collection and export")
-	fs.String(names[61], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[62], "Metrics server port")
-	fs.StringSlice(names[63], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[64], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[65], false, "Enable PProf profiling and debugging support")
-	fs.String(names[66], "[::]", "PProf server listen address")
-	fs.StringSlice(names[67], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[68], "PProf server port")
-	fs.String(names[69], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[70], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Var(impl.NewInt(25), names[51], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[52], false, "Enable SMTP support for sending emails")
+	fs.String(names[53], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[54], "SMTP server port")
+	fs.String(names[55], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[56], "", "SMTP server username")
+	fs.String(names[57], "", "SMTP server password")
+	fs.String(names[58], "", "Email address to use as the sender")
+	fs.String(names[59], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[60], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[61], false, "Enable metrics collection and export")
+	fs.String(names[62], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[63], "Metrics server port")
+	fs.StringSlice(names[64], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[65], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[66], false, "Enable PProf profiling and debugging support")
+	fs.String(names[67], "[::]", "PProf server listen address")
+	fs.StringSlice(names[68], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[69], "PProf server port")
+	fs.String(names[70], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[71], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -1963,6 +1985,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Plugins.KeyFile = v
 		set("dmr.plugins.key-file", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.drain-timeout",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.DrainTimeout = v
+		set("dmr.drain-timeout", configulator.LayerCLI, "--"+n)
 	}
 	if n := "smtp" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -3103,6 +3137,26 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				s.Transcoding = &sub
+			}
+		case "drain-timeout":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".drain-timeout", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".drain-timeout", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.DrainTimeout = &num
+			default:
+				return configJSONError(path+".drain-timeout", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -4283,6 +4337,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.plugins.cert-file = %v\n", c.DMR.Plugins.CertFile)
 	fmt.Fprintf(&b, "dmr.plugins.key-file = %v\n", c.DMR.Plugins.KeyFile)
 	fmt.Fprintf(&b, "dmr.transcoding.ambe-servers = %v\n", c.DMR.Transcoding.AMBEServers)
+	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)
 	fmt.Fprintf(&b, "smtp.port = %v\n", c.SMTP.Port)

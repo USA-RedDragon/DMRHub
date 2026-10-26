@@ -128,10 +128,19 @@ type sender struct {
 	server   string
 	peer     bool
 	repeater uint
+	slot     bool
 }
 
 func newSender(t *testing.T, ct *calltracker.CallTracker, src, dst uint, group bool, stream uint) *sender {
-	return &sender{t: t, ct: ct, src: src, dst: dst, group: group, stream: stream, server: models.RepeaterTypeMMDVM, repeater: repeaterA}
+	return &sender{t: t, ct: ct, src: src, dst: dst, group: group, stream: stream, server: models.RepeaterTypeMMDVM, repeater: repeaterA, slot: true}
+}
+
+// newPeerSender returns a sender of an OpenBridge peer, which sends on TS1
+// with the peer ID as the repeater.
+func newPeerSender(t *testing.T, ct *calltracker.CallTracker, src, dst uint, group bool, stream uint) *sender {
+	s := newSender(t, ct, src, dst, group, stream)
+	s.server, s.peer, s.repeater, s.slot = "openbridge", true, 777, false
+	return s
 }
 
 func (s *sender) packet(frame dmrconst.FrameType, value uint, burst layer2.RawBurst) models.Packet {
@@ -142,7 +151,7 @@ func (s *sender) packet(frame dmrconst.FrameType, value uint, burst layer2.RawBu
 		Src:         s.src,
 		Dst:         s.dst,
 		Repeater:    s.repeater,
-		Slot:        true,
+		Slot:        s.slot,
 		GroupCall:   s.group,
 		FrameType:   frame,
 		DTypeOrVSeq: value,
@@ -501,6 +510,66 @@ func TestTrackPreamblesOfOtherStreamsStayApart(t *testing.T) {
 	assert.Equal(t, "preamble", calls[0].SubKind)
 	assert.Equal(t, "preamble", calls[1].SubKind)
 	assert.Equal(t, "sms", calls[2].SubKind)
+}
+
+// TestTrackSMSWithPreamblesOnTheirOwnStreamsOverOpenBridge sends the
+// preambles and the SMS that they announce as an OpenBridge peer forwards
+// them from MMDVMHost, with a new stream ID for each CSBK and data header.
+// They must make one row, as from a repeater.
+func TestTrackSMSWithPreamblesOnTheirOwnStreamsOverOpenBridge(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	for i, b := range preambles(t, 4) {
+		newPeerSender(t, ct, userB, userA, false, uint(7121+i)).data(b)
+	}
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})
+	newPeerSender(t, ct, userB, userA, false, 7125).data(bursts...)
+
+	calls := waitDone(t, ct, database, 1)
+	msg := calls[0]
+	assert.Equal(t, models.CallKindData, msg.Kind)
+	assert.Equal(t, "sms", msg.SubKind)
+	assert.Equal(t, uint(4+len(bursts)), msg.Bursts)
+	assert.Equal(t, uint(7125), msg.StreamID)
+	assert.Equal(t, "openbridge", msg.Transport)
+	assert.Equal(t, uint(777), msg.IngressID)
+	assert.Nil(t, msg.Opcode)
+}
+
+// TestTrackInterleavedPreamblesOverOpenBridgeStayApart sends the preambles
+// of two calls on their own streams in turn, over OpenBridge. Each call
+// must keep its own row, and a late SMS must not join a preamble row.
+func TestTrackInterleavedPreamblesOverOpenBridgeStayApart(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	pre := preambles(t, 2)
+	stream := uint(7131)
+	next := func() uint { stream++; return stream }
+	for _, b := range pre {
+		newPeerSender(t, ct, userB, userA, false, next()).data(b)
+		newPeerSender(t, ct, userA, userB, false, next()).data(b)
+		newPeerSender(t, ct, userB, tgID, true, next()).data(b)
+	}
+	toA := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TO A")})
+	toB := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userA), Destination: uint32(userB), Body: []byte("TO B")})
+	newPeerSender(t, ct, userB, userA, false, next()).data(toA...)
+	newPeerSender(t, ct, userA, userB, false, next()).data(toB...)
+	ct.Flush()
+	time.Sleep(450 * time.Millisecond)
+	newPeerSender(t, ct, userB, tgID, true, next()).data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(tgID), Body: []byte("LATE")})...)
+
+	calls := waitDone(t, ct, database, 4)
+	byKey := map[string]models.Call{}
+	for _, c := range calls {
+		byKey[fmt.Sprintf("%d>%d:%s", c.SourceID, c.DestinationID, c.SubKind)] = c
+	}
+	require.Len(t, byKey, 4, "rows: %v", byKey)
+	assert.Equal(t, uint(len(pre)+len(toA)), byKey[fmt.Sprintf("%d>%d:sms", userB, userA)].Bursts)
+	assert.Equal(t, uint(len(pre)+len(toB)), byKey[fmt.Sprintf("%d>%d:sms", userA, userB)].Bursts)
+	assert.Equal(t, uint(len(pre)), byKey[fmt.Sprintf("%d>%d:preamble", userB, tgID)].Bursts)
+	assert.Contains(t, byKey, fmt.Sprintf("%d>%d:sms", userB, tgID))
 }
 
 func TestTrackConfirmedSMSWithACK(t *testing.T) {

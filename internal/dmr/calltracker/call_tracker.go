@@ -35,11 +35,13 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/puzpuzpuz/xsync/v4"
 	"gorm.io/gorm"
@@ -115,6 +117,8 @@ type CallTracker struct {
 
 	streams  *xsync.Map[uint, streamRef]
 	sources  *xsync.Map[sourceKey, streamRef]
+	leads    *xsync.Map[leadKey, lead]
+	joined   *xsync.Map[chanKey, lead]
 	recentMu sync.Mutex
 	recent   map[pair][]recentRow
 
@@ -158,6 +162,8 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 		activeNets: xsync.NewMap[uint, uint](),
 		streams:    xsync.NewMap[uint, streamRef](),
 		sources:    xsync.NewMap[sourceKey, streamRef](),
+		leads:      xsync.NewMap[leadKey, lead](),
+		joined:     xsync.NewMap[chanKey, lead](),
 		recent:     map[pair][]recentRow{},
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
@@ -230,11 +236,11 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 		return 0
 	}
 	key := chanKey{server: server, repeater: p.Repeater, slot: p.Slot}
+	now := time.Now()
 	if peer {
-		key.stream = p.StreamID
+		key.stream = c.peerStream(key, &p, now)
 	}
 	idx := key.shard()
-	now := time.Now()
 	id := c.bursts.Add(1)<<shardBits | uint64(idx) //nolint:gosec
 	c.streams.Store(p.StreamID, streamRef{shard: idx, at: now})
 	if !peer {
@@ -242,6 +248,55 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 	}
 	c.enqueue(idx, task{key: key, p: p, peer: peer, at: now, id: id})
 	return id
+}
+
+// leadKey names the calls of one source to one target on a slot of a
+// peer.
+type leadKey struct {
+	server   string
+	repeater uint
+	slot     bool
+	src, dst uint
+	group    bool
+}
+
+// lead is the stream whose channel takes the bursts of a call, and when
+// the call last had a burst there.
+type lead struct {
+	stream uint
+	at     time.Time
+}
+
+// peerStream returns the stream whose channel takes p, a packet of a peer
+// on the slot of key, at now. MMDVMHost sends each CSBK and data header
+// with a new stream ID, and peers forward them so. A CSBK or data header
+// less than preambleGap after a CSBK of the same source, target and group
+// flag, and the rest of its stream, go to the channel of that CSBK, as all
+// the streams of a repeater slot do, so that the preambles and the data
+// that they announce can make one row.
+func (c *CallTracker) peerStream(key chanKey, p *models.Packet, now time.Time) uint {
+	key.stream = p.StreamID
+	if j, ok := c.joined.Load(key); ok {
+		c.joined.Store(key, lead{stream: j.stream, at: now})
+		return j.stream
+	}
+	if p.FrameType != dmrconst.FrameDataSync {
+		return p.StreamID
+	}
+	dt := enums.DataType(p.DTypeOrVSeq & 0xf)
+	if dt != enums.DataTypeCSBK && dt != enums.DataTypeDataHeader {
+		return p.StreamID
+	}
+	lk := leadKey{server: key.server, repeater: key.repeater, slot: key.slot, src: p.Src, dst: p.Dst, group: p.GroupCall}
+	stream := p.StreamID
+	if l, ok := c.leads.Load(lk); ok && l.stream != p.StreamID && now.Sub(l.at) < preambleGap {
+		stream = l.stream
+		c.joined.Store(key, lead{stream: stream, at: now})
+	}
+	if dt == enums.DataTypeCSBK {
+		c.leads.Store(lk, lead{stream: stream, at: now})
+	}
+	return stream
 }
 
 // Undeliverable records why, such as "IPSC repeater 311304200 cannot
@@ -1075,6 +1130,18 @@ func (s *shard) sweep(now time.Time) {
 		s.t.streams.Range(func(id uint, ref streamRef) bool {
 			if now.Sub(ref.at) >= streamIdle {
 				s.t.streams.Delete(id)
+			}
+			return true
+		})
+		s.t.leads.Range(func(k leadKey, l lead) bool {
+			if now.Sub(l.at) >= streamIdle {
+				s.t.leads.Delete(k)
+			}
+			return true
+		})
+		s.t.joined.Range(func(k chanKey, l lead) bool {
+			if now.Sub(l.at) >= streamIdle {
+				s.t.joined.Delete(k)
 			}
 			return true
 		})

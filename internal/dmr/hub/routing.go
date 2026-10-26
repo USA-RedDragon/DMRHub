@@ -108,6 +108,9 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 
 	tx, ticket := h.prepareCopy(ctx, &packet, sc, sourceName)
+	if tx == nil && h.queueBehindCopies(ctx, packet, sourceName) {
+		return
+	}
 	h.fanOut(ctx, packet, sourceName)
 	if tx != nil {
 		tx.queue(context.WithoutCancel(ctx), packet, ticket)

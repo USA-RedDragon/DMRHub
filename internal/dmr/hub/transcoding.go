@@ -164,6 +164,26 @@ func (h *Hub) reserveCopy(key sourceSlot, sourceName string) *copyTicket {
 	return t
 }
 
+// queueBehindCopies routes packet, which gets no copy, in the order of the
+// copies of its source slot when copies of earlier bursts are still on
+// their way, so that a target of the copies gets it after them, as the
+// last burst of a call that fails its check. It reports whether it took
+// packet.
+func (h *Hub) queueBehindCopies(ctx context.Context, packet models.Packet, sourceName string) bool {
+	key := h.sourceSlotOf(packet, sourceName)
+	h.copyMu.Lock()
+	o := h.copyOrders[key]
+	if o == nil || len(o.queue) == 0 {
+		h.copyMu.Unlock()
+		return false
+	}
+	t := &copyTicket{key: key, source: sourceName}
+	o.queue = append(o.queue, t)
+	h.copyMu.Unlock()
+	h.finishCopy(context.WithoutCancel(ctx), t, packet)
+	return true
+}
+
 // finishCopy sets the copies of t, none when packets is empty, and routes
 // the copies of its source slot that are next in order.
 func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, packets ...models.Packet) {

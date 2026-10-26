@@ -787,6 +787,30 @@ func TestABacklogWithinTheBudgetLosesNoBurst(t *testing.T) {
 	})
 }
 
+// TestATerminatorWithoutACopyComesAfterTheCopies sends a Codec2 call whose
+// terminator fails its check, so it gets no copy, while the AMBE server
+// answers after 30 ms, so the copies of the bursts before it are still
+// made when it comes. The AMBE hotspot must get the terminator as it came,
+// after every copy.
+func TestATerminatorWithoutACopyComesAfterTheCopies(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		n := newTCNet(t, stack)
+		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		n.ambe.SetDelay(30 * time.Millisecond)
+		stream := n.nextStream()
+		cc := newC2Call(t, call{group: true, dst: tcTG, src: tcTalker}, false, tcBursts, uint64(stream))
+		sent := cc.tx.packets(stream)
+		last := len(sent) - 1
+		sent[last].DMRData = badHeader(layer2.RawBurst(sent[last].DMRData))
+		sendC2(t, n.c2.SendDMRD, sent)
+		g := n.drain(callWait(sent))
+		got := ofStream(g.ambeListen, stream)
+		require.Len(t, got, len(sent), "the AMBE hotspot must get every burst")
+		assert.Equal(t, sent[last].DMRData, got[last].DMRData, "the terminator came before a copy")
+	})
+}
+
 // TestTheCopiesOfBackToBackCallsKeepTheirOrder sends two Codec2 calls from
 // one hotspot slot back to back while the AMBE server answers after 30 ms,
 // so the copies of the first call are still made when the second starts.

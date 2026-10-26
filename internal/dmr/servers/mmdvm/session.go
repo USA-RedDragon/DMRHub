@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm/clause"
 )
 
 // beaconDelay is the time after a login at which the server asks the
@@ -615,7 +616,7 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 		return false
 	}
 	dbRepeater.UpdateFrom(repeater)
-	if err := s.DB.Save(&dbRepeater).Error; err != nil {
+	if err := s.DB.Omit(clause.Associations).Save(&dbRepeater).Error; err != nil {
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
 		return false
 	}

@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -113,6 +114,9 @@ func worstDelay(t *testing.T, arrivals <-chan arrival, stream uint, sent []time.
 				continue
 			}
 			target := fmt.Sprintf("%s:%d", a.server, a.rp.RepeaterID)
+			if !slices.Contains(targets, target) {
+				continue
+			}
 			got[target]++
 			if d := a.at.Sub(sent[a.rp.Packet.Seq]); d > worst {
 				worst = d

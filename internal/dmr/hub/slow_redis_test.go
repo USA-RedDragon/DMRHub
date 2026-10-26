@@ -317,11 +317,11 @@ func TestAStalledPluginDeliveryHoldsNoBurst(t *testing.T) {
 	worstDelay(t, arrivals, 70400, sendStream(h, 1, 70400, true, 4), "mmdvm:100002", "peers:3100100")
 
 	plugin.on.Store(true)
-	worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 16), "peers:3100100")
+	worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 20), "peers:3100100")
 	plugin.on.Store(false)
 	t.Logf("worst delay to the peer %v with %v per hand-off to the plugin", worst, stalledRedisCall)
 	assert.Less(t, worst, stalledRedisCall/4, "a burst to the peer waited on the plugin")
-	assert.Eventually(t, func() bool { return plugin.delivered.Load() == 20 }, 30*time.Second, 50*time.Millisecond, "the plugin did not get every burst")
+	assert.Eventually(t, func() bool { return plugin.delivered.Load() == 24 }, 30*time.Second, 50*time.Millisecond, "the plugin did not get every burst")
 }
 
 // blockedPubSub holds every publish to a burst topic until release, as a

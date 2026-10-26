@@ -14,6 +14,7 @@ Run a DMR network (like TGIF or BrandMeister) server with a single binary compat
 - [Messages and SMS Storage](doc/messages.md)
 - [Positions](doc/positions.md)
 - [Plugins](doc/plugins.md)
+- [OAuth Apps](doc/oauth-apps.md)
 - [Building from Source](doc/Building.md)
 
 ## Live Server

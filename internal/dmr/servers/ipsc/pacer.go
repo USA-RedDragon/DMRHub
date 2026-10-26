@@ -86,9 +86,9 @@ type queuedCall struct {
 
 // holdEnd returns the end of the call hang that c gives its slot when it
 // ends at now. A voice call holds the data and CSBK calls after it for
-// callHangHold from its terminator, or from now when its terminator was
-// lost. A data call holds them for dataHangHold from its last block.
-func (c *queuedCall) holdEnd(now time.Time) time.Time {
+// callHold from its terminator, or from now when its terminator was lost.
+// A data call holds them for dataHold from its last block.
+func (c *queuedCall) holdEnd(now time.Time, callHold, dataHold time.Duration) time.Time {
 	var until time.Time
 	if c.sentAt.IsZero() {
 		return until
@@ -98,10 +98,10 @@ func (c *queuedCall) holdEnd(now time.Time) time.Time {
 		if c.ended {
 			end = c.sentAt
 		}
-		until = end.Add(callHangHold)
+		until = end.Add(callHold)
 	}
 	if c.data {
-		until = later(until, c.sentAt.Add(dataHangHold))
+		until = later(until, c.sentAt.Add(dataHold))
 	}
 	return until
 }
@@ -206,19 +206,21 @@ func (q *slotQueue) frames() int {
 }
 
 type pacer struct {
-	send    func(slotKey, []byte)
-	discard func(models.Packet)
-	end     func(slotKey, queuedFrame) []byte
-	now     func() time.Time
-	after   func(time.Duration) <-chan time.Time
-	mu      sync.Mutex
-	slots   map[slotKey]*slotQueue
-	done    chan struct{}
-	wg      sync.WaitGroup
+	send     func(slotKey, []byte)
+	discard  func(models.Packet)
+	end      func(slotKey, queuedFrame) []byte
+	now      func() time.Time
+	after    func(time.Duration) <-chan time.Time
+	callHold time.Duration
+	dataHold time.Duration
+	mu       sync.Mutex
+	slots    map[slotKey]*slotQueue
+	done     chan struct{}
+	wg       sync.WaitGroup
 }
 
 func newPacer(send func(slotKey, []byte), discard func(models.Packet)) *pacer {
-	return &pacer{send: send, discard: discard, now: time.Now, after: time.After, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
+	return &pacer{send: send, discard: discard, now: time.Now, after: time.After, callHold: callHangHold, dataHold: dataHangHold, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
 }
 
 // enqueue queues frame, of the packet pkt of the stream, to the peer slot
@@ -414,7 +416,7 @@ func (p *pacer) take(k slotKey, q *slotQueue, now time.Time) (queuedFrame, time.
 			}
 			return queuedFrame{}, callHang - quiet, false
 		}
-		q.holdUntil = later(q.holdUntil, c.holdEnd(now))
+		q.holdUntil = later(q.holdUntil, c.holdEnd(now, p.callHold, p.dataHold))
 		q.active = nil
 	}
 }
@@ -500,7 +502,7 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 		}
 		until := q.holdUntil
 		if q.active != nil {
-			until = later(until, q.active.holdEnd(now))
+			until = later(until, q.active.holdEnd(now, p.callHold, p.dataHold))
 		}
 		if left := until.Sub(now); left > 0 {
 			hangs = append(hangs, handedHang{Slot: slot, Left: left})
@@ -592,4 +594,9 @@ func (p *pacer) stop() {
 	}
 	p.mu.Unlock()
 	p.wg.Wait()
+}
+
+// longestHold is the longest call hang that the pacer gives a slot.
+func (p *pacer) longestHold() time.Duration {
+	return max(p.callHold, p.dataHold)
 }

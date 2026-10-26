@@ -190,3 +190,28 @@ func TestApplyTurnsWebTransportOnMovesItAndTurnsItOff(t *testing.T) {
 	require.Empty(t, l.Manager.Apply(&off))
 	assert.Nil(t, webTransportAddr(t, l.Manager), "turning WebTransport off stops its listener")
 }
+
+// TestApplyRestartsIPSCForNewHangHolds changes each IPSC hang hold. The
+// IPSC server takes its holds when it is made, so each change makes a new
+// one, and the same holds keep the one that runs.
+func TestApplyRestartsIPSCForNewHangHolds(t *testing.T) {
+	t.Parallel()
+	l := testutils.SetupLiveStack(t)
+	before := l.Manager.Server(manager.IPSC)
+	require.NotNil(t, before)
+
+	same := *l.Config
+	require.Empty(t, l.Manager.Apply(&same))
+	assert.Same(t, before, l.Manager.Server(manager.IPSC), "the same settings restart the server")
+
+	call := same
+	call.DMR.IPSC.CallHangHold = 0
+	require.Empty(t, l.Manager.Apply(&call))
+	afterCall := l.Manager.Server(manager.IPSC)
+	assert.NotSame(t, before, afterCall, "a new call hang hold keeps the old server")
+
+	data := call
+	data.DMR.IPSC.DataHangHold = 0
+	require.Empty(t, l.Manager.Apply(&data))
+	assert.NotSame(t, afterCall, l.Manager.Server(manager.IPSC), "a new data hang hold keeps the old server")
+}

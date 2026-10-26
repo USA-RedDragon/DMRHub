@@ -22,8 +22,10 @@ package config_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 func makeValidConfig() config.Config {
@@ -583,6 +585,54 @@ func TestMMDVMWebTransportValidate(t *testing.T) {
 		m.WebTransport = tc.wt
 		if err := m.Validate(); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
 			t.Errorf("%s: got %v, want %v", tc.name, err, tc.want)
+		}
+	}
+}
+
+// --- IPSC hang holds ---
+
+func TestIPSCHangHoldDefaults(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatalf("default config: %v", err)
+	}
+	if cfg.DMR.IPSC.CallHangHold != 2500*time.Millisecond {
+		t.Errorf("call hang hold default = %v, want 2.5s", cfg.DMR.IPSC.CallHangHold)
+	}
+	if cfg.DMR.IPSC.DataHangHold != 1200*time.Millisecond {
+		t.Errorf("data hang hold default = %v, want 1.2s", cfg.DMR.IPSC.DataHangHold)
+	}
+}
+
+func TestIPSCHangHoldRange(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		hold time.Duration
+		ok   bool
+	}{
+		{-time.Millisecond, false},
+		{0, true},
+		{2500 * time.Millisecond, true},
+		{10 * time.Second, true},
+		{10*time.Second + time.Millisecond, false},
+	} {
+		for _, data := range []bool{false, true} {
+			ipsc := config.IPSC{Enabled: true, Bind: "[::]", Port: 50000, NetworkID: 1}
+			want := config.ErrInvalidIPSCCallHangHold
+			if data {
+				ipsc.DataHangHold = tc.hold
+				want = config.ErrInvalidIPSCDataHangHold
+			} else {
+				ipsc.CallHangHold = tc.hold
+			}
+			err := ipsc.Validate()
+			if tc.ok && err != nil {
+				t.Errorf("hold %v data %v: unexpected error %v", tc.hold, data, err)
+			}
+			if !tc.ok && !errors.Is(err, want) {
+				t.Errorf("hold %v data %v: error %v, want %v", tc.hold, data, err, want)
+			}
 		}
 	}
 }

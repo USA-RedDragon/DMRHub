@@ -91,6 +91,10 @@ dmr:
     port: 50000
     # DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled
     # network-id: 0
+    # Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off
+    call-hang-hold: "2.5s"
+    # Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off
+    data-hang-hold: "1.2s"
   # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
   disable-radio-id-validation: false
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.

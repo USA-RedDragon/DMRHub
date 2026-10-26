@@ -100,6 +100,7 @@ type settings struct {
 	port    int
 	id      uint32
 	wt      config.MMDVMWebTransport
+	holds   [2]time.Duration
 }
 
 func settingsOf(k Kind, c *config.Config) settings {
@@ -111,7 +112,7 @@ func settingsOf(k Kind, c *config.Config) settings {
 		}
 		return s
 	case IPSC:
-		return settings{enabled: c.DMR.IPSC.Enabled, bind: c.DMR.IPSC.Bind, port: c.DMR.IPSC.Port, id: c.DMR.IPSC.NetworkID}
+		return settings{enabled: c.DMR.IPSC.Enabled, bind: c.DMR.IPSC.Bind, port: c.DMR.IPSC.Port, id: c.DMR.IPSC.NetworkID, holds: [2]time.Duration{c.DMR.IPSC.CallHangHold, c.DMR.IPSC.DataHangHold}}
 	case OpenBridge:
 		return settings{enabled: c.DMR.OpenBridge.Enabled, bind: c.DMR.OpenBridge.Bind, port: c.DMR.OpenBridge.Port, id: c.DMR.OpenBridge.ServerID}
 	}

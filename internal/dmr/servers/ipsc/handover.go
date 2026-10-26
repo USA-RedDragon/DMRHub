@@ -187,7 +187,7 @@ func (s *IPSCServer) finishHandover(id uint32, report *handoverReport) {
 	var batch []models.Packet
 	if report != nil {
 		for _, h := range report.Hangs {
-			s.pacer.holdFor(slotKey{peer: id, slot: h.Slot}, min(h.Left, callHangHold))
+			s.pacer.holdFor(slotKey{peer: id, slot: h.Slot}, min(h.Left, s.pacer.longestHold()))
 		}
 		t := s.egressTranslator(id)
 		for _, c := range report.Calls {

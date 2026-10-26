@@ -39,6 +39,8 @@ const (
 	fieldDMROpenBridgeSrv  = "dmr.openbridge.server-id"
 	fieldDMRIPSCPort       = "dmr.ipsc.port"
 	fieldDMRIPSCNetworkID  = "dmr.ipsc.network-id"
+	fieldDMRIPSCCallHang   = "dmr.ipsc.call-hang-hold"
+	fieldDMRIPSCDataHang   = "dmr.ipsc.data-hang-hold"
 	fieldSMTPPort          = "smtp.port"
 	fieldMetricsPort       = "metrics.port"
 	fieldPProfPort         = "pprof.port"
@@ -142,6 +144,10 @@ var (
 	ErrInvalidIPSCPort = errors.New("invalid IPSC server port provided")
 	// ErrInvalidIPSCNetworkID indicates that the IPSC network ID is required when IPSC is enabled.
 	ErrInvalidIPSCNetworkID = errors.New("IPSC network ID is required when IPSC is enabled")
+	// ErrInvalidIPSCCallHangHold indicates that the IPSC call hang hold is out of range.
+	ErrInvalidIPSCCallHangHold = errors.New("invalid IPSC call hang hold provided, must be from 0 to 10s")
+	// ErrInvalidIPSCDataHangHold indicates that the IPSC data hang hold is out of range.
+	ErrInvalidIPSCDataHangHold = errors.New("invalid IPSC data hang hold provided, must be from 0 to 10s")
 	// ErrInvalidDMRRadioIDURL indicates that the provided DMR radio ID URL is not valid.
 	ErrInvalidDMRRadioIDURL = errors.New("invalid DMR radio ID URL provided")
 	// ErrInvalidRetention indicates that a retention period is not 0 or a number of days up to MaxRetentionDays.
@@ -370,6 +376,18 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, ValidationError{
 			Field: fieldDMRIPSCNetworkID,
 			Err:   ErrInvalidIPSCNetworkID,
+		})
+	}
+	if o.CallHangHold < 0 || o.CallHangHold > MaxCallHangHold {
+		errs = append(errs, ValidationError{
+			Field: fieldDMRIPSCCallHang,
+			Err:   ErrInvalidIPSCCallHangHold,
+		})
+	}
+	if o.DataHangHold < 0 || o.DataHangHold > MaxCallHangHold {
+		errs = append(errs, ValidationError{
+			Field: fieldDMRIPSCDataHang,
+			Err:   ErrInvalidIPSCDataHangHold,
 		})
 	}
 

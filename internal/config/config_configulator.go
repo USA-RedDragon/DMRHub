@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/USA-RedDragon/configulator/v2"
 	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
@@ -76,10 +77,12 @@ type openBridgeShadow struct {
 }
 
 type iPSCShadow struct {
-	Enabled   *bool   `json:"enabled"    toml:"enabled"    yaml:"enabled"`
-	Bind      *string `json:"bind"       toml:"bind"       yaml:"bind"`
-	Port      *int    `json:"port"       toml:"port"       yaml:"port"`
-	NetworkID *uint32 `json:"network-id" toml:"network-id" yaml:"network-id"`
+	Enabled      *bool          `json:"enabled"        toml:"enabled"        yaml:"enabled"`
+	Bind         *string        `json:"bind"           toml:"bind"           yaml:"bind"`
+	Port         *int           `json:"port"           toml:"port"           yaml:"port"`
+	NetworkID    *uint32        `json:"network-id"     toml:"network-id"     yaml:"network-id"`
+	CallHangHold *impl.Duration `json:"call-hang-hold" toml:"call-hang-hold" yaml:"call-hang-hold"`
+	DataHangHold *impl.Duration `json:"data-hang-hold" toml:"data-hang-hold" yaml:"data-hang-hold"`
 }
 
 type retentionShadow struct {
@@ -226,6 +229,10 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.ipsc.bind", configulator.LayerDefault, "default tag")
 	cfg.DMR.IPSC.Port = 50000
 	set("dmr.ipsc.port", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPSC.CallHangHold = time.Duration(int64(2500000000))
+	set("dmr.ipsc.call-hang-hold", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPSC.DataHangHold = time.Duration(int64(1200000000))
+	set("dmr.ipsc.data-hang-hold", configulator.LayerDefault, "default tag")
 	cfg.DMR.DisableRadioIDValidation = false
 	set("dmr.disable-radio-id-validation", configulator.LayerDefault, "default tag")
 	cfg.DMR.RadioIDURL = "https://www.radioid.net/static/users.json"
@@ -452,6 +459,28 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.IPSC.NetworkID != nil {
 				cfg.DMR.IPSC.NetworkID = *s.DMR.IPSC.NetworkID
 				set("dmr.ipsc.network-id", configulator.LayerFile, file)
+			}
+			if s.DMR.IPSC.CallHangHold != nil {
+				v, ok := s.DMR.IPSC.CallHangHold.Value()
+				if !ok {
+					return &configulator.OpaqueSpellingError{
+						Hint: "\"30s\"",
+						Path: "dmr.ipsc.call-hang-hold",
+					}
+				}
+				cfg.DMR.IPSC.CallHangHold = v
+				set("dmr.ipsc.call-hang-hold", configulator.LayerFile, file)
+			}
+			if s.DMR.IPSC.DataHangHold != nil {
+				v, ok := s.DMR.IPSC.DataHangHold.Value()
+				if !ok {
+					return &configulator.OpaqueSpellingError{
+						Hint: "\"30s\"",
+						Path: "dmr.ipsc.data-hang-hold",
+					}
+				}
+				cfg.DMR.IPSC.DataHangHold = v
+				set("dmr.ipsc.data-hang-hold", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.DisableRadioIDValidation != nil {
@@ -914,6 +943,32 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.IPSC.NetworkID = uint32(p)
 		set("dmr.ipsc.network-id", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "call-hang-hold"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.call-hang-hold",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.IPSC.CallHangHold = d
+		set("dmr.ipsc.call-hang-hold", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ipsc", "data-hang-hold"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.data-hang-hold",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.IPSC.DataHangHold = d
+		set("dmr.ipsc.data-hang-hold", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "disable-radio-id-validation"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1266,6 +1321,8 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "ipsc" + o.Separator + "bind",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "port",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "network-id",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "call-hang-hold",
+		"dmr" + o.Separator + "ipsc" + o.Separator + "data-hang-hold",
 		"dmr" + o.Separator + "disable-radio-id-validation",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
@@ -1355,43 +1412,45 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[33], "[::]", "IPSC server listen address")
 	fs.Var(impl.NewInt(50000), names[34], "IPSC server port")
 	fs.Uint32(names[35], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
-	fs.Bool(names[36], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[37], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[38], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[39], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[40], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[41], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[42], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[43], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[44], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[45], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[46], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[47], false, "Accept plugins that run as their own programs")
-	fs.String(names[48], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[49], "TCP port that plugins connect to")
-	fs.String(names[50], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[51], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[52], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[53], false, "Enable SMTP support for sending emails")
-	fs.String(names[54], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[55], "SMTP server port")
-	fs.String(names[56], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[57], "", "SMTP server username")
-	fs.String(names[58], "", "SMTP server password")
-	fs.String(names[59], "", "Email address to use as the sender")
-	fs.String(names[60], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[61], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[62], false, "Enable metrics collection and export")
-	fs.String(names[63], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[64], "Metrics server port")
-	fs.StringSlice(names[65], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[66], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[67], false, "Enable PProf profiling and debugging support")
-	fs.String(names[68], "[::]", "PProf server listen address")
-	fs.StringSlice(names[69], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[70], "PProf server port")
-	fs.String(names[71], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[72], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Duration(names[36], time.Duration(int64(2500000000)), "Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off")
+	fs.Duration(names[37], time.Duration(int64(1200000000)), "Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off")
+	fs.Bool(names[38], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[39], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[40], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[41], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[42], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[43], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[44], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[45], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[46], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[47], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[48], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[49], false, "Accept plugins that run as their own programs")
+	fs.String(names[50], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[51], "TCP port that plugins connect to")
+	fs.String(names[52], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[53], "", "TLS key file of the certificate file")
+	fs.Var(impl.NewInt(25), names[54], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[55], false, "Enable SMTP support for sending emails")
+	fs.String(names[56], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[57], "SMTP server port")
+	fs.String(names[58], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[59], "", "SMTP server username")
+	fs.String(names[60], "", "SMTP server password")
+	fs.String(names[61], "", "Email address to use as the sender")
+	fs.String(names[62], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[63], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[64], false, "Enable metrics collection and export")
+	fs.String(names[65], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[66], "Metrics server port")
+	fs.StringSlice(names[67], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[68], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[69], false, "Enable PProf profiling and debugging support")
+	fs.String(names[70], "[::]", "PProf server listen address")
+	fs.StringSlice(names[71], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[72], "PProf server port")
+	fs.String(names[73], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[74], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -1827,6 +1886,30 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.IPSC.NetworkID = v
 		set("dmr.ipsc.network-id", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "call-hang-hold"; fs.Changed(n) {
+		v, err := fs.GetDuration(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.call-hang-hold",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPSC.CallHangHold = v
+		set("dmr.ipsc.call-hang-hold", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ipsc" + o.Separator + "data-hang-hold"; fs.Changed(n) {
+		v, err := fs.GetDuration(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ipsc.data-hang-hold",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPSC.DataHangHold = v
+		set("dmr.ipsc.data-hang-hold", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "disable-radio-id-validation"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -3527,6 +3610,38 @@ func (s *iPSCShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".network-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
+		case "call-hang-hold":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				var slot impl.Duration
+				if err := slot.UnmarshalText([]byte(v.String())); err != nil {
+					return configJSONError(path+".call-hang-hold", v, err)
+				}
+				s.CallHangHold = &slot
+			default:
+				return configJSONError(path+".call-hang-hold", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
+		case "data-hang-hold":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				var slot impl.Duration
+				if err := slot.UnmarshalText([]byte(v.String())); err != nil {
+					return configJSONError(path+".data-hang-hold", v, err)
+				}
+				s.DataHangHold = &slot
+			default:
+				return configJSONError(path+".data-hang-hold", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -4368,6 +4483,8 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.ipsc.bind = %v\n", c.DMR.IPSC.Bind)
 	fmt.Fprintf(&b, "dmr.ipsc.port = %v\n", c.DMR.IPSC.Port)
 	fmt.Fprintf(&b, "dmr.ipsc.network-id = %v\n", c.DMR.IPSC.NetworkID)
+	fmt.Fprintf(&b, "dmr.ipsc.call-hang-hold = %v\n", c.DMR.IPSC.CallHangHold)
+	fmt.Fprintf(&b, "dmr.ipsc.data-hang-hold = %v\n", c.DMR.IPSC.DataHangHold)
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)

@@ -163,6 +163,7 @@ func PostgresRedisBackendInto(c *Containers) Backend {
 				dockertest.WithHostConfig(func(hc *container.HostConfig) {
 					hc.AutoRemove = true
 					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+					hc.NanoCPUs = 4e9
 				}),
 			)
 			if err != nil {
@@ -201,6 +202,7 @@ func PostgresRedisBackendInto(c *Containers) Backend {
 				dockertest.WithHostConfig(func(hc *container.HostConfig) {
 					hc.AutoRemove = true
 					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+					hc.NanoCPUs = 4e9
 				}),
 			)
 			if err != nil {

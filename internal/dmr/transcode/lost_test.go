@@ -303,8 +303,8 @@ func TestBurstsWithoutSequenceNumbersAreNotFilled(t *testing.T) {
 
 // TestCloseClearsLostFrame ends a call whose last request to the chip was
 // for a lost frame: the deadline leaves no time to decode the burst after
-// the fill. Close decodes a silence frame so that the chip does not keep
-// LOST_FRAME set for the next call on it.
+// the fill. Close clears LOST_FRAME with a PKT_DCMODE field, and decodes
+// nothing, so that the chip does not keep it set for the next call on it.
 func TestCloseClearsLostFrame(t *testing.T) {
 	t.Parallel()
 	const delay, attempt = 60 * time.Millisecond, 200 * time.Millisecond
@@ -326,8 +326,12 @@ func TestCloseClearsLostFrame(t *testing.T) {
 	require.Len(t, r.Fill, 1)
 	require.Equal(t, layer2.VoiceSlotsPerBurst, r.Missed, "the burst after the fill has no time to decode")
 	require.Equal(t, 3, srv.LostFrames())
+	require.Equal(t, 1, srv.DCModes())
+	decodes := srv.Decodes()
 	st.Close()
 	srv.SetDelay(0)
+	assert.Equal(t, 2, srv.DCModes(), "Close did not send PKT_DCMODE")
+	assert.Equal(t, decodes, srv.Decodes(), "Close decoded a frame")
 
 	conn, err := (&net.Dialer{}).DialContext(t.Context(), "udp", srv.Addr())
 	require.NoError(t, err)

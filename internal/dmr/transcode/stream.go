@@ -146,11 +146,6 @@ type Stream struct {
 	hasTmpl [layer2.VoiceBurstsPerSuperframe]bool
 	src     layer2.SyncSource
 	embSig  pdu.EmbeddedSignalling
-	// chipLost reports that the chip may have LOST_FRAME set, and
-	// codecLost that the codec of the connection sent it, so that its next
-	// Decode clears it.
-	chipLost  bool
-	codecLost bool
 }
 
 // Budget returns the time each burst of the call may take to convert.
@@ -171,9 +166,6 @@ func (s *Stream) Close() {
 // CloseContext is Close with the context of the KV requests that give the
 // server back.
 func (s *Stream) CloseContext(ctx context.Context) {
-	if s.chipLost && s.ambe != nil {
-		_, _, _ = s.decode(s.ambe, vocoder.AMBESilenceSlot())
-	}
 	s.closeAMBE()
 	if s.lease != nil {
 		s.lease.release(ctx)
@@ -419,11 +411,11 @@ func (s *Stream) frame(ctx context.Context, slot *[9]byte, deadline time.Time, s
 	reason := s.withAMBE(ctx, deadline, func(c *dvsi.Codec) error {
 		var err error
 		if slot == nil {
-			pcm, rep, err = s.decodeLost(c)
+			pcm, rep, err = c.DecodeLost(s.pcm[:0])
 		} else {
-			pcm, rep, err = s.decode(c, *slot)
+			pcm, rep, err = c.Decode(s.pcm[:0], *slot)
 		}
-		return err
+		return err //nolint:wrapcheck
 	})
 	if reason != "" {
 		return s.c2.Silence(), reason
@@ -441,28 +433,6 @@ func (s *Stream) report(r vocoder.FrameReport) {
 		s.frames[s.nFrames] = r
 		s.nFrames++
 	}
-}
-
-func (s *Stream) decodeLost(c *dvsi.Codec) ([]int16, vocoder.FrameReport, error) {
-	s.chipLost, s.codecLost = true, true
-	return c.DecodeLost(s.pcm[:0]) //nolint:wrapcheck
-}
-
-// decode has the chip decode slot. When the chip may still have LOST_FRAME
-// set from a codec before c, it first sends a lost frame with c, so that
-// the Decode clears the flag.
-func (s *Stream) decode(c *dvsi.Codec, slot [9]byte) ([]int16, vocoder.FrameReport, error) {
-	if s.chipLost && !s.codecLost {
-		if _, _, err := s.decodeLost(c); err != nil {
-			return nil, vocoder.FrameReport{}, err
-		}
-	}
-	pcm, rep, err := c.Decode(s.pcm[:0], slot)
-	if err != nil {
-		return nil, vocoder.FrameReport{}, err //nolint:wrapcheck
-	}
-	s.chipLost, s.codecLost = false, false
-	return pcm, rep, nil
 }
 
 // FrameLabels returns the frame and output labels of r for the metrics:
@@ -567,7 +537,7 @@ func (s *Stream) open(ctx context.Context, deadline time.Time) error {
 		return err //nolint:wrapcheck
 	}
 	s.srv.formatRefused.Store(false)
-	s.conn, s.ambe, s.stale, s.codecLost = conn, c, false, false
+	s.conn, s.ambe, s.stale = conn, c, false
 	return nil
 }
 

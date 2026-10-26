@@ -122,7 +122,7 @@ func (s *shard) updateVoice(r *row, t *task) {
 	packet := t.p
 	r.last = t.at
 	s.note(t, r)
-	if call.LastSeq == packet.Seq {
+	if heardBefore(call.LastSeq, packet.Seq) {
 		return
 	}
 	elapsed := t.at.Sub(call.LastPacketTime)
@@ -155,7 +155,32 @@ func (s *shard) updateVoice(r *row, t *task) {
 	s.t.publishCall(call)
 }
 
+// heardBefore reports whether seq, an 8-bit sequence number, is last, the
+// one of the last burst of a call, or comes before it. Such a burst is a
+// copy, such as a handover resends at a move, or came late, and it is no
+// new burst of the call.
+func heardBefore(last, seq uint) bool {
+	if last > 0xff {
+		return false
+	}
+	return (last-seq)&0xff < 0x80
+}
+
+// calcSequenceLoss counts the bursts of the call that are missing before
+// packet. A call that begins without its voice header, as the part of a
+// call that a replica hears after a move from another one, counts from its
+// first burst: whether the bursts before it were lost or went to another
+// replica is not known here.
 func calcSequenceLoss(call *models.Call, packet models.Packet) {
+	if call.TotalPackets == 0 && (packet.FrameType != dmrconst.FrameDataSync || packet.DTypeOrVSeq != uint(dmrconst.DTypeVoiceHead)) {
+		call.HasHeader = true
+		call.TotalPackets = 1
+		call.LastFrameNum = 0
+		if packet.FrameType == dmrconst.FrameVoice || packet.FrameType == dmrconst.FrameVoiceSync {
+			call.LastFrameNum = packet.DTypeOrVSeq
+		}
+		return
+	}
 	switch packet.FrameType {
 	case dmrconst.FrameDataSync:
 		switch packet.DTypeOrVSeq {

@@ -260,6 +260,61 @@ func TestTrackVoiceCall(t *testing.T) {
 	assert.GreaterOrEqual(t, c.Duration, 150*time.Millisecond)
 }
 
+// TestTrackVoiceLossOfAMovedCall moves a call from one replica to another
+// in the middle of a superframe, as a repeater that moves at a rolling
+// restart does. Each replica keeps a row of the part that it heard, and no
+// burst was lost, so neither row may count a loss.
+func TestTrackVoiceLossOfAMovedCall(t *testing.T) {
+	t.Parallel()
+	one, two, database := newReplicas(t)
+
+	s := newSender(t, one, userA, tgID, true, 7040)
+	s.voiceCall(2, false)
+	s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+	s.send(dmrconst.FrameVoice, 1, layer2.RawBurst{})
+	s.ct = two
+	for v := uint(2); v <= 5; v++ {
+		s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
+	}
+	for range 3 {
+		s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+		for v := uint(1); v <= 5; v++ {
+			s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
+		}
+	}
+	time.Sleep(150 * time.Millisecond)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	for _, c := range waitDone(t, two, database, 2) {
+		assert.Zero(t, c.Loss, "the row of the part from %s counts a loss", c.StartTime)
+	}
+}
+
+// TestTrackVoiceLossIgnoresDuplicates sends the last bursts of a call
+// again, as the handover of a move resends what the repeater may not have
+// got. The copies are not new bursts, so the call has no loss.
+func TestTrackVoiceLossIgnoresDuplicates(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	s := newSender(t, ct, userA, tgID, true, 7041)
+	s.voiceCall(1, false)
+	s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+	b := s.send(dmrconst.FrameVoice, 1, layer2.RawBurst{})
+	c := s.send(dmrconst.FrameVoice, 2, layer2.RawBurst{})
+	for _, p := range []models.Packet{b, c} {
+		ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
+	}
+	for v := uint(3); v <= 5; v++ {
+		s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
+	}
+	time.Sleep(150 * time.Millisecond)
+	s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+	call := waitDone(t, ct, database, 1)[0]
+	assert.Zero(t, call.Loss)
+}
+
 func TestTrackVoiceFromUnregisteredSourceOverPeer(t *testing.T) {
 	t.Parallel()
 	ct, database, _ := newTracker(t)

@@ -33,6 +33,9 @@ const (
 	RepeaterTypeMMDVM = "mmdvm"
 	// RepeaterTypeIPSC is the type for Motorola IPSC repeaters.
 	RepeaterTypeIPSC = "ipsc"
+	// RepeaterTypeModem is the type for the MMDVM modem board that DMRHub
+	// drives over a serial port.
+	RepeaterTypeModem = "modem"
 )
 
 type RepeaterState string

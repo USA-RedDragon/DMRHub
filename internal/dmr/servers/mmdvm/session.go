@@ -524,7 +524,10 @@ func (s *Server) refreshKnown() {
 	}
 }
 
-var errNoPassword = errors.New("repeater has no password")
+var (
+	errNoPassword = errors.New("repeater has no password")
+	errModemID    = errors.New("repeater is the modem of this server")
+)
 
 func (s *Server) password(repeaterID uint) (string, error) {
 	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
@@ -537,6 +540,9 @@ func (s *Server) password(repeaterID uint) (string, error) {
 	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
 		return "", fmt.Errorf("failed to find repeater: %w", err)
+	}
+	if repeater.Type == models.RepeaterTypeModem {
+		return "", errModemID
 	}
 	if repeater.Password == "" {
 		return "", errNoPassword

@@ -28,63 +28,90 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-func newStore(t *testing.T, limit uint) (*ratelimit.GORMStore, *gorm.DB) {
+func backends() []testutils.Backend {
+	return []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()}
+}
+
+func newStore(t *testing.T, be testutils.Backend, limit uint) (*ratelimit.GORMStore, *gorm.DB) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Database.Database = fmt.Sprintf("file:ratelimit_%p", t)
 	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	be.Setup(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
 	return ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: time.Minute, Limit: limit}), database
 }
 
 func TestLimitHoldsForConcurrentRequests(t *testing.T) {
 	t.Parallel()
-	store, _ := newStore(t, 10)
-	var allowed atomic.Int32
-	var wg sync.WaitGroup
-	for range 120 {
-		wg.Go(func() {
-			if !store.Limit("10.0.0.1", nil).RateLimited {
-				allowed.Add(1)
+	for _, be := range backends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			store, _ := newStore(t, be, 10)
+			var allowed atomic.Int32
+			var wg sync.WaitGroup
+			for range 120 {
+				wg.Go(func() {
+					if !store.Limit("10.0.0.1", nil).RateLimited {
+						allowed.Add(1)
+					}
+				})
 			}
+			wg.Wait()
+			assert.Equal(t, int32(10), allowed.Load())
 		})
 	}
-	wg.Wait()
-	assert.Equal(t, int32(10), allowed.Load())
 }
 
 func TestLimitCountsAndResets(t *testing.T) {
 	t.Parallel()
-	store, database := newStore(t, 2)
-	first := store.Limit("10.0.0.2", nil)
-	assert.False(t, first.RateLimited)
-	assert.Equal(t, uint(1), first.RemainingHits)
-	assert.False(t, store.Limit("10.0.0.2", nil).RateLimited)
-	third := store.Limit("10.0.0.2", nil)
-	assert.True(t, third.RateLimited)
-	assert.Equal(t, uint(0), third.RemainingHits)
-	assert.False(t, store.Limit("10.0.0.3", nil).RateLimited, "another address has its own count")
+	for _, be := range backends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			store, database := newStore(t, be, 2)
+			first := store.Limit("10.0.0.2", nil)
+			assert.False(t, first.RateLimited)
+			assert.Equal(t, uint(1), first.RemainingHits)
+			assert.False(t, store.Limit("10.0.0.2", nil).RateLimited)
+			third := store.Limit("10.0.0.2", nil)
+			assert.True(t, third.RateLimited)
+			assert.Equal(t, uint(0), third.RemainingHits)
+			assert.False(t, store.Limit("10.0.0.3", nil).RateLimited, "another address has its own count")
 
-	require.NoError(t, database.Exec("UPDATE ratelimits SET timestamp = ? WHERE key = ?", time.Now().Add(-2*time.Minute), "10.0.0.2").Error)
-	assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "the count resets after the rate")
+			require.NoError(t, database.Model(&models.Ratelimit{Key: "10.0.0.2"}).Update("timestamp", time.Now().Add(-2*time.Minute)).Error)
+			assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "the count resets after the rate")
+		})
+	}
 }
 
 func TestSteadyHitsGetANewWindowEachRate(t *testing.T) {
 	t.Parallel()
-	_, database := newStore(t, 3)
-	store := ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: 300 * time.Millisecond, Limit: 3})
-	for range 3 {
-		require.False(t, store.Limit("10.0.0.2", nil).RateLimited)
-		time.Sleep(120 * time.Millisecond)
+	for _, be := range backends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			_, database := newStore(t, be, 3)
+			store := ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: 300 * time.Millisecond, Limit: 3})
+			for range 3 {
+				require.False(t, store.Limit("10.0.0.2", nil).RateLimited)
+				time.Sleep(120 * time.Millisecond)
+			}
+			assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "300 ms after the first hit a new window starts, however steady the hits")
+		})
 	}
-	assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "300 ms after the first hit a new window starts, however steady the hits")
 }

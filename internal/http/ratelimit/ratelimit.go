@@ -20,6 +20,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -51,17 +52,13 @@ func NewGORMStore(options *GORMOptions) *GORMStore {
 
 // Limit counts a request of key and reports whether it is over the limit
 // of its window, which starts with the first request after the last window
-// ended and lasts the rate. The count is read and written by one statement,
-// so concurrent requests of one key each see their own count.
+// ended and lasts the rate. The count is written and read back under the
+// lock of its row, so concurrent requests of one key each see their own
+// count.
 func (s *GORMStore) Limit(key string, _ *gin.Context) (ret ratelimit.Info) {
 	ret.Limit = s.limit
 	now := time.Now()
-	var rl models.Ratelimit
-	err := s.db.Raw(`INSERT INTO ratelimits (key, hits, timestamp) VALUES (?, 1, ?)
-ON CONFLICT (key) DO UPDATE SET
-	hits = CASE WHEN ratelimits.timestamp < ? THEN 1 ELSE ratelimits.hits + 1 END,
-	timestamp = CASE WHEN ratelimits.timestamp < ? THEN excluded.timestamp ELSE ratelimits.timestamp END
-RETURNING key, hits, timestamp`, key, now, now.Add(-s.rate), now.Add(-s.rate)).Scan(&rl).Error
+	rl, err := s.hit(key, now)
 	if err != nil {
 		slog.Error("Failed to count a ratelimit hit", "error", err)
 		ret.RemainingHits = s.limit
@@ -75,4 +72,37 @@ RETURNING key, hits, timestamp`, key, now, now.Add(-s.rate), now.Add(-s.rate)).S
 	}
 	ret.RemainingHits = s.limit - uint(uint64(rl.Hits))
 	return ret
+}
+
+func (s *GORMStore) hit(key string, now time.Time) (models.Ratelimit, error) {
+	var rl models.Ratelimit
+	windowStart := now.Add(-s.rate)
+	if s.db.Name() == "mysql" {
+		err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec("INSERT INTO ratelimits (`key`, hits, `timestamp`) VALUES (?, 1, ?)\n"+
+				"ON DUPLICATE KEY UPDATE\n"+
+				"\thits = IF(`timestamp` < ?, 1, hits + 1),\n"+
+				"\t`timestamp` = IF(`timestamp` < ?, ?, `timestamp`)",
+				key, now, windowStart, windowStart, now).Error; err != nil {
+				return fmt.Errorf("count the hit: %w", err)
+			}
+			if err := tx.Raw("SELECT `key`, hits, `timestamp` FROM ratelimits WHERE `key` = ?", key).Scan(&rl).Error; err != nil {
+				return fmt.Errorf("read the count: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return rl, fmt.Errorf("ratelimit %s: %w", key, err)
+		}
+		return rl, nil
+	}
+	err := s.db.Raw(`INSERT INTO ratelimits (key, hits, timestamp) VALUES (?, 1, ?)
+ON CONFLICT (key) DO UPDATE SET
+	hits = CASE WHEN ratelimits.timestamp < ? THEN 1 ELSE ratelimits.hits + 1 END,
+	timestamp = CASE WHEN ratelimits.timestamp < ? THEN excluded.timestamp ELSE ratelimits.timestamp END
+RETURNING key, hits, timestamp`, key, now, windowStart, windowStart).Scan(&rl).Error
+	if err != nil {
+		return rl, fmt.Errorf("ratelimit %s: %w", key, err)
+	}
+	return rl, nil
 }

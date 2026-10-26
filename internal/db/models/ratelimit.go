@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Ratelimit is the model for a rate limit entry
@@ -45,7 +46,7 @@ func (r *Ratelimit) String() string {
 
 func FindRatelimitByKey(db *gorm.DB, key string) (*Ratelimit, error) {
 	var ratelimit Ratelimit
-	if err := db.Where("key = ?", key).First(&ratelimit).Error; err != nil {
+	if err := db.Where(clause.Eq{Column: clause.Column{Name: "key"}, Value: key}).First(&ratelimit).Error; err != nil {
 		return nil, err
 	}
 	return &ratelimit, nil
@@ -54,7 +55,7 @@ func FindRatelimitByKey(db *gorm.DB, key string) (*Ratelimit, error) {
 func RatelimitKeyExists(db *gorm.DB, key string) (bool, error) {
 	var count int64
 	if err := db.Model(&Ratelimit{}).
-		Where("key = ?", key).
+		Where(clause.Eq{Column: clause.Column{Name: "key"}, Value: key}).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

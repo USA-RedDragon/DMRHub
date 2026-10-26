@@ -217,7 +217,8 @@ func area(t *testing.T, name string) (settings, *result, *logCounter) {
 // newStack makes the integration stack of the backend that the settings
 // name: sqlite is a SQLite file with the default parameters, as a
 // production install has, sqlite-memory the shared in-memory database of
-// the integration tests, and postgres-redis Postgres and Redis in Docker.
+// the integration tests, postgres-redis Postgres and Redis in Docker, and
+// mysql and mariadb MySQL or MariaDB in Docker.
 // The containers of a Postgres and Redis backend are in c.
 func newStack(t *testing.T, s settings) (*testutils.IntegrationStack, *testutils.Containers) {
 	t.Helper()
@@ -235,8 +236,12 @@ func newStack(t *testing.T, s settings) (*testutils.IntegrationStack, *testutils
 		return testutils.SetupIntegrationStack(t), c
 	case "postgres-redis":
 		return testutils.SetupIntegrationStack(t, testutils.PostgresRedisBackendInto(c)), c
+	case "mysql":
+		return testutils.SetupIntegrationStack(t, testutils.MySQLBackend()), c
+	case "mariadb":
+		return testutils.SetupIntegrationStack(t, testutils.MariaDBBackend()), c
 	}
-	t.Fatalf("unknown DMRHUB_STRESS_BACKEND %q (sqlite, sqlite-memory or postgres-redis)", s.Backend)
+	t.Fatalf("unknown DMRHUB_STRESS_BACKEND %q (sqlite, sqlite-memory, postgres-redis, mysql or mariadb)", s.Backend)
 	return nil, nil
 }
 

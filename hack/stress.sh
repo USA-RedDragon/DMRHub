@@ -8,7 +8,7 @@
 #                           hostile webclients database repro
 #   DMRHUB_STRESS_BACKENDS  backends, space separated (default: sqlite)
 #                           sqlite (a SQLite file with the default parameters),
-#                           sqlite-memory, postgres-redis (Docker)
+#                           sqlite-memory, postgres-redis, mysql, mariadb (Docker)
 #   DMRHUB_STRESS_RESULTS   results directory
 #                           (default: artifacts/stress/<UTC time>)
 #   DMRHUB_STRESS_DURATION  traffic time of an area (default 20s; soak: set hours)
@@ -89,7 +89,7 @@ for backend in $backends; do
             continue
         fi
         wrap=()
-        if [ "$area" = transports ] && [ -n "${DMRHUB_STRESS_EXT_DIR:-}" ] && [ "$backend" != postgres-redis ]; then
+        if [ "$area" = transports ] && [ -n "${DMRHUB_STRESS_EXT_DIR:-}" ] && [ "${backend#sqlite}" != "$backend" ]; then
             wrap=(unshare -r -n bash -c 'ip link set lo up && DMRHUB_STRESS_NETNS=1 exec "$@"' _)
         fi
         (cd internal/stress && DMRHUB_STRESS_BACKEND=$backend DMRHUB_STRESS_RESULTS=$dir \

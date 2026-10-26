@@ -65,21 +65,7 @@ func guest(t testing.TB, name string) []byte {
 // wasip1 with compiler.
 func guestOf(t testing.TB, compiler, name string) []byte {
 	t.Helper()
-	guests.once.Do(func() {
-		guests.dir, guests.err = os.MkdirTemp("", "dmrhub-wasm-guests-")
-		if guests.err != nil {
-			return
-		}
-		for _, c := range compilers {
-			for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic"} {
-				cmd := buildCommand(c, filepath.Join(guests.dir, c+"-"+g+".wasm"), "./testdata/"+g)
-				if out, err := cmd.CombinedOutput(); err != nil {
-					guests.err = fmt.Errorf("could not build %s with %s: %w\n%s", g, c, err, out)
-					return
-				}
-			}
-		}
-	})
+	guests.once.Do(buildGuests)
 	if guests.err != nil {
 		t.Fatal(guests.err)
 	}
@@ -101,7 +87,28 @@ func eachCompiler(t *testing.T, test func(t *testing.T, compiler string)) {
 	}
 }
 
+// buildGuests builds every test plugin with each compiler.
+func buildGuests() {
+	guests.dir, guests.err = os.MkdirTemp("", "dmrhub-wasm-guests-")
+	if guests.err != nil {
+		return
+	}
+	for _, c := range compilers {
+		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic"} {
+			cmd := buildCommand(c, filepath.Join(guests.dir, c+"-"+g+".wasm"), "./testdata/"+g)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				guests.err = fmt.Errorf("could not build %s with %s: %w\n%s", g, c, err, out)
+				return
+			}
+		}
+	}
+}
+
+// TestMain builds the test plugins before any test starts, so that no
+// test waits for the builds with its clocks running and its in-memory
+// database open, which closes when its idle connections expire.
 func TestMain(m *testing.M) {
+	guests.once.Do(buildGuests)
 	code := m.Run()
 	if guests.dir != "" {
 		_ = os.RemoveAll(guests.dir)

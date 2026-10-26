@@ -19,26 +19,50 @@
 package apimodels
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 )
 
+// POSTConfig is a config that the Setup page sends, with the secrets that
+// an admin typed. A secret that it leaves out keeps its running value.
 type POSTConfig struct {
 	config.Config
-	Secret       *string `json:"secret,omitempty"`
-	PasswordSalt *string `json:"password-salt,omitempty"`
-	HIBPAPIKey   *string `json:"hibp-api-key,omitempty"`
-	SMTP         struct {
-		config.SMTP
-		Password *string `json:"password,omitempty"`
-	} `json:"smtp"`
-	Database struct {
-		config.Database
-		Password *string `json:"password,omitempty"`
-	} `json:"database"`
-	Redis struct {
-		config.Redis
-		Password *string `json:"password,omitempty"`
-	} `json:"redis"`
+	Secret           *string `json:"-"`
+	PasswordSalt     *string `json:"-"`
+	HIBPAPIKey       *string `json:"-"`
+	SMTPPassword     *string `json:"-"`
+	DatabasePassword *string `json:"-"`
+	RedisPassword    *string `json:"-"`
+}
+
+type password struct {
+	Password *string `json:"password"`
+}
+
+type postSecrets struct {
+	Secret       *string  `json:"secret"`
+	PasswordSalt *string  `json:"password-salt"`
+	HIBPAPIKey   *string  `json:"hibp-api-key"`
+	SMTP         password `json:"smtp"`
+	Database     password `json:"database"`
+	Redis        password `json:"redis"`
+}
+
+// UnmarshalJSON reads the config and its secrets, which config.Config
+// never reads from JSON.
+func (p *POSTConfig) UnmarshalJSON(b []byte) error {
+	if err := json.Unmarshal(b, &p.Config); err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+	var s postSecrets
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+	p.Secret, p.PasswordSalt, p.HIBPAPIKey = s.Secret, s.PasswordSalt, s.HIBPAPIKey
+	p.SMTPPassword, p.DatabasePassword, p.RedisPassword = s.SMTP.Password, s.Database.Password, s.Redis.Password
+	return nil
 }
 
 type SecretStatus struct {
@@ -52,11 +76,10 @@ type ConfigResponse struct {
 	Secrets SecretStatus `json:"secrets"`
 }
 
+// ToConfig sets c to the config of p, with the secrets of fallback that p
+// leaves out.
 func (p POSTConfig) ToConfig(c *config.Config, fallback *config.Config) {
 	*c = p.Config
-	c.SMTP = p.SMTP.SMTP
-	c.Database = p.Database.Database
-	c.Redis = p.Redis.Redis
 	if fallback != nil {
 		c.Secret = fallback.Secret
 		c.PasswordSalt = fallback.PasswordSalt
@@ -74,13 +97,13 @@ func (p POSTConfig) ToConfig(c *config.Config, fallback *config.Config) {
 	if p.HIBPAPIKey != nil {
 		c.HIBPAPIKey = *p.HIBPAPIKey
 	}
-	if p.SMTP.Password != nil {
-		c.SMTP.Password = *p.SMTP.Password
+	if p.SMTPPassword != nil {
+		c.SMTP.Password = *p.SMTPPassword
 	}
-	if p.Database.Password != nil {
-		c.Database.Password = *p.Database.Password
+	if p.DatabasePassword != nil {
+		c.Database.Password = *p.DatabasePassword
 	}
-	if p.Redis.Password != nil {
-		c.Redis.Password = *p.Redis.Password
+	if p.RedisPassword != nil {
+		c.Redis.Password = *p.RedisPassword
 	}
 }

@@ -29,6 +29,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestPOSTConfigReadsTheSecrets decodes a config request with every secret,
+// as the Setup page sends a secret that an admin types. Each one replaces
+// the running value, and the other settings of its section stay.
+func TestPOSTConfigReadsTheSecrets(t *testing.T) {
+	t.Parallel()
+	body := `{"secret":"s","password-salt":"p","hibp-api-key":"h",` +
+		`"smtp":{"host":"mail.example.com","password":"smtp"},` +
+		`"database":{"host":"db","password":"database"},` +
+		`"redis":{"host":"redis","password":"redis"}}`
+	var req apimodels.POSTConfig
+	require.NoError(t, json.Unmarshal([]byte(body), &req))
+
+	running := config.Config{Secret: "old", PasswordSalt: "old", HIBPAPIKey: "old"}
+	running.SMTP.Password = "old"
+	running.Database.Password = "old"
+	running.Redis.Password = "old"
+	var got config.Config
+	req.ToConfig(&got, &running)
+
+	assert.Equal(t, "s", got.Secret)
+	assert.Equal(t, "p", got.PasswordSalt)
+	assert.Equal(t, "h", got.HIBPAPIKey)
+	assert.Equal(t, "smtp", got.SMTP.Password)
+	assert.Equal(t, "database", got.Database.Password)
+	assert.Equal(t, "redis", got.Redis.Password)
+	assert.Equal(t, "mail.example.com", got.SMTP.Host)
+	assert.Equal(t, "db", got.Database.Host)
+	assert.Equal(t, "redis", got.Redis.Host)
+}
+
+// TestPOSTConfigKeepsTheSecretsItLacks keeps each running secret that a
+// request leaves out, as the Setup page does for a secret that no one
+// typed.
+func TestPOSTConfigKeepsTheSecretsItLacks(t *testing.T) {
+	t.Parallel()
+	var req apimodels.POSTConfig
+	require.NoError(t, json.Unmarshal([]byte(`{"smtp":{"host":"mail.example.com"}}`), &req))
+	running := config.Config{Secret: "s", PasswordSalt: "p", HIBPAPIKey: "h"}
+	running.SMTP.Password = "smtp"
+	running.Database.Password = "database"
+	running.Redis.Password = "redis"
+	var got config.Config
+	req.ToConfig(&got, &running)
+	assert.Equal(t, "s", got.Secret)
+	assert.Equal(t, "p", got.PasswordSalt)
+	assert.Equal(t, "h", got.HIBPAPIKey)
+	assert.Equal(t, "smtp", got.SMTP.Password)
+	assert.Equal(t, "database", got.Database.Password)
+	assert.Equal(t, "redis", got.Redis.Password)
+}
+
 func TestPOSTConfigSetsPasswords(t *testing.T) {
 	t.Parallel()
 	body := `{

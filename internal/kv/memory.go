@@ -86,12 +86,12 @@ func (kv inMemoryKV) Get(_ context.Context, key string) ([]byte, error) {
 	value, ok := kv.kv.Load(key)
 	if !ok {
 		status = "not_found"
-		return nil, fmt.Errorf("key %s not found", key)
+		return nil, fmt.Errorf("key %s %w", key, ErrNotFound)
 	}
 	if !value.ttl.IsZero() && value.ttl.Before(time.Now()) {
 		kv.kv.Delete(key) // Remove expired key
 		status = "expired"
-		return nil, fmt.Errorf("key %s has expired", key)
+		return nil, fmt.Errorf("key %s has expired: %w", key, ErrNotFound)
 	}
 	status = kvStatusSuccess
 	return value.value, nil // Return the first value

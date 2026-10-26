@@ -62,7 +62,19 @@ func TestKVGetNonexistent(t *testing.T) {
 	store := makeTestKV(t)
 
 	_, err := store.Get(context.Background(), "nonexistent")
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, kv.ErrNotFound)
+}
+
+func TestKVGetExpiredIsNotFound(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+
+	assert.NoError(t, store.Set(ctx, "expiring", []byte("x")))
+	assert.NoError(t, store.Expire(ctx, "expiring", time.Nanosecond))
+	time.Sleep(time.Millisecond)
+	_, err := store.Get(ctx, "expiring")
+	assert.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestKVHas(t *testing.T) {

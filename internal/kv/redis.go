@@ -76,6 +76,9 @@ func (kv *redisKV) Has(ctx context.Context, key string) (bool, error) {
 
 func (kv *redisKV) Get(ctx context.Context, key string) ([]byte, error) {
 	value, err := kv.client.Get(ctx, key).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("redis get %s: %w", key, ErrNotFound)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("redis get %s: %w", key, err)
 	}

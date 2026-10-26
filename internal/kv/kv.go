@@ -21,11 +21,16 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 )
+
+// ErrNotFound is the error of a Get of a key that does not exist or has
+// expired.
+var ErrNotFound = errors.New("not found")
 
 type KV interface {
 	Has(ctx context.Context, key string) (bool, error)

@@ -113,14 +113,19 @@ func (s *KVClient) StoreRepeater(ctx context.Context, repeaterID uint, repeater 
 	}
 }
 
+// GetRepeater returns the KV record of the repeater repeaterID, or
+// ErrNoSuchRepeater when it has none.
 func (s *KVClient) GetRepeater(ctx context.Context, repeaterID uint) (models.Repeater, error) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "KVClient.getRepeater")
 	defer span.End()
 
 	repeaterBits, err := s.kv.Get(ctx, repeaterKey(repeaterID))
+	if errors.Is(err, kv.ErrNotFound) {
+		return models.Repeater{}, ErrNoSuchRepeater
+	}
 	if err != nil {
 		slog.Error("Error getting repeater from KV", "repeaterID", repeaterID, "error", err)
-		return models.Repeater{}, ErrNoSuchRepeater
+		return models.Repeater{}, fmt.Errorf("getting repeater %d from KV: %w", repeaterID, err)
 	}
 	var repeater models.Repeater
 	_, err = repeater.UnmarshalMsg(repeaterBits)

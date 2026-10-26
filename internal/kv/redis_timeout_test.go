@@ -71,3 +71,17 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	assert.Less(t, withDeadline, 300*time.Millisecond, "the call ignored the deadline of its context")
 	assert.Less(t, withoutDeadline, 2*time.Second, "the call without a deadline was not bounded")
 }
+
+func TestRedisGetMissingIsNotFound(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	var c testutils.Containers
+	testutils.PostgresRedisBackendInto(&c).Setup(t, &cfg)
+	store, err := kv.MakeKV(t.Context(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, err = store.Get(t.Context(), "missing")
+	assert.ErrorIs(t, err, kv.ErrNotFound)
+}

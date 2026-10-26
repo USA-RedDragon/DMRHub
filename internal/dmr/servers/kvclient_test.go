@@ -20,7 +20,12 @@
 package servers
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -175,4 +180,60 @@ func TestKeyFormatConsistency(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, id, got.ID)
 	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n, _ := b.buf.Write(p)
+	return n, nil
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func captureLog(t *testing.T) *lockedBuffer {
+	t.Helper()
+	var out lockedBuffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&out, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &out
+}
+
+//nolint:paralleltest // it swaps the default logger
+func TestKVClientMissingRepeaterLogsNoError(t *testing.T) {
+	out := captureLog(t)
+	client := MakeKVClient(makeTestKV(t))
+
+	_, err := client.GetRepeater(context.Background(), 319700)
+	require.ErrorIs(t, err, ErrNoSuchRepeater)
+	assert.NotContains(t, out.String(), "level=ERROR", "a repeater with no record is an answer, not a failure")
+}
+
+type failingKV struct {
+	kv.KV
+}
+
+var errKVDown = errors.New("kv down")
+
+func (failingKV) Get(context.Context, string) ([]byte, error) { return nil, errKVDown }
+
+//nolint:paralleltest // it swaps the default logger
+func TestKVClientKVFailureIsLogged(t *testing.T) {
+	out := captureLog(t)
+	client := MakeKVClient(failingKV{KV: makeTestKV(t)})
+
+	_, err := client.GetRepeater(context.Background(), 319700)
+	require.ErrorIs(t, err, errKVDown)
+	assert.NotErrorIs(t, err, ErrNoSuchRepeater)
+	assert.Equal(t, 1, strings.Count(out.String(), "level=ERROR"), out.String())
 }

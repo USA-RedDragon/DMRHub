@@ -216,7 +216,7 @@ func (s *Stream) hold(ctx context.Context) bool {
 
 func (s *Stream) frame(ctx context.Context, slot [9]byte, deadline time.Time, skip bool) ([9]byte, string) {
 	if s.from == CodecCodec2 {
-		pcm, err := s.c2.Decode(s.pcm[:0], slot)
+		pcm, _, err := s.c2.Decode(s.pcm[:0], slot)
 		if err != nil {
 			return vocoder.AMBESilenceSlot(), ReasonCodec2
 		}
@@ -240,7 +240,7 @@ func (s *Stream) frame(ctx context.Context, slot [9]byte, deadline time.Time, sk
 	var pcm []int16
 	reason := s.withAMBE(ctx, deadline, func(c *dvsi.Codec) error {
 		var err error
-		pcm, err = c.Decode(s.pcm[:0], slot)
+		pcm, _, err = c.Decode(s.pcm[:0], slot)
 		return err //nolint:wrapcheck
 	})
 	if reason != "" {

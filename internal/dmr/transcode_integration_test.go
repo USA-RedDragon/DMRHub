@@ -180,7 +180,7 @@ func ambeCopySlots(t *testing.T, srv *testutils.FakeAMBEServer, from int, slots 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dec.Close() })
 	for i, s := range slots {
-		want, err := dec.Decode(nil, s)
+		want, _, err := dec.Decode(nil, s)
 		require.NoError(t, err)
 		require.Equal(t, want, pcm[i][:], "frame %d is not the decoding of the call", i)
 	}

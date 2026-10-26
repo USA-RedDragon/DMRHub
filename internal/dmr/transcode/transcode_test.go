@@ -421,7 +421,7 @@ func TestServerDownMissesWithoutWaiting(t *testing.T) {
 		t.Cleanup(func() { _ = dec.Close() })
 		var want []int16
 		for _, s := range slots[:12*3+1] {
-			want, err = dec.Decode(want[:0], s)
+			want, _, err = dec.Decode(want[:0], s)
 			require.NoError(t, err)
 		}
 		assert.Equal(t, want, pcm[6*3][:], "the decoder lost its place while the server was down")
@@ -449,7 +449,7 @@ func checkDecoded(t *testing.T, slots [][9]byte, pcm [][160]int16) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dec.Close() })
 	for i, s := range slots {
-		want, err := dec.Decode(nil, s)
+		want, _, err := dec.Decode(nil, s)
 		require.NoError(t, err)
 		require.Equal(t, want, pcm[i][:], "frame %d", i)
 	}

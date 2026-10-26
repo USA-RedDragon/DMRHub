@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Package manager runs the MMDVM, IPSC and OpenBridge servers of DMRHub
+// Package manager runs the MMDVM, IPSC, OpenBridge and modem servers of DMRHub
 // and puts a change of their settings, and of the AMBE server of the hub,
 // into effect without a restart of DMRHub.
 package manager
@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/ipsc"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/modem"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -51,10 +52,11 @@ const (
 	MMDVM      Kind = "mmdvm"
 	IPSC       Kind = "ipsc"
 	OpenBridge Kind = "openbridge"
+	Modem      Kind = "modem"
 )
 
 func kinds() []Kind {
-	return []Kind{MMDVM, IPSC, OpenBridge}
+	return []Kind{MMDVM, IPSC, OpenBridge, Modem}
 }
 
 // Deps is what the servers share with the rest of DMRHub.
@@ -65,6 +67,8 @@ type Deps struct {
 	KV      kv.KV
 	Version string
 	Commit  string
+	// ModemOptions, when set, replaces modem.DefaultOptions, as tests do.
+	ModemOptions *modem.Options
 }
 
 // Server is a running DMR server.
@@ -101,6 +105,7 @@ type settings struct {
 	id      uint32
 	wt      config.MMDVMWebTransport
 	holds   [2]time.Duration
+	modem   config.Modem
 }
 
 func settingsOf(k Kind, c *config.Config) settings {
@@ -115,6 +120,8 @@ func settingsOf(k Kind, c *config.Config) settings {
 		return settings{enabled: c.DMR.IPSC.Enabled, bind: c.DMR.IPSC.Bind, port: c.DMR.IPSC.Port, id: c.DMR.IPSC.NetworkID, holds: [2]time.Duration{c.DMR.IPSC.CallHangHold, c.DMR.IPSC.DataHangHold}}
 	case OpenBridge:
 		return settings{enabled: c.DMR.OpenBridge.Enabled, bind: c.DMR.OpenBridge.Bind, port: c.DMR.OpenBridge.Port, id: c.DMR.OpenBridge.ServerID}
+	case Modem:
+		return settings{enabled: c.DMR.Modem.Enabled, modem: c.DMR.Modem}
 	}
 	return settings{}
 }
@@ -128,6 +135,8 @@ func copySettings(k Kind, dst, src *config.Config) {
 		dst.DMR.IPSC = src.DMR.IPSC
 	case OpenBridge:
 		dst.DMR.OpenBridge = src.DMR.OpenBridge
+	case Modem:
+		dst.DMR.Modem = src.DMR.Modem
 	}
 }
 
@@ -138,6 +147,8 @@ func disable(k Kind, c *config.Config) {
 		c.DMR.IPSC.Enabled = false
 	case OpenBridge:
 		c.DMR.OpenBridge.Enabled = false
+	case Modem:
+		c.DMR.Modem.Enabled = false
 	}
 }
 
@@ -374,6 +385,12 @@ func (m *Manager) build(k Kind, cfg *config.Config) (*running, error) {
 			return nil, fmt.Errorf("failed to make the OpenBridge server: %w", err)
 		}
 		r.server = &s
+	case Modem:
+		opts := modem.DefaultOptions()
+		if m.deps.ModemOptions != nil {
+			opts = *m.deps.ModemOptions
+		}
+		r.server = modem.NewServerWithOptions(&own, m.deps.Hub, m.deps.DB, m.deps.Version, opts)
 	}
 	return r, nil
 }

@@ -451,3 +451,39 @@ func TestOAuthRemovingAnAppClosesItsWebsockets(t *testing.T) {
 		require.Equal(t, "PONG", text, r.name)
 	}
 }
+
+func seedHotspot(t *testing.T, e *oauthEnv, id uint, owner string) {
+	t.Helper()
+	var user models.User
+	require.NoError(t, e.tdb.DB().Where("username = ?", owner).Take(&user).Error)
+	require.NoError(t, e.tdb.DB().Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: user.Callsign}, OwnerID: user.ID, Type: models.RepeaterTypeMMDVM}).Error)
+}
+
+func TestOAuthUsersMeShowsHotspotsOnlyToAHotspotScope(t *testing.T) {
+	t.Parallel()
+	e := newOAuthEnv(t)
+	seedHotspot(t, e, 311860, "Admin")
+	repeaters := func(w *httptest.ResponseRecorder) (json.RawMessage, bool) {
+		t.Helper()
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		var out map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+		r, ok := out["repeaters"]
+		return r, ok
+	}
+
+	tok := e.token(t, "talkgroups:read")
+	_, ok := repeaters(e.bearer(t, http.MethodGet, "/api/v1/users/me", tok.AccessToken))
+	assert.False(t, ok, "a token without a hotspot scope does not see the hotspots")
+
+	for _, scope := range []string{"hotspots:read", "hotspots:talkgroups"} {
+		tok = e.token(t, scope)
+		r, ok := repeaters(e.bearer(t, http.MethodGet, "/api/v1/users/me", tok.AccessToken))
+		require.True(t, ok, scope)
+		assert.Contains(t, string(r), `"id":311860`, scope)
+	}
+
+	r, ok := repeaters(testutils.Do(t, e.router, e.jar, http.MethodGet, "/api/v1/users/me", nil))
+	require.True(t, ok, "the web session keeps the hotspots")
+	assert.Contains(t, string(r), `"id":311860`)
+}

@@ -47,7 +47,7 @@ Ask for the scopes as a space-separated list in `scope`. Each name must be on th
 
 Every token, whatever its scopes, may also use these routes:
 
-- `GET /api/v1/users/me`: the account of the user, with `sms_storage` and `position_tracking`.
+- `GET /api/v1/users/me`: the account of the user, with `sms_storage` and `position_tracking`. It has `repeaters`, the hotspots of the user, only when the token has `hotspots:read` or `hotspots:talkgroups`.
 - `GET /api/v1/userdb/:id`: the RadioID.net entry of a DMR ID.
 - `GET /api/v1/network/webtransport`: how to reach the WebTransport listener.
 
@@ -183,7 +183,7 @@ curl -s http://127.0.0.1:3905/api/v1/users/me -H "Authorization: Bearer $ACCESS"
 ```
 
 ```json
-{"id":1234567,"callsign":"N0CALL","username":"n0call","admin":false,"superAdmin":false,"email":"","approved":true,"suspended":false,"repeaters":[],"must_change_password":false,"created_at":"2026-10-26T09:58:47.210937579-05:00","sms_storage":false,"position_tracking":false}
+{"id":1234567,"callsign":"N0CALL","username":"n0call","admin":false,"superAdmin":false,"email":"","approved":true,"suspended":false,"must_change_password":false,"created_at":"2026-10-26T09:58:47.210937579-05:00","sms_storage":false,"position_tracking":false}
 ```
 
 ```bash

@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
+	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -830,16 +831,21 @@ func GETUserSelf(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
-	c.JSON(http.StatusOK, userSelf{User: user, SMSStorage: user.SMSStorageEnabled, PositionTracking: tracking})
+	self := userSelf{User: user, SMSStorage: user.SMSStorageEnabled, PositionTracking: tracking}
+	if g, viaToken := utils.Grant(c); !viaToken || g.Allows(oauth.ScopeHotspotsRead) || g.Allows(oauth.ScopeHotspotsTalkgroups) {
+		self.Repeaters = &user.Repeaters
+	}
+	c.JSON(http.StatusOK, self)
 }
 
 // userSelf is the logged-in user, with whether SMS Storage and position
 // tracking are on, so that an app can tell why the inbox or the map is
-// empty.
+// empty. It leaves out the repeaters for an app without a hotspot scope.
 type userSelf struct {
 	models.User
-	SMSStorage       bool `json:"sms_storage"`
-	PositionTracking bool `json:"position_tracking"`
+	Repeaters        *[]models.Repeater `json:"repeaters,omitempty"`
+	SMSStorage       bool               `json:"sms_storage"`
+	PositionTracking bool               `json:"position_tracking"`
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {

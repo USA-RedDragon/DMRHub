@@ -733,3 +733,38 @@ func TestABacklogWithinTheBudgetLosesNoBurst(t *testing.T) {
 		n.requireRow(t, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400), sentAMBE: 3})
 	})
 }
+
+// TestTheCopiesOfBackToBackCallsKeepTheirOrder sends two Codec2 calls from
+// one hotspot slot back to back while the AMBE server answers after 30 ms,
+// so the copies of the first call are still made when the second starts.
+// The AMBE hotspot must get every copy of the first call before any copy
+// of the second.
+func TestTheCopiesOfBackToBackCallsKeepTheirOrder(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		n := newTCNet(t, stack)
+		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		n.ambe.SetDelay(30 * time.Millisecond)
+		first, second := n.nextStream(), n.nextStream()
+		sent := make([]models.Packet, 0, 2*(tcBursts+2))
+		for _, stream := range []uint{first, second} {
+			cc := newC2Call(t, call{group: true, dst: tcTG, src: tcTalker}, false, tcBursts, uint64(stream))
+			sent = append(sent, cc.tx.packets(stream)...)
+		}
+		sendC2(t, n.c2.SendDMRD, sent)
+		g := n.drain(callWait(sent))
+
+		var order []uint
+		for _, p := range g.ambeListen {
+			if p.StreamID == first || p.StreamID == second {
+				order = append(order, p.StreamID)
+			}
+		}
+		require.Len(t, order, len(sent), "the AMBE hotspot missed copies")
+		for i := 1; i < len(order); i++ {
+			if order[i] == first && order[i-1] == second {
+				t.Fatalf("a copy of the first call came after a copy of the second: %v", order)
+			}
+		}
+	})
+}

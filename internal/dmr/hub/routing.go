@@ -107,10 +107,10 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link) })
 	}
 
-	tx := h.prepareCopy(ctx, &packet, sc, sourceName)
+	tx, ticket := h.prepareCopy(ctx, &packet, sc, sourceName)
 	h.fanOut(ctx, packet, sourceName)
 	if tx != nil {
-		tx.queue(packet)
+		tx.queue(context.WithoutCancel(ctx), packet, ticket)
 	}
 }
 

@@ -93,14 +93,15 @@ func (h *Hub) Transcoder() *transcode.Service {
 
 // prepareCopy decides whether packet gets a copy in the other codec, marks
 // it with HasCopy, and reserves its place on the transcoder that makes the
-// copy, which it returns, or nil. A Voice LC Header or Terminator whose LC
-// fails its check has no copy, so every target gets it as it came.
-func (h *Hub) prepareCopy(ctx context.Context, packet *models.Packet, sc *streamCodec, sourceName string) *transcoder {
+// copy, which it returns, or nil, and its place among the copies of its
+// source slot. A Voice LC Header or Terminator whose LC fails its check has
+// no copy, so every target gets it as it came.
+func (h *Hub) prepareCopy(ctx context.Context, packet *models.Packet, sc *streamCodec, sourceName string) (*transcoder, *copyTicket) {
 	if sc == nil || packet.Codec == uint8(transcode.CodecUnknown) || sc.encrypted || !h.transcoder.Enabled() {
-		return nil
+		return nil, nil
 	}
 	if isVoiceLC(packet) && !transcode.LCValid(packet) {
-		return nil
+		return nil, nil
 	}
 	now := time.Now()
 	if sc.needAt.IsZero() || now.Sub(sc.needAt) >= needTTL {
@@ -108,7 +109,7 @@ func (h *Hub) prepareCopy(ctx context.Context, packet *models.Packet, sc *stream
 		sc.needAt = now
 	}
 	if !sc.need {
-		return nil
+		return nil, nil
 	}
 	tx := sc.transcoder()
 	if tx == nil || !tx.reserve() {
@@ -120,14 +121,82 @@ func (h *Hub) prepareCopy(ctx context.Context, packet *models.Packet, sc *stream
 		if err != nil {
 			slog.Error("Cannot convert a call to the other codec", "stream", packet.StreamID, "error", err)
 			sc.need = false
-			return nil
+			return nil, nil
 		}
-		tx = h.startTranscoder(ctx, st, sourceName)
+		tx = h.startTranscoder(ctx, st)
 		tx.reserve()
 		sc.setTranscoder(tx)
 	}
 	packet.HasCopy = true
-	return tx
+	return tx, h.reserveCopy(h.sourceSlotOf(*packet, sourceName), sourceName)
+}
+
+// copyOrder holds the places of the copies of one source slot, in the
+// order of their originals, so that the copies of a stream go out before
+// those of the next stream of the source, as the originals do.
+type copyOrder struct {
+	queue    []*copyTicket
+	emitting bool
+}
+
+// copyTicket is the place of the copy of one burst. packet is nil when the
+// burst gets no copy.
+type copyTicket struct {
+	key    sourceSlot
+	source string
+	done   bool
+	packet *models.Packet
+}
+
+func (h *Hub) reserveCopy(key sourceSlot, sourceName string) *copyTicket {
+	t := &copyTicket{key: key, source: sourceName}
+	h.copyMu.Lock()
+	defer h.copyMu.Unlock()
+	o, ok := h.copyOrders[key]
+	if !ok {
+		o = &copyOrder{}
+		h.copyOrders[key] = o
+	}
+	o.queue = append(o.queue, t)
+	return t
+}
+
+// finishCopy sets the copy of t, or none for a nil cp, and routes the
+// copies of its source slot that are next in order.
+func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, cp *models.Packet) {
+	if t == nil {
+		return
+	}
+	h.copyMu.Lock()
+	t.done, t.packet = true, cp
+	o := h.copyOrders[t.key]
+	if o == nil || o.emitting {
+		h.copyMu.Unlock()
+		return
+	}
+	o.emitting = true
+	for {
+		var ready []*copyTicket
+		for len(o.queue) > 0 && o.queue[0].done {
+			ready = append(ready, o.queue[0])
+			o.queue = o.queue[1:]
+		}
+		if len(ready) == 0 {
+			o.emitting = false
+			if len(o.queue) == 0 {
+				delete(h.copyOrders, t.key)
+			}
+			h.copyMu.Unlock()
+			return
+		}
+		h.copyMu.Unlock()
+		for _, r := range ready {
+			if r.packet != nil {
+				h.fanOut(ctx, *r.packet, r.source)
+			}
+		}
+		h.copyMu.Lock()
+	}
 }
 
 // needsCopy reports whether a target of packet uses the other codec than
@@ -289,12 +358,12 @@ func (h *Hub) noteCopy(packet *models.Packet, target string) {
 }
 
 // transcoder makes the copies of one stream in the other codec, in the
-// order of its bursts, and routes them like the original. It counts as a
-// call in flight until it ends, so that shutdown waits for the copies.
+// order of its bursts, and routes them like the original, after the copies
+// of the streams before it from the same source slot. It counts as a call
+// in flight until it ends, so that shutdown waits for the copies.
 type transcoder struct {
 	h      *Hub
 	st     *transcode.Stream
-	source string
 	in     chan transcodeJob
 	quit   chan struct{}
 	once   sync.Once
@@ -309,10 +378,11 @@ type transcoder struct {
 type transcodeJob struct {
 	packet   models.Packet
 	deadline time.Time
+	ticket   *copyTicket
 }
 
-func (h *Hub) startTranscoder(ctx context.Context, st *transcode.Stream, sourceName string) *transcoder {
-	t := &transcoder{h: h, st: st, source: sourceName, in: make(chan transcodeJob, queueLen(st.Budget())), quit: make(chan struct{})}
+func (h *Hub) startTranscoder(ctx context.Context, st *transcode.Stream) *transcoder {
+	t := &transcoder{h: h, st: st, in: make(chan transcodeJob, queueLen(st.Budget())), quit: make(chan struct{})}
 	h.transcoders.Add()
 	h.calls.Add()
 	go t.run(context.WithoutCancel(ctx))
@@ -331,21 +401,26 @@ func (t *transcoder) reserve() bool {
 	return true
 }
 
-// queue hands the transcoder the burst that reserve claimed. A burst over
-// the queue, or one that comes after the transcoder ended, is not
-// converted and counts as missed.
-func (t *transcoder) queue(p models.Packet) {
+// queue hands the transcoder the burst that reserve claimed, with its
+// place among the copies of its source slot. A burst over the queue, or
+// one that comes after the transcoder ended, is not converted and counts
+// as missed.
+func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTicket) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.pending--
 	if t.exited {
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
+		t.mu.Unlock()
+		t.h.finishCopy(ctx, ticket, nil)
 		return
 	}
 	select {
-	case t.in <- transcodeJob{packet: p, deadline: time.Now().Add(t.st.Budget())}:
+	case t.in <- transcodeJob{packet: p, deadline: time.Now().Add(t.st.Budget()), ticket: ticket}:
+		t.mu.Unlock()
 	default:
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
+		t.mu.Unlock()
+		t.h.finishCopy(ctx, ticket, nil)
 	}
 }
 
@@ -384,11 +459,16 @@ func (t *transcoder) next() (transcodeJob, bool) {
 func (t *transcoder) exit(ctx context.Context) {
 	t.mu.Lock()
 	t.closed, t.exited = true, true
+	var dropped []*copyTicket
 	for len(t.in) > 0 {
 		job := <-t.in
 		t.missed(&job.packet, voiceFrames(&job.packet), transcode.ReasonLate)
+		dropped = append(dropped, job.ticket)
 	}
 	t.mu.Unlock()
+	for _, ticket := range dropped {
+		t.h.finishCopy(ctx, ticket, nil)
+	}
 	t.st.CloseContext(ctx)
 	t.h.calls.Done()
 	t.h.transcoders.Done()
@@ -425,10 +505,12 @@ func (t *transcoder) run(ctx context.Context) {
 func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 	res, ok := t.st.Convert(ctx, &job.packet, job.deadline)
 	if !ok {
+		t.h.finishCopy(ctx, job.ticket, nil)
 		return
 	}
 	if res.Busy {
 		t.busy(&job.packet, res.Missed)
+		t.h.finishCopy(ctx, job.ticket, nil)
 		return
 	}
 	cp := job.packet
@@ -438,7 +520,7 @@ func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 	if res.Missed > 0 {
 		t.missed(&cp, res.Missed, res.Reason)
 	}
-	t.h.fanOut(ctx, cp, t.source)
+	t.h.finishCopy(ctx, job.ticket, &cp)
 }
 
 // busy counts a burst of a call that found every AMBE server busy, which

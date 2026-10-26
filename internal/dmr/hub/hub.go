@@ -176,6 +176,8 @@ type Hub struct {
 	transcoder   *transcode.Service
 	transcoders  inflight
 	codecStreams *xsync.Map[uint, *streamCodec]
+	copyMu       sync.Mutex
+	copyOrders   map[sourceSlot]*copyOrder
 	copyReports  *xsync.Map[copyReport, time.Time]
 	tgRepeaters  *lookup.Cache[uint, []uint]
 	codec2Slots  atomic.Pointer[[]uint]
@@ -227,6 +229,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.transcoder = transcode.NewService(kvStore)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
+	h.copyOrders = map[sourceSlot]*copyOrder{}
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
 	h.tgRepeaters = lookup.New("talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
 	h.heard = make(chan heardNote, heardQueue)

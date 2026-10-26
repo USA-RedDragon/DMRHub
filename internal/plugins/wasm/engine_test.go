@@ -175,7 +175,7 @@ func TestAPluginInsideAnswersThroughTheService(t *testing.T) {
 	eachCompiler(t, func(t *testing.T, compiler string) {
 		r := newRig(t)
 		_, p := r.run(t, engine, "Echo", guestOf(t, compiler, "echo"), nil, models.PluginRange{First: 9100, Last: 9100})
-		r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true})
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true}))
 		got := r.next(t)
 		assert.Equal(t, uint(9100), got.Src)
 		assert.Equal(t, uint(3191868), got.Dst)
@@ -371,7 +371,7 @@ func probe(t *testing.T, r *rig, p models.Plugin, address string) string {
 	t.Helper()
 	pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 9}
 	copy(pkt.DMRData[:], address)
-	r.registry.Deliver(p.ID, pkt)
+	require.NoError(t, r.registry.Deliver(p.ID, pkt))
 	got := r.next(t)
 	return strings.TrimRight(string(got.DMRData[:]), "\x00")
 }

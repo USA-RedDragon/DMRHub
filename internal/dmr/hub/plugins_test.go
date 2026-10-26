@@ -47,10 +47,11 @@ func (f *fakePlugins) Owner(id uint) (uint, bool) {
 	return p, ok
 }
 
-func (f *fakePlugins) Deliver(id uint, p models.Packet) {
+func (f *fakePlugins) Deliver(id uint, p models.Packet) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bursts[id] = append(f.bursts[id], p)
+	return nil
 }
 
 func (f *fakePlugins) got(id uint) []models.Packet {

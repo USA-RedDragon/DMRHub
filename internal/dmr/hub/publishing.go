@@ -31,10 +31,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 )
 
-// marshalAndPublish encodes a packet, marshals it as a RawDMRPacket, and publishes
-// to the given pubsub topic. This is the shared encode → marshal → publish pipeline
-// used by publishToRepeater and handleGroupCall.
-func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
+// marshalAndPublish encodes a packet, marshals it as a RawDMRPacket, and
+// queues its publish to topic on the outbox of the source slot key, so that
+// routing never waits on pubsub. The outbox of a source slot publishes in
+// the order of the calls, so a target gets the bursts of each source slot
+// in the order they were routed.
+func (h *Hub) marshalAndPublish(key sourceSlot, packet models.Packet, topic string) {
 	rawPacket := models.RawDMRPacket{
 		Data:    packet.Encode(),
 		TrackID: packet.TrackID,
@@ -44,13 +46,10 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	}
 	packedBytes, err := rawPacket.MarshalMsg(nil)
 	if err != nil {
-		return fmt.Errorf("marshaling RawDMRPacket: %w", err)
+		slog.Error("Error marshaling a burst to publish", "topic", topic, "error", err)
+		return
 	}
-	err = h.pubsub.Publish(topic, packedBytes)
-	if err != nil {
-		return fmt.Errorf("publishing to %s: %w", topic, err)
-	}
-	return nil
+	h.outbox.add(key, outboxJob{topic: topic, data: packedBytes})
 }
 
 // publishForPeers queues a packet from sourceName for egress to all peer
@@ -174,13 +173,12 @@ func (h *Hub) publishToPeer(peerID uint, packet models.Packet) {
 // repeaterTopicPrefix is the fixed prefix for repeater pubsub topics.
 const repeaterTopicPrefix = "hub:packets:repeater:"
 
-// publishToRepeater publishes a packet to a specific repeater's pubsub topic.
-func (h *Hub) publishToRepeater(repeaterID uint, packet models.Packet) {
+// publishToRepeater publishes a packet of the source slot key to a
+// specific repeater's pubsub topic.
+func (h *Hub) publishToRepeater(key sourceSlot, repeaterID uint, packet models.Packet) {
 	// Build topic string without fmt.Sprintf allocation
 	var topicBuf [len(repeaterTopicPrefix) + 20]byte
 	n := copy(topicBuf[:], repeaterTopicPrefix)
 	topic := string(topicBuf[:n]) + strconv.FormatUint(uint64(repeaterID), 10)
-	if err := h.marshalAndPublish(packet, topic); err != nil {
-		slog.Error("Error publishing packet to repeater", "repeaterID", repeaterID, "error", err)
-	}
+	h.marshalAndPublish(key, packet, topic)
 }

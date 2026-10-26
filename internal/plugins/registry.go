@@ -175,14 +175,15 @@ func (r *Registry) Owner(id uint) (uint, bool) {
 }
 
 // Deliver hands p to the plugin id, through the replica that holds its
-// stream. A plugin that is not connected loses p.
-func (r *Registry) Deliver(id uint, p models.Packet) {
+// stream. A plugin that is not connected loses p. The error of a publish
+// that did not reach pubsub is pubsub.ErrNotSent.
+func (r *Registry) Deliver(id uint, p models.Packet) error {
 	data, err := p.MarshalMsg(nil)
 	if err != nil {
-		slog.Error("Plugins: cannot encode a burst", "error", err)
-		return
+		return fmt.Errorf("encoding a burst for plugin %d: %w", id, err)
 	}
 	if err := r.pubsub.Publish(InTopic(id), data); err != nil {
-		slog.Error("Plugins: cannot hand a burst to a plugin", "plugin", id, "error", err)
+		return fmt.Errorf("handing a burst to plugin %d: %w", id, err)
 	}
+	return nil
 }

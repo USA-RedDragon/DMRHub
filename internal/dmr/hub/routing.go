@@ -122,17 +122,18 @@ func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName strin
 		h.publishForPeers(ctx, packet, sourceName)
 	}
 
+	key := h.sourceSlotOf(packet, sourceName)
 	if packet.GroupCall {
 		if isPlugin {
 			h.publishForPeers(ctx, packet, sourceName)
 		}
-		h.handleGroupCall(packet)
+		h.handleGroupCall(key, packet)
 		return
 	}
 	// A private call of a plugin goes to the peers only when the hub
 	// cannot deliver it here, so that a reply to a radio on this hub,
 	// such as the parrot's, does not reach it again through a peer.
-	if !h.handlePrivateCall(ctx, packet) && isPlugin {
+	if !h.handlePrivateCall(ctx, key, packet) && isPlugin {
 		h.publishForPeers(ctx, packet, sourceName)
 	}
 }
@@ -158,9 +159,10 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 }
 
 // toPlugin hands packet to the plugin that owns its destination, unless the
-// plugin sent it. A private call goes only to the plugin; a group call also
-// goes to the talkgroup's subscribers when the talkgroup exists. It reports
-// whether routing ends here.
+// plugin sent it, through the outbox of its source slot. A private call
+// goes only to the plugin; a group call also goes to the talkgroup's
+// subscribers when the talkgroup exists. It reports whether routing ends
+// here.
 func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	p := h.plugins.Load()
 	if p == nil {
@@ -171,7 +173,11 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 		return false
 	}
 	if from, isPlugin := plugins.PluginOfSource(sourceName); !isPlugin || from != owner {
-		(*p).Deliver(owner, packet)
+		pl := *p
+		h.outbox.add(h.sourceSlotOf(packet, sourceName), outboxJob{
+			topic: plugins.InTopic(owner),
+			send:  func() error { return pl.Deliver(owner, packet) },
+		})
 	}
 	if !packet.GroupCall {
 		return true
@@ -187,11 +193,11 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	return !exists
 }
 
-// handleGroupCall routes a group burst of any kind to all subscribed
-// repeaters.
-func (h *Hub) handleGroupCall(packet models.Packet) {
-	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
-	if _, ok := h.streamTalkgroups.Load(key); !ok {
+// handleGroupCall routes a group burst of any kind from the source slot key
+// to all subscribed repeaters.
+func (h *Hub) handleGroupCall(key sourceSlot, packet models.Packet) {
+	target := streamTarget{stream: packet.StreamID, dst: packet.Dst}
+	if _, ok := h.streamTalkgroups.Load(target); !ok {
 		exists, err := h.talkgroupIDs.Get(packet.Dst)
 		if err != nil {
 			slog.Error("Error checking if talkgroup exists", "error", err)
@@ -201,7 +207,7 @@ func (h *Hub) handleGroupCall(packet models.Packet) {
 			slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
 			return
 		}
-		h.streamTalkgroups.Store(key, time.Now())
+		h.streamTalkgroups.Store(target, time.Now())
 	}
 
 	// talkgroupTopicPrefix is the fixed prefix for talkgroup pubsub topics.
@@ -209,26 +215,24 @@ func (h *Hub) handleGroupCall(packet models.Packet) {
 
 	// Publish to talkgroup topic (subscription manager handles per-repeater fan-out)
 	topic := talkgroupTopicPrefix + strconv.FormatUint(uint64(packet.Dst), 10)
-	if err := h.marshalAndPublish(packet, topic); err != nil {
-		slog.Error("Error publishing packet to talkgroup", "talkgroupID", packet.Dst, "error", err)
-	}
+	h.marshalAndPublish(key, packet, topic)
 }
 
-// handlePrivateCall routes a private burst of any kind to the target
-// repeater or user.
-func (h *Hub) handlePrivateCall(ctx context.Context, packet models.Packet) bool {
+// handlePrivateCall routes a private burst of any kind from the source
+// slot key to the target repeater or user.
+func (h *Hub) handlePrivateCall(ctx context.Context, key sourceSlot, packet models.Packet) bool {
 	if isRepeaterID(packet.Dst) {
-		return h.routeToRepeater(packet)
+		return h.routeToRepeater(key, packet)
 	}
 	if isUserID(packet.Dst) {
-		return h.routeToUser(ctx, packet)
+		return h.routeToUser(ctx, key, packet)
 	}
 	return false
 }
 
 // routeToRepeater sends a private call packet to a specific repeater via
 // pubsub. It reports whether the repeater exists.
-func (h *Hub) routeToRepeater(packet models.Packet) bool {
+func (h *Hub) routeToRepeater(key sourceSlot, packet models.Packet) bool {
 	if _, err := h.routingRepeater(packet.Dst); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
@@ -239,19 +243,19 @@ func (h *Hub) routeToRepeater(packet models.Packet) bool {
 	}
 
 	// Publish to repeater topic — subscription manager delivers to the correct server
-	h.publishToRepeater(packet.Dst, packet)
+	h.publishToRepeater(key, packet.Dst, packet)
 	return true
 }
 
 // routeToUser sends private traffic to the repeater where the registered
 // radio was last heard. Traffic to a radio that is not a user is dropped.
 // It reports whether the hub knows where the radio is.
-func (h *Hub) routeToUser(ctx context.Context, packet models.Packet) bool {
+func (h *Hub) routeToUser(ctx context.Context, key sourceSlot, packet models.Packet) bool {
 	repeaterID, ok := h.privateTarget(ctx, packet)
 	if !ok {
 		return false
 	}
-	h.publishToRepeater(repeaterID, packet)
+	h.publishToRepeater(key, repeaterID, packet)
 	return true
 }
 
@@ -337,7 +341,7 @@ func isUserID(id uint) bool {
 // ID.
 type Plugins interface {
 	Owner(id uint) (uint, bool)
-	Deliver(id uint, p models.Packet)
+	Deliver(id uint, p models.Packet) error
 }
 
 // SetPlugins makes p the plugins that the hub hands the bursts to their IDs.

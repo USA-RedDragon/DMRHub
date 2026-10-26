@@ -76,7 +76,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	assert.Equal(t, "Parrot", conn.Name())
 	require.Len(t, conn.Ranges(), 1)
 
-	given.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 9})
+	require.NoError(t, given.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 9}))
 	m, err := conn.Recv()
 	require.NoError(t, err)
 	assert.Equal(t, uint32(3191868), m.GetBurst().GetSource())

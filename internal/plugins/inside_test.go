@@ -94,7 +94,7 @@ func TestAPluginInsideDMRHubConnectsWithoutAToken(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("no Welcome")
 	}
-	r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 4})
+	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 4}))
 	select {
 	case m := <-s.out:
 		assert.Equal(t, uint32(9100), m.GetBurst().GetDestination())

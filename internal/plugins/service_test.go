@@ -220,7 +220,7 @@ func TestTheBurstsToAPluginsIDsReachIt(t *testing.T) {
 
 	pkt := models.Packet{Src: 3191868, Dst: 9990, Slot: true, StreamID: 5, FrameType: dmrconst.FrameVoiceSync, DTypeOrVSeq: 0, Seq: 1, Repeater: 319186801}
 	pkt.DMRData[0] = 0xAB
-	r.registry.Deliver(p.ID, pkt)
+	require.NoError(t, r.registry.Deliver(p.ID, pkt))
 	m, err := recv(t, s)
 	require.NoError(t, err)
 	b := m.GetBurst()

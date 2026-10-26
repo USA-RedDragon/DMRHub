@@ -83,3 +83,8 @@ func (h *Hub) HeardAt(ctx context.Context, userID uint) uint {
 	}
 	return uint(id)
 }
+
+// OutboxDepth is the number of bursts in the outboxes.
+func (h *Hub) OutboxDepth() int64 {
+	return h.outbox.depth.Load()
+}

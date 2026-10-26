@@ -326,7 +326,7 @@ func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
 				return
 			case <-time.After(60 * time.Millisecond):
 			}
-			r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 5, Seq: uint(i % 256)})
+			assert.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 5, Seq: uint(i % 256)}))
 		}
 	}()
 	require.Eventually(t, func() bool { return r.router.count() >= 3 }, 10*time.Second, 20*time.Millisecond, "the call goes on")
@@ -413,7 +413,7 @@ func TestTheAdminAllowsAndRevokesTheHostsOfAPlugin(t *testing.T) {
 		n := r.router.count()
 		pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 3}
 		copy(pkt.DMRData[:], addr)
-		r.registry.Deliver(p.ID, pkt)
+		require.NoError(t, r.registry.Deliver(p.ID, pkt))
 		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond)
 		got := r.router.last()
 		return strings.TrimRight(string(got.DMRData[:]), "\x00")

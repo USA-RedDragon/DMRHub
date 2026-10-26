@@ -126,7 +126,7 @@ func TestADrainEndsAtItsDeadlineWhenAPluginStays(t *testing.T) {
 	m, err := recv(t, a)
 	require.NoError(t, err)
 	require.NotNil(t, m.GetDraining())
-	r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 5})
+	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 5}))
 	m, err = recv(t, a)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(5), m.GetBurst().GetStreamId(), "the stream works until the replica stops")
@@ -176,7 +176,7 @@ func TestAStreamOfADrainingReplicaSendsTheBurstsThatCameBeforeTheNewStream(t *te
 	require.NoError(t, err)
 	require.NotNil(t, m.GetDraining())
 
-	r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 6})
+	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 6}))
 	b := r.connect(token)
 	_, err = recv(t, b)
 	require.NoError(t, err)

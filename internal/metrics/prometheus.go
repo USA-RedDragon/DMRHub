@@ -40,6 +40,19 @@ type Metrics struct {
 	// not route, by reason.
 	IngressDroppedBurstsTotal *prometheus.CounterVec
 
+	// OutboxBursts is the number of routed bursts that wait in the
+	// outboxes of the source slots for pubsub to take them.
+	OutboxBursts prometheus.Gauge
+
+	// PublishRetriesTotal counts the publishes of routed bursts that did
+	// not reach pubsub and that the hub sent again.
+	PublishRetriesTotal prometheus.Counter
+
+	// PublishUnconfirmedTotal counts the routed bursts whose publish
+	// failed after it may have reached pubsub, which may still deliver
+	// them.
+	PublishUnconfirmedTotal prometheus.Counter
+
 	// TrackerDroppedTotal counts packets that the call tracker dropped.
 	TrackerDroppedTotal prometheus.Counter
 
@@ -115,6 +128,18 @@ func NewMetrics() *Metrics {
 				Name: "dmr_ingress_dropped_bursts_total",
 				Help: "The total number of incoming bursts that were not routed, by reason",
 			}, []string{labelReason}),
+			OutboxBursts: prometheus.NewGauge(prometheus.GaugeOpts{
+				Name: "dmr_outbox_bursts",
+				Help: "The number of routed bursts that wait in the outboxes of the source slots for pubsub to take them",
+			}),
+			PublishRetriesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "dmr_publish_retries_total",
+				Help: "The total number of publishes of routed bursts that did not reach pubsub and were sent again",
+			}),
+			PublishUnconfirmedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "dmr_publish_unconfirmed_bursts_total",
+				Help: "The total number of routed bursts whose publish failed after it may have reached pubsub, which may still deliver them",
+			}),
 			TrackerDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "call_tracker_dropped_packets_total",
 				Help: "The total number of packets that the call tracker did not record because its queue was full",
@@ -145,6 +170,9 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.KVCleanupDuration)
 	prometheus.MustRegister(m.UndeliverableBurstsTotal)
 	prometheus.MustRegister(m.IngressDroppedBurstsTotal)
+	prometheus.MustRegister(m.OutboxBursts)
+	prometheus.MustRegister(m.PublishRetriesTotal)
+	prometheus.MustRegister(m.PublishUnconfirmedTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)

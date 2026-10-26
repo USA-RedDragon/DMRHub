@@ -143,6 +143,7 @@ type Hub struct {
 	peerEgress *streamorder.Queue[sourceSlot]
 	routing    *streamorder.Queue[sourceSlot]
 	links      *streamorder.Queue[uint]
+	outbox     *outbox
 
 	talkgroupIDs *lookup.Cache[uint, bool]
 	userIDs      *lookup.Cache[uint, bool]
@@ -212,6 +213,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.peerEgress = streamorder.New[sourceSlot](peerEgressQueueSize, h.done)
 	h.routing = streamorder.New[sourceSlot](routingQueueSize, h.done)
 	h.links = streamorder.New[uint](routingQueueSize, h.done)
+	h.outbox = newOutbox(ps, h.done)
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
@@ -376,10 +378,12 @@ func (h *Hub) StartDraining() {
 	slog.Info("Hub draining: waiting for in-flight calls to finish")
 }
 
-// WaitForCalls blocks until all in-flight calls complete. There is no timeout — the shutdown sequence waits as long as
+// WaitForCalls blocks until all in-flight calls complete and pubsub took
+// their bursts. There is no timeout — the shutdown sequence waits as long as
 // needed for every active call to finish.
 func (h *Hub) WaitForCalls() {
 	h.calls.Wait()
+	h.outbox.pending.Wait()
 	slog.Info("All in-flight calls completed")
 }
 

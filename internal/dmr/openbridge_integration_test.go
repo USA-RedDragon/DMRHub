@@ -128,6 +128,58 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 	})
 }
 
+// TestOpenBridgeInboundKeepsOrderAcrossStreams sends short calls from an
+// OpenBridge peer back to back. The local repeater must get every packet
+// of each call before any packet of the next.
+func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeerRule(t, 500001, true, 1, 1)
+		stack.StartServers(t)
+
+		mc := testutils.NewMMDVMClient(100001, "", testPassword)
+		defer mc.Close()
+		require.NoError(t, mc.Connect(stack.MMDVMAddr))
+		require.NoError(t, mc.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+
+		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		defer obc.Close()
+		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
+
+		type sent struct{ stream, seq uint }
+		var want []sent
+		for stream := uint(7201); stream <= 7220; stream++ {
+			voice := makeGroupVoicePacket(1000001, 1, stream, false)
+			voice.Seq = 0
+			term := makeGroupVoiceTermPacket(1000001, 1, stream, false)
+			term.Seq = 1
+			for _, pkt := range []models.Packet{voice, term} {
+				pkt.Repeater = 500001
+				require.NoError(t, obc.SendRawPacket(pkt))
+				want = append(want, sent{pkt.StreamID, pkt.Seq})
+			}
+		}
+
+		var got []sent
+		deadline := time.After(10 * time.Second)
+		for len(got) < len(want) {
+			select {
+			case p := <-mc.ReceivedPackets():
+				got = append(got, sent{p.StreamID, p.Seq})
+			case <-deadline:
+				t.Fatalf("got %d of %d packets: %v", len(got), len(want), got)
+			}
+		}
+		assert.Equal(t, want, got)
+	})
+}
+
 // TestOpenBridgeOutboundLocalRepeaterToPeer verifies that an MMDVM repeater
 // sending a group call delivers the packet to an OpenBridge peer with a
 // matching egress rule, including a valid HMAC.

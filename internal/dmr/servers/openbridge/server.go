@@ -334,9 +334,9 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
-			stream := streamOf(data)
-			if !s.ingress.Do(ctx, stream, func() { s.handlePacket(ctx, remoteaddr, data) }) {
-				slog.Warn("Dropping OpenBridge packet of a backed-up stream", "stream", stream)
+			peer := peerOf(data)
+			if !s.ingress.Do(ctx, peer, func() { s.handlePacket(ctx, remoteaddr, data) }) {
+				slog.Warn("Dropping OpenBridge packet of a backed-up peer", "peerID", peer)
 			}
 		}
 	}()
@@ -521,12 +521,14 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 	}
 }
 
-func streamOf(data []byte) uint {
+// peerOf returns the peer ID of an OpenBridge packet, or 0. The packets of
+// one peer are handled in the order they came, across their streams.
+func peerOf(data []byte) uint {
 	b, err := dmrd.DecodeBridge(data)
 	if err != nil {
 		return 0
 	}
-	return uint(b.Data.Stream)
+	return uint(b.Data.Repeater)
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {

@@ -22,6 +22,8 @@ package hub_test
 import (
 	"cmp"
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,12 +45,20 @@ type slowKV struct {
 	kv.KV
 	on    atomic.Bool
 	delay time.Duration
+	hang  chan struct{}
+	mu    sync.Mutex
+	setNX []string
 }
 
 func (s *slowKV) wait() {
-	if s.on.Load() {
-		time.Sleep(cmp.Or(s.delay, slowKVCall))
+	if !s.on.Load() {
+		return
 	}
+	if s.hang != nil {
+		<-s.hang
+		return
+	}
+	time.Sleep(cmp.Or(s.delay, slowKVCall))
 }
 
 func (s *slowKV) Has(ctx context.Context, key string) (bool, error) {
@@ -72,21 +82,28 @@ func (s *slowKV) Expire(ctx context.Context, key string, ttl time.Duration) erro
 }
 
 func (s *slowKV) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	if s.on.Load() {
+		s.mu.Lock()
+		s.setNX = append(s.setNX, key)
+		s.mu.Unlock()
+	}
 	s.wait()
 	return s.KV.SetNX(ctx, key, value, ttl) //nolint:wrapcheck
 }
 
 // TestSlowClaimStoreHoldsNoReadLoop starts a stream while every call to the
-// KV store takes 500 ms and ignores its context, as a hung Redis does with
-// the default client options. The read loop that routes it, and another
-// stream on the same read loop, must not wait on the claim of the stream;
-// the new stream waits at most StreamClaimWait and keeps its order, and the
-// ongoing stream does not wait when it renews its claim. Each burst is
-// timed from when it was due, as a socket queues it while the read loop
-// is busy.
+// KV store hangs and ignores its context, as a hung Redis does with the
+// default client options. The read loop that routes it, and another stream
+// on the same read loop, must not wait on the claim of the stream: every
+// call to route a burst returns and every burst of both streams arrives
+// while the KV store still hangs. A call that waited on the claim would
+// take at least StreamClaimWait, as only the hub gives up on a hung KV
+// store. The bursts of the new stream share one check of its claim, which
+// the hub gives up after StreamClaimWait, and keep their order; the
+// ongoing stream renews its claim without waiting.
 func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 	t.Parallel()
-	slow := &slowKV{}
+	slow := &slowKV{hang: make(chan struct{})}
 	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
 		slow.KV = k
 		return slow
@@ -119,44 +136,56 @@ func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 	const ongoing, started = uint(70101), uint(70102)
 	worstDelay(t, arrivals, 70100, sendStream(h, 1, 70100, true, 4), "mmdvm:100002")
 	h.RoutePacket(context.Background(), burst(ongoing, false, testSrcID, 0), models.RepeaterTypeMMDVM)
+	worstDelay(t, arrivals, ongoing, []time.Time{time.Now()}, "mmdvm:100002")
 	time.Sleep(200 * time.Millisecond)
 
 	slow.on.Store(true)
-	defer slow.on.Store(false)
+	defer close(slow.hang)
 	const bursts = 8
-	sent := map[uint][]time.Time{ongoing: make([]time.Time, bursts), started: make([]time.Time, bursts)}
-	var worstCall time.Duration
-	start := time.Now()
-	for i := range bursts {
-		time.Sleep(time.Until(start.Add(time.Duration(i) * burstPeriod)))
-		for _, p := range []models.Packet{burst(ongoing, false, testSrcID, i), burst(started, true, 1000002, i)} {
-			sent[p.StreamID][i] = start.Add(time.Duration(i) * burstPeriod)
-			called := time.Now()
-			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-			worstCall = max(worstCall, time.Since(called))
+	routed := make(chan time.Duration, 1)
+	go func() {
+		var worstCall time.Duration
+		start := time.Now()
+		for i := range bursts {
+			time.Sleep(time.Until(start.Add(time.Duration(i) * burstPeriod)))
+			for _, p := range []models.Packet{burst(ongoing, false, testSrcID, i), burst(started, true, 1000002, i)} {
+				called := time.Now()
+				h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+				worstCall = max(worstCall, time.Since(called))
+			}
 		}
-	}
+		routed <- worstCall
+	}()
 
-	worst := map[uint]time.Duration{}
 	seqs := map[uint][]uint{}
 	deadline := time.After(bursts*burstPeriod + 30*time.Second)
 	for len(seqs[ongoing]) < bursts || len(seqs[started]) < bursts {
 		select {
 		case a := <-arrivals:
 			s := a.rp.Packet.StreamID
-			if s != ongoing && s != started {
-				continue
+			if s == ongoing || s == started {
+				seqs[s] = append(seqs[s], a.rp.Packet.Seq)
 			}
-			seqs[s] = append(seqs[s], a.rp.Packet.Seq)
-			worst[s] = max(worst[s], a.at.Sub(sent[s][a.rp.Packet.Seq]))
 		case <-deadline:
-			t.Fatalf("deliveries %v, want %d of each stream", seqs, bursts)
+			t.Fatalf("deliveries %v while the KV store hangs, want %d of each stream", seqs, bursts)
 		}
 	}
-	t.Logf("worst RoutePacket call %v, worst delay of the ongoing stream %v, of the new stream %v, with %v per KV call", worstCall, worst[ongoing], worst[started], slowKVCall)
-	assert.Less(t, worstCall, 20*time.Millisecond, "the read loop waited on the KV store")
-	assert.Less(t, worst[ongoing], 50*time.Millisecond, "the ongoing stream waited on the KV store")
-	assert.Less(t, worst[started], hub.StreamClaimWait+50*time.Millisecond, "the new stream waited on the KV store for too long")
+	select {
+	case worstCall := <-routed:
+		assert.Less(t, worstCall, hub.StreamClaimWait, "the read loop waited on the claim of a stream")
+	case <-deadline:
+		t.Fatal("the read loop waited on the KV store")
+	}
+	checks := 0
+	slow.mu.Lock()
+	for _, key := range slow.setNX {
+		if strings.Contains(key, fmt.Sprintf(":%d:", started)) {
+			checks++
+		}
+	}
+	slow.mu.Unlock()
+	assert.Equal(t, 1, checks, "the held bursts of the new stream shared one check of its claim")
+	assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[ongoing], "the ongoing stream kept its order")
 	assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[started], "the held bursts of the new stream kept their order")
 }
 

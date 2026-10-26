@@ -132,7 +132,7 @@ type DMR struct {
 // Transcoding holds the AMBE servers that convert calls between Codec2 and
 // AMBE.
 type Transcoding struct {
-	AMBEServers []AMBEServer `json:"ambe-servers" yaml:"ambe-servers,omitempty" name:"ambe-servers" description:"AMBE servers (AMBEserver protocol, usually UDP port 2460) that convert calls between Codec2 and AMBE, in the order a call tries them. Each converted call holds one server for its whole length. None turns transcoding off, and calls pass through in their own codec"`
+	AMBEServers []AMBEServer `json:"ambe-servers" yaml:"ambe-servers,omitempty" name:"ambe-servers" description:"AMBE servers (AMBEserver protocol, usually UDP port 2460) that convert calls between Codec2 and AMBE, in the order a call tries them. Each converted call holds one server for its whole length. None turns transcoding off, and calls pass through in their own codec. Each server must accept the setting that makes it report the decoder status of each frame (PKT_SPCHFMT); a server that refuses it converts no call"`
 }
 
 // AMBEServer is one AMBE server.

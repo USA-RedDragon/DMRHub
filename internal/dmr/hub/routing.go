@@ -75,7 +75,7 @@ func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName 
 			return
 		}
 		h.trackCall(ctx, &packet, sourceName)
-		if !h.routing.Do(ctx, sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
+		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
 			slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
 		}
 	})

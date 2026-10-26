@@ -90,7 +90,7 @@ type Server struct {
 	serverID uint32
 
 	hubHandle *hub.ServerHandle
-	ingress   *streamorder.Queue[uint]
+	ingress   *streamorder.Queue[ingressLane]
 	wg        sync.WaitGroup
 	done      chan struct{}
 	stopOnce  sync.Once
@@ -305,7 +305,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
-	s.ingress = streamorder.New[uint](ingressQueueSize, s.done)
+	s.ingress = streamorder.New[ingressLane](ingressQueueSize, s.done)
 	if s.peers != nil {
 		s.unwatch = s.hub.OnPeerChange(func(uint) { s.peers.Reload(struct{}{}) })
 	}
@@ -334,9 +334,9 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
-			peer := peerOf(data)
-			if !s.ingress.Do(ctx, peer, func() { s.handlePacket(ctx, remoteaddr, data) }) {
-				slog.Warn("Dropping OpenBridge packet of a backed-up peer", "peerID", peer)
+			lane := laneOf(data)
+			if !s.ingress.Do(ctx, lane, func() { s.handlePacket(ctx, remoteaddr, data) }) {
+				slog.Warn("Dropping OpenBridge packet of a backed-up peer", "peerID", lane.peer, "dst", lane.dst)
 			}
 		}
 	}()
@@ -521,14 +521,19 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 	}
 }
 
-// peerOf returns the peer ID of an OpenBridge packet, or 0. The packets of
-// one peer are handled in the order they came, across their streams.
-func peerOf(data []byte) uint {
+// ingressLane is a peer and a destination. The packets of one are handled
+// in the order they came, across their streams.
+type ingressLane struct {
+	peer, dst uint
+}
+
+// laneOf returns the lane of an OpenBridge packet, or the zero lane.
+func laneOf(data []byte) ingressLane {
 	b, err := dmrd.DecodeBridge(data)
 	if err != nil {
-		return 0
+		return ingressLane{}
 	}
-	return uint(b.Data.Repeater)
+	return ingressLane{peer: uint(b.Data.Repeater), dst: uint(b.Data.Destination)}
 }
 
 func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {

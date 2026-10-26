@@ -129,23 +129,31 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 }
 
 // TestOpenBridgeInboundKeepsOrderAcrossStreams sends short calls from an
-// OpenBridge peer back to back. The local repeater must get every packet
-// of each call before any packet of the next.
+// OpenBridge peer back to back, to TG 1 and TG 2 in turn. The repeater on
+// each talkgroup must get every packet of each call of it before any
+// packet of the next.
 func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedTalkgroup(t, 2, "TG2")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
+		stack.AssignTS1StaticTG(t, 100002, 2)
 		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
-		stack.SeedPeerRule(t, 500001, true, 1, 1)
+		stack.SeedPeerRule(t, 500001, true, 1, 2)
 		stack.StartServers(t)
 
-		mc := testutils.NewMMDVMClient(100001, "", testPassword)
-		defer mc.Close()
-		require.NoError(t, mc.Connect(stack.MMDVMAddr))
-		require.NoError(t, mc.WaitReady(handshakeWait))
+		clients := map[uint]*testutils.MMDVMClient{}
+		for tg, id := range map[uint]uint{1: 100001, 2: 100002} {
+			mc := testutils.NewMMDVMClient(uint32(id), "", testPassword) //nolint:gosec
+			defer mc.Close()
+			require.NoError(t, mc.Connect(stack.MMDVMAddr))
+			require.NoError(t, mc.WaitReady(handshakeWait))
+			clients[tg] = mc
+		}
 		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
@@ -153,30 +161,33 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 
 		type sent struct{ stream, seq uint }
-		var want []sent
-		for stream := uint(7201); stream <= 7220; stream++ {
-			voice := makeGroupVoicePacket(1000001, 1, stream, false)
+		want := map[uint][]sent{}
+		for stream := uint(7201); stream <= 7240; stream++ {
+			tg := 1 + stream%2
+			voice := makeGroupVoicePacket(1000001, tg, stream, false)
 			voice.Seq = 0
-			term := makeGroupVoiceTermPacket(1000001, 1, stream, false)
+			term := makeGroupVoiceTermPacket(1000001, tg, stream, false)
 			term.Seq = 1
 			for _, pkt := range []models.Packet{voice, term} {
 				pkt.Repeater = 500001
 				require.NoError(t, obc.SendRawPacket(pkt))
-				want = append(want, sent{pkt.StreamID, pkt.Seq})
+				want[tg] = append(want[tg], sent{pkt.StreamID, pkt.Seq})
 			}
 		}
 
-		var got []sent
-		deadline := time.After(10 * time.Second)
-		for len(got) < len(want) {
-			select {
-			case p := <-mc.ReceivedPackets():
-				got = append(got, sent{p.StreamID, p.Seq})
-			case <-deadline:
-				t.Fatalf("got %d of %d packets: %v", len(got), len(want), got)
+		for tg, mc := range clients {
+			var got []sent
+			deadline := time.After(10 * time.Second)
+			for len(got) < len(want[tg]) {
+				select {
+				case p := <-mc.ReceivedPackets():
+					got = append(got, sent{p.StreamID, p.Seq})
+				case <-deadline:
+					t.Fatalf("TG %d: got %d of %d packets: %v", tg, len(got), len(want[tg]), got)
+				}
 			}
+			assert.Equal(t, want[tg], got, "TG %d", tg)
 		}
-		assert.Equal(t, want, got)
 	})
 }
 

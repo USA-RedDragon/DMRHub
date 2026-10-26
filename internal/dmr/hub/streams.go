@@ -172,16 +172,22 @@ var (
 	errClaimSlow    = errors.New("the KV store took too long")
 )
 
-// sourceSlot is a timeslot of a source of streams: a slot of a repeater,
-// or an OpenBridge peer or a plugin on a slot. The hub keeps the order of
-// the bursts of each across their streams.
+// sourceSlot is a timeslot of a source of streams: a slot of a repeater
+// or of a plugin, or a destination of an OpenBridge peer, whose calls to
+// different talkgroups are independent. The hub keeps the order of the
+// bursts of each across their streams.
 type sourceSlot struct {
 	streamSource
 	slot bool
+	dst  uint
 }
 
-func sourceSlotOf(packet models.Packet, sourceName string) sourceSlot {
-	return sourceSlot{streamSource: streamSource{server: sourceName, repeater: packet.Repeater}, slot: packet.Slot}
+func (h *Hub) sourceSlotOf(packet models.Packet, sourceName string) sourceSlot {
+	key := sourceSlot{streamSource: streamSource{server: sourceName, repeater: packet.Repeater}, slot: packet.Slot}
+	if h.getServerRole(sourceName) == RolePeer {
+		key.dst = packet.Dst
+	}
+	return key
 }
 
 type heldBurst struct {
@@ -250,7 +256,7 @@ func (w *claimWait) hold(ctx context.Context, h *Hub, src streamSource, b heldBu
 // do not wait. A KV store that is slower than that or fails leaves the
 // decision to this hub alone.
 func (h *Hub) admitStream(ctx context.Context, packet models.Packet, sourceName string, then func(bool)) {
-	key := sourceSlotOf(packet, sourceName)
+	key := h.sourceSlotOf(packet, sourceName)
 	src := key.streamSource
 	burst := heldBurst{packet: packet, then: then}
 	for {

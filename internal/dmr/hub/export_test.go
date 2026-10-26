@@ -32,7 +32,7 @@ import (
 // sourceName busy until release is called.
 func (h *Hub) HoldSource(packet models.Packet, sourceName string) (release func()) {
 	ch := make(chan struct{})
-	h.routing.Do(context.Background(), sourceSlotOf(packet, sourceName), func() { <-ch })
+	h.routing.Do(context.Background(), h.sourceSlotOf(packet, sourceName), func() { <-ch })
 	return func() { close(ch) }
 }
 

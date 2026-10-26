@@ -68,7 +68,7 @@ func (p *heldPublish) Publish(topic string, message []byte) error {
 }
 
 // orderHub seeds a source repeater testRepeaterID and a target repeater
-// 100002 with TG 1 static on TS1, and an egress peer.
+// 100002 with TGs 1 and 2 static on TS1, and an egress peer.
 func orderHub(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(kv.KV) kv.KV) (*hub.Hub, <-chan arrival) {
 	t.Helper()
 	h, database, _ := makeTestHubWrappingKV(t, wrap, wrapKV)
@@ -77,9 +77,10 @@ func orderHub(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(
 	seedRepeater(t, database, testRepeaterID, testSrcID)
 	seedRepeater(t, database, 100002, 1000002)
 	seedTalkgroup(t, database, 1, "TG1")
+	seedTalkgroup(t, database, 2, "TG2")
 	var rpt2 models.Repeater
 	require.NoError(t, database.First(&rpt2, 100002).Error)
-	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}, &models.Talkgroup{ID: 2}))
 	require.NoError(t, database.Create(&models.Peer{ID: orderPeerID, OwnerID: testSrcID, Egress: true}).Error)
 	require.NoError(t, database.Create(&models.PeerRule{PeerID: orderPeerID, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
 	arrivals := collect(map[string]*hub.ServerHandle{
@@ -327,4 +328,50 @@ func TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce(t *testing.T) {
 	t.Logf("last burst at %v", last)
 	assert.Equal(t, orderOf(sent), got)
 	assert.Less(t, last, hub.StreamClaimWait+100*time.Millisecond, "the checks of the claims ran one after another")
+}
+
+// TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt starts a call of a peer
+// to TG 1 whose claim the KV store answers in 500 ms, and at once a call of
+// the same peer to TG 2. The call to TG 2 must not wait for the claim of
+// the call to TG 1, and each must arrive in order.
+func TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt(t *testing.T) {
+	t.Parallel()
+	const slow, fast = uint(75001), uint(75002)
+	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+		return &claimSlowFor{KV: k, streams: []uint{slow}}
+	})
+
+	sent := make([]models.Packet, 0, 4)
+	for i := range 2 {
+		for _, c := range []struct{ tg, stream uint }{{1, slow}, {2, fast}} {
+			p := makeVoicePacket(c.tg, c.stream, true, false)
+			p.Repeater, p.Seq = orderPeerID, uint(i)
+			sent = append(sent, p)
+		}
+	}
+	start := time.Now()
+	for _, p := range sent {
+		h.RoutePacket(context.Background(), p, "openbridge")
+	}
+
+	got := map[uint][]uint{}
+	at := map[uint]time.Duration{}
+	deadline := time.After(30 * time.Second)
+	for len(got[slow]) < 2 || len(got[fast]) < 2 {
+		select {
+		case a := <-arrivals:
+			if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
+				continue
+			}
+			s := a.rp.Packet.StreamID
+			got[s] = append(got[s], a.rp.Packet.Seq)
+			at[s] = a.at.Sub(start)
+		case <-deadline:
+			t.Fatalf("deliveries %v", got)
+		}
+	}
+	t.Logf("TG 1 done at %v, TG 2 done at %v", at[slow], at[fast])
+	assert.Equal(t, []uint{0, 1}, got[slow])
+	assert.Equal(t, []uint{0, 1}, got[fast])
+	assert.Less(t, at[fast], 50*time.Millisecond, "the call to TG 2 waited for the claim of the call to TG 1")
 }

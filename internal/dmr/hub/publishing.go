@@ -62,7 +62,7 @@ func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet, sourceN
 		return
 	}
 
-	if !h.peerEgress.Do(ctx, sourceSlotOf(packet, sourceName), func() { h.egressToPeers(ctx, packet) }) {
+	if !h.peerEgress.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.egressToPeers(ctx, packet) }) {
 		slog.Warn("Dropping peer egress of a backed-up stream", "stream", packet.StreamID)
 	}
 }

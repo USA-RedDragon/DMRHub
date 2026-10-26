@@ -105,6 +105,7 @@ type Service struct {
 
 type timing struct {
 	budget, attempt time.Duration
+	now             func() time.Time
 }
 
 // NewService returns a Service without an AMBE server that shares the
@@ -112,7 +113,7 @@ type timing struct {
 // this process only. Its calls use Budget and AttemptTimeout.
 func NewService(store kv.KV) *Service {
 	s := &Service{kv: store}
-	s.timing.Store(&timing{budget: Budget, attempt: AttemptTimeout})
+	s.timing.Store(&timing{budget: Budget, attempt: AttemptTimeout, now: time.Now})
 	return s
 }
 
@@ -121,7 +122,7 @@ func NewService(store kv.KV) *Service {
 // answer. A test that checks what a conversion makes, and not when, gives
 // them room on a slow machine.
 func (s *Service) SetTiming(budget, attempt time.Duration) {
-	s.timing.Store(&timing{budget: budget, attempt: attempt})
+	s.timing.Store(&timing{budget: budget, attempt: attempt, now: s.timing.Load().now})
 }
 
 // SetServers sets the AMBE servers, in the order a call tries them. An
@@ -234,7 +235,7 @@ func (s *Service) NewStream(from, to Codec, mode codec2.Mode) (*Stream, error) {
 		return nil, err //nolint:wrapcheck
 	}
 	tm := s.timing.Load()
-	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt}, nil
+	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt, now: tm.now}, nil
 }
 
 func warmCodec2() {

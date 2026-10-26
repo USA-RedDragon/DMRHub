@@ -366,16 +366,20 @@ func TestLateEntryLearnsTheLC(t *testing.T) {
 func TestRetryWithinTheBudget(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
-	svc := newService(t, srv.Addr())
+	svc, clock := modeledService(t, srv)
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 6*layer2.VoiceSlotsPerBurst))
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
 	t.Cleanup(st.Close)
-	_, missed := convert(t, st, in[:3])
-	require.Zero(t, missed)
-	srv.DropNext(1)
-	_, missed = convert(t, st, in[3:])
-	assert.Zero(t, missed, "the lost frame was not asked again")
+	for i := range in {
+		if i == 3 {
+			srv.DropNext(1)
+		}
+		r, ok := st.Convert(t.Context(), &in[i], clock.now().Add(st.Budget()))
+		require.True(t, ok)
+		assert.Zero(t, r.Missed, "packet %d: the lost frame was not asked again", i)
+	}
+	assert.Equal(t, 1, clock.drops(), "the server did not drop a reply")
 	assert.Empty(t, srv.Errors())
 }
 
@@ -573,21 +577,71 @@ func TestEmbeddedLCThatDiffersFromTheHeader(t *testing.T) {
 func TestALateBurstDoesNotCountAgainstTheServer(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
-	svc := newService(t, srv.Addr())
+	svc, clock := modeledService(t, srv)
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 6*layer2.VoiceSlotsPerBurst))
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
 	t.Cleanup(st.Close)
-	_, missed := convert(t, st, in[:2])
-	require.Zero(t, missed)
-	r, ok := st.Convert(t.Context(), &in[2], time.Now().Add(time.Millisecond))
+	for i := range in[:2] {
+		r, ok := st.Convert(t.Context(), &in[i], clock.now().Add(st.Budget()))
+		require.True(t, ok)
+		require.Zero(t, r.Missed)
+	}
+	r, ok := st.Convert(t.Context(), &in[2], clock.now().Add(time.Millisecond))
 	require.True(t, ok)
 	assert.Equal(t, 3, r.Missed)
 	assert.Equal(t, transcode.ReasonLate, r.Reason)
 	srv.DropNext(1)
-	r, ok = st.Convert(t.Context(), &in[3], time.Now().Add(transcode.Budget))
+	r, ok = st.Convert(t.Context(), &in[3], clock.now().Add(st.Budget()))
 	require.True(t, ok)
 	assert.Zero(t, r.Missed, "a late burst made the stream give up the retry")
+	assert.Equal(t, 1, clock.drops(), "the server did not drop a reply")
+}
+
+// modelClock is a clock for the budget of a stream that moves only by the
+// waits it models: each reply that the fake AMBE server drops costs one
+// attempt, the time the stream waits for it. The other work of a burst
+// takes no time on it, so that the decisions of a stream do not depend on
+// how loaded the machine is.
+type modelClock struct {
+	mu      sync.Mutex
+	at      time.Time
+	attempt time.Duration
+	n       int
+}
+
+func (c *modelClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+func (c *modelClock) dropped() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = c.at.Add(c.attempt)
+	c.n++
+}
+
+func (c *modelClock) drops() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n
+}
+
+// modeledService returns a service for srv whose streams run on a
+// modelClock. The budget and the attempt keep the ratio of Budget to
+// AttemptTimeout, scaled so that a real answer of the fake server comes
+// within an attempt on a loaded machine; only a dropped reply waits it out.
+func modeledService(t *testing.T, srv *testutils.FakeAMBEServer) (*transcode.Service, *modelClock) {
+	t.Helper()
+	const scale = 25
+	svc := newService(t, srv.Addr())
+	svc.SetTiming(scale*transcode.Budget, scale*transcode.AttemptTimeout)
+	clock := &modelClock{at: time.Now(), attempt: scale * transcode.AttemptTimeout}
+	transcode.SetClock(svc, clock.now)
+	srv.SetDropHook(clock.dropped)
+	return svc, clock
 }
 
 func memoryKV(t *testing.T) kv.KV {

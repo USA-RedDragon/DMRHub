@@ -131,6 +131,7 @@ type Stream struct {
 	stale   bool
 	budget  time.Duration
 	attempt time.Duration
+	now     func() time.Time
 	pcm     []int16
 	epoch   time.Time
 	pos     layer2.PositionTracker
@@ -509,7 +510,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 			break
 		}
 		if s.ambe == nil {
-			if time.Until(deadline) < s.attempt {
+			if deadline.Sub(s.now()) < s.attempt {
 				break
 			}
 			tried = true
@@ -522,7 +523,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 		if s.stale {
 			need = 2 * s.attempt
 		}
-		if time.Until(deadline) < need {
+		if deadline.Sub(s.now()) < need {
 			break
 		}
 		tried = true
@@ -547,7 +548,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 }
 
 func (s *Stream) open(ctx context.Context, deadline time.Time) error {
-	ctx, cancel := context.WithDeadline(ctx, deadline)
+	ctx, cancel := context.WithTimeout(ctx, deadline.Sub(s.now()))
 	defer cancel()
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "udp", s.srv.Addr)

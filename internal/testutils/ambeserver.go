@@ -70,6 +70,7 @@ type FakeAMBEServer struct {
 	lastOne atomic.Bool
 	last    atomic.Pointer[net.UDPAddr]
 	drop    atomic.Int64
+	onDrop  atomic.Pointer[func()]
 	delay   atomic.Int64
 	decodes atomic.Int64
 	encodes atomic.Int64
@@ -132,6 +133,13 @@ func (f *FakeAMBEServer) SetControlParity(on bool) {
 // requests, as a lost datagram.
 func (f *FakeAMBEServer) DropNext(n int) {
 	f.drop.Store(int64(n))
+}
+
+// SetDropHook makes the server call f each time it drops a reply for
+// DropNext, before the client can time out, so that a test that models
+// time can count the wait of the client.
+func (f *FakeAMBEServer) SetDropHook(hook func()) {
+	f.onDrop.Store(&hook)
 }
 
 // SetDelay makes the server wait d before each reply.
@@ -253,6 +261,9 @@ func (f *FakeAMBEServer) serve() {
 			continue
 		}
 		if reply[3] != byte(dvsi.TypeControl) && f.drop.Load() > 0 && f.drop.Add(-1) >= 0 {
+			if hook := f.onDrop.Load(); hook != nil && *hook != nil {
+				(*hook)()
+			}
 			continue
 		}
 		if f.lastOne.Load() {

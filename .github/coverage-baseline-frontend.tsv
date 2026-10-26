@@ -17,7 +17,7 @@ src/components/UserTable.vue	149	91
 src/components/setup/DMR/IPSCSettings.vue	9	5
 src/components/setup/DMR/MMDVMSettings.vue	7	4
 src/components/setup/DMR/OpenBridgeSettings.vue	9	7
-src/components/setup/DMR/PluginsSettings.vue	19	17
+src/components/setup/DMR/PluginsSettings.vue	20	18
 src/components/setup/DMR/PositionsSettings.vue	27	22
 src/components/setup/DMR/RetentionSettings.vue	23	19
 src/components/setup/DMR/TranscodingSettings.vue	59	42
@@ -101,7 +101,7 @@ src/main.ts	15	12
 src/plugins/confirmBridge.ts	27	20
 src/plugins/toastBridge.ts	22	15
 src/router/index.ts	10	8
-src/router/routes.ts	41	18
+src/router/routes.ts	42	18
 src/services/API.ts	14	11
 src/services/net.ts	29	20
 src/services/password.ts	8	0

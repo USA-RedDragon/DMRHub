@@ -32,6 +32,7 @@ import (
 
 const (
 	burstTime       = 60 * time.Millisecond
+	maxPacerLag     = 300 * time.Millisecond
 	callHang        = 2 * time.Second
 	maxCallWait     = 30 * time.Second
 	pacerIdleExpiry = 30 * time.Second
@@ -423,6 +424,7 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 	idle := time.NewTimer(pacerIdleExpiry)
 	defer idle.Stop()
 	var next time.Time
+	onGrid := false
 	for {
 		if wait := time.Until(next); wait > 0 {
 			t := time.NewTimer(wait)
@@ -435,14 +437,20 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 		}
 		frame, wait, ok := p.take(k, q, p.now())
 		if !ok {
+			onGrid = false
 			if p.idle(k, q, wait, idle) {
 				return
 			}
 			continue
 		}
+		now := time.Now()
+		if !onGrid || now.Sub(next) > maxPacerLag {
+			next = now
+		}
+		onGrid = true
 		p.send(k, frame.frame)
 		p.sent(q, frame)
-		next = time.Now().Add(burstTime)
+		next = next.Add(burstTime)
 		if !idle.Stop() {
 			select {
 			case <-idle.C:

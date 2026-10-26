@@ -70,7 +70,7 @@ func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 	require.Len(t, times, 6)
 	assert.Less(t, times[0].Sub(start), 30*time.Millisecond, "the first burst on an idle slot goes at once")
 	for i := 1; i < len(times); i++ {
-		assert.GreaterOrEqual(t, times[i].Sub(times[i-1]), burstTime-2*time.Millisecond, "gap before burst %d", i)
+		assert.GreaterOrEqual(t, times[i].Sub(times[0]), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
 	}
 }
 
@@ -114,6 +114,45 @@ func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 	}
 	times := log.times(k)
 	assert.Less(t, times[len(times)-1].Sub(last), 30*time.Millisecond, "a stream at the burst time is sent as it arrives")
+}
+
+// TestPacerKeepsTheGridAfterALateBurst stalls the sender of a slot on its
+// first bursts, as when the replica gets no CPU for a while. The bursts
+// that wait must go back on the 60 ms grid of the slot, and none may go
+// before its place on the grid.
+func TestPacerKeepsTheGridAfterALateBurst(t *testing.T) {
+	t.Parallel()
+	const n, stalled, stall = 12, 4, 90 * time.Millisecond
+	var mu sync.Mutex
+	var times []time.Time
+	got := make(chan struct{}, n)
+	p := newPacer(func(slotKey, []byte) {
+		mu.Lock()
+		times = append(times, time.Now())
+		i := len(times)
+		mu.Unlock()
+		if i <= stalled {
+			time.Sleep(stall)
+		}
+		got <- struct{}{}
+	}, nil)
+	defer p.stop()
+
+	k := slotKey{peer: 311860, slot: false}
+	for range n {
+		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil)
+	}
+	for range n {
+		<-got
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	start := times[0]
+	for i, at := range times {
+		assert.GreaterOrEqual(t, at.Sub(start), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
+	}
+	late := times[n-1].Sub(start) - (n-1)*burstTime
+	assert.Less(t, late, 200*time.Millisecond, "the last burst is %s behind the grid", late)
 }
 
 func TestPacerQueuesEveryBurst(t *testing.T) {

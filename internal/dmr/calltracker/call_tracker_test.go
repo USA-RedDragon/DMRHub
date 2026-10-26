@@ -406,6 +406,48 @@ func TestTrackSMSWithPreambles(t *testing.T) {
 	assert.True(t, msg.IsToUser)
 }
 
+// TestTrackSMSWithPreamblesOnTheirOwnStreams sends the preambles and the SMS
+// that they announce as MMDVMHost does, with a new stream ID for each CSBK
+// and data header. They must make one row, as on one stream.
+func TestTrackSMSWithPreamblesOnTheirOwnStreams(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	for i, b := range preambles(t, 4) {
+		newSender(t, ct, userB, userA, false, uint(7101+i)).data(b)
+	}
+	bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})
+	newSender(t, ct, userB, userA, false, 7105).data(bursts...)
+
+	calls := waitDone(t, ct, database, 1)
+	msg := calls[0]
+	assert.Equal(t, models.CallKindData, msg.Kind)
+	assert.Equal(t, "sms", msg.SubKind)
+	assert.Equal(t, uint(4+len(bursts)), msg.Bursts)
+	assert.Equal(t, uint(7105), msg.StreamID)
+	assert.Nil(t, msg.Opcode)
+}
+
+// TestTrackPreamblesOfOtherStreamsStayApart checks that a preamble or data
+// header on another stream does not join a preamble row when it is late or
+// names another call.
+func TestTrackPreamblesOfOtherStreamsStayApart(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+
+	pre := preambles(t, 1)[0]
+	newSender(t, ct, userB, userA, false, 7111).data(pre)
+	newSender(t, ct, userA, userB, false, 7112).data(pre)
+	ct.Flush()
+	time.Sleep(450 * time.Millisecond)
+	newSender(t, ct, userB, userA, false, 7113).data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("LATE")})...)
+
+	calls := waitDone(t, ct, database, 3)
+	assert.Equal(t, "preamble", calls[0].SubKind)
+	assert.Equal(t, "preamble", calls[1].SubKind)
+	assert.Equal(t, "sms", calls[2].SubKind)
+}
+
 func TestTrackConfirmedSMSWithACK(t *testing.T) {
 	t.Parallel()
 	ct, database, _ := newTracker(t)

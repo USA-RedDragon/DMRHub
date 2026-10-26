@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -52,6 +53,13 @@ const (
 	subFrameType3       = "frame_type_3"
 	answerData          = "data"
 )
+
+// preambleGap is how long after a preamble CSBK the preamble or data header
+// that it announces takes its row from another stream. MMDVMHost
+// sends each CSBK and data header with a new stream ID. An XPR 8400 sends
+// the packets of a call with preambles at most 180 ms apart; twice that
+// allows for network jitter.
+const preambleGap = 360 * time.Millisecond
 
 type class struct {
 	kind      models.CallKind
@@ -326,9 +334,12 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 	}
 	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: cls.kind, sub: cls.sub}
 	r, ok := s.rows[key]
-	if ok && (t.at.Sub(r.last) > controlHang || r.call.StreamID != p.StreamID) {
+	if ok && (t.at.Sub(r.last) > controlHang || !sameCall(r, t, cls.sub == subPreamble)) {
 		s.finish(r, t.at)
 		ok = false
+	}
+	if ok {
+		r.call.StreamID = p.StreamID
 	}
 	if !ok {
 		r = s.open(t, ch, key, cls.kind, cls.sub, controlHang)
@@ -434,7 +445,7 @@ func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 		if cls != nil && cls.sub == subResponse {
 			sub = subResponse
 		}
-		r = s.adoptPreambles(ch, t, kind, sub)
+		r = s.adoptPreambles(ch, t, cls, kind, sub)
 		if r == nil {
 			r = s.open(t, ch, nil, kind, sub, dataRowHang)
 		}
@@ -448,22 +459,35 @@ func (s *shard) dataRow(ch *channel, t *task, cls *class) *row {
 }
 
 // adoptPreambles returns the open row of the preamble CSBKs that announced
-// the data packet of t on its stream, made into the row of the packet, so
+// the data packet of t, made into the row of the packet on its stream, so
 // that a preamble and its data make one transmission. It returns nil when
 // there is none.
-func (s *shard) adoptPreambles(ch *channel, t *task, kind models.CallKind, sub string) *row {
+func (s *shard) adoptPreambles(ch *channel, t *task, cls *class, kind models.CallKind, sub string) *row {
 	p := &t.p
 	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: models.CallKindCSBK, sub: subPreamble}
 	r, ok := s.rows[key]
-	if !ok || r.finished || r.call.StreamID != p.StreamID || t.at.Sub(r.last) > controlHang {
+	if !ok || r.finished || t.at.Sub(r.last) > controlHang || !sameCall(r, t, cls != nil && cls.header) {
 		return nil
 	}
 	delete(s.rows, key)
 	r.key = nil
 	r.hang = dataRowHang
+	r.call.StreamID = p.StreamID
 	r.call.Kind, r.call.SubKind = kind, sub
 	r.call.FID, r.call.Opcode = nil, nil
 	return r
+}
+
+// sameCall reports whether the burst of t belongs to the call of r: it is
+// on the stream of r, or r is a row of preamble CSBKs, announced is set for
+// a burst that a preamble announces, and t comes less than preambleGap
+// after the last preamble of r. The caller has matched the source, the
+// target and the group flag.
+func sameCall(r *row, t *task, announced bool) bool {
+	if r.call.StreamID == t.p.StreamID {
+		return true
+	}
+	return announced && r.call.Kind == models.CallKindCSBK && r.call.SubKind == subPreamble && t.at.Sub(r.last) < preambleGap
 }
 
 func (s *shard) messageRow(ch *channel, stream uint, t *task, cls *class, m *data.Message) *row {

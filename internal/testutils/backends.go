@@ -24,6 +24,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,68 +58,143 @@ func SQLiteMemoryBackend() Backend {
 	}
 }
 
-// MySQLBackend returns a backend that spins up a dedicated MySQL container
-// for each test, with the in-memory pubsub and KV. The root password is
-// "test", so that a test can make more databases.
+// MySQLBackend returns a backend with a database of its own for each test
+// on a MySQL server in Docker, with the in-memory pubsub and KV. The tests
+// of a process share the server while any of them runs. The root password
+// is "test", so that a test can make more databases.
 func MySQLBackend() Backend {
+	return mysqlFamilyBackend(mysqlServer)
+}
+
+// MariaDBBackend returns a backend with a database of its own for each
+// test on a MariaDB server of the latest long-term release in Docker, with
+// the in-memory pubsub and KV. The tests of a process share the server
+// while any of them runs. The root password is "test", so that a test can
+// make more databases.
+func MariaDBBackend() Backend {
+	return mysqlFamilyBackend(mariadbServer)
+}
+
+type sharedServer struct {
+	name, image, tag, envPrefix string
+	cmd                         []string
+
+	mu    sync.Mutex
+	users int
+	seq   int
+	port  int
+	pool  dockertest.ClosablePool
+	root  *gorm.DB
+}
+
+var (
+	mysqlServer = &sharedServer{ //nolint:gochecknoglobals
+		name: "mysql", image: "mysql", tag: "8.4", envPrefix: "MYSQL",
+		cmd: []string{"--max-connections=4000", "--innodb-flush-log-at-trx-commit=0", "--skip-log-bin"},
+	}
+	mariadbServer = &sharedServer{ //nolint:gochecknoglobals
+		name: "mariadb", image: "mariadb", tag: "12.3", envPrefix: "MARIADB",
+		cmd: []string{"--max-connections=4000", "--innodb-flush-log-at-trx-commit=0"},
+	}
+)
+
+func (s *sharedServer) start(t *testing.T) {
+	t.Helper()
+	pool, err := dockertest.NewPool(context.Background(), "", dockertest.WithMaxWait(3*time.Minute))
+	if err != nil {
+		t.Skip("Docker not available: " + err.Error())
+	}
+	res, err := pool.Run(context.Background(), s.image,
+		dockertest.WithTag(s.tag),
+		dockertest.WithEnv([]string{s.envPrefix + "_ROOT_PASSWORD=test"}),
+		dockertest.WithCmd(s.cmd),
+		dockertest.WithoutReuse(),
+		dockertest.WithHostConfig(func(hc *container.HostConfig) {
+			hc.AutoRemove = true
+			hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+			hc.NanoCPUs = 4e9
+		}),
+	)
+	if err != nil {
+		_ = pool.Close(context.Background())
+		t.Fatalf("start %s container: %v", s.name, err)
+	}
+	port, _ := strconv.Atoi(res.GetPort("3306/tcp"))
+	var root *gorm.DB
+	if err := pool.Retry(context.Background(), 0, func() error {
+		db, err := gorm.Open(mysql.Open(fmt.Sprintf("root:test@tcp(localhost:%d)/", port)), &gorm.Config{Logger: logger.Discard})
+		if err != nil {
+			return fmt.Errorf("opening %s probe: %w", s.name, err)
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			return fmt.Errorf("opening %s probe: %w", s.name, err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := sqlDB.PingContext(ctx); err != nil {
+			_ = sqlDB.Close()
+			return fmt.Errorf("pinging %s: %w", s.name, err)
+		}
+		root = db
+		return nil
+	}); err != nil {
+		_ = pool.Close(context.Background())
+		t.Fatalf("%s not ready: %v", s.name, err)
+	}
+	s.pool, s.port, s.root = pool, port, root
+}
+
+func (s *sharedServer) stop() {
+	if sqlDB, err := s.root.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	_ = s.pool.Close(context.Background())
+	s.pool, s.root = nil, nil
+}
+
+// acquire makes a new database on the server, starting the server when no
+// test is using it.
+func (s *sharedServer) acquire(t *testing.T) (port int, database string) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.users == 0 {
+		s.start(t)
+	}
+	s.users++
+	s.seq++
+	database = fmt.Sprintf("test%d", s.seq)
+	root := s.root
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_ = root.WithContext(ctx).Exec("DROP DATABASE IF EXISTS " + database).Error
+		cancel()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.users--
+		if s.users == 0 {
+			s.stop()
+		}
+	})
+	if err := root.Exec("CREATE DATABASE " + database).Error; err != nil {
+		t.Fatalf("create %s database: %v", s.name, err)
+	}
+	return s.port, database
+}
+
+func mysqlFamilyBackend(s *sharedServer) Backend {
 	return Backend{
-		Name: "mysql",
+		Name: s.name,
 		Setup: func(t *testing.T, cfg *config.Config) {
 			t.Helper()
-
-			pool, poolErr := dockertest.NewPool(t.Context(), "", dockertest.WithMaxWait(3*time.Minute))
-			if poolErr != nil {
-				t.Skip("Docker not available: " + poolErr.Error())
-			}
-			t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
-
-			res, err := pool.Run(t.Context(), "mysql",
-				dockertest.WithTag("8.4"),
-				dockertest.WithEnv([]string{
-					"MYSQL_ROOT_PASSWORD=test",
-					"MYSQL_DATABASE=testdb",
-				}),
-				dockertest.WithoutReuse(),
-				dockertest.WithHostConfig(func(hc *container.HostConfig) {
-					hc.AutoRemove = true
-					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
-					hc.NanoCPUs = 4e9
-				}),
-			)
-			if err != nil {
-				t.Fatalf("start mysql container: %v", err)
-			}
-			port, _ := strconv.Atoi(res.GetPort("3306/tcp"))
-
-			if err := pool.Retry(t.Context(), 0, func() error {
-				db, err := gorm.Open(mysql.Open(fmt.Sprintf("root:test@tcp(localhost:%d)/testdb", port)), &gorm.Config{Logger: logger.Discard})
-				if err != nil {
-					return fmt.Errorf("opening mysql probe: %w", err)
-				}
-				sqlDB, err := db.DB()
-				if err != nil {
-					return fmt.Errorf("opening mysql probe: %w", err)
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-				pingErr := sqlDB.PingContext(ctx)
-				if closeErr := sqlDB.Close(); closeErr != nil {
-					return fmt.Errorf("closing mysql probe: %w", closeErr)
-				}
-				if pingErr != nil {
-					return fmt.Errorf("pinging mysql: %w", pingErr)
-				}
-				return nil
-			}); err != nil {
-				t.Fatalf("mysql not ready: %v", err)
-			}
-
+			port, database := s.acquire(t)
 			cfg.Database.Driver = config.DatabaseDriverMySQL
 			cfg.Database.Host = "localhost"
 			cfg.Database.Port = port
 			cfg.Database.Username = "root"
 			cfg.Database.Password = "test"
-			cfg.Database.Database = "testdb"
+			cfg.Database.Database = database
 			cfg.Database.ExtraParameters = nil
 		},
 	}

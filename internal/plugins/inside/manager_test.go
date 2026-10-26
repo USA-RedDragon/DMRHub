@@ -147,6 +147,7 @@ func newCluster(t *testing.T) *cluster {
 type replica struct {
 	m        *inside.Manager
 	registry *plugins.Registry
+	svc      *plugins.Service
 	router   *routed
 }
 
@@ -162,9 +163,9 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 	done := make(chan struct{})
 	registry.Follow(done)
 	r := &replica{registry: registry, router: &routed{}}
-	svc := plugins.NewService(c.db, c.ps, registry, r.router, nil)
+	r.svc = plugins.NewService(c.db, c.ps, registry, r.router, nil)
 	r.m = inside.NewManager(inside.Deps{
-		DB: c.db, PubSub: c.ps, KV: c.kv, Instance: name, Version: "v1.3.4", Service: svc, Registry: registry, Engine: e, Timing: fast(),
+		DB: c.db, PubSub: c.ps, KV: c.kv, Instance: name, Version: "v1.3.4", Service: r.svc, Registry: registry, Engine: e, Timing: fast(),
 	})
 	require.NoError(t, r.m.Start(context.Background(), on))
 	t.Cleanup(func() {
@@ -265,6 +266,28 @@ func TestOnlyOneReplicaRunsAPlugin(t *testing.T) {
 		_, ok := other.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)
 	}, 30*time.Second, 50*time.Millisecond, "the other replica takes the plugin over")
+}
+
+func TestADrainHandsThePluginsInsideToAnotherReplica(t *testing.T) {
+	t.Parallel()
+	c := newCluster(t)
+	a := c.replica(t, "a", engine, true)
+	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9110, Last: 9110})
+	require.Eventually(t, func() bool {
+		_, ok := a.m.Running()[p.ID]
+		return ok && online(t, c, p.ID)
+	}, 60*time.Second, 50*time.Millisecond)
+	b := c.replica(t, "b", engine, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	left := inside.Drain(ctx, a.m, a.svc)
+	assert.Equal(t, 0, left, "no stream is left on the draining replica")
+	assert.Less(t, time.Since(start), 3*time.Second, "the drain does not wait for its deadline")
+	require.Eventually(t, func() bool {
+		_, ok := b.m.Running()[p.ID]
+		return ok && online(t, c, p.ID)
+	}, 30*time.Second, 50*time.Millisecond, "the other replica runs the plugin")
 }
 
 func TestAPluginInsideFollowsItsSwitch(t *testing.T) {

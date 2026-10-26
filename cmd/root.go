@@ -351,7 +351,8 @@ func (sm *serverManager) stopDMRServers(ctx context.Context) {
 
 // drain keeps this replica serving while the other replicas take its
 // sessions over, as manager.Manager.Drain does. The plugins move to the
-// other replicas in the same time.
+// other replicas in the same time: those inside DMRHub stop here, and
+// another replica starts them.
 func (sm *serverManager) drain(ctx context.Context) {
 	if sm.registry == nil {
 		return
@@ -361,7 +362,7 @@ func (sm *serverManager) drain(ctx context.Context) {
 	if sm.plugins != nil && timeout > 0 && sm.registry.OtherInstancesExist(ctx) {
 		pctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		wg.Go(func() { sm.plugins.Drain(pctx) })
+		wg.Go(func() { inside.Drain(pctx, sm.inside, sm.plugins) })
 	}
 	sm.dmr.Drain(ctx, sm.registry, timeout)
 	wg.Wait()

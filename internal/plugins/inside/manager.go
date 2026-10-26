@@ -239,8 +239,15 @@ func (m *Manager) Stop(ctx context.Context) {
 		}
 		<-r.ended
 	}
-	for id := range m.holds {
+	released := false
+	for id, held := range m.holds {
+		released = released || held
 		m.release(ctx, id)
+	}
+	if released {
+		if err := plugins.PublishChanged(m.d.PubSub); err != nil {
+			slog.Warn("Plugins: cannot announce the plugins that this replica gave up", "error", err)
+		}
 	}
 }
 
@@ -551,4 +558,21 @@ func (m *Manager) release(ctx context.Context, id uint) {
 		}
 	}
 	delete(m.holds, id)
+}
+
+// Drainer moves the plugins that run as their own programs to the other
+// replicas, as plugins.Service.Drain does.
+type Drainer interface {
+	Drain(ctx context.Context) int
+}
+
+// Drain moves the plugins of this replica to the other replicas, until ctx
+// ends, and returns how many streams are left. The plugins inside DMRHub
+// cannot connect again by themselves, so m stops them first and gives up
+// their leases, and another replica starts them. m may be nil.
+func Drain(ctx context.Context, m *Manager, d Drainer) int {
+	if m != nil {
+		m.Stop(ctx)
+	}
+	return d.Drain(ctx)
 }

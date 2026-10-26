@@ -54,7 +54,7 @@ DMRHub compiles each plugin file once. The plugins that run the same file share 
 
 ### Several replicas
 
-Only one replica runs each plugin inside DMRHub: the one that holds the plugin's lease in the KV store (Redis). When that replica stops, another takes the plugin over within about 20 seconds, or within 5 seconds when the replica stops cleanly. Uploaded plugins are kept in the database, so every replica has them.
+Only one replica runs each plugin inside DMRHub: the one that holds the plugin's lease in the KV store (Redis). When that replica stops, another takes the plugin over within about 20 seconds, or at once when the replica stops cleanly. Uploaded plugins are kept in the database, so every replica has them.
 
 ## Plugins that run as their own programs
 
@@ -78,6 +78,8 @@ No two plugins share an ID. DMRHub gives no IDs to an external plugin on its own
 When DMRHub runs as several replicas, a plugin that runs as its own program connects to any one of them. A newer connection of the same plugin ends the older one.
 
 When a replica stops and other replicas run, as in a rolling update, the replica first drains its plugins. It tells each plugin that runs as its own program and is connected to it that it stops, and from then on refuses new plugin connections. A plugin built with the plugin SDK of this version then opens a second connection, which reaches another replica, while it keeps the first one. When the new connection is up, the plugin sends on it, and the old replica ends the old connection about a second later. A burst that comes on both connections reaches the plugin once. The plugin sees no disconnection, and no call to its IDs is lost. The replica waits for this as long as it drains its repeaters (`dmr.drain-timeout`, 25 seconds by default). A plugin built with an older SDK does not know this message. It connects again as before when its connection ends, and the calls to its IDs in that gap are lost.
+
+The plugins inside DMRHub move too. The stopping replica stops them and gives up their leases, and another replica starts them a moment later. The calls to their IDs in that gap are lost.
 
 ## The plugins that come with DMRHub as programs
 

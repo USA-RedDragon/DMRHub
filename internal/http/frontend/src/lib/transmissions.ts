@@ -77,8 +77,18 @@ export type CallRow = {
   grid?: string;
   position_error?: number | null;
   partial?: boolean;
-  undeliverable?: string[] | null;
+  undeliverable?: UndeliverableEntry[] | null;
+  undeliverable_scope?: string;
 } & CallCodecFields;
+
+/** UndeliverableEntry is a repeater that a call was not sent to, and why. */
+export type UndeliverableEntry = {
+  sentence: string;
+  target: string;
+  repeater_id: number;
+  callsign: string;
+  reason: string;
+};
 
 const CONTROL_KINDS = ['udt', 'mbc', 'idle', 'usbd'];
 const IDLE_KINDS = ['idle', 'usbd'];
@@ -122,120 +132,108 @@ const UNKNOWN_NAMES: Record<string, string> = {
   frame_type_3: 'Frame type 3',
 };
 
-const UNDELIVERABLE_REASONS: Record<string, (link: string) => string> = {
-  invalid_data_type: () => 'the burst has an invalid data type',
-  no_ipsc_form: (link) => `the ${link} cannot carry this kind of burst`,
-  frame_type_3: () => 'the burst has an unknown frame type',
-  fec_uncorrectable: () => 'the burst was too damaged to repair',
-  slot_type: (link) => `the burst could not be rebuilt for the ${link}`,
-  data_in_voice: () => 'a data burst came in the middle of a voice call',
-  undecodable: () => 'the burst could not be read',
-  stream_id_range: (link) => `the call ID does not fit the ${link}`,
-  slot_busy: () => 'the timeslot stayed busy with other calls for 30 seconds',
-};
-
-const SERVER_NAMES: Record<string, string> = {
-  ipsc: 'IPSC',
-  mmdvm: 'MMDVM',
-};
-
 /** humanize turns a sub kind such as c_bcast into C bcast for display. */
 export function humanize(sub: string): string {
   const text = sub.replace(/_/g, ' ').trim();
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export type UndeliverableLabel = {
-  target: string;
-  reason: string;
+const UNDELIVERABLE_WORDS: Record<string, string> = {
+  invalid_data_type: 'invalid data type',
+  no_ipsc_form: 'could not carry this burst',
+  frame_type_3: 'unknown frame type',
+  fec_uncorrectable: 'too damaged to repair',
+  slot_type: 'could not rebuild this burst',
+  stream_id_range: 'call ID does not fit the link',
+  build_failed: 'could not build this burst',
+  encode_failed: 'could not encode this burst',
+  data_in_voice: 'data burst in a voice call',
+  undecodable: 'could not read this burst',
+  slot_busy: 'busy on that slot',
 };
 
-function repeaterCallsign(row: CallRow, id: number): string {
-  if (row.is_to_repeater && row.to_repeater?.id === id && row.to_repeater.callsign) {
-    return row.to_repeater.callsign;
-  }
-  if (row.repeater?.id === id && row.repeater.callsign) {
-    return row.repeater.callsign;
-  }
-  return '';
-}
+const UNDELIVERABLE_TARGETS: Record<string, string> = {
+  ipsc: 'IPSC repeater',
+  mmdvm: 'MMDVM repeater',
+  openbridge: 'OpenBridge peer',
+};
+
+const LISTED_PER_REASON = 3;
+
+/** UndeliverableView is how the type column shows the repeaters that a call was not sent to. */
+export type UndeliverableView = {
+  lines: string[];
+  summary: string;
+  details: string[];
+};
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-const SENTENCE_TARGETS: Record<string, string> = {
-  'ipsc repeater': 'ipsc',
-  'mmdvm repeater': 'mmdvm',
-  'openbridge peer': 'openbridge',
-  repeater: '',
-};
+function reasonWords(e: UndeliverableEntry): string {
+  return UNDELIVERABLE_WORDS[e.reason] ?? 'could not prepare this burst';
+}
 
-const SENTENCE_WHO = '(?:an? )?(IPSC repeater|MMDVM repeater|OpenBridge peer|repeater)(?: (\\d+))?';
-
-const SENTENCE_REASONS: [RegExp, string][] = [
-  ['the burst for WHO had an invalid data type', 'invalid_data_type'],
-  ['WHO cannot carry this kind of burst', 'no_ipsc_form'],
-  ['the burst for WHO had an unknown frame type', 'frame_type_3'],
-  ['the burst for WHO was too damaged to repair', 'fec_uncorrectable'],
-  ['the burst could not be rebuilt for WHO', 'slot_type'],
-  ['the call ID does not fit the link to WHO', 'stream_id_range'],
-  ['the burst could not be built for WHO', 'build_failed'],
-  ['the burst could not be encoded for WHO', 'encode_failed'],
-  ['a data burst for WHO came in the middle of a voice call', 'data_in_voice'],
-  ['the burst for WHO could not be read', 'undecodable'],
-  ['WHO was busy on that slot', 'slot_busy'],
-  ['the burst could not be prepared for WHO', ''],
-].map(([text, reason]) => [new RegExp(`^${text!.replace('WHO', SENTENCE_WHO)}\\.$`, 'i'), reason!]);
-
-/**
- * entryOf turns an undeliverable sentence that the hub stores, such as
- * "IPSC repeater 314926 was busy on that slot.", into the old entry
- * ipsc:314926:slot_busy. It returns any other entry as it is.
- */
-function entryOf(target: string): string {
-  for (const [re, reason] of SENTENCE_REASONS) {
-    const m = re.exec(target);
-    if (m) {
-      return `${SENTENCE_TARGETS[m[1]!.toLowerCase()] ?? ''}:${m[2] ?? ''}:${reason}`;
-    }
+function repeaterName(e: UndeliverableEntry): string {
+  if (!e.repeater_id) {
+    const kind = UNDELIVERABLE_TARGETS[e.target];
+    return kind ? `an ${kind}` : 'a repeater';
   }
-  return target;
+  return e.callsign ? `${e.callsign} (${e.repeater_id})` : `${e.repeater_id}`;
+}
+
+function targetName(e: UndeliverableEntry): string {
+  if (!e.repeater_id) {
+    return repeaterName(e);
+  }
+  return `${UNDELIVERABLE_TARGETS[e.target] ?? 'repeater'} ${repeaterName(e)}`;
+}
+
+function repeaterCount(entries: UndeliverableEntry[]): number {
+  const seen = new Set<string>();
+  entries.forEach((e, i) => seen.add(e.repeater_id ? `${e.target}:${e.repeater_id}` : `#${i}`));
+  return seen.size;
 }
 
 /**
- * undeliverableLabel words a last heard undeliverable target, a sentence
- * such as "IPSC repeater 311304200 cannot carry this kind of burst." or an
- * old entry such as ipsc:311304200:no_ipsc_form, as the repeater it names
- * and why it was not sent.
+ * undeliverableView words the repeaters that a call was not sent to, as the
+ * API shows them to the viewer. The caller and an admin get a count by
+ * reason with the repeaters listed under it, the owner of a repeater a line
+ * for each of their own, and one repeater shows on one line.
  */
-export function undeliverableLabel(target: string, row: CallRow): UndeliverableLabel {
-  const [server = '', id = '', ...rest] = entryOf(target).split(':');
-  const reason = rest.join(':');
-  const serverName = SERVER_NAMES[server] || '';
-  const kind = serverName ? `${serverName} repeater` : 'repeater';
-  let who: string;
-  if (!id) {
-    who = serverName ? `an ${kind}` : `a ${kind}`;
-  } else {
-    const callsign = /^\d+$/.test(id) ? repeaterCallsign(row, Number(id)) : '';
-    who = callsign ? `${kind} ${callsign} (${id})` : `${kind} ${id}`;
+export function undeliverableView(row: CallRow): UndeliverableView {
+  const entries = row.undeliverable || [];
+  const view: UndeliverableView = { lines: [], summary: '', details: [] };
+  if (row.undeliverable_scope === 'own') {
+    view.lines = entries.map((e) => {
+      const yours = e.target === 'openbridge' ? 'your OpenBridge peer' : 'your repeater';
+      return `Not sent to ${yours} ${repeaterName(e)}: ${reasonWords(e)}`;
+    });
+    return view;
   }
-  const link = serverName ? `${serverName} link` : 'link';
-  const why = UNDELIVERABLE_REASONS[reason]?.(link) ?? `the burst could not be prepared for the ${link}`;
-  return { target: who, reason: why };
-}
-
-/** undeliverableLines words a call's undeliverable list as lines to show under its type. */
-export function undeliverableLines(row: CallRow): string[] {
-  const labels = (row.undeliverable || []).map((t) => undeliverableLabel(t, row));
-  if (labels.length === 1) {
-    return [`Not sent to ${labels[0]!.target}`, capitalize(labels[0]!.reason)];
+  const count = repeaterCount(entries);
+  if (count <= 1) {
+    view.lines = entries.map((e) => `Not sent to ${targetName(e)}: ${reasonWords(e)}`);
+    return view;
   }
-  if (labels.length > 1) {
-    return [`Not sent to ${labels.length} repeaters`, ...labels.map((l) => `${capitalize(l.target)}: ${l.reason}`)];
+  const groups = new Map<string, string[]>();
+  for (const e of entries) {
+    const words = reasonWords(e);
+    groups.set(words, [...(groups.get(words) ?? []), repeaterName(e)]);
   }
-  return [];
+  const sorted = [...groups].sort((a, b) => b[1].length - a[1].length);
+  view.lines = [
+    `Not sent to ${count} repeaters`,
+    sorted.map(([words, names]) => `${names.length} ${words}`).join(' · '),
+  ];
+  view.summary = `Show the ${count} repeaters`;
+  view.details = sorted.map(([words, names]) => {
+    const shown = names.slice(0, LISTED_PER_REASON).join(', ');
+    const more = names.length - LISTED_PER_REASON;
+    return `${capitalize(words)}: ${shown}${more > 0 ? `, and ${more} more` : ''}`;
+  });
+  return view;
 }
 
 const POSITION_ERRORS: Record<number, string> = {

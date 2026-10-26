@@ -27,9 +27,9 @@ import {
   rssiText,
   typeLines,
   typeOf,
-  undeliverableLabel,
-  undeliverableLines,
+  undeliverableView,
   type CallRow,
+  type UndeliverableEntry,
 } from '@/lib/transmissions';
 
 function row(fields: Partial<CallRow>): CallRow {
@@ -117,130 +117,129 @@ describe('typeLines', () => {
   });
 
   it('names the targets that could not take a burst', () => {
-    expect(typeLines(row({ kind: 'idle', undeliverable: ['ipsc:311304200:no_ipsc_form'] }))).toEqual(['Idle', 'PR fill']);
-  });
-});
-
-describe('undeliverableLabel', () => {
-  const r = row({});
-  const ipsc = 'IPSC repeater 311304200';
-
-  it('words each known IPSC reason', () => {
-    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', r)).toEqual({
-      target: ipsc,
-      reason: 'the IPSC link cannot carry this kind of burst',
-    });
-    expect(undeliverableLabel('ipsc:311304200:invalid_data_type', r).reason).toBe('the burst has an invalid data type');
-    expect(undeliverableLabel('ipsc:311304200:frame_type_3', r).reason).toBe('the burst has an unknown frame type');
-    expect(undeliverableLabel('ipsc:311304200:fec_uncorrectable', r).reason).toBe('the burst was too damaged to repair');
-    expect(undeliverableLabel('ipsc:311304200:slot_type', r).reason).toBe('the burst could not be rebuilt for the IPSC link');
-    expect(undeliverableLabel('ipsc:311304200:data_in_voice', r).reason).toBe('a data burst came in the middle of a voice call');
-    expect(undeliverableLabel('ipsc:311304200:slot_busy', r).reason).toBe('the timeslot stayed busy with other calls for 30 seconds');
-    expect(undeliverableLabel('ipsc:311304200:undecodable', r).reason).toBe('the burst could not be read');
-    expect(undeliverableLabel('ipsc:311304200:stream_id_range', r).reason).toBe('the call ID does not fit the IPSC link');
-  });
-
-  it('gives an unknown reason a generic wording without the raw code', () => {
-    expect(undeliverableLabel('ipsc:311304200:encode_failed', r)).toEqual({
-      target: ipsc,
-      reason: 'the burst could not be prepared for the IPSC link',
-    });
-  });
-
-  it('names the repeater when the row already has its callsign', () => {
-    const withName = row({ is_to_repeater: true, to_repeater: { id: 311304200, callsign: 'W1XPR' } });
-    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', withName).target).toBe('IPSC repeater W1XPR (311304200)');
-    const source = row({ repeater: { id: 311304200, callsign: 'W1XPR' } });
-    expect(undeliverableLabel('ipsc:311304200:no_ipsc_form', source).target).toBe('IPSC repeater W1XPR (311304200)');
-  });
-
-  it('copes with entries that miss parts', () => {
-    expect(undeliverableLabel('ipsc:311304200', r)).toEqual({
-      target: ipsc,
-      reason: 'the burst could not be prepared for the IPSC link',
-    });
-    expect(undeliverableLabel('ipsc', r).target).toBe('an IPSC repeater');
-    expect(undeliverableLabel('ipsc::no_ipsc_form', r)).toEqual({
-      target: 'an IPSC repeater',
-      reason: 'the IPSC link cannot carry this kind of burst',
-    });
-    expect(undeliverableLabel('', r)).toEqual({
-      target: 'a repeater',
-      reason: 'the burst could not be prepared for the link',
-    });
-  });
-
-  it('handles a target that is not IPSC', () => {
-    expect(undeliverableLabel('mmdvm:311000:build_failed', r)).toEqual({
-      target: 'MMDVM repeater 311000',
-      reason: 'the burst could not be prepared for the MMDVM link',
-    });
-    expect(undeliverableLabel('newproto:42:build_failed', r)).toEqual({
-      target: 'repeater 42',
-      reason: 'the burst could not be prepared for the link',
-    });
-  });
-});
-
-describe('undeliverableLines', () => {
-  it('is empty when every target took the call', () => {
-    expect(undeliverableLines(row({}))).toEqual([]);
-    expect(undeliverableLines(row({ undeliverable: null }))).toEqual([]);
-    expect(undeliverableLines(row({ undeliverable: [] }))).toEqual([]);
-  });
-
-  it('shows a single target with its reason on the next line', () => {
-    expect(undeliverableLines(row({ undeliverable: ['ipsc:311304200:no_ipsc_form'] }))).toEqual([
-      'Not sent to IPSC repeater 311304200',
-      'The IPSC link cannot carry this kind of burst',
-    ]);
-  });
-
-  it('counts several targets, then gives each with its reason', () => {
-    expect(undeliverableLines(row({ undeliverable: ['ipsc:311304200:no_ipsc_form', 'ipsc::fec_uncorrectable'] }))).toEqual([
-      'Not sent to 2 repeaters',
-      'IPSC repeater 311304200: the IPSC link cannot carry this kind of burst',
-      'An IPSC repeater: the burst was too damaged to repair',
+    expect(typeLines(row({ kind: 'idle', undeliverable: [entry(311304200, 'no_ipsc_form')], undeliverable_scope: 'all' }))).toEqual([
+      'Idle',
+      'PR fill',
     ]);
   });
 });
 
-describe('undeliverable sentences', () => {
-  const pairs: [string, string][] = [
-    ['ipsc:314926:invalid_data_type', 'The burst for IPSC repeater 314926 had an invalid data type.'],
-    ['ipsc:314926:no_ipsc_form', 'IPSC repeater 314926 cannot carry this kind of burst.'],
-    ['ipsc:314926:frame_type_3', 'The burst for IPSC repeater 314926 had an unknown frame type.'],
-    ['ipsc:314926:fec_uncorrectable', 'The burst for IPSC repeater 314926 was too damaged to repair.'],
-    ['ipsc:314926:slot_type', 'The burst could not be rebuilt for IPSC repeater 314926.'],
-    ['ipsc:314926:stream_id_range', 'The call ID does not fit the link to IPSC repeater 314926.'],
-    ['ipsc:314926:build_failed', 'The burst could not be built for IPSC repeater 314926.'],
-    ['ipsc:314926:encode_failed', 'The burst could not be encoded for IPSC repeater 314926.'],
-    ['ipsc:314926:data_in_voice', 'A data burst for IPSC repeater 314926 came in the middle of a voice call.'],
-    ['ipsc:314926:undecodable', 'The burst for IPSC repeater 314926 could not be read.'],
-    ['ipsc:314926:slot_busy', 'IPSC repeater 314926 was busy on that slot.'],
-    ['ipsc:314926:', 'The burst could not be prepared for IPSC repeater 314926.'],
-    ['ipsc::slot_busy', 'An IPSC repeater was busy on that slot.'],
-    ['mmdvm:311000:build_failed', 'The burst could not be built for MMDVM repeater 311000.'],
-    ['openbridge:311000:slot_busy', 'OpenBridge peer 311000 was busy on that slot.'],
-    ['newproto:42:slot_busy', 'Repeater 42 was busy on that slot.'],
-    [':', 'The burst could not be prepared for a repeater.'],
-  ];
+function entry(id: number, reason: string, callsign = '', target = 'ipsc'): UndeliverableEntry {
+  return { sentence: `sentence ${id} ${reason}`, target, repeater_id: id, callsign, reason };
+}
 
-  it('shows a stored sentence as it showed the old entry', () => {
-    const named = row({ is_to_repeater: true, to_repeater: { id: 314926, callsign: 'W1XPR' } });
-    for (const [old, sentence] of pairs) {
-      expect({ sentence, label: undeliverableLabel(sentence, named) }).toEqual({ sentence, label: undeliverableLabel(old, named) });
+describe('undeliverableView', () => {
+  const none = { lines: [], summary: '', details: [] };
+
+  it('is empty when every repeater took the call or the viewer may not see it', () => {
+    expect(undeliverableView(row({}))).toEqual(none);
+    expect(undeliverableView(row({ undeliverable: null }))).toEqual(none);
+    expect(undeliverableView(row({ undeliverable: [], undeliverable_scope: '' }))).toEqual(none);
+  });
+
+  it('shows a single repeater on one line', () => {
+    expect(undeliverableView(row({ undeliverable: [entry(314926, 'slot_busy', 'W1XPR')], undeliverable_scope: 'all' }))).toEqual({
+      ...none,
+      lines: ['Not sent to IPSC repeater W1XPR (314926): busy on that slot'],
+    });
+    expect(undeliverableView(row({ undeliverable: [entry(311304200, 'no_ipsc_form')], undeliverable_scope: 'all' })).lines).toEqual([
+      'Not sent to IPSC repeater 311304200: could not carry this burst',
+    ]);
+  });
+
+  it('words each reason code', () => {
+    const words: Record<string, string> = {
+      invalid_data_type: 'invalid data type',
+      no_ipsc_form: 'could not carry this burst',
+      frame_type_3: 'unknown frame type',
+      fec_uncorrectable: 'too damaged to repair',
+      slot_type: 'could not rebuild this burst',
+      stream_id_range: 'call ID does not fit the link',
+      build_failed: 'could not build this burst',
+      encode_failed: 'could not encode this burst',
+      data_in_voice: 'data burst in a voice call',
+      undecodable: 'could not read this burst',
+      slot_busy: 'busy on that slot',
+      '': 'could not prepare this burst',
+      new_code: 'could not prepare this burst',
+    };
+    for (const [reason, want] of Object.entries(words)) {
+      const view = undeliverableView(row({ undeliverable: [entry(1, reason)], undeliverable_scope: 'all' }));
+      expect(view.lines).toEqual([`Not sent to IPSC repeater 1: ${want}`]);
     }
   });
 
-  it('shows the lines of a call with sentences as with old entries', () => {
-    const named = row({ repeater: { id: 314926, callsign: 'W1XPR' } });
-    expect(undeliverableLines({ ...named, undeliverable: ['IPSC repeater 314926 was busy on that slot.'] })).toEqual([
-      'Not sent to IPSC repeater W1XPR (314926)',
-      'The timeslot stayed busy with other calls for 30 seconds',
+  it('names a repeater that the sentence does not name, and other targets', () => {
+    const lines = (e: UndeliverableEntry) => undeliverableView(row({ undeliverable: [e], undeliverable_scope: 'all' })).lines;
+    expect(lines(entry(0, 'slot_busy'))).toEqual(['Not sent to an IPSC repeater: busy on that slot']);
+    expect(lines(entry(0, 'slot_busy', '', ''))).toEqual(['Not sent to a repeater: busy on that slot']);
+    expect(lines(entry(311000, 'build_failed', 'W1RPT', 'mmdvm'))).toEqual(['Not sent to MMDVM repeater W1RPT (311000): could not build this burst']);
+    expect(lines(entry(311000, 'slot_busy', '', 'openbridge'))).toEqual(['Not sent to OpenBridge peer 311000: busy on that slot']);
+  });
+
+  it('counts the repeaters by reason and lists them under the count', () => {
+    const busy = [
+      entry(314926, 'slot_busy', 'W1XPR'),
+      entry(311304200, 'slot_busy', 'K5ABC'),
+      entry(311304201, 'slot_busy', 'N0XYZ'),
+      ...Array.from({ length: 35 }, (_, i) => entry(311307000 + i, 'slot_busy')),
+    ];
+    const undeliverable = [
+      entry(311305510, 'no_ipsc_form'),
+      ...busy.slice(0, 20),
+      entry(311306001, 'fec_uncorrectable', 'KD5QRS'),
+      ...busy.slice(20),
+      entry(311305511, 'no_ipsc_form'),
+    ];
+    expect(undeliverableView(row({ undeliverable, undeliverable_scope: 'all' }))).toEqual({
+      lines: ['Not sent to 41 repeaters', '38 busy on that slot · 2 could not carry this burst · 1 too damaged to repair'],
+      summary: 'Show the 41 repeaters',
+      details: [
+        'Busy on that slot: W1XPR (314926), K5ABC (311304200), N0XYZ (311304201), and 35 more',
+        'Could not carry this burst: 311305510, 311305511',
+        'Too damaged to repair: KD5QRS (311306001)',
+      ],
+    });
+  });
+
+  it('counts a repeater with two reasons once', () => {
+    const view = undeliverableView(row({
+      undeliverable: [entry(314926, 'slot_busy', 'W1XPR'), entry(314926, 'fec_uncorrectable', 'W1XPR'), entry(311304200, 'slot_busy')],
+      undeliverable_scope: 'all',
+    }));
+    expect(view.lines).toEqual(['Not sent to 2 repeaters', '2 busy on that slot · 1 too damaged to repair']);
+    expect(view.summary).toBe('Show the 2 repeaters');
+    const one = undeliverableView(row({
+      undeliverable: [entry(314926, 'slot_busy', 'W1XPR'), entry(314926, 'fec_uncorrectable', 'W1XPR')],
+      undeliverable_scope: 'all',
+    }));
+    expect(one).toEqual({
+      ...none,
+      lines: ['Not sent to IPSC repeater W1XPR (314926): busy on that slot', 'Not sent to IPSC repeater W1XPR (314926): too damaged to repair'],
+    });
+  });
+
+  it('tells the owner of a repeater about their own repeater', () => {
+    expect(undeliverableView(row({ undeliverable: [entry(314926, 'slot_busy', 'W1XPR')], undeliverable_scope: 'own' }))).toEqual({
+      ...none,
+      lines: ['Not sent to your repeater W1XPR (314926): busy on that slot'],
+    });
+    expect(undeliverableView(row({
+      undeliverable: [entry(314926, 'slot_busy', 'W1XPR'), entry(314927, 'fec_uncorrectable'), entry(311000, 'slot_busy', '', 'openbridge')],
+      undeliverable_scope: 'own',
+    })).lines).toEqual([
+      'Not sent to your repeater W1XPR (314926): busy on that slot',
+      'Not sent to your repeater 314927: too damaged to repair',
+      'Not sent to your OpenBridge peer 311000: busy on that slot',
     ]);
-    const both = { ...named, undeliverable: pairs.slice(0, 2).map(([, s]) => s) };
-    expect(undeliverableLines(both)).toEqual(undeliverableLines({ ...named, undeliverable: pairs.slice(0, 2).map(([o]) => o) }));
+  });
+
+  it('never shows the stored sentence or a reason code', () => {
+    const view = undeliverableView(row({ undeliverable: [entry(1, 'encode_failed'), entry(2, 'slot_busy')], undeliverable_scope: 'all' }));
+    const text = [...view.lines, view.summary, ...view.details].join('\n');
+    expect(text).not.toContain('sentence');
+    expect(text).not.toContain('encode_failed');
+    expect(text).not.toContain('slot_busy');
   });
 });
 

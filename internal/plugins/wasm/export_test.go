@@ -19,6 +19,31 @@
 
 package wasm
 
+import "time"
+
 // PackData is packData for the tests.
 var PackData = packData //nolint:gochecknoglobals // for the tests
 
+// Compiled returns how many modules e holds compiled.
+func Compiled(e *Engine) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.modules)
+}
+
+// SameCode reports whether a and b run the same compiled module.
+func SameCode(a, b *Instance) bool {
+	return a.code == b.code
+}
+
+// KeepFor sets how long e keeps a module that no plugin runs.
+func KeepFor(e *Engine, d time.Duration) {
+	e.keep = d
+}
+
+// Waiting reports whether the meter of i saw it wait in poll_oneoff.
+func Waiting(i *Instance) bool {
+	i.meter.mu.Lock()
+	defer i.meter.mu.Unlock()
+	return i.meter.waiting
+}

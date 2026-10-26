@@ -65,12 +65,41 @@ func (m *meter) pin(tid int) {
 	m.tid = tid
 }
 
-// NewFunctionListener listens to poll_oneoff of WASI.
-func (m *meter) NewFunctionListener(def api.FunctionDefinition) experimental.FunctionListener {
+// meterKey holds the meter of a plugin in the context of its calls.
+type meterKey struct{}
+
+// pollListener tells the meter of the plugin that calls poll_oneoff, where
+// a plugin waits, that it waits.
+type pollListener struct{}
+
+func (pollListener) NewFunctionListener(def api.FunctionDefinition) experimental.FunctionListener {
 	if slices.Contains(def.ExportNames(), "poll_oneoff") {
-		return m
+		return pollListener{}
 	}
 	return nil
+}
+
+func meterOf(ctx context.Context) *meter {
+	m, _ := ctx.Value(meterKey{}).(*meter)
+	return m
+}
+
+func (pollListener) Before(ctx context.Context, mod api.Module, def api.FunctionDefinition, params []uint64, si experimental.StackIterator) {
+	if m := meterOf(ctx); m != nil {
+		m.Before(ctx, mod, def, params, si)
+	}
+}
+
+func (pollListener) After(ctx context.Context, mod api.Module, def api.FunctionDefinition, results []uint64) {
+	if m := meterOf(ctx); m != nil {
+		m.After(ctx, mod, def, results)
+	}
+}
+
+func (pollListener) Abort(ctx context.Context, mod api.Module, def api.FunctionDefinition, err error) {
+	if m := meterOf(ctx); m != nil {
+		m.Abort(ctx, mod, def, err)
+	}
 }
 
 // Before notes that the plugin waits.

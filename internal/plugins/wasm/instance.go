@@ -36,7 +36,6 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 	"google.golang.org/protobuf/proto"
 )
@@ -64,7 +63,8 @@ type Instance struct {
 	limits Limits
 	ctx    context.Context //nolint:containedctx // the life of the plugin
 	cancel context.CancelCauseFunc
-	rt     wazero.Runtime
+	engine *Engine
+	code   *compiled
 	meter  *meter
 	net    *netHost
 
@@ -81,35 +81,33 @@ type Instance struct {
 }
 
 // Start runs the module wasm as the plugin name, which reaches the hosts
-// that hosts allows, and returns once the plugin said hello. Connect the
-// plugin to the hub with the plugin service and Stream.
-func (e *Engine) Start(ctx context.Context, name string, wasm []byte, hosts Hosts) (*Instance, error) {
+// that hosts allows, and returns once the plugin said hello. args follow
+// "plugin" in the arguments of the plugin. Connect the plugin to the hub
+// with the plugin service and Stream.
+func (e *Engine) Start(ctx context.Context, name string, wasm []byte, hosts Hosts, args ...string) (*Instance, error) {
 	if !bytes.HasPrefix(wasm, wasmMagic) {
 		return nil, ErrNotWasm
+	}
+	rt, code, err := e.acquire(ctx, wasm)
+	if err != nil {
+		return nil, err
 	}
 	l := e.limits
 	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	i := &Instance{
-		name: name, limits: l, ctx: runCtx, cancel: cancel, meter: newMeter(time.Now()),
+		name: name, limits: l, cancel: cancel, engine: e, code: code, meter: newMeter(time.Now()),
 		frames: make(chan *pluginv1.ConnectRequest, frameQueue), helloed: make(chan struct{}), done: make(chan struct{}),
 	}
+	runCtx = context.WithValue(runCtx, meterKey{}, i.meter)
+	i.ctx = runCtx
 	i.net = newNetHost(i, hosts)
-	rc := wazero.NewRuntimeConfig()
-	if interpret {
-		rc = wazero.NewRuntimeConfigInterpreter()
-	}
-	rc = rc.WithMemoryLimitPages(l.MemoryPages).WithCloseOnContextDone(true)
-	if e.cache != nil {
-		rc = rc.WithCompilationCache(e.cache)
-	}
-	i.rt = wazero.NewRuntimeWithConfig(runCtx, rc)
-	compiled, mod, err := i.instantiate(runCtx, packData(wasm))
+	mod, err := i.instantiate(runCtx, rt, args)
 	if err != nil {
 		cancel(err)
-		_ = i.rt.Close(context.WithoutCancel(ctx))
+		e.release(ctx, code)
 		return nil, err
 	}
-	go i.run(runCtx, compiled, mod)
+	go i.run(runCtx, mod)
 	go i.watch()
 	if err := i.awaitHello(); err != nil {
 		i.Stop()
@@ -118,32 +116,22 @@ func (e *Engine) Start(ctx context.Context, name string, wasm []byte, hosts Host
 	return i, nil
 }
 
-func (i *Instance) instantiate(ctx context.Context, wasm []byte) (wazero.CompiledModule, api.Module, error) {
-	listened := experimental.WithFunctionListenerFactory(ctx, i.meter)
-	if _, err := wasi_snapshot_preview1.NewBuilder(i.rt).Instantiate(listened); err != nil {
-		return nil, nil, fmt.Errorf("could not give the plugin WASI: %w", err)
-	}
-	compiled, err := i.rt.CompileModule(ctx, wasm)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrNotWasm, err)
-	}
-	if _, ok := compiled.ExportedFunctions()["_start"]; !ok {
-		return nil, nil, fmt.Errorf("%w: it has no _start", ErrNotWasm)
-	}
+func (i *Instance) instantiate(ctx context.Context, rt wazero.Runtime, args []string) (api.Module, error) {
+	var err error
 	i.stdinR, i.stdin, err = os.Pipe()
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not make the stdin of the plugin: %w", err)
+		return nil, fmt.Errorf("could not make the stdin of the plugin: %w", err)
 	}
-	cfg := wazero.NewModuleConfig().WithName("").WithArgs("plugin").
+	cfg := wazero.NewModuleConfig().WithName("").WithArgs(append([]string{"plugin"}, args...)...).
 		WithStdin(i.stdinR).WithStdout(&frameWriter{i: i}).WithStderr(newLogWriter(i.name, i.limits.LogLines)).
 		WithSysWalltime().WithSysNanotime().WithNanosleep(i.sleep).WithRandSource(rand.Reader).WithStartFunctions()
-	mod, err := i.rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, memoryAllocator), compiled, cfg)
+	mod, err := rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, memoryAllocator), i.code.module, cfg)
 	if err != nil {
 		_ = i.stdinR.Close()
 		_ = i.stdin.Close()
-		return nil, nil, fmt.Errorf("%w: %w", ErrNotWasm, err)
+		return nil, fmt.Errorf("%w: %w", ErrNotWasm, err)
 	}
-	return compiled, mod, nil
+	return mod, nil
 }
 
 func (i *Instance) sleep(ns int64) {
@@ -155,18 +143,17 @@ func (i *Instance) sleep(ns int64) {
 	}
 }
 
-func (i *Instance) run(ctx context.Context, compiled wazero.CompiledModule, mod api.Module) {
+func (i *Instance) run(ctx context.Context, mod api.Module) {
 	i.meter.pin(pinThread())
 	_, err := mod.ExportedFunction("_start").Call(ctx)
 	memory := uint64(0)
 	if m := mod.Memory(); m != nil {
 		memory = uint64(m.Size())
 	}
-	i.finish(ctx, err, memory)
-	_ = compiled.Close(context.WithoutCancel(ctx))
+	i.finish(ctx, mod, err, memory)
 }
 
-func (i *Instance) finish(ctx context.Context, err error, memory uint64) {
+func (i *Instance) finish(ctx context.Context, mod api.Module, err error, memory uint64) {
 	var exit *sys.ExitError
 	limit := uint64(i.limits.MemoryPages) * pageSize
 	cause := context.Cause(ctx)
@@ -185,7 +172,8 @@ func (i *Instance) finish(ctx context.Context, err error, memory uint64) {
 	_ = i.stdin.Close()
 	_ = i.stdinR.Close()
 	i.net.closeAll()
-	_ = i.rt.Close(context.WithoutCancel(ctx))
+	_ = mod.Close(context.WithoutCancel(ctx))
+	i.engine.release(ctx, i.code)
 	if !errors.Is(i.err, ErrStopped) {
 		slog.Warn("Plugins: a plugin inside DMRHub stopped", "plugin", i.name, "reason", i.err)
 	}

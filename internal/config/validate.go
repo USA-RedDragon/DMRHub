@@ -138,6 +138,24 @@ var (
 	ErrInvalidHTTPRobotsTXTContent = errors.New("invalid robots.txt content provided, must be non-empty when mode is custom")
 	// ErrHTTPCanonicalHostRequired indicates that the canonical host is required for the HTTP server.
 	ErrHTTPCanonicalHostRequired = errors.New("canonical host is required for generating absolute URLs in the HTTP server")
+	// ErrInvalidModemPort indicates that the modem has no serial device.
+	ErrInvalidModemPort = errors.New("the serial device of the modem is required when the modem is enabled")
+	// ErrInvalidModemBaud indicates that the serial speed of the modem is not one that DMRHub sets.
+	ErrInvalidModemBaud = errors.New("the serial speed of the modem must be 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600")
+	// ErrInvalidModemRepeaterID indicates that the repeater ID of the modem is 0 or more than 32 bits.
+	ErrInvalidModemRepeaterID = errors.New("the repeater ID of the modem is required and must fit in 32 bits")
+	// ErrInvalidModemColorCode indicates that the color code of the modem is above 15.
+	ErrInvalidModemColorCode = errors.New("the color code of the modem must be 0 to 15")
+	// ErrInvalidModemFrequency indicates that a modem frequency, with its offset, is 0 or more than 32 bits of Hz.
+	ErrInvalidModemFrequency = errors.New("the modem frequencies are required, in Hz, and with their offsets must be above 0 and fit in 32 bits")
+	// ErrInvalidModemLevel indicates that a modem level is not 0 to 100 percent.
+	ErrInvalidModemLevel = errors.New("the modem levels must be 0 to 100 percent")
+	// ErrInvalidModemDCOffset indicates that a modem DC offset is not -128 to 127.
+	ErrInvalidModemDCOffset = errors.New("the modem DC offsets must be -128 to 127")
+	// ErrInvalidModemTXDelay indicates that the modem TX delay is not 0 to 500 ms.
+	ErrInvalidModemTXDelay = errors.New("the modem TX delay must be 0 to 500 milliseconds")
+	// ErrInvalidModemDMRDelay indicates that the modem DMR delay is not 0 to 255 symbols.
+	ErrInvalidModemDMRDelay = errors.New("the modem DMR delay must be 0 to 255 symbols")
 	// ErrInvalidIPSCBindAddress indicates that the provided IPSC server bind address is not valid.
 	ErrInvalidIPSCBindAddress = errors.New("invalid IPSC server bind address provided")
 	// ErrInvalidIPSCPort indicates that the provided IPSC server port is not valid.
@@ -394,6 +412,85 @@ func (o IPSC) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// ModemBauds are the serial speeds that DMRHub sets on a modem port.
+func ModemBauds() []int {
+	return []int{9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600}
+}
+
+const (
+	maxModemTXDelay  = 500
+	maxModemDMRDelay = 255
+	maxModemPercent  = 100
+	minModemDCOffset = -128
+	maxModemDCOffset = 127
+	maxModemColor    = 15
+	maxModemUint32   = 1<<32 - 1
+)
+
+func (m Modem) Validate() error {
+	return firstValidationError(m.ValidateWithFields())
+}
+
+func (m Modem) ValidateWithFields() (errs []ValidationError) {
+	if !m.Enabled {
+		return nil
+	}
+	add := func(key string, err error) {
+		errs = append(errs, ValidationError{Field: "dmr.modem." + key, Err: err})
+	}
+	if m.Port == "" {
+		add("port", ErrInvalidModemPort)
+	}
+	if !slices.Contains(ModemBauds(), m.Baud) {
+		add("baud", ErrInvalidModemBaud)
+	}
+	if m.RepeaterID == 0 || m.RepeaterID > maxModemUint32 {
+		add("repeater-id", ErrInvalidModemRepeaterID)
+	}
+	if m.ColorCode > maxModemColor {
+		add("color-code", ErrInvalidModemColorCode)
+	}
+	if !modemFrequency(m.RXFrequency, m.RXOffset) {
+		add("rx-frequency", ErrInvalidModemFrequency)
+	}
+	if !modemFrequency(m.TXFrequency, m.TXOffset) {
+		add("tx-frequency", ErrInvalidModemFrequency)
+	}
+	for _, l := range []struct {
+		key string
+		v   float64
+	}{{"rf-level", m.RFLevel}, {"rx-level", m.RXLevel}, {"tx-level", m.TXLevel}} {
+		if l.v < 0 || l.v > maxModemPercent {
+			add(l.key, ErrInvalidModemLevel)
+		}
+	}
+	for _, o := range []struct {
+		key string
+		v   int
+	}{{"rx-dc-offset", m.RXDCOffset}, {"tx-dc-offset", m.TXDCOffset}} {
+		if o.v < minModemDCOffset || o.v > maxModemDCOffset {
+			add(o.key, ErrInvalidModemDCOffset)
+		}
+	}
+	if m.TXDelay < 0 || m.TXDelay > maxModemTXDelay {
+		add("tx-delay", ErrInvalidModemTXDelay)
+	}
+	if m.DMRDelay < 0 || m.DMRDelay > maxModemDMRDelay {
+		add("dmr-delay", ErrInvalidModemDMRDelay)
+	}
+	return
+}
+
+// modemFrequency reports whether f Hz with the offset off is above 0 and
+// fits in the 32 bits of the SET_FREQ frame.
+func modemFrequency(f uint, off int) bool {
+	if f == 0 || f > maxModemUint32 {
+		return false
+	}
+	hz := int64(f) + int64(off)
+	return hz > 0 && hz <= maxModemUint32
+}
+
 // MaxPositionRetentionDays is the longest time that positions are kept.
 const MaxPositionRetentionDays = 365
 
@@ -488,6 +585,8 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	if ipscErrs := d.IPSC.ValidateWithFields(); len(ipscErrs) > 0 {
 		errs = append(errs, ipscErrs...)
 	}
+
+	errs = append(errs, d.Modem.ValidateWithFields()...)
 
 	if retentionErrs := d.Retention.ValidateWithFields(); len(retentionErrs) > 0 {
 		errs = append(errs, retentionErrs...)

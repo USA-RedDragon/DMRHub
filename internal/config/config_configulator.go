@@ -85,6 +85,30 @@ type iPSCShadow struct {
 	DataHangHold *impl.Duration `json:"data-hang-hold" toml:"data-hang-hold" yaml:"data-hang-hold"`
 }
 
+type modemShadow struct {
+	Enabled     *bool    `json:"enabled"      toml:"enabled"      yaml:"enabled"`
+	Port        *string  `json:"port"         toml:"port"         yaml:"port"`
+	Baud        *int     `json:"baud"         toml:"baud"         yaml:"baud"`
+	RepeaterID  *uint    `json:"repeater-id"  toml:"repeater-id"  yaml:"repeater-id"`
+	Duplex      *bool    `json:"duplex"       toml:"duplex"       yaml:"duplex"`
+	ColorCode   *uint    `json:"color-code"   toml:"color-code"   yaml:"color-code"`
+	RXFrequency *uint    `json:"rx-frequency" toml:"rx-frequency" yaml:"rx-frequency"`
+	TXFrequency *uint    `json:"tx-frequency" toml:"tx-frequency" yaml:"tx-frequency"`
+	RXOffset    *int     `json:"rx-offset"    toml:"rx-offset"    yaml:"rx-offset"`
+	TXOffset    *int     `json:"tx-offset"    toml:"tx-offset"    yaml:"tx-offset"`
+	RFLevel     *float64 `json:"rf-level"     toml:"rf-level"     yaml:"rf-level"`
+	RXLevel     *float64 `json:"rx-level"     toml:"rx-level"     yaml:"rx-level"`
+	TXLevel     *float64 `json:"tx-level"     toml:"tx-level"     yaml:"tx-level"`
+	RXDCOffset  *int     `json:"rx-dc-offset" toml:"rx-dc-offset" yaml:"rx-dc-offset"`
+	TXDCOffset  *int     `json:"tx-dc-offset" toml:"tx-dc-offset" yaml:"tx-dc-offset"`
+	RXInvert    *bool    `json:"rx-invert"    toml:"rx-invert"    yaml:"rx-invert"`
+	TXInvert    *bool    `json:"tx-invert"    toml:"tx-invert"    yaml:"tx-invert"`
+	PTTInvert   *bool    `json:"ptt-invert"   toml:"ptt-invert"   yaml:"ptt-invert"`
+	TXDelay     *int     `json:"tx-delay"     toml:"tx-delay"     yaml:"tx-delay"`
+	DMRDelay    *int     `json:"dmr-delay"    toml:"dmr-delay"    yaml:"dmr-delay"`
+	Debug       *bool    `json:"debug"        toml:"debug"        yaml:"debug"`
+}
+
 type retentionShadow struct {
 	Messages      *int `json:"messages"      toml:"messages"      yaml:"messages"`
 	Transmissions *int `json:"transmissions" toml:"transmissions" yaml:"transmissions"`
@@ -124,6 +148,7 @@ type dMRShadow struct {
 	MMDVM                    *mMDVMShadow       `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
 	OpenBridge               *openBridgeShadow  `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
 	IPSC                     *iPSCShadow        `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
+	Modem                    *modemShadow       `json:"modem"                       toml:"modem"                       yaml:"modem"`
 	DisableRadioIDValidation *bool              `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
 	RadioIDURL               *string            `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
 	RepeaterIDURL            *string            `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
@@ -233,6 +258,40 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.ipsc.call-hang-hold", configulator.LayerDefault, "default tag")
 	cfg.DMR.IPSC.DataHangHold = time.Duration(int64(1200000000))
 	set("dmr.ipsc.data-hang-hold", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.Enabled = false
+	set("dmr.modem.enabled", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.Baud = 115200
+	set("dmr.modem.baud", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.Duplex = false
+	set("dmr.modem.duplex", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.ColorCode = uint(1)
+	set("dmr.modem.color-code", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.RXOffset = 0
+	set("dmr.modem.rx-offset", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.TXOffset = 0
+	set("dmr.modem.tx-offset", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.RFLevel = 100.0
+	set("dmr.modem.rf-level", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.RXLevel = 50.0
+	set("dmr.modem.rx-level", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.TXLevel = 50.0
+	set("dmr.modem.tx-level", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.RXDCOffset = 0
+	set("dmr.modem.rx-dc-offset", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.TXDCOffset = 0
+	set("dmr.modem.tx-dc-offset", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.RXInvert = false
+	set("dmr.modem.rx-invert", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.TXInvert = true
+	set("dmr.modem.tx-invert", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.PTTInvert = false
+	set("dmr.modem.ptt-invert", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.TXDelay = 100
+	set("dmr.modem.tx-delay", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.DMRDelay = 0
+	set("dmr.modem.dmr-delay", configulator.LayerDefault, "default tag")
+	cfg.DMR.Modem.Debug = false
+	set("dmr.modem.debug", configulator.LayerDefault, "default tag")
 	cfg.DMR.DisableRadioIDValidation = false
 	set("dmr.disable-radio-id-validation", configulator.LayerDefault, "default tag")
 	cfg.DMR.RadioIDURL = "https://www.radioid.net/static/users.json"
@@ -481,6 +540,92 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				}
 				cfg.DMR.IPSC.DataHangHold = v
 				set("dmr.ipsc.data-hang-hold", configulator.LayerFile, file)
+			}
+		}
+		if s.DMR.Modem != nil {
+			if s.DMR.Modem.Enabled != nil {
+				cfg.DMR.Modem.Enabled = *s.DMR.Modem.Enabled
+				set("dmr.modem.enabled", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.Port != nil {
+				cfg.DMR.Modem.Port = *s.DMR.Modem.Port
+				set("dmr.modem.port", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.Baud != nil {
+				cfg.DMR.Modem.Baud = *s.DMR.Modem.Baud
+				set("dmr.modem.baud", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RepeaterID != nil {
+				cfg.DMR.Modem.RepeaterID = *s.DMR.Modem.RepeaterID
+				set("dmr.modem.repeater-id", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.Duplex != nil {
+				cfg.DMR.Modem.Duplex = *s.DMR.Modem.Duplex
+				set("dmr.modem.duplex", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.ColorCode != nil {
+				cfg.DMR.Modem.ColorCode = *s.DMR.Modem.ColorCode
+				set("dmr.modem.color-code", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RXFrequency != nil {
+				cfg.DMR.Modem.RXFrequency = *s.DMR.Modem.RXFrequency
+				set("dmr.modem.rx-frequency", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXFrequency != nil {
+				cfg.DMR.Modem.TXFrequency = *s.DMR.Modem.TXFrequency
+				set("dmr.modem.tx-frequency", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RXOffset != nil {
+				cfg.DMR.Modem.RXOffset = *s.DMR.Modem.RXOffset
+				set("dmr.modem.rx-offset", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXOffset != nil {
+				cfg.DMR.Modem.TXOffset = *s.DMR.Modem.TXOffset
+				set("dmr.modem.tx-offset", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RFLevel != nil {
+				cfg.DMR.Modem.RFLevel = *s.DMR.Modem.RFLevel
+				set("dmr.modem.rf-level", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RXLevel != nil {
+				cfg.DMR.Modem.RXLevel = *s.DMR.Modem.RXLevel
+				set("dmr.modem.rx-level", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXLevel != nil {
+				cfg.DMR.Modem.TXLevel = *s.DMR.Modem.TXLevel
+				set("dmr.modem.tx-level", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RXDCOffset != nil {
+				cfg.DMR.Modem.RXDCOffset = *s.DMR.Modem.RXDCOffset
+				set("dmr.modem.rx-dc-offset", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXDCOffset != nil {
+				cfg.DMR.Modem.TXDCOffset = *s.DMR.Modem.TXDCOffset
+				set("dmr.modem.tx-dc-offset", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RXInvert != nil {
+				cfg.DMR.Modem.RXInvert = *s.DMR.Modem.RXInvert
+				set("dmr.modem.rx-invert", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXInvert != nil {
+				cfg.DMR.Modem.TXInvert = *s.DMR.Modem.TXInvert
+				set("dmr.modem.tx-invert", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.PTTInvert != nil {
+				cfg.DMR.Modem.PTTInvert = *s.DMR.Modem.PTTInvert
+				set("dmr.modem.ptt-invert", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.TXDelay != nil {
+				cfg.DMR.Modem.TXDelay = *s.DMR.Modem.TXDelay
+				set("dmr.modem.tx-delay", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.DMRDelay != nil {
+				cfg.DMR.Modem.DMRDelay = *s.DMR.Modem.DMRDelay
+				set("dmr.modem.dmr-delay", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.Debug != nil {
+				cfg.DMR.Modem.Debug = *s.DMR.Modem.Debug
+				set("dmr.modem.debug", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.DisableRadioIDValidation != nil {
@@ -969,6 +1114,270 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.IPSC.DataHangHold = d
 		set("dmr.ipsc.data-hang-hold", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "enabled"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.enabled",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.Enabled = p
+		set("dmr.modem.enabled", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "port"); ok {
+		cfg.DMR.Modem.Port = v
+		set("dmr.modem.port", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "baud"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.baud",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.Baud = int(p)
+		set("dmr.modem.baud", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "repeater-id"); ok {
+		p, err := strconv.ParseUint(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.repeater-id",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RepeaterID = uint(p)
+		set("dmr.modem.repeater-id", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "duplex"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.duplex",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.Duplex = p
+		set("dmr.modem.duplex", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "color-code"); ok {
+		p, err := strconv.ParseUint(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.color-code",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.ColorCode = uint(p)
+		set("dmr.modem.color-code", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rx-frequency"); ok {
+		p, err := strconv.ParseUint(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-frequency",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RXFrequency = uint(p)
+		set("dmr.modem.rx-frequency", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-frequency"); ok {
+		p, err := strconv.ParseUint(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-frequency",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXFrequency = uint(p)
+		set("dmr.modem.tx-frequency", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rx-offset"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-offset",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RXOffset = int(p)
+		set("dmr.modem.rx-offset", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-offset"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-offset",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXOffset = int(p)
+		set("dmr.modem.tx-offset", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rf-level"); ok {
+		p, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rf-level",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RFLevel = p
+		set("dmr.modem.rf-level", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rx-level"); ok {
+		p, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-level",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RXLevel = p
+		set("dmr.modem.rx-level", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-level"); ok {
+		p, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-level",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXLevel = p
+		set("dmr.modem.tx-level", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rx-dc-offset"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-dc-offset",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RXDCOffset = int(p)
+		set("dmr.modem.rx-dc-offset", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-dc-offset"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-dc-offset",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXDCOffset = int(p)
+		set("dmr.modem.tx-dc-offset", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rx-invert"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-invert",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.RXInvert = p
+		set("dmr.modem.rx-invert", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-invert"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-invert",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXInvert = p
+		set("dmr.modem.tx-invert", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "ptt-invert"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.ptt-invert",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.PTTInvert = p
+		set("dmr.modem.ptt-invert", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "tx-delay"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-delay",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.TXDelay = int(p)
+		set("dmr.modem.tx-delay", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "dmr-delay"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.dmr-delay",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.DMRDelay = int(p)
+		set("dmr.modem.dmr-delay", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "debug"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.debug",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Modem.Debug = p
+		set("dmr.modem.debug", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "disable-radio-id-validation"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1323,6 +1732,27 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "ipsc" + o.Separator + "network-id",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "call-hang-hold",
 		"dmr" + o.Separator + "ipsc" + o.Separator + "data-hang-hold",
+		"dmr" + o.Separator + "modem" + o.Separator + "enabled",
+		"dmr" + o.Separator + "modem" + o.Separator + "port",
+		"dmr" + o.Separator + "modem" + o.Separator + "baud",
+		"dmr" + o.Separator + "modem" + o.Separator + "repeater-id",
+		"dmr" + o.Separator + "modem" + o.Separator + "duplex",
+		"dmr" + o.Separator + "modem" + o.Separator + "color-code",
+		"dmr" + o.Separator + "modem" + o.Separator + "rx-frequency",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-frequency",
+		"dmr" + o.Separator + "modem" + o.Separator + "rx-offset",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-offset",
+		"dmr" + o.Separator + "modem" + o.Separator + "rf-level",
+		"dmr" + o.Separator + "modem" + o.Separator + "rx-level",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-level",
+		"dmr" + o.Separator + "modem" + o.Separator + "rx-dc-offset",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-dc-offset",
+		"dmr" + o.Separator + "modem" + o.Separator + "rx-invert",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-invert",
+		"dmr" + o.Separator + "modem" + o.Separator + "ptt-invert",
+		"dmr" + o.Separator + "modem" + o.Separator + "tx-delay",
+		"dmr" + o.Separator + "modem" + o.Separator + "dmr-delay",
+		"dmr" + o.Separator + "modem" + o.Separator + "debug",
 		"dmr" + o.Separator + "disable-radio-id-validation",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
@@ -1414,43 +1844,64 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Uint32(names[35], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
 	fs.Duration(names[36], time.Duration(int64(2500000000)), "Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off")
 	fs.Duration(names[37], time.Duration(int64(1200000000)), "Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off")
-	fs.Bool(names[38], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[39], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[40], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[41], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[42], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[43], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[44], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[45], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[46], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[47], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[48], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[49], false, "Accept plugins that run as their own programs")
-	fs.String(names[50], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[51], "TCP port that plugins connect to")
-	fs.String(names[52], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[53], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[54], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[55], false, "Enable SMTP support for sending emails")
-	fs.String(names[56], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[57], "SMTP server port")
-	fs.String(names[58], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[59], "", "SMTP server username")
-	fs.String(names[60], "", "SMTP server password")
-	fs.String(names[61], "", "Email address to use as the sender")
-	fs.String(names[62], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[63], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[64], false, "Enable metrics collection and export")
-	fs.String(names[65], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[66], "Metrics server port")
-	fs.StringSlice(names[67], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[68], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[69], false, "Enable PProf profiling and debugging support")
-	fs.String(names[70], "[::]", "PProf server listen address")
-	fs.StringSlice(names[71], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[72], "PProf server port")
-	fs.String(names[73], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[74], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Bool(names[38], false, "Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server")
+	fs.String(names[39], "", "Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled")
+	fs.Var(impl.NewInt(115200), names[40], "Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600")
+	fs.Var(impl.NewUint(0), names[41], "ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled")
+	fs.Bool(names[42], false, "Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2")
+	fs.Var(impl.NewUint(1), names[43], "Color code of the modem, 0 to 15")
+	fs.Var(impl.NewUint(0), names[44], "Receive frequency in Hz. Required when the modem is enabled")
+	fs.Var(impl.NewUint(0), names[45], "Transmit frequency in Hz. Required when the modem is enabled")
+	fs.Var(impl.NewInt(0), names[46], "Correction in Hz added to the receive frequency, for the frequency error of the board")
+	fs.Var(impl.NewInt(0), names[47], "Correction in Hz added to the transmit frequency, for the frequency error of the board")
+	fs.Float64(names[48], 100.0, "Transmit power in percent, on boards that set it, such as MMDVM_HS hats")
+	fs.Float64(names[49], 50.0, "Receive audio level in percent")
+	fs.Float64(names[50], 50.0, "Transmit deviation level in percent")
+	fs.Var(impl.NewInt(0), names[51], "Receive DC offset, -128 to 127")
+	fs.Var(impl.NewInt(0), names[52], "Transmit DC offset, -128 to 127")
+	fs.Bool(names[53], false, "Invert the receive audio")
+	fs.Bool(names[54], true, "Invert the transmit audio, which most boards need")
+	fs.Bool(names[55], false, "Invert the PTT output")
+	fs.Var(impl.NewInt(100), names[56], "Time in milliseconds, 0 to 500, that the transmitter is on before the first burst")
+	fs.Var(impl.NewInt(0), names[57], "Delay of the duplex receiver in symbols, 0 to 255")
+	fs.Bool(names[58], false, "Ask the modem for its debug messages and log them")
+	fs.Bool(names[59], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[60], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[61], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[62], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[63], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[64], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[65], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[66], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[67], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[68], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[69], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[70], false, "Accept plugins that run as their own programs")
+	fs.String(names[71], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[72], "TCP port that plugins connect to")
+	fs.String(names[73], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[74], "", "TLS key file of the certificate file")
+	fs.Var(impl.NewInt(25), names[75], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[76], false, "Enable SMTP support for sending emails")
+	fs.String(names[77], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[78], "SMTP server port")
+	fs.String(names[79], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[80], "", "SMTP server username")
+	fs.String(names[81], "", "SMTP server password")
+	fs.String(names[82], "", "Email address to use as the sender")
+	fs.String(names[83], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[84], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[85], false, "Enable metrics collection and export")
+	fs.String(names[86], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[87], "Metrics server port")
+	fs.StringSlice(names[88], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[89], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[90], false, "Enable PProf profiling and debugging support")
+	fs.String(names[91], "[::]", "PProf server listen address")
+	fs.StringSlice(names[92], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[93], "PProf server port")
+	fs.String(names[94], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[95], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -1910,6 +2361,258 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.IPSC.DataHangHold = v
 		set("dmr.ipsc.data-hang-hold", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "enabled"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.enabled",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.Enabled = v
+		set("dmr.modem.enabled", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "port"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.port",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.Port = v
+		set("dmr.modem.port", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "baud"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.baud",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.Baud = v
+		set("dmr.modem.baud", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "repeater-id"; fs.Changed(n) {
+		v, err := fs.GetUint(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.repeater-id",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RepeaterID = v
+		set("dmr.modem.repeater-id", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "duplex"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.duplex",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.Duplex = v
+		set("dmr.modem.duplex", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "color-code"; fs.Changed(n) {
+		v, err := fs.GetUint(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.color-code",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.ColorCode = v
+		set("dmr.modem.color-code", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rx-frequency"; fs.Changed(n) {
+		v, err := fs.GetUint(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-frequency",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RXFrequency = v
+		set("dmr.modem.rx-frequency", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-frequency"; fs.Changed(n) {
+		v, err := fs.GetUint(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-frequency",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXFrequency = v
+		set("dmr.modem.tx-frequency", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rx-offset"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-offset",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RXOffset = v
+		set("dmr.modem.rx-offset", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-offset"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-offset",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXOffset = v
+		set("dmr.modem.tx-offset", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rf-level"; fs.Changed(n) {
+		v, err := fs.GetFloat64(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rf-level",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RFLevel = v
+		set("dmr.modem.rf-level", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rx-level"; fs.Changed(n) {
+		v, err := fs.GetFloat64(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-level",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RXLevel = v
+		set("dmr.modem.rx-level", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-level"; fs.Changed(n) {
+		v, err := fs.GetFloat64(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-level",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXLevel = v
+		set("dmr.modem.tx-level", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rx-dc-offset"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-dc-offset",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RXDCOffset = v
+		set("dmr.modem.rx-dc-offset", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-dc-offset"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-dc-offset",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXDCOffset = v
+		set("dmr.modem.tx-dc-offset", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rx-invert"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rx-invert",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RXInvert = v
+		set("dmr.modem.rx-invert", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-invert"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-invert",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXInvert = v
+		set("dmr.modem.tx-invert", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "ptt-invert"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.ptt-invert",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.PTTInvert = v
+		set("dmr.modem.ptt-invert", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "tx-delay"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.tx-delay",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.TXDelay = v
+		set("dmr.modem.tx-delay", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "dmr-delay"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.dmr-delay",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.DMRDelay = v
+		set("dmr.modem.dmr-delay", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "debug"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.debug",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.Debug = v
+		set("dmr.modem.debug", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "disable-radio-id-validation"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -3140,6 +3843,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.IPSC = &sub
 			}
+		case "modem":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".modem", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub modemShadow
+				if err := sub.decodeJSON(dec, path+".modem"); err != nil {
+					return err
+				}
+				s.Modem = &sub
+			}
 		case "disable-radio-id-validation":
 			v, err := dec.ReadToken()
 			if err != nil {
@@ -3641,6 +4363,388 @@ func (s *iPSCShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				s.DataHangHold = &slot
 			default:
 				return configJSONError(path+".data-hang-hold", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *modemShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "enabled":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Enabled = &b
+			default:
+				return configJSONError(path+".enabled", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "port":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Port = &str
+			default:
+				return configJSONError(path+".port", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "baud":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".baud", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".baud", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Baud = &num
+			default:
+				return configJSONError(path+".baud", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "repeater-id":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".repeater-id", v, err)
+				}
+				if raw > math.MaxUint {
+					return configJSONError(path+".repeater-id", v, fmt.Errorf("%d overflows uint", raw))
+				}
+				num := uint(raw)
+				s.RepeaterID = &num
+			default:
+				return configJSONError(path+".repeater-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "duplex":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Duplex = &b
+			default:
+				return configJSONError(path+".duplex", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "color-code":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".color-code", v, err)
+				}
+				if raw > math.MaxUint {
+					return configJSONError(path+".color-code", v, fmt.Errorf("%d overflows uint", raw))
+				}
+				num := uint(raw)
+				s.ColorCode = &num
+			default:
+				return configJSONError(path+".color-code", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rx-frequency":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".rx-frequency", v, err)
+				}
+				if raw > math.MaxUint {
+					return configJSONError(path+".rx-frequency", v, fmt.Errorf("%d overflows uint", raw))
+				}
+				num := uint(raw)
+				s.RXFrequency = &num
+			default:
+				return configJSONError(path+".rx-frequency", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "tx-frequency":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".tx-frequency", v, err)
+				}
+				if raw > math.MaxUint {
+					return configJSONError(path+".tx-frequency", v, fmt.Errorf("%d overflows uint", raw))
+				}
+				num := uint(raw)
+				s.TXFrequency = &num
+			default:
+				return configJSONError(path+".tx-frequency", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rx-offset":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".rx-offset", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".rx-offset", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.RXOffset = &num
+			default:
+				return configJSONError(path+".rx-offset", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "tx-offset":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".tx-offset", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".tx-offset", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.TXOffset = &num
+			default:
+				return configJSONError(path+".tx-offset", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rf-level":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				num, err := v.Float()
+				if err != nil {
+					return configJSONError(path+".rf-level", v, err)
+				}
+				s.RFLevel = &num
+			default:
+				return configJSONError(path+".rf-level", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rx-level":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				num, err := v.Float()
+				if err != nil {
+					return configJSONError(path+".rx-level", v, err)
+				}
+				s.RXLevel = &num
+			default:
+				return configJSONError(path+".rx-level", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "tx-level":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				num, err := v.Float()
+				if err != nil {
+					return configJSONError(path+".tx-level", v, err)
+				}
+				s.TXLevel = &num
+			default:
+				return configJSONError(path+".tx-level", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rx-dc-offset":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".rx-dc-offset", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".rx-dc-offset", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.RXDCOffset = &num
+			default:
+				return configJSONError(path+".rx-dc-offset", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "tx-dc-offset":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".tx-dc-offset", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".tx-dc-offset", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.TXDCOffset = &num
+			default:
+				return configJSONError(path+".tx-dc-offset", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "rx-invert":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.RXInvert = &b
+			default:
+				return configJSONError(path+".rx-invert", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "tx-invert":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.TXInvert = &b
+			default:
+				return configJSONError(path+".tx-invert", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "ptt-invert":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.PTTInvert = &b
+			default:
+				return configJSONError(path+".ptt-invert", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "tx-delay":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".tx-delay", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".tx-delay", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.TXDelay = &num
+			default:
+				return configJSONError(path+".tx-delay", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "dmr-delay":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".dmr-delay", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".dmr-delay", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.DMRDelay = &num
+			default:
+				return configJSONError(path+".dmr-delay", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "debug":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Debug = &b
+			default:
+				return configJSONError(path+".debug", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -4485,6 +5589,27 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.ipsc.network-id = %v\n", c.DMR.IPSC.NetworkID)
 	fmt.Fprintf(&b, "dmr.ipsc.call-hang-hold = %v\n", c.DMR.IPSC.CallHangHold)
 	fmt.Fprintf(&b, "dmr.ipsc.data-hang-hold = %v\n", c.DMR.IPSC.DataHangHold)
+	fmt.Fprintf(&b, "dmr.modem.enabled = %v\n", c.DMR.Modem.Enabled)
+	fmt.Fprintf(&b, "dmr.modem.port = %v\n", c.DMR.Modem.Port)
+	fmt.Fprintf(&b, "dmr.modem.baud = %v\n", c.DMR.Modem.Baud)
+	fmt.Fprintf(&b, "dmr.modem.repeater-id = %v\n", c.DMR.Modem.RepeaterID)
+	fmt.Fprintf(&b, "dmr.modem.duplex = %v\n", c.DMR.Modem.Duplex)
+	fmt.Fprintf(&b, "dmr.modem.color-code = %v\n", c.DMR.Modem.ColorCode)
+	fmt.Fprintf(&b, "dmr.modem.rx-frequency = %v\n", c.DMR.Modem.RXFrequency)
+	fmt.Fprintf(&b, "dmr.modem.tx-frequency = %v\n", c.DMR.Modem.TXFrequency)
+	fmt.Fprintf(&b, "dmr.modem.rx-offset = %v\n", c.DMR.Modem.RXOffset)
+	fmt.Fprintf(&b, "dmr.modem.tx-offset = %v\n", c.DMR.Modem.TXOffset)
+	fmt.Fprintf(&b, "dmr.modem.rf-level = %v\n", c.DMR.Modem.RFLevel)
+	fmt.Fprintf(&b, "dmr.modem.rx-level = %v\n", c.DMR.Modem.RXLevel)
+	fmt.Fprintf(&b, "dmr.modem.tx-level = %v\n", c.DMR.Modem.TXLevel)
+	fmt.Fprintf(&b, "dmr.modem.rx-dc-offset = %v\n", c.DMR.Modem.RXDCOffset)
+	fmt.Fprintf(&b, "dmr.modem.tx-dc-offset = %v\n", c.DMR.Modem.TXDCOffset)
+	fmt.Fprintf(&b, "dmr.modem.rx-invert = %v\n", c.DMR.Modem.RXInvert)
+	fmt.Fprintf(&b, "dmr.modem.tx-invert = %v\n", c.DMR.Modem.TXInvert)
+	fmt.Fprintf(&b, "dmr.modem.ptt-invert = %v\n", c.DMR.Modem.PTTInvert)
+	fmt.Fprintf(&b, "dmr.modem.tx-delay = %v\n", c.DMR.Modem.TXDelay)
+	fmt.Fprintf(&b, "dmr.modem.dmr-delay = %v\n", c.DMR.Modem.DMRDelay)
+	fmt.Fprintf(&b, "dmr.modem.debug = %v\n", c.DMR.Modem.Debug)
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)

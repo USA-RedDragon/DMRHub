@@ -120,6 +120,7 @@ type DMR struct {
 	MMDVM                    MMDVM       `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
 	OpenBridge               OpenBridge  `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
 	IPSC                     IPSC        `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
+	Modem                    Modem       `json:"modem" name:"modem" description:"MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost"`
 	DisableRadioIDValidation bool        `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
 	RadioIDURL               string      `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
 	RepeaterIDURL            string      `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
@@ -241,6 +242,32 @@ type IPSC struct {
 // MaxCallHangHold is the longest dmr.ipsc.call-hang-hold or
 // dmr.ipsc.data-hang-hold.
 const MaxCallHangHold = 10 * time.Second
+
+// Modem holds the MMDVM modem board that DMRHub drives over a serial port
+// as one of its repeaters.
+type Modem struct {
+	Enabled     bool    `json:"enabled" name:"enabled" description:"Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server" default:"false"`
+	Port        string  `json:"port" name:"port" description:"Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled"`
+	Baud        int     `json:"baud" name:"baud" description:"Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600" default:"115200"`
+	RepeaterID  uint    `json:"repeater-id" yaml:"repeater-id" name:"repeater-id" description:"ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled"`
+	Duplex      bool    `json:"duplex" name:"duplex" description:"Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2" default:"false"`
+	ColorCode   uint    `json:"color-code" yaml:"color-code" name:"color-code" description:"Color code of the modem, 0 to 15" default:"1"`
+	RXFrequency uint    `json:"rx-frequency" yaml:"rx-frequency" name:"rx-frequency" description:"Receive frequency in Hz. Required when the modem is enabled"`
+	TXFrequency uint    `json:"tx-frequency" yaml:"tx-frequency" name:"tx-frequency" description:"Transmit frequency in Hz. Required when the modem is enabled"`
+	RXOffset    int     `json:"rx-offset" yaml:"rx-offset" name:"rx-offset" description:"Correction in Hz added to the receive frequency, for the frequency error of the board" default:"0"`
+	TXOffset    int     `json:"tx-offset" yaml:"tx-offset" name:"tx-offset" description:"Correction in Hz added to the transmit frequency, for the frequency error of the board" default:"0"`
+	RFLevel     float64 `json:"rf-level" yaml:"rf-level" name:"rf-level" description:"Transmit power in percent, on boards that set it, such as MMDVM_HS hats" default:"100"`
+	RXLevel     float64 `json:"rx-level" yaml:"rx-level" name:"rx-level" description:"Receive audio level in percent" default:"50"`
+	TXLevel     float64 `json:"tx-level" yaml:"tx-level" name:"tx-level" description:"Transmit deviation level in percent" default:"50"`
+	RXDCOffset  int     `json:"rx-dc-offset" yaml:"rx-dc-offset" name:"rx-dc-offset" description:"Receive DC offset, -128 to 127" default:"0"`
+	TXDCOffset  int     `json:"tx-dc-offset" yaml:"tx-dc-offset" name:"tx-dc-offset" description:"Transmit DC offset, -128 to 127" default:"0"`
+	RXInvert    bool    `json:"rx-invert" yaml:"rx-invert" name:"rx-invert" description:"Invert the receive audio" default:"false"`
+	TXInvert    bool    `json:"tx-invert" yaml:"tx-invert" name:"tx-invert" description:"Invert the transmit audio, which most boards need" default:"true"`
+	PTTInvert   bool    `json:"ptt-invert" yaml:"ptt-invert" name:"ptt-invert" description:"Invert the PTT output" default:"false"`
+	TXDelay     int     `json:"tx-delay" yaml:"tx-delay" name:"tx-delay" description:"Time in milliseconds, 0 to 500, that the transmitter is on before the first burst" default:"100"`
+	DMRDelay    int     `json:"dmr-delay" yaml:"dmr-delay" name:"dmr-delay" description:"Delay of the duplex receiver in symbols, 0 to 255" default:"0"`
+	Debug       bool    `json:"debug" name:"debug" description:"Ask the modem for its debug messages and log them" default:"false"`
+}
 
 // OpenBridge holds the configuration for the OpenBridge server.
 type OpenBridge struct {

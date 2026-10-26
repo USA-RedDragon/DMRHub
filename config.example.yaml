@@ -95,6 +95,50 @@ dmr:
     call-hang-hold: "2.5s"
     # Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off
     data-hang-hold: "1.2s"
+  # MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost
+  modem:
+    # Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server
+    enabled: false
+    # Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled
+    # port: ""
+    # Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600
+    baud: 115200
+    # ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled
+    # repeater-id: 0
+    # Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2
+    duplex: false
+    # Color code of the modem, 0 to 15
+    color-code: 1
+    # Receive frequency in Hz. Required when the modem is enabled
+    # rx-frequency: 0
+    # Transmit frequency in Hz. Required when the modem is enabled
+    # tx-frequency: 0
+    # Correction in Hz added to the receive frequency, for the frequency error of the board
+    rx-offset: 0
+    # Correction in Hz added to the transmit frequency, for the frequency error of the board
+    tx-offset: 0
+    # Transmit power in percent, on boards that set it, such as MMDVM_HS hats
+    rf-level: 100
+    # Receive audio level in percent
+    rx-level: 50
+    # Transmit deviation level in percent
+    tx-level: 50
+    # Receive DC offset, -128 to 127
+    rx-dc-offset: 0
+    # Transmit DC offset, -128 to 127
+    tx-dc-offset: 0
+    # Invert the receive audio
+    rx-invert: false
+    # Invert the transmit audio, which most boards need
+    tx-invert: true
+    # Invert the PTT output
+    ptt-invert: false
+    # Time in milliseconds, 0 to 500, that the transmitter is on before the first burst
+    tx-delay: 100
+    # Delay of the duplex receiver in symbols, 0 to 255
+    dmr-delay: 0
+    # Ask the modem for its debug messages and log them
+    debug: false
   # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
   disable-radio-id-validation: false
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.

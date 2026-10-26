@@ -220,7 +220,7 @@ func (h *Hub) runHeard() {
 }
 
 func (h *Hub) recordHeard(n heardNote) {
-	before, err := h.routingRepeater(n.repeater)
+	before, err := h.waitRepeater(n.repeater)
 	if err != nil {
 		return
 	}

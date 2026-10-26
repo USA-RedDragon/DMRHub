@@ -133,3 +133,32 @@ func TestReloadReplacesAFreshAnswerAndSkipsUnknownKeys(t *testing.T) {
 	v, _ = c.Get(1)
 	assert.Equal(t, int64(2), v, "a reload replaces an answer that is not stale yet")
 }
+
+func TestAStalledLoadHoldsReadsForWaitOnce(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	var loads atomic.Int64
+	c := lookup.New("test", time.Hour, func(int) (int, error) {
+		loads.Add(1)
+		<-release
+		return 7, nil
+	})
+	start := time.Now()
+	_, err := c.Get(1)
+	require.ErrorIs(t, err, lookup.ErrSlow)
+	took := time.Since(start)
+	assert.GreaterOrEqual(t, took, lookup.Wait)
+	assert.Less(t, took, lookup.Wait+time.Second)
+
+	start = time.Now()
+	_, err = c.Get(1)
+	require.ErrorIs(t, err, lookup.ErrSlow)
+	assert.Less(t, time.Since(start), 50*time.Millisecond, "a read waited again for a load that already used its wait")
+
+	close(release)
+	assert.Eventually(t, func() bool {
+		v, err := c.Get(1)
+		return err == nil && v == 7
+	}, time.Second, 5*time.Millisecond)
+	assert.Equal(t, int64(1), loads.Load(), "loads of one key")
+}

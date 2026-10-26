@@ -52,12 +52,13 @@ type cachedRepeater struct {
 
 type repeaterCache struct {
 	entries *xsync.Map[uint, cachedRepeater]
+	flights *lookup.Flights[uint, *models.Repeater]
 	mu      sync.Mutex
 	gen     uint64
 }
 
 func newRepeaterCache() *repeaterCache {
-	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater]()}
+	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater](), flights: lookup.NewFlights[uint, *models.Repeater]()}
 }
 
 func (c *repeaterCache) generation() uint64 {
@@ -98,8 +99,19 @@ func (c *repeaterCache) prune(now time.Time) {
 }
 
 // routingRepeater returns the repeater as the delivery path sees it. The
-// result is shared and must not be modified.
+// result is shared and must not be modified. A repeater that is not in the
+// cache waits for the database at most lookup.Wait.
 func (h *Hub) routingRepeater(id uint) (*models.Repeater, error) {
+	return h.cachedRepeater(id, false)
+}
+
+// waitRepeater is routingRepeater that waits for the database, for the
+// work that no burst waits on.
+func (h *Hub) waitRepeater(id uint) (*models.Repeater, error) {
+	return h.cachedRepeater(id, true)
+}
+
+func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 	if e, ok := h.repeaters.entries.Load(id); ok {
 		if time.Since(e.at) >= repeaterCacheTTL && e.refreshing.CompareAndSwap(false, true) {
 			go h.refreshRepeater(id, e)
@@ -109,7 +121,17 @@ func (h *Hub) routingRepeater(id uint) (*models.Repeater, error) {
 		}
 		return e.rpt, nil
 	}
-	return h.loadRepeater(id, h.repeaters.generation())
+	gen := h.repeaters.generation()
+	load := func() (*models.Repeater, error) { return h.loadRepeater(id, gen) }
+	do := h.repeaters.flights.Do
+	if wait {
+		do = h.repeaters.flights.DoWait
+	}
+	rpt, err := do(id, load)
+	if err != nil {
+		return nil, fmt.Errorf("looking up repeater %d: %w", id, err)
+	}
+	return rpt, nil
 }
 
 func (h *Hub) loadRepeater(id uint, gen uint64) (*models.Repeater, error) {

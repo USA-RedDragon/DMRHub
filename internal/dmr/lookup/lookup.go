@@ -22,6 +22,7 @@
 package lookup
 
 import (
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -37,14 +38,83 @@ const TTL = 5 * time.Second
 // Idle is how long a Cache keeps an answer that nobody reads.
 const Idle = 10 * time.Minute
 
+// Wait is the longest that the reads of a key wait for its load, counted
+// from the read that started it, so that a stalled database holds a burst
+// for at most Wait.
+const Wait = 500 * time.Millisecond
+
+// ErrSlow is the error of a read that waited Wait for a load that did not
+// end. The load goes on, and a later read gets its answer.
+var ErrSlow = errors.New("the lookup is waiting on the database")
+
 // Cache holds the answers of load by key. A read of a stale answer gets it
 // at once and starts a background load that replaces it, so a read waits
-// on load only for a key that nobody read before.
+// on load only for a key that nobody read before, and then at most Wait.
 type Cache[K comparable, V any] struct {
 	name    string
 	ttl     time.Duration
 	load    func(K) (V, error)
 	entries *xsync.Map[K, *entry[V]]
+	flights *Flights[K, V]
+}
+
+// Flights runs one load of each key at a time, in the background.
+type Flights[K comparable, V any] struct {
+	m *xsync.Map[K, *flight[V]]
+}
+
+type flight[V any] struct {
+	done  chan struct{}
+	until time.Time
+	val   V
+	err   error
+}
+
+// NewFlights returns Flights with no load running.
+func NewFlights[K comparable, V any]() *Flights[K, V] {
+	return &Flights[K, V]{m: xsync.NewMap[K, *flight[V]]()}
+}
+
+// Do returns the answer of load for key. It starts load when no load of
+// key runs, and waits for the load until Wait after it started; then it
+// returns ErrSlow.
+func (f *Flights[K, V]) Do(key K, load func() (V, error)) (V, error) {
+	fl := f.start(key, load)
+	select {
+	case <-fl.done:
+		return fl.val, fl.err
+	default:
+	}
+	t := time.NewTimer(time.Until(fl.until))
+	defer t.Stop()
+	select {
+	case <-fl.done:
+		return fl.val, fl.err
+	case <-t.C:
+		var zero V
+		return zero, ErrSlow
+	}
+}
+
+// DoWait is Do that waits for the load to end.
+func (f *Flights[K, V]) DoWait(key K, load func() (V, error)) (V, error) {
+	fl := f.start(key, load)
+	<-fl.done
+	return fl.val, fl.err
+}
+
+func (f *Flights[K, V]) start(key K, load func() (V, error)) *flight[V] {
+	fl, loaded := f.m.LoadOrCompute(key, func() (*flight[V], bool) {
+		return &flight[V]{done: make(chan struct{}), until: time.Now().Add(Wait)}, false
+	})
+	if !loaded {
+		go func() {
+			fl.val, fl.err = load()
+			f.m.Delete(key)
+			close(fl.done)
+		}()
+	}
+	return fl
 }
 
 type entry[V any] struct {
@@ -57,11 +127,12 @@ type entry[V any] struct {
 // New returns a Cache that loads an answer with load and keeps it fresh
 // for ttl. name names the cache in logs.
 func New[K comparable, V any](name string, ttl time.Duration, load func(K) (V, error)) *Cache[K, V] {
-	return &Cache[K, V]{name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]]()}
+	return &Cache[K, V]{name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V]()}
 }
 
 // Get returns the answer for key. It calls load only when it has no
-// answer for key; an error of that load is returned and not kept.
+// answer for key; an error of that load is returned and not kept. A Get
+// that waited Wait for the load returns ErrSlow.
 func (c *Cache[K, V]) Get(key K) (V, error) {
 	now := time.Now()
 	if e, ok := c.entries.Load(key); ok {
@@ -71,12 +142,13 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 		}
 		return e.val, nil
 	}
-	v, err := c.load(key)
-	if err != nil {
+	return c.flights.Do(key, func() (V, error) {
+		v, err := c.load(key)
+		if err == nil {
+			c.entries.LoadOrStore(key, newEntry(v, time.Now()))
+		}
 		return v, err
-	}
-	c.entries.LoadOrStore(key, newEntry(v, now))
-	return v, nil
+	})
 }
 
 func newEntry[V any](v V, now time.Time) *entry[V] {

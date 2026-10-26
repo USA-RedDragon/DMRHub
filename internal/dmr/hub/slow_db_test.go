@@ -28,6 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -42,10 +43,15 @@ type slowDB struct{ on atomic.Bool }
 
 func slowDown(t *testing.T, database *gorm.DB) *slowDB {
 	t.Helper()
+	return slowDownBy(t, database, slowStatement)
+}
+
+func slowDownBy(t *testing.T, database *gorm.DB, d time.Duration) *slowDB {
+	t.Helper()
 	s := &slowDB{}
 	wait := func(*gorm.DB) {
 		if s.on.Load() {
-			time.Sleep(slowStatement)
+			time.Sleep(d)
 		}
 	}
 	cb := database.Callback()
@@ -174,4 +180,43 @@ func TestSlowDatabaseHoldsNoBurst(t *testing.T) {
 		t.Logf("%s: worst delay %v with %v per statement", c.name, worst, slowStatement)
 		assert.Less(t, worst, slowStatement/2, "%s: a burst waited on the database", c.name)
 	}
+}
+
+func TestAStalledDatabaseHoldsNoBurstOfANewCall(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	slow := slowDownBy(t, database, 3*time.Second)
+
+	seedUser(t, database, testSrcID, "CALLER")
+	seedUser(t, database, 1000002, "TARGET")
+	seedRepeater(t, database, testRepeaterID, testSrcID)
+	seedRepeater(t, database, 100002, 1000002)
+	require.NoError(t, database.Create(&models.Call{UserID: new(uint(1000002)), RepeaterID: new(uint(100002)), IngressID: 100002, CreatedAt: time.Now()}).Error)
+	arrivals := collect(map[string]*hub.ServerHandle{
+		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+	})
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	slow.on.Store(true)
+	const stream = 70100
+	sent := sendStream(h, 1000002, stream, false, 8)
+	var worst time.Duration
+	unstall := time.After(4 * time.Second)
+	end := time.After(15 * time.Second)
+	for waiting := true; waiting; {
+		select {
+		case a := <-arrivals:
+			if a.rp.Packet.StreamID == stream {
+				worst = max(worst, a.at.Sub(sent[a.rp.Packet.Seq]))
+			}
+		case <-unstall:
+			slow.on.Store(false)
+		case <-end:
+			waiting = false
+		}
+	}
+	assert.Less(t, worst, lookup.Wait+slowStatement, "a burst of a call to a radio waited on a stalled database")
+
+	worstDelay(t, arrivals, stream+1, sendStream(h, 1000002, stream+1, false, 8), "mmdvm:100002")
 }

@@ -104,7 +104,7 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 // timeslot of the repeater, as a voice call on the talkgroup on that
 // timeslot does. slot true is TS2.
 func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool) {
-	repeater, err := h.routingRepeater(repeaterID)
+	repeater, err := h.waitRepeater(repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
 		return

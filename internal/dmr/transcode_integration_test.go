@@ -224,6 +224,10 @@ func missedSeconds() float64 {
 	return sum
 }
 
+func transcodeFrames(from, frame, output string) float64 {
+	return testutil.ToFloat64(metrics.NewMetrics().TranscodeFramesTotal.WithLabelValues(from, frame, output))
+}
+
 func (n *tcNet) requireRow(t *testing.T, stream uint, want tcRow) {
 	t.Helper()
 	requireCodecRow(t, n.stack, stream, want)
@@ -260,6 +264,7 @@ func TestTranscoding(t *testing.T) {
 
 		step(t, "codec2-call-to-ambe-targets", func(t *testing.T) {
 			before := len(n.ambe.EncodedPCM())
+			decoded := transcodeFrames(models.CodecCodec2, "good", "voice")
 			stream := n.nextStream()
 			cc := newC2Call(t, group, false, tcBursts, uint64(stream))
 			sent, g := n.send(t, n.c2, cc, stream)
@@ -276,6 +281,7 @@ func TestTranscoding(t *testing.T) {
 			assertSamePackets(t, sent, ofStream(g.c2Listen, stream), tcC2Listen, false)
 			assertSamePackets(t, sent, ofStream(g.obCodec2, stream), tcOBCodec2, false)
 			assert.Empty(t, n.ambe.Errors())
+			assert.GreaterOrEqual(t, transcodeFrames(models.CodecCodec2, "good", "voice")-decoded, float64(tcFrames), "the reports of the Codec2 decoder reach the metrics")
 
 			n.requireRow(t, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400), sentAMBE: 3})
 			r := n.heard(t, tcC2Rpt)
@@ -307,6 +313,32 @@ func TestTranscoding(t *testing.T) {
 			assertSamePackets(t, sent, ofStream(g.obCodec2, stream), tcOBCodec2, false)
 			assert.Equal(t, tcFrames, n.ambe.Decodes()-before, "the call was not converted once")
 			n.requireRow(t, stream, tcRow{codec: models.CodecAMBE, sentCodec2: 2})
+		})
+
+		step(t, "an-ambe-call-that-lost-a-burst-keeps-its-timing", func(t *testing.T) {
+			c := call{group: true, dst: tcTG, src: tcOther}
+			stream := n.nextStream()
+			cc := voiceCall(t, tcLC(t, c, enums.FIDStandardized), c, tcAMBESlots(5))
+			all := cc.tx.packets(stream)
+			const lost = 1 + 2
+			sent := append(append([]models.Packet{}, all[:lost]...), all[lost+1:]...)
+			good, repeat, silence := transcodeFrames(models.CodecAMBE, "good", "voice"), transcodeFrames(models.CodecAMBE, "lost", "repeat"), transcodeFrames(models.CodecAMBE, "lost", "silence")
+			fills := n.ambe.LostFrames()
+			sendC2(t, n.ambeTalk.SendDMRD, sent)
+			g := n.drain(callWait(sent))
+			got := ofStream(g.c2Listen, stream)
+			require.Len(t, got, len(all), "the copy has a burst in place of the lost one")
+			for i := range all {
+				require.Equal(t, all[i].FrameType, got[i].FrameType, "packet %d frame type", i)
+				require.Equal(t, all[i].DTypeOrVSeq, got[i].DTypeOrVSeq, "packet %d position", i)
+				require.Equal(t, all[i].Seq, got[i].Seq, "packet %d sequence number", i)
+			}
+			assertSamePackets(t, sent, ofStream(g.ambeListen, stream), tcAMBERpt, false)
+			assert.Equal(t, layer2.VoiceSlotsPerBurst, n.ambe.LostFrames()-fills)
+			assert.GreaterOrEqual(t, transcodeFrames(models.CodecAMBE, "good", "voice")-good, float64(tcFrames-layer2.VoiceSlotsPerBurst))
+			assert.GreaterOrEqual(t, transcodeFrames(models.CodecAMBE, "lost", "repeat")-repeat, 2.0)
+			assert.GreaterOrEqual(t, transcodeFrames(models.CodecAMBE, "lost", "silence")-silence, 1.0)
+			assert.Empty(t, n.ambe.Errors())
 		})
 
 		step(t, "ambe-call-clears-codec2", func(t *testing.T) {

@@ -26,9 +26,11 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder/codec2"
 )
 
@@ -139,13 +141,14 @@ type copyOrder struct {
 	emitting bool
 }
 
-// copyTicket is the place of the copy of one burst. packet is nil when the
-// burst gets no copy.
+// copyTicket is the place of the copies of one burst: its copy, after the
+// fills of the bursts lost before it. packets is empty when the burst gets
+// no copy.
 type copyTicket struct {
-	key    sourceSlot
-	source string
-	done   bool
-	packet *models.Packet
+	key     sourceSlot
+	source  string
+	done    bool
+	packets []models.Packet
 }
 
 func (h *Hub) reserveCopy(key sourceSlot, sourceName string) *copyTicket {
@@ -161,14 +164,14 @@ func (h *Hub) reserveCopy(key sourceSlot, sourceName string) *copyTicket {
 	return t
 }
 
-// finishCopy sets the copy of t, or none for a nil cp, and routes the
-// copies of its source slot that are next in order.
-func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, cp *models.Packet) {
+// finishCopy sets the copies of t, none when packets is empty, and routes
+// the copies of its source slot that are next in order.
+func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, packets ...models.Packet) {
 	if t == nil {
 		return
 	}
 	h.copyMu.Lock()
-	t.done, t.packet = true, cp
+	t.done, t.packets = true, packets
 	o := h.copyOrders[t.key]
 	if o == nil || o.emitting {
 		h.copyMu.Unlock()
@@ -191,8 +194,8 @@ func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, cp *models.Packet) 
 		}
 		h.copyMu.Unlock()
 		for _, r := range ready {
-			if r.packet != nil {
-				h.fanOut(ctx, *r.packet, r.source)
+			for _, p := range r.packets {
+				h.fanOut(ctx, p, r.source)
 			}
 		}
 		h.copyMu.Lock()
@@ -411,7 +414,7 @@ func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTic
 	if t.exited {
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
 		t.mu.Unlock()
-		t.h.finishCopy(ctx, ticket, nil)
+		t.h.finishCopy(ctx, ticket)
 		return
 	}
 	select {
@@ -420,7 +423,7 @@ func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTic
 	default:
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
 		t.mu.Unlock()
-		t.h.finishCopy(ctx, ticket, nil)
+		t.h.finishCopy(ctx, ticket)
 	}
 }
 
@@ -467,7 +470,7 @@ func (t *transcoder) exit(ctx context.Context) {
 	}
 	t.mu.Unlock()
 	for _, ticket := range dropped {
-		t.h.finishCopy(ctx, ticket, nil)
+		t.h.finishCopy(ctx, ticket)
 	}
 	t.st.CloseContext(ctx)
 	t.h.calls.Done()
@@ -505,14 +508,15 @@ func (t *transcoder) run(ctx context.Context) {
 func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 	res, ok := t.st.Convert(ctx, &job.packet, job.deadline)
 	if !ok {
-		t.h.finishCopy(ctx, job.ticket, nil)
+		t.h.finishCopy(ctx, job.ticket)
 		return
 	}
 	if res.Busy {
 		t.busy(&job.packet, res.Missed)
-		t.h.finishCopy(ctx, job.ticket, nil)
+		t.h.finishCopy(ctx, job.ticket)
 		return
 	}
+	t.reports(&job.packet, &res)
 	cp := job.packet
 	cp.DMRData = res.Burst
 	cp.Codec = uint8(t.st.To())
@@ -520,7 +524,31 @@ func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 	if res.Missed > 0 {
 		t.missed(&cp, res.Missed, res.Reason)
 	}
-	t.h.finishCopy(ctx, job.ticket, &cp)
+	copies := make([]models.Packet, 0, len(res.Fill)+1)
+	for _, f := range res.Fill {
+		fill := cp
+		fill.DMRData, fill.DTypeOrVSeq, fill.Seq = f.Burst, f.Position, f.Seq
+		fill.FrameType = dmrconst.FrameVoice
+		if f.Position == 0 {
+			fill.FrameType = dmrconst.FrameVoiceSync
+		}
+		copies = append(copies, fill)
+	}
+	t.h.finishCopy(ctx, job.ticket, append(copies, cp)...)
+}
+
+// reports counts the frame reports of the decoder on the burst p in the
+// metrics, and logs the frames that were not good voice.
+func (t *transcoder) reports(p *models.Packet, res *transcode.Result) {
+	from := t.st.From().String()
+	m := metrics.NewMetrics()
+	for i, r := range res.Frames {
+		frame, output := transcode.FrameLabels(r)
+		m.IncrementTranscodeFrame(from, frame, output)
+		if r.Frame != vocoder.FrameGood || r.HighErrorRate {
+			slog.Debug("The decoder reported a frame of a converted call", "stream", p.StreamID, "from", from, "frame", frame, "output", output, "index", i, "fills", len(res.Fill), "highErrorRate", r.HighErrorRate)
+		}
+	}
 }
 
 // busy counts a burst of a call that found every AMBE server busy, which

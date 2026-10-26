@@ -49,6 +49,11 @@ type Metrics struct {
 	// TranscodeMissedSecondsTotal counts the audio of calls that could not
 	// be converted to the other codec, by the codec of the copy and reason.
 	TranscodeMissedSecondsTotal *prometheus.CounterVec
+
+	// TranscodeFramesTotal counts the vocoder frames that the transcoder
+	// decoded, by the codec of the call, what the decoder found in each
+	// frame and what it put out for it.
+	TranscodeFramesTotal *prometheus.CounterVec
 }
 
 const labelReason = "reason"
@@ -122,6 +127,10 @@ func NewMetrics() *Metrics {
 				Name: "dmr_transcode_missed_seconds_total",
 				Help: "The total seconds of call audio that could not be converted to the other codec and went out as silence, by the codec of the copy and reason",
 			}, []string{"to", labelReason}),
+			TranscodeFramesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dmr_transcode_frames_total",
+				Help: "The total number of vocoder frames that the transcoder decoded, by the codec of the call, what the decoder found in the frame (good, lost, erased or invalid) and what it put out (voice, tone, repeat or silence)",
+			}, []string{"from", "frame", "output"}),
 		}
 		metricsInstance.register()
 	})
@@ -139,6 +148,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
+	prometheus.MustRegister(m.TranscodeFramesTotal)
 }
 
 // KV Store metrics methods
@@ -185,4 +195,11 @@ func (m *Metrics) IncrementMessagesDropped() {
 // to the codec to, for reason.
 func (m *Metrics) AddTranscodeMissed(to, reason string, seconds float64) {
 	m.TranscodeMissedSecondsTotal.WithLabelValues(to, reason).Add(seconds)
+}
+
+// IncrementTranscodeFrame counts a vocoder frame of a call in the codec
+// from that the transcoder decoded, with the frame and output labels of
+// its report.
+func (m *Metrics) IncrementTranscodeFrame(from, frame, output string) {
+	m.TranscodeFramesTotal.WithLabelValues(from, frame, output).Inc()
 }

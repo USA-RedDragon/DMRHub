@@ -80,13 +80,15 @@ func TestTheCodeOfAModuleThatNoPluginRunsIsFreed(t *testing.T) {
 
 func TestTheMeterOfEachPluginSeesItWait(t *testing.T) {
 	t.Parallel()
-	e := newEngine(t, time.Minute)
-	module := guest(t, "echo")
-	a, err := e.Start(context.Background(), "a", module, nil)
-	require.NoError(t, err)
-	t.Cleanup(a.Stop)
-	b, err := e.Start(context.Background(), "b", module, nil)
-	require.NoError(t, err)
-	t.Cleanup(b.Stop)
-	require.Eventually(t, func() bool { return wasm.Waiting(a) && wasm.Waiting(b) }, 5*time.Second, 10*time.Millisecond)
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		e := newEngine(t, time.Minute)
+		module := guestOf(t, compiler, "echo")
+		a, err := e.Start(context.Background(), "a", module, nil)
+		require.NoError(t, err)
+		t.Cleanup(a.Stop)
+		b, err := e.Start(context.Background(), "b", module, nil)
+		require.NoError(t, err)
+		t.Cleanup(b.Stop)
+		require.Eventually(t, func() bool { return wasm.Waiting(a) && wasm.Waiting(b) }, 5*time.Second, 10*time.Millisecond)
+	})
 }

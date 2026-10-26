@@ -28,39 +28,77 @@ import (
 	"testing"
 )
 
-// guests are the test plugins, built once.
+// guests are the test plugins, built once with each compiler.
 var guests struct { //nolint:gochecknoglobals // built once for all the tests
 	once sync.Once
 	dir  string
 	err  error
 }
 
+// compilers are the compilers that the test plugins are built with: Go,
+// and TinyGo, which builds the plugins that come with DMRHub. The tests
+// run the tinygo command that the TINYGO environment variable names, or
+// tinygo from the PATH.
+var compilers = []string{"go", "tinygo"} //nolint:gochecknoglobals // a constant
+
+func buildCommand(compiler, out, dir string) *exec.Cmd {
+	if compiler == "go" {
+		cmd := exec.Command("go", "build", "-o", out, dir) //nolint:noctx // a build for the tests
+		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+		return cmd
+	}
+	tinygo := os.Getenv("TINYGO")
+	if tinygo == "" {
+		tinygo = "tinygo"
+	}
+	return exec.Command(tinygo, "build", "-target=wasip1", "-no-debug", "-o", out, dir) //nolint:noctx,gosec // a build for the tests
+}
+
 // guest returns the module of the test plugin in testdata/name, built for
-// wasip1.
+// wasip1 with Go.
 func guest(t testing.TB, name string) []byte {
+	t.Helper()
+	return guestOf(t, "go", name)
+}
+
+// guestOf returns the module of the test plugin in testdata/name, built for
+// wasip1 with compiler.
+func guestOf(t testing.TB, compiler, name string) []byte {
 	t.Helper()
 	guests.once.Do(func() {
 		guests.dir, guests.err = os.MkdirTemp("", "dmrhub-wasm-guests-")
 		if guests.err != nil {
 			return
 		}
-		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early"} {
-			cmd := exec.Command("go", "build", "-o", filepath.Join(guests.dir, g+".wasm"), "./testdata/"+g) //nolint:noctx // a build for the tests
-			cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				guests.err = fmt.Errorf("could not build %s: %w\n%s", g, err, out)
-				return
+		for _, c := range compilers {
+			for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic"} {
+				cmd := buildCommand(c, filepath.Join(guests.dir, c+"-"+g+".wasm"), "./testdata/"+g)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					guests.err = fmt.Errorf("could not build %s with %s: %w\n%s", g, c, err, out)
+					return
+				}
 			}
 		}
 	})
 	if guests.err != nil {
 		t.Fatal(guests.err)
 	}
-	b, err := os.ReadFile(filepath.Join(guests.dir, name+".wasm"))
+	b, err := os.ReadFile(filepath.Join(guests.dir, compiler+"-"+name+".wasm"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// eachCompiler runs test once for the test plugins of each compiler.
+func eachCompiler(t *testing.T, test func(t *testing.T, compiler string)) {
+	t.Helper()
+	for _, c := range compilers {
+		t.Run(c, func(t *testing.T) {
+			t.Parallel()
+			test(t, c)
+		})
+	}
 }
 
 func TestMain(m *testing.M) {

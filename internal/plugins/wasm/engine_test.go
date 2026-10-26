@@ -23,8 +23,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -128,13 +131,15 @@ func (r *rig) next(t *testing.T) models.Packet {
 
 func TestInspectReadsTheHello(t *testing.T) {
 	t.Parallel()
-	h, err := engine.Inspect(context.Background(), guest(t, "echo"))
-	require.NoError(t, err)
-	assert.Equal(t, "Echo", h.GetName())
-	assert.Equal(t, "1.0.0", h.GetVersion())
-	assert.Equal(t, "N0CALL", h.GetAuthor())
-	require.Len(t, h.GetIds(), 1)
-	assert.Equal(t, uint32(9100), h.GetIds()[0].GetFirst())
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		h, err := engine.Inspect(context.Background(), guestOf(t, compiler, "echo"))
+		require.NoError(t, err)
+		assert.Equal(t, "Echo", h.GetName())
+		assert.Equal(t, "1.0.0", h.GetVersion())
+		assert.Equal(t, "N0CALL", h.GetAuthor())
+		require.Len(t, h.GetIds(), 1)
+		assert.Equal(t, uint32(9100), h.GetIds()[0].GetFirst())
+	})
 }
 
 func TestInspectRefusesWhatIsNotWasm(t *testing.T) {
@@ -145,60 +150,70 @@ func TestInspectRefusesWhatIsNotWasm(t *testing.T) {
 
 func TestInspectRefusesAProgramThatSaysNoHello(t *testing.T) {
 	t.Parallel()
-	l := wasm.DefaultLimits()
-	l.HelloWithin = 500 * time.Millisecond
-	started := time.Now()
-	_, err := engine.Limited(l).Inspect(context.Background(), guest(t, "silent"))
-	require.ErrorIs(t, err, wasm.ErrNoHello)
-	assert.Less(t, time.Since(started), time.Minute, "a program asleep for an hour is stopped")
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		l := wasm.DefaultLimits()
+		l.HelloWithin = 500 * time.Millisecond
+		started := time.Now()
+		_, err := engine.Limited(l).Inspect(context.Background(), guestOf(t, compiler, "silent"))
+		require.ErrorIs(t, err, wasm.ErrNoHello)
+		assert.Less(t, time.Since(started), time.Minute, "a program asleep for an hour is stopped")
+	})
 }
 
 func TestAPluginInsideReachesNoFilesAndNoEnvironment(t *testing.T) {
 	t.Parallel()
-	h, err := engine.Inspect(context.Background(), guest(t, "files"))
-	require.NoError(t, err)
-	assert.Equal(t, "Files", h.GetName())
-	assert.Empty(t, h.GetDescription(), "the plugin found: %s", h.GetDescription())
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		h, err := engine.Inspect(context.Background(), guestOf(t, compiler, "files"))
+		require.NoError(t, err)
+		assert.Equal(t, "Files", h.GetName())
+		assert.Empty(t, h.GetDescription(), "the plugin found: %s", h.GetDescription())
+	})
 }
 
 func TestAPluginInsideAnswersThroughTheService(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	_, p := r.run(t, engine, "Echo", guest(t, "echo"), nil, models.PluginRange{First: 9100, Last: 9100})
-	r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true})
-	got := r.next(t)
-	assert.Equal(t, uint(9100), got.Src)
-	assert.Equal(t, uint(3191868), got.Dst)
-	assert.False(t, got.GroupCall)
-	assert.Equal(t, uint(7), got.StreamID)
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		r := newRig(t)
+		_, p := r.run(t, engine, "Echo", guestOf(t, compiler, "echo"), nil, models.PluginRange{First: 9100, Last: 9100})
+		r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true})
+		got := r.next(t)
+		assert.Equal(t, uint(9100), got.Src)
+		assert.Equal(t, uint(3191868), got.Dst)
+		assert.False(t, got.GroupCall)
+		assert.Equal(t, uint(7), got.StreamID)
+	})
 }
 
 func TestStopEndsAPluginThatWaitsForTheHub(t *testing.T) {
 	t.Parallel()
-	inst, err := engine.Start(context.Background(), "Echo", guest(t, "echo"), nil)
-	require.NoError(t, err)
-	assert.Equal(t, "Echo", inst.Hello().GetName())
-	started := time.Now()
-	inst.Stop()
-	select {
-	case <-inst.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("the plugin still runs")
-	}
-	assert.Less(t, time.Since(started), 5*time.Second)
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		inst, err := engine.Start(context.Background(), "Echo", guestOf(t, compiler, "echo"), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "Echo", inst.Hello().GetName())
+		started := time.Now()
+		inst.Stop()
+		select {
+		case <-inst.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatal("the plugin still runs")
+		}
+		assert.Less(t, time.Since(started), 5*time.Second)
+	})
 }
 
 func TestAPluginThatSpinsIsStopped(t *testing.T) {
 	t.Parallel()
-	l := wasm.DefaultLimits()
-	l.CPUWindow = time.Second
-	inst, _ := newRig(t).run(t, engine.Limited(l), "Spin", guest(t, "spin"), nil)
-	select {
-	case <-inst.Done():
-	case <-time.After(15 * time.Second):
-		t.Fatal("the plugin still spins")
-	}
-	require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		l := wasm.DefaultLimits()
+		l.CPUWindow = time.Second
+		inst, _ := newRig(t).run(t, engine.Limited(l), "Spin", guestOf(t, compiler, "spin"), nil)
+		select {
+		case <-inst.Done():
+		case <-time.After(15 * time.Second):
+			t.Fatal("the plugin still spins")
+		}
+		require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
+	})
 }
 
 func TestAPluginThatDoesNotReadIsStopped(t *testing.T) {
@@ -234,16 +249,96 @@ func TestAPluginThatEndsBeforeItsHelloSaysWhy(t *testing.T) {
 
 func TestAPluginThatTakesTooMuchMemoryIsStopped(t *testing.T) {
 	t.Parallel()
-	l := wasm.DefaultLimits()
-	l.MemoryPages = 512
-	l.CPUShare = 100
-	inst, _ := newRig(t).run(t, engine.Limited(l), "Hog", guest(t, "hog"), nil)
-	select {
-	case <-inst.Done():
-	case <-time.After(time.Minute):
-		t.Fatal("the plugin still grows")
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		l := wasm.DefaultLimits()
+		l.MemoryPages = 512
+		l.CPUShare = 100
+		inst, _ := newRig(t).run(t, engine.Limited(l), "Hog", guestOf(t, compiler, "hog"), nil)
+		select {
+		case <-inst.Done():
+		case <-time.After(time.Minute):
+			t.Fatal("the plugin still grows")
+		}
+		require.ErrorIs(t, inst.Err(), wasm.ErrMemory)
+	})
+}
+
+// logs is a slog handler that keeps the lines that plugins log.
+type logs struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (*logs) Enabled(context.Context, slog.Level) bool { return true }
+
+func (l *logs) Handle(_ context.Context, r slog.Record) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "line" {
+			l.lines = append(l.lines, a.Value.String())
+		}
+		return true
+	})
+	return nil
+}
+
+func (l *logs) WithAttrs([]slog.Attr) slog.Handler { return l }
+
+func (l *logs) WithGroup(string) slog.Handler { return l }
+
+func (l *logs) has(line string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Contains(l.lines, line)
+}
+
+// TestAPluginThatPanicsFailsAndLogsItsPanic runs alone, as it replaces the
+// default logger. TinyGo writes a panic on stdout, where the hub reads the
+// messages of the plugin, so the hub logs it as it stops the plugin.
+func TestAPluginThatPanicsFailsAndLogsItsPanic(t *testing.T) { //nolint:paralleltest // it replaces the default logger
+	l := &logs{}
+	old := slog.Default()
+	slog.SetDefault(slog.New(l))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	for _, compiler := range compilers { //nolint:paralleltest // it replaces the default logger
+		t.Run(compiler, func(t *testing.T) {
+			inst, _ := newRig(t).run(t, engine, "Panic", guestOf(t, compiler, "panic"), nil)
+			select {
+			case <-inst.Done():
+			case <-time.After(10 * time.Second):
+				t.Fatal("the plugin still runs")
+			}
+			require.Error(t, inst.Err())
+			require.NotErrorIs(t, inst.Err(), wasm.ErrExited)
+			require.Eventually(t, func() bool { return l.has("panic: the panic of the test plugin") }, 5*time.Second, 10*time.Millisecond)
+		})
 	}
-	require.ErrorIs(t, inst.Err(), wasm.ErrMemory)
+}
+
+// startsWith returns a module whose memory starts with pages, and whose
+// _start does nothing.
+func startsWith(pages byte) []byte {
+	return []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0x04, 0x01, 0x60, 0x00, 0x00,
+		0x03, 0x02, 0x01, 0x00,
+		0x05, 0x03, 0x01, 0x00, pages,
+		0x07, 0x13, 0x02, 0x06, 'm', 'e', 'm', 'o', 'r', 'y', 0x02, 0x00, 0x06, '_', 's', 't', 'a', 'r', 't', 0x00, 0x00,
+		0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b,
+	}
+}
+
+func TestAPluginWhoseMemoryStartsPastItsLimitDoesNotStart(t *testing.T) {
+	t.Parallel()
+	l := wasm.DefaultLimits()
+	l.MemoryPages = 16
+	_, err := engine.Limited(l).Start(context.Background(), "Big", startsWith(20), nil)
+	require.ErrorIs(t, err, wasm.ErrMemory)
+	_, err = engine.Limited(l).Start(context.Background(), "Bigger", startsWith(40), nil)
+	require.ErrorIs(t, err, wasm.ErrNotWasm)
+	_, err = engine.Limited(l).Start(context.Background(), "Small", startsWith(16), nil)
+	require.ErrorIs(t, err, wasm.ErrNoHello)
 }
 
 // pong listens on loopback and answers each connection's "ping" with
@@ -289,27 +384,31 @@ func loopbackAllowed() wasm.Limits {
 
 func TestAPluginInsideReachesTheHostsTheAdminAllowed(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	allowed := pong(t)
-	other := pong(t)
-	hosts := func(a string) bool { return a == allowed }
-	_, p := r.run(t, engine.Limited(loopbackAllowed()), "Netprobe", guest(t, "netprobe"), hosts, models.PluginRange{First: 9200, Last: 9200})
-	assert.Equal(t, "pong", probe(t, r, p, allowed))
-	refused := probe(t, r, p, other)
-	assert.True(t, strings.HasPrefix(refused, "ERR"), "a host the admin did not allow: %q", refused)
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		r := newRig(t)
+		allowed := pong(t)
+		other := pong(t)
+		hosts := func(a string) bool { return a == allowed }
+		_, p := r.run(t, engine.Limited(loopbackAllowed()), "Netprobe", guestOf(t, compiler, "netprobe"), hosts, models.PluginRange{First: 9200, Last: 9200})
+		assert.Equal(t, "pong", probe(t, r, p, allowed))
+		refused := probe(t, r, p, other)
+		assert.True(t, strings.HasPrefix(refused, "ERR"), "a host the admin did not allow: %q", refused)
+	})
 }
 
 func TestAPluginInsideNeverReachesLoopbackByDefault(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	addr := pong(t)
-	_, port, err := net.SplitHostPort(addr)
-	require.NoError(t, err)
-	byName := net.JoinHostPort("localhost", port)
-	hosts := func(a string) bool { return a == addr || a == byName }
-	_, p := r.run(t, engine, "Netprobe", guest(t, "netprobe"), hosts, models.PluginRange{First: 9200, Last: 9200})
-	for _, a := range []string{addr, byName} {
-		got := probe(t, r, p, a)
-		assert.True(t, strings.HasPrefix(got, "ERR"), "%s: %q", a, got)
-	}
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		r := newRig(t)
+		addr := pong(t)
+		_, port, err := net.SplitHostPort(addr)
+		require.NoError(t, err)
+		byName := net.JoinHostPort("localhost", port)
+		hosts := func(a string) bool { return a == addr || a == byName }
+		_, p := r.run(t, engine, "Netprobe", guestOf(t, compiler, "netprobe"), hosts, models.PluginRange{First: 9200, Last: 9200})
+		for _, a := range []string{addr, byName} {
+			got := probe(t, r, p, a)
+			assert.True(t, strings.HasPrefix(got, "ERR"), "%s: %q", a, got)
+		}
+	})
 }

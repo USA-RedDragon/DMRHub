@@ -70,6 +70,12 @@ type queuedCall struct {
 	data  bool
 	// sentAt is when the last frame of the call went out.
 	sentAt time.Time
+	// src, dst and group are the addresses of the first packet of the
+	// call, and preamble is set when its last packet is a preamble CSBK.
+	src, dst uint
+	group    bool
+	preamble bool
+	dataEnd  dataEnd
 }
 
 // holdEnd returns the end of the call hang that c gives its slot when it
@@ -173,6 +179,15 @@ func (q *slotQueue) next(now time.Time) int {
 	return slices.IndexFunc(q.pending, func(c *queuedCall) bool { return c.voice })
 }
 
+// tail returns the call that the next call on the slot would follow: the
+// last waiting call, or the active one when none waits.
+func (q *slotQueue) tail() *queuedCall {
+	if n := len(q.pending); n > 0 {
+		return q.pending[n-1]
+	}
+	return q.active
+}
+
 func (q *slotQueue) frames() int {
 	n := 0
 	if q.active != nil {
@@ -199,7 +214,13 @@ func newPacer(send func(slotKey, []byte), discard func(models.Packet)) *pacer {
 	return &pacer{send: send, discard: discard, now: time.Now, after: time.After, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
 }
 
+// enqueue queues frame, of the packet pkt of the stream, to the peer slot
+// k. A call ends at a frame with end set, at the last block of its data
+// packet, or at its last CSBK. A CSBK or data header of a new stream joins
+// the call before it when that call ends with the preamble that announces
+// it, so no hold and no bound on the waiting calls splits them.
 func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *streamSnapshot) {
+	b := decodeDataBurst(pkt)
 	var discarded []models.Packet
 	defer func() { p.report(discarded) }()
 	p.mu.Lock()
@@ -221,13 +242,17 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 	}
 	voice, data := burstKind(pkt)
 	c := q.find(stream)
+	if t := q.tail(); c == nil && t != nil && t.joins(pkt, b, now) {
+		t.stream = stream
+		c = t
+	}
 	if c == nil {
 		if len(q.pending) >= maxWaitingCalls {
 			q.discarded[stream] = now
 			discarded = append(discarded, pkt)
 			return
 		}
-		c = &queuedCall{stream: stream, queuedAt: now, voice: voice}
+		c = &queuedCall{stream: stream, queuedAt: now, voice: voice, src: pkt.Src, dst: pkt.Dst, group: pkt.GroupCall}
 		if q.active == nil && len(q.pending) == 0 && (voice || !now.Before(q.holdUntil)) {
 			q.active = c
 		} else {
@@ -242,6 +267,12 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 	c.data = c.data || data
 	c.frames = append(c.frames, queuedFrame{frame: frame, pkt: pkt, state: state})
 	c.lastSeen = now
+	c.preamble = b != nil && isPreamble(b)
+	if b != nil {
+		if e, known := c.dataEnd.ends(b); known {
+			c.ended = e
+		}
+	}
 	if end {
 		c.ended = true
 	}

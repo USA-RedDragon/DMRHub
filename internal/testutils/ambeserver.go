@@ -49,6 +49,7 @@ const (
 
 const (
 	fieldCMode        = 0x02
+	fieldDCMode       = 0x06
 	fieldSpeechFormat = 0x16
 	maxRepeats        = 2
 )
@@ -61,9 +62,11 @@ const (
 // puts the decoder status in a CMODE field of each speech packet. A channel
 // packet with a CMODE field that sets LOST_FRAME, with or without a CHAND
 // field, makes it repeat the audio of the last frame, up to 2 times, and
-// then send silence as comfort noise, until a CMODE field of 0x0000 clears
-// it. Like the deployed AMBEserver, it drops a channel packet whose CMODE
-// sets any other flag, and records the error.
+// then send silence as comfort noise. Like the chip, it keeps LOST_FRAME
+// for all clients until a CMODE field or a PKT_DCMODE field of 0x0000
+// clears it. Like the deployed AMBEserver, it drops a channel packet whose
+// CMODE sets any other flag, and records the error; it does the same for a
+// PKT_DCMODE field.
 type FakeAMBEServer struct {
 	conn    *net.UDPConn
 	answer  atomic.Bool
@@ -80,6 +83,7 @@ type FakeAMBEServer struct {
 	refuse  atomic.Bool
 	losts   atomic.Int64
 	cmodes  atomic.Int64
+	dcmodes atomic.Int64
 	lost    bool
 	repeats int
 	lastPCM [dvsi.FrameSamples]int16
@@ -180,6 +184,11 @@ func (f *FakeAMBEServer) LostFrames() int {
 // the server took.
 func (f *FakeAMBEServer) CModes() int {
 	return int(f.cmodes.Load())
+}
+
+// DCModes returns the number of PKT_DCMODE fields that the server took.
+func (f *FakeAMBEServer) DCModes() int {
+	return int(f.dcmodes.Load())
 }
 
 // Decodes returns the number of frames that the server decoded.
@@ -439,6 +448,20 @@ func (f *FakeAMBEServer) control(fields []byte, answering bool) []byte {
 				f.format.Store(true)
 			}
 			r = append(r, id, st)
+			fields = fields[2:]
+		case fieldDCMode:
+			if len(fields) < 2 {
+				f.fail("short PKT_DCMODE")
+				return nil
+			}
+			mode := uint16(fields[0])<<8 | uint16(fields[1])
+			if mode&^AMBELostFrame != 0 {
+				f.fail("PKT_DCMODE 0x%04x sets flags other than LOST_FRAME", mode)
+				return nil
+			}
+			f.dcmodes.Add(1)
+			f.lost = mode&AMBELostFrame != 0
+			r = append(r, id, 0)
 			fields = fields[2:]
 		case dvsi.FieldReset:
 			f.fail("the hub reset the chip, which other calls may be using")

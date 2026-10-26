@@ -126,6 +126,50 @@ func TestFakeAMBEServerRepeatsLostFrames(t *testing.T) {
 	assert.Empty(t, srv.Errors())
 }
 
+func TestFakeAMBEServerKeepsLostFrameUntilCleared(t *testing.T) {
+	t.Parallel()
+	srv := testutils.StartFakeAMBEServer(t)
+	conn, c := dialFake(t, srv)
+	assert.Equal(t, 1, srv.DCModes(), "New clears DCMODE_IN")
+	a, b := fakeSlot(7), fakeSlot(8)
+	wantB := testutils.FakeAMBEDecode(b)
+
+	_, _, err := c.Decode(nil, a)
+	require.NoError(t, err)
+	_, _, err = c.DecodeLost(nil)
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+	assert.Equal(t, 2, srv.DCModes(), "Close after a lost frame clears DCMODE_IN")
+	_, d := dialFake(t, srv)
+	pcm, rep, err := d.Decode(nil, b)
+	require.NoError(t, err)
+	assert.Equal(t, wantB[:], pcm)
+	assert.Equal(t, vocoder.FrameReport{}, rep)
+
+	_, err = conn.Write(rawPacket(dvsi.TypeChannel, 0x02, 0x00, 0x04))
+	require.NoError(t, err)
+	buf := make([]byte, dvsi.MaxPacketLen)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+	_, err = conn.Read(buf)
+	require.NoError(t, err)
+	_, err = conn.Write(rawPacket(dvsi.TypeChannel, append([]byte{0x01, dvsi.FrameBits}, b[:]...)...))
+	require.NoError(t, err)
+	n, err := conn.Read(buf)
+	require.NoError(t, err)
+	p, _, err := dvsi.Parse(buf[:n], true)
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x02, 0x00, byte(testutils.AMBEVoiceActive | testutils.AMBEDataInvalid)}, p.Fields[len(p.Fields)-3:], "LOST_FRAME stays set for every client")
+
+	_, e := dialFake(t, srv)
+	assert.Equal(t, 4, srv.DCModes())
+	pcm, rep, err = e.Decode(nil, b)
+	require.NoError(t, err)
+	assert.Equal(t, wantB[:], pcm, "PKT_DCMODE 0x0000 clears LOST_FRAME")
+	assert.Equal(t, vocoder.FrameReport{}, rep)
+	assert.Equal(t, 3, srv.LostFrames())
+	assert.Empty(t, srv.Errors())
+}
+
 func TestFakeAMBEServerRefusesTheSpeechFormat(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
@@ -145,15 +189,18 @@ func TestFakeAMBEServerDropsMisuse(t *testing.T) {
 	slot := fakeSlot(6)
 	for _, tc := range []struct {
 		name   string
+		typ    dvsi.PacketType
 		fields []byte
 		err    string
 	}{
-		{"other CMODE flags", append([]byte{0x02, 0x00, 0x10, 0x01, dvsi.FrameBits}, slot[:]...), "CMODE 0x0010"},
-		{"no CHAND without LOST_FRAME", []byte{0x02, 0x00, 0x00}, "no CHAND"},
-		{"nothing", nil, "no CHAND"},
+		{"other CMODE flags", dvsi.TypeChannel, append([]byte{0x02, 0x00, 0x10, 0x01, dvsi.FrameBits}, slot[:]...), "CMODE 0x0010"},
+		{"no CHAND without LOST_FRAME", dvsi.TypeChannel, []byte{0x02, 0x00, 0x00}, "no CHAND"},
+		{"nothing", dvsi.TypeChannel, nil, "no CHAND"},
+		{"other PKT_DCMODE flags", dvsi.TypeControl, []byte{0x40, 0x06, 0x00, 0x10}, "PKT_DCMODE 0x0010"},
+		{"short PKT_DCMODE", dvsi.TypeControl, []byte{0x40, 0x06, 0x00}, "short PKT_DCMODE"},
 	} {
 		before := len(srv.Errors())
-		_, err := conn.Write(rawPacket(dvsi.TypeChannel, tc.fields...))
+		_, err := conn.Write(rawPacket(tc.typ, tc.fields...))
 		require.NoError(t, err, tc.name)
 		require.NoError(t, conn.SetReadDeadline(time.Now().Add(150*time.Millisecond)))
 		buf := make([]byte, dvsi.MaxPacketLen)

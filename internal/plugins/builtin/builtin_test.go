@@ -52,8 +52,10 @@ func TestEachBuiltinModuleSaysWhoItIs(t *testing.T) {
 	for _, p := range builtin.All() {
 		module, err := p.Module()
 		require.NoError(t, err, p.Key)
-		hello, err := engine.Inspect(context.Background(), module)
+		inst, err := engine.Start(context.Background(), p.Key, module, nil, p.Args()...)
 		require.NoError(t, err, p.Key)
+		inst.Stop()
+		hello := inst.Hello()
 		assert.Equal(t, p.Name, hello.GetName(), p.Key)
 		assert.NotEmpty(t, hello.GetDescription(), p.Key)
 		require.Len(t, hello.GetIds(), len(p.Ranges), p.Key)
@@ -63,4 +65,26 @@ func TestEachBuiltinModuleSaysWhoItIs(t *testing.T) {
 		}
 		assert.Empty(t, hello.GetHosts(), "%s reaches no hosts", p.Key)
 	}
+}
+
+func TestTheBuiltinPluginsShareOneModule(t *testing.T) {
+	t.Parallel()
+	all := builtin.All()
+	first, err := all[0].Module()
+	require.NoError(t, err)
+	for _, p := range all[1:] {
+		module, err := p.Module()
+		require.NoError(t, err)
+		assert.Equal(t, first, module, p.Key)
+	}
+}
+
+func TestTheBuiltinModuleRefusesAnUnknownPlugin(t *testing.T) {
+	t.Parallel()
+	engine := wasm.NewCachedEngine(wasm.DefaultLimits())
+	t.Cleanup(func() { _ = engine.Close(context.Background()) })
+	module, err := builtin.All()[0].Module()
+	require.NoError(t, err)
+	_, err = engine.Start(context.Background(), "none", module, nil, "none")
+	require.ErrorIs(t, err, wasm.ErrNoHello)
 }

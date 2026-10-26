@@ -423,16 +423,17 @@ func (m *Manager) stop(r *run) {
 	})
 }
 
-func (m *Manager) module(p *models.Plugin) ([]byte, error) {
+func (m *Manager) module(p *models.Plugin) ([]byte, []string, error) {
 	if p.Kind == models.PluginBuiltin {
 		b, ok := m.builtins[p.Builtin]
 		if !ok {
-			return nil, errNoBuiltin
+			return nil, nil, errNoBuiltin
 		}
-		return b.Module() //nolint:wrapcheck // the error names the plugin
+		module, err := b.Module()
+		return module, b.Args(), err //nolint:wrapcheck // the error names the plugin
 	}
 	_, module, err := models.PluginModuleOf(m.d.DB, p.ID)
-	return module, err //nolint:wrapcheck // the database's error
+	return module, nil, err //nolint:wrapcheck // the database's error
 }
 
 var errNoBuiltin = errors.New("this DMRHub has no such built-in plugin")
@@ -474,7 +475,7 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 // launch compiles and starts the module of p, and returns nil when it
 // cannot.
 func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) *wasm.Instance {
-	module, err := m.module(p)
+	module, args, err := m.module(p)
 	if err != nil {
 		slog.Error("Plugins: cannot read the module of a plugin", "plugin", p.Name, "error", err)
 		return nil
@@ -486,7 +487,7 @@ func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) *wasm.In
 			}
 		}
 		return false
-	})
+	}, args...)
 	if err != nil {
 		slog.Error("Plugins: cannot start a plugin inside DMRHub", "plugin", p.Name, "error", err)
 		return nil

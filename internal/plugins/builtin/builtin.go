@@ -24,10 +24,8 @@ package builtin
 //go:generate go run ./gen
 
 import (
-	"bytes"
 	_ "embed"
 	"fmt"
-	"io"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
@@ -39,11 +37,10 @@ import (
 // maxModule is the largest module that a built-in plugin decompresses to.
 const maxModule = 64 << 20
 
-//go:embed parrot.wasm.zst
-var parrotModule []byte
-
-//go:embed locator.wasm.zst
-var locatorModule []byte
+// module holds all the plugins that come with DMRHub.
+//
+//go:embed builtin.wasm.zst
+var module []byte
 
 // Plugin is a plugin that comes with DMRHub.
 type Plugin struct {
@@ -56,8 +53,8 @@ type Plugin struct {
 	compressed []byte
 }
 
-func of(key string, hello *pluginv1.Hello, compressed []byte) Plugin {
-	p := Plugin{Key: key, Name: hello.GetName(), compressed: compressed}
+func of(key string, hello *pluginv1.Hello) Plugin {
+	p := Plugin{Key: key, Name: hello.GetName(), compressed: module}
 	for _, r := range hello.GetIds() {
 		p.Ranges = append(p.Ranges, models.PluginRange{First: uint(r.GetFirst()), Last: uint(r.GetLast())})
 	}
@@ -67,19 +64,25 @@ func of(key string, hello *pluginv1.Hello, compressed []byte) Plugin {
 // All returns the plugins that come with DMRHub.
 func All() []Plugin {
 	return []Plugin{
-		of("parrot", parrot.Hello(), parrotModule),
-		of("locator", locator.Hello(), locatorModule),
+		of("parrot", parrot.Hello()),
+		of("locator", locator.Hello()),
 	}
 }
 
-// Module returns the WebAssembly module of p.
+// Args returns the arguments that pick p in its module.
+func (p Plugin) Args() []string {
+	return []string{p.Key}
+}
+
+// Module returns the WebAssembly module of p, in one buffer of its size.
+// All the plugins that come with DMRHub have the same module.
 func (p Plugin) Module() ([]byte, error) {
-	d, err := zstd.NewReader(bytes.NewReader(p.compressed), zstd.WithDecoderConcurrency(1))
+	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(maxModule))
 	if err != nil {
 		return nil, fmt.Errorf("could not read the module of %s: %w", p.Key, err)
 	}
 	defer d.Close()
-	b, err := io.ReadAll(io.LimitReader(d, maxModule))
+	b, err := d.DecodeAll(p.compressed, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not read the module of %s: %w", p.Key, err)
 	}

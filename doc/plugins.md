@@ -50,6 +50,8 @@ A plugin that goes over a limit, or ends, is stopped, and starts again after a w
 
 DMRHub compiles the plugins on amd64 and arm64. On other machines, such as a 32-bit Raspberry Pi, wazero's interpreter runs them, which is much slower.
 
+DMRHub compiles each plugin file once. The plugins that run the same file share its code, and a plugin that starts again does not compile it again. The parrot and the location server are one file.
+
 ### Several replicas
 
 Only one replica runs each plugin inside DMRHub: the one that holds the plugin's lease in the KV store (Redis). When that replica stops, another takes the plugin over within about 20 seconds, or within 5 seconds when the replica stops cleanly. Uploaded plugins are kept in the database, so every replica has them.

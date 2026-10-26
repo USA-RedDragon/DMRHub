@@ -17,13 +17,13 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Command gen builds the plugins that come with DMRHub for wasip1, and
-// writes each, compressed with zstd, next to the builtin package, which
-// embeds them. go generate runs it.
+// Command gen builds the plugins that come with DMRHub for wasip1, as the
+// one module of the guest command, and writes it, compressed with zstd
+// with its size in the frame, next to the builtin package, which embeds
+// it. go generate runs it.
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -42,40 +42,34 @@ func moduleRoot(ctx context.Context) (string, error) {
 	return filepath.Dir(strings.TrimSpace(string(out))), nil
 }
 
-func build(ctx context.Context, root, name string) ([]byte, error) {
+func build(ctx context.Context, root string) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "dmrhub-builtin-")
 	if err != nil {
 		return nil, fmt.Errorf("could not make a build directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	out := filepath.Join(dir, name+".wasm")
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags=-s -w", "-o", out, "./plugins/"+name+"/cmd/"+name) //nolint:gosec // the names of the built-in plugins
+	out := filepath.Join(dir, "builtin.wasm")
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags=-s -w", "-o", out, "./internal/plugins/builtin/guest") //nolint:gosec // the path of the guest
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm", "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("could not build %s: %w", name, err)
+		return nil, fmt.Errorf("could not build the built-in plugins: %w", err)
 	}
 	b, err := os.ReadFile(out) //nolint:gosec // the file it just built
 	if err != nil {
-		return nil, fmt.Errorf("could not read %s: %w", name, err)
+		return nil, fmt.Errorf("could not read the built-in plugins: %w", err)
 	}
 	return b, nil
 }
 
 func compress(b []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	w, err := zstd.NewWriter(&buf, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	w, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
 	if err != nil {
 		return nil, fmt.Errorf("could not compress: %w", err)
 	}
-	if _, err := w.Write(b); err != nil {
-		return nil, fmt.Errorf("could not compress: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("could not compress: %w", err)
-	}
-	return buf.Bytes(), nil
+	defer func() { _ = w.Close() }()
+	return w.EncodeAll(b, nil), nil
 }
 
 func run(ctx context.Context) error {
@@ -83,18 +77,16 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"parrot", "locator"} {
-		b, err := build(ctx, root, name)
-		if err != nil {
-			return err
-		}
-		z, err := compress(b)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(name+".wasm.zst", z, 0o644); err != nil { //nolint:gosec // an asset of the build
-			return fmt.Errorf("could not write %s: %w", name, err)
-		}
+	b, err := build(ctx, root)
+	if err != nil {
+		return err
+	}
+	z, err := compress(b)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile("builtin.wasm.zst", z, 0o644); err != nil { //nolint:gosec // an asset of the build
+		return fmt.Errorf("could not write the built-in plugins: %w", err)
 	}
 	return nil
 }

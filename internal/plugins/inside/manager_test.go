@@ -125,8 +125,7 @@ func newCluster(t *testing.T) *cluster {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_inside_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	cfg.Database.Database = filepath.Join(t.TempDir(), "dmrhub.db")
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)

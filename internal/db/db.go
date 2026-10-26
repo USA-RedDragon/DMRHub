@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"slices"
+	"strings"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/consts"
@@ -41,16 +43,15 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 	var dialector gorm.Dialector
 	switch config.Database.Driver {
 	case configPkg.DatabaseDriverSQLite:
-		params := ""
-		if len(config.Database.ExtraParameters) > 0 {
-			params += "?" + config.Database.ExtraParameters[0]
-			for _, param := range config.Database.ExtraParameters[1:] {
-				params += "&" + param
-			}
+		dsn := config.Database.Database
+		params := config.Database.ExtraParameters
+		if dsn != "" {
+			params = sqliteParameters(params)
 		}
-		dialector = sqlite.Open(
-			config.Database.Database + params,
-		)
+		if len(params) > 0 {
+			dsn += "?" + strings.Join(params, "&")
+		}
+		dialector = sqlite.Open(dsn)
 	case configPkg.DatabaseDriverMySQL:
 		hasUser := config.Database.Username != ""
 		hasPassword := config.Database.Password != ""
@@ -103,6 +104,15 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 		})
 	}
 	return dialector
+}
+
+func sqliteParameters(params []string) []string {
+	if slices.ContainsFunc(params, func(p string) bool {
+		return strings.HasPrefix(p, "_txlock=") || p == "cache=shared"
+	}) {
+		return params
+	}
+	return append(slices.Clone(params), "_txlock=immediate")
 }
 
 func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {

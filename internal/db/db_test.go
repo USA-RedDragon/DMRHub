@@ -21,11 +21,15 @@ package db_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/configulator/v2"
 )
 
@@ -121,5 +125,58 @@ func TestMakeDBKeepsConnectionsOpenAfterABusySpell(t *testing.T) {
 	}
 	if closed := sqlDB.Stats().MaxIdleClosed; closed != 0 {
 		t.Fatalf("%d of %d connections were closed when they went back to the pool", closed, busy)
+	}
+}
+
+func TestSQLiteTransactionsThatReadThenWriteRunTogether(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+	defConfig.Database.Database = filepath.Join(t.TempDir(), "readwrite.db")
+	gdb, err := db.MakeDB(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		t.Fatalf("Failed to get the pool: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	ranges := []models.PluginRange{{First: 9990, Last: 9990}}
+	p, err := models.EnsureBuiltinPlugin(gdb, "parrot", "Parrot", "v1", ranges, time.Now())
+	if err != nil {
+		t.Fatalf("Failed to add the plugin: %v", err)
+	}
+	if err := models.NotePluginConnected(gdb, p.ID, "s", "", time.Now()); err != nil {
+		t.Fatalf("Failed to connect the plugin: %v", err)
+	}
+
+	const workers, rounds = 4, 25
+	errs := make(chan error, (workers+1)*rounds)
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Go(func() {
+			for range rounds {
+				if _, err := models.EnsureBuiltinPlugin(gdb, "parrot", "Parrot", fmt.Sprintf("v%d", w), ranges, time.Now()); err != nil {
+					errs <- err
+				}
+			}
+		})
+	}
+	wg.Go(func() {
+		for range rounds {
+			if err := models.NotePluginSeen(gdb, p.ID, "s", time.Now()); err != nil {
+				errs <- err
+			}
+		}
+	})
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }

@@ -49,13 +49,13 @@ import (
 )
 
 const (
-	tickInterval = 50 * time.Millisecond
 	recheckEvery = time.Second
 	silentAfter  = 3
 	heardExpiry  = time.Hour
 	maxInterval  = 24 * time.Hour
 	linkIdle     = 2 * time.Minute
 	networkLost  = 500 * time.Millisecond
+	slotPeriod   = 60 * time.Millisecond
 	// settle is how long after its last data the Locator leaves a radio
 	// alone, so that it does not ask a radio whose registration is still
 	// coming in.
@@ -76,6 +76,7 @@ type link struct {
 	slot  uint32
 	cc    enums.ColorCode
 	last  time.Time
+	free  time.Duration
 }
 
 // request is the triggered location request that is open with a radio.
@@ -122,8 +123,9 @@ type Locator struct {
 	reqID   uint32
 	stream  uint32
 	checked time.Time
-	done    chan struct{}
-	wg      sync.WaitGroup
+	timer   *time.Timer
+	stopped bool
+	wakes   int
 }
 
 // New returns a Locator that sends its bursts with send and the positions
@@ -138,20 +140,21 @@ func New(send func(*pluginv1.Burst) error, report func(*pluginv1.Position) error
 		links:   map[linkKey]*link{},
 		radios:  map[uint32]*radio{},
 		stream:  0x10C0_0000,
-		done:    make(chan struct{}),
 	}
 	var seed [4]byte
 	_, _ = rand.Read(seed[:])
 	l.reqID = binary.BigEndian.Uint32(seed[:])
-	l.wg.Add(1)
-	go l.tick()
 	return l
 }
 
 // Stop ends the timers of the Locator.
 func (l *Locator) Stop() {
-	close(l.done)
-	l.wg.Wait()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.stopped = true
+	if l.timer != nil {
+		l.timer.Stop()
+	}
 }
 
 // Serve runs a Locator on conn until it ends. Give it to plugin.Run.
@@ -220,7 +223,7 @@ func (l *Locator) radio(id uint32) *radio {
 // that was tracked and is not among them is asked to stop reporting.
 func (l *Locator) SetTracked(radios []*pluginv1.Tracking) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	defer l.unlock()
 	on := make(map[uint32]*pluginv1.Tracking, len(radios))
 	for _, t := range radios {
 		if t.GetOn() {
@@ -242,7 +245,7 @@ func (l *Locator) SetTracked(radios []*pluginv1.Tracking) {
 // interval is asked again with it.
 func (l *Locator) SetTracking(t *pluginv1.Tracking) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	defer l.unlock()
 	if !t.GetOn() {
 		if r, ok := l.radios[t.GetRadio()]; ok {
 			l.untrack(t.GetRadio(), r)
@@ -283,7 +286,7 @@ func (l *Locator) untrack(id uint32, r *radio) {
 // it for its position when it has not reported.
 func (l *Locator) Heard(h *pluginv1.Heard) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	defer l.unlock()
 	r := l.radio(h.GetRadio())
 	r.heard, r.slot, r.cc = time.Now(), h.GetSlot(), enums.ColorCode(h.GetColorCode()&0xF) //nolint:gosec // masked to 4 bits
 }
@@ -294,7 +297,7 @@ func (l *Locator) Handle(b *pluginv1.Burst) {
 		return
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	defer l.unlock()
 	k := linkKey{radio: b.GetSource(), service: b.GetDestination()}
 	ln, ok := l.links[k]
 	if !ok {
@@ -536,7 +539,7 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 		}
 		ln.tx = tx
 	}
-	if ln.tx.State() == data.SenderIdle && len(ln.queue) > 0 {
+	if ln.tx.State() == data.SenderIdle && len(ln.queue) > 0 && now >= ln.free {
 		m := ln.queue[0]
 		ln.queue = ln.queue[1:]
 		if err := ln.tx.Send(now, &m); err != nil {
@@ -546,6 +549,7 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 	l.outs = ln.tx.Tick(now, l.outs[:0])
 	for i := range l.outs {
 		if o := &l.outs[i]; o.Kind == data.OutputBurst {
+			ln.free = o.Due + slotPeriod
 			l.respond(k, ln, o.Burst, o.Due-now)
 		}
 	}
@@ -644,23 +648,13 @@ func positionOf(f *location.Fix, k linkKey, ln *link) (*pluginv1.Position, error
 	return p, nil
 }
 
-func (l *Locator) tick() {
-	defer l.wg.Done()
-	t := time.NewTicker(tickInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-l.done:
-			return
-		case <-t.C:
-			l.expire()
-		}
-	}
-}
-
 func (l *Locator) expire() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	defer l.unlock()
+	if l.stopped {
+		return
+	}
+	l.wakes++
 	now := l.now()
 	if time.Since(l.checked) >= recheckEvery {
 		l.checked = time.Now()
@@ -682,4 +676,101 @@ func (l *Locator) expire() {
 			delete(l.links, k)
 		}
 	}
+}
+
+func (l *Locator) unlock() {
+	l.arm()
+	l.mu.Unlock()
+}
+
+func (l *Locator) arm() {
+	if l.stopped {
+		return
+	}
+	now := l.now()
+	at, ok := l.next(now)
+	if !ok {
+		if l.timer != nil {
+			l.timer.Stop()
+		}
+		return
+	}
+	if l.timer == nil {
+		l.timer = time.AfterFunc(at-now, l.expire)
+		return
+	}
+	l.timer.Reset(at - now)
+}
+
+func (l *Locator) next(now time.Duration) (time.Duration, bool) {
+	var at time.Duration
+	ok := false
+	soon := func(t time.Duration) {
+		if !ok || t < at {
+			at, ok = t, true
+		}
+	}
+	for _, ln := range l.links {
+		if t, due := ln.rx.Deadline(); due {
+			soon(t)
+		}
+		if t, due := ln.tx.Deadline(); due {
+			soon(t)
+		} else if ln.tx != nil && len(ln.queue) > 0 {
+			soon(max(now, ln.free))
+		}
+		if len(ln.queue) == 0 && (ln.tx == nil || ln.tx.State() == data.SenderIdle) {
+			soon(ln.last.Sub(l.epoch) + linkIdle + 1)
+		}
+	}
+	if t, due := l.askAt(); due {
+		soon(later(t, l.checked.Add(recheckEvery)).Sub(l.epoch))
+	}
+	return at, ok
+}
+
+func (l *Locator) askAt() (time.Time, bool) {
+	var at time.Time
+	ok := false
+	now := time.Now()
+	for id, r := range l.radios {
+		if !r.tracked || r.retried || r.heard.IsZero() {
+			continue
+		}
+		t := now
+		if r.req == nil {
+			t = later(t, l.settled(id))
+		} else {
+			interval := min(max(r.req.interval, time.Second), maxInterval)
+			if !r.heard.After(r.req.sentAt.Add(interval)) {
+				continue
+			}
+			last := later(r.req.sentAt, r.lastPos)
+			t = later(t, last.Add(interval*silentAfter))
+		}
+		if t.Sub(r.heard) > heardExpiry {
+			continue
+		}
+		if !ok || t.Before(at) {
+			at, ok = t, true
+		}
+	}
+	return at, ok
+}
+
+func (l *Locator) settled(radio uint32) time.Time {
+	var at time.Time
+	for k, ln := range l.links {
+		if k.radio == radio {
+			at = later(at, ln.last.Add(settle))
+		}
+	}
+	return at
+}
+
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
 }

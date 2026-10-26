@@ -326,6 +326,8 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.wt != nil {
 		resume := s.resumeWebTransport
 		s.wt.onResume.Store(&resume)
+		moved := s.resendMoved
+		s.wt.onPathMoved.Store(&moved)
 		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)
 		s.wg.Add(1)

@@ -148,6 +148,11 @@ type wtConn struct {
 	// so that the reader never waits on the KV store.
 	tags atomic.Pointer[map[replicaTag]bool]
 
+	// onPath, when set, takes the address that the QUIC stack knows a
+	// connection of this replica by when its packets begin to come another
+	// way, and the time of it.
+	onPath atomic.Pointer[func(net.Addr, time.Time)]
+
 	mu      sync.Mutex
 	origins map[string]origin
 	paths   map[string]path
@@ -256,7 +261,11 @@ func (c *wtConn) read() {
 			continue
 		}
 		b := append([]byte(nil), buf[:n]...)
-		if owner, ok := c.foreign(b, addr); ok {
+		owner, ok, back := c.foreign(b, addr)
+		if back {
+			c.pathMoved(addr, time.Now())
+		}
+		if ok {
 			c.forward(owner, forwardIn, addr, b)
 			continue
 		}
@@ -270,12 +279,12 @@ func (c *wtConn) read() {
 
 // foreign reports the replica whose connection the packet b is for when
 // that is another replica that is alive, and notes where the connections
-// of this one are.
-func (c *wtConn) foreign(b []byte, addr *net.UDPAddr) (replicaTag, bool) {
+// of this one are. It reports back when b is of a connection of this one
+// that came through another replica until now.
+func (c *wtConn) foreign(b []byte, addr *net.UDPAddr) (owner replicaTag, ok, back bool) {
 	if len(b) < 1+cidLen || b[0]&0x80 != 0 {
-		return replicaTag{}, false
+		return replicaTag{}, false, false
 	}
-	var owner replicaTag
 	copy(owner[:], b[1:1+tagLen])
 	now := time.Now()
 	c.mu.Lock()
@@ -286,13 +295,14 @@ func (c *wtConn) foreign(b []byte, addr *net.UDPAddr) (replicaTag, bool) {
 		if _, known := c.origins[key]; known || len(c.origins) < wtMaxEntries {
 			c.origins[key] = origin{addr: addr, seen: now}
 		}
+		_, back = c.paths[addr.String()]
 		delete(c.paths, addr.String())
-		return replicaTag{}, false
+		return replicaTag{}, false, back
 	}
 	if c.ps == nil || c.kv == nil {
-		return replicaTag{}, false
+		return replicaTag{}, false, false
 	}
-	return owner, (*c.tags.Load())[owner]
+	return owner, (*c.tags.Load())[owner], false
 }
 
 // prune forgets the connections and paths that were idle for wtPathIdle.
@@ -373,17 +383,30 @@ func (c *wtConn) take(msg []byte) {
 			slog.Debug("Error sending a forwarded WebTransport packet", "error", err)
 		}
 	case forwardIn:
+		known, moved := c.pathFrom(from, addr, b)
+		if moved {
+			c.pathMoved(known, time.Now())
+		}
 		select {
-		case c.in <- datagram{data: b, addr: c.pathFrom(from, addr, b)}:
+		case c.in <- datagram{data: b, addr: known}:
 		case <-c.done:
 		}
 	}
 }
 
+// pathMoved hands addr, the address of a connection whose packets began
+// to come another way at at, to onPath.
+func (c *wtConn) pathMoved(addr net.Addr, at time.Time) {
+	if fn := c.onPath.Load(); fn != nil {
+		(*fn)(addr, at)
+	}
+}
+
 // pathFrom notes that the connection of the packet b now comes through the
 // replica from, from addr, and returns the address that the QUIC stack
-// knows the connection by, so that it sees no new path.
-func (c *wtConn) pathFrom(from replicaTag, addr *net.UDPAddr, b []byte) net.Addr {
+// knows the connection by, so that it sees no new path, and whether the
+// connection came another way until now.
+func (c *wtConn) pathFrom(from replicaTag, addr *net.UDPAddr, b []byte) (net.Addr, bool) {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -394,10 +417,12 @@ func (c *wtConn) pathFrom(from replicaTag, addr *net.UDPAddr, b []byte) net.Addr
 			c.origins[string(b[1:1+cidLen])] = origin{addr: o.addr, seen: now}
 		}
 	}
-	if _, ok := c.paths[known.String()]; ok || len(c.paths) < wtMaxEntries {
-		c.paths[known.String()] = path{via: from, to: addr, seen: now}
+	prev, ok := c.paths[known.String()]
+	if !ok && len(c.paths) >= wtMaxEntries {
+		return known, false
 	}
-	return known
+	c.paths[known.String()] = path{via: from, to: addr, seen: now}
+	return known, !ok || prev.via != from || prev.to.String() != addr.String()
 }
 
 // deadlineError is the error of a read past the read deadline. It is

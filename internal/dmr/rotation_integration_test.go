@@ -116,18 +116,6 @@ func arrivalsOf(heard []testutils.Heard, stream uint) []arrival {
 	return out
 }
 
-// firstArrivals returns the packets of stream in pkts, which a client that
-// drops copies kept, by their sequence numbers.
-func firstArrivals(pkts []models.Packet, stream uint) []arrival {
-	var out []arrival
-	for _, p := range pkts {
-		if p.StreamID == stream {
-			out = append(out, arrival{n: p.Seq})
-		}
-	}
-	return out
-}
-
 // firstArrivalsOf returns the first arrival of each packet of stream in
 // heard, as a client that drops copies keeps them.
 func firstArrivalsOf(heard []testutils.Heard, stream uint) []arrival {
@@ -403,10 +391,10 @@ func TestRotationMidCall(t *testing.T) {
 
 		moved := browser.Moved()
 		require.Len(t, moved, 2)
-		browserWindows := []moveWindow{
-			{from: aStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]},
-			{from: bStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[1]},
-		}
+		browserWindows := append(windowsAt(fronts.WebTransport.Ends(), hub.MoveSlack),
+			moveWindow{from: aStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]},
+			moveWindow{from: bStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[1]},
+		)
 		for _, stream := range []uint{one.stream, two.stream} {
 			who := fmt.Sprintf("the browser hotspot on stream %d", stream)
 			checkCopies(t, who, arrivalsOf(browser.Heard(), stream), browserWindows)

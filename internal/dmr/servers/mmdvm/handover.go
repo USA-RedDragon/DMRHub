@@ -292,6 +292,61 @@ func (s *Server) wait(d time.Duration) bool {
 	}
 }
 
+// resendMoved sends again to the browser hotspot at the WebTransport
+// session addr what left for it from hub.MoveSlack before at, wtHandoverGap
+// apart, when the load balancer moved the QUIC connection of the session
+// to another path then. The load balancer drops what this replica sends
+// on the old path until it learns of the new one, as at a move of the
+// hotspot, and the hotspot drops what it got already.
+func (s *Server) resendMoved(addr wtAddr, at time.Time) {
+	ep := endpoint{transport: webTransportName, addr: addr}
+	var id uint
+	found := false
+	s.connected.Range(func(k uint, e endpoint) bool {
+		if e == ep {
+			id, found = k, true
+		}
+		return !found
+	})
+	if !found {
+		return
+	}
+	pkts := s.leftSince(id, at.Add(-ruleFor(ep).slack))
+	if len(pkts) == 0 {
+		return
+	}
+	slog.Debug("Sending again what the load balancer may have lost at a path move", "repeaterID", id, "session", addr, "packets", len(pkts))
+	go func() {
+		for i, p := range pkts {
+			if i > 0 && !s.wait(wtHandoverGap) {
+				return
+			}
+			if cur, ok := s.connected.Load(id); !ok || cur != ep {
+				return
+			}
+			select {
+			case s.outgoingChan <- outgoing{raw: rawPacketFrom(ep, p.Encode())}:
+			case <-s.done:
+				return
+			}
+		}
+	}()
+}
+
+// leftSince returns the packets to the repeater id that left at or after
+// since, in order.
+func (s *Server) leftSince(id uint, since time.Time) []models.Packet {
+	s.sentMu.Lock()
+	defer s.sentMu.Unlock()
+	var out []models.Packet
+	for _, p := range s.sent[id] {
+		if !p.at.IsZero() && !p.at.Before(since) {
+			out = append(out, p.pkt)
+		}
+	}
+	return out
+}
+
 // forgetSent forgets the packets sent to the repeater id.
 func (s *Server) forgetSent(id uint) {
 	s.sentMu.Lock()

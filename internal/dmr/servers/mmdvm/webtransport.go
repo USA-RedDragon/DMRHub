@@ -81,6 +81,9 @@ type webTransport struct {
 	draining atomic.Bool
 	// onResume takes the resume request of a session.
 	onResume atomic.Pointer[func(wtAddr, string) wtResume]
+	// onPathMoved takes each session whose QUIC connection the load
+	// balancer moved to another path, and the time of it.
+	onPathMoved atomic.Pointer[func(wtAddr, time.Time)]
 }
 
 // controlWait is the longest time the listener waits to open or read a
@@ -123,6 +126,8 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []by
 	}
 	webtransport.ConfigureHTTP3Server(h3)
 	t.srv = &webtransport.Server{H3: h3, CheckOrigin: func(*http.Request) bool { return true }}
+	moved := t.pathMoved
+	udp.onPath.Store(&moved)
 	ln, err := tr.ListenEarly(h3.TLSConfig, h3.QUICConfig)
 	if err != nil {
 		_ = udp.Close()
@@ -157,6 +162,22 @@ func (t *webTransport) serve() {
 			}
 		}()
 	}
+}
+
+// pathMoved hands each session on the QUIC connection that the stack
+// knows by addr, whose packets began to come another way at at, to
+// onPathMoved.
+func (t *webTransport) pathMoved(addr net.Addr, at time.Time) {
+	fn := t.onPathMoved.Load()
+	if fn == nil {
+		return
+	}
+	t.sessions.Range(func(key string, sess *webtransport.Session) bool {
+		if sess.RemoteAddr().String() == addr.String() {
+			(*fn)(wtAddr(key), at)
+		}
+		return true
+	})
 }
 
 // Addr returns the address of the UDP socket of the listener.

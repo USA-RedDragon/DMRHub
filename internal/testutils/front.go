@@ -22,6 +22,7 @@ package testutils
 import (
 	"errors"
 	"net"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -157,6 +158,18 @@ func (f *UDPFront) Ended(addr string) []time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]time.Time(nil), f.ended[addr]...)
+}
+
+// Ends returns when any session ended, oldest first.
+func (f *UDPFront) Ends() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []time.Time
+	for _, ended := range f.ended {
+		out = append(out, ended...)
+	}
+	slices.SortFunc(out, func(a, b time.Time) int { return a.Compare(b) })
+	return out
 }
 
 // Moves returns how many sessions moved from a draining backend to another.

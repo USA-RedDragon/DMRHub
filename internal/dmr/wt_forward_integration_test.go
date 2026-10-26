@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,7 +64,9 @@ func sendCall(t *testing.T, send func(models.Packet) error, src, tg, stream uint
 // of the browser to the other replica. The other replica must forward them
 // to the replica that holds the QUIC connection and send its answers, so
 // that the session goes on: the hotspot keeps its login and gets the calls
-// to its talkgroup.
+// to its talkgroup. The front drops what the replica sent on the old path
+// until the replica learns of the new one, so the replica must send that
+// again.
 func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 	t.Parallel()
 	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -94,7 +97,11 @@ func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 		front.Drain(stack.WebTransportAddr)
 		const bursts = 100
 		sendCall(t, talker.SendDMRD, 1000001, 1, 8301, bursts)
-		checkCall(t, "the browser hotspot", firstArrivals(browser.Drain(drainWait), 8301), bursts, nil)
+		browser.Drain(drainWait)
+		heard := browser.Heard()
+		windows := windowsAt(front.Ends(), hub.MoveSlack)
+		checkCopies(t, "the browser hotspot", arrivalsOf(heard, 8301), windows)
+		checkResent(t, "the browser hotspot", firstArrivalsOf(heard, 8301), bursts, windows)
 		assert.Positive(t, front.Moves(), "the front did not move the browser")
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")

@@ -82,22 +82,23 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 			next = next.Add(rotationInterval)
 			time.Sleep(time.Until(next))
 		}
-		checkMovedBrowser(t, browser, drained, 8201, bursts)
+		checkMovedBrowser(t, browser, front, drained, 8201, bursts)
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 	})
 }
 
 // checkMovedBrowser checks the call of n bursts on stream that browser got
-// while it moved once, at a drain that began at drained: it must keep each
-// burst, in order but for the ones that its new replica hands over, and get
-// a burst twice only from the drain notice on.
-func checkMovedBrowser(t *testing.T, browser *testutils.WebTransportPeer, drained time.Time, stream uint, n int) {
+// while it moved once, at a drain that began at drained, behind front: it
+// must keep each burst, in order but for the ones that its replicas send
+// again, and get a burst twice only from the drain notice on, or where
+// front moved the path of its QUIC connection.
+func checkMovedBrowser(t *testing.T, browser *testutils.WebTransportPeer, front *testutils.UDPFront, drained time.Time, stream uint, n int) {
 	t.Helper()
 	browser.Drain(drainWait)
 	moved := browser.Moved()
 	require.Len(t, moved, 1, "the browser hotspot did not move")
-	windows := []moveWindow{{from: drained.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]}}
+	windows := append(windowsAt(front.Ends(), hub.MoveSlack), moveWindow{from: drained.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]})
 	heard := browser.Heard()
 	checkCopies(t, "the browser hotspot", arrivalsOf(heard, stream), windows)
 	checkResent(t, "the browser hotspot", firstArrivalsOf(heard, stream), n, windows)
@@ -157,7 +158,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 			next = next.Add(rotationInterval)
 			time.Sleep(time.Until(next))
 		}
-		checkMovedBrowser(t, browser, drained, 8201, bursts)
+		checkMovedBrowser(t, browser, front, drained, 8201, bursts)
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 	})

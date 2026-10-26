@@ -45,6 +45,7 @@ func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisP
 		ReadTimeout:           consts.RedisTimeout,
 		WriteTimeout:          consts.RedisTimeout,
 		ContextTimeoutEnabled: true,
+		MaxRetries:            -1,
 	})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {

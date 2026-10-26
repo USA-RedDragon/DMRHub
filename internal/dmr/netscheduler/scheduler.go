@@ -282,12 +282,7 @@ func (ns *NetScheduler) publishNetEvent(net *models.Net, event string) {
 		return
 	}
 
-	topic := fmt.Sprintf("net:events:%d", net.TalkgroupID)
-	if err := ns.pubsub.Publish(topic, data); err != nil {
-		slog.Error("Failed to publish net event", "error", err)
-	}
-	// Also publish to the general topic for the WebSocket.
 	if err := ns.pubsub.Publish("net:events", data); err != nil {
-		slog.Error("Failed to publish net event to general topic", "error", err)
+		slog.Error("Failed to publish net event", "error", err)
 	}
 }

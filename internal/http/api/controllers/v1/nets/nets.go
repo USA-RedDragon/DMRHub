@@ -498,12 +498,7 @@ func publishNetEvent(c *gin.Context, net *models.Net, event string) {
 		slog.Error("Failed to marshal net event", "error", err)
 		return
 	}
-	topic := fmt.Sprintf("net:events:%d", net.TalkgroupID)
-	if err := ps.Publish(topic, data); err != nil {
-		slog.Error("Failed to publish net event", "error", err)
-	}
-	// Also publish to the general topic for the WebSocket.
 	if err := ps.Publish("net:events", data); err != nil {
-		slog.Error("Failed to publish net event to general topic", "error", err)
+		slog.Error("Failed to publish net event", "error", err)
 	}
 }

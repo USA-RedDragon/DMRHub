@@ -49,27 +49,8 @@ func (m *mapped) Free() {
 	}
 }
 
-// sliced is the memory of a plugin as a Go slice, which grows by a copy.
-type sliced struct {
-	buf []byte
-}
-
-func (s *sliced) Reallocate(size uint64) []byte {
-	if size > uint64(cap(s.buf)) {
-		grown := make([]byte, size)
-		copy(grown, s.buf)
-		s.buf = grown
-	}
-	s.buf = s.buf[:size]
-	return s.buf
-}
-
-func (s *sliced) Free() {
-	s.buf = nil
-}
-
-// mapMemory gives each plugin a memory that the system maps for it. When
-// the system cannot map it, the plugin gets a Go slice, as by default.
+// mapMemory returns a memory of at most maxBytes that the system maps.
+// When the system cannot map it, the memory is a Go slice.
 func mapMemory(_, maxBytes uint64) experimental.LinearMemory {
 	if maxBytes == 0 || maxBytes > 1<<32 {
 		return &sliced{}
@@ -82,4 +63,6 @@ func mapMemory(_, maxBytes uint64) experimental.LinearMemory {
 	return &mapped{buf: buf}
 }
 
-var memoryAllocator experimental.MemoryAllocator = experimental.MemoryAllocatorFunc(mapMemory) //nolint:gochecknoglobals // a function
+func newMemory(capBytes, maxBytes uint64) experimental.LinearMemory {
+	return mapMemory(capBytes, maxBytes)
+}

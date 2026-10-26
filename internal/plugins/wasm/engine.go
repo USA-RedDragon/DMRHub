@@ -158,7 +158,7 @@ func (e *Engine) runtime(ctx context.Context) (wazero.Runtime, error) {
 	if interpret {
 		rc = wazero.NewRuntimeConfigInterpreter()
 	}
-	rc = rc.WithMemoryLimitPages(e.limits.MemoryPages).WithCloseOnContextDone(true)
+	rc = rc.WithMemoryLimitPages(uint32(min(2*uint64(e.limits.MemoryPages), maxPages))).WithCloseOnContextDone(true) //nolint:gosec // at most maxPages
 	if e.cache != nil {
 		rc = rc.WithCompilationCache(e.cache)
 	}

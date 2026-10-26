@@ -23,4 +23,6 @@ package wasm
 
 import "github.com/tetratelabs/wazero/experimental"
 
-var memoryAllocator experimental.MemoryAllocator //nolint:gochecknoglobals // wazero's own memory
+func newMemory(_, _ uint64) experimental.LinearMemory {
+	return &sliced{}
+}

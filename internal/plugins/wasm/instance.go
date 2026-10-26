@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
@@ -48,9 +49,8 @@ const (
 	stopWait = 5 * time.Second
 	// pageSize is the size of a page of WebAssembly memory.
 	pageSize = 64 << 10
-	// oomMargin is how close to its limit a plugin's memory is when the
-	// plugin ran out of it: the Go runtime grows its heap 4 MiB at a time.
-	oomMargin = 4 << 20
+	// maxPages is the most pages of a WebAssembly memory.
+	maxPages = 1 << 16
 )
 
 // Hosts says whether an admin allowed a plugin to reach address, as
@@ -67,6 +67,7 @@ type Instance struct {
 	code   *compiled
 	meter  *meter
 	net    *netHost
+	oom    atomic.Bool
 
 	stdinR, stdin *os.File
 	wmu           sync.Mutex
@@ -127,10 +128,18 @@ func (i *Instance) instantiate(ctx context.Context, rt wazero.Runtime, args []st
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs(append([]string{"plugin"}, args...)...).
 		WithStdin(i.stdinR).WithStdout(&frameWriter{i: i}).WithStderr(i.logs).
 		WithSysWalltime().WithSysNanotime().WithNanosleep(i.sleep).WithRandSource(rand.Reader).WithStartFunctions()
-	mod, err := rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, memoryAllocator), i.code.module, cfg)
+	alloc := limitedAllocator{limit: uint64(i.limits.MemoryPages) * pageSize, oom: &i.oom}
+	mod, err := rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, alloc), i.code.module, cfg)
+	if err == nil && i.oom.Load() {
+		_ = mod.Close(ctx)
+		err = ErrMemory
+	}
 	if err != nil {
 		_ = i.stdinR.Close()
 		_ = i.stdin.Close()
+		if errors.Is(err, ErrMemory) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: %w", ErrNotPlugin, err)
 	}
 	return mod, nil
@@ -148,21 +157,16 @@ func (i *Instance) sleep(ns int64) {
 func (i *Instance) run(ctx context.Context, mod api.Module) {
 	i.meter.pin(pinThread())
 	_, err := mod.ExportedFunction("_start").Call(ctx)
-	memory := uint64(0)
-	if m := mod.Memory(); m != nil {
-		memory = uint64(m.Size())
-	}
-	i.finish(ctx, mod, err, memory)
+	i.finish(ctx, mod, err)
 }
 
-func (i *Instance) finish(ctx context.Context, mod api.Module, err error, memory uint64) {
+func (i *Instance) finish(ctx context.Context, mod api.Module, err error) {
 	var exit *sys.ExitError
-	limit := uint64(i.limits.MemoryPages) * pageSize
 	cause := context.Cause(ctx)
 	switch {
 	case cause != nil:
 		i.err = cause
-	case memory+oomMargin > limit:
+	case i.oom.Load():
 		i.err = ErrMemory
 	case err == nil, errors.As(err, &exit) && exit.ExitCode() == 0:
 		i.err = ErrExited

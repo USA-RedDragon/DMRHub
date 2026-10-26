@@ -235,20 +235,9 @@ func migrate(db *gorm.DB, config *configPkg.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.AppSettings{}, &models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{})
+	err = db.AutoMigrate(&models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
-	}
-
-	var appSettings models.AppSettings
-	result := db.First(&appSettings)
-	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("failed to query app settings: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		if err := db.Create(&appSettings).Error; err != nil {
-			return fmt.Errorf("failed to create app settings: %w", err)
-		}
 	}
 
 	return nil

@@ -70,30 +70,30 @@ func openRaw(t *testing.T, cfg *config.Config) *gorm.DB {
 	return gdb
 }
 
-// TestDropAppSettingsHasSeeded migrates a database whose app settings have
-// the has_seeded flag that seeded nothing any more. The column must go and
-// the row must stay.
-func TestDropAppSettingsHasSeeded(t *testing.T) {
+// TestDropAppSettings migrates a database that still has the app settings
+// table, with the has_seeded flag and a row, and one that never had it.
+// The table must go in both, and a second run must do nothing.
+func TestDropAppSettings(t *testing.T) {
 	t.Parallel()
 	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend()} {
-		t.Run(be.Name, func(t *testing.T) {
-			t.Parallel()
-			cfg, err := configulator.New(config.ConfigSchema()).Default()
-			require.NoError(t, err)
-			be.Setup(t, &cfg)
-			database := openRaw(t, &cfg)
-			require.NoError(t, database.AutoMigrate(&seededAppSettings{}))
-			require.NoError(t, database.Create(&seededAppSettings{HasSeeded: true}).Error)
+		for _, had := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/had=%v", be.Name, had), func(t *testing.T) {
+				t.Parallel()
+				cfg, err := configulator.New(config.ConfigSchema()).Default()
+				require.NoError(t, err)
+				be.Setup(t, &cfg)
+				database := openRaw(t, &cfg)
+				if had {
+					require.NoError(t, database.AutoMigrate(&seededAppSettings{}))
+					require.NoError(t, database.Create(&seededAppSettings{HasSeeded: true}).Error)
+				}
 
-			require.NoError(t, migration.Migrate(database, &cfg))
+				require.NoError(t, migration.Migrate(database, &cfg))
+				assert.False(t, database.Migrator().HasTable("app_settings"), "the table is dropped")
 
-			m := database.Migrator()
-			assert.False(t, m.HasColumn("app_settings", "has_seeded"), "the column is dropped")
-			var rows int64
-			require.NoError(t, database.Table("app_settings").Count(&rows).Error)
-			assert.Equal(t, int64(1), rows, "the row stays")
-
-			require.NoError(t, migration.Migrate(database, &cfg))
-		})
+				require.NoError(t, migration.Migrate(database, &cfg))
+				assert.False(t, database.Migrator().HasTable("app_settings"))
+			})
+		}
 	}
 }

@@ -67,5 +67,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		delete_deleted_user_access_migration_202610251010(db, cfg),
 		add_plugin_kinds_migration_202610251100(db, cfg),
 		drop_app_settings_has_seeded_migration_202610261000(db, cfg),
+		drop_app_settings_migration_202610261100(db, cfg),
 	}
 }

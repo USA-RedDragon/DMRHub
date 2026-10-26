@@ -51,7 +51,7 @@ func TestMakeDBInMemoryDatabase(t *testing.T) {
 	}
 }
 
-func TestMakeDBAppSettingsAlreadyExists(t *testing.T) {
+func TestMakeDBTwiceOnTheSameData(t *testing.T) {
 	t.Parallel()
 
 	// Use a file-based SQLite DB so we can call MakeDB twice on the same data.
@@ -64,7 +64,6 @@ func TestMakeDBAppSettingsAlreadyExists(t *testing.T) {
 	defConfig.Database.Database = dbPath
 	defConfig.Database.ExtraParameters = []string{}
 
-	// First call creates the AppSettings record (RowsAffected == 0 path).
 	db1, err := db.MakeDB(&defConfig)
 	if err != nil {
 		t.Fatalf("First MakeDB failed: %v", err)
@@ -80,16 +79,15 @@ func TestMakeDBAppSettingsAlreadyExists(t *testing.T) {
 		t.Fatalf("Failed to close sql.DB: %v", err)
 	}
 
-	// Second call finds the existing AppSettings record.
-	// This exercises the result.Error check added as a fix for unchecked
-	// db.First error — previously, a non-ErrRecordNotFound error would be
-	// silently ignored.
 	db2, err := db.MakeDB(&defConfig)
 	if err != nil {
 		t.Fatalf("Second MakeDB failed: %v", err)
 	}
 	if db2 == nil {
 		t.Fatal("Expected non-nil database instance from second MakeDB")
+	}
+	if db2.Migrator().HasTable("app_settings") {
+		t.Error("MakeDB made the app_settings table")
 	}
 }
 

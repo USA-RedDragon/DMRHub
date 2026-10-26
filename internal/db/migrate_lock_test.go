@@ -29,7 +29,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
-	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
@@ -105,9 +104,9 @@ func TestMakeDBConcurrentMigrationsOnPostgres(t *testing.T) {
 
 				gdb, err := db.MakeDB(&roundCfg)
 				require.NoError(t, err)
-				var settings int64
-				require.NoError(t, gdb.Model(&models.AppSettings{}).Count(&settings).Error)
-				require.Equal(t, int64(1), settings, name)
+				var latest int64
+				require.NoError(t, gdb.Table("migrations").Where("id = ?", "202610261100").Count(&latest).Error)
+				require.Equal(t, int64(1), latest, name)
 				closeDB(t, gdb)
 			}
 		})

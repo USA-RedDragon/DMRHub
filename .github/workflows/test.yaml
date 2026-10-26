@@ -313,9 +313,51 @@ jobs:
 
       - run: go generate ./...
 
+      - name: Pull database images
+        run: for image in postgres:16-alpine redis:7-alpine mysql:8.4 mariadb:12.3; do docker pull -q "$image"; done
+
       - name: Race tests
         run: |
           go test -tags codec2wasm -timeout 30m ./... -race
+
+  backend-mysql-integration-tests:
+    runs-on: ubuntu-24.04
+    needs: frontend
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Use Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Copy built frontend
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frontend
+          path: internal/http/frontend/dist
+
+      - name: Set up TinyGo
+        run: ./hack/install-tinygo.sh
+
+      - run: go generate ./...
+
+      - name: Pull database images
+        run: for image in postgres:16-alpine redis:7-alpine mysql:8.4 mariadb:12.3; do docker pull -q "$image"; done
+
+      - name: MySQL and MariaDB integration tests
+        run: |
+          env CGO_ENABLED=0 DMRHUB_TEST_MYSQL=1 go test -timeout 60m -run '/(mysql|mariadb)$' ./internal/dmr/
 
   backend-unit-tests:
     runs-on: ubuntu-24.04
@@ -348,6 +390,9 @@ jobs:
         run: ./hack/install-tinygo.sh
 
       - run: go generate ./...
+
+      - name: Pull database images
+        run: for image in postgres:16-alpine redis:7-alpine mysql:8.4 mariadb:12.3; do docker pull -q "$image"; done
 
       - name: Unit tests
         run: |
@@ -455,6 +500,9 @@ jobs:
         run: ./hack/install-tinygo.sh
 
       - run: go generate ./...
+
+      - name: Pull database images
+        run: for image in postgres:16-alpine redis:7-alpine mysql:8.4 mariadb:12.3; do docker pull -q "$image"; done
 
       - name: Unit tests
         run: |

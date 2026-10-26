@@ -6,8 +6,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/USA-RedDragon/configulator/v2 v2.5.0 h1:Z6eY4ncXH6m7cTCfF0/chRJxUT5/TQnFDoBgh0CMV9Y=
 github.com/USA-RedDragon/configulator/v2 v2.5.0/go.mod h1:L/HGK6Bf1Wr7dbBibAW0zpXhvG0A+7cMI0U9Rz9Hplg=
-github.com/USA-RedDragon/dmrgo/v2 v2.0.4 h1:0wzEg5dZ7OfFFj9mTiMNHLDAp/ZE01/d78AmjEtS/74=
-github.com/USA-RedDragon/dmrgo/v2 v2.0.4/go.mod h1:+vgzs3oSTUL/QsbDtj4KqbZtPO3kijdmHYOfN3ODoG8=
+github.com/USA-RedDragon/dmrgo/v2 v2.0.5 h1:ixl2zOlp+wTHoJQLlbyQv8Y3lXdqy43yyHbZ1WuNbqk=
+github.com/USA-RedDragon/dmrgo/v2 v2.0.5/go.mod h1:+vgzs3oSTUL/QsbDtj4KqbZtPO3kijdmHYOfN3ODoG8=
 github.com/aperturerobotics/protobuf-go-lite v0.19.0 h1:7Veh1XY7pkswacItBnTR+skvPyNIFdOPg0tb3X0Yd/E=
 github.com/aperturerobotics/protobuf-go-lite v0.19.0/go.mod h1:3Ay/E7iaw2KWLirK3+dDdNJZHK0hu8Y1/kKeYeUa+8s=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

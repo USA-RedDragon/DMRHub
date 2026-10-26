@@ -5,7 +5,8 @@ go 1.27.3
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.9
 	github.com/USA-RedDragon/configulator/v2 v2.5.0
-	github.com/USA-RedDragon/dmrgo/v2 v2.0.4
+	github.com/USA-RedDragon/dmrgo/v2 v2.0.5
+	github.com/aperturerobotics/protobuf-go-lite v0.19.0
 	github.com/biter777/countries v1.7.5
 	github.com/coder/websocket v1.8.15
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
@@ -61,7 +62,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/aperturerobotics/protobuf-go-lite v0.19.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.4 // indirect

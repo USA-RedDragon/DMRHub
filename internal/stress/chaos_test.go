@@ -34,6 +34,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/clockstep"
 	"github.com/stretchr/testify/require"
 )
 
@@ -219,11 +220,14 @@ func docker(args ...string) error {
 // TestChaos runs the call mix on most repeaters and, meanwhile, breaks
 // things one at a time: a repeater that vanishes mid-call and logs in
 // again, a lossy, duplicating and reordering path, a restart of the MMDVM
-// server, a Redis and a Postgres outage, and the failover of a replica.
-// After each it checks that the hub recovers without a restart and that
-// nothing stalls. The background load is DMRHUB_STRESS_CHAOS_BUSY busy
-// repeaters (default 3), below the point where the load ramp degrades, so
-// that what goes wrong is the fault's doing.
+// server, a Redis and a Postgres outage, the failover of a replica, and a
+// step of the wall clock an hour forward and an hour back. The clock steps
+// run only in the throwaway VM of hack/clockstep.sh, which
+// DMRHUB_STRESS_CLOCKSTEP=1 hack/stress.sh starts. After each it checks
+// that the hub recovers without a restart and that nothing stalls. The
+// background load is DMRHUB_STRESS_CHAOS_BUSY busy repeaters (default 3),
+// below the point where the load ramp degrades, so that what goes wrong is
+// the fault's doing.
 func TestChaos(t *testing.T) { //nolint:paralleltest
 	s, res, logs := area(t, "chaos")
 	r := newRig(t, s, res, logs, rigOptions{})
@@ -304,10 +308,21 @@ func TestChaos(t *testing.T) { //nolint:paralleltest
 		r.checkReplicaFailover(t, recovery)
 	})
 
-	step(t, "clock-jump", func(t *testing.T) {
-		res.set("clock_jump_tested", 0)
-		t.Skip("no clock injection point: the hub, the call tracker, the parrot and the servers read time.Now and time.Since directly, and clockwork is only an indirect dependency")
-	})
+	res.set("clock_jump_tested", 0)
+	for _, jump := range []struct {
+		name string
+		by   time.Duration
+	}{{"clock-jump", time.Hour}, {"clock-jump-back", -time.Hour}} {
+		step(t, jump.name, func(t *testing.T) {
+			clockstep.Step(t, jump.by)
+			res.set("clock_jump_tested", 1)
+			d, ok := r.probe(prober, 15*time.Second)
+			recovery[jump.name] = d.Seconds()
+			if !ok {
+				res.fail(t, "no call got through within 15s of a %s step of the wall clock", jump.by)
+			}
+		})
+	}
 
 	cancel()
 	r.waitLanes()

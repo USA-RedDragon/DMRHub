@@ -29,6 +29,10 @@
 #   DMRHUB_STRESS_EXT       external clients to run (default: all of
 #                           dmrgateway hblink3 hblink4 mmdvm_bridge ysf2dmr)
 #   DMRHUB_STRESS_TIMEOUT   go test timeout of an area (default 60m)
+#   DMRHUB_STRESS_CLOCKSTEP set to 1 to run the chaos area on a SQLite backend
+#                           in the throwaway VM of hack/clockstep.sh, where its
+#                           clock-jump steps step the wall clock (needs
+#                           qemu-system-x86_64 with KVM, cpio and zstd)
 #   PYTHON                  python with matplotlib for the graphs
 #                           (default /home/user/work/venv/bin/python)
 set -u
@@ -65,6 +69,25 @@ for backend in $backends; do
         fi
         echo "== $backend $area ($test)"
         start=$(date +%s)
+        if [ "$area" = chaos ] && [ "${DMRHUB_STRESS_CLOCKSTEP:-}" = 1 ]; then
+            if [ "$backend" = postgres-redis ]; then
+                echo "chaos in the clock step VM needs a SQLite backend; skipped" | tee "$dir/$area.out"
+                continue
+            fi
+            vmenv="DMRHUB_STRESS_BACKEND=$backend DMRHUB_STRESS_RESULTS=/out"
+            for v in DURATION REPEATERS FANOUT DUTY CHAOS_BUSY P99_MS PPROF; do
+                n=DMRHUB_STRESS_$v
+                [ -n "${!n:-}" ] && vmenv="$vmenv $n=${!n}"
+            done
+            PACKAGES=./internal/stress TAGS=stress,codec2wasm RUN="^${test}\$" SMP=4 MEM=4G \
+                ARGS="-test.count=1 -test.timeout $timeout" VMENV="$vmenv" OUT="$dir" \
+                hack/clockstep.sh > "$dir/$area.out" 2>&1
+            rc=$?
+            echo "$backend,$area,$rc,$(( $(date +%s) - start ))" >> "$results/exit-codes.csv"
+            grep -E '^(--- |FAIL|ok|PASS)' "$dir/$area.out" | head -20
+            [ $rc -ne 0 ] && status=1
+            continue
+        fi
         wrap=()
         if [ "$area" = transports ] && [ -n "${DMRHUB_STRESS_EXT_DIR:-}" ] && [ "$backend" != postgres-redis ]; then
             wrap=(unshare -r -n bash -c 'ip link set lo up && DMRHUB_STRESS_NETNS=1 exec "$@"' _)

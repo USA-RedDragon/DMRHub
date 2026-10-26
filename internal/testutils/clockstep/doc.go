@@ -18,5 +18,6 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 // Package clockstep steps the wall clock in the tests of the clockstep
-// build tag, which hack/clockstep.sh runs in a throwaway VM.
+// build tag, which hack/clockstep.sh runs in a throwaway VM. Main sets up
+// that VM for tests that need the network or save files.
 package clockstep

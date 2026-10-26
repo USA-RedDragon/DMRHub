@@ -790,7 +790,7 @@ func TestTrackUnknownBursts(t *testing.T) {
 	require.NotNil(t, subs["csbk"].Opcode)
 	assert.Equal(t, uint8(0x3A), *subs["csbk"].Opcode)
 	assert.Equal(t, uint8(0x68), *subs["csbk"].FID)
-	assert.Equal(t, junk[:], subs["reserved"].CallData, "an unknown burst keeps its octets")
+	assert.Equal(t, junk[:], []byte(subs["reserved"].CallData), "an unknown burst keeps its octets")
 }
 
 func TestTrackUndeliverable(t *testing.T) {

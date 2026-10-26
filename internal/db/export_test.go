@@ -33,3 +33,8 @@ func LockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 func Dialect(config *configPkg.Config) gorm.Dialector {
 	return getDialect(config)
 }
+
+// Migrate is migrate.
+func Migrate(db *gorm.DB, config *configPkg.Config) error {
+	return migrate(db, config)
+}

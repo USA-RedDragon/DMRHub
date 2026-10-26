@@ -60,7 +60,7 @@ const (
 // SourceID and IngressID always hold the IDs that the packets carried.
 type Call struct {
 	ID             uint           `json:"id" gorm:"primarykey"`
-	CallData       []byte         `json:"-" gorm:"type:bytea"`
+	CallData       Blob           `json:"-"`
 	StreamID       uint           `json:"-"`
 	StartTime      time.Time      `json:"start_time"`
 	Duration       time.Duration  `json:"duration"`

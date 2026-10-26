@@ -251,6 +251,9 @@ func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 }
 
 func migrate(db *gorm.DB, config *configPkg.Config) error {
+	if config.Database.Driver == configPkg.DatabaseDriverMySQL {
+		db = db.Set("gorm:table_options", " DEFAULT CHARSET=utf8mb4 COLLATE="+migration.MySQLCollation).Session(&gorm.Session{})
+	}
 	err := migration.Migrate(db, config)
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)

@@ -75,6 +75,9 @@ func add_nets_tables_migration_202602160300(_ *gorm.DB, _ *config.Config) *gormi
 					return fmt.Errorf("could not create nets table: %w", err)
 				}
 			}
+			if tx.Name() == mysqlDialect {
+				return nil
+			}
 			// Add a unique index to enforce at most one active net per talkgroup.
 			// For Postgres this uses a partial index; for SQLite we create a
 			// unique index on (talkgroup_id, active) which combined with the

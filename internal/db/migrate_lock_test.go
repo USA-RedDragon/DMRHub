@@ -20,10 +20,7 @@
 package db_test
 
 import (
-	"database/sql"
 	"fmt"
-	"net"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -33,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func closeDB(t *testing.T, gdb *gorm.DB) {
@@ -42,18 +40,27 @@ func closeDB(t *testing.T, gdb *gorm.DB) {
 	require.NoError(t, sqlDB.Close())
 }
 
-func TestMakeDBConcurrentMigrationsOnPostgres(t *testing.T) {
+// TestMakeDBConcurrentMigrations makes each database with two replicas at
+// once, both fresh and with migrations left to run.
+func TestMakeDBConcurrentMigrations(t *testing.T) {
 	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			concurrentMigrations(t, be)
+		})
+	}
+}
 
+func concurrentMigrations(t *testing.T, be testutils.Backend) {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	testutils.PostgresRedisBackend().Setup(t, &cfg)
+	be.Setup(t, &cfg)
 
-	admin, err := sql.Open("pgx", fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
-		cfg.Database.Username, cfg.Database.Password,
-		net.JoinHostPort(cfg.Database.Host, strconv.Itoa(cfg.Database.Port)), cfg.Database.Database))
+	admin, err := gorm.Open(db.Dialect(&cfg), &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = admin.Close() })
+	t.Cleanup(func() { closeDB(t, admin) })
 
 	cases := []struct {
 		name    string
@@ -74,8 +81,7 @@ func TestMakeDBConcurrentMigrationsOnPostgres(t *testing.T) {
 			t.Parallel()
 			for round := range rounds {
 				name := fmt.Sprintf("%s_%d", tc.name, round)
-				_, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name)
-				require.NoError(t, err)
+				require.NoError(t, admin.Exec("CREATE DATABASE "+name).Error)
 
 				roundCfg := cfg
 				roundCfg.Database.Database = name

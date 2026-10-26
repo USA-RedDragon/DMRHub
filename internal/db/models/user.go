@@ -29,8 +29,8 @@ import (
 
 type User struct {
 	ID       uint   `json:"id" gorm:"primaryKey" binding:"required"`
-	Callsign string `json:"callsign" gorm:"uniqueIndex" binding:"required"`
-	Username string `json:"username" gorm:"uniqueIndex" binding:"required"`
+	Callsign string `json:"callsign" gorm:"index:,unique" binding:"required"`
+	Username string `json:"username" gorm:"index:,unique" binding:"required"`
 	// Password is the hash of the password. Only SetPassword changes it,
 	// so a Save of a stale User cannot undo a new password.
 	Password   string     `json:"-" gorm:"<-:create"`

@@ -42,7 +42,7 @@ func fix_call_data_migration_202602100457(db *gorm.DB, _ *config.Config) *gormig
 						return fmt.Errorf("could not add call_data column: %w", err)
 					}
 				}
-			case "mysql":
+			case mysqlDialect:
 				// MySQL uses LONGBLOB for []byte
 				if db.Migrator().HasTable(&models.Call{}) && db.Migrator().HasColumn(&models.Call{}, "call_data") {
 					if err := tx.Exec("ALTER TABLE calls MODIFY COLUMN call_data LONGBLOB").Error; err != nil {

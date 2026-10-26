@@ -94,3 +94,44 @@ func TestHandOverAPacketSentAfterTheMove(t *testing.T) {
 	s.writeOut(o)
 	assert.Len(t, s.sentSince(1, since), 1)
 }
+
+// slowTransport is a transport whose writes wait until release closes.
+type slowTransport struct {
+	writing chan struct{}
+	release chan struct{}
+}
+
+func (t *slowTransport) ReadFrom([]byte) (int, net.Addr, error) { return 0, nil, net.ErrClosed }
+
+func (t *slowTransport) WriteTo(p []byte, _ net.Addr) (int, error) {
+	close(t.writing)
+	<-t.release
+	return len(p), nil
+}
+
+func (t *slowTransport) Close() error { return nil }
+
+// TestHandOverAPacketWrittenLate stalls the write of a packet to a
+// repeater, as a writer that gets no CPU for a while does, past the move
+// of the repeater. The packet leaves after the move, so the handover must
+// hold it.
+func TestHandOverAPacketWrittenLate(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	slow := &slowTransport{writing: make(chan struct{}), release: make(chan struct{})}
+	s.transports.Store("slow", slow)
+	s.connected.Store(1, endpoint{transport: "slow", addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+	o := <-s.outgoingChan
+	wrote := make(chan struct{})
+	go func() {
+		defer close(wrote)
+		s.writeOut(o)
+	}()
+	<-slow.writing
+	time.Sleep(2 * hub.MoveSlack)
+	got := s.sentSince(1, time.Now())
+	close(slow.release)
+	<-wrote
+	assert.Len(t, got, 1, "the handover misses the packet that left after the move")
+}

@@ -511,12 +511,14 @@ type outgoing struct {
 	sent *sentPacket
 }
 
-// writeOut writes o, and first records when it left.
+// writeOut writes o, and then records when it left. Until then the
+// packet counts as one that waits, which a handover holds, so that a write
+// that stalls past a move is not missed.
 func (s *Server) writeOut(o outgoing) {
+	s.write(endpointOf(o.raw), o.raw.Data)
 	if o.sent != nil {
 		s.sentMu.Lock()
 		o.sent.at = time.Now()
 		s.sentMu.Unlock()
 	}
-	s.write(endpointOf(o.raw), o.raw.Data)
 }

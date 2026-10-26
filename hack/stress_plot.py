@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Summarize the results of hack/stress.sh and draw its graphs.
 
-Usage: stress_plot.py RESULTS_DIR
+Usage: stress_plot.py RESULTS_DIR [REFERENCE_DIR]
 
 Writes RESULTS_DIR/summary.csv and summary.md, and PNG graphs next to the
 area results: the latency, losses and DB statements per burst of the load
 ramp, the latency of each area, and the gauges sampled during each area.
-Needs matplotlib for the graphs; the summary is written without it.
+With REFERENCE_DIR, the results of an earlier run, it also writes
+RESULTS_DIR/ramp-compare.png: the ramp latency and database pool wait of
+every backend of both runs. Needs matplotlib for the graphs; the summary is
+written without it.
 """
 import csv
 import glob
@@ -137,6 +140,29 @@ def plot_samples(plt, d):
     plt.close(fig)
 
 
+def plot_ramp_compare(plt, results, runs, ref):
+    lines = [(d, "") for d in runs if d.get("area") == "ramp" and d.get("steps")]
+    lines += [(d, " (reference)") for d in ref if d.get("area") == "ramp" and d.get("steps")]
+    if not lines:
+        return
+    colors = [BLUE, AQUA, ORANGE, YELLOW]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.2), facecolor=SURFACE)
+    panels = ((axes[0], "p50_ms", "p50 per-burst latency", "ms (log)", 0.01),
+              (axes[1], "p99_ms", "p99 per-burst latency", "ms (log)", 0.01),
+              (axes[2], "db_wait_ms", "DB pool wait in the step", "ms, all waiters (log)", 1))
+    for ax, key, title, unit, floor in panels:
+        for i, (d, suffix) in enumerate(lines):
+            steps = d["steps"]
+            ax.plot([s["repeaters"] for s in steps], [max(s.get(key, 0), floor) for s in steps], color=colors[i % len(colors)],
+                    linewidth=2, marker="o", markersize=5, linestyle="--" if suffix else "-", label=f"{d.get('backend')}{suffix}")
+        ax.set_yscale("log")
+        style(ax, f"Load ramp: {title}", unit, "busy repeaters")
+        ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(os.path.join(results, "ramp-compare.png"), dpi=110, facecolor=SURFACE)
+    plt.close(fig)
+
+
 def plot_latency(plt, results, runs):
     by_backend = {}
     for d in runs:
@@ -160,10 +186,11 @@ def plot_latency(plt, results, runs):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
     results = sys.argv[1]
     runs = load(results)
+    ref = load(sys.argv[2]) if len(sys.argv) == 3 else []
     rows = summary(results, runs)
     for r in rows:
         print(f"{r['backend']:15} {r['area']:12} {'PASS' if r['passed'] else 'FAIL'} p99={r['p99_ms']} missing={r['missing']}")
@@ -179,6 +206,7 @@ def main():
         if d.get("area") == "ramp":
             plot_ramp(plt, d)
     plot_latency(plt, results, runs)
+    plot_ramp_compare(plt, results, runs, ref)
 
 
 if __name__ == "__main__":

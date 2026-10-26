@@ -222,7 +222,7 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	cfg.Database.Database = "DMRHub.db"
 	set("database.database", configulator.LayerDefault, "default tag")
 	{
-		lst := impl.SplitList("_pragma=foreign_keys(1),_pragma=journal_mode(WAL)", sep)
+		lst := impl.SplitList("_pragma=foreign_keys(1),_pragma=journal_mode(WAL),_pragma=synchronous(NORMAL)", sep)
 		cfg.Database.ExtraParameters = lst
 		set("database.extra-parameters", configulator.LayerDefault, "default tag")
 	}
@@ -1817,7 +1817,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[9], "", "Database username (postgres and mysql only)")
 	fs.String(names[10], "", "Database password (postgres and mysql only)")
 	fs.StringSlice(names[11], nil, "Additional parameters for the database connection, e.g., sslmode=disable")
-	fs.Lookup(names[11]).DefValue = "[_pragma=foreign_keys(1),_pragma=journal_mode(WAL)]"
+	fs.Lookup(names[11]).DefValue = "[_pragma=foreign_keys(1),_pragma=journal_mode(WAL),_pragma=synchronous(NORMAL)]"
 	fs.String(names[12], "", "Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters")
 	fs.String(names[13], "", "Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret")
 	fs.String(names[14], "[::]", "HTTP server listen address")

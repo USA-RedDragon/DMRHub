@@ -90,7 +90,7 @@ type Database struct {
 	Port            int            `json:"port,omitempty" name:"port" description:"Database port (postgres and mysql only)"`
 	Username        string         `json:"username,omitempty" name:"username" description:"Database username (postgres and mysql only)"`
 	Password        string         `json:"-" yaml:"password" name:"password" description:"Database password (postgres and mysql only)"`
-	ExtraParameters []string       `json:"extra-parameters,omitempty" yaml:"extra-parameters" name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL)"`
+	ExtraParameters []string       `json:"extra-parameters,omitempty" yaml:"extra-parameters" name:"extra-parameters" description:"Additional parameters for the database connection, e.g., sslmode=disable" default:"_pragma=foreign_keys(1),_pragma=journal_mode(WAL),_pragma=synchronous(NORMAL)"`
 }
 
 // HTTP holds the HTTP server configuration.

@@ -106,13 +106,25 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 	return dialector
 }
 
+// sqliteSynchronous is the synchronous pragma of a SQLite file. In WAL
+// mode, NORMAL does not wait for the disk on each commit, only at a
+// checkpoint: a power cut can lose the last commits, but the database stays
+// consistent.
+const sqliteSynchronous = "_pragma=synchronous(NORMAL)"
+
 func sqliteParameters(params []string) []string {
+	out := slices.Clone(params)
+	if !slices.ContainsFunc(params, func(p string) bool {
+		return strings.HasPrefix(strings.ToLower(p), "_pragma=synchronous")
+	}) {
+		out = append(out, sqliteSynchronous)
+	}
 	if slices.ContainsFunc(params, func(p string) bool {
 		return strings.HasPrefix(p, "_txlock=") || p == "cache=shared"
 	}) {
-		return params
+		return out
 	}
-	return append(slices.Clone(params), "_txlock=immediate")
+	return append(out, "_txlock=immediate")
 }
 
 func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {

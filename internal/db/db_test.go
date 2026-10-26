@@ -178,3 +178,60 @@ func TestSQLiteTransactionsThatReadThenWriteRunTogether(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestSQLiteSynchronousIsNormal checks that each connection to a SQLite
+// file commits with synchronous=NORMAL, so that a commit in WAL mode does
+// not wait for the disk, also when the extra parameters of an install leave
+// it out, and that a synchronous pragma of the install wins.
+func TestSQLiteSynchronousIsNormal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		params []string
+		want   int
+	}{
+		{name: "default", want: 1},
+		{name: "own parameters", params: []string{"_pragma=foreign_keys(1)", "_pragma=journal_mode(WAL)"}, want: 1},
+		{name: "own synchronous", params: []string{"_pragma=journal_mode(WAL)", "_pragma=synchronous(FULL)"}, want: 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			if err != nil {
+				t.Fatalf("Failed to create default config: %v", err)
+			}
+			cfg.Database.Database = filepath.Join(t.TempDir(), "sync.db")
+			if tc.params != nil {
+				cfg.Database.ExtraParameters = tc.params
+			}
+			gdb, err := db.MakeDB(&cfg)
+			if err != nil {
+				t.Fatalf("Failed to create database: %v", err)
+			}
+			sqlDB, err := gdb.DB()
+			if err != nil {
+				t.Fatalf("Failed to get the pool: %v", err)
+			}
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			conns := make([]interface{ Close() error }, 0, 4)
+			for range 4 {
+				c, err := sqlDB.Conn(context.Background())
+				if err != nil {
+					t.Fatalf("Failed to take a connection: %v", err)
+				}
+				conns = append(conns, c)
+				var got int
+				if err := c.QueryRowContext(context.Background(), "PRAGMA synchronous").Scan(&got); err != nil {
+					t.Fatalf("Failed to read synchronous: %v", err)
+				}
+				if got != tc.want {
+					t.Errorf("connection %d: synchronous is %d, want %d", len(conns), got, tc.want)
+				}
+			}
+			for _, c := range conns {
+				_ = c.Close()
+			}
+		})
+	}
+}

@@ -93,20 +93,8 @@ func (r *rig) addTransports(t *testing.T) *xport {
 	t.Cleanup(x.obSrc.Close)
 	require.NoError(t, x.obSrc.Connect(st.OpenBridgeAddr))
 
-	r.recvWG.Add(2)
-	go func() {
-		defer r.recvWG.Done()
-		for {
-			select {
-			case <-r.stop:
-				return
-			default:
-			}
-			for _, p := range sp.Drain(100 * time.Millisecond) {
-				r.led.receive(spRptID, &p)
-			}
-		}
-	}()
+	r.listen(spRptID, sp.ReceivedPackets())
+	r.recvWG.Add(1)
 	go func() {
 		defer r.recvWG.Done()
 		ch := x.ipsc.ReceivedPackets()

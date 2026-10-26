@@ -55,7 +55,7 @@ All other routes refuse a token with `403` and `insufficient_scope`, also when t
 
 A token acts as the user who allowed the app, and answers the same as the web pages do for that user:
 
-- A token never has admin rights, also when the user is an admin. The routes that need an owner, such as the last heard of a hotspot or the talkgroups of a hotspot, check that the user owns it.
+- A token never has admin rights, also when the user is an admin. The routes that need an owner, such as the last heard of a hotspot or the talkgroups of a hotspot, check that the user owns it. With a token, `GET /api/v1/repeaters/:id` also answers only for a hotspot of the user, although a user signed in to DMRHub can open the page of any hotspot.
 - `/api/v1/lastheard` gives the calls of the network, and adds the details that the user may see of their own radio IDs and hotspots.
 - The messages routes and the `messages` frames of `/ws/messages` give the messages only when the user turned on SMS Storage. See [Messages and SMS Storage](messages.md).
 - [Positions](positions.md#for-apps) tells what the positions routes give.
@@ -332,7 +332,7 @@ The revocation endpoint answers `200`, or `503` with `{"error":"temporarily_unav
 | ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
 | 401    | `{"error":"invalid_token"}`              | The access token is wrong or expired, or its grant ended. Refresh, then try once more.      |
 | 403    | `{"error":"insufficient_scope"}`         | The scopes of the token do not include the route, or apps may not use the route.           |
-| 403    | `{"error":"You do not own this repeater"}` | The hotspot of a `POST /api/v1/repeaters/:id/talkgroups` is of another user.             |
+| 403    | `{"error":"You do not own this repeater"}` | The hotspot of `GET /api/v1/repeaters/:id`, `POST /api/v1/repeaters/:id/talkgroups` or `GET /api/v1/lastheard/repeater/:id` is of another user. |
 | 403    | `{"error":"...","must_change_password":true}` | An admin set a temporary password for the user. Only `GET /api/v1/users/me` works until the user picks their own password. |
 | 429    | `Too many requests. Try again in ...`    | Too many requests from the address. The body is plain text.                                 |
 

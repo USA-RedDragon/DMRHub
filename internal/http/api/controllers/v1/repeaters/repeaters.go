@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -153,6 +154,10 @@ func GETRepeater(c *gin.Context) {
 			slog.Error("Error validating repeater", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeater})
 		}
+		return
+	}
+	if grant, viaToken := utils.Grant(c); viaToken && repeater.OwnerID != grant.UserID {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgNotRepeaterOwner})
 		return
 	}
 

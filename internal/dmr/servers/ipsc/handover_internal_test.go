@@ -43,21 +43,23 @@ func sentPacer(since time.Time, before ...time.Duration) *pacer {
 	return p
 }
 
-// TestHandOverAPacketSentJustBeforeTheClaim sends a packet to a peer a
-// moment before the packet of the peer reached the other replica. The load
-// balancer moved the peer when it got that packet, a little earlier, and
-// may have dropped the packet to the peer, so the handover must hold it,
-// and the calls must go on from the state before it.
-func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
+// TestHandOverPacketsSentJustBeforeTheClaim sends packets to a peer 300 ms
+// and a moment before the packet of the peer reached the other replica, as
+// a load balancer that stalls under CPU throttling delays it. The load
+// balancer moved the peer when it got that packet, earlier, and may have
+// dropped them, so the handover must hold them, and the calls must go on
+// from the state before them.
+func TestHandOverPacketsSentJustBeforeTheClaim(t *testing.T) {
 	t.Parallel()
 	since := time.Now()
-	p := sentPacer(since, time.Second, 60*time.Millisecond, 100*time.Microsecond)
+	p := sentPacer(since, 2*time.Second, 300*time.Millisecond, 100*time.Microsecond)
 	calls, lost, _ := p.handOver(1, since)
-	require.Len(t, lost, 1, "the handover misses the packet sent just before the claim")
-	assert.Equal(t, uint(2), lost[0].Seq)
+	require.Len(t, lost, 2, "the handover misses packets sent just before the claim")
+	assert.Equal(t, uint(1), lost[0].Seq)
+	assert.Equal(t, uint(2), lost[1].Seq)
 	require.Len(t, calls, 1)
-	assert.Equal(t, uint(1), calls[0].Seq)
-	assert.Equal(t, uint16(2), calls[0].State.RTPSeq)
+	assert.Equal(t, uint(0), calls[0].Seq)
+	assert.Equal(t, uint16(1), calls[0].State.RTPSeq)
 }
 
 // TestHandOverNoPacketSentWellBeforeTheClaim sends packets to a peer well

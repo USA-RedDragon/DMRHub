@@ -62,6 +62,7 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		const bursts = 80
+		var drained time.Time
 		next := time.Now()
 		for i := range bursts {
 			p := makeGroupVoicePacket(1000001, 1, 8201, false)
@@ -72,6 +73,7 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 			}
 			require.NoError(t, talker.SendDMRD(p))
 			if i == 15 {
+				drained = time.Now()
 				regA.MarkDraining(t.Context())
 				front.Drain(stack.WebTransportAddr)
 				stack.MMDVMServer.DrainWebTransport(t.Context())
@@ -79,11 +81,25 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 			next = next.Add(rotationInterval)
 			time.Sleep(time.Until(next))
 		}
-		heardMMDVM(browser.Drain(drainWait)).checkN(t, "the browser hotspot", 8201, bursts)
-		assert.Equal(t, 1, browser.Moves(), "the browser hotspot did not move")
+		checkMovedBrowser(t, browser, drained, 8201, bursts)
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 	})
+}
+
+// checkMovedBrowser checks the call of n bursts on stream that browser got
+// while it moved once, at a drain that began at drained: it must keep each
+// burst, in order but for the ones that its new replica hands over, and get
+// a burst twice only from the drain notice on.
+func checkMovedBrowser(t *testing.T, browser *testutils.WebTransportPeer, drained time.Time, stream uint, n int) {
+	t.Helper()
+	browser.Drain(drainWait)
+	moved := browser.Moved()
+	require.Len(t, moved, 1, "the browser hotspot did not move")
+	windows := []moveWindow{{from: drained.Truncate(time.Second), at: moved[0]}}
+	heard := browser.Heard()
+	checkCopies(t, "the browser hotspot", arrivalsOf(heard, stream), windows)
+	checkResent(t, "the browser hotspot", firstArrivalsOf(heard, stream), n, windows)
 }
 
 // TestWebTransportMoveGetsWhatTheLoadBalancerLost drains the replica of a
@@ -121,6 +137,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		const bursts = 80
+		var drained time.Time
 		next := time.Now()
 		for i := range bursts {
 			p := makeGroupVoicePacket(1000001, 1, 8201, false)
@@ -131,6 +148,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 			}
 			require.NoError(t, talker.SendDMRD(p))
 			if i == 15 {
+				drained = time.Now()
 				regA.MarkDraining(t.Context())
 				stack.MMDVMServer.DrainWebTransport(t.Context())
 				front.Cut(stack.WebTransportAddr, 300*time.Millisecond)
@@ -138,8 +156,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 			next = next.Add(rotationInterval)
 			time.Sleep(time.Until(next))
 		}
-		heardMMDVM(browser.Drain(drainWait)).checkN(t, "the browser hotspot", 8201, bursts)
-		assert.Equal(t, 1, browser.Moves(), "the browser hotspot did not move")
+		checkMovedBrowser(t, browser, drained, 8201, bursts)
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 	})

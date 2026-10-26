@@ -35,6 +35,12 @@ import (
 // login does not complete in time.
 var ErrSessionPeerTimeout = errors.New("session peer login timed out")
 
+// Heard is a packet that a test client got, and when it came.
+type Heard struct {
+	At     time.Time
+	Packet models.Packet
+}
+
 // SessionPeer is a repeater that logs in with the dmrgo session Peer: in
 // the MMDVM network protocol as DMRGateway does, with RPTO options when it
 // has them, or in HBRP.
@@ -50,6 +56,8 @@ type SessionPeer struct {
 	downs   int
 	ups     int
 	noTicks bool
+	rxAt    time.Time
+	heard   []Heard
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -226,6 +234,19 @@ func (p *SessionPeer) ResumePings() {
 	p.noTicks = false
 }
 
+// LocalAddr returns the address of the socket of the peer.
+func (p *SessionPeer) LocalAddr() string {
+	return p.conn.LocalAddr().String()
+}
+
+// Heard returns the DMRD packets from the master, each with the time it
+// came, in the order they came.
+func (p *SessionPeer) Heard() []Heard {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]Heard(nil), p.heard...)
+}
+
 // ReceivedPackets returns the channel of the DMRD packets from the master.
 func (p *SessionPeer) ReceivedPackets() <-chan models.Packet {
 	return p.packets
@@ -300,8 +321,12 @@ func (p *SessionPeer) run(out []dmrdsession.Output) {
 			if err != nil {
 				continue
 			}
+			pkt := models.PacketFromData(&d, d.Size > 53)
+			if len(p.heard) < maxHeard {
+				p.heard = append(p.heard, Heard{At: p.rxAt, Packet: pkt})
+			}
 			select {
-			case p.packets <- models.PacketFromData(&d, d.Size > 53):
+			case p.packets <- pkt:
 			default:
 			}
 		case dmrdsession.OutputLogin, dmrdsession.OutputConfig, dmrdsession.OutputOptions, dmrdsession.OutputMessage, dmrdsession.OutputPong:
@@ -317,7 +342,9 @@ func (p *SessionPeer) rx() {
 		if err != nil {
 			return
 		}
+		at := time.Now()
 		p.mu.Lock()
+		p.rxAt = at
 		var out [dmrdsession.MaxOutputs]dmrdsession.Output
 		p.run(p.peer.Packet(time.Since(p.start), buf[:n], out[:0]))
 		p.mu.Unlock()

@@ -21,6 +21,10 @@ package testutils
 
 const clientBuffer = 2000
 
+// maxHeard is how many packets a test client keeps in the record of what
+// it heard.
+const maxHeard = 1 << 16
+
 type APIResponse struct {
 	Message string `json:"message"`
 	Error   string `json:"error"`

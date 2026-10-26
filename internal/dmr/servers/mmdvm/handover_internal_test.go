@@ -52,7 +52,7 @@ func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	time.Sleep(time.Millisecond)
 	since := time.Now()
-	got := s.sentSince(1, since)
+	got := s.sentSince(1, since, hub.MoveSlack)
 	require.Len(t, got, 1, "the handover misses the packet that waits in the queue")
 	assert.Equal(t, uint(3), got[0].Seq)
 }
@@ -65,7 +65,7 @@ func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 	s := queueServer()
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	assert.Empty(t, s.sentSince(1, time.Now().Add(2*hub.MoveSlack)))
+	assert.Empty(t, s.sentSince(1, time.Now().Add(2*hub.MoveSlack), hub.MoveSlack))
 }
 
 // TestHandOverAPacketSentJustBeforeTheClaim sends a packet to a repeater
@@ -78,7 +78,20 @@ func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
 	s := queueServer()
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond)), 1, "the handover misses the packet sent just before the claim")
+	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), hub.MoveSlack), 1, "the handover misses the packet sent just before the claim")
+}
+
+// TestHandOverAPacketSentBeforeAStalledClaim sends a packet to a repeater
+// 300 ms before the packet of the repeater reached the other replica, as a
+// load balancer that stalls under CPU throttling delays it. The load
+// balancer moved the repeater when it got that packet and may have dropped
+// the packet to the repeater, so the handover must hold it.
+func TestHandOverAPacketSentBeforeAStalledClaim(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+	s.writeOut(<-s.outgoingChan)
+	assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), hub.MoveSlack), 1, "the handover misses the packet sent before a stalled claim")
 }
 
 // TestHandOverAPacketSentAfterTheMove sends a packet that was queued
@@ -92,7 +105,7 @@ func TestHandOverAPacketSentAfterTheMove(t *testing.T) {
 	since := time.Now()
 	time.Sleep(time.Millisecond)
 	s.writeOut(o)
-	assert.Len(t, s.sentSince(1, since), 1)
+	assert.Len(t, s.sentSince(1, since, hub.MoveSlack), 1)
 }
 
 // slowTransport is a transport whose writes wait until release closes.
@@ -130,7 +143,7 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 	}()
 	<-slow.writing
 	time.Sleep(2 * hub.MoveSlack)
-	got := s.sentSince(1, time.Now())
+	got := s.sentSince(1, time.Now(), hub.MoveSlack)
 	close(slow.release)
 	<-wrote
 	assert.Len(t, got, 1, "the handover misses the packet that left after the move")

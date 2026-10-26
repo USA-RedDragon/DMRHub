@@ -94,7 +94,7 @@ func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 		front.Drain(stack.WebTransportAddr)
 		const bursts = 100
 		sendCall(t, talker.SendDMRD, 1000001, 1, 8301, bursts)
-		heardMMDVM(browser.Drain(drainWait)).checkN(t, "the browser hotspot", 8301, bursts)
+		checkCall(t, "the browser hotspot", firstArrivals(browser.Drain(drainWait), 8301), bursts, nil)
 		assert.Positive(t, front.Moves(), "the front did not move the browser")
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")

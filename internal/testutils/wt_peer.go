@@ -82,6 +82,10 @@ type WebTransportPeer struct {
 	ups     int
 	moves   int
 	seen    map[dmrKey]time.Time
+	rxAt    time.Time
+	heard   []Heard
+	notices []time.Time
+	moved   []time.Time
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -205,6 +209,9 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 				Resume string `json:"resume"`
 			}
 			if json.Unmarshal(line, &n) == nil && n.Drain && n.Resume != "" {
+				p.mu.Lock()
+				p.notices = append(p.notices, time.Now())
+				p.mu.Unlock()
 				p.wg.Add(1)
 				go p.move(sess, n.Resume)
 			}
@@ -214,7 +221,9 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 
 // move opens sessions until one to a replica that does not drain takes the
 // login over with token, then sends on it and closes old after
-// moveOverlap.
+// moveOverlap. It reads each session from the start, as dmr-web does, since
+// the replica sends the packets of the handover as soon as it takes the
+// login over, and a session holds only a few datagrams that nobody reads.
 func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 	defer p.wg.Done()
 	for range moveTries {
@@ -223,13 +232,17 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 			return
 		default:
 		}
+		at := time.Now()
 		sess, err := p.dial(context.Background())
+		if err == nil {
+			p.serve(sess)
+		}
 		if err == nil && p.resume(sess, token) {
 			p.mu.Lock()
 			p.current = sess
 			p.moves++
+			p.moved = append(p.moved, at)
 			p.mu.Unlock()
-			p.serve(sess)
 			select {
 			case <-p.done:
 			case <-time.After(moveOverlap):
@@ -270,8 +283,10 @@ func (p *WebTransportPeer) resume(sess *webtransport.Session, token string) bool
 }
 
 func (p *WebTransportPeer) packet(b []byte) {
+	at := time.Now()
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.rxAt = at
 	var out [dmrdsession.MaxOutputs]dmrdsession.Output
 	p.run(p.peer.Packet(time.Since(p.start), b, out[:0]))
 }
@@ -315,6 +330,9 @@ func (p *WebTransportPeer) run(out []dmrdsession.Output) {
 				continue
 			}
 			pkt := models.PacketFromData(&d, d.Size > 53)
+			if len(p.heard) < maxHeard {
+				p.heard = append(p.heard, Heard{At: p.rxAt, Packet: pkt})
+			}
 			k := dmrKey{slot: pkt.Slot, stream: pkt.StreamID, seq: pkt.Seq}
 			now := time.Now()
 			if at, dup := p.seen[k]; dup && now.Sub(at) < dedupFor {
@@ -364,6 +382,29 @@ func (p *WebTransportPeer) Moves() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.moves
+}
+
+// Heard returns the DMRD packets that the peer got on any of its sessions,
+// copies too, each with the time it came, in the order they came.
+func (p *WebTransportPeer) Heard() []Heard {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]Heard(nil), p.heard...)
+}
+
+// Notices returns when the drain notices came, oldest first.
+func (p *WebTransportPeer) Notices() []time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]time.Time(nil), p.notices...)
+}
+
+// Moved returns, for each move to another session, when the peer began to
+// open that session, oldest first.
+func (p *WebTransportPeer) Moved() []time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]time.Time(nil), p.moved...)
 }
 
 // SendDMRD sends a DMRD packet with the repeater ID of the peer on the

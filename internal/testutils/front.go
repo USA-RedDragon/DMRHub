@@ -36,7 +36,8 @@ import (
 // of a session drains, as Envoy Gateway marks a pod that is terminating,
 // the next packet of the client opens a new session, from a new socket, to
 // a backend that does not drain. When a backend is removed, its sessions
-// end, and the next packet of each client opens a new one.
+// end, and the next packet of each client opens a new one. Once a session
+// ends, nothing more of it reaches the client.
 type UDPFront struct {
 	conn *net.UDPConn
 
@@ -44,6 +45,7 @@ type UDPFront struct {
 	backends []*frontBackend
 	sessions map[string]*frontSession
 	moves    int
+	ended    map[string][]time.Time
 	// holdUntil drops the packets of clients with no session until then.
 	holdUntil time.Time
 	wg        sync.WaitGroup
@@ -67,7 +69,7 @@ func NewUDPFront(t *testing.T) *UDPFront {
 	t.Helper()
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
-	f := &UDPFront{conn: conn, sessions: map[string]*frontSession{}}
+	f := &UDPFront{conn: conn, sessions: map[string]*frontSession{}, ended: map[string][]time.Time{}}
 	f.wg.Add(1)
 	go f.serve()
 	t.Cleanup(f.close)
@@ -113,10 +115,9 @@ func (f *UDPFront) Cut(addr string, hold time.Duration) {
 	b.draining = true
 	for key, s := range f.sessions {
 		if s.backend == b {
-			_ = s.up.Close()
+			f.end(key, s)
 			b.sessions--
 			f.moves++
-			delete(f.sessions, key)
 		}
 	}
 	f.holdUntil = time.Now().Add(hold)
@@ -132,8 +133,7 @@ func (f *UDPFront) Remove(addr string) {
 	}
 	for key, s := range f.sessions {
 		if s.backend == b {
-			_ = s.up.Close()
-			delete(f.sessions, key)
+			f.end(key, s)
 		}
 	}
 	for i, x := range f.backends {
@@ -142,6 +142,21 @@ func (f *UDPFront) Remove(addr string) {
 			break
 		}
 	}
+}
+
+// end ends the session s of the client key. The caller holds f.mu.
+func (f *UDPFront) end(key string, s *frontSession) {
+	_ = s.up.Close()
+	delete(f.sessions, key)
+	f.ended[key] = append(f.ended[key], time.Now())
+}
+
+// Ended returns when the sessions of the client at addr ended, as at a
+// move, oldest first.
+func (f *UDPFront) Ended(addr string) []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]time.Time(nil), f.ended[addr]...)
 }
 
 // Moves returns how many sessions moved from a draining backend to another.
@@ -204,8 +219,7 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
 	if ok {
 		f.moves++
 		s.backend.sessions--
-		_ = s.up.Close()
-		delete(f.sessions, client.String())
+		f.end(client.String(), s)
 	}
 	up, err := net.DialUDP("udp", nil, b.addr)
 	if err != nil {
@@ -230,7 +244,11 @@ func (f *UDPFront) back(s *frontSession) {
 			}
 			continue
 		}
-		_, _ = f.conn.WriteToUDP(buf[:n], s.client)
+		f.mu.Lock()
+		if f.sessions[s.client.String()] == s {
+			_, _ = f.conn.WriteToUDP(buf[:n], s.client)
+		}
+		f.mu.Unlock()
 	}
 }
 

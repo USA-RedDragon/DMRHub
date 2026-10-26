@@ -46,6 +46,8 @@ type IPSCBurst struct {
 	GroupCall  bool
 	Slot       bool
 	Data       []byte
+	// At is when the packet came.
+	At time.Time
 }
 
 // IPSCClient is a simulated IPSC peer for integration testing. It
@@ -65,6 +67,7 @@ type IPSCClient struct {
 	start   time.Time
 	started bool
 	rtpSeq  uint16
+	rxAt    time.Time
 
 	downs    atomic.Int32
 	ready    chan struct{}
@@ -168,6 +171,15 @@ func (c *IPSCClient) WaitReady(timeout time.Duration) error {
 	case <-time.After(timeout):
 		return ErrIPSCHandshakeTimeout
 	}
+}
+
+// LocalAddr returns the address of the socket of the client, or "" before
+// it connects.
+func (c *IPSCClient) LocalAddr() string {
+	if c.conn == nil {
+		return ""
+	}
+	return c.conn.LocalAddr().String()
 }
 
 // ReceivedPackets returns a channel of IPSC bursts received from the server.
@@ -339,7 +351,7 @@ func (c *IPSCClient) receive(p []byte) {
 	default:
 		return
 	}
-	burst := IPSCBurst{PacketType: byte(op), Data: append([]byte(nil), p...)}
+	burst := IPSCBurst{PacketType: byte(op), Data: append([]byte(nil), p...), At: c.rxAt}
 	if u, err := ipscwire.DecodeUser(p); err == nil {
 		burst.PeerID = u.ID
 		burst.Src = uint(u.Source)
@@ -361,11 +373,13 @@ func (c *IPSCClient) rx() {
 		if err != nil {
 			return
 		}
+		at := time.Now()
 		addr, ok := ipscsession.AddrOf(from.IP, from.Port)
 		if !ok {
 			continue
 		}
 		c.mu.Lock()
+		c.rxAt = at
 		c.run(c.peer.Packet(time.Since(c.start), addr, buf[:n], make([]ipscsession.Output, 0, c.peer.MaxOutputs())))
 		c.mu.Unlock()
 	}

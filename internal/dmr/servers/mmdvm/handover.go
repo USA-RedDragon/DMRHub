@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 )
 
 // A repeater that moves from a draining replica to this one reaches this
@@ -111,11 +110,11 @@ func (s *Server) forgetPacket(id uint, p *sentPacket) {
 }
 
 // sentSince returns the packets to the repeater id that left at or after
-// hub.MoveSlack before since, or that still wait in the queue, and forgets
-// the repeater. A packet that waits leaves after the move, which the load
+// slack before since, or that still wait in the queue, and forgets the
+// repeater. A packet that waits leaves after the move, which the load
 // balancer no longer takes to the repeater.
-func (s *Server) sentSince(id uint, since time.Time) []models.Packet {
-	since = since.Add(-hub.MoveSlack)
+func (s *Server) sentSince(id uint, since time.Time, slack time.Duration) []models.Packet {
+	since = since.Add(-slack)
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
 	var out []models.Packet
@@ -129,13 +128,13 @@ func (s *Server) sentSince(id uint, since time.Time) []models.Packet {
 }
 
 // handOver sends the replica that claimed the repeater id the packets that
-// this one sent to it after since, when its packet reached the other
-// replica.
-func (s *Server) handOver(id uint, since time.Time) {
+// this one sent to it from slack before since, when its packet reached the
+// other replica.
+func (s *Server) handOver(id uint, since time.Time, slack time.Duration) {
 	if s.hub == nil {
 		return
 	}
-	lost := s.sentSince(id, since)
+	lost := s.sentSince(id, since, slack)
 	h := handover{Packets: make([][]byte, 0, len(lost))}
 	for _, p := range lost {
 		b, err := p.MarshalMsg(nil)

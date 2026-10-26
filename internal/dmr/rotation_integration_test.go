@@ -20,13 +20,15 @@
 package dmr_test
 
 import (
-	"bytes"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
@@ -74,89 +76,198 @@ func (c rotationCall) run(t *testing.T, wg *sync.WaitGroup) {
 	}()
 }
 
-// heard counts the bursts that a listener got of each stream, by sequence.
-type heard map[uint]map[uint]int
+// moveWindow is a move of a client, at which it may get a packet again: the
+// replica that it left sent the packet in the last hub.MoveSlack before the
+// move, and the replica that it moved to sends it again, since the load
+// balancer may have lost it. A copy is in the window when the copy before
+// it came at or after from and the copy at or after at.
+type moveWindow struct {
+	from, at time.Time
+}
 
-func (h heard) add(stream, seq uint) {
-	if h[stream] == nil {
-		h[stream] = map[uint]int{}
+// windowsAt returns the move windows of a client whose sessions at the
+// load balancer ended at the times in ended.
+func windowsAt(ended []time.Time) []moveWindow {
+	out := make([]moveWindow, 0, len(ended))
+	for _, at := range ended {
+		out = append(out, moveWindow{from: at.Add(-hub.MoveSlack), at: at})
 	}
-	h[stream][seq]++
+	return out
 }
 
-// check reports the bursts of stream that the listener missed or got more
-// than once, of the rotationBursts of a call.
-func (h heard) check(t *testing.T, who string, stream uint) {
-	t.Helper()
-	h.checkN(t, who, stream, rotationBursts)
+// arrival is a packet of a call that a client got: its place in the call
+// and when it came.
+type arrival struct {
+	n  uint
+	at time.Time
 }
 
-// checkN is check for a call of n bursts.
-func (h heard) checkN(t *testing.T, who string, stream uint, n int) {
-	t.Helper()
-	var lost, twice []uint
-	for i := range uint(n) {
-		switch h[stream][i] {
-		case 0:
-			lost = append(lost, i)
-		case 1:
-		default:
-			twice = append(twice, i)
+// arrivalsOf returns the packets of stream in heard, by their sequence
+// numbers.
+func arrivalsOf(heard []testutils.Heard, stream uint) []arrival {
+	var out []arrival
+	for _, h := range heard {
+		if h.Packet.StreamID == stream {
+			out = append(out, arrival{n: h.Packet.Seq, at: h.At})
 		}
 	}
-	assert.Empty(t, lost, "%s lost bursts of stream %d", who, stream)
-	assert.Empty(t, twice, "%s got bursts of stream %d more than once", who, stream)
+	return out
 }
 
-// heardMMDVM counts the bursts that an MMDVM repeater plays of pkts. A
-// replica that a repeater left hands over what it sent in the last
-// hub.MoveSlack before the move, which the repeater may have got, and
-// MMDVMHost drops a burst that repeats the last one of its call, so the
-// listener does too.
-func heardMMDVM(pkts []models.Packet) heard {
-	h := heard{}
-	last := map[uint]uint{}
+// firstArrivals returns the packets of stream in pkts, which a client that
+// drops copies kept, by their sequence numbers.
+func firstArrivals(pkts []models.Packet, stream uint) []arrival {
+	var out []arrival
 	for _, p := range pkts {
-		if seq, ok := last[p.StreamID]; ok && seq == p.Seq {
+		if p.StreamID == stream {
+			out = append(out, arrival{n: p.Seq})
+		}
+	}
+	return out
+}
+
+// firstArrivalsOf returns the first arrival of each packet of stream in
+// heard, as a client that drops copies keeps them.
+func firstArrivalsOf(heard []testutils.Heard, stream uint) []arrival {
+	seen := map[uint]bool{}
+	var out []arrival
+	for _, a := range arrivalsOf(heard, stream) {
+		if !seen[a.n] {
+			seen[a.n] = true
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// windowOf returns the last of windows that holds a copy of a packet that
+// came at the time at, when the copy before it came at prev, or -1.
+func windowOf(windows []moveWindow, prev, at time.Time) int {
+	for i := len(windows) - 1; i >= 0; i-- {
+		if !prev.Before(windows[i].from) && !at.Before(windows[i].at) {
+			return i
+		}
+	}
+	return -1
+}
+
+// checkCall checks the packets that a client got of a call of n packets:
+// it must get each, in order, and a packet again only in one of windows,
+// where the replica that the client moved to sends again, once and in
+// order, what the client may have missed.
+func checkCall(t *testing.T, who string, got []arrival, n int, windows []moveWindow) {
+	t.Helper()
+	checkArrivals(t, who, got, n, windows, false)
+}
+
+// checkResent is checkCall for a browser hotspot, which may get a burst
+// after later ones once it began to move: a load balancer that ends its
+// session, or moves the QUIC path of it to another replica, loses bursts
+// that the old replica sent before it knew, while later ones get through
+// on the new path before the drain notice does, and the replica that the
+// hotspot moves to hands the lost ones over only after the move.
+func checkResent(t *testing.T, who string, got []arrival, n int, windows []moveWindow) {
+	t.Helper()
+	checkArrivals(t, who, got, n, windows, true)
+}
+
+func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []moveWindow, resends bool) {
+	t.Helper()
+	last := map[uint]time.Time{}
+	resent := make([]bool, len(windows))
+	var next uint
+	prev := -1
+	var outside, late, back []uint
+	for _, a := range got {
+		at, copied := last[a.n]
+		last[a.n] = a.at
+		switch {
+		case copied:
+			w := windowOf(windows, at, a.at)
+			switch {
+			case w < 0:
+				outside = append(outside, a.n)
+			case int(a.n) <= prev && resent[w]:
+				back = append(back, a.n)
+			case int(a.n) <= prev:
+				resent[w] = true
+			case int(a.n) != prev+1:
+				back = append(back, a.n)
+			}
+		case a.n < next && (!resends || !slices.ContainsFunc(windows, func(w moveWindow) bool { return !a.at.Before(w.at) })):
+			late = append(late, a.n)
+		case a.n < next:
+		default:
+			next = a.n + 1
+		}
+		prev = int(a.n)
+	}
+	var lost []uint
+	for i := range uint(n) {
+		if _, ok := last[i]; !ok {
+			lost = append(lost, i)
+		}
+	}
+	assert.Empty(t, lost, "%s lost packets", who)
+	assert.Empty(t, outside, "%s got packets again outside a move window", who)
+	assert.Empty(t, late, "%s got packets after later ones", who)
+	assert.Empty(t, back, "%s got copies out of order", who)
+	if bad := slices.Concat(lost, outside, late, back); len(bad) > 0 {
+		logArrivals(t, who, got, windows, slices.Min(bad), slices.Max(bad))
+	}
+}
+
+// checkCopies checks that a client that drops copies got a packet again
+// only in one of windows.
+func checkCopies(t *testing.T, who string, got []arrival, windows []moveWindow) {
+	t.Helper()
+	last := map[uint]time.Time{}
+	var outside []uint
+	for _, a := range got {
+		at, copied := last[a.n]
+		last[a.n] = a.at
+		if copied && windowOf(windows, at, a.at) < 0 {
+			outside = append(outside, a.n)
+		}
+	}
+	assert.Empty(t, outside, "%s got packets again outside a move window", who)
+}
+
+// logArrivals logs the move windows and the packets from lo to hi that a
+// client got, with a few around them.
+func logArrivals(t *testing.T, who string, got []arrival, windows []moveWindow, lo, hi uint) {
+	t.Helper()
+	for _, w := range windows {
+		t.Logf("%s: move window from %s at %s", who, w.from.Format("15:04:05.000000"), w.at.Format("15:04:05.000000"))
+	}
+	for _, a := range got {
+		if a.n+8 >= lo && a.n <= hi+8 {
+			t.Logf("%s: packet %d at %s", who, a.n, a.at.Format("15:04:05.000000"))
+		}
+	}
+}
+
+// ipscArrivals returns the packets of the call c that the IPSC peer got,
+// by their RTP sequence numbers from the first one, and checks that they
+// all have the call control of the call, as an XPR 8400 needs.
+func ipscArrivals(t *testing.T, bursts []testutils.IPSCBurst, c rotationCall) []arrival {
+	t.Helper()
+	var out []arrival
+	var control uint32
+	var start uint16
+	for _, b := range bursts {
+		if b.Dst != c.tg {
 			continue
 		}
-		last[p.StreamID] = p.Seq
-		h.add(p.StreamID, p.Seq)
-	}
-	return h
-}
-
-// checkIPSCCalls checks that the IPSC peer got every packet of each call
-// in one call, as an XPR 8400 needs it: one call control, and an RTP
-// sequence number one more than the one before on each packet. A packet
-// that repeats the one before it, as the handover of a move may send, is
-// a duplicate that an RTP receiver drops.
-func checkIPSCCalls(t *testing.T, bursts []testutils.IPSCBurst, calls ...rotationCall) {
-	t.Helper()
-	for _, c := range calls {
-		var n int
-		var control uint32
-		var last uint16
-		var prev []byte
-		for _, b := range bursts {
-			if b.Dst != c.tg {
-				continue
-			}
-			if bytes.Equal(b.Data, prev) {
-				continue
-			}
-			prev = b.Data
-			u, err := ipscwire.DecodeUser(b.Data)
-			require.NoError(t, err)
-			if n > 0 {
-				assert.Equal(t, control, u.CallControl, "packet %d of the call to TG %d has another call control", n, c.tg)
-				assert.Equal(t, last+1, u.RTP.Seq, "packet %d of the call to TG %d skips in the RTP sequence", n, c.tg)
-			}
-			control, last = u.CallControl, u.RTP.Seq
-			n++
+		u, err := ipscwire.DecodeUser(b.Data)
+		require.NoError(t, err)
+		if len(out) == 0 {
+			control, start = u.CallControl, u.RTP.Seq
 		}
-		assert.Equal(t, rotationBursts, n, "the IPSC peer got %d packets of the call to TG %d", n, c.tg)
+		assert.Equal(t, control, u.CallControl, "a packet of the call to TG %d has another call control", c.tg)
+		out = append(out, arrival{n: uint(u.RTP.Seq - start), at: b.At})
 	}
+	return out
 }
 
 // TestRotationMidCall runs two replicas behind UDPFronts, as the pods of
@@ -165,7 +276,8 @@ func checkIPSCCalls(t *testing.T, bursts []testutils.IPSCBurst, calls ...rotatio
 // in progress. It then rolls the replicas as Kubernetes does: a new
 // replica starts, the first one stops, and then the second. No repeater or
 // peer may log in again, and every listener must get every burst of both
-// calls once.
+// calls in order. A listener may get a burst twice only at a move, where
+// the replica that it moved to sends again what the move may have lost.
 func TestRotationMidCall(t *testing.T) {
 	t.Parallel()
 	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -234,9 +346,11 @@ func TestRotationMidCall(t *testing.T) {
 		c, _ := stack.SpawnRegisteredReplica(t)
 		testutils.Fronts{MMDVM: fronts.MMDVM, IPSC: fronts.IPSC}.Add(t, c)
 		t.Logf("%s: the first replica stops", time.Since(start).Round(time.Millisecond))
+		aStops := time.Now()
 		a.Terminate(t, regA, fronts, rotationDrain)
 		fronts.WebTransport.Add(t, c.WebTransportAddr)
 		t.Logf("%s: the first replica stopped, the second stops", time.Since(start).Round(time.Millisecond))
+		bStops := time.Now()
 		b.Terminate(t, regB, fronts, rotationDrain)
 		t.Logf("%s: the second replica stopped", time.Since(start).Round(time.Millisecond))
 		calls.Wait()
@@ -254,23 +368,44 @@ func TestRotationMidCall(t *testing.T) {
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")
 		assert.Equal(t, 2, browser.Moves(), "the browser hotspot did not move at each rotation")
 
-		heardMMDVM(talkerA.Drain(settleDuration)).check(t, "repeater 100001", one.stream)
-		heardMMDVM(talkerB.Drain(settleDuration)).check(t, "repeater 100002", two.stream)
-		slowHeard := heardMMDVM(slow.Drain(settleDuration))
-		slowHeard.check(t, "repeater 100003", one.stream)
-		slowHeard.check(t, "repeater 100003", two.stream)
-		browserHeard := heardMMDVM(browser.Drain(settleDuration))
-		browserHeard.check(t, "the browser hotspot", one.stream)
-		browserHeard.check(t, "the browser hotspot", two.stream)
-
-		checkIPSCCalls(t, ipscPeer.Drain(settleDuration), one, two)
-
-		obHeard := heard{}
-		for _, br := range ob.DrainBridges(settleDuration) {
-			obHeard.add(uint(br.Data.Stream), uint(br.Data.Seq))
+		for _, p := range []struct {
+			name    string
+			p       *testutils.SessionPeer
+			streams []uint
+		}{{"repeater 100001", talkerA, []uint{one.stream}}, {"repeater 100002", talkerB, []uint{two.stream}}, {"repeater 100003", slow, []uint{one.stream, two.stream}}} {
+			heard := p.p.Heard()
+			windows := windowsAt(fronts.MMDVM.Ended(p.p.LocalAddr()))
+			for _, stream := range p.streams {
+				checkCall(t, fmt.Sprintf("%s on stream %d", p.name, stream), arrivalsOf(heard, stream), rotationBursts, windows)
+			}
 		}
-		obHeard.check(t, "the OpenBridge peer", one.stream)
-		obHeard.check(t, "the OpenBridge peer", two.stream)
+
+		moved := browser.Moved()
+		require.Len(t, moved, 2)
+		browserWindows := []moveWindow{
+			{from: aStops.Truncate(time.Second), at: moved[0]},
+			{from: bStops.Truncate(time.Second), at: moved[1]},
+		}
+		for _, stream := range []uint{one.stream, two.stream} {
+			who := fmt.Sprintf("the browser hotspot on stream %d", stream)
+			checkCopies(t, who, arrivalsOf(browser.Heard(), stream), browserWindows)
+			checkResent(t, who, firstArrivalsOf(browser.Heard(), stream), rotationBursts, browserWindows)
+		}
+
+		ipscBursts := ipscPeer.Drain(settleDuration)
+		ipscWindows := windowsAt(fronts.IPSC.Ended(ipscPeer.LocalAddr()))
+		for _, c := range []rotationCall{one, two} {
+			checkCall(t, fmt.Sprintf("the IPSC peer on TG %d", c.tg), ipscArrivals(t, ipscBursts, c), rotationBursts, ipscWindows)
+		}
+
+		bridges := ob.DrainBridges(settleDuration)
+		obHeard := make([]testutils.Heard, 0, len(bridges))
+		for _, br := range bridges {
+			obHeard = append(obHeard, testutils.Heard{Packet: models.Packet{StreamID: uint(br.Data.Stream), Seq: uint(br.Data.Seq)}})
+		}
+		for _, stream := range []uint{one.stream, two.stream} {
+			checkCall(t, fmt.Sprintf("the OpenBridge peer on stream %d", stream), arrivalsOf(obHeard, stream), rotationBursts, nil)
+		}
 		t.Logf("moves: MMDVM %d, IPSC %d, WebTransport %d", fronts.MMDVM.Moves(), fronts.IPSC.Moves(), fronts.WebTransport.Moves())
 	})
 }

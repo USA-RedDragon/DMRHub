@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,10 +57,11 @@ func TestAdmitStreamKeepsAStreamWithItsFirstSource(t *testing.T) {
 	assert.True(t, h.AdmitStream(t.Context(), burst(0, 100002), models.RepeaterTypeMMDVM), "stream 0 carries no stream identity")
 }
 
-func replicaHubs(t *testing.T) (*hub.Hub, *hub.Hub) {
+func replicaHubs(t *testing.T, be testutils.Backend) (*hub.Hub, *hub.Hub) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
+	be.Setup(t, &cfg)
 	shared, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
 	one, two := hub.NewHub(nil, shared, nil, nil), hub.NewHub(nil, shared, nil, nil)
@@ -71,9 +73,23 @@ func replicaHubs(t *testing.T) (*hub.Hub, *hub.Hub) {
 	return one, two
 }
 
+func forKVBackends(t *testing.T, f func(t *testing.T, be testutils.Backend)) {
+	t.Helper()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			f(t, be)
+		})
+	}
+}
+
 func TestAdmitStreamKeepsAStreamWithItsFirstSourceAcrossReplicas(t *testing.T) {
 	t.Parallel()
-	one, two := replicaHubs(t)
+	forKVBackends(t, testFirstSourceAcrossReplicas)
+}
+
+func testFirstSourceAcrossReplicas(t *testing.T, be testutils.Backend) {
+	one, two := replicaHubs(t, be)
 	burst := func(repeater uint) models.Packet {
 		p := makeVoicePacket(1, 42, true, false)
 		p.Repeater = repeater
@@ -90,8 +106,12 @@ func TestAdmitStreamKeepsAStreamWithItsFirstSourceAcrossReplicas(t *testing.T) {
 func TestAStreamStaysWithItsSourceForTheHold(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, 30*time.Second, hub.StreamClaimHold)
+	forKVBackends(t, testStaysForTheHold)
+}
+
+func testStaysForTheHold(t *testing.T, be testutils.Backend) {
 	const hold, recheck = time.Second, 50 * time.Millisecond
-	one, two := replicaHubs(t)
+	one, two := replicaHubs(t, be)
 	one.SetStreamClaimTiming(hold, recheck)
 	two.SetStreamClaimTiming(hold, recheck)
 	ctx := t.Context()

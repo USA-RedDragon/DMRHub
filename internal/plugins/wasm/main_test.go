@@ -44,7 +44,7 @@ func guest(t testing.TB, name string) []byte {
 		if guests.err != nil {
 			return
 		}
-		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent"} {
+		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early"} {
 			cmd := exec.Command("go", "build", "-o", filepath.Join(guests.dir, g+".wasm"), "./testdata/"+g) //nolint:noctx // a build for the tests
 			cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
 			if out, err := cmd.CombinedOutput(); err != nil {

@@ -28,6 +28,14 @@
       <p class="text-sm text-muted-foreground" data-test="inside-desc">{{ description }}</p>
     </CardHeader>
     <CardContent class="flex flex-col gap-4">
+      <div
+        v-if="stopped"
+        role="alert"
+        class="max-w-[80ch] rounded-lg border border-red-600/60 bg-red-600/10 px-3.5 py-3 text-sm"
+        data-test="inside-stopped"
+      >
+        <b>{{ stopped.title }}</b> {{ stopped.body }}
+      </div>
       <div class="grid max-w-2xl gap-4">
         <div class="flex items-center gap-3">
           <Switch id="pp-on" v-model="enabled" aria-labelledby="pp-on-label" data-test="inside-on" @update:model-value="saved = false" />
@@ -78,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import PluginBadge from '@/components/PluginBadge.vue';
@@ -92,6 +100,7 @@ import {
   formatIDs,
   formatRanges,
   parseIDs,
+  stopNote,
   updatePlugin,
   uploadPluginVersion,
   type AdminPlugin,
@@ -120,6 +129,19 @@ const fill = (p: AdminPlugin) => {
 };
 fill(props.initial);
 
+const now = ref(Date.now());
+let clock: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  clock = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
+});
+onUnmounted(() => {
+  if (clock !== null) {
+    clearInterval(clock);
+  }
+});
+const stopped = computed(() => stopNote(plugin.value, now.value));
 
 const uploaded = computed(() => plugin.value.kind === 'uploaded');
 const description = computed(() => {

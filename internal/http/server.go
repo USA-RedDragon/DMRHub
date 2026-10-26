@@ -45,6 +45,7 @@ import (
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -78,6 +79,7 @@ type options struct {
 	hibpClient   *http.Client
 	mailer       smtp.Mailer
 	pluginEngine *wasm.Engine
+	kv           kv.KV
 }
 
 // WithConfigApplier makes the config API put a saved config into effect
@@ -96,6 +98,12 @@ func WithHIBPClient(client *http.Client) Option {
 // whose cache then holds them for the plugins inside DMRHub.
 func WithPluginEngine(e *wasm.Engine) Option {
 	return func(o *options) { o.pluginEngine = e }
+}
+
+// WithKV makes the plugins API read from store how the plugins inside
+// DMRHub last stopped.
+func WithKV(store kv.KV) Option {
+	return func(o *options) { o.kv = store }
 }
 
 // WithMailer makes the password reset emails go out through m instead of
@@ -180,6 +188,9 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 		engine = wasm.NewEngine(wasm.DefaultLimits())
 	}
 	r.Use(middleware.Provider(v1PluginsControllers.EngineKey, engine))
+	if o.kv != nil {
+		r.Use(middleware.Provider(v1PluginsControllers.KVKey, o.kv))
+	}
 	// CORS
 	var configuredCORS gin.HandlerFunc
 	if config.HTTP.CORS.Enabled {

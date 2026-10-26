@@ -158,6 +158,26 @@ func TestTheRegistryLeavesOutThePluginsInsideWhenTheyAreOff(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestAWaitingBuiltinPluginOwnsNoneOfItsIDs(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	old, _ := r.add("Old locator", rng(5052, 5052))
+	b, err := models.EnsureBuiltinPlugin(r.db, "locator", "Location server", "v1.3.4", []models.PluginRange{rng(5050, 5059)}, time.Now())
+	require.NoError(t, err)
+	require.NoError(t, r.registry.Reload())
+	owner, ok := r.registry.Owner(5052)
+	require.True(t, ok)
+	assert.Equal(t, old.ID, owner)
+	_, ok = r.registry.Owner(5050)
+	assert.False(t, ok, "the built-in plugin waits for all its IDs")
+	_, err = models.UpdatePlugin(r.db, old.ID, old.Name, false, old.Ranges)
+	require.NoError(t, err)
+	require.NoError(t, r.registry.Reload())
+	owner, ok = r.registry.Owner(5052)
+	require.True(t, ok)
+	assert.Equal(t, b.ID, owner)
+}
+
 func TestPluginsInsideDMRHubNeedNoListener(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()

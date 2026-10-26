@@ -102,6 +102,50 @@ func TestPluginRangesAreValidAndNeverOverlap(t *testing.T) {
 	assert.False(t, list[0].Enabled)
 }
 
+func TestAnIDIsTakenOnlyByAPluginThatIsOn(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	parrot, _, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	require.NoError(t, err)
+	_, _, err = models.CreatePlugin(database, "Echo", []models.PluginRange{rng(9980, 9995)}, time.Now())
+	var taken *models.PluginIDTakenError
+	require.ErrorAs(t, err, &taken)
+	assert.Equal(t, uint(9990), taken.ID)
+	assert.Equal(t, "Parrot", taken.By)
+	require.ErrorIs(t, err, models.ErrPluginRange)
+
+	_, err = models.UpdatePlugin(database, parrot.ID, "Parrot", false, parrot.Ranges)
+	require.NoError(t, err)
+	echo, _, err := models.CreatePlugin(database, "Echo", []models.PluginRange{rng(9980, 9995)}, time.Now())
+	require.NoError(t, err, "the IDs of a plugin that is off are free")
+	_, err = models.UpdatePlugin(database, parrot.ID, "Parrot", true, parrot.Ranges)
+	require.ErrorAs(t, err, &taken)
+	assert.Equal(t, uint(9990), taken.ID)
+	assert.Equal(t, "Echo", taken.By)
+	_, err = models.UpdatePlugin(database, echo.ID, "Echo", true, []models.PluginRange{rng(9980, 9989)})
+	require.NoError(t, err)
+	_, err = models.UpdatePlugin(database, parrot.ID, "Parrot", true, parrot.Ranges)
+	require.NoError(t, err)
+}
+
+func TestABadIDIsNamed(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	for want, ranges := range map[uint][]models.PluginRange{
+		0:                   {rng(0, 5)},
+		models.MaxDMRID + 1: {rng(1, models.MaxDMRID+1)},
+		10:                  {rng(10, 5)},
+	} {
+		_, _, err := models.CreatePlugin(database, "Bad", ranges, time.Now())
+		var bad *models.PluginIDError
+		require.ErrorAs(t, err, &bad)
+		assert.Equal(t, want, bad.ID)
+		require.ErrorIs(t, err, models.ErrPluginRange)
+	}
+}
+
 func TestPluginNamesAreUnique(t *testing.T) {
 	t.Parallel()
 	database, cleanup := openDB(t)

@@ -22,6 +22,8 @@ package wasm
 import (
 	"bytes"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,6 +42,8 @@ type logWriter struct {
 	second  time.Time
 	logged  int
 	dropped int
+	last    string
+	failure string
 }
 
 func newLogWriter(name string, perSecond int) *logWriter {
@@ -78,10 +82,46 @@ func (w *logWriter) emit() {
 	}
 	line := string(bytes.TrimRight(w.line, "\r"))
 	w.line = w.line[:0]
+	if strings.TrimSpace(line) != "" {
+		w.last = line
+	}
+	if w.failure == "" && (strings.HasPrefix(line, "panic: ") || strings.HasPrefix(line, "fatal error: ")) {
+		w.failure = line
+	}
 	if w.logged >= w.perSecond {
 		w.dropped++
 		return
 	}
 	w.logged++
 	slog.Info("Plugins: plugin log", "plugin", w.name, "line", line)
+}
+
+// said returns what the plugin said last of why it stops: the panic or
+// fatal error of the Go runtime, else the error of its last log line, else
+// its last line.
+func (w *logWriter) said() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.failure != "" {
+		return w.failure
+	}
+	return errorOf(w.last)
+}
+
+// errorOf returns the value of the error attribute of line, a line of
+// log/slog's text format, or line when it has none.
+func errorOf(line string) string {
+	_, rest, ok := strings.Cut(line, " error=")
+	if !ok {
+		return line
+	}
+	if strings.HasPrefix(rest, `"`) {
+		if v, err := strconv.QuotedPrefix(rest); err == nil {
+			if u, err := strconv.Unquote(v); err == nil {
+				return u
+			}
+		}
+	}
+	v, _, _ := strings.Cut(rest, " ")
+	return v
 }

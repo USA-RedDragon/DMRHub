@@ -36,12 +36,20 @@ import (
 )
 
 var (
-	// ErrNotWasm is returned for a file that is not a WebAssembly module
-	// that DMRHub can run.
-	ErrNotWasm = errors.New("not a WebAssembly module for wasip1")
+	// ErrNotWasm is returned for a file that is not a WebAssembly module.
+	ErrNotWasm = errors.New("not a WebAssembly module")
+	// ErrNotPlugin is returned for a WebAssembly module that is not a
+	// program for wasip1, as a plugin is.
+	ErrNotPlugin = errors.New("a WebAssembly module, but not a program for wasip1")
 	// ErrNoHello is returned for a module that does not start with a hello
 	// in time, as a plugin does.
 	ErrNoHello = errors.New("the module did not say hello as a plugin")
+	// ErrEnded is returned, with ErrNoHello, for a plugin that ended before
+	// its hello. Its EndedError says why.
+	ErrEnded = errors.New("the plugin stopped before its hello")
+	// ErrNoAnswer ends a plugin that did not read what the hub sent it for
+	// the AnswerWithin of its limits.
+	ErrNoAnswer = errors.New("the plugin did not answer the hub")
 	// ErrCPU ends a plugin that used more CPU than its limit.
 	ErrCPU = errors.New("the plugin used too much CPU")
 	// ErrMemory ends a plugin that used all the memory of its limit.
@@ -99,6 +107,11 @@ func NewCachedEngine(limits Limits) *Engine {
 	e := NewEngine(limits)
 	e.cache, e.keep = wazero.NewCompilationCache(), -1
 	return e
+}
+
+// Limits returns the limits of the plugins of e.
+func (e *Engine) Limits() Limits {
+	return e.limits
 }
 
 // Limited returns an Engine with the cache of e, if any, whose plugins run
@@ -183,7 +196,7 @@ func (e *Engine) acquire(ctx context.Context, wasm []byte) (wazero.Runtime, *com
 	}
 	if _, ok := module.ExportedFunctions()["_start"]; !ok {
 		_ = module.Close(ctx)
-		return nil, nil, fmt.Errorf("%w: it has no _start", ErrNotWasm)
+		return nil, nil, fmt.Errorf("%w: it has no _start", ErrNotPlugin)
 	}
 	debug.FreeOSMemory()
 	c := &compiled{sum: sum, module: module, users: 1}

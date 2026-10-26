@@ -70,6 +70,7 @@ type Instance struct {
 
 	stdinR, stdin *os.File
 	wmu           sync.Mutex
+	logs          *logWriter
 
 	frames  chan *pluginv1.ConnectRequest
 	hello   *pluginv1.Hello
@@ -122,14 +123,15 @@ func (i *Instance) instantiate(ctx context.Context, rt wazero.Runtime, args []st
 	if err != nil {
 		return nil, fmt.Errorf("could not make the stdin of the plugin: %w", err)
 	}
+	i.logs = newLogWriter(i.name, i.limits.LogLines)
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs(append([]string{"plugin"}, args...)...).
-		WithStdin(i.stdinR).WithStdout(&frameWriter{i: i}).WithStderr(newLogWriter(i.name, i.limits.LogLines)).
+		WithStdin(i.stdinR).WithStdout(&frameWriter{i: i}).WithStderr(i.logs).
 		WithSysWalltime().WithSysNanotime().WithNanosleep(i.sleep).WithRandSource(rand.Reader).WithStartFunctions()
 	mod, err := rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, memoryAllocator), i.code.module, cfg)
 	if err != nil {
 		_ = i.stdinR.Close()
 		_ = i.stdin.Close()
-		return nil, fmt.Errorf("%w: %w", ErrNotWasm, err)
+		return nil, fmt.Errorf("%w: %w", ErrNotPlugin, err)
 	}
 	return mod, nil
 }
@@ -218,8 +220,35 @@ func (i *Instance) awaitHello() error {
 		i.kill(ErrNoHello)
 		return ErrNoHello
 	case <-i.done:
-		return fmt.Errorf("%w: %w", ErrNoHello, i.err)
+		return &EndedError{Err: i.err, Said: i.logs.said()}
 	}
+}
+
+// EndedError is the error of a plugin that ended before its hello. It
+// matches ErrNoHello and ErrEnded.
+type EndedError struct {
+	// Err is why the plugin ended.
+	Err error
+	// Said is what the plugin said last of why, on its stderr, if anything.
+	Said string
+}
+
+func (e *EndedError) Error() string {
+	return fmt.Sprintf("%v: %v", ErrEnded, e.Err)
+}
+
+// Unwrap returns ErrNoHello, ErrEnded and the error of the plugin.
+func (e *EndedError) Unwrap() []error {
+	return []error{ErrNoHello, ErrEnded, e.Err}
+}
+
+// Message returns what the plugin said of why it ended, or its error when
+// it said nothing.
+func (e *EndedError) Message() string {
+	if e.Said != "" {
+		return e.Said
+	}
+	return e.Err.Error()
 }
 
 // deliver takes a message that the plugin wrote on its stdout.
@@ -249,6 +278,10 @@ func (i *Instance) deliver(m *pluginv1.ConnectRequest) {
 func (i *Instance) write(m *pluginv1.ConnectResponse) error {
 	i.wmu.Lock()
 	defer i.wmu.Unlock()
+	if i.limits.AnswerWithin > 0 {
+		t := time.AfterFunc(i.limits.AnswerWithin, func() { i.kill(ErrNoAnswer) })
+		defer t.Stop()
+	}
 	if err := plugin.WriteFrame(i.stdin, m); err != nil {
 		return fmt.Errorf("could not reach the plugin: %w", err)
 	}
@@ -256,6 +289,12 @@ func (i *Instance) write(m *pluginv1.ConnectResponse) error {
 }
 
 // Hello returns the hello of the plugin.
+// Said returns what the plugin said last of why it stops, on its stderr: a
+// panic, or the error of its last log line, or its last line.
+func (i *Instance) Said() string {
+	return i.logs.said()
+}
+
 func (i *Instance) Hello() *pluginv1.Hello {
 	return i.hello
 }

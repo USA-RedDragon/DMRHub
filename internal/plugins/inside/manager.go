@@ -120,6 +120,7 @@ type run struct {
 	ended    chan struct{}
 	stopping atomic.Bool
 	retire   time.Time
+	err      error
 }
 
 // started returns the instance of r once it started, and nil before or
@@ -319,7 +320,11 @@ func sameHosts(a, b []string) bool {
 // others. waits holds when each failed plugin may start again, and
 // backoffs the wait after its next failure.
 func (m *Manager) reconcile(ctx context.Context, waits map[uint]time.Time, backoffs map[uint]time.Duration) {
-	m.reap(waits, backoffs)
+	for _, s := range m.reap(waits, backoffs) {
+		if err := plugins.NoteStop(ctx, m.d.KV, s.id, s.at, s.restart, s.reason); err != nil {
+			slog.Warn("Plugins: cannot tell the other replicas that a plugin stopped", "plugin", s.id, "error", err)
+		}
+	}
 	want := map[uint]models.Plugin{}
 	if m.on.Load() {
 		list, err := models.ListPlugins(m.d.DB)
@@ -327,8 +332,9 @@ func (m *Manager) reconcile(ctx context.Context, waits map[uint]time.Time, backo
 			slog.Error("Plugins: cannot list the plugins inside DMRHub", "error", err)
 			return
 		}
+		waiting := models.WaitingPlugins(list)
 		for _, p := range list {
-			if p.Kind != models.PluginExternal && p.Enabled {
+			if _, wait := waiting[p.ID]; !wait && p.Kind != models.PluginExternal && p.Enabled {
 				want[p.ID] = p
 			}
 		}
@@ -390,11 +396,20 @@ func (m *Manager) retire(r *run, now time.Time) {
 	}
 }
 
-// reap forgets the plugins that ended, and sets when each may start again.
-func (m *Manager) reap(waits map[uint]time.Time, backoffs map[uint]time.Duration) {
+// stopped is a plugin that stopped by itself.
+type stopped struct {
+	id          uint
+	at, restart time.Time
+	reason      string
+}
+
+// reap forgets the plugins that ended, sets when each may start again,
+// and returns those that stopped by themselves.
+func (m *Manager) reap(waits map[uint]time.Time, backoffs map[uint]time.Duration) []stopped {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
+	var out []stopped
 	for id, r := range m.runs {
 		select {
 		case <-r.ended:
@@ -413,7 +428,17 @@ func (m *Manager) reap(waits map[uint]time.Time, backoffs map[uint]time.Duration
 		}
 		waits[id] = now.Add(wait)
 		backoffs[id] = min(wait*2, m.d.Timing.MaxBackoff) //nolint:mnd // the wait doubles
+		out = append(out, stopped{id: id, at: now, restart: waits[id], reason: m.reasonOf(r)})
 	}
+	return out
+}
+
+// reasonOf says why the plugin of r stopped by itself.
+func (m *Manager) reasonOf(r *run) string {
+	if r.inst == nil {
+		return reasonOf(r.err, "", m.d.Engine.Limits())
+	}
+	return reasonOf(r.inst.Err(), r.inst.Said(), m.d.Engine.Limits())
 }
 
 // stop stops r in the background. The plugin stays among the running ones
@@ -460,8 +485,8 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 	m.wg.Go(func() {
 		defer m.poke()
 		defer close(r.ended)
-		inst := m.launch(ctx, &plugin, r)
-		r.inst = inst
+		inst, err := m.launch(ctx, &plugin, r)
+		r.inst, r.err = inst, err
 		close(r.ready)
 		if inst == nil {
 			return
@@ -471,7 +496,7 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 			return
 		}
 		slog.Info("Plugins: running a plugin inside DMRHub", "plugin", plugin.Name, "version", plugin.Version)
-		err := m.d.Service.Connect(&tracked{PluginService_ConnectServer: inst.Stream(plugins.InProcess(ctx, plugin.ID)), r: r}) //nolint:contextcheck // the stream carries ctx
+		err = m.d.Service.Connect(&tracked{PluginService_ConnectServer: inst.Stream(plugins.InProcess(ctx, plugin.ID)), r: r}) //nolint:contextcheck // the stream carries ctx
 		if err != nil {
 			slog.Info("Plugins: the stream of a plugin inside DMRHub ended", "plugin", plugin.Name, "reason", err)
 		}
@@ -481,11 +506,11 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 
 // launch compiles and starts the module of p, and returns nil when it
 // cannot.
-func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) *wasm.Instance {
+func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) (*wasm.Instance, error) {
 	module, args, err := m.module(p)
 	if err != nil {
 		slog.Error("Plugins: cannot read the module of a plugin", "plugin", p.Name, "error", err)
-		return nil
+		return nil, err
 	}
 	inst, err := m.d.Engine.Start(ctx, p.Name, module, func(address string) bool {
 		for _, h := range *r.hosts.Load() {
@@ -497,9 +522,9 @@ func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) *wasm.In
 	}, args...)
 	if err != nil {
 		slog.Error("Plugins: cannot start a plugin inside DMRHub", "plugin", p.Name, "error", err)
-		return nil
+		return nil, err //nolint:wrapcheck // the error says why the plugin stopped
 	}
-	return inst
+	return inst, nil
 }
 
 // tracked notes when a plugin last sent or got a message.

@@ -193,7 +193,7 @@ func CreateUploadedPlugin(db *gorm.DB, info PluginInfo, ranges []PluginRange, al
 		if err := checkPluginName(tx, 0, info.Name); err != nil {
 			return err
 		}
-		if err := checkPluginRanges(tx, 0, ranges); err != nil {
+		if err := checkPluginRanges(tx, 0, ranges, true); err != nil {
 			return err
 		}
 		if err := tx.Omit("Ranges", "Hosts").Create(&p).Error; err != nil {
@@ -290,9 +290,10 @@ func PluginModuleOf(db *gorm.DB, id uint) ([]byte, []byte, error) {
 }
 
 // EnsureBuiltinPlugin returns the built-in plugin key, and adds it, named
-// name with ranges, when there is none yet. When another plugin has some of
-// ranges, it starts with no IDs. Its version follows DMRHub's; its name,
-// IDs and whether it is on stay as the admin set them.
+// name with ranges, when there is none yet. When another plugin that is on
+// has some of ranges, it waits for them, as WaitingPlugins says. Its
+// version follows DMRHub's; its name, IDs and whether it is on stay as the
+// admin set them.
 func EnsureBuiltinPlugin(db *gorm.DB, key, name, version string, ranges []PluginRange, now time.Time) (Plugin, error) {
 	var id uint
 	err := db.Transaction(func(tx *gorm.DB) error {
@@ -307,9 +308,7 @@ func EnsureBuiltinPlugin(db *gorm.DB, key, name, version string, ranges []Plugin
 		if err := checkPluginName(tx, 0, name); err != nil {
 			return err
 		}
-		if err := checkPluginRanges(tx, 0, ranges); errors.Is(err, ErrPluginRange) {
-			ranges = nil
-		} else if err != nil {
+		if err := checkPluginRanges(tx, 0, ranges, false); err != nil {
 			return err
 		}
 		_, hash := newPluginToken()

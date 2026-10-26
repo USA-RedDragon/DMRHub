@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
@@ -42,6 +43,7 @@ type env struct {
 	t      *testing.T
 	router *gin.Engine
 	db     *gorm.DB
+	kv     kv.KV
 	admin  testutils.CookieJar
 }
 
@@ -54,7 +56,7 @@ func newEnv(t *testing.T) *env {
 	})
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
-	return &env{t: t, router: router, db: tdb.DB(), admin: testutils.Login(t, router, "Admin")}
+	return &env{t: t, router: router, db: tdb.DB(), kv: tdb.KV(), admin: testutils.Login(t, router, "Admin")}
 }
 
 func (e *env) do(jar testutils.CookieJar, method, path string, body any, out any) int {

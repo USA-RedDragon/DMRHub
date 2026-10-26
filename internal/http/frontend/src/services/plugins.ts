@@ -17,6 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 import API from '@/services/API';
+import { shortTime } from '@/lib/codec';
 
 export type PluginRange = { first: number; last: number };
 
@@ -40,7 +41,16 @@ export type AdminPlugin = {
   address: string;
   token_created_at: string;
   calls_today: number;
+  state?: PluginState;
+  stopped_at?: string;
+  restart_at?: string;
+  stop_reason?: string;
+  stops_last_hour?: number;
+  waiting_id?: number;
+  waiting_for?: string;
 };
+
+export type PluginState = 'off' | 'running' | 'starting' | 'stopped' | 'waiting';
 
 export type PluginConnection = {
   enabled: boolean;
@@ -61,6 +71,7 @@ export type PluginManifest = {
 };
 
 export type PluginToken = { plugin: AdminPlugin; token: string };
+
 
 export type PluginInput = { name: string; enabled: boolean; ranges: PluginRange[]; allowed_hosts?: string[] };
 
@@ -180,13 +191,46 @@ export function parseIDs(text: string): PluginRange[] | null {
   return out;
 }
 
+/** secondsUntil is the whole seconds from now until iso, or 0 once it passed. */
+export function secondsUntil(iso: string | undefined, now: number = Date.now()): number {
+  if (!iso) {
+    return 0;
+  }
+  return Math.max(0, Math.ceil((Date.parse(iso) - now) / 1000));
+}
+
+/** insideState is the state of a plugin inside DMRHub at now: stopped turns to starting once its wait is over. */
+export function insideState(p: AdminPlugin, now: number = Date.now()): PluginState {
+  if (!p.enabled || p.state === 'off') {
+    return 'off';
+  }
+  if (p.state === 'stopped' && secondsUntil(p.restart_at, now) === 0) {
+    return 'starting';
+  }
+  if (p.state) {
+    return p.state;
+  }
+  return p.online ? 'running' : 'starting';
+}
+
 /** status is what the list says of a plugin's connection, or of a plugin inside DMRHub. */
-export function status(p: AdminPlugin, now: number = Date.now()): string {
+export function status(p: AdminPlugin, now: number = Date.now(), timeZone?: string): string {
   if (!p.enabled) {
     return 'Off';
   }
   if (isInside(p)) {
-    return p.online ? 'Running in DMRHub' : 'Not running';
+    switch (insideState(p, now)) {
+      case 'off':
+        return 'Off';
+      case 'running':
+        return 'Running in DMRHub';
+      case 'waiting':
+        return `Waiting for its IDs, ${p.waiting_id} is used by ${p.waiting_for}`;
+      case 'stopped':
+        return `Stopped at ${shortTime(new Date(p.stopped_at ?? ''), timeZone)}, starts again in ${secondsUntil(p.restart_at, now)} s`;
+      default:
+        return 'Starting';
+    }
   }
   if (p.online && p.connected_since) {
     return `Connected for ${formatSpan(p.connected_since, now)}, from ${p.address.replace(/:\d+$/, '')}`;
@@ -195,6 +239,41 @@ export function status(p: AdminPlugin, now: number = Date.now()): string {
     return `Not connected, last seen ${formatSpan(p.last_seen_at, now)} ago`;
   }
   return 'Not connected yet';
+}
+
+/** stopNote is the edit page's box about a plugin inside DMRHub that stopped, or null when it did not. */
+export function stopNote(p: AdminPlugin, now: number = Date.now(), timeZone?: string): { title: string; body: string } | null {
+  if (!isInside(p) || insideState(p, now) !== 'stopped') {
+    return null;
+  }
+  const stops = p.stops_last_hour ?? 1;
+  const times = stops === 1 ? 'once' : `${stops} times`;
+  return {
+    title: `Stopped at ${shortTime(new Date(p.stopped_at ?? ''), timeZone)}.`,
+    body: `${p.stop_reason ?? ''} DMRHub starts it again in ${secondsUntil(p.restart_at, now)} s. It has stopped ${times} in the last hour.`,
+  };
+}
+
+/** statusTone is the color of a plugin's status dot. */
+export function statusTone(p: AdminPlugin, now: number = Date.now()): 'ok' | 'info' | 'bad' | 'warn' | 'none' {
+  if (!p.enabled) {
+    return 'none';
+  }
+  if (!isInside(p)) {
+    return p.online ? 'ok' : 'none';
+  }
+  switch (insideState(p, now)) {
+    case 'running':
+      return 'ok';
+    case 'starting':
+      return 'info';
+    case 'stopped':
+      return 'bad';
+    case 'waiting':
+      return 'warn';
+    default:
+      return 'none';
+  }
 }
 
 /** formatDay is a date in words: 23 October 2026. */

@@ -36,6 +36,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -140,6 +141,60 @@ func TestTheListShowsWhereEachPluginRuns(t *testing.T) {
 	assert.Equal(t, "Logs each radio.", up.Description)
 	assert.Equal(t, []apimodels.PluginHost{{Address: "nets.example.org:443", Reason: "Posts the list.", Allowed: true}}, up.Hosts)
 	assert.NotNil(t, byName["Weather"].Hosts, "a plugin without hosts shows an empty list")
+}
+
+func TestTheListSaysWhatEachPluginInsideDoes(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	now := time.Now()
+	parrot, err := models.EnsureBuiltinPlugin(e.db, "parrot", "Parrot", "v1.3.12", []models.PluginRange{{First: 9990, Last: 9990}}, now)
+	require.NoError(t, err)
+	require.NoError(t, models.NotePluginConnected(e.db, parrot.ID, "s1", "", now))
+	require.NoError(t, models.NotePluginSeen(e.db, parrot.ID, "s1", now))
+	starting, err := models.CreateUploadedPlugin(e.db, models.PluginInfo{Name: "Net check-in", Version: "0.4.1"},
+		[]models.PluginRange{{First: 9100, Last: 9100}}, nil, []byte("wasm"), now)
+	require.NoError(t, err)
+	weather, err := models.CreateUploadedPlugin(e.db, models.PluginInfo{Name: "Weather", Version: "1.2.0"},
+		[]models.PluginRange{{First: 9200, Last: 9200}}, nil, []byte("wasm"), now)
+	require.NoError(t, err)
+	reason := "It used more memory than a plugin may (64 MiB)."
+	stoppedAt := now.Add(-10 * time.Second).Truncate(time.Second)
+	require.NoError(t, plugins.NoteStop(context.Background(), e.kv, weather.ID, now.Add(-20*time.Minute), now.Add(-19*time.Minute), "It crashed: boom."))
+	require.NoError(t, plugins.NoteStop(context.Background(), e.kv, weather.ID, stoppedAt, stoppedAt.Add(40*time.Second), reason))
+	old, _, err := models.CreatePlugin(e.db, "Old locator", []models.PluginRange{{First: 5052, Last: 5052}}, now)
+	require.NoError(t, err)
+	locator, err := models.EnsureBuiltinPlugin(e.db, "locator", "Location server", "v1.3.12", []models.PluginRange{{First: 5050, Last: 5059}}, now)
+	require.NoError(t, err)
+	off, err := models.CreateUploadedPlugin(e.db, models.PluginInfo{Name: "Echo test", Version: "0.1.0"},
+		[]models.PluginRange{{First: 9300, Last: 9300}}, nil, []byte("wasm"), now)
+	require.NoError(t, err)
+	_, err = models.UpdatePlugin(e.db, off.ID, off.Name, false, off.Ranges)
+	require.NoError(t, err)
+
+	var list apimodels.PluginList
+	require.Equal(t, http.StatusOK, e.do(e.admin, http.MethodGet, "/api/v1/admin/plugins", nil, &list))
+	byID := map[uint]apimodels.AdminPlugin{}
+	for _, p := range list.Plugins {
+		byID[p.ID] = p
+	}
+	assert.Equal(t, apimodels.PluginRunning, byID[parrot.ID].State)
+	assert.Equal(t, apimodels.PluginStarting, byID[starting.ID].State)
+	assert.Equal(t, apimodels.PluginOff, byID[off.ID].State)
+	assert.Empty(t, byID[old.ID].State, "a plugin that runs as its own program has no such state")
+
+	w := byID[weather.ID]
+	assert.Equal(t, apimodels.PluginStopped, w.State)
+	require.NotNil(t, w.StoppedAt)
+	require.NotNil(t, w.RestartAt)
+	assert.WithinDuration(t, stoppedAt, *w.StoppedAt, time.Second)
+	assert.WithinDuration(t, stoppedAt.Add(40*time.Second), *w.RestartAt, time.Second)
+	assert.Equal(t, reason, w.StopReason)
+	assert.Equal(t, 2, w.StopsLastHour)
+
+	l := byID[locator.ID]
+	assert.Equal(t, apimodels.PluginWaiting, l.State)
+	assert.Equal(t, uint(5052), l.WaitingID)
+	assert.Equal(t, "Old locator", l.WaitingFor)
 }
 
 func TestInspectingAFileShowsWhatThePluginAsks(t *testing.T) {

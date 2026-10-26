@@ -111,9 +111,10 @@ func (r *Registry) Reload() error {
 	if err != nil {
 		return fmt.Errorf("could not load the plugins: %w", err)
 	}
+	waiting := models.WaitingPlugins(list)
 	var out []owned
 	for _, p := range list {
-		if !p.Enabled || (p.Kind != models.PluginExternal && r.outside.Load()) {
+		if _, wait := waiting[p.ID]; wait || !p.Enabled || (p.Kind != models.PluginExternal && r.outside.Load()) {
 			continue
 		}
 		for _, rg := range p.Ranges {

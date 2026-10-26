@@ -142,15 +142,29 @@ func TestABuiltinPluginIsMadeOnceWithItsDefaultIDs(t *testing.T) {
 	assert.Equal(t, uint(9991), again.Ranges[0].First)
 }
 
-func TestABuiltinPluginWhoseIDsAreTakenStartsWithNone(t *testing.T) {
+func TestABuiltinPluginWhoseIDsAreTakenWaitsForThem(t *testing.T) {
 	t.Parallel()
 	database, cleanup := openDB(t)
 	defer cleanup()
-	_, _, err := models.CreatePlugin(database, "My parrot", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	mine, _, err := models.CreatePlugin(database, "Old locator", []models.PluginRange{rng(5052, 5052)}, time.Now())
 	require.NoError(t, err)
-	p, err := models.EnsureBuiltinPlugin(database, "parrot", "Parrot", "v1.3.4", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	p, err := models.EnsureBuiltinPlugin(database, "locator", "Location server", "v1.3.4", []models.PluginRange{rng(5050, 5059)}, time.Now())
 	require.NoError(t, err)
-	assert.Empty(t, p.Ranges)
+	require.Len(t, p.Ranges, 1, "it keeps the IDs it waits for")
+	list, err := models.ListPlugins(database)
+	require.NoError(t, err)
+	assert.Equal(t, map[uint]models.PluginWait{p.ID: {ID: 5052, By: "Old locator"}}, models.WaitingPlugins(list))
+
+	_, err = models.UpdatePlugin(database, mine.ID, "Old locator", false, mine.Ranges)
+	require.NoError(t, err)
+	list, err = models.ListPlugins(database)
+	require.NoError(t, err)
+	assert.Empty(t, models.WaitingPlugins(list), "it has its IDs once the other plugin is off")
+	_, err = models.UpdatePlugin(database, mine.ID, "Old locator", true, mine.Ranges)
+	var taken *models.PluginIDTakenError
+	require.ErrorAs(t, err, &taken)
+	assert.Equal(t, uint(5052), taken.ID)
+	assert.Equal(t, "Location server", taken.By)
 }
 
 func TestAnExternalPluginSaysItsVersion(t *testing.T) {

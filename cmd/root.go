@@ -491,7 +491,7 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 		live.inside = sm.inside
 	}
 
-	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(live), http.WithPluginEngine(pluginEngine))
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(live), http.WithPluginEngine(pluginEngine), http.WithKV(kvStore))
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

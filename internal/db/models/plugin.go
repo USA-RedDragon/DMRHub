@@ -121,33 +121,121 @@ func newPluginToken() (string, []byte) {
 	return token, hashPluginToken(token)
 }
 
-// checkPluginRanges checks that ranges are valid and overlap neither each
-// other nor the ranges of the other plugins than self.
-func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange) error {
+// PluginIDError is returned, with ErrPluginRange, for a range with an ID
+// that is not a DMR ID, or that ends before it starts.
+type PluginIDError struct {
+	// ID is the first ID of the range that is wrong.
+	ID uint
+}
+
+func (e *PluginIDError) Error() string {
+	return fmt.Sprintf("%v: %d is not a DMR ID", ErrPluginRange, e.ID)
+}
+
+// Unwrap returns ErrPluginRange.
+func (e *PluginIDError) Unwrap() error {
+	return ErrPluginRange
+}
+
+// PluginIDTakenError is returned, with ErrPluginRange, for an ID that
+// another plugin that is on has.
+type PluginIDTakenError struct {
+	// ID is the first of the IDs that are taken.
+	ID uint
+	// By is the name of the plugin that has it.
+	By string
+}
+
+func (e *PluginIDTakenError) Error() string {
+	return fmt.Sprintf("%v: %d is used by %s", ErrPluginRange, e.ID, e.By)
+}
+
+// Unwrap returns ErrPluginRange.
+func (e *PluginIDTakenError) Unwrap() error {
+	return ErrPluginRange
+}
+
+// checkPluginRanges checks that ranges are valid and do not overlap each
+// other, and, when the plugin self is on, that they do not overlap the
+// ranges of the other plugins that are on.
+func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange, on bool) error {
 	if len(ranges) > MaxPluginRanges {
 		return fmt.Errorf("%w: at most %d ranges", ErrPluginRange, MaxPluginRanges)
 	}
 	sorted := slices.Clone(ranges)
 	slices.SortFunc(sorted, func(a, b PluginRange) int { return int(a.First) - int(b.First) })
 	for i, r := range sorted {
-		if r.First == 0 || r.First > r.Last || r.Last > MaxDMRID {
-			return fmt.Errorf("%w: %d to %d", ErrPluginRange, r.First, r.Last)
+		switch {
+		case r.First == 0 || r.First > MaxDMRID:
+			return &PluginIDError{ID: r.First}
+		case r.Last > MaxDMRID:
+			return &PluginIDError{ID: r.Last}
+		case r.First > r.Last:
+			return &PluginIDError{ID: r.First}
 		}
 		if i > 0 && r.First <= sorted[i-1].Last {
 			return fmt.Errorf("%w: %d to %d overlaps %d to %d", ErrPluginRange, r.First, r.Last, sorted[i-1].First, sorted[i-1].Last)
 		}
 	}
+	if !on {
+		return nil
+	}
 	for _, r := range sorted {
-		var taken []PluginRange
-		err := tx.Where("plugin_id <> ? AND first_id <= ? AND last_id >= ?", self, r.Last, r.First).Limit(1).Find(&taken).Error
+		var taken []struct {
+			FirstID uint
+			Name    string
+		}
+		err := tx.Table("plugin_ranges").Select("plugin_ranges.first_id, plugins.name").
+			Joins("JOIN plugins ON plugins.id = plugin_ranges.plugin_id").
+			Where("plugin_ranges.plugin_id <> ? AND plugins.enabled = ? AND plugin_ranges.first_id <= ? AND plugin_ranges.last_id >= ?", self, true, r.Last, r.First).
+			Order("plugin_ranges.first_id").Limit(1).Scan(&taken).Error
 		if err != nil {
 			return fmt.Errorf("could not check the plugin ID ranges: %w", err)
 		}
 		if len(taken) > 0 {
-			return fmt.Errorf("%w: %d to %d overlaps the IDs of another plugin", ErrPluginRange, r.First, r.Last)
+			return &PluginIDTakenError{ID: max(r.First, taken[0].FirstID), By: taken[0].Name}
 		}
 	}
 	return nil
+}
+
+// PluginWait is the first ID that a built-in plugin waits for, and the
+// plugin that has it.
+type PluginWait struct {
+	ID uint
+	By string
+}
+
+// WaitingPlugins returns the built-in plugins in list that are on but wait
+// for some of their IDs, which another plugin that is on has. Such a
+// plugin starts once its IDs are free.
+func WaitingPlugins(list []Plugin) map[uint]PluginWait {
+	out := map[uint]PluginWait{}
+	for _, b := range list {
+		if b.Kind != PluginBuiltin || !b.Enabled {
+			continue
+		}
+		var wait *PluginWait
+		for _, o := range list {
+			if o.ID == b.ID || !o.Enabled || o.Kind == PluginBuiltin {
+				continue
+			}
+			for _, br := range b.Ranges {
+				for _, or := range o.Ranges {
+					if br.First > or.Last || or.First > br.Last {
+						continue
+					}
+					if id := max(br.First, or.First); wait == nil || id < wait.ID {
+						wait = &PluginWait{ID: id, By: o.Name}
+					}
+				}
+			}
+		}
+		if wait != nil {
+			out[b.ID] = *wait
+		}
+	}
+	return out
 }
 
 func checkPluginName(tx *gorm.DB, self uint, name string) error {
@@ -190,7 +278,7 @@ func CreatePlugin(db *gorm.DB, name string, ranges []PluginRange, now time.Time)
 		if err := checkPluginName(tx, 0, name); err != nil {
 			return err
 		}
-		if err := checkPluginRanges(tx, 0, ranges); err != nil {
+		if err := checkPluginRanges(tx, 0, ranges, true); err != nil {
 			return err
 		}
 		if err := tx.Omit("Ranges", "Hosts").Create(&p).Error; err != nil {
@@ -215,7 +303,7 @@ func UpdatePlugin(db *gorm.DB, id uint, name string, enabled bool, ranges []Plug
 		if err := checkPluginName(tx, id, name); err != nil {
 			return err
 		}
-		if err := checkPluginRanges(tx, id, ranges); err != nil {
+		if err := checkPluginRanges(tx, id, ranges, enabled); err != nil {
 			return err
 		}
 		if err := tx.Model(&Plugin{}).Where("id = ?", id).Select("Name", "Enabled").Updates(Plugin{Name: name, Enabled: enabled}).Error; err != nil {

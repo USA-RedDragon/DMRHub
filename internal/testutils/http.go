@@ -43,8 +43,14 @@ import (
 type TestDB struct {
 	database *gorm.DB
 	pubsub   pubsub.PubSub
+	kv       kv.KV
 	hub      *hub.Hub
 	config   *config.Config
+}
+
+// KV returns the KV store of the router.
+func (t *TestDB) KV() kv.KV {
+	return t.kv
 }
 
 func (t *TestDB) CloseDB() {
@@ -190,6 +196,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
 
+	t.kv = kvStore
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 	t.hub = dmrHub
@@ -197,7 +204,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
 }
 
 // ConfigOption is a function that mutates a config before the test router is created.
@@ -261,6 +268,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	}
 
 	t.pubsub = ps
+	t.kv = kvStore
 	t.config = &defConfig
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
@@ -269,7 +277,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef"), &t, nil
+	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
 }
 
 // ReplicaRouter returns the router of a second copy of the app on the

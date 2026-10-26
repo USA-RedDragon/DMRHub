@@ -58,7 +58,37 @@ type AdminPlugin struct {
 	Address        string        `json:"address"`
 	TokenCreatedAt time.Time     `json:"token_created_at"`
 	CallsToday     int64         `json:"calls_today"`
+	// State is, for a plugin inside DMRHub, one of the PluginState values.
+	State string `json:"state,omitempty"`
+	// StoppedAt, RestartAt and StopReason say, for a plugin in
+	// PluginStopped, when it stopped, when it starts again and why.
+	StoppedAt  *time.Time `json:"stopped_at,omitempty"`
+	RestartAt  *time.Time `json:"restart_at,omitempty"`
+	StopReason string     `json:"stop_reason,omitempty"`
+	// StopsLastHour is how many times a plugin inside DMRHub stopped by
+	// itself in the last hour.
+	StopsLastHour int `json:"stops_last_hour,omitempty"`
+	// WaitingID and WaitingFor say, for a plugin in PluginWaiting, the ID it
+	// waits for and the name of the plugin that has it.
+	WaitingID  uint   `json:"waiting_id,omitempty"`
+	WaitingFor string `json:"waiting_for,omitempty"`
 }
+
+// The states of a plugin inside DMRHub.
+const (
+	// PluginOff is a plugin that is off, or that runs inside DMRHub when
+	// DMRHub runs no plugins inside.
+	PluginOff = "off"
+	// PluginRunning is a plugin that runs, on any replica.
+	PluginRunning = "running"
+	// PluginStarting is a plugin that is on and that DMRHub starts.
+	PluginStarting = "starting"
+	// PluginStopped is a plugin that stopped by itself and waits to start
+	// again.
+	PluginStopped = "stopped"
+	// PluginWaiting is a built-in plugin that waits for its IDs.
+	PluginWaiting = "waiting"
+)
 
 // NewAdminPlugin returns the admin form of p at now.
 func NewAdminPlugin(p *models.Plugin, callsToday int64, now time.Time) AdminPlugin {

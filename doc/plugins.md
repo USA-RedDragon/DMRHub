@@ -23,7 +23,7 @@ Turn off **Run plugins inside DMRHub** only when you run every plugin as its own
 
 ## Plugins inside DMRHub
 
-When plugins run inside DMRHub, DMRHub adds the parrot with the ID 9990 and the location server with the IDs 5050 to 5059. A built-in plugin whose IDs another plugin already has starts with no IDs. The Plugins page (`<siteurl>/admin/plugins`) lists every plugin, where it runs (**Built in**, **Uploaded** or **External**), its version, its IDs and its status.
+When plugins run inside DMRHub, DMRHub adds the parrot with the ID 9990 and the location server with the IDs 5050 to 5059. A built-in plugin whose IDs another plugin that is on already has waits for them, and starts as soon as they are free. The Plugins page (`<siteurl>/admin/plugins`) lists every plugin, where it runs (**Built in**, **Uploaded** or **External**), its version, its IDs and its status. A plugin inside DMRHub is **Running in DMRHub**, **Starting**, **Stopped** (it crashed or went over a limit, and starts again after a wait), **Waiting for its IDs** or **Off**. The page of a stopped plugin says why it stopped.
 
 ### Upload a plugin
 
@@ -44,7 +44,8 @@ A plugin inside DMRHub:
 - reaches only the hosts that an admin allowed on its page, as `host:port`. A host allowed by name must have a public address, so that its DNS cannot point the plugin at the hub's own network. An IP address that an admin allowed may be private, such as a device on your LAN. Loopback and link-local addresses are never reached;
 - has 64 MiB of memory, and half a CPU core over each 10 seconds, after it starts;
 - has at most 4 connections at once;
-- must say who it is within 10 seconds of its start.
+- must say who it is within 10 seconds of its start;
+- must read what DMRHub sends it within 30 seconds.
 
 A plugin that goes over a limit, or ends, is stopped, and starts again after a wait that doubles from a second to a minute. Its log lines go to DMRHub's log, at most 20 a second.
 
@@ -65,7 +66,7 @@ Only one replica runs each plugin inside DMRHub: the one that holds the plugin's
 
 The page shows the address and the certificate fingerprint that the plugin connects with. **Make a new token** replaces the token, and disconnects the plugin until it uses the new one. Turning a plugin off or deleting it disconnects it, and its IDs are free again.
 
-No two plugins share an ID. DMRHub gives no IDs to an external plugin on its own: the admin picks them all.
+No two plugins that are on share an ID. A plugin that is off keeps its IDs, but another plugin may take them; the first plugin then cannot be turned on until its IDs are free. DMRHub gives no IDs to an external plugin on its own: the admin picks them all.
 
 ## What a plugin gets and sends
 

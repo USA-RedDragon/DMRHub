@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -198,6 +199,37 @@ func TestAPluginThatSpinsIsStopped(t *testing.T) {
 		t.Fatal("the plugin still spins")
 	}
 	require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
+}
+
+func TestAPluginThatDoesNotReadIsStopped(t *testing.T) {
+	t.Parallel()
+	l := wasm.DefaultLimits()
+	l.AnswerWithin = 500 * time.Millisecond
+	inst, err := engine.Limited(l).Start(context.Background(), "Deaf", guest(t, "deaf"), nil)
+	require.NoError(t, err)
+	t.Cleanup(inst.Stop)
+	stream := inst.Stream(context.Background())
+	go func() {
+		burst := &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{Payload: make([]byte, 1024)}}}
+		for stream.Send(burst) == nil {
+		}
+	}()
+	select {
+	case <-inst.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatal("the plugin still runs")
+	}
+	require.ErrorIs(t, inst.Err(), wasm.ErrNoAnswer)
+}
+
+func TestAPluginThatEndsBeforeItsHelloSaysWhy(t *testing.T) {
+	t.Parallel()
+	_, err := engine.Start(context.Background(), "Early", guest(t, "early"), nil)
+	require.ErrorIs(t, err, wasm.ErrNoHello)
+	require.ErrorIs(t, err, wasm.ErrEnded)
+	var ended *wasm.EndedError
+	require.ErrorAs(t, err, &ended)
+	assert.Equal(t, "panic: no config", ended.Message())
 }
 
 func TestAPluginThatTakesTooMuchMemoryIsStopped(t *testing.T) {

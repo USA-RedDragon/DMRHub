@@ -39,6 +39,9 @@ type Limits struct {
 	CPUWindow time.Duration
 	// HelloWithin is how long a plugin has to say hello after it starts.
 	HelloWithin time.Duration
+	// AnswerWithin is how long a plugin may leave what the hub sent it
+	// unread. A plugin that waits longer is stopped.
+	AnswerWithin time.Duration
 	// MaxConns is the most network connections of a plugin at once.
 	MaxConns int
 	// DialTimeout is how long a connection may take to open.
@@ -59,6 +62,7 @@ const (
 	defaultCPUShare    = 0.5
 	defaultCPUWindow   = 10 * time.Second
 	defaultHello       = 10 * time.Second
+	defaultAnswer      = 30 * time.Second
 	defaultMaxConns    = 4
 	defaultDial        = 10 * time.Second
 	defaultIdle        = 5 * time.Minute
@@ -66,12 +70,14 @@ const (
 )
 
 // DefaultLimits returns the sandbox of the plugins inside DMRHub: 64 MiB of
-// memory, half a core over 10 seconds, 4 connections, and only public
-// addresses for the hosts that an admin allowed by name.
+// memory, half a core over 10 seconds, 30 seconds to read what the hub
+// sends, 4 connections, and only public addresses for the hosts that an
+// admin allowed by name.
 func DefaultLimits() Limits {
 	return Limits{
 		MemoryPages: defaultMemoryPages, CPUShare: defaultCPUShare, CPUWindow: defaultCPUWindow, HelloWithin: defaultHello,
-		MaxConns: defaultMaxConns, DialTimeout: defaultDial, IdleTimeout: defaultIdle, AllowAddress: PublicAddress, LogLines: defaultLogLines,
+		AnswerWithin: defaultAnswer,
+		MaxConns:     defaultMaxConns, DialTimeout: defaultDial, IdleTimeout: defaultIdle, AllowAddress: PublicAddress, LogLines: defaultLogLines,
 	}
 }
 

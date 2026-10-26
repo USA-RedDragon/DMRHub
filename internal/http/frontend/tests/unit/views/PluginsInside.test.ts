@@ -45,7 +45,8 @@ import PluginsPage from '@/views/admin/PluginsPage.vue';
 import PluginPage from '@/views/admin/PluginPage.vue';
 import UploadPluginPage from '@/views/admin/UploadPluginPage.vue';
 import PluginsSettings from '@/components/setup/DMR/PluginsSettings.vue';
-import { formatIDs, parseIDs, runsLabel, status, type AdminPlugin } from '@/services/plugins';
+import { formatIDs, parseIDs, runsLabel, status, stopNote, type AdminPlugin } from '@/services/plugins';
+import { shortTime } from '@/lib/codec';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock; put: Mock; delete: Mock };
 
@@ -95,8 +96,30 @@ describe('plugins inside DMRHub, service', () => {
     expect(runsLabel('uploaded')).toBe('Uploaded');
     expect(runsLabel('external')).toBe('External');
     expect(status(base)).toBe('Running in DMRHub');
-    expect(status({ ...checkin, online: false })).toBe('Not running');
+    expect(status({ ...checkin, online: false })).toBe('Starting');
+    expect(status({ ...checkin, online: false, state: 'starting' })).toBe('Starting');
     expect(status({ ...checkin, enabled: false })).toBe('Off');
+    expect(status({ ...checkin, state: 'off' })).toBe('Off');
+  });
+
+  it('words a plugin inside that stopped, waits or starts as the mockup does', () => {
+    const now = Date.parse('2026-10-25T23:42:20Z');
+    const stopped: AdminPlugin = {
+      ...checkin, online: false, state: 'stopped', stopped_at: '2026-10-25T23:42:00Z', restart_at: '2026-10-25T23:42:50Z',
+      stop_reason: 'It used more memory than a plugin may (64 MiB).', stops_last_hour: 4,
+    };
+    expect(status(stopped, now, 'America/Chicago')).toBe('Stopped at 18:42 CDT, starts again in 30 s');
+    expect(status(stopped, Date.parse('2026-10-25T23:42:51Z'), 'America/Chicago')).toBe('Starting');
+    expect(stopNote(stopped, now, 'America/Chicago')).toEqual({
+      title: 'Stopped at 18:42 CDT.',
+      body: 'It used more memory than a plugin may (64 MiB). DMRHub starts it again in 30 s. It has stopped 4 times in the last hour.',
+    });
+    expect(stopNote({ ...stopped, stops_last_hour: 1 }, now, 'America/Chicago')?.body).toContain('It has stopped once in the last hour.');
+    expect(stopNote({ ...checkin, state: 'running' }, now)).toBeNull();
+    expect(status({ ...locator, online: false, state: 'waiting', waiting_id: 5050, waiting_for: 'Old locator' })).toBe(
+      'Waiting for its IDs, 5050 is used by Old locator',
+    );
+    expect(status({ ...base, state: 'running' })).toBe('Running in DMRHub');
   });
 });
 
@@ -130,6 +153,37 @@ describe('PluginsPage with plugins inside DMRHub', () => {
         'Plugins that run inside DMRHub cannot reach your files, and reach only the hosts you allow on their page.',
     );
     expect(wrapper.text()).not.toMatch(/in-process|dmr\.plugins|cert-file/);
+    wrapper.unmount();
+  });
+});
+
+describe('PluginsPage with the states of plugins inside DMRHub', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('colors each state as the mockup does', async () => {
+    serve([
+      { ...base, state: 'running' },
+      { ...checkin, online: false, state: 'starting' },
+      { ...checkin, id: 5, name: 'Weather', online: false, state: 'stopped', stopped_at: ago(1), restart_at: new Date(Date.now() + 30000).toISOString() },
+      { ...locator, online: false, state: 'waiting', waiting_id: 5050, waiting_for: 'Old locator' },
+      { ...checkin, id: 6, name: 'Echo test', enabled: false, state: 'off' },
+    ]);
+    const wrapper = mount(PluginsPage);
+    await flushPromises();
+    const tone = (id: number) => wrapper.find(`[data-test="status-${id}"]`).attributes('data-tone');
+    expect(tone(1)).toBe('ok');
+    expect(tone(3)).toBe('info');
+    expect(tone(5)).toBe('bad');
+    expect(tone(2)).toBe('warn');
+    expect(tone(6)).toBe('none');
+    expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('Starting');
+    expect(wrapper.find('[data-test="plugin-5"]').text()).toMatch(/Stopped at \d\d:\d\d \S+, starts again in 30 s/);
+    expect(wrapper.find('[data-test="plugin-2"]').text()).toContain('Waiting for its IDs, 5050 is used by Old locator');
+    expect(wrapper.find('[data-test="plugin-6"]').text()).toContain('Off');
+    expect(wrapper.text()).not.toContain('Not running');
     wrapper.unmount();
   });
 });
@@ -285,6 +339,31 @@ describe('PluginPage of a plugin inside DMRHub', () => {
     await flushPromises();
     expect(mockAPI.delete).toHaveBeenCalledWith('/admin/plugins/3');
     expect(nav.push).toHaveBeenCalledWith('/admin/plugins');
+    wrapper.unmount();
+  });
+
+  it('says why a plugin stopped and when it starts again', async () => {
+    const stoppedAt = new Date(Date.now() - 5000);
+    const stopped: AdminPlugin = {
+      ...checkin, online: false, state: 'stopped', stopped_at: stoppedAt.toISOString(),
+      restart_at: new Date(Date.now() + 29500).toISOString(), stop_reason: 'It did not answer DMRHub for 30 s.', stops_last_hour: 2,
+    };
+    serve([base, locator, stopped, weather]);
+    const wrapper = mount(PluginPage, { attachTo: document.body });
+    await flushPromises();
+    const box = wrapper.find('[data-test="inside-stopped"]');
+    expect(box.attributes('role')).toBe('alert');
+    expect(box.text()).toBe(
+      `Stopped at ${shortTime(stoppedAt)}. It did not answer DMRHub for 30 s. DMRHub starts it again in 30 s. It has stopped 2 times in the last hour.`,
+    );
+    wrapper.unmount();
+  });
+
+  it('shows no stop box for a plugin that runs', async () => {
+    serve();
+    const wrapper = mount(PluginPage, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.find('[data-test="inside-stopped"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

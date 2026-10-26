@@ -21,6 +21,7 @@
 package plugins
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-gonic/gin"
@@ -56,12 +58,83 @@ func startOfDay(now time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 }
 
-func view(db *gorm.DB, p *models.Plugin, now time.Time) (apimodels.AdminPlugin, error) {
-	calls, err := models.CountCallsTo(db, p.Ranges, startOfDay(now))
+// KVKey is the key of the gin context that holds the kv.KV where the
+// replicas tell how the plugins inside DMRHub last stopped.
+const KVKey = "PluginKV"
+
+// shown holds what the admin views of the plugins of one request need.
+type shown struct {
+	ctx       context.Context //nolint:containedctx // the context of the request
+	db        *gorm.DB
+	store     kv.KV
+	inProcess bool
+	waits     map[uint]models.PluginWait
+}
+
+func shownOf(c *gin.Context, db *gorm.DB) (*shown, error) {
+	list, err := models.ListPlugins(db)
+	if err != nil {
+		return nil, fmt.Errorf("could not list the plugins: %w", err)
+	}
+	s := &shown{ctx: c.Request.Context(), db: db, waits: models.WaitingPlugins(list)}
+	if v, ok := c.Get("Config"); ok {
+		if cfg, ok := v.(*config.Config); ok {
+			s.inProcess = cfg.DMR.Plugins.InProcess
+		}
+	}
+	if v, ok := c.Get(KVKey); ok {
+		s.store, _ = v.(kv.KV)
+	}
+	return s, nil
+}
+
+// view returns the admin form of p at now.
+func (s *shown) view(p *models.Plugin, now time.Time) (apimodels.AdminPlugin, error) {
+	calls, err := models.CountCallsTo(s.db, p.Ranges, startOfDay(now))
 	if err != nil {
 		return apimodels.AdminPlugin{}, fmt.Errorf("could not count the calls of plugin %d: %w", p.ID, err)
 	}
-	return apimodels.NewAdminPlugin(p, calls, now), nil
+	v := apimodels.NewAdminPlugin(p, calls, now)
+	if p.Kind == models.PluginExternal {
+		return v, nil
+	}
+	if !p.Enabled || !s.inProcess {
+		v.State = apimodels.PluginOff
+		return v, nil
+	}
+	if w, ok := s.waits[p.ID]; ok {
+		v.State, v.WaitingID, v.WaitingFor = apimodels.PluginWaiting, w.ID, w.By
+		return v, nil
+	}
+	var st plugins.StopState
+	stopped := false
+	if s.store != nil {
+		if st, stopped, err = plugins.StateOf(s.ctx, s.store, p.ID, now); err != nil {
+			slog.Warn("Plugins: cannot read how a plugin stopped", "plugin", p.ID, "error", err)
+		}
+	}
+	if stopped {
+		v.StopsLastHour = len(st.Stops)
+	}
+	switch {
+	case v.Online:
+		v.State = apimodels.PluginRunning
+	case stopped && st.RestartAt.After(now):
+		v.State, v.StopReason = apimodels.PluginStopped, st.Reason
+		v.StoppedAt, v.RestartAt = &st.StoppedAt, &st.RestartAt
+	default:
+		v.State = apimodels.PluginStarting
+	}
+	return v, nil
+}
+
+// view returns the admin form of p at now, for one plugin.
+func view(c *gin.Context, db *gorm.DB, p *models.Plugin, now time.Time) (apimodels.AdminPlugin, error) {
+	s, err := shownOf(c, db)
+	if err != nil {
+		return apimodels.AdminPlugin{}, err
+	}
+	return s.view(p, now)
 }
 
 // connection returns how plugins reach the hub: the host of the canonical
@@ -139,9 +212,14 @@ func GETPlugins(c *gin.Context) {
 		return
 	}
 	now := time.Now()
+	shown, err := shownOf(c, db)
+	if err != nil {
+		failed(c, "cannot list the plugins", err)
+		return
+	}
 	out := apimodels.PluginList{Plugins: make([]apimodels.AdminPlugin, 0, len(list))}
 	for i := range list {
-		v, err := view(db, &list[i], now)
+		v, err := shown.view(&list[i], now)
 		if err != nil {
 			failed(c, "cannot show a plugin", err)
 			return
@@ -173,7 +251,7 @@ func POSTPlugin(c *gin.Context) {
 		return
 	}
 	changed(c)
-	v, err := view(db, &p, now)
+	v, err := view(c, db, &p, now)
 	if err != nil {
 		failed(c, "cannot show a plugin", err)
 		return
@@ -207,7 +285,7 @@ func PUTPlugin(c *gin.Context) {
 		return
 	}
 	changed(c)
-	v, err := view(db, &p, time.Now())
+	v, err := view(c, db, &p, time.Now())
 	if err != nil {
 		failed(c, "cannot show a plugin", err)
 		return
@@ -243,7 +321,7 @@ func POSTPluginToken(c *gin.Context) {
 		failed(c, "cannot read a plugin", err)
 		return
 	}
-	v, err := view(db, &p, now)
+	v, err := view(c, db, &p, now)
 	if err != nil {
 		failed(c, "cannot show a plugin", err)
 		return

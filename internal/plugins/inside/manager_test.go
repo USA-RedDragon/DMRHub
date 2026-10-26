@@ -352,6 +352,24 @@ func TestAPluginThatFailsStartsAgain(t *testing.T) {
 	require.Eventually(t, func() bool { return r.m.Starts(p.ID) >= 3 }, 60*time.Second, 50*time.Millisecond)
 }
 
+func TestAPluginThatStopsTellsTheOtherReplicasWhy(t *testing.T) {
+	t.Parallel()
+	c := newCluster(t)
+	r := c.replica(t, "a", engine, true)
+	p := upload(t, c, "Quit", guest(t, "quit"))
+	require.Eventually(t, func() bool { return r.m.Starts(p.ID) >= 3 }, 60*time.Second, 50*time.Millisecond)
+	var st plugins.StopState
+	require.Eventually(t, func() bool {
+		var ok bool
+		var err error
+		st, ok, err = plugins.StateOf(context.Background(), c.kv, p.ID, time.Now())
+		return err == nil && ok && len(st.Stops) >= 2
+	}, 30*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "It crashed: quitting.", st.Reason)
+	assert.True(t, st.RestartAt.After(st.StoppedAt), "it says when the plugin starts again")
+	assert.WithinDuration(t, time.Now(), st.StoppedAt, 30*time.Second)
+}
+
 // pong listens on loopback and answers each connection's "ping" with
 // "pong".
 func pong(t *testing.T) string {

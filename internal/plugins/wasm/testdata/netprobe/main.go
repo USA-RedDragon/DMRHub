@@ -53,7 +53,7 @@ func probe(ctx context.Context, conn *plugin.Conn, address string) string {
 
 func main() {
 	plugin.MainWith(&pluginv1.Hello{
-		Name: "Netprobe", Ids: []*pluginv1.IDRange{{First: 9200, Last: 9200}},
+		Name: "Netprobe", Version: "0.1.0", Ids: []*pluginv1.IDRange{{First: 9200, Last: 9200}},
 		Hosts: []*pluginv1.Host{{Address: "allowed.example.org:7", Reason: "Echoes."}},
 	}, func(ctx context.Context, conn *plugin.Conn) error {
 		for {

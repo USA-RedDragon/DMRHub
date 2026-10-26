@@ -228,7 +228,7 @@ func POSTPluginUpload(c *gin.Context) {
 		return
 	}
 	changed(c)
-	v, err := view(db, &p, now)
+	v, err := view(c, db, &p, now)
 	if err != nil {
 		failed(c, "cannot show a plugin", err)
 		return
@@ -275,7 +275,7 @@ func POSTPluginModule(c *gin.Context) {
 		return
 	}
 	changed(c)
-	v, err := view(db, &p, time.Now())
+	v, err := view(c, db, &p, time.Now())
 	if err != nil {
 		failed(c, "cannot show a plugin", err)
 		return

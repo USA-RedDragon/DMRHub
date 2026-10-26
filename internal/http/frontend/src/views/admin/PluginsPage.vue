@@ -76,13 +76,8 @@
             <td class="px-4 py-3.5 font-mono">{{ p.version }}</td>
             <td class="px-4 py-3.5">{{ formatRanges(p.ranges) }}</td>
             <td class="px-4 py-3.5" :class="{ 'text-muted-foreground': !p.enabled }">
-              <span class="inline-flex items-center gap-2">
-                <span
-                  v-if="p.enabled"
-                  aria-hidden="true"
-                  class="h-2 w-2 rounded-full"
-                  :class="p.online ? 'bg-green-600' : 'border-2 border-zinc-400'"
-                />
+              <span class="inline-flex items-center gap-2" :data-test="`status-${p.id}`" :data-tone="statusTone(p, now)">
+                <span v-if="p.enabled" aria-hidden="true" class="h-2 w-2 rounded-full" :class="dotClass(statusTone(p, now))" />
                 {{ status(p, now) }}
               </span>
             </td>
@@ -109,7 +104,7 @@ import { useHead } from '@unhead/vue';
 
 import { Button as ShadButton } from '@/components/ui/button';
 import PluginBadge from '@/components/PluginBadge.vue';
-import { formatRanges, listPlugins, status, type AdminPlugin } from '@/services/plugins';
+import { formatRanges, listPlugins, status, statusTone, type AdminPlugin } from '@/services/plugins';
 
 useHead({ title: 'Plugins' });
 
@@ -117,6 +112,22 @@ const state = ref<'loading' | 'ready' | 'error'>('loading');
 const plugins = ref<AdminPlugin[]>([]);
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
+let clock: ReturnType<typeof setInterval> | null = null;
+
+const dotClass = (tone: ReturnType<typeof statusTone>) => {
+  switch (tone) {
+    case 'ok':
+      return 'bg-green-600';
+    case 'info':
+      return 'bg-blue-600';
+    case 'bad':
+      return 'bg-red-600';
+    case 'warn':
+      return 'bg-yellow-500';
+    default:
+      return 'border-2 border-zinc-400';
+  }
+};
 
 const load = async () => {
   try {
@@ -132,11 +143,17 @@ const load = async () => {
 onMounted(() => {
   void load();
   timer = setInterval(() => void load(), 30000);
+  clock = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
 });
 
 onUnmounted(() => {
   if (timer !== null) {
     clearInterval(timer);
+  }
+  if (clock !== null) {
+    clearInterval(clock);
   }
 });
 </script>

@@ -80,3 +80,45 @@ func TestMigrationLockHoldsOffASecondReplica(t *testing.T) {
 		})
 	}
 }
+
+// TestMigrationLocksOfTwoDatabasesAreApart takes the migration lock of one
+// database and then of another on the same server. Neither waits for the
+// other, as with Postgres.
+func TestMigrationLocksOfTwoDatabasesAreApart(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			var unlocks []func() error
+			for range 2 {
+				cfg, err := configulator.New(config.ConfigSchema()).Default()
+				require.NoError(t, err)
+				be.Setup(t, &cfg)
+				gdb, err := gorm.Open(db.Dialect(&cfg), &gorm.Config{Logger: logger.Discard})
+				require.NoError(t, err)
+				t.Cleanup(func() { closeDB(t, gdb) })
+				got := make(chan func() error, 1)
+				go func() {
+					unlock, err := db.LockMigrations(gdb, &cfg)
+					if err != nil {
+						t.Errorf("lock %s: %v", cfg.Database.Database, err)
+						unlock = func() error { return nil }
+					}
+					got <- unlock
+				}()
+				select {
+				case unlock := <-got:
+					unlocks = append(unlocks, unlock)
+				case <-time.After(5 * time.Second):
+					for _, unlock := range unlocks {
+						assert.NoError(t, unlock())
+					}
+					require.Fail(t, "the lock of one database waited for the lock of another")
+				}
+			}
+			for _, unlock := range unlocks {
+				require.NoError(t, unlock())
+			}
+		})
+	}
+}

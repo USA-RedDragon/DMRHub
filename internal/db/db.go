@@ -182,7 +182,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 
 const (
 	migrationLockKey  int64 = 0x444d524875624d67
-	migrationLockName       = "dmrhub_migrations"
+	migrationLockName       = "dmrhub_migrations:"
 	mysqlLockWait           = 60
 )
 
@@ -211,7 +211,7 @@ func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 		lock = func(ctx context.Context, conn *sql.Conn) error {
 			for {
 				var got sql.NullInt64
-				if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", migrationLockName, mysqlLockWait).Scan(&got); err != nil {
+				if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(LEFT(CONCAT(?, DATABASE()), 64), ?)", migrationLockName, mysqlLockWait).Scan(&got); err != nil {
 					return fmt.Errorf("GET_LOCK: %w", err)
 				}
 				if !got.Valid {
@@ -223,7 +223,7 @@ func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 			}
 		}
 		unlock = func(ctx context.Context, conn *sql.Conn) error {
-			if _, err := conn.ExecContext(ctx, "SELECT RELEASE_LOCK(?)", migrationLockName); err != nil {
+			if _, err := conn.ExecContext(ctx, "SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))", migrationLockName); err != nil {
 				return fmt.Errorf("RELEASE_LOCK: %w", err)
 			}
 			return nil

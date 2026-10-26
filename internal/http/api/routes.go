@@ -48,15 +48,17 @@ import (
 )
 
 // ApplyRoutes to the HTTP Mux.
-func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, oauthServer *oauth.Server, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+func ApplyRoutes(current configPkg.Source, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, oauthServer *oauth.Server, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
+	config := current.Get()
 	router.GET("/robots.txt", func(c *gin.Context) {
-		switch config.HTTP.RobotsTXT.Mode {
+		robots := current.Get().HTTP.RobotsTXT
+		switch robots.Mode {
 		case configPkg.RobotsTXTModeDisabled:
 			c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 		case configPkg.RobotsTXTModeAllow:
 			c.String(http.StatusOK, "User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: /sitemap.xml")
 		case configPkg.RobotsTXTModeCustom:
-			c.String(http.StatusOK, config.HTTP.RobotsTXT.Content+"\nSitemap: /sitemap.xml\nDisallow: /admin")
+			c.String(http.StatusOK, robots.Content+"\nSitemap: /sitemap.xml\nDisallow: /admin")
 		}
 	})
 
@@ -66,7 +68,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	ownPassword := middleware.RequireOwnPassword()
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(ratelimit, bearer, ownPassword)
-	v1(config, apiV1, userSuspension, v1AuthControllers.NewResetLimits(db))
+	v1(current, apiV1, userSuspension, v1AuthControllers.NewResetLimits(db))
 
 	router.GET("/ws/lastheard", ratelimit, websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(pubsub)))
 
@@ -74,7 +76,7 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 	ws.Use(ratelimit, bearer, ownPassword, websocket.WatchUser(pubsub))
 	ws.GET("/repeaters", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateRepeatersWebsocket(db, pubsub)))
 	ws.GET("/calls", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateCallsWebsocket(dmrHub, db, pubsub)))
-	ws.GET("/peers", requireOpenBridge(config), middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
+	ws.GET("/peers", requireOpenBridge(current), middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreatePeersWebsocket(db, pubsub)))
 	ws.GET("/messages", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateMessagesWebsocket(pubsub)))
 	ws.GET("/nets", middleware.RequireLogin(), userSuspension, websocket.CreateHandler(config, websocketControllers.CreateNetsWebsocket(pubsub)))
 }
@@ -82,9 +84,9 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine, dmrHub *hub.Hub, 
 // requireOpenBridge answers 404 while OpenBridge is off, as for a route
 // that does not exist. It reads the config at each request, so turning
 // OpenBridge on or off in the Setup page takes effect at once.
-func requireOpenBridge(config *configPkg.Config) gin.HandlerFunc {
+func requireOpenBridge(current configPkg.Source) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !config.DMR.OpenBridge.Enabled {
+		if !current.Get().DMR.OpenBridge.Enabled {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
@@ -92,7 +94,7 @@ func requireOpenBridge(config *configPkg.Config) gin.HandlerFunc {
 	}
 }
 
-func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.HandlerFunc, resetLimits *v1AuthControllers.ResetLimits) {
+func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.HandlerFunc, resetLimits *v1AuthControllers.ResetLimits) {
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
@@ -166,7 +168,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 
 	{
 		v1Peers := group.Group("/peers")
-		v1Peers.Use(requireOpenBridge(config))
+		v1Peers.Use(requireOpenBridge(current))
 		// Paginated
 		v1Peers.GET("", middleware.RequireAdmin(), v1PeersControllers.GETPeers)
 		// Paginated

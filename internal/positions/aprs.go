@@ -65,7 +65,7 @@ type sentPosition struct {
 // in and sends; the others drop the positions.
 type Gateway struct {
 	db      *gorm.DB
-	cfg     *config.Config
+	cfg     config.Source
 	kv      kv.KV
 	pubsub  pubsub.PubSub
 	version string
@@ -85,7 +85,7 @@ type Gateway struct {
 // NewGateway returns a Gateway that reads the APRS-IS login from cfg at
 // each lease check, so a change in the Setup page takes effect within
 // seconds.
-func NewGateway(db *gorm.DB, cfg *config.Config, kvStore kv.KV, ps pubsub.PubSub, version string) *Gateway {
+func NewGateway(db *gorm.DB, cfg config.Source, kvStore kv.KV, ps pubsub.PubSub, version string) *Gateway {
 	var id [8]byte
 	_, _ = rand.Read(id[:])
 	return &Gateway{
@@ -137,7 +137,7 @@ func (g *Gateway) Stop() {
 }
 
 func (g *Gateway) login() (aprs.Config, bool) {
-	is := g.cfg.DMR.Positions.APRSIS
+	is := g.cfg.Get().DMR.Positions.APRSIS
 	c := aprs.Config{Login: is.Callsign, Passcode: aprs.Passcode(is.Callsign), Server: is.ServerAddress()}
 	return c, c.Login != ""
 }

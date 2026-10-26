@@ -54,7 +54,7 @@ type Result struct {
 // Purger deletes old records in batches. Only one replica purges in each
 // interval: the one that takes the lock in the KV store.
 type Purger struct {
-	cfg *config.Config
+	cfg config.Source
 	db  *gorm.DB
 	kv  kv.KV
 
@@ -65,7 +65,7 @@ type Purger struct {
 
 // NewPurger returns a Purger that reads the retention periods from cfg at
 // each purge, so a change in the Setup page takes effect at the next one.
-func NewPurger(cfg *config.Config, db *gorm.DB, kvStore kv.KV) *Purger {
+func NewPurger(cfg config.Source, db *gorm.DB, kvStore kv.KV) *Purger {
 	return &Purger{cfg: cfg, db: db, kv: kvStore}
 }
 
@@ -105,7 +105,8 @@ func (p *Purger) Stop() {
 // positions older than the retention of their radio, if this replica takes
 // the lock.
 func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
-	r := p.cfg.DMR.Retention
+	cfg := p.cfg.Get()
+	r := cfg.DMR.Retention
 	var res Result
 	ok, err := p.kv.SetNX(ctx, lockKey, "1", lockTTL)
 	if err != nil {
@@ -116,7 +117,7 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 	}
 	res.Ran = true
 	db := p.db.WithContext(ctx)
-	if err := models.PrunePositions(db, now, time.Duration(p.cfg.DMR.Positions.Retention())*day); err != nil {
+	if err := models.PrunePositions(db, now, time.Duration(cfg.DMR.Positions.Retention())*day); err != nil {
 		return res, fmt.Errorf("retention: %w", err)
 	}
 	if r.Messages > 0 {

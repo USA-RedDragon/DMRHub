@@ -21,6 +21,7 @@ package testutils
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -77,6 +78,10 @@ type WebTransportPeer struct {
 	peer    *dmrdsession.Peer
 	addr    string
 	current *webtransport.Session
+	pending *webtransport.Session
+	// stashed holds the datagrams of the current session while a move to
+	// pending goes on, with when they came.
+	stashed []stashedDatagram
 	start   time.Time
 	downs   int
 	ups     int
@@ -94,6 +99,11 @@ type WebTransportPeer struct {
 	wg       sync.WaitGroup
 	packets  chan models.Packet
 	closers  []func()
+}
+
+type stashedDatagram struct {
+	at time.Time
+	b  []byte
 }
 
 type dmrKey struct {
@@ -193,7 +203,7 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 			if err != nil {
 				return
 			}
-			p.packet(b)
+			p.packet(sess, b)
 		}
 	}()
 	go func() {
@@ -221,9 +231,10 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 
 // move opens sessions until one to a replica that does not drain takes the
 // login over with token, then sends on it and closes old after
-// moveOverlap. It reads each session from the start, as dmr-web does, since
-// the replica sends the packets of the handover as soon as it takes the
-// login over, and a session holds only a few datagrams that nobody reads.
+// moveOverlap. It takes the datagrams of a session that it opens from the
+// start, since the replica sends the packets of the handover as soon as it
+// takes the login over, and a session holds only a few datagrams that
+// nobody reads.
 func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 	defer p.wg.Done()
 	for range moveTries {
@@ -235,11 +246,14 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 		at := time.Now()
 		sess, err := p.dial(context.Background())
 		if err == nil {
+			p.mu.Lock()
+			p.pending = sess
+			p.mu.Unlock()
 			p.serve(sess)
 		}
 		if err == nil && p.resume(sess, token) {
 			p.mu.Lock()
-			p.current = sess
+			p.current, p.pending, p.stashed = sess, nil, nil
 			p.moves++
 			p.moved = append(p.moved, at)
 			p.mu.Unlock()
@@ -251,6 +265,13 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 			return
 		}
 		if sess != nil {
+			p.mu.Lock()
+			p.pending = nil
+			for _, d := range p.stashed {
+				p.take(d.at, d.b)
+			}
+			p.stashed = nil
+			p.mu.Unlock()
 			_ = sess.CloseWithError(0, "")
 		}
 		time.Sleep(moveRetry)
@@ -282,10 +303,29 @@ func (p *WebTransportPeer) resume(sess *webtransport.Session, token string) bool
 	return json.Unmarshal(line, &r) == nil && r.Resumed
 }
 
-func (p *WebTransportPeer) packet(b []byte) {
+// packet takes the datagram b of sess. The replica that the peer moves to
+// hands over all that the old one sent since the drain notice, in order,
+// so while a move goes on, the peer keeps the DMRD datagrams of the old
+// session aside, takes them only when the move fails, and drops the old session
+// once the move is done.
+func (p *WebTransportPeer) packet(sess *webtransport.Session, b []byte) {
 	at := time.Now()
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	switch {
+	case sess == p.pending:
+	case sess != p.current:
+		return
+	case p.pending != nil && bytes.HasPrefix(b, []byte("DMRD")):
+		p.stashed = append(p.stashed, stashedDatagram{at: at, b: append([]byte(nil), b...)})
+		return
+	}
+	p.take(at, b)
+}
+
+// take hands the datagram b, which came at at, to the Peer. The caller
+// holds p.mu.
+func (p *WebTransportPeer) take(at time.Time, b []byte) {
 	p.rxAt = at
 	var out [dmrdsession.MaxOutputs]dmrdsession.Output
 	p.run(p.peer.Packet(time.Since(p.start), b, out[:0]))

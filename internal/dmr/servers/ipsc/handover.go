@@ -73,8 +73,16 @@ type handedCall struct {
 	State  streamSnapshot `json:"state"`
 }
 
+// handedHang is the rest of the call hang of the peer on a slot, which
+// holds the data and CSBK calls to it.
+type handedHang struct {
+	Slot bool          `json:"slot"`
+	Left time.Duration `json:"left"`
+}
+
 type handoverReport struct {
 	Calls []handedCall `json:"calls"`
+	Hangs []handedHang `json:"hangs,omitempty"`
 	// Lost holds the packets, in msgp, that the peer did not get.
 	Lost [][]byte `json:"lost"`
 }
@@ -122,8 +130,8 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 		return
 	}
 	s.hub.StopFor(models.RepeaterTypeIPSC, id)
-	calls, lost := s.pacer.handOver(peer, since)
-	report := handoverReport{Calls: calls}
+	calls, lost, hangs := s.pacer.handOver(peer, since)
+	report := handoverReport{Calls: calls, Hangs: hangs}
 	for _, p := range lost {
 		if b, err := p.MarshalMsg(nil); err == nil {
 			report.Lost = append(report.Lost, b)
@@ -178,6 +186,9 @@ func (s *IPSCServer) awaitHandover(id uint32) {
 func (s *IPSCServer) finishHandover(id uint32, report *handoverReport) {
 	var batch []models.Packet
 	if report != nil {
+		for _, h := range report.Hangs {
+			s.pacer.holdFor(slotKey{peer: id, slot: h.Slot}, min(h.Left, callHangHold))
+		}
 		t := s.egressTranslator(id)
 		for _, c := range report.Calls {
 			if !c.State.Ended && c.Stream <= math.MaxUint32 {

@@ -19,11 +19,15 @@
 package ipsc
 
 import (
+	"math"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 )
 
 const (
@@ -34,6 +38,11 @@ const (
 
 	pacerDrainTimeout = 5 * time.Second
 	pacerDrainPoll    = 10 * time.Millisecond
+
+	callHangHold     = 2500 * time.Millisecond
+	dataHangHold     = 1200 * time.Millisecond
+	maxWaitingCalls  = 8
+	maxWaitingFrames = int(maxCallWait/burstTime) + 20
 )
 
 type slotKey struct {
@@ -55,6 +64,63 @@ type queuedCall struct {
 	ended    bool
 	queuedAt time.Time
 	lastSeen time.Time
+	// voice is a call whose first burst is voice, and data one with a
+	// data header or block.
+	voice bool
+	data  bool
+	// sentAt is when the last frame of the call went out.
+	sentAt time.Time
+}
+
+// holdEnd returns the end of the call hang that c gives its slot when it
+// ends at now. A voice call holds the data and CSBK calls after it for
+// callHangHold from its terminator, or from now when its terminator was
+// lost. A data call holds them for dataHangHold from its last block.
+func (c *queuedCall) holdEnd(now time.Time) time.Time {
+	var until time.Time
+	if c.sentAt.IsZero() {
+		return until
+	}
+	if c.voice {
+		end := now
+		if c.ended {
+			end = c.sentAt
+		}
+		until = end.Add(callHangHold)
+	}
+	if c.data {
+		until = later(until, c.sentAt.Add(dataHangHold))
+	}
+	return until
+}
+
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+// burstKind reports whether pkt is a voice burst, voice LC header, PI
+// header or terminator, or a data header or rate 1/2, 3/4 or 1 block.
+func burstKind(pkt models.Packet) (voice, data bool) {
+	switch pkt.FrameType {
+	case dmrconst.FrameVoice, dmrconst.FrameVoiceSync:
+		return true, false
+	case dmrconst.FrameDataSync:
+	default:
+		return false, false
+	}
+	if pkt.DTypeOrVSeq > math.MaxUint8 {
+		return false, false
+	}
+	switch enums.DataType(pkt.DTypeOrVSeq) { //nolint:exhaustive
+	case enums.DataTypeVoiceLCHeader, enums.DataTypePIHeader, enums.DataTypeTerminatorWithLC:
+		return true, false
+	case enums.DataTypeDataHeader, enums.DataTypeRate12, enums.DataTypeRate34, enums.DataTypeRate1:
+		return false, true
+	}
+	return false, false
 }
 
 type slotQueue struct {
@@ -65,11 +131,15 @@ type slotQueue struct {
 	// sent is the last sentKeep packets that went out, oldest first.
 	sent []sentPacket
 	// sending is the frame that the pacer took and sends, until it is in
-	// sent.
-	sending *queuedFrame
+	// sent, and sendingCall its call.
+	sending     *queuedFrame
+	sendingCall *queuedCall
+	// holdUntil is the end of the call hang of the peer on the slot, until
+	// which data and CSBK calls wait.
+	holdUntil time.Time
 }
 
-func (q *slotQueue) call(stream uint, now time.Time) *queuedCall {
+func (q *slotQueue) find(stream uint) *queuedCall {
 	if q.active != nil && q.active.stream == stream {
 		return q.active
 	}
@@ -78,13 +148,29 @@ func (q *slotQueue) call(stream uint, now time.Time) *queuedCall {
 			return c
 		}
 	}
-	c := &queuedCall{stream: stream, queuedAt: now}
-	if q.active == nil {
-		q.active = c
-	} else {
-		q.pending = append(q.pending, c)
+	return nil
+}
+
+// drop removes the waiting call c and returns the packets of its frames.
+func (q *slotQueue) drop(c *queuedCall) []models.Packet {
+	q.pending = slices.DeleteFunc(q.pending, func(p *queuedCall) bool { return p == c })
+	out := make([]models.Packet, 0, len(c.frames))
+	for _, f := range c.frames {
+		out = append(out, f.pkt)
 	}
-	return c
+	return out
+}
+
+// next returns the index of the waiting call to start at now, or -1 when
+// every waiting call is held by the call hang. A voice call is never held.
+func (q *slotQueue) next(now time.Time) int {
+	if len(q.pending) == 0 {
+		return -1
+	}
+	if !now.Before(q.holdUntil) {
+		return 0
+	}
+	return slices.IndexFunc(q.pending, func(c *queuedCall) bool { return c.voice })
 }
 
 func (q *slotQueue) frames() int {
@@ -102,6 +188,7 @@ type pacer struct {
 	send    func(slotKey, []byte)
 	discard func(models.Packet)
 	now     func() time.Time
+	after   func(time.Duration) <-chan time.Time
 	mu      sync.Mutex
 	slots   map[slotKey]*slotQueue
 	done    chan struct{}
@@ -109,7 +196,7 @@ type pacer struct {
 }
 
 func newPacer(send func(slotKey, []byte), discard func(models.Packet)) *pacer {
-	return &pacer{send: send, discard: discard, now: time.Now, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
+	return &pacer{send: send, discard: discard, now: time.Now, after: time.After, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
 }
 
 func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *streamSnapshot) {
@@ -122,13 +209,7 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 		return
 	default:
 	}
-	q, ok := p.slots[k]
-	if !ok {
-		q = &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
-		p.slots[k] = q
-		p.wg.Add(1)
-		go p.run(k, q)
-	}
+	q := p.queue(k)
 	now := p.now()
 	if at, gone := q.discarded[stream]; gone {
 		if now.Sub(at) < callHang {
@@ -138,12 +219,63 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 		}
 		delete(q.discarded, stream)
 	}
-	c := q.call(stream, now)
+	voice, data := burstKind(pkt)
+	c := q.find(stream)
+	if c == nil {
+		if len(q.pending) >= maxWaitingCalls {
+			q.discarded[stream] = now
+			discarded = append(discarded, pkt)
+			return
+		}
+		c = &queuedCall{stream: stream, queuedAt: now, voice: voice}
+		if q.active == nil && len(q.pending) == 0 && (voice || !now.Before(q.holdUntil)) {
+			q.active = c
+		} else {
+			q.pending = append(q.pending, c)
+		}
+	}
+	if c != q.active && len(c.frames) >= maxWaitingFrames {
+		q.discarded[stream] = now
+		discarded = append(q.drop(c), pkt)
+		return
+	}
+	c.data = c.data || data
 	c.frames = append(c.frames, queuedFrame{frame: frame, pkt: pkt, state: state})
 	c.lastSeen = now
 	if end {
 		c.ended = true
 	}
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+// queue returns the queue of k, and starts its sender when it is new. The
+// caller holds p.mu.
+func (p *pacer) queue(k slotKey) *slotQueue {
+	q, ok := p.slots[k]
+	if !ok {
+		q = &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
+		p.slots[k] = q
+		p.wg.Add(1)
+		go p.run(k, q)
+	}
+	return q
+}
+
+// holdFor holds the data and CSBK calls to the peer slot k for left, the
+// rest of a call hang that another replica saw begin.
+func (p *pacer) holdFor(k slotKey, left time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	select {
+	case <-p.done:
+		return
+	default:
+	}
+	q := p.queue(k)
+	q.holdUntil = later(q.holdUntil, p.now().Add(left))
 	select {
 	case q.wake <- struct{}{}:
 	default:
@@ -194,12 +326,15 @@ func (p *pacer) take(q *slotQueue, now time.Time) (queuedFrame, time.Duration, b
 	discarded = q.expire(now)
 	for {
 		if q.active == nil {
-			if len(q.pending) == 0 {
-				return queuedFrame{}, 0, false
+			i := q.next(now)
+			if i < 0 {
+				if len(q.pending) == 0 {
+					return queuedFrame{}, 0, false
+				}
+				return queuedFrame{}, q.holdUntil.Sub(now), false
 			}
-			q.active = q.pending[0]
-			q.pending[0] = nil
-			q.pending = q.pending[1:]
+			q.active = q.pending[i]
+			q.pending = slices.Delete(q.pending, i, i+1)
 		}
 		c := q.active
 		if len(c.frames) > 0 {
@@ -207,6 +342,7 @@ func (p *pacer) take(q *slotQueue, now time.Time) (queuedFrame, time.Duration, b
 			c.frames[0] = queuedFrame{}
 			c.frames = c.frames[1:]
 			q.sending = &f
+			q.sendingCall = c
 			return f, 0, true
 		}
 		quiet := now.Sub(c.lastSeen)
@@ -216,6 +352,7 @@ func (p *pacer) take(q *slotQueue, now time.Time) (queuedFrame, time.Duration, b
 			}
 			return queuedFrame{}, callHang - quiet, false
 		}
+		q.holdUntil = later(q.holdUntil, c.holdEnd(now))
 		q.active = nil
 	}
 }
@@ -261,6 +398,10 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	q.sending = nil
+	if c := q.sendingCall; c != nil {
+		c.sentAt = p.now()
+		q.sendingCall = nil
+	}
 	if f.state == nil {
 		return
 	}
@@ -272,18 +413,28 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 
 // handOver returns, for each call that the pacer sent to the peer, the
 // state after the last packet that went out hub.MoveSlack before since,
-// and the packets that went out after it or not yet, in order. It drops
-// what it holds for the peer, which moved to another replica.
-func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.Packet) {
+// and the packets that went out after it or not yet, in order, and the
+// rest of the call hang of each slot. It drops what it holds for the peer,
+// which moved to another replica.
+func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.Packet, []handedHang) {
 	since = since.Add(-hub.MoveSlack)
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	now := p.now()
 	var calls []handedCall
 	var lost []models.Packet
+	var hangs []handedHang
 	for _, slot := range []bool{false, true} {
 		q, ok := p.slots[slotKey{peer: peer, slot: slot}]
 		if !ok {
 			continue
+		}
+		until := q.holdUntil
+		if q.active != nil {
+			until = later(until, q.active.holdEnd(now))
+		}
+		if left := until.Sub(now); left > 0 {
+			hangs = append(hangs, handedHang{Slot: slot, Left: left})
 		}
 		last := map[uint]sentPacket{}
 		var order []uint
@@ -319,15 +470,13 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 		}
 		q.sent = nil
 	}
-	return calls, lost
+	return calls, lost, hangs
 }
 
 func (p *pacer) idle(k slotKey, q *slotQueue, wait time.Duration, idle *time.Timer) bool {
 	var hang <-chan time.Time
 	if wait > 0 {
-		t := time.NewTimer(wait)
-		defer t.Stop()
-		hang = t.C
+		hang = p.after(wait)
 	}
 	select {
 	case <-p.done:

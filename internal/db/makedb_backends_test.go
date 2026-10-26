@@ -90,6 +90,12 @@ func checkSchema(t *testing.T, gdb *gorm.DB) {
 	require.NoError(t, gdb.First(&call, 1).Error)
 	assert.Equal(t, burst, call.CallData, "a call keeps all of its octets")
 
+	zero := schemaNet{TalkgroupID: 8}
+	require.NoError(t, gdb.Create(&zero).Error, "a zero time is stored")
+	var got schemaNet
+	require.NoError(t, gdb.First(&got, zero.ID).Error)
+	assert.True(t, got.StartTime.IsZero(), "a zero time reads back as zero, not %v", got.StartTime)
+
 	now := time.Now()
 	require.NoError(t, gdb.Create(&schemaNet{TalkgroupID: 9, Active: false, StartTime: now}).Error)
 	require.NoError(t, gdb.Create(&schemaNet{TalkgroupID: 9, Active: false, StartTime: now}).Error)

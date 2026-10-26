@@ -70,11 +70,8 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 			portStr = fmt.Sprintf(":%d", config.Database.Port)
 		}
 		extraParamsStr := ""
-		if len(config.Database.ExtraParameters) > 0 {
-			extraParamsStr = "&" + config.Database.ExtraParameters[0]
-			for _, param := range config.Database.ExtraParameters[1:] {
-				extraParamsStr += "&" + param
-			}
+		for _, param := range mysqlParameters(config.Database.ExtraParameters) {
+			extraParamsStr += "&" + param
 		}
 		dsn := fmt.Sprintf("%stcp(%s%s)/%s?charset=utf8mb4&parseTime=True&loc=Local%s",
 			prefix,
@@ -111,6 +108,18 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 // checkpoint: a power cut can lose the last commits, but the database stays
 // consistent.
 const sqliteSynchronous = "_pragma=synchronous(NORMAL)"
+
+// mysqlSQLMode is the default sql_mode of MySQL 8.4 without NO_ZERO_DATE
+// and NO_ZERO_IN_DATE, since the driver writes a zero time.Time as
+// 0000-00-00 and reads it back as the zero time.
+const mysqlSQLMode = "sql_mode=%27ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION%27"
+
+func mysqlParameters(params []string) []string {
+	if slices.ContainsFunc(params, func(p string) bool { return strings.HasPrefix(p, "sql_mode=") }) {
+		return params
+	}
+	return append(slices.Clone(params), mysqlSQLMode)
+}
 
 func sqliteParameters(params []string) []string {
 	out := slices.Clone(params)

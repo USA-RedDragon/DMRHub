@@ -137,7 +137,7 @@ func (i *Instance) instantiate(ctx context.Context, wasm []byte) (wazero.Compile
 	cfg := wazero.NewModuleConfig().WithName("").WithArgs("plugin").
 		WithStdin(i.stdinR).WithStdout(&frameWriter{i: i}).WithStderr(newLogWriter(i.name, i.limits.LogLines)).
 		WithSysWalltime().WithSysNanotime().WithNanosleep(i.sleep).WithRandSource(rand.Reader).WithStartFunctions()
-	mod, err := i.rt.InstantiateModule(ctx, compiled, cfg)
+	mod, err := i.rt.InstantiateModule(experimental.WithMemoryAllocator(ctx, memoryAllocator), compiled, cfg)
 	if err != nil {
 		_ = i.stdinR.Close()
 		_ = i.stdin.Close()

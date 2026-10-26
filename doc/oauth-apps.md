@@ -81,7 +81,7 @@ DMRHub keeps one grant for each app and user. When the user allows the app again
 
 | Item                    | Lifetime                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------ |
-| Authorization code      | 2 minutes, and one exchange                                                    |
+| Authorization code      | 2 minutes, and one exchange attempt                                            |
 | Access token            | 15 minutes (`expires_in` is 900)                                               |
 | Refresh token           | 30 days from when it was issued, and one use                                   |
 | Grant                   | Until the user removes the app or the app revokes it. The app keeps access while it refreshes at least once each 30 days. |
@@ -89,6 +89,8 @@ DMRHub keeps one grant for each app and user. When the user allows the app again
 Access tokens start with `dmrhub_at.` and refresh tokens with `dmrhub_rt.`. Treat both as opaque strings. DMRHub keeps only a hash of each refresh token and code.
 
 Each refresh gives a new access token and a new refresh token, and spends the old refresh token. The old refresh token still works for 10 seconds after its first use, so that two tabs of the app that refresh at once both keep access. A use of a spent refresh token after those 10 seconds ends the grant: DMRHub takes it as a sign that someone other than the app has the token. Every token of the grant then stops working, and the user must allow the app again.
+
+Each exchange of a code spends it, also an exchange that fails because `client_id`, `redirect_uri` or `code_verifier` does not match. After a failed exchange, send the user to the consent page again for a new code. A second exchange of a code that already gave tokens fails, and it also ends the grant, for the same reason as a reused refresh token. DMRHub keeps the hash of a code that gave tokens for 24 hours to find such a second exchange. The grant is the one grant of the app and user, so this also ends the tokens that the app got from earlier codes.
 
 DMRHub also ends every grant of a user when their password is reset with a reset link, and when an admin sets a password for them. A change of the user's own password in Settings does not end the grants. Removing a user removes their grants.
 
@@ -172,11 +174,7 @@ X-Rate-Limit-Reset: 1793026728
 {"access_token":"<access token>","expires_in":900,"refresh_token":"<refresh token>","scope":"talkgroups:read lastheard:read","token_type":"Bearer"}
 ```
 
-A second exchange of the same code fails:
-
-```json
-{"error":"invalid_grant"}
-```
+A second exchange of the same code fails with `{"error":"invalid_grant"}`, and ends the grant: the tokens above then stop working. Exchange each code once.
 
 ### Call the API
 

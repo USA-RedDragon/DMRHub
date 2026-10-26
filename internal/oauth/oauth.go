@@ -204,30 +204,53 @@ func (s *Server) Approve(userID uint, req AuthorizeRequest) (string, error) {
 }
 
 // Exchange spends code for tokens. The code works once, for the app and
-// redirect it was made for, with the verifier of its challenge.
+// redirect it was made for, with the verifier of its challenge. Every
+// attempt spends the code, and an attempt with a spent code revokes the
+// grant that the code gave, since one of the two holders is not the app.
 func (s *Server) Exchange(code, clientID, redirectURI, verifier string) (Tokens, error) {
 	var tokens Tokens
+	var reused string
+	failed := false
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var row models.OAuthCode
 		if err := tx.Where("hash = ?", hash(code)).Take(&row).Error; err != nil {
 			return lookupError(err, ErrInvalidGrant)
 		}
-		res := tx.Where("hash = ?", row.Hash).Delete(&models.OAuthCode{})
+		if row.UsedAt != nil {
+			reused = row.GrantID
+			return ErrInvalidGrant
+		}
+		now := s.Now()
+		res := tx.Model(&models.OAuthCode{}).Where("hash = ? AND used_at IS NULL", row.Hash).Update("used_at", now)
 		if res.Error != nil {
 			return fmt.Errorf("failed to spend the authorization code: %w", res.Error)
 		}
-		now := s.Now()
-		if res.RowsAffected != 1 || !now.Before(row.ExpiresAt) ||
-			row.ClientID != clientID || row.RedirectURI != redirectURI || !verifies(row.Challenge, verifier) {
+		if res.RowsAffected != 1 {
 			return ErrInvalidGrant
+		}
+		if !now.Before(row.ExpiresAt) ||
+			row.ClientID != clientID || row.RedirectURI != redirectURI || !verifies(row.Challenge, verifier) {
+			failed = true
+			return nil
 		}
 		grant, err := s.grantFor(tx, row, now)
 		if err != nil {
 			return err
 		}
+		if err := tx.Model(&models.OAuthCode{}).Where("hash = ?", row.Hash).Update("grant_id", grant.ID).Error; err != nil {
+			return fmt.Errorf("failed to record the grant of the authorization code: %w", err)
+		}
 		tokens, err = s.issue(tx, grant, now)
 		return err
 	})
+	if reused != "" {
+		if err := s.revokeGrant(s.db, reused); err != nil {
+			return Tokens{}, err
+		}
+	}
+	if err == nil && failed {
+		err = ErrInvalidGrant
+	}
 	if err != nil {
 		return Tokens{}, fmt.Errorf("failed to exchange the code: %w", err)
 	}
@@ -459,14 +482,17 @@ func (s *Server) revokeGrant(db *gorm.DB, id string) error {
 }
 
 // Prune deletes the codes and refresh tokens that can no longer work and
-// the grants that were removed.
+// the grants that were removed. It keeps a spent code that gave a grant,
+// and a spent refresh token, for SpentTokenLifetime, so that spending it
+// again ends its grant.
 func (s *Server) Prune() error {
 	now := s.Now()
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("expires_at <= ?", now).Delete(&models.OAuthCode{}).Error; err != nil {
+		revoked := tx.Model(&models.OAuthGrant{}).Select("id").Where("revoked_at IS NOT NULL")
+		if err := tx.Where("(expires_at <= ? AND (grant_id IS NULL OR grant_id = '')) OR used_at <= ? OR grant_id IN (?)", now, now.Add(-SpentTokenLifetime), revoked).
+			Delete(&models.OAuthCode{}).Error; err != nil {
 			return fmt.Errorf("failed to prune codes: %w", err)
 		}
-		revoked := tx.Model(&models.OAuthGrant{}).Select("id").Where("revoked_at IS NOT NULL")
 		if err := tx.Where("expires_at <= ? OR used_at <= ? OR grant_id IN (?)", now, now.Add(-SpentTokenLifetime), revoked).
 			Delete(&models.OAuthRefreshToken{}).Error; err != nil {
 			return fmt.Errorf("failed to prune refresh tokens: %w", err)

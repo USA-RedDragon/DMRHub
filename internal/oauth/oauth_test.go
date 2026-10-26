@@ -165,6 +165,50 @@ func TestCodeWorksOnceWithItsVerifierAndRedirect(t *testing.T) {
 	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
 }
 
+func TestAFailedExchangeSpendsTheCode(t *testing.T) {
+	t.Parallel()
+	for name, try := range map[string]struct{ client, redirect, verifier string }{
+		"verifier": {app, callback, "wrong-verifier-wrong-verifier-wrong-verifier"},
+		"redirect": {app, "https://dmr-web.example/other", verifier},
+		"client":   {"https://other.example", callback, verifier},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			req, err := e.srv.ParseAuthorize(app, callback, "talkgroups:read", challenge(), "S256")
+			require.NoError(t, err)
+			code, err := e.srv.Approve(7, req)
+			require.NoError(t, err)
+			_, err = e.srv.Exchange(code, try.client, try.redirect, try.verifier)
+			require.ErrorIs(t, err, oauth.ErrInvalidGrant)
+			_, err = e.srv.Exchange(code, app, callback, verifier)
+			require.ErrorIs(t, err, oauth.ErrInvalidGrant, "the failed exchange spent the code")
+		})
+	}
+}
+
+func TestReusingACodeEndsItsGrant(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	req, err := e.srv.ParseAuthorize(app, callback, "talkgroups:read", challenge(), "S256")
+	require.NoError(t, err)
+	code, err := e.srv.Approve(7, req)
+	require.NoError(t, err)
+	tok, err := e.srv.Exchange(code, app, callback, verifier)
+	require.NoError(t, err)
+	other := e.login(t, 8, "talkgroups:read")
+
+	e.now = e.now.Add(oauth.CodeLifetime + time.Second)
+	_, err = e.srv.Exchange(code, app, callback, verifier)
+	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
+	_, err = e.srv.Authenticate(tok.Access)
+	require.ErrorIs(t, err, oauth.ErrInvalidToken, "a second use of the code ends the grant issued from it")
+	_, err = e.srv.Refresh(tok.Refresh, app)
+	require.ErrorIs(t, err, oauth.ErrInvalidGrant)
+	_, err = e.srv.Authenticate(other.Access)
+	require.NoError(t, err, "other grants keep working")
+}
+
 func TestAccessTokenNamesTheUserAndScopesUntilItExpires(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

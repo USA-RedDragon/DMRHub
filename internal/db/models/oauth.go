@@ -39,7 +39,9 @@ type OAuthGrant struct {
 }
 
 // OAuthCode is an authorization code that a web app trades once, with the
-// PKCE verifier of its challenge, for the tokens of a new grant.
+// PKCE verifier of its challenge, for the tokens of a new grant. Any
+// attempt to trade it spends it, and trading a spent code again revokes
+// the grant it gave.
 type OAuthCode struct {
 	Hash        string `gorm:"primaryKey"`
 	UserID      uint
@@ -48,6 +50,8 @@ type OAuthCode struct {
 	Scopes      string
 	Challenge   string
 	ExpiresAt   time.Time `gorm:"index"`
+	UsedAt      *time.Time
+	GrantID     string
 }
 
 // OAuthRefreshToken is a refresh token of a grant. It is used once: using

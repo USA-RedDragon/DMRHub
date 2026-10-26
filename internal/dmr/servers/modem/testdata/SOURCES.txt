@@ -1,0 +1,13 @@
+Copied from dmrgo v2.0.5 transport/mmdvm/testdata. Its SOURCES.txt says:
+
+pistar.txt was captured on 2026-10-20 with strace on the serial port of MMDVMHost on the
+owner's Pi-Star (MMDVM_HS_Dual_Hat v1.6.0 firmware, protocol 1) during a restart of
+MMDVMHost, and while it was idle. Each distinct frame is kept once. Each line is: direction
+(h>m host to modem, m>h modem to host), frame in hex. Two values are placeholders, not
+what the Pi-Star sent: the unique ID text after the version description is 24 "0"
+characters, and the SetFreq frame has RX 430000000 Hz and TX 440000000 Hz.
+
+mmdvmhost.txt holds the frames that MMDVMHost 9384d68 wrote on 2026-10-20 to a fake modem
+over its UDP modem protocol on 127.0.0.1 (protocol 2), including one call that it sent on
+slot 2 from the network. Each distinct frame is kept once, in the same line format. Its
+SetFreq frame has the same placeholder frequencies.

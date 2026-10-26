@@ -29,19 +29,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func radioCheckRows(t *testing.T, heardFirst bool) map[uint]models.Call {
+func radioCheckPair(t *testing.T) (pdu.CSBK, pdu.CSBK) {
 	t.Helper()
-	one, two, database := newReplicas(t)
 	var req, ans pdu.CSBK
-	req.LastBlock, ans.LastBlock = true, true
 	require.NoError(t, req.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{RequesterAddress: uint32(userA), CheckedAddress: uint32(userB)}))
 	require.NoError(t, ans.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{Answer: true, RequesterAddress: uint32(userA), CheckedAddress: uint32(userB)}))
+	return req, ans
+}
+
+func radioCheckRows(t *testing.T, heardFirst bool) map[uint]models.Call {
+	t.Helper()
+	req, ans := radioCheckPair(t)
+	return answeredRows(t, req, ans, heardFirst, 0)
+}
+
+// answeredRows sends req from userA to userB to one tracker and ans from
+// userB to userA to another that shares its database, pubsub and KV, ans
+// first when heardFirst is set, gap after req otherwise. It returns the
+// rows by stream: 7062 for req and 7063 for ans.
+func answeredRows(t *testing.T, req, ans pdu.CSBK, heardFirst bool, gap time.Duration) map[uint]models.Call {
+	t.Helper()
+	one, two, database := newReplicas(t)
+	req.LastBlock, ans.LastBlock = true, true
 	if heardFirst {
 		newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
 		two.Flush()
 		newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
 	} else {
 		newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
+		time.Sleep(gap)
 		newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
 	}
 	byStream := map[uint]models.Call{}
@@ -65,6 +81,36 @@ func radioCheckRows(t *testing.T, heardFirst bool) map[uint]models.Call {
 		byStream[c.StreamID] = c
 	}
 	return byStream
+}
+
+func TestTrackCallAlertAnsweredOnAnotherReplica(t *testing.T) {
+	t.Parallel()
+	for _, heardFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "request first", true: "answer first"}[heardFirst], func(t *testing.T) {
+			t.Parallel()
+			var req, ans pdu.CSBK
+			require.NoError(t, req.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: uint32(userB), SourceAddress: uint32(userA)}))
+			require.NoError(t, ans.SetMotorolaCallAlertAck(pdu.MotorolaCallAlertAckPDU{Request: 0x9F, TargetAddress: uint32(userA), SourceAddress: uint32(userB)}))
+			byStream := answeredRows(t, req, ans, heardFirst, 0)
+			assert.Equal(t, "call_alert", byStream[7062].SubKind)
+			assert.Equal(t, models.CallResponseACK, byStream[7062].Response, "the call alert is answered")
+			_, own := byStream[7063]
+			assert.False(t, own, "the answer makes no row of its own")
+		})
+	}
+}
+
+// TestTrackLateAnswerOnAnotherReplica answers a radio check on another
+// replica after the response window. The answer must not be set on the
+// request and keeps a row of its own.
+func TestTrackLateAnswerOnAnotherReplica(t *testing.T) {
+	t.Parallel()
+	req, ans := radioCheckPair(t)
+	byStream := answeredRows(t, req, ans, false, 10*time.Second+500*time.Millisecond)
+	assert.Equal(t, models.CallResponseNone, byStream[7062].Response, "a late answer is not set on the request")
+	if assert.Contains(t, byStream, uint(7063), "the late answer keeps its own row") {
+		assert.Equal(t, "radio_check_answer", byStream[7063].SubKind)
+	}
 }
 
 func TestTrackAnswerOnAnotherReplicaAtOnce(t *testing.T) {

@@ -187,8 +187,7 @@ func TestRotationMidCall(t *testing.T) {
 		stack.AssignTS2StaticTG(t, 200001, 2)
 
 		regA := testutils.Register(t, stack.Hub, stack.KV)
-		b := stack.SpawnFullReplica(t)
-		regB := testutils.Register(t, b.Hub, stack.KV)
+		b, regB := stack.SpawnRegisteredReplica(t)
 		stack.StartServers(t)
 		a := stack.Replica()
 
@@ -232,10 +231,8 @@ func TestRotationMidCall(t *testing.T) {
 		two.run(t, &calls)
 
 		time.Sleep(1500 * time.Millisecond)
-		c := stack.SpawnFullReplica(t)
-		regC := testutils.Register(t, c.Hub, stack.KV)
+		c, _ := stack.SpawnRegisteredReplica(t)
 		testutils.Fronts{MMDVM: fronts.MMDVM, IPSC: fronts.IPSC}.Add(t, c)
-		_ = regC
 		t.Logf("%s: the first replica stops", time.Since(start).Round(time.Millisecond))
 		a.Terminate(t, regA, fronts, rotationDrain)
 		fronts.WebTransport.Add(t, c.WebTransportAddr)

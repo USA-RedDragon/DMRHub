@@ -73,8 +73,7 @@ func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100004, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100004, 1)
 		regA := testutils.Register(t, stack.Hub, stack.KV)
-		b := stack.SpawnFullReplica(t)
-		testutils.Register(t, b.Hub, stack.KV)
+		b, _ := stack.SpawnRegisteredReplica(t)
 		stack.StartServers(t)
 
 		front := testutils.NewUDPFront(t)

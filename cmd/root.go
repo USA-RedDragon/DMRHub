@@ -442,7 +442,9 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	registry := servers.NewInstanceRegistry(ctx, kvStore, instanceID)
 
 	// Let the hub know our instance ID so it can track peer ownership in KV.
-	hub.SetInstanceID(instanceID)
+	if err := hub.SetInstanceID(instanceID); err != nil {
+		return nil, fmt.Errorf("failed to set the instance ID: %w", err)
+	}
 
 	ready := &atomic.Bool{}
 

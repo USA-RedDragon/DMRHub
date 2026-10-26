@@ -31,13 +31,13 @@ import (
 
 // Register gives the hub h a replica ID and registers it in store, as the
 // start of DMRHub does, so that the replicas of a test know who serves
-// each repeater. Call it before any repeater connects. The test
+// each repeater. Call it before any server of h starts. The test
 // deregisters it at its end.
 func Register(t *testing.T, h *hub.Hub, store kv.KV) *servers.InstanceRegistry {
 	t.Helper()
 	id, err := servers.GenerateInstanceID()
 	require.NoError(t, err)
-	h.SetInstanceID(id)
+	require.NoError(t, h.SetInstanceID(id))
 	r := servers.NewInstanceRegistry(context.Background(), store, id)
 	t.Cleanup(func() { r.Deregister(context.Background()) })
 	return r

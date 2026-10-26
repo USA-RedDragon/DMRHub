@@ -21,6 +21,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -398,14 +399,25 @@ func (h *Hub) Stop(ctx context.Context) {
 	})
 }
 
-// SetInstanceID sets the unique instance identifier for this hub. Must be
-// called before any repeaters are activated. The instance ID is used for
-// peer ownership tracking in the shared KV store.
-func (h *Hub) SetInstanceID(id string) {
+// ErrServersStarted is returned by SetInstanceID when a server already
+// uses the hub.
+var ErrServersStarted = errors.New("the instance ID must be set before the servers start")
+
+// SetInstanceID sets the unique instance identifier for this hub. The
+// instance ID is used for peer ownership tracking in the shared KV store.
+// The servers read it without a lock, so it returns ErrServersStarted and
+// changes nothing once a server has registered with the hub.
+func (h *Hub) SetInstanceID(id string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.servers) > 0 {
+		return ErrServersStarted
+	}
 	h.instanceID = id
 	if id != "" && h.pubsub != nil {
 		h.followClaimsOnce.Do(func() { go h.followClaims(h.pubsub.Subscribe(claimedTopic)) })
 	}
+	return nil
 }
 
 // claimPeerOwnership writes an ownership record for the given repeater in

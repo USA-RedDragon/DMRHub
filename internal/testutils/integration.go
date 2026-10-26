@@ -183,12 +183,31 @@ type Replica struct {
 // are started; repeater subscriptions are activated when repeaters connect.
 func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
+	r, _ := s.spawnReplica(t, false)
+	return r
+}
+
+// SpawnRegisteredReplica starts a second replica, as SpawnSecondReplica
+// does, and gives its hub a replica ID with Register before its servers
+// start. It returns the replica and its registry.
+func (s *IntegrationStack) SpawnRegisteredReplica(t *testing.T) (*Replica, *servers.InstanceRegistry) {
+	t.Helper()
+	r, reg := s.spawnReplica(t, true)
+	return &r, reg
+}
+
+func (s *IntegrationStack) spawnReplica(t *testing.T, register bool) (Replica, *servers.InstanceRegistry) {
+	t.Helper()
 
 	ct2 := calltracker.NewCallTracker(s.DB, s.PubSub, s.KV)
 	store2 := messages.NewStore(s.DB, s.KV)
 	store2.SetNotify(messages.NewPusher(s.DB, s.PubSub).Push)
 	ct2.SetDataObserver(store2)
 	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
+	var reg *servers.InstanceRegistry
+	if register {
+		reg = Register(t, hub2, s.KV)
+	}
 
 	cfg2 := *s.Config
 	cfg2.DMR.MMDVM.Port = 0
@@ -226,7 +245,7 @@ func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 		IPSCAddr:         ipsc2.Addr().String(),
 		OpenBridgeAddr:   ob2.Server.LocalAddr().String(),
 		WebTransportAddr: addrOf(mmdvm2.WebTransportAddr()),
-	}
+	}, reg
 }
 
 // Replica returns the first replica of the stack, the one that

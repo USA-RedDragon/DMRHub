@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func replicas(t *testing.T, n int) ([]replica, *gorm.DB, kv.KV) {
 	for i := range out {
 		id := fmt.Sprintf("replica-%d", i+1)
 		h := hub.NewHub(database, store, ps, nil)
-		h.SetInstanceID(id)
+		require.NoError(t, h.SetInstanceID(id))
 		r := servers.NewInstanceRegistry(context.Background(), store, id)
 		t.Cleanup(func() {
 			r.Deregister(context.Background())
@@ -303,4 +304,35 @@ func TestWaitMovedWaitsForTheHandOverOfAClaim(t *testing.T) {
 	default:
 		t.Fatal("WaitMoved returned before the repeater was handed over")
 	}
+}
+
+// TestSetInstanceIDFailsOnceAServerStarted sets the ID while a server
+// goroutine waits on a socket, as a test harness that registered a
+// replica after its servers started did. The socket gives no ordering, so
+// the server must never see the write.
+func TestSetInstanceIDFailsOnceAServerStarted(t *testing.T) {
+	t.Parallel()
+	h := hub.NewHub(nil, nil, nil, nil)
+	t.Cleanup(func() { h.Stop(context.Background()) })
+	require.NoError(t, h.SetInstanceID("replica-one"))
+	h.RegisterServer(hub.ServerConfig{Name: "mmdvm", Role: hub.RoleRepeater})
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	read := make(chan bool)
+	go func() {
+		buf := make([]byte, 16)
+		_, _, _ = conn.ReadFromUDP(buf)
+		read <- h.OwnerLeaving(context.Background(), 1)
+	}()
+	require.ErrorIs(t, h.SetInstanceID("replica-two"), hub.ErrServersStarted)
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	out, err := net.DialUDP("udp", nil, addr)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+	_, err = out.Write([]byte("DMRD"))
+	require.NoError(t, err)
+	assert.False(t, <-read)
+	assert.Equal(t, "replica-one", h.InstanceID())
 }

@@ -41,10 +41,9 @@ func (f *fakeRegistry) MarkDraining(context.Context)             { f.draining.St
 
 func TestDrainWaitsForTheRepeatersToMove(t *testing.T) {
 	t.Parallel()
-	l := testutils.SetupLiveStack(t)
+	l := testutils.SetupRegisteredLiveStack(t)
 	l.SeedUser(t, 1000001, "N0CALL")
 	l.SeedMMDVMRepeater(t, 100001, 1000001, password)
-	testutils.Register(t, l.Hub, l.KV)
 	c := testutils.NewMMDVMClient(100001, "", password)
 	require.NoError(t, c.Connect(l.Addr(t, manager.MMDVM)))
 	defer c.Close()

@@ -35,7 +35,7 @@ import (
 func TestIPSCSlowRedisHoldsNoOtherPeer(t *testing.T) {
 	t.Parallel()
 	forAllSlowRedisBackends(t, "dmrhub:peer_owner:", nil, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
-		stack.Hub.SetInstanceID("replica-one")
+		require.NoError(t, stack.Hub.SetInstanceID("replica-one"))
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)

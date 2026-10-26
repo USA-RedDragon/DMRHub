@@ -64,7 +64,22 @@ func FreeUDPPort(t *testing.T) int {
 // XDG_CONFIG_HOME at a temporary directory.
 func SetupLiveStack(t *testing.T, backends ...Backend) *LiveStack {
 	t.Helper()
+	return setupLiveStack(t, false, backends)
+}
+
+// SetupRegisteredLiveStack makes a LiveStack, as SetupLiveStack does, and
+// gives its hub a replica ID with Register before its servers start.
+func SetupRegisteredLiveStack(t *testing.T, backends ...Backend) *LiveStack {
+	t.Helper()
+	return setupLiveStack(t, true, backends)
+}
+
+func setupLiveStack(t *testing.T, register bool, backends []Backend) *LiveStack {
+	t.Helper()
 	stack := SetupIntegrationStack(t, backends...)
+	if register {
+		Register(t, stack.Hub, stack.KV)
+	}
 	cfg := stack.Config
 	cfg.Secret = "live-config-test-secret"
 	cfg.PasswordSalt = "live-config-test-salt"

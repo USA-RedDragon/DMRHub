@@ -56,8 +56,8 @@ func startMoveRig(t *testing.T, stack *testutils.IntegrationStack) moveRig {
 	stack.AssignTS1StaticTG(t, 100002, 1)
 	r := moveRig{stack: stack}
 	r.first = testutils.Register(t, stack.Hub, stack.KV)
-	r.second = stack.SpawnSecondReplica(t)
-	testutils.Register(t, r.second.Hub, stack.KV)
+	second, _ := stack.SpawnRegisteredReplica(t)
+	r.second = *second
 	stack.StartServers(t)
 
 	r.front = testutils.NewUDPFront(t)
@@ -211,8 +211,7 @@ func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100002, 1)
 		testutils.Register(t, stack.Hub, stack.KV)
-		second := stack.SpawnSecondReplica(t)
-		testutils.Register(t, second.Hub, stack.KV)
+		second, _ := stack.SpawnRegisteredReplica(t)
 		stack.StartServers(t)
 
 		old := testutils.NewMMDVMClient(100002, "", testPassword)
@@ -250,8 +249,7 @@ func TestIPSCMovesFromADrainingReplica(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 200001, 1)
 		stack.AssignTS1StaticTG(t, 200002, 1)
 		first := testutils.Register(t, stack.Hub, stack.KV)
-		second := stack.SpawnSecondReplica(t)
-		testutils.Register(t, second.Hub, stack.KV)
+		second, _ := stack.SpawnRegisteredReplica(t)
 		stack.StartServers(t)
 
 		front := testutils.NewUDPFront(t)

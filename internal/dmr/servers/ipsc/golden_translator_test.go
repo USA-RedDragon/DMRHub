@@ -190,7 +190,9 @@ func TestXPRVoiceCallRoundTrip(t *testing.T) {
 // TestXPRDataCallRoundTrip replays a confirmed rate 3/4 data call of an XPR
 // 8400 (5 preamble CSBKs, a data header and 15 blocks) through both
 // directions of the translator. Every block must reach MMDVM, and come back
-// with the payload the repeater sent.
+// with the payload the repeater sent, in one call with one call control and
+// call sequence number, and with the end flag and RTP payload type 0x5E on
+// the last block only, as the repeater sent them.
 func TestXPRDataCallRoundTrip(t *testing.T) {
 	t.Parallel()
 	call := readXPRCapture(t, "datacall")
@@ -199,6 +201,7 @@ func TestXPRDataCallRoundTrip(t *testing.T) {
 	}
 	rx := newTestTranslator(t)
 	tx := newTestTranslator(t)
+	var first ipscwire.User
 	for i, p := range call {
 		want := decodeUserT(t, p)
 		pkts := rx.TranslateToMMDVM(p[0], p)
@@ -219,6 +222,15 @@ func TestXPRDataCallRoundTrip(t *testing.T) {
 		}
 		if st, ok := got.Data.SlotType(); !ok || st.ColorCode() != 7 || st.DataType() != enums.DataType(want.Burst) {
 			t.Fatalf("packet %d: slot type %v %v", i, st, ok)
+		}
+		if got.Info != want.Info || got.RTP.PayloadType != want.RTP.PayloadType {
+			t.Fatalf("packet %d: call info %02x payload type %02x, want %02x %02x", i, got.Info, got.RTP.PayloadType, want.Info, want.RTP.PayloadType)
+		}
+		if i == 0 {
+			first = got
+		}
+		if got.CallControl != first.CallControl || got.CallSeq != first.CallSeq {
+			t.Fatalf("packet %d: call control %x call sequence %d, want %x %d", i, got.CallControl, got.CallSeq, first.CallControl, first.CallSeq)
 		}
 	}
 }

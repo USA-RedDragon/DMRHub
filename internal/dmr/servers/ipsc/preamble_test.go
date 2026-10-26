@@ -65,7 +65,8 @@ func assertOneCall(t *testing.T, users []ipscwire.User) {
 // TestMMDVMHostSMSGoesToIPSCAsOneCall sends an SMS with preambles to an IPSC
 // peer as MMDVMHost sends it, each CSBK and the data header on a new
 // stream. An XPR 8400 sends the preambles and the data of an SMS as one
-// call, with one call control and call sequence number (testdata/xpr8400.txt
+// call, with one call control and call sequence number, and the end flag
+// and RTP payload type 0x5E on the last block only (testdata/xpr8400.txt
 // "datacall"; ipsc2hbrp-rig cap/preamble.txt, call control 0x400).
 func TestMMDVMHostSMSGoesToIPSCAsOneCall(t *testing.T) {
 	t.Parallel()
@@ -75,6 +76,15 @@ func TestMMDVMHostSMSGoesToIPSCAsOneCall(t *testing.T) {
 
 	users := readUsers(t, c, len(pkts))
 	assertOneCall(t, users)
+	for i, u := range users {
+		last := i == len(users)-1
+		assert.Equal(t, last, u.Info.End(), "end flag of packet %d", i)
+		want := byte(rtpPayloadType)
+		if last {
+			want = rtpPayloadTypeEnd
+		}
+		assert.Equal(t, want, u.RTP.PayloadType, "RTP payload type of packet %d", i)
+	}
 }
 
 // TestALateDataHeaderStartsAnotherCall sends a data header from the source

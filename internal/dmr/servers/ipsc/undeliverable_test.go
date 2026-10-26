@@ -204,7 +204,7 @@ func TestBurstsThatDoNotBuildAreReported(t *testing.T) {
 
 	tr := newTestTranslator(t)
 	reasons := reportsOf(tr)
-	if out := tr.buildIPSCDataPacket(pkt, &streamState{}, enums.DataTypeRate1); out != nil {
+	if out := tr.buildIPSCDataPacket(pkt, &streamState{}, enums.DataTypeRate1, false); out != nil {
 		t.Fatal("SetRawBurst took a rate 1 burst")
 	}
 	if out := tr.buildVoiceLC(pkt, &streamState{}, enums.DataTypeRate34, false); out != nil {

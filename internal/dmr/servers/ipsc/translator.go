@@ -108,6 +108,7 @@ type streamState struct {
 	lc           [9]byte   // the Full LC of the call, for burst E
 	haveLC       bool      // whether lc is set
 	embedded     layer2.EmbeddedLCAssembler
+	data         dataEnd
 }
 
 // preambleRun is a call to IPSC whose last packet on a timeslot is a
@@ -256,14 +257,14 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			enums.DataTypeDataHeader, enums.DataTypeRate12, enums.DataTypeRate34,
 			enums.DataTypeMBCHeader, enums.DataTypeMBCContinuation:
 			// Data packet — build IPSC data packet
-			data := t.buildIPSCDataPacket(pkt, ss, dt)
+			data := t.buildIPSCDataPacket(pkt, ss, dt, ss.lastBlock(b))
 			if data == nil {
 				return nil
 			}
 			results = [][]byte{data}
 			ss.firstPacket = false
 		case enums.DataTypeRate1:
-			data := t.buildRawBlock(pkt, ss, dt)
+			data := t.buildRawBlock(pkt, ss, dt, ss.lastBlock(b))
 			if data == nil {
 				return nil
 			}
@@ -276,7 +277,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 				t.undeliverable(pkt, reasonNoIPSCForm)
 				return nil
 			}
-			data := t.buildRawBlock(pkt, ss, dt)
+			data := t.buildRawBlock(pkt, ss, dt, false)
 			if data == nil {
 				return nil
 			}
@@ -502,13 +503,28 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 	return t.encodeUser(pkt, &u)
 }
 
+// lastBlock adds b, a data burst of the call, to its data packet and
+// reports whether b ends the packet: a data header with no blocks to
+// follow, or the last block. An XPR 8400 sends that packet with the end
+// flag and RTP payload type 0x5E, and a CSBK never.
+func (ss *streamState) lastBlock(b *layer2.Burst) bool {
+	if b == nil {
+		return false
+	}
+	if _, ok := b.Data.(*pdu.CSBK); ok {
+		return false
+	}
+	end, known := ss.data.ends(b)
+	return end && known
+}
+
 // buildIPSCDataPacket builds an IPSC data packet for CSBK, Data Header, etc.
 // A BPTC(196,96) burst carries its 12 decoded octets and a rate 3/4 burst
 // its 18. A burst whose FEC does not correct goes out as ipscBurstRaw with
 // its 196 info bits, as a MOTOTRBO repeater sends it and SetRawBurst builds
 // it, when sendRawBlocksAnXPRDrops is on; otherwise it is reported
 // undeliverable and it returns nil.
-func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
+func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState, dataType enums.DataType, last bool) []byte {
 	slot := enums.Slot1
 	if pkt.Slot {
 		slot = enums.Slot2
@@ -523,14 +539,15 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 		t.undeliverable(pkt, reasonFEC)
 		return nil
 	}
-	u := t.user(pkt, ss, true, false, ss.firstPacket)
+	u := t.user(pkt, ss, true, last, ss.firstPacket)
 	u.Burst, u.Data = b.Burst, b.Data
 	return t.encodeUser(pkt, &u)
 }
 
 // buildRawBlock builds an undecodable block (0x1F) of the 196 information
-// bits of pkt, with the slot type of dataType.
-func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataType enums.DataType) []byte {
+// bits of pkt, with the slot type of dataType, and the end flag when last
+// is set.
+func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataType enums.DataType, last bool) []byte {
 	raw := layer2.RawBurst(pkt.DMRData)
 	d := ipscwire.Payload{Status: 0x40, HasBody: true, Flags: [2]byte{0x80, 0x0A}, TrailerLen: 4, Words: 17, Bits: 196}
 	if pkt.Slot {
@@ -546,7 +563,7 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 		return nil
 	}
 	d.Trailer[1] = byte(sti)
-	u := t.user(pkt, ss, true, false, ss.firstPacket)
+	u := t.user(pkt, ss, true, last, ss.firstPacket)
 	u.Burst, u.Data = ipscwire.BurstRaw, d
 	return t.encodeUser(pkt, &u)
 }

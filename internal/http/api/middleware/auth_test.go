@@ -102,7 +102,7 @@ func TestRequireAdminBlocksNonAdmin(t *testing.T) {
 	}
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestRequireAdminAllowsAdmin(t *testing.T) {
@@ -153,7 +153,7 @@ func TestRequireSelfOrAdminBlocksOtherUser(t *testing.T) {
 	}
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestRequireSelfOrAdminAllowsSelf(t *testing.T) {
@@ -262,7 +262,7 @@ func TestRequireSuperAdminBlocksRegularAdmin(t *testing.T) {
 	var resp testutils.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestRequireSuperAdminBlocksSuspendedSuperAdmin(t *testing.T) {

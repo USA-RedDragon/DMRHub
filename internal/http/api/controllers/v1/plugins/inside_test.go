@@ -218,7 +218,7 @@ func TestInspectingAFileShowsWhatThePluginAsks(t *testing.T) {
 	testutils.SeedAccount(t, e.db, 1000001, "KI5VMF", "user")
 	user := testutils.Login(t, e.router, "user")
 	code, _ = e.upload(user, "/api/v1/admin/plugins/inspect", guest(t, "netprobe"), nil, nil)
-	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Equal(t, http.StatusForbidden, code)
 }
 
 func TestUploadingAPluginAddsItWithTheIDsAndHostsTheAdminChose(t *testing.T) {

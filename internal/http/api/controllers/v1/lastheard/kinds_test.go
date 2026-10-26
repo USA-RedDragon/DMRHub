@@ -216,7 +216,7 @@ func TestLastheardPrivateHistoryIsClosed(t *testing.T) {
 	assert.Equal(t, 2, p.Total, "alice sees her group call and the private call to her")
 
 	code, _ := get(t, router, "/api/v1/lastheard/user/3191868", &bobJar)
-	assert.Equal(t, http.StatusUnauthorized, code, "bob cannot read alice's history")
+	assert.Equal(t, http.StatusForbidden, code, "bob cannot read alice's history")
 	code, _ = get(t, router, "/api/v1/lastheard/user/3191868", nil)
 	assert.Equal(t, http.StatusUnauthorized, code)
 	p = getPage(t, router, "/api/v1/lastheard/user/3191868", &admin)

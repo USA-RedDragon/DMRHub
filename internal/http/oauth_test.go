@@ -220,7 +220,7 @@ func TestOAuthTokenActsAsTheUserWithinItsScopes(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, e.bearer(t, http.MethodPost, "/api/v1/auth/logout", tok.AccessToken).Code)
 
 	w = e.bearer(t, http.MethodGet, fmt.Sprintf("/api/v1/lastheard/user/%d", other.ID), tok.AccessToken)
-	assert.Equal(t, http.StatusUnauthorized, w.Code, "a token of an admin has no admin rights")
+	assert.Equal(t, http.StatusForbidden, w.Code, "a token of an admin has no admin rights")
 
 	w = e.bearer(t, http.MethodGet, "/api/v1/users/me", tok.AccessToken+"x")
 	assert.Equal(t, http.StatusUnauthorized, w.Code)

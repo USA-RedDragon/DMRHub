@@ -98,7 +98,7 @@ func TestConfigRoutesRequireAdmin(t *testing.T) {
 		w := serve(t, router, r.method, r.path, r.body, nil)
 		assert.Equal(t, http.StatusUnauthorized, w.Code, "%s %s without a session", r.method, r.path)
 		w = serve(t, router, r.method, r.path, r.body, &userJar)
-		assert.Equal(t, http.StatusUnauthorized, w.Code, "%s %s as a user", r.method, r.path)
+		assert.Equal(t, http.StatusForbidden, w.Code, "%s %s as a user", r.method, r.path)
 	}
 }
 

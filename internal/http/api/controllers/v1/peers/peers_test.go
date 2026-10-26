@@ -896,5 +896,5 @@ func TestPeerOwnerCanReadTheirPeer(t *testing.T) {
 		return w.Code
 	}
 	assert.Equal(t, http.StatusOK, get(testutils.Login(t, router, "owner")), "the owner reads their peer")
-	assert.Equal(t, http.StatusUnauthorized, get(testutils.Login(t, router, "other")), "another user does not")
+	assert.Equal(t, http.StatusForbidden, get(testutils.Login(t, router, "other")), "another user does not")
 }

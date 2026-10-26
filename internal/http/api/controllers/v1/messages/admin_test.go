@@ -103,10 +103,10 @@ func TestUsersCannotUseTheAdminSearch(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	m := e.msg(time.Now(), other, owner, false, "secret")
-	for _, jar := range []testutils.CookieJar{e.jar, {}} {
+	for jar, code := range map[*testutils.CookieJar]int{&e.jar: http.StatusForbidden, {}: http.StatusUnauthorized} {
 		for _, p := range []string{"/api/v1/admin/messages", fmt.Sprintf("/api/v1/admin/messages/%d", m.ID)} {
-			w := testutils.Do(t, e.router, jar, http.MethodGet, p, nil)
-			assert.Equal(t, http.StatusUnauthorized, w.Code, p)
+			w := testutils.Do(t, e.router, *jar, http.MethodGet, p, nil)
+			assert.Equal(t, code, w.Code, p)
 			assert.NotContains(t, w.Body.String(), "secret", p)
 		}
 	}

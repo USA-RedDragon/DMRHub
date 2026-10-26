@@ -226,9 +226,9 @@ func TestOnlyAdminsAddRadioIDsWithoutValidation(t *testing.T) {
 	w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", apimodels.RadioIDPost{ID: ownerSecondID})
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3191868})
-	assert.Equal(t, http.StatusUnauthorized, w.Code, "a user is not an admin")
+	assert.Equal(t, http.StatusForbidden, w.Code, "a user is not an admin")
 	w = testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/1000001/radio-ids", nil)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 
 	admin := testutils.Login(t, router, "Admin")
 	w = testutils.Do(t, router, admin, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3191868})

@@ -113,8 +113,11 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-
-		if user.Admin && user.Approved && !user.Suspended {
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if user.Admin {
 			return
 		}
 
@@ -124,11 +127,11 @@ func RequireAdminOrTGOwner() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
-		if len(talkgroups) > 0 && user.Approved && !user.Suspended {
+		if len(talkgroups) > 0 {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotAdminOrTalkgroupOwner})
 	}
 }
 
@@ -140,9 +143,12 @@ func RequireAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-
-		if !user.Admin || !user.Approved || user.Suspended {
+		if !user.Approved || user.Suspended {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if !user.Admin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotAdmin})
 		}
 	}
 }
@@ -156,9 +162,12 @@ func RequireSuperAdmin() gin.HandlerFunc {
 			return
 		}
 
-		if !user.SuperAdmin || !user.Approved || user.Suspended {
-			slog.Error("User is not a super admin or is not approved/suspended")
+		if !user.Approved || user.Suspended {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if !user.SuperAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotSuperAdmin})
 		}
 	}
 }
@@ -187,18 +196,21 @@ func RequirePeerOwnerOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-
-		if user.Approved && !user.Suspended && user.Admin {
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if user.Admin {
 			return
 		}
 
 		var peer models.Peer
 		db.Find(&peer, "id = ?", id)
-		if peer.OwnerID == user.ID && !user.Suspended && user.Approved {
+		if peer.OwnerID == user.ID {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotPeerOwner})
 	}
 }
 
@@ -239,20 +251,23 @@ func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-
-		if user.Admin && !user.Suspended && user.Approved {
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if user.Admin {
 			return
 		}
 
 		var talkgroup models.Talkgroup
 		db.Preload("Admins").Find(&talkgroup, "id = ?", id)
 		for _, admin := range talkgroup.Admins {
-			if admin.ID == user.ID && !user.Suspended && user.Approved {
+			if admin.ID == user.ID {
 				return
 			}
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotTalkgroupAdmin})
 	}
 }
 
@@ -265,34 +280,35 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-
-		if user.Admin && !user.Suspended && user.Approved {
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
 			return
 		}
-		if id == fmt.Sprintf("%d", user.ID) && !user.Suspended && user.Approved {
+		if user.Admin || id == fmt.Sprintf("%d", user.ID) {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotSelf})
 	}
 }
 
-// isTalkgroupNCOOrOwnerOrAdmin checks if the given user is a system admin,
-// a talkgroup admin, or a talkgroup NCO for the talkgroup identified by talkgroupID.
+// isTalkgroupNCOOrOwnerOrAdmin checks if the given approved, unsuspended
+// user is a system admin, a talkgroup admin, or a talkgroup NCO for the
+// talkgroup identified by talkgroupID.
 func isTalkgroupNCOOrOwnerOrAdmin(db *gorm.DB, user models.User, talkgroupID interface{}) bool {
-	if user.Admin && !user.Suspended && user.Approved {
+	if user.Admin {
 		return true
 	}
 
 	var talkgroup models.Talkgroup
 	db.Preload("Admins").Preload("NCOs").Find(&talkgroup, "id = ?", talkgroupID)
 	for _, admin := range talkgroup.Admins {
-		if admin.ID == user.ID && !user.Suspended && user.Approved {
+		if admin.ID == user.ID {
 			return true
 		}
 	}
 	for _, nco := range talkgroup.NCOs {
-		if nco.ID == user.ID && !user.Suspended && user.Approved {
+		if nco.ID == user.ID {
 			return true
 		}
 	}
@@ -310,12 +326,16 @@ func RequireTalkgroupNCOOrOwnerOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
 
 		if isTalkgroupNCOOrOwnerOrAdmin(db, user, tgID) {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotTalkgroupNCO})
 	}
 }
 
@@ -331,6 +351,10 @@ func RequireNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
 
 		var net models.Net
 		if err := db.First(&net, "id = ?", id).Error; err != nil {
@@ -342,7 +366,7 @@ func RequireNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotTalkgroupNCO})
 	}
 }
 
@@ -358,6 +382,10 @@ func RequireScheduledNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
 
 		var sn models.ScheduledNet
 		if err := db.First(&sn, "id = ?", id).Error; err != nil {
@@ -369,6 +397,6 @@ func RequireScheduledNetNCOOrOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotTalkgroupNCO})
 	}
 }

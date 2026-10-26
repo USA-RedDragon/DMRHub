@@ -75,7 +75,7 @@ func TestPATCHRepeaterCodec(t *testing.T) {
 	assert.Equal(t, models.CodecCodec2, stored.SlotCodec(false))
 
 	_, w = testutils.PatchRepeater(t, router, repeaterPost.RadioID, otherJar, codecPatch(models.CodecAMBE, ""))
-	assert.Equal(t, http.StatusUnauthorized, w.Code, "only the owner or an admin may change the codec")
+	assert.Equal(t, http.StatusForbidden, w.Code, "only the owner or an admin may change the codec")
 	stored = models.Repeater{}
 	require.NoError(t, tdb.DB().First(&stored, repeaterPost.RadioID).Error)
 	assert.Equal(t, models.CodecCodec2, stored.TS1Codec)

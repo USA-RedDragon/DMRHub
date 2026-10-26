@@ -39,6 +39,10 @@ const (
 	msgAuthFailed = "Authentication failed"
 )
 
+// MsgNotRepeaterOwner is the error of a request about a repeater of
+// another user.
+const MsgNotRepeaterOwner = "You do not own this repeater"
+
 // authenticateUser performs the common session extraction, panic recovery,
 // tracing, and DB user lookup shared by all Require* middleware functions.
 // It returns the authenticated user, the contextualized DB handle, and true
@@ -208,17 +212,21 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 			return
 		}
 
-		if user.Approved && !user.Suspended && user.Admin {
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if user.Admin {
 			return
 		}
 
 		var repeater models.Repeater
 		db.Find(&repeater, "id = ?", id)
-		if repeater.OwnerID == user.ID && !user.Suspended && user.Approved {
+		if repeater.OwnerID == user.ID {
 			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotRepeaterOwner})
 	}
 }
 

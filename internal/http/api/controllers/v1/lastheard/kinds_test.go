@@ -225,7 +225,7 @@ func TestLastheardPrivateHistoryIsClosed(t *testing.T) {
 	p = getPage(t, router, "/api/v1/lastheard/repeater/319186801", &aliceJar)
 	assert.Equal(t, 2, p.Total, "the owner sees the calls through her repeater")
 	code, _ = get(t, router, "/api/v1/lastheard/repeater/319186801", &bobJar)
-	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Equal(t, http.StatusForbidden, code)
 }
 
 func TestLastheardTalkgroupTotalIsNotPaged(t *testing.T) {

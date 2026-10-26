@@ -332,10 +332,11 @@ The revocation endpoint answers `200`, or `503` with `{"error":"temporarily_unav
 | ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
 | 401    | `{"error":"invalid_token"}`              | The access token is wrong or expired, or its grant ended. Refresh, then try once more.      |
 | 403    | `{"error":"insufficient_scope"}`         | The scopes of the token do not include the route, or apps may not use the route.           |
+| 403    | `{"error":"You do not own this repeater"}` | The hotspot of a `POST /api/v1/repeaters/:id/talkgroups` is of another user.             |
 | 403    | `{"error":"...","must_change_password":true}` | An admin set a temporary password for the user. Only `GET /api/v1/users/me` works until the user picks their own password. |
 | 429    | `Too many requests. Try again in ...`    | Too many requests from the address. The body is plain text.                                 |
 
-The `401` and `403` token errors also come in the `WWW-Authenticate` header, as in `Bearer error="invalid_token"`.
+The `invalid_token` and `insufficient_scope` errors also come in the `WWW-Authenticate` header, as in `Bearer error="invalid_token"`.
 
 ## Rate limit
 

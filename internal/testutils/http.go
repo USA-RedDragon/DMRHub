@@ -54,6 +54,10 @@ func (t *TestDB) KV() kv.KV {
 }
 
 func (t *TestDB) CloseDB() {
+	if t.hub != nil {
+		t.hub.Stop(context.Background())
+		t.hub = nil
+	}
 	if t.database != nil {
 		sqlDB, _ := t.database.DB()
 		_ = sqlDB.Close()
@@ -131,16 +135,25 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 		}
 	}
 
-	pubsub, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
-	t.pubsub = pubsub
+	t.pubsub = ps
+
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
+	}
+	t.kv = kvStore
+	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
+	t.hub = hub.NewHub(t.database, kvStore, ps, ct)
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, nil, t.database, pubsub, ready, nil, "test", "deadbeef", opts...), &t, nil
+	opts = append([]http.Option{http.WithKV(kvStore)}, opts...)
+	return http.CreateRouter(context.TODO(), &defConfig, t.hub, t.database, ps, ready, nil, "test", "deadbeef", opts...), &t, nil
 }
 
 // CreateTestDBRouterWithHub creates a test router with a hub. Its in-memory

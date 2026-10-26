@@ -200,33 +200,43 @@ func TestParseConfigClientPadding(t *testing.T) {
 	}
 }
 
-func TestParseConfigStillChecksCallsignAndColorCode(t *testing.T) {
+func TestParseConfigStillChecksTheCallsign(t *testing.T) {
 	t.Parallel()
-	base := rptcFields{
-		callsign: pad("KI5VMF", 8), rx: "449000000", tx: "444000000", power: "01", cc: "01",
+	f := rptcFields{
+		callsign: pad("", 8), rx: "449000000", tx: "444000000", power: "01", cc: "01",
 		lat: "30.26720", lon: "-97.74310", height: "000",
 		location: pad("", 20), description: pad("", 19), slots: "4",
 		url: pad("", 124), software: pad("sw", 40), pkg: pad("pkg", 40),
 	}
-	noCall := base
-	noCall.callsign = pad("", 8)
-	badCC := base
-	badCC.cc = "x1"
-	zeroCC := base
-	zeroCC.cc = "00"
-	for name, tc := range map[string]struct {
-		f   rptcFields
-		err error
-	}{
-		"empty callsign":  {noCall, models.ErrInvalidCallsign},
-		"bad color code":  {badCC, models.ErrInvalidColorCode},
-		"zero color code": {zeroCC, models.ErrInvalidColorCode},
+	var c models.RepeaterConfiguration
+	if err := c.ParseConfig(f.packet(t), "test", "abc123"); !errors.Is(err, models.ErrInvalidCallsign) {
+		t.Fatalf("ParseConfig error = %v, want %v", err, models.ErrInvalidCallsign)
+	}
+}
+
+func TestParseConfigStoresZeroForABadColorCode(t *testing.T) {
+	t.Parallel()
+	for cc, want := range map[string]uint8{
+		"x1": 0, "-1": 0, "16": 0, "99": 0, "  ": 0, "\x00\x00": 0,
+		"00": 0, "01": 1, " 9": 9, "15": 15,
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(cc, func(t *testing.T) {
 			t.Parallel()
-			var c models.RepeaterConfiguration
-			if err := c.ParseConfig(tc.f.packet(t), "test", "abc123"); !errors.Is(err, tc.err) {
-				t.Fatalf("ParseConfig error = %v, want %v", err, tc.err)
+			f := rptcFields{
+				callsign: pad("KI5VMF", 8), rx: "449000000", tx: "444000000", power: "01", cc: cc,
+				lat: "30.26720", lon: "-97.74310", height: "000",
+				location: pad("", 20), description: pad("", 19), slots: "4",
+				url: pad("", 124), software: pad("sw", 40), pkg: pad("pkg", 40),
+			}
+			c := models.RepeaterConfiguration{ColorCode: 7}
+			if err := c.ParseConfig(f.packet(t), "test", "abc123"); err != nil {
+				t.Fatalf("ParseConfig: %v", err)
+			}
+			if c.ColorCode != want {
+				t.Errorf("ColorCode = %d, want %d", c.ColorCode, want)
+			}
+			if c.Callsign != "KI5VMF" || c.RXFrequency != 449000000 || c.Slots != 4 {
+				t.Errorf("the other fields were not read: %+v", c)
 			}
 		})
 	}

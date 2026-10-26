@@ -50,14 +50,10 @@ type RepeaterConfiguration struct {
 	Slots       uint    `json:"slots" msg:"slots"`
 }
 
-var (
-	ErrInvalidCallsign  = errors.New("invalid callsign")
-	ErrInvalidColorCode = errors.New("invalid color code")
-)
+var ErrInvalidCallsign = errors.New("invalid callsign")
 
 const (
 	maxTXPower        = 99
-	minColorCode      = 1
 	maxColorCode      = 15
 	minLatitude       = -90
 	maxLatitude       = 90
@@ -79,9 +75,10 @@ var ErrInvalidConfig = errors.New("invalid RPTC configuration packet")
 // Clients pad the fields differently: DMRGateway and MMDVMHost zero fill the
 // numbers, HBlink3 left-justifies frequencies and coordinates with spaces,
 // and HBlink4 right-justifies coordinates with spaces. Every field is read
-// with leading and trailing spaces and NULs removed. Only the callsign and
-// the color code can refuse the login; any other field that does not parse
-// is logged and left at zero, as FreeDMR and HBlink store it as plain text.
+// with leading and trailing spaces and NULs removed. Only the callsign can
+// refuse the login; any other field that does not parse, or a color code
+// above 15, is logged and left at zero, as FreeDMR and HBlink store it as
+// plain text.
 // The numbers are read from their octet ranges in dmrgo's config layouts,
 // since dmrgo's accessors refuse anything but digits.
 func (c *RepeaterConfiguration) ParseConfig(data []byte, version, commit string) error {
@@ -130,12 +127,11 @@ func (c *RepeaterConfiguration) parse(id uint32, raw []byte, freq int, cfg rptcT
 	c.TXFrequency = uint(rptcNumber[uint32](id, "TXFrequency", f[9:18]))
 	c.TXPower = rptcNumber[uint8](id, "Power", f[18:20])
 
-	cc, ok := rptcDecimal[uint8](f[20:22])
-	if !ok {
-		slog.Error("Error parsing color code", "repeaterID", id, "value", string(f[20:22]))
-		return ErrInvalidColorCode
+	c.ColorCode = rptcNumber[uint8](id, "ColorCode", f[20:22])
+	if c.ColorCode > maxColorCode {
+		slog.Warn("Ignoring an RPTC color code above 15", "repeaterID", id, "value", string(f[20:22]))
+		c.ColorCode = 0
 	}
-	c.ColorCode = cc
 
 	c.Latitude = rptcCoordinate(id, "Latitude", f[22:30], maxLatitude)
 	c.Longitude = rptcCoordinate(id, "Longitude", f[30:39], maxLongitude)
@@ -208,8 +204,8 @@ func (c *RepeaterConfiguration) Check(version, commit string) error {
 		c.TXPower = maxTXPower
 	}
 
-	if c.ColorCode < minColorCode || c.ColorCode > maxColorCode {
-		return ErrInvalidColorCode
+	if c.ColorCode > maxColorCode {
+		c.ColorCode = 0
 	}
 
 	if math.IsNaN(c.Latitude) || c.Latitude < minLatitude || c.Latitude > maxLatitude {

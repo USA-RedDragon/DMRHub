@@ -241,6 +241,11 @@ func (r *dialectRig) expectNothing() {
 
 func (r *dialectRig) login(d dmrd.Dialect, id uint32) {
 	r.t.Helper()
+	r.loginWith(d, id, rptc(r.t, d, id))
+}
+
+func (r *dialectRig) loginWith(d dmrd.Dialect, id uint32, config []byte) {
+	r.t.Helper()
 	ack := dmrd.CommandRPTACK
 	if d == dmrd.DialectHBRP {
 		ack = dmrd.CommandMSTACK
@@ -254,9 +259,35 @@ func (r *dialectRig) login(d dmrd.Dialect, id uint32) {
 	require.NoError(r.t, err)
 	r.control(d, dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token})
 	r.expect(d, ack)
-	r.send(rptc(r.t, d, id))
+	r.send(config)
 	r.expect(d, ack)
 	require.Equal(r.t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State())
+}
+
+func TestLoginWithABadColorCodeIsAccepted(t *testing.T) {
+	t.Parallel()
+	for d, at := range map[dmrd.Dialect]int{dmrd.DialectMMDVM: 36, dmrd.DialectHBRP: 40} {
+		for i, cc := range []string{"x1", "16", "99"} {
+			t.Run(d.String()+"/"+cc, func(t *testing.T) {
+				t.Parallel()
+				id := uint32(311870 + 10*at + i)
+				r := newDialectRig(t, uint(id))
+				require.NoError(t, r.s.DB.Model(&models.Repeater{}).Where("id = ?", id).Update("color_code", 7).Error)
+				config := rptc(t, d, id)
+				require.Equal(t, "01", string(config[at:at+2]))
+				copy(config[at:], cc)
+				r.loginWith(d, id, config)
+
+				rec, err := r.kv.GetRepeater(context.Background(), uint(id))
+				require.NoError(t, err)
+				assert.Zero(t, rec.ColorCode)
+				assert.Equal(t, "N0CALL", rec.Callsign)
+				var row models.Repeater
+				require.NoError(t, r.s.DB.First(&row, id).Error)
+				assert.Zero(t, row.ColorCode)
+			})
+		}
+	}
 }
 
 func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {

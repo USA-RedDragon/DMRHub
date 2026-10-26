@@ -86,11 +86,11 @@ func newSampler(stack *testutils.IntegrationStack, path string, logs *logCounter
 
 func (s *sampler) run(every time.Duration) {
 	s.started = true
+	s.sample()
 	go func() {
 		defer close(s.done)
 		tick := time.NewTicker(every)
 		defer tick.Stop()
-		s.sample()
 		for {
 			select {
 			case <-s.stop:

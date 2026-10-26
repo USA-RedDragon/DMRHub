@@ -357,6 +357,7 @@ describe('PluginPage of a plugin inside DMRHub', () => {
     expect(wrapper.text()).toContain('The hosts this plugin asks to reach. It can reach only the ones you allow.');
     expect(wrapper.text()).toContain('Hosts that the new version adds start out not allowed.');
     expect(wrapper.find('#pp-file').exists()).toBe(true);
+    expect(wrapper.find('label[for="pp-file"]').text()).toBe('Upload a new version');
     expect(wrapper.find('[data-test="token-dialog"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Make a new token');
 
@@ -437,7 +438,7 @@ describe('PluginPage of a plugin inside DMRHub', () => {
     wrapper.unmount();
   });
 
-  it('shows a built-in plugin without New version and Remove plugin', async () => {
+  it('shows a built-in plugin without Upload a new version and Remove plugin', async () => {
     serve();
     nav.params = { id: '1' };
     const wrapper = mount(PluginPage, { attachTo: document.body });

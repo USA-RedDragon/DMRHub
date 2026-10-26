@@ -54,7 +54,7 @@
           intro="The hosts this plugin asks to reach. It can reach only the ones you allow."
         />
         <div v-if="uploaded" class="flex flex-col gap-1.5">
-          <label for="pp-file" class="text-sm font-medium">New version</label>
+          <label for="pp-file" class="text-sm font-medium">Upload a new version</label>
           <ShadInput id="pp-file" type="file" accept=".wasm" class="pt-1.5" @change="chooseFile" />
           <p v-for="(m, i) in fileErrors" :key="i" class="text-sm text-destructive" data-test="inside-file-error">{{ m }}</p>
           <p class="text-sm text-muted-foreground">

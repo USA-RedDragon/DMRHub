@@ -52,6 +52,7 @@ type IPSCTranslator struct {
 	epoch          time.Time
 
 	nextCallControl uint32
+	nextCallSeq     uint8
 	nextStreamID    uint32
 
 	rawBlocksAnXPRDrops bool
@@ -97,7 +98,7 @@ type streamState struct {
 	callControl  uint32 // random per-call
 	rtpSeq       uint16
 	rtpTimestamp uint32
-	ipscSeq      uint8
+	ipscSeq      uint8     // octet 5 of every packet of the call
 	headersSent  int       // number of voice headers sent (3 required)
 	burstIndex   int       // 0-5 → A-F
 	firstPacket  bool      // true for the very first packet
@@ -193,9 +194,11 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		}
 		ss = &streamState{
 			callControl:  t.nextCallControl,
+			ipscSeq:      t.nextCallSeq,
 			firstPacket:  true,
 			lastActivity: time.Now(),
 		}
+		t.nextCallSeq++
 		t.streams[uint32(streamID)] = ss
 	}
 	ss.lastActivity = time.Now()
@@ -229,7 +232,6 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			if data := t.buildVoiceLC(pkt, ss, dt, false); data != nil {
 				results = [][]byte{data}
 			}
-			ss.ipscSeq++
 			// Clean up stream state
 			delete(t.streams, uint32(streamID))
 		case enums.DataTypeCSBK, enums.DataTypePIHeader,
@@ -462,7 +464,6 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	}
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
 	u.Burst, u.Data = b.Burst, b.Data
-	ss.ipscSeq++
 	return t.encodeUser(pkt, &u)
 }
 
@@ -486,7 +487,6 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 	d.Trailer[1] = byte(sti)
 	u := t.user(pkt, ss, true, false, ss.firstPacket)
 	u.Burst, u.Data = ipscwire.BurstRaw, d
-	ss.ipscSeq++
 	return t.encodeUser(pkt, &u)
 }
 

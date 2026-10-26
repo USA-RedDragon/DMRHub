@@ -216,6 +216,69 @@ func TestAConnMovesToANewStreamOnDraining(t *testing.T) {
 	}
 }
 
+func TestAConnSaysHelloOnEachStream(t *testing.T) {
+	t.Parallel()
+	got := make(chan *pluginv1.ConnectRequest, 8)
+	moved := make(chan struct{})
+	opts := startHub(t,
+		func(s pluginv1.PluginService_ConnectServer) error {
+			welcome(s)
+			m, _ := s.Recv()
+			got <- m
+			m, _ = s.Recv()
+			got <- m
+			draining(s)
+			<-moved
+			return errReplaced
+		},
+		func(s pluginv1.PluginService_ConnectServer) error {
+			welcome(s)
+			for range 2 {
+				m, _ := s.Recv()
+				got <- m
+			}
+			close(moved)
+			<-s.Context().Done()
+			return nil
+		},
+	)
+	opts.Hello = &pluginv1.Hello{Name: "P", Version: "v9"}
+	c, err := Dial(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.SubscribeTracking(true); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			if _, err := c.Recv(); err != nil {
+				return
+			}
+		}
+	}()
+	for stream := 1; stream <= 2; stream++ {
+		var first, second *pluginv1.ConnectRequest
+		select {
+		case first = <-got:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("stream %d got nothing", stream)
+		}
+		select {
+		case second = <-got:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("stream %d got nothing", stream)
+		}
+		if first.GetHello().GetVersion() != "v9" {
+			t.Fatalf("stream %d got %v first, want the hello", stream, first)
+		}
+		if !second.GetSubscribe().GetTracking() {
+			t.Fatalf("stream %d got %v after the hello, want the tracking subscription", stream, second)
+		}
+	}
+}
+
 func TestAConnEndsAsBeforeWhenTheHubSendsNoDraining(t *testing.T) {
 	t.Parallel()
 	opts := startHub(t, func(s pluginv1.PluginService_ConnectServer) error {

@@ -34,6 +34,9 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/ory/dockertest/v4"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // Backend describes a database/cache backend configuration for integration tests.
@@ -51,6 +54,73 @@ func SQLiteMemoryBackend() Backend {
 	return Backend{
 		Name:  "sqlite-memory",
 		Setup: func(_ *testing.T, _ *config.Config) {},
+	}
+}
+
+// MySQLBackend returns a backend that spins up a dedicated MySQL container
+// for each test, with the in-memory pubsub and KV. The root password is
+// "test", so that a test can make more databases.
+func MySQLBackend() Backend {
+	return Backend{
+		Name: "mysql",
+		Setup: func(t *testing.T, cfg *config.Config) {
+			t.Helper()
+
+			pool, poolErr := dockertest.NewPool(t.Context(), "", dockertest.WithMaxWait(3*time.Minute))
+			if poolErr != nil {
+				t.Skip("Docker not available: " + poolErr.Error())
+			}
+			t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
+
+			res, err := pool.Run(t.Context(), "mysql",
+				dockertest.WithTag("8.4"),
+				dockertest.WithEnv([]string{
+					"MYSQL_ROOT_PASSWORD=test",
+					"MYSQL_DATABASE=testdb",
+				}),
+				dockertest.WithoutReuse(),
+				dockertest.WithHostConfig(func(hc *container.HostConfig) {
+					hc.AutoRemove = true
+					hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
+					hc.NanoCPUs = 4e9
+				}),
+			)
+			if err != nil {
+				t.Fatalf("start mysql container: %v", err)
+			}
+			port, _ := strconv.Atoi(res.GetPort("3306/tcp"))
+
+			if err := pool.Retry(t.Context(), 0, func() error {
+				db, err := gorm.Open(mysql.Open(fmt.Sprintf("root:test@tcp(localhost:%d)/testdb", port)), &gorm.Config{Logger: logger.Discard})
+				if err != nil {
+					return fmt.Errorf("opening mysql probe: %w", err)
+				}
+				sqlDB, err := db.DB()
+				if err != nil {
+					return fmt.Errorf("opening mysql probe: %w", err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				pingErr := sqlDB.PingContext(ctx)
+				if closeErr := sqlDB.Close(); closeErr != nil {
+					return fmt.Errorf("closing mysql probe: %w", closeErr)
+				}
+				if pingErr != nil {
+					return fmt.Errorf("pinging mysql: %w", pingErr)
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("mysql not ready: %v", err)
+			}
+
+			cfg.Database.Driver = config.DatabaseDriverMySQL
+			cfg.Database.Host = "localhost"
+			cfg.Database.Port = port
+			cfg.Database.Username = "root"
+			cfg.Database.Password = "test"
+			cfg.Database.Database = "testdb"
+			cfg.Database.ExtraParameters = nil
+		},
 	}
 }
 

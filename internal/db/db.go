@@ -21,6 +21,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -150,10 +151,57 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	return
 }
 
-const migrationLockKey int64 = 0x444d524875624d67
+const (
+	migrationLockKey  int64 = 0x444d524875624d67
+	migrationLockName       = "dmrhub_migrations"
+	mysqlLockWait           = 60
+)
 
+var errMigrationLock = errors.New("the database refused the migration lock")
+
+// lockMigrations takes a lock that the replicas share on the database, so
+// that one replica migrates at a time. It holds a connection of its own for
+// the lock, since both locks belong to the session that took them.
 func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error) {
-	if config.Database.Driver != configPkg.DatabaseDriverPostgres {
+	var lock, unlock func(ctx context.Context, conn *sql.Conn) error
+	switch config.Database.Driver {
+	case configPkg.DatabaseDriverPostgres:
+		lock = func(ctx context.Context, conn *sql.Conn) error {
+			if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+				return fmt.Errorf("pg_advisory_lock: %w", err)
+			}
+			return nil
+		}
+		unlock = func(ctx context.Context, conn *sql.Conn) error {
+			if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey); err != nil {
+				return fmt.Errorf("pg_advisory_unlock: %w", err)
+			}
+			return nil
+		}
+	case configPkg.DatabaseDriverMySQL:
+		lock = func(ctx context.Context, conn *sql.Conn) error {
+			for {
+				var got sql.NullInt64
+				if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, ?)", migrationLockName, mysqlLockWait).Scan(&got); err != nil {
+					return fmt.Errorf("GET_LOCK: %w", err)
+				}
+				if !got.Valid {
+					return errMigrationLock
+				}
+				if got.Int64 == 1 {
+					return nil
+				}
+			}
+		}
+		unlock = func(ctx context.Context, conn *sql.Conn) error {
+			if _, err := conn.ExecContext(ctx, "SELECT RELEASE_LOCK(?)", migrationLockName); err != nil {
+				return fmt.Errorf("RELEASE_LOCK: %w", err)
+			}
+			return nil
+		}
+	case configPkg.DatabaseDriverSQLite:
+		return func() error { return nil }, nil
+	default:
 		return func() error { return nil }, nil
 	}
 	sqlDB, err := db.DB()
@@ -165,12 +213,12 @@ func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)
 	}
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+	if err := lock(ctx, conn); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("failed to take the migration lock: %w", err)
 	}
 	return func() error {
-		_, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+		err := unlock(ctx, conn)
 		closeErr := conn.Close()
 		if err != nil {
 			return fmt.Errorf("failed to release the migration lock: %w", err)

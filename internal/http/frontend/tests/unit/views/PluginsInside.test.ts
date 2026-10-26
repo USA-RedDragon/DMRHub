@@ -220,7 +220,9 @@ describe('UploadPluginPage', () => {
     const wrapper = mount(UploadPluginPage);
     await choose(wrapper, '#up-file', 'plugin.exe');
     await flushPromises();
-    expect(wrapper.find('[data-test="upload-error"]').text()).toBe('Choose a .wasm plugin file.');
+    expect(wrapper.find('[data-test="upload-error"]').text()).toBe(
+      "This file is not a WebAssembly module. Choose the .wasm file that the plugin's build made.",
+    );
     expect(wrapper.find('[data-test="upload-details"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="upload-go"]').attributes('disabled')).toBeDefined();
     expect(mockAPI.post).not.toHaveBeenCalled();
@@ -262,6 +264,74 @@ describe('UploadPluginPage', () => {
     expect(form.get('allowed_hosts')).toBe('["nets.example.org:443"]');
     expect(form.get('file')).toBeInstanceOf(File);
     expect(wrapper.find('[data-test="upload-done"]').text()).toBe('Net check-in is running.');
+    wrapper.unmount();
+  });
+  it('shows each problem of a file under its field', async () => {
+    const manifest = { name: 'Parrot two', version: '0.1.0', author: '', description: '', ranges: [{ first: 9990, last: 9990 }], hosts: [] };
+    mockAPI.post.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          error: '9990 is already used by Parrot. Change the IDs, or turn Parrot off first.',
+          errors: [
+            { field: 'ids', message: '9990 is already used by Parrot. Change the IDs, or turn Parrot off first.' },
+            { field: 'hosts', message: 'The plugin asks to reach “example”, which is not a host and port such as nets.example.org:443.' },
+          ],
+          manifest,
+        },
+      },
+    });
+    const wrapper = mount(UploadPluginPage);
+    await choose(wrapper, '#up-file', 'parrot2.wasm');
+    await flushPromises();
+    expect(wrapper.find('[data-test="upload-details"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="upload-ids-error"]').text()).toBe('9990 is already used by Parrot. Change the IDs, or turn Parrot off first.');
+    expect(wrapper.find('[data-test="upload-hosts-error"]').text()).toBe(
+      'The plugin asks to reach “example”, which is not a host and port such as nets.example.org:443.',
+    );
+    expect(wrapper.find('[data-test="upload-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="upload-go"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('shows a problem of the file itself under the file', async () => {
+    mockAPI.post.mockRejectedValueOnce({
+      response: {
+        status: 413,
+        data: { error: 'This file is 41 MiB. A plugin can be at most 32 MiB.', errors: [{ field: 'file', message: 'This file is 41 MiB. A plugin can be at most 32 MiB.' }] },
+      },
+    });
+    const wrapper = mount(UploadPluginPage);
+    await choose(wrapper, '#up-file', 'big.wasm');
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="upload-error"]').map((e) => e.text())).toEqual(['This file is 41 MiB. A plugin can be at most 32 MiB.']);
+    expect(wrapper.find('[data-test="upload-details"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('shows the problems of an upload that the hub refuses under their fields', async () => {
+    mockAPI.post.mockResolvedValueOnce({ data: { name: 'Net check-in', version: '0.4.1', author: '', description: '', ranges: [], hosts: [] } });
+    const wrapper = mount(UploadPluginPage);
+    await choose(wrapper, '#up-file', 'net-checkin.wasm');
+    await flushPromises();
+    await wrapper.find('#up-ids').setValue('0');
+    mockAPI.post.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          error: 'x',
+          errors: [
+            { field: 'file', message: 'Net check-in is already uploaded. Open it and choose “Upload a new version”.' },
+            { field: 'ids', message: 'The plugin asks for ID 0, which is not a radio or talkgroup ID.' },
+          ],
+        },
+      },
+    });
+    await wrapper.find('[data-test="upload-go"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="upload-error"]').text()).toBe('Net check-in is already uploaded. Open it and choose “Upload a new version”.');
+    expect(wrapper.find('[data-test="upload-ids-error"]').text()).toBe('The plugin asks for ID 0, which is not a radio or talkgroup ID.');
+    expect(wrapper.find('[data-test="upload-save-error"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

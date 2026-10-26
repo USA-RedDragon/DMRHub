@@ -72,6 +72,29 @@ export type PluginManifest = {
 
 export type PluginToken = { plugin: AdminPlugin; token: string };
 
+/** PluginField is the field of the upload form that a problem is about. */
+export type PluginField = 'file' | 'ids' | 'hosts';
+
+export type PluginProblem = { field: PluginField; message: string };
+
+/** PluginRefusal is what the hub answers to a plugin file it does not take: each problem, and what the file says it is when the hub could read that. */
+export type PluginRefusal = { problems: PluginProblem[]; manifest: PluginManifest | null };
+
+/** refusalOf returns the problems of a refused upload, or null when err is no such answer. */
+export function refusalOf(err: unknown): PluginRefusal | null {
+  const data = (err as { response?: { data?: { errors?: unknown; manifest?: PluginManifest | null } } })?.response?.data;
+  if (!data || !Array.isArray(data.errors) || data.errors.length === 0) {
+    return null;
+  }
+  const problems = (data.errors as PluginProblem[]).filter((p) => typeof p?.message === 'string');
+  const m = data.manifest ?? null;
+  return { problems, manifest: m ? { ...m, ranges: m.ranges ?? [], hosts: m.hosts ?? [] } : null };
+}
+
+/** problemsFor returns the messages of problems about field, one per line. */
+export function problemsFor(problems: PluginProblem[], field: PluginField): string[] {
+  return problems.filter((p) => p.field === field).map((p) => p.message);
+}
 
 export type PluginInput = { name: string; enabled: boolean; ranges: PluginRange[]; allowed_hosts?: string[] };
 

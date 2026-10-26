@@ -57,7 +57,7 @@ func guest(t *testing.T, name string) []byte {
 		if guests.err != nil {
 			return
 		}
-		for _, g := range []string{"echo", "netprobe"} {
+		for _, g := range []string{"echo", "netprobe", "early"} {
 			cmd := exec.Command("go", "build", "-o", filepath.Join(guests.dir, g+".wasm"), "../../../../../plugins/wasm/testdata/"+g) //nolint:noctx // a build for the tests
 			cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
 			if out, err := cmd.CombinedOutput(); err != nil {
@@ -212,7 +212,7 @@ func TestInspectingAFileShowsWhatThePluginAsks(t *testing.T) {
 
 	code, body = e.upload(e.admin, "/api/v1/admin/plugins/inspect", []byte("#!/bin/sh\n"), nil, nil)
 	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Contains(t, body, "Choose a .wasm plugin file.")
+	assert.Contains(t, body, "This file is not a WebAssembly module.")
 	code, _ = e.upload(e.admin, "/api/v1/admin/plugins/inspect", nil, nil, nil)
 	assert.Equal(t, http.StatusBadRequest, code)
 	testutils.SeedAccount(t, e.db, 1000001, "KI5VMF", "user")
@@ -300,6 +300,73 @@ func TestAPluginFileOver32MiBIsRefused(t *testing.T) {
 	e := newEnv(t)
 	big := make([]byte, 32<<20+1)
 	copy(big, "\x00asm")
-	code, _ := e.upload(e.admin, "/api/v1/admin/plugins/inspect", big, nil, nil)
+	code, body := e.upload(e.admin, "/api/v1/admin/plugins/inspect", big, nil, nil)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
+	assert.Equal(t, []problem{{Field: "file", Message: "This file is 33 MiB. A plugin can be at most 32 MiB."}}, refusal(t, body).Errors)
+}
+
+type problem struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+type refused struct {
+	Error    string                    `json:"error"`
+	Errors   []problem                 `json:"errors"`
+	Manifest *apimodels.PluginManifest `json:"manifest"`
+}
+
+func refusal(t *testing.T, body string) refused {
+	t.Helper()
+	var r refused
+	require.NoError(t, json.Unmarshal([]byte(body), &r), body)
+	require.NotEmpty(t, r.Errors, body)
+	assert.Equal(t, r.Errors[0].Message, r.Error, "error is the first problem")
+	return r
+}
+
+func TestAFileThatIsNoPluginIsRefusedWithWhy(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	notWasm := "This file is not a WebAssembly module. Choose the .wasm file that the plugin's build made."
+	for _, c := range []struct {
+		want string
+		file []byte
+	}{
+		{notWasm, []byte("#!/bin/sh\n")},
+		{notWasm, []byte("\x00asm\x01\x00\x00\x00\x0a\x05")},
+		{"This file is WebAssembly but not a DMRHub plugin. Plugins are built with GOOS=wasip1 GOARCH=wasm.", []byte("\x00asm\x01\x00\x00\x00")},
+		{"The plugin stopped before it introduced itself: panic: no config.", guest(t, "early")},
+	} {
+		want := c.want
+		code, body := e.upload(e.admin, "/api/v1/admin/plugins/inspect", c.file, nil, nil)
+		assert.Equal(t, http.StatusBadRequest, code, want)
+		r := refusal(t, body)
+		assert.Equal(t, []problem{{Field: "file", Message: want}}, r.Errors)
+		assert.Nil(t, r.Manifest)
+	}
+}
+
+func TestEachProblemOfAPluginIsUnderItsField(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	_, err := models.EnsureBuiltinPlugin(e.db, "parrot", "Parrot", "v1.3.12", []models.PluginRange{{First: 9200, Last: 9200}}, time.Now())
+	require.NoError(t, err)
+	code, body := e.upload(e.admin, "/api/v1/admin/plugins/inspect", guest(t, "netprobe"), nil, nil)
+	require.Equal(t, http.StatusBadRequest, code, body)
+	r := refusal(t, body)
+	assert.Equal(t, []problem{{Field: "ids", Message: "9200 is already used by Parrot. Change the IDs, or turn Parrot off first."}}, r.Errors)
+	require.NotNil(t, r.Manifest, "the admin sees what the plugin asks, to change its IDs")
+	assert.Equal(t, "Netprobe", r.Manifest.Name)
+
+	code, body = e.upload(e.admin, "/api/v1/admin/plugins/upload", guest(t, "netprobe"), map[string]string{"ranges": `[{"first":0,"last":0}]`}, nil)
+	require.Equal(t, http.StatusBadRequest, code, body)
+	assert.Equal(t, []problem{{Field: "ids", Message: "The plugin asks for ID 0, which is not a radio or talkgroup ID."}}, refusal(t, body).Errors)
+
+	var p apimodels.AdminPlugin
+	code, body = e.upload(e.admin, "/api/v1/admin/plugins/upload", guest(t, "netprobe"), map[string]string{"ranges": `[{"first":9201,"last":9201}]`}, &p)
+	require.Equal(t, http.StatusCreated, code, body)
+	code, body = e.upload(e.admin, "/api/v1/admin/plugins/upload", guest(t, "netprobe"), map[string]string{"ranges": `[{"first":9202,"last":9202}]`}, nil)
+	require.Equal(t, http.StatusBadRequest, code, body)
+	assert.Equal(t, []problem{{Field: "file", Message: "Netprobe is already uploaded. Open it and choose “Upload a new version”."}}, refusal(t, body).Errors)
 }

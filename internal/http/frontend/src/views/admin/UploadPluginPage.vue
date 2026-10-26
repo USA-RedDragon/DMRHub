@@ -30,7 +30,7 @@
         <div class="flex flex-col gap-1.5">
           <label for="up-file" class="text-sm font-medium">Plugin file</label>
           <ShadInput id="up-file" type="file" accept=".wasm" class="pt-1.5" @change="choose" />
-          <p v-if="fileError" class="text-sm text-destructive" data-test="upload-error">{{ fileError }}</p>
+          <p v-for="(m, i) in fileErrors" :key="i" class="text-sm text-destructive" data-test="upload-error">{{ m }}</p>
         </div>
         <div v-if="manifest" class="flex flex-col gap-4" data-test="upload-details">
           <dl class="grid grid-cols-[110px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
@@ -48,6 +48,7 @@
             <p class="text-sm text-muted-foreground">
               The plugin asks for these. Radio and talkgroup IDs, and ranges such as 9990-9999, separated by commas.
             </p>
+            <p v-for="(m, i) in idErrors" :key="i" class="text-sm text-destructive" data-test="upload-ids-error">{{ m }}</p>
             <p v-if="saveError" class="text-sm text-destructive" data-test="upload-save-error">{{ saveError }}</p>
           </div>
           <PluginHosts
@@ -56,10 +57,16 @@
             :hosts="manifest.hosts"
             intro="The plugin asks to reach these hosts. It can reach only the ones you allow."
           />
+          <div v-if="hostErrors.length > 0" class="flex flex-col gap-1.5">
+            <span v-if="manifest.hosts.length === 0" class="text-sm font-medium">Network</span>
+            <p v-for="(m, i) in hostErrors" :key="i" class="text-sm text-destructive" data-test="upload-hosts-error">{{ m }}</p>
+          </div>
         </div>
       </div>
       <div>
-        <ShadButton type="button" :disabled="!manifest || busy" data-test="upload-go" @click="upload">Upload and start</ShadButton>
+        <ShadButton type="button" :disabled="!manifest || busy || fileErrors.length > 0 || hostErrors.length > 0" data-test="upload-go" @click="upload">
+          Upload and start
+        </ShadButton>
       </div>
       <p v-if="done" class="text-sm text-green-600 dark:text-green-500" data-test="upload-done">{{ done }}</p>
     </CardContent>
@@ -67,33 +74,56 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useHead } from '@unhead/vue';
 
 import PluginHosts from '@/components/PluginHosts.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
-import { formatIDs, inspectPlugin, parseIDs, uploadPlugin, type PluginManifest } from '@/services/plugins';
+import {
+  formatIDs,
+  inspectPlugin,
+  parseIDs,
+  problemsFor,
+  refusalOf,
+  uploadPlugin,
+  type PluginManifest,
+  type PluginProblem,
+} from '@/services/plugins';
 import { errorText } from '@/services/settings';
 
 useHead({ title: 'Upload a plugin' });
 
 const notAPlugin = 'Choose a .wasm plugin file.';
+const notWasm = "This file is not a WebAssembly module. Choose the .wasm file that the plugin's build made.";
 
 const file = ref<File | null>(null);
 const manifest = ref<PluginManifest | null>(null);
 const fileError = ref('');
+const problems = ref<PluginProblem[]>([]);
 const saveError = ref('');
 const ids = ref('');
 const allowed = ref<string[]>([]);
 const busy = ref(false);
 const done = ref('');
 
+const fileErrors = computed(() => [...(fileError.value ? [fileError.value] : []), ...problemsFor(problems.value, 'file')]);
+const idErrors = computed(() => problemsFor(problems.value, 'ids'));
+const hostErrors = computed(() => problemsFor(problems.value, 'hosts'));
+
+const show = (m: PluginManifest, f: File) => {
+  file.value = f;
+  manifest.value = m;
+  ids.value = formatIDs(m.ranges);
+  allowed.value = [];
+};
+
 const choose = async (e: Event) => {
   const f = (e.target as HTMLInputElement).files?.[0] ?? null;
   manifest.value = null;
   fileError.value = '';
+  problems.value = [];
   saveError.value = '';
   done.value = '';
   file.value = null;
@@ -101,18 +131,22 @@ const choose = async (e: Event) => {
     return;
   }
   if (!/\.wasm$/i.test(f.name)) {
-    fileError.value = notAPlugin;
+    fileError.value = notWasm;
     return;
   }
   busy.value = true;
   try {
-    const m = await inspectPlugin(f);
-    file.value = f;
-    manifest.value = m;
-    ids.value = formatIDs(m.ranges);
-    allowed.value = [];
+    show(await inspectPlugin(f), f);
   } catch (err) {
-    fileError.value = errorText(err, notAPlugin);
+    const refusal = refusalOf(err);
+    if (refusal) {
+      problems.value = refusal.problems;
+      if (refusal.manifest) {
+        show(refusal.manifest, f);
+      }
+    } else {
+      fileError.value = errorText(err, notAPlugin);
+    }
   } finally {
     busy.value = false;
   }
@@ -123,6 +157,7 @@ const upload = async () => {
     return;
   }
   saveError.value = '';
+  problems.value = [];
   const ranges = parseIDs(ids.value);
   if (ranges === null) {
     saveError.value = 'Use IDs and ranges such as 9990, 5050-5059.';
@@ -133,7 +168,12 @@ const upload = async () => {
     const p = await uploadPlugin(file.value, ranges, allowed.value);
     done.value = `${p.name} is running.`;
   } catch (err) {
-    saveError.value = errorText(err, 'Could not save. Try again later.');
+    const refusal = refusalOf(err);
+    if (refusal) {
+      problems.value = refusal.problems;
+    } else {
+      saveError.value = errorText(err, 'Could not save. Try again later.');
+    }
   } finally {
     busy.value = false;
   }

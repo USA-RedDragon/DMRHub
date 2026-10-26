@@ -56,6 +56,7 @@
         <div v-if="uploaded" class="flex flex-col gap-1.5">
           <label for="pp-file" class="text-sm font-medium">New version</label>
           <ShadInput id="pp-file" type="file" accept=".wasm" class="pt-1.5" @change="chooseFile" />
+          <p v-for="(m, i) in fileErrors" :key="i" class="text-sm text-destructive" data-test="inside-file-error">{{ m }}</p>
           <p class="text-sm text-muted-foreground">
             Upload a newer .wasm file of this plugin. It takes over when the current calls end. Hosts that the new version
             adds start out not allowed.
@@ -100,6 +101,8 @@ import {
   formatIDs,
   formatRanges,
   parseIDs,
+  problemsFor,
+  refusalOf,
   stopNote,
   updatePlugin,
   uploadPluginVersion,
@@ -117,6 +120,7 @@ const ids = ref('');
 const allowed = ref<string[]>([]);
 const file = ref<File | null>(null);
 const error = ref('');
+const fileErrors = ref<string[]>([]);
 const saved = ref(false);
 const busy = ref(false);
 const confirming = ref(false);
@@ -155,6 +159,7 @@ const chooseFile = (e: Event) => {
 
 const save = async () => {
   error.value = '';
+  fileErrors.value = [];
   const ranges = parseIDs(ids.value);
   if (ranges === null) {
     error.value = 'Use IDs and ranges such as 9990, 5050-5059.';
@@ -170,7 +175,13 @@ const save = async () => {
     fill(p);
     saved.value = true;
   } catch (err) {
-    error.value = errorText(err, 'Could not save. Try again later.');
+    const refusal = refusalOf(err);
+    if (refusal) {
+      fileErrors.value = [...problemsFor(refusal.problems, 'file'), ...problemsFor(refusal.problems, 'hosts')];
+      error.value = problemsFor(refusal.problems, 'ids').join(' ');
+    } else {
+      error.value = errorText(err, 'Could not save. Try again later.');
+    }
   } finally {
     busy.value = false;
   }

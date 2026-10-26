@@ -199,6 +199,24 @@ func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange, on bool) er
 	return nil
 }
 
+// CheckPluginRanges checks ranges as the IDs of the plugin self, or of a
+// new plugin when self is 0, that is on when on is true.
+func CheckPluginRanges(db *gorm.DB, self uint, ranges []PluginRange, on bool) error {
+	return checkPluginRanges(db, self, ranges, on)
+}
+
+// PluginByName returns the plugin called name, and false when there is none.
+func PluginByName(db *gorm.DB, name string) (Plugin, bool, error) {
+	var found []Plugin
+	if err := db.Where("name = ?", name).Limit(1).Find(&found).Error; err != nil {
+		return Plugin{}, false, fmt.Errorf("could not find the plugin %q: %w", name, err)
+	}
+	if len(found) == 0 {
+		return Plugin{}, false, nil
+	}
+	return found[0], true, nil
+}
+
 // PluginWait is the first ID that a built-in plugin waits for, and the
 // plugin that has it.
 type PluginWait struct {

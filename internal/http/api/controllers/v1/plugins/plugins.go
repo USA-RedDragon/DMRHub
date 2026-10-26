@@ -178,7 +178,7 @@ func badInput(c *gin.Context, err error) bool {
 	case errors.Is(err, models.ErrPluginName):
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Pick a name of 1 to 64 characters that no other plugin has"})
 	case errors.Is(err, models.ErrPluginRange):
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Pick IDs from 1 to 16777215, at most 32 ranges, that overlap neither each other nor another plugin's"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: rangeProblem(err, false), "errors": []uploadProblem{{fieldIDs, rangeProblem(err, false)}}})
 	case errors.Is(err, models.ErrPluginNotFound):
 		c.JSON(http.StatusNotFound, gin.H{errorKey: msgNotFound})
 	default:

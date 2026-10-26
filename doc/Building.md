@@ -6,6 +6,7 @@ DMRHub can be built using the Makefile or manually.
 
 - [Go](https://go.dev/doc/install) (see `go.mod` for the minimum version)
 - [Node.js](https://nodejs.org/en/download/) (for the frontend)
+- [TinyGo](https://tinygo.org/getting-started/install/) 0.43.0 or later (for the plugins that come with DMRHub, and for the tests). `go generate` runs `tinygo` from the `PATH`, or the one that the `TINYGO` environment variable names
 - Make sure `$GOPATH/bin` is in your `$PATH`
 
 ## With Make
@@ -18,7 +19,7 @@ The binary is output to `bin/DMRHub`.
 
 ## Manually
 
-1. **Generate Go code** (MessagePack serializers, embedded frontend):
+1. **Generate Go code** (MessagePack serializers, embedded frontend, the plugins that come with DMRHub):
 
    ```bash
    go generate ./...

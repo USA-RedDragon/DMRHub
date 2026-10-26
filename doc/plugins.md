@@ -173,6 +173,14 @@ Build it to run inside DMRHub, and upload the `.wasm` file:
 GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w' -o net-checkin.wasm .
 ```
 
+Or build it with [TinyGo](https://tinygo.org) 0.43.0 or later, as DMRHub builds the parrot and the location server. Its module is much smaller, and it uses less memory inside DMRHub:
+
+```bash
+tinygo build -target=wasip1 -no-debug -o net-checkin.wasm .
+```
+
+TinyGo writes `print`, `println` and its panics on stdout, where DMRHub reads the plugin's messages. Log with `log/slog` instead, which writes on stderr. When a plugin writes something on stdout that is not a message, DMRHub logs it and stops the plugin.
+
 The same code built for your computer runs as its own program, with the flags and environment variables of the plugins that come with DMRHub. `conn.Dial` opens a TCP connection to a host; inside DMRHub, only to the hosts that an admin allowed. Use it as the `DialContext` of an `http.Transport` to reach a web API. A plugin inside DMRHub has no certificate authorities of its own, so a TLS client in it needs some, such as `golang.org/x/crypto/x509roots/fallback`.
 
 `plugin.DataOf` and `plugin.BurstOf` turn the bursts into the DMRD packets of [dmrgo](https://github.com/USA-RedDragon/dmrgo), whose voice and data receivers and transmitters decode and build calls. The parrot in `plugins/parrot` and the location server in `plugins/locator` are examples.

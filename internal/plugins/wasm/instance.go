@@ -103,7 +103,7 @@ func (e *Engine) Start(ctx context.Context, name string, wasm []byte, hosts Host
 		rc = rc.WithCompilationCache(e.cache)
 	}
 	i.rt = wazero.NewRuntimeWithConfig(runCtx, rc)
-	compiled, mod, err := i.instantiate(runCtx, wasm)
+	compiled, mod, err := i.instantiate(runCtx, packData(wasm))
 	if err != nil {
 		cancel(err)
 		_ = i.rt.Close(context.WithoutCancel(ctx))

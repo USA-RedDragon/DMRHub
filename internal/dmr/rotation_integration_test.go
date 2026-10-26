@@ -239,6 +239,9 @@ func checkCopies(t *testing.T, who string, got []arrival, windows []moveWindow) 
 		}
 	}
 	assert.Empty(t, outside, "%s got packets again outside a move window", who)
+	if len(outside) > 0 {
+		logArrivals(t, who, got, windows, slices.Min(outside), slices.Max(outside))
+	}
 }
 
 // logArrivals logs the move windows and the packets from lo to hi that a

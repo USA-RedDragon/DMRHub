@@ -36,8 +36,7 @@ const transcodingSection = manager.Kind("transcoding")
 // TestLiveAMBEServerChange sets the AMBE servers with the config API, as
 // the Setup page does. The hub uses them at once, refuses an address
 // without a port, and turns transcoding off for an empty list.
-func TestLiveAMBEServerChange(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+func TestLiveAMBEServerChange(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	assert.False(t, l.Hub.Transcoder().Enabled(), "transcoding is off by default")
 

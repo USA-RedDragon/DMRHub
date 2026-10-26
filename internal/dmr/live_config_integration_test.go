@@ -49,11 +49,15 @@ func applyErrors(t *testing.T, body []byte) []applyError {
 	return res.ApplyErrors
 }
 
-func useTempConfigDir(t *testing.T) {
+// settingOf returns how setting path stands in a response of the config
+// API.
+func settingOf(t *testing.T, cfg map[string]any, path string) map[string]any {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	settings, ok := cfg["settings"].(map[string]any)
+	require.True(t, ok, "the config API must return the settings")
+	s, ok := settings[path].(map[string]any)
+	require.True(t, ok, "the config API must return %s", path)
+	return s
 }
 
 func loopback(port int) string {
@@ -86,8 +90,7 @@ func seedLiveTraffic(t *testing.T, l *testutils.LiveStack) (*testutils.MMDVMClie
 // old port stops answering, the new one takes a login, and the IPSC peer on
 // the IPSC server, whose settings stay the same, stays registered and gets
 // the traffic of the new MMDVM session.
-func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	mc, ic := seedLiveTraffic(t, l)
 	oldAddr := l.Addr(t, manager.MMDVM)
@@ -123,9 +126,9 @@ func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // t.Setenv f
 
 // TestLiveMMDVMBindFailure moves the MMDVM server to a port that another
 // socket holds. The API reports it, the server keeps its old port and
-// session, and the saved config keeps the old port.
-func TestLiveMMDVMBindFailure(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+// session, and the config API shows the old port in effect and the new one
+// saved but not in effect.
+func TestLiveMMDVMBindFailure(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	mc, _ := seedLiveTraffic(t, l)
 	oldAddr := l.Addr(t, manager.MMDVM)
@@ -148,6 +151,9 @@ func TestLiveMMDVMBindFailure(t *testing.T) { //nolint:paralleltest // t.Setenv 
 
 	assert.Equal(t, oldAddr, l.Addr(t, manager.MMDVM))
 	assert.Equal(t, float64(oldPort), l.DMRSetting(t, manager.MMDVM, "port"))
+	port := settingOf(t, l.GetConfig(t), "dmr.mmdvm.port")
+	assert.Equal(t, float64(takenPort), port["saved"])
+	assert.Equal(t, true, port["not_in_effect"])
 	assert.Zero(t, mc.MSTCLs(), "the repeater must stay logged in")
 	assert.True(t, mc.Ping(2*time.Second), "the repeater must still get pongs")
 
@@ -160,8 +166,7 @@ func TestLiveMMDVMBindFailure(t *testing.T) { //nolint:paralleltest // t.Setenv 
 // TestLiveIPSCNetworkIDChange changes only the network ID of the IPSC
 // server. Its socket keeps the same address, so the new server binds it
 // after the old one let it go.
-func TestLiveIPSCNetworkIDChange(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+func TestLiveIPSCNetworkIDChange(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	mc, ic := seedLiveTraffic(t, l)
 	addr := l.Addr(t, manager.IPSC)
@@ -182,8 +187,7 @@ func TestLiveIPSCNetworkIDChange(t *testing.T) { //nolint:paralleltest // t.Sete
 // TestLiveOpenBridgeToggle turns OpenBridge off and on with the config API.
 // Off frees its port and hides the peer routes; on brings both back. The
 // MMDVM repeater stays logged in throughout.
-func TestLiveOpenBridgeToggle(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+func TestLiveOpenBridgeToggle(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	mc, _ := seedLiveTraffic(t, l)
 	obAddr := l.Addr(t, manager.OpenBridge)
@@ -216,10 +220,9 @@ func TestLiveOpenBridgeToggle(t *testing.T) { //nolint:paralleltest // t.Setenv 
 }
 
 // TestLiveOpenBridgeEnableFailure turns OpenBridge on at a port that
-// another socket holds. The API reports it and the saved config keeps
-// OpenBridge off.
-func TestLiveOpenBridgeEnableFailure(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+// another socket holds. The API reports it, and OpenBridge stays off,
+// with the saved setting not in effect.
+func TestLiveOpenBridgeEnableFailure(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	w := l.SetDMR(t, manager.OpenBridge, map[string]any{"enabled": false})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -237,14 +240,14 @@ func TestLiveOpenBridgeEnableFailure(t *testing.T) { //nolint:paralleltest // t.
 	assert.Equal(t, "openbridge", errs[0].Server)
 	assert.False(t, errs[0].Running)
 	assert.Nil(t, l.Manager.Server(manager.OpenBridge))
-	assert.Nil(t, l.DMRSetting(t, manager.OpenBridge, "enabled"), "the saved config must keep OpenBridge off")
+	assert.Nil(t, l.DMRSetting(t, manager.OpenBridge, "enabled"), "OpenBridge must stay off")
+	assert.Equal(t, true, settingOf(t, l.GetConfig(t), "dmr.openbridge.enabled")["not_in_effect"])
 }
 
 // TestLiveOpenBridgeDisableHandsOverEgress runs two replicas that share the
 // KV store. The first holds the OpenBridge egress lease; turning its
 // OpenBridge off must let the second take the lease.
-func TestLiveOpenBridgeDisableHandsOverEgress(t *testing.T) { //nolint:paralleltest // t.Setenv for the saved config file
-	useTempConfigDir(t)
+func TestLiveOpenBridgeDisableHandsOverEgress(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	l := testutils.SetupLiveStack(t)
 	ob1, ok := l.Manager.Server(manager.OpenBridge).(*openbridge.Server)
 	require.True(t, ok)

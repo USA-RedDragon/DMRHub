@@ -46,6 +46,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -75,17 +76,18 @@ const rateLimitLimit = 50
 type Option func(*options)
 
 type options struct {
-	applier      v1ConfigControllers.Applier
+	live         *liveconfig.Live
 	hibpClient   *http.Client
 	mailer       smtp.Mailer
 	pluginEngine *wasm.Engine
 	kv           kv.KV
 }
 
-// WithConfigApplier makes the config API put a saved config into effect
-// with a.
-func WithConfigApplier(a v1ConfigControllers.Applier) Option {
-	return func(o *options) { o.applier = a }
+// WithLiveConfig makes the router run with the config of l and save the
+// Setup settings with l. Without it, the router saves them with a Live of
+// its own that shares them with no other replica.
+func WithLiveConfig(l *liveconfig.Live) Option {
+	return func(o *options) { o.live = l }
 }
 
 // WithHIBPClient makes the password checks query HaveIBeenPwned with
@@ -130,8 +132,10 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 	}
 }
 
-func MakeSetupWizardServer(config *configPkg.Config, token string, configCompleteChan chan any, version, commit string) Server {
-	r := CreateSetupWizardRouter(config, token, configCompleteChan, version, commit)
+// MakeSetupWizardServer returns the server of the setup wizard, which saves
+// the Setup settings with live; nil when the database is not reachable.
+func MakeSetupWizardServer(config *configPkg.Config, live *liveconfig.Live, token string, configCompleteChan chan any, version, commit string) Server {
+	r := CreateSetupWizardRouter(config, live, token, configCompleteChan, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", "[::]", "port", "3005")
 	s := &http.Server{
@@ -166,23 +170,25 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	r.Use(middleware.PaginatedDatabaseProvider(db, middleware.PaginationConfig{}))
 
 	r.Use(middleware.Provider("PubSub", pubsub))
-	r.Use(middleware.Provider("Config", config))
+	r.Use(currentConfig(o.live.Current()))
+	r.Use(middleware.Provider(v1ConfigControllers.LiveKey, o.live))
 	r.Use(middleware.Provider("Ready", ready))
 	r.Use(middleware.Provider("Hub", dmrHub))
 	r.Use(middleware.Provider("NetScheduler", ns))
 	r.Use(middleware.Provider("Version", version))
 	r.Use(middleware.Provider("Commit", commit))
-	if o.applier != nil {
-		r.Use(middleware.Provider(v1ConfigControllers.ApplierKey, o.applier))
-	}
 	if o.hibpClient != nil {
 		r.Use(middleware.Provider(utils.HIBPClientKey, o.hibpClient))
 	}
-	mailer := o.mailer
-	if mailer == nil {
-		mailer = smtp.NewMailer(config)
+	if o.mailer != nil {
+		r.Use(middleware.Provider(v1AuthControllers.MailerKey, o.mailer))
+	} else {
+		current := o.live.Current()
+		r.Use(func(c *gin.Context) {
+			c.Set(v1AuthControllers.MailerKey, smtp.NewMailer(current.Get()))
+			c.Next()
+		})
 	}
-	r.Use(middleware.Provider(v1AuthControllers.MailerKey, mailer))
 	engine := o.pluginEngine
 	if engine == nil {
 		engine = wasm.NewEngine(wasm.DefaultLimits())
@@ -208,14 +214,28 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	r.Use(sessions.Sessions(sessionstore.CookieName, sessionStore))
 }
 
-func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
+// currentConfig gives each request the config that DMRHub runs with when
+// the request comes.
+func currentConfig(current configPkg.Source) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("Config", current.Get())
+		c.Next()
+	}
+}
+
+func addSetupWizardMiddleware(config *configPkg.Config, live *liveconfig.Live, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("setupwizard"))
 		r.Use(middleware.TracingProvider(config))
 	}
 
-	r.Use(middleware.Provider("Config", config))
+	if live != nil {
+		r.Use(currentConfig(live.Current()))
+		r.Use(middleware.Provider(v1ConfigControllers.LiveKey, live))
+	} else {
+		r.Use(middleware.Provider("Config", config))
+	}
 	r.Use(middleware.Provider("SetupWizard", token))
 	r.Use(middleware.Provider("SetupWizardConfigCompleteChan", configCompleteChan))
 
@@ -230,13 +250,16 @@ func addSetupWizardMiddleware(config *configPkg.Config, r *gin.Engine, token str
 	r.Use(middleware.Provider("Commit", commit))
 }
 
-func CreateSetupWizardRouter(config *configPkg.Config, token string, configCompleteChan chan any, version, commit string) *gin.Engine {
+// CreateSetupWizardRouter returns the router of the setup wizard, which
+// saves the Setup settings with live; nil when the database is not
+// reachable.
+func CreateSetupWizardRouter(config *configPkg.Config, live *liveconfig.Live, token string, configCompleteChan chan any, version, commit string) *gin.Engine {
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	addSetupWizardMiddleware(config, r, token, configCompleteChan, version, commit)
+	addSetupWizardMiddleware(config, live, r, token, configCompleteChan, version, commit)
 
 	setupwizard.ApplyRoutes(config, r)
 
@@ -249,6 +272,9 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 	var o options
 	for _, opt := range opts {
 		opt(&o)
+	}
+	if o.live == nil {
+		o.live = liveconfig.New(liveconfig.Options{Base: config, DB: db})
 	}
 
 	r := gin.New()
@@ -282,7 +308,7 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 
 	userLockoutMiddleware := middleware.SuspendedUserLockout()
 
-	api.ApplyRoutes(config, r, dmrHub, db, pubsub, oauthServer, ratelimitMW, userLockoutMiddleware)
+	api.ApplyRoutes(o.live.Current(), r, dmrHub, db, pubsub, oauthServer, ratelimitMW, userLockoutMiddleware)
 
 	addFrontendRoutes(r)
 

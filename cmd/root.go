@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
@@ -86,10 +88,30 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	fmt.Printf("DMRHub - %s (%s)\n", cmd.Annotations["version"], cmd.Annotations["commit"])
 
-	cfg, err := loadConfig(ctx)
+	c, base, err := loadConfig(ctx)
 	if err != nil {
 		return err
 	}
+
+	setupLogger(base)
+
+	database, err := db.MakeDB(base)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	live := liveconfig.New(liveconfig.Options{
+		Base:       base,
+		Locks:      liveconfig.LocksFrom(c.Report()),
+		DB:         database,
+		LoadedFile: c.Report().File().Path,
+		LegacyFile: legacyConfigFile(),
+	})
+	if err := live.Boot(ctx); err != nil {
+		return fmt.Errorf("failed to read the Setup settings: %w", err)
+	}
+	current := live.Current()
+	cfg := current.Get()
 
 	setupLogger(cfg)
 
@@ -98,7 +120,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	setupDMRDatabaseJobs(cfg, scheduler)
+	setupDMRDatabaseJobs(current, scheduler)
 
 	scheduler.Start()
 
@@ -106,10 +128,11 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 		// Validation failed, we need to still run the server to
 		// allow the user to fix the config
 		slog.Info("Configuration validation failed", "error", err)
-		exit := waitForConfig(cfg, cmd.Annotations["version"], cmd.Annotations["commit"])
+		exit := waitForConfig(base, live, cmd.Annotations["version"], cmd.Annotations["commit"])
 		if exit {
 			return nil
 		}
+		cfg = current.Get()
 	}
 
 	setupLogger(cfg)
@@ -125,11 +148,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	}()
 
 	startBackgroundServices(cfg)
-
-	database, err := db.MakeDB(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
 
 	kvStore, err := kv.MakeKV(ctx, cfg)
 	if err != nil {
@@ -148,7 +166,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
 
-	servers, err := initializeServers(ctx, cfg, dmrHub, callTracker, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
+	servers, err := initializeServers(ctx, live, dmrHub, callTracker, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
 	if err != nil {
 		return err
 	}
@@ -160,8 +178,20 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// waitForConfig waits for the user to fix the config file
-func waitForConfig(config *config.Config, version, commit string) (exit bool) {
+// legacyConfigFile is the file that DMRHub wrote the settings of the Setup
+// page to before it kept them in the database.
+func legacyConfigFile() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "DMRHub", "config.yaml")
+}
+
+// waitForConfig runs the setup wizard until it completes or a signal
+// comes. It saves the Setup settings with live. The settings that take
+// effect at start only come from the config file and the environment.
+func waitForConfig(config *config.Config, live *liveconfig.Live, version, commit string) (exit bool) {
 	slog.Info("Setup can be completed in a web browser")
 	token, err := utils.RandomPassword(12, 0, 0)
 	if err != nil {
@@ -171,7 +201,7 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	url := "http://localhost:3005/setup?token=" + token
 	slog.Info("Opening setup wizard at " + url)
 	configCh := make(chan any, 1)
-	httpServer := http.MakeSetupWizardServer(config, token, configCh, version, commit)
+	httpServer := http.MakeSetupWizardServer(config, live, token, configCh, version, commit)
 	go func() {
 		err := httpServer.Start()
 		if err != nil {
@@ -209,19 +239,20 @@ func waitForConfig(config *config.Config, version, commit string) (exit bool) {
 	return
 }
 
-// loadConfig loads the configuration from context
-func loadConfig(ctx context.Context) (*config.Config, error) {
+// loadConfig loads the configuration from context, without the saved
+// Setup settings.
+func loadConfig(ctx context.Context) (*configulator.Configulator[config.Config], *config.Config, error) {
 	c, err := configulator.FromContext[config.Config](ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get config from context: %w", err)
+		return nil, nil, fmt.Errorf("failed to get config from context: %w", err)
 	}
 
 	cfg, err := c.LoadWithoutValidation()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
+		return nil, nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	return cfg, nil
+	return c, cfg, nil
 }
 
 // setupLogger configures the structured logger and the gin mode
@@ -278,10 +309,12 @@ func startBackgroundServices(cfg *config.Config) {
 	go pprof.CreatePProfServer(cfg)
 }
 
-// scheduleDailyUpdate starts an immediate background update and schedules a daily job for the given update function.
-func scheduleDailyUpdate(scheduler gocron.Scheduler, name string, url string, updateFn func(string) error) {
+// scheduleDailyUpdate starts an immediate background update and schedules a
+// daily job for the given update function, from the URL that url returns
+// at each run.
+func scheduleDailyUpdate(scheduler gocron.Scheduler, name string, url func() string, updateFn func(string) error) {
 	go func() {
-		err := updateFn(url)
+		err := updateFn(url())
 		if err != nil {
 			slog.Error(fmt.Sprintf("Failed to update %s database, using built in one", name), "error", err)
 		}
@@ -292,7 +325,7 @@ func scheduleDailyUpdate(scheduler gocron.Scheduler, name string, url string, up
 			gocron.NewAtTime(0, 0, 0),
 		)),
 		gocron.NewTask(func() {
-			err := updateFn(url)
+			err := updateFn(url())
 			if err != nil {
 				slog.Error(fmt.Sprintf("Failed to update %s database", name), "error", err)
 			}
@@ -304,9 +337,9 @@ func scheduleDailyUpdate(scheduler gocron.Scheduler, name string, url string, up
 }
 
 // setupDMRDatabaseJobs configures scheduled jobs for database updates
-func setupDMRDatabaseJobs(cfg *config.Config, scheduler gocron.Scheduler) {
-	scheduleDailyUpdate(scheduler, "repeater", cfg.DMR.RepeaterIDURL, repeaterdb.Update)
-	scheduleDailyUpdate(scheduler, "user", cfg.DMR.RadioIDURL, userdb.Update)
+func setupDMRDatabaseJobs(current config.Source, scheduler gocron.Scheduler) {
+	scheduleDailyUpdate(scheduler, "repeater", func() string { return current.Get().DMR.RepeaterIDURL }, repeaterdb.Update)
+	scheduleDailyUpdate(scheduler, "user", func() string { return current.Get().DMR.RadioIDURL }, userdb.Update)
 }
 
 // serverManager holds all the server instances and their dependencies
@@ -323,7 +356,8 @@ type serverManager struct {
 	kv           kv.KV
 	pubsub       pubsub.PubSub
 	database     *gorm.DB
-	cfg          *config.Config
+	cfg          config.Source
+	live         *liveconfig.Live
 	registry     *servers.InstanceRegistry
 	ready        *atomic.Bool
 }
@@ -357,7 +391,7 @@ func (sm *serverManager) drain(ctx context.Context) {
 	if sm.registry == nil {
 		return
 	}
-	timeout := time.Duration(sm.cfg.DMR.DrainTimeout) * time.Second
+	timeout := time.Duration(sm.cfg.Get().DMR.DrainTimeout) * time.Second
 	var wg sync.WaitGroup
 	if sm.plugins != nil && timeout > 0 && sm.registry.OtherInstancesExist(ctx) {
 		pctx, cancel := context.WithTimeout(ctx, timeout)
@@ -380,7 +414,7 @@ type insideSwitch interface {
 	SetOn(ctx context.Context, on bool) error
 }
 
-func (l liveConfig) Apply(next *config.Config) []manager.ApplyError {
+func (l liveConfig) Apply(next *config.Config) []liveconfig.ApplyError {
 	errs := l.dmr.Apply(next)
 	setupLogger(next)
 	if l.inside != nil {
@@ -388,12 +422,15 @@ func (l liveConfig) Apply(next *config.Config) []manager.ApplyError {
 			slog.Error("Plugins inside DMRHub could not take the new setting", "error", err)
 		}
 	}
-	return errs
+	return manager.LiveErrors(errs)
 }
 
 // closeResources tears down the HTTP server, pubsub, and KV connections.
 // Call this after hub.Stop() has cancelled all subscriptions.
 func (sm *serverManager) closeResources(ctx context.Context) {
+	if sm.live != nil {
+		sm.live.Stop(ctx)
+	}
 	if sm.callTracker != nil {
 		sm.callTracker.Stop()
 	}
@@ -434,7 +471,7 @@ func (sm *serverManager) shutdown(ctx context.Context) {
 }
 
 // initializeServers creates and starts all server instances
-func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct *calltracker.CallTracker, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
+func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub, ct *calltracker.CallTracker, kvStore kv.KV, pubsubClient pubsub.PubSub, database *gorm.DB, version, commit string) (*serverManager, error) {
 	instanceID, err := servers.GenerateInstanceID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate instance ID: %w", err)
@@ -447,13 +484,16 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 	}
 
 	ready := &atomic.Bool{}
+	current := live.Current()
+	cfg := current.Get()
 
 	sm := &serverManager{
 		callTracker: ct,
 		kv:          kvStore,
 		pubsub:      pubsubClient,
 		database:    database,
-		cfg:         cfg,
+		cfg:         current,
+		live:        live,
 		registry:    registry,
 		ready:       ready,
 	}
@@ -471,16 +511,16 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 
 	sm.netScheduler = ns
 
-	sm.purger = retention.NewPurger(cfg, database, kvStore)
+	sm.purger = retention.NewPurger(current, database, kvStore)
 	sm.purger.Start(ctx)
-	sm.aprs = positions.NewGateway(database, cfg, kvStore, pubsubClient, version)
+	sm.aprs = positions.NewGateway(database, current, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
 	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) },
 		positions.NewPusher(database, pubsubClient).Push)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}
-	live := liveConfig{dmr: sm.dmr}
+	applier := liveConfig{dmr: sm.dmr}
 	pluginEngine := wasm.NewEngine(wasm.DefaultLimits())
 	if sm.plugins != nil {
 		sm.inside = inside.NewManager(inside.Deps{
@@ -490,10 +530,12 @@ func initializeServers(ctx context.Context, cfg *config.Config, hub *hub.Hub, ct
 		if err := sm.inside.Start(ctx, cfg.DMR.Plugins.InProcess); err != nil {
 			return nil, fmt.Errorf("failed to start the plugins inside DMRHub: %w", err)
 		}
-		live.inside = sm.inside
+		applier.inside = sm.inside
 	}
 
-	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithConfigApplier(live), http.WithPluginEngine(pluginEngine), http.WithKV(kvStore))
+	live.Start(ctx, liveconfig.Replica{ID: instanceID, PubSub: pubsubClient, KV: kvStore, Applier: applier})
+
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithLiveConfig(live), http.WithPluginEngine(pluginEngine), http.WithKV(kvStore))
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

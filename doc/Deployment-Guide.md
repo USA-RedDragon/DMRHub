@@ -3,9 +3,10 @@
 ## Quick Start
 
 1. Download or run DMRHub (see options below)
-2. On first launch, the **setup wizard** opens automatically in your browser
-3. Follow the wizard to configure the application and create your first admin user
-4. DMRHub restarts into normal operation — you're done!
+2. Set `secret` and `password-salt` in the config file or the environment, each a random value of at least 15 characters
+3. On first launch, the **setup wizard** opens automatically in your browser
+4. Follow the wizard to configure the application and create your first admin user
+5. DMRHub continues into normal operation
 
 For advanced configuration options, see the [Configuration Guide](Configuration.md).
 
@@ -127,7 +128,7 @@ http:
   canonical-host: "https://dmrhub.example.com"
 ```
 
-Alternatively, leave the config empty and use the setup wizard on first launch.
+Alternatively, set only `secret` and `password-salt`, and use the setup wizard on first launch for the rest.
 
 ##### 4. Install the SystemD Unit File
 

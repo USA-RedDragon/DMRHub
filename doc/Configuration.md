@@ -2,28 +2,50 @@
 
 ## Setup Wizard (Recommended)
 
-The easiest way to configure DMRHub is with the **built-in setup wizard**. When DMRHub starts and no valid configuration is found, it automatically launches a web-based setup wizard and opens your browser to complete the setup.
+The easiest way to configure DMRHub is with the **built-in setup wizard**. When DMRHub starts and its configuration is not valid, it starts a web-based setup wizard and opens your browser to it.
 
 The wizard will:
 
-1. Walk you through all required configuration options
-2. Validate your settings in real-time
+1. Show all configuration options, and check your settings while you type
+2. Save the settings that Setup changes in the database
 3. Create your first admin user
-4. Save the configuration and restart into normal operation
 
-Simply run the DMRHub binary and follow the prompts in your browser. No manual file editing is needed for most deployments.
+Before the first start, set `secret` and `password-salt` in the config file or the environment. The wizard cannot set them, because DMRHub never writes a config file. The same is true of the other settings that take effect at start only; see [Setup settings](#setup-settings).
 
 ## Configuration Sources
 
 DMRHub loads configuration from multiple sources, with later sources overriding earlier ones:
 
-1. **Defaults** — sensible defaults are built in for most settings
-2. **YAML config file** — searched in the following locations (first found wins):
+1. **Defaults**: sensible defaults are built in for most settings
+2. **Setup settings**: the settings that an admin saves on the Setup page, which DMRHub keeps in the database
+3. **YAML config file**: searched in the following locations (first found wins):
    - `config.yaml` or `config.yml` in the current working directory
    - `$XDG_CONFIG_HOME/DMRHub/config.yaml` or `config.yml` (typically `~/.config/DMRHub/config.yaml` on Linux)
    - `--config` (`-c`) loads the given file instead of searching, and fails if it doesn't exist
-3. **Environment variables** — prefixed and separated by `_` (e.g., `HTTP_PORT=8080`)
-4. **Command-line flags** — highest priority
+4. **Environment variables**: prefixed and separated by `_` (e.g., `HTTP_PORT=8080`)
+5. **Command-line flags**: highest priority
+
+## Setup Settings
+
+The Setup page changes most settings while DMRHub runs. DMRHub saves them in the database, and every replica puts them into effect at once, without a restart. DMRHub never writes a config file, so the config file can be read-only, such as a Kubernetes ConfigMap.
+
+A setting that the config file, an environment variable or a flag sets is **locked**. It wins at each start, and the Setup page shows it as set by the deployment and cannot change it. A list, such as `dmr.transcoding.ambe-servers`, is locked as a whole. When you remove a locked setting from the config file or the environment, the value saved on the Setup page comes back at the next start, or the default when no value was saved.
+
+These settings take effect at start only. They come from the config file, the environment and the flags only, and DMRHub never keeps them in the database:
+
+- `secret`, `password-salt`, `hibp-api-key` and the passwords of SMTP, the database and Redis
+- `database.*` and `redis.*`
+- `http.bind`, `http.port`, `http.trusted-proxies` and `http.cors.*`
+- `metrics.*` and `pprof.*`
+- `dmr.plugins.enabled`, `dmr.plugins.bind`, `dmr.plugins.port`, `dmr.plugins.cert-file` and `dmr.plugins.key-file`
+
+When replicas run with different config files or environments, each one runs with its own locked values. The Setup page shows the settings in which the replicas disagree, and the replicas that could not put a save into effect.
+
+### Upgrade from a version that wrote the config file
+
+Earlier versions wrote the settings of the Setup page, with the secrets, to `$XDG_CONFIG_HOME/DMRHub/config.yaml`. At the first start after the upgrade, DMRHub copies the Setup settings of that file to the database, but only when that file is the config file it loads. It copies no setting that the environment or a flag overrides, and no value that is equal to its default. You can then remove those settings from the file and change them on the Setup page. The secrets and the other settings that take effect at start only must stay in the file or move to the environment.
+
+DMRHub copies nothing when it loads another file, such as `./config.yaml`. In that case, earlier versions still wrote the Setup page to `$XDG_CONFIG_HOME/DMRHub/config.yaml`, but the hub never ran with that file, so its values can be old or wrong.
 
 ## Configuration Reference
 
@@ -137,7 +159,7 @@ Every option is listed below with its YAML key, default, environment variable, a
 
 ### Required Settings
 
-At minimum, the following must be configured (the setup wizard handles these for you):
+At minimum, the following must be configured. Set `secret` and `password-salt` in the config file or the environment; the setup wizard can set `http.canonical-host`:
 
 |        Setting        |                                             Description                                             |
 | --------------------- | --------------------------------------------------------------------------------------------------- |

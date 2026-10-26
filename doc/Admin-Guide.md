@@ -59,7 +59,7 @@ Click **Approve** to grant the user access to sign in and use DMRHub.
 
 ## Setup
 
-The setup page allows administrators to edit the DMRHub configuration. All configuration options are available here. In deployments with read-only file-based configuration (e.g., Docker), this page is view-only and shows the current effective configuration.
+The Setup page shows the configuration that DMRHub runs with, and lets administrators change most settings while DMRHub runs. DMRHub saves the changes in the database, and every replica puts them into effect without a restart. A setting that the config file, the environment or a flag sets is set by the deployment, and the page cannot change it. The secrets, the database, Redis, the HTTP listener and the other settings that take effect at start only also come from the deployment only. See [Setup settings](Configuration.md#setup-settings).
 
 ## OpenBridge peers
 

@@ -20,6 +20,7 @@
 package config
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -27,9 +28,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,78 +39,101 @@ const (
 	errorsKey = "errors"
 )
 
-// ApplierKey is the key of the Applier in the gin context.
-const ApplierKey = "ConfigApplier"
+// LiveKey is the key of the *liveconfig.Live in the gin context.
+const LiveKey = "LiveConfig"
 
-// Applier puts a config that PUTConfig saves into effect while DMRHub
-// runs. For each part that cannot take its new settings, Apply sets the
-// settings of that part in next back to the ones it runs with and
-// returns why.
-type Applier interface {
-	Apply(next *config.Config) []manager.ApplyError
+func liveOf(c *gin.Context) (*liveconfig.Live, bool) {
+	v, ok := c.Get(LiveKey)
+	l, isLive := v.(*liveconfig.Live)
+	if !ok || !isLive || l == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{errorKey: "Setup cannot save settings while the database is not reachable"})
+		return nil, false
+	}
+	return l, true
 }
 
+// PUTConfig saves the settings that Setup changes in the database and puts
+// them into effect on every replica. It refuses a change of a setting that
+// the deployment sets or that takes effect at start only. It answers 409
+// when a replica could not put the saved settings into effect, with the
+// report of each replica.
 func PUTConfig(c *gin.Context) {
 	var req apimodels.POSTConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
-
-	currentCfg, ok := utils.GetConfig(c)
+	live, ok := liveOf(c)
 	if !ok {
 		return
 	}
+	next := &config.Config{}
+	req.ToConfig(next, live.Current().Get())
 
-	nextCfg := &config.Config{}
-	req.ToConfig(nextCfg, currentCfg)
-
-	errs := nextCfg.ValidateWithFields()
-	if len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: errs})
+	res, errs, err := live.Save(c.Request.Context(), next)
+	switch {
+	case len(errs) > 0:
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: formatErrors(errs)})
+		return
+	case errors.Is(err, liveconfig.ErrBusy):
+		c.JSON(http.StatusServiceUnavailable, gin.H{errorKey: err.Error()})
+		return
+	case err != nil:
+		slog.Error("Failed to save the Setup settings", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Failed to save the settings"})
 		return
 	}
-	var applyErrs []manager.ApplyError
-	if applier, ok := c.Get(ApplierKey); ok {
-		if a, ok := applier.(Applier); ok {
-			applyErrs = a.Apply(nextCfg)
+
+	replicas := make([]apimodels.ConfigSaveReplica, 0, len(res.Replicas))
+	applyErrs := []apimodels.ConfigApplyError{}
+	for _, r := range res.Replicas {
+		replicas = append(replicas, apimodels.ConfigSaveReplica{
+			ID: r.Replica, Self: r.Self, Answered: r.Answered, Revision: r.Revision,
+			ApplyErrors: r.ApplyErrors, Invalid: r.Invalid,
+		})
+		if !r.Answered {
+			continue
+		}
+		for _, e := range r.ApplyErrors {
+			applyErrs = append(applyErrs, apimodels.ConfigApplyError{Replica: r.Replica, Server: e.Server, Running: e.Running, Error: e.Error})
+		}
+		for _, e := range r.Invalid {
+			applyErrs = append(applyErrs, apimodels.ConfigApplyError{Replica: r.Replica, Running: true, Field: e.Field, Error: e.Error})
 		}
 	}
-	*currentCfg = *nextCfg
-	if err := currentCfg.Save(); err != nil {
-		slog.Error("Failed to save config", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Failed to save config: " + err.Error()})
+	out := apimodels.ConfigSaveResponse{Revision: res.Revision, Replicas: replicas, ApplyErrors: applyErrs}
+	if res.Failed() {
+		out.Error = "Some settings could not be applied"
+		c.JSON(http.StatusConflict, out)
 		return
 	}
-
-	if len(applyErrs) > 0 {
-		c.JSON(http.StatusConflict, gin.H{errorKey: "Some settings could not be applied", "applyErrors": formatApplyErrors(applyErrs)})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Configuration updated successfully"})
+	out.Message = "Configuration updated successfully"
+	c.JSON(http.StatusOK, out)
 }
 
-func formatApplyErrors(errs []manager.ApplyError) []gin.H {
-	out := make([]gin.H, 0, len(errs))
-	for _, e := range errs {
-		out = append(out, gin.H{"server": string(e.Server), "running": e.Running, errorKey: e.Err.Error()})
-	}
-	return out
-}
-
+// GETConfig returns the config that this replica runs with, without its
+// secrets, with how each setting stands on this replica and the others.
 func GETConfig(c *gin.Context) {
-	config, ok := utils.GetConfig(c)
+	live, ok := liveOf(c)
 	if !ok {
+		return
+	}
+	running := live.Current().Get()
+	status, err := live.Status(c.Request.Context())
+	if err != nil {
+		slog.Error("Failed to read the state of the Setup settings", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
 		return
 	}
 
 	response := apimodels.ConfigResponse{
-		Config: *config,
+		Config: *running,
 		Secrets: apimodels.SecretStatus{
-			SecretSet:       config.Secret != "",
-			PasswordSaltSet: config.PasswordSalt != "",
-			SMTPPasswordSet: config.SMTP.Password != "",
+			SecretSet:       running.Secret != "",
+			PasswordSaltSet: running.PasswordSalt != "",
+			SMTPPasswordSet: running.SMTP.Password != "",
 		},
+		Status: status,
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -126,21 +150,22 @@ func GETConfigValidate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
 }
 
+// POSTConfigValidate checks a config as PUTConfig does, without a save.
 func POSTConfigValidate(c *gin.Context) {
 	var req apimodels.POSTConfig
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
 		return
 	}
-	currentCfg, ok := utils.GetConfig(c)
+	live, ok := liveOf(c)
 	if !ok {
 		return
 	}
 
 	nextCfg := &config.Config{}
-	req.ToConfig(nextCfg, currentCfg)
+	req.ToConfig(nextCfg, live.Current().Get())
 
-	errs := nextCfg.ValidateWithFields()
+	errs := live.Check(nextCfg)
 
 	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
 }

@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 )
 
 // POSTConfig is a config that the Setup page sends, with the secrets that
@@ -71,9 +72,44 @@ type SecretStatus struct {
 	SMTPPasswordSet bool `json:"smtpPasswordSet"`
 }
 
+// ConfigResponse is the config that a replica runs with, without its
+// secrets, and how each setting stands on the replicas.
 type ConfigResponse struct {
 	config.Config
 	Secrets SecretStatus `json:"secrets"`
+	liveconfig.Status
+}
+
+// ConfigSaveResponse is how the replicas put a save of the Setup settings
+// into effect. ApplyErrors lists what each replica that answered could not
+// put into effect: a server, or a setting that the replica cannot run
+// with, in Field.
+type ConfigSaveResponse struct {
+	Message     string              `json:"message,omitempty"`
+	Error       string              `json:"error,omitempty"`
+	Revision    uint64              `json:"revision"`
+	Replicas    []ConfigSaveReplica `json:"replicas"`
+	ApplyErrors []ConfigApplyError  `json:"applyErrors"`
+}
+
+// ConfigSaveReplica is the report of one replica on a save. Answered is
+// false for a replica that did not report in time.
+type ConfigSaveReplica struct {
+	ID          string                  `json:"id"`
+	Self        bool                    `json:"self"`
+	Answered    bool                    `json:"answered"`
+	Revision    uint64                  `json:"revision"`
+	ApplyErrors []liveconfig.ApplyError `json:"apply_errors"`
+	Invalid     []liveconfig.FieldError `json:"invalid"`
+}
+
+// ConfigApplyError is one thing that a replica could not put into effect.
+type ConfigApplyError struct {
+	Replica string `json:"replica"`
+	Server  string `json:"server"`
+	Field   string `json:"field,omitempty"`
+	Running bool   `json:"running"`
+	Error   string `json:"error"`
 }
 
 // ToConfig sets c to the config of p, with the secrets of fallback that p

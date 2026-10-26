@@ -21,13 +21,8 @@ package config
 
 import (
 	"crypto/sha256"
-	"fmt"
-	"os"
-	"path"
-	"path/filepath"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -289,33 +284,4 @@ type SMTP struct {
 	Password   string         `json:"-" yaml:"password" name:"password" description:"SMTP server password"`
 	From       string         `json:"from,omitempty" name:"from" description:"Email address to use as the sender"`
 	AuthMethod SMTPAuthMethod `json:"auth-method,omitempty" yaml:"auth-method" name:"auth-method" description:"SMTP authentication method. One of none, plain, or login" default:"none"`
-}
-
-func (c Config) Save() error {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user config directory: %w", err)
-	}
-	if err := os.MkdirAll(path.Join(configDir, "DMRHub"), 0750); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-	f, err := os.Create(filepath.Clean(path.Join(configDir, "DMRHub", "config.yaml")))
-	if err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			fmt.Printf("failed to close config file: %v\n", err)
-		}
-	}()
-	enc := yaml.NewEncoder(f)
-	defer func() {
-		if err := enc.Close(); err != nil {
-			fmt.Printf("failed to close config encoder: %v\n", err)
-		}
-	}()
-	if err := enc.Encode(c); err != nil {
-		return fmt.Errorf("failed to encode config to file: %w", err)
-	}
-	return nil
 }

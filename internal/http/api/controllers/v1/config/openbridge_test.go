@@ -22,8 +22,6 @@ package config_test
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,8 +36,7 @@ func section(t *testing.T, m map[string]any, key string) map[string]any {
 }
 
 func TestConfigSavesOpenBridgeSettings(t *testing.T) {
-	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Parallel()
 	router, jar := adminRouter(t)
 
 	w := serve(t, router, http.MethodGet, "/api/v1/config", nil, jar)
@@ -69,9 +66,6 @@ func TestConfigSavesOpenBridgeSettings(t *testing.T) {
 	assert.False(t, res.Valid)
 	assert.Equal(t, map[string]string{"server-id": "the OpenBridge server ID must be 0 or 4 to 7 digits"}, res.Errors.DMR.OpenBridge)
 
-	cfg["secret"] = "a-secret-that-is-long-enough-for-the-check"
-	cfg["password-salt"] = "a-salt-that-is-long-enough-for-the-check"
-	section(t, cfg, "database")["database"] = "DMRHub.db"
 	section(t, cfg, "http")["canonical-host"] = "http://localhost"
 	section(t, dmr, "ipsc")["network-id"] = 311860
 	ob["server-id"] = 3129
@@ -88,11 +82,13 @@ func TestConfigSavesOpenBridgeSettings(t *testing.T) {
 		DMR struct {
 			OpenBridge map[string]any `json:"openbridge"`
 		} `json:"dmr"`
+		Settings map[string]struct {
+			Source string          `json:"source"`
+			Saved  json.RawMessage `json:"saved"`
+		} `json:"settings"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 	assert.Equal(t, map[string]any{"enabled": true, "bind": "127.0.0.1", "port": 62040.0, "server-id": 3129.0}, got.DMR.OpenBridge)
-
-	saved, err := os.ReadFile(filepath.Join(configHome, "DMRHub", "config.yaml"))
-	require.NoError(t, err)
-	assert.Contains(t, string(saved), "server-id: 3129")
+	assert.Equal(t, "setup", got.Settings["dmr.openbridge.server-id"].Source)
+	assert.JSONEq(t, "3129", string(got.Settings["dmr.openbridge.server-id"].Saved))
 }

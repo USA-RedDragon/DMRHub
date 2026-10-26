@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
@@ -63,7 +64,10 @@ func serve(t *testing.T, router *gin.Engine, method, path string, body []byte, j
 
 func adminRouter(t *testing.T) (*gin.Engine, *testutils.CookieJar) {
 	t.Helper()
-	router, tdb, err := testutils.CreateTestDBRouter()
+	router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) {
+		c.Secret = "a-secret-that-is-long-enough-for-the-check"
+		c.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
+	})
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	_, w, jar := testutils.LoginAdmin(t, router)

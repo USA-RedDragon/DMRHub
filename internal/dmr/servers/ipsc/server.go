@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -139,7 +140,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 	}
 	s.pacer = newPacer(func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) }, func(pkt models.Packet) {
 		if s.hub != nil {
-			s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reasonSlotBusy)
+			s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, undeliverable.ReasonSlotBusy)
 		}
 	})
 	s.pacer.callHold = cfg.DMR.IPSC.CallHangHold

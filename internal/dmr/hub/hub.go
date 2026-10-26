@@ -22,7 +22,6 @@ package hub
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -33,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -249,7 +249,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	go h.resyncRepeaters()
 	if ct != nil {
 		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
-			ct.Undeliverable(p, fmt.Sprintf("%s:%d:%s", target, p.Repeater, reason))
+			ct.Undeliverable(p, undeliverable.Sentence(target, p.Repeater, reason))
 		})
 	}
 	return h

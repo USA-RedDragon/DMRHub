@@ -97,7 +97,7 @@ func TestUndeliverableBurstIsRecordedOnItsTransmission(t *testing.T) {
 		if database.Where("stream_id = ?", pkt.StreamID).First(&call).Error != nil {
 			return false
 		}
-		return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "ipsc:311304:test"
+		return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "The burst could not be prepared for IPSC repeater 311304."
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
@@ -151,7 +151,7 @@ func TestUndeliverableMarksTheDataPacketOfItsBurst(t *testing.T) {
 		return database.Where("stream_id = ? AND active = ?", stream, false).Order("id").Find(&calls).Error == nil && len(calls) == 2
 	}, 8*time.Second, 50*time.Millisecond)
 	assert.Equal(t, "ip", calls[0].DataFormat)
-	assert.Equal(t, []string{"ipsc:100003:test"}, calls[0].Undeliverable, "the row of the packet whose burst was undeliverable")
+	assert.Equal(t, []string{"The burst could not be prepared for IPSC repeater 100003."}, calls[0].Undeliverable, "the row of the packet whose burst was undeliverable")
 	assert.Empty(t, calls[1].Undeliverable, "the row of the next packet on the stream")
 }
 

@@ -164,12 +164,53 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+const SENTENCE_TARGETS: Record<string, string> = {
+  'ipsc repeater': 'ipsc',
+  'mmdvm repeater': 'mmdvm',
+  'openbridge peer': 'openbridge',
+  repeater: '',
+};
+
+const SENTENCE_WHO = '(?:an? )?(IPSC repeater|MMDVM repeater|OpenBridge peer|repeater)(?: (\\d+))?';
+
+const SENTENCE_REASONS: [RegExp, string][] = [
+  ['the burst for WHO had an invalid data type', 'invalid_data_type'],
+  ['WHO cannot carry this kind of burst', 'no_ipsc_form'],
+  ['the burst for WHO had an unknown frame type', 'frame_type_3'],
+  ['the burst for WHO was too damaged to repair', 'fec_uncorrectable'],
+  ['the burst could not be rebuilt for WHO', 'slot_type'],
+  ['the call ID does not fit the link to WHO', 'stream_id_range'],
+  ['the burst could not be built for WHO', 'build_failed'],
+  ['the burst could not be encoded for WHO', 'encode_failed'],
+  ['a data burst for WHO came in the middle of a voice call', 'data_in_voice'],
+  ['the burst for WHO could not be read', 'undecodable'],
+  ['WHO was busy on that slot', 'slot_busy'],
+  ['the burst could not be prepared for WHO', ''],
+].map(([text, reason]) => [new RegExp(`^${text!.replace('WHO', SENTENCE_WHO)}\\.$`, 'i'), reason!]);
+
 /**
- * undeliverableLabel words a last heard undeliverable target such as
- * ipsc:311304200:no_ipsc_form as the repeater it names and why it was not sent.
+ * entryOf turns an undeliverable sentence that the hub stores, such as
+ * "IPSC repeater 314926 was busy on that slot.", into the old entry
+ * ipsc:314926:slot_busy. It returns any other entry as it is.
+ */
+function entryOf(target: string): string {
+  for (const [re, reason] of SENTENCE_REASONS) {
+    const m = re.exec(target);
+    if (m) {
+      return `${SENTENCE_TARGETS[m[1]!.toLowerCase()] ?? ''}:${m[2] ?? ''}:${reason}`;
+    }
+  }
+  return target;
+}
+
+/**
+ * undeliverableLabel words a last heard undeliverable target, a sentence
+ * such as "IPSC repeater 311304200 cannot carry this kind of burst." or an
+ * old entry such as ipsc:311304200:no_ipsc_form, as the repeater it names
+ * and why it was not sent.
  */
 export function undeliverableLabel(target: string, row: CallRow): UndeliverableLabel {
-  const [server = '', id = '', ...rest] = target.split(':');
+  const [server = '', id = '', ...rest] = entryOf(target).split(':');
   const reason = rest.join(':');
   const serverName = SERVER_NAMES[server] || '';
   const kind = serverName ? `${serverName} repeater` : 'repeater';

@@ -205,6 +205,45 @@ describe('undeliverableLines', () => {
   });
 });
 
+describe('undeliverable sentences', () => {
+  const pairs: [string, string][] = [
+    ['ipsc:314926:invalid_data_type', 'The burst for IPSC repeater 314926 had an invalid data type.'],
+    ['ipsc:314926:no_ipsc_form', 'IPSC repeater 314926 cannot carry this kind of burst.'],
+    ['ipsc:314926:frame_type_3', 'The burst for IPSC repeater 314926 had an unknown frame type.'],
+    ['ipsc:314926:fec_uncorrectable', 'The burst for IPSC repeater 314926 was too damaged to repair.'],
+    ['ipsc:314926:slot_type', 'The burst could not be rebuilt for IPSC repeater 314926.'],
+    ['ipsc:314926:stream_id_range', 'The call ID does not fit the link to IPSC repeater 314926.'],
+    ['ipsc:314926:build_failed', 'The burst could not be built for IPSC repeater 314926.'],
+    ['ipsc:314926:encode_failed', 'The burst could not be encoded for IPSC repeater 314926.'],
+    ['ipsc:314926:data_in_voice', 'A data burst for IPSC repeater 314926 came in the middle of a voice call.'],
+    ['ipsc:314926:undecodable', 'The burst for IPSC repeater 314926 could not be read.'],
+    ['ipsc:314926:slot_busy', 'IPSC repeater 314926 was busy on that slot.'],
+    ['ipsc:314926:', 'The burst could not be prepared for IPSC repeater 314926.'],
+    ['ipsc::slot_busy', 'An IPSC repeater was busy on that slot.'],
+    ['mmdvm:311000:build_failed', 'The burst could not be built for MMDVM repeater 311000.'],
+    ['openbridge:311000:slot_busy', 'OpenBridge peer 311000 was busy on that slot.'],
+    ['newproto:42:slot_busy', 'Repeater 42 was busy on that slot.'],
+    [':', 'The burst could not be prepared for a repeater.'],
+  ];
+
+  it('shows a stored sentence as it showed the old entry', () => {
+    const named = row({ is_to_repeater: true, to_repeater: { id: 314926, callsign: 'W1XPR' } });
+    for (const [old, sentence] of pairs) {
+      expect({ sentence, label: undeliverableLabel(sentence, named) }).toEqual({ sentence, label: undeliverableLabel(old, named) });
+    }
+  });
+
+  it('shows the lines of a call with sentences as with old entries', () => {
+    const named = row({ repeater: { id: 314926, callsign: 'W1XPR' } });
+    expect(undeliverableLines({ ...named, undeliverable: ['IPSC repeater 314926 was busy on that slot.'] })).toEqual([
+      'Not sent to IPSC repeater W1XPR (314926)',
+      'The timeslot stayed busy with other calls for 30 seconds',
+    ]);
+    const both = { ...named, undeliverable: pairs.slice(0, 2).map(([, s]) => s) };
+    expect(undeliverableLines(both)).toEqual(undeliverableLines({ ...named, undeliverable: pairs.slice(0, 2).map(([o]) => o) }));
+  });
+});
+
 describe('filters', () => {
   it('hides unknown, idle and USBD by default', () => {
     const f = defaultFilter();

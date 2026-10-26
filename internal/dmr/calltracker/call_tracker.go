@@ -244,9 +244,8 @@ func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, p
 	return id
 }
 
-// Undeliverable records that target, such as "ipsc:311304200:no_ipsc_form"
-// (the server, the repeater and the reason), could not
-// take the burst of p, a packet that Track got, on the transmission that
+// Undeliverable records why, such as "IPSC repeater 311304200 cannot
+// carry this kind of burst.", a target could not take the burst of p, a packet that Track got, on the transmission that
 // holds the burst. Call it after Track for the same packet. p.TrackID
 // names the burst; without it the mark goes on the latest transmission of
 // the stream. The hub counts the burst in its metrics. Any replica may

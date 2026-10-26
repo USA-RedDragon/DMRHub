@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -160,22 +161,6 @@ func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 	}
 }
 
-// The reasons that undeliverable reports. They are stable: last heard
-// stores them as "ipsc:<repeater>:<reason>".
-const (
-	reasonInvalidDataType = "invalid_data_type"
-	reasonNoIPSCForm      = "no_ipsc_form"
-	reasonFrameType3      = "frame_type_3"
-	reasonFEC             = "fec_uncorrectable"
-	reasonSlotType        = "slot_type"
-	reasonStreamID        = "stream_id_range"
-	reasonBuild           = "build_failed"
-	reasonEncode          = "encode_failed"
-	reasonDataInVoice     = "data_in_voice"
-	reasonUndecodable     = "undecodable"
-	reasonSlotBusy        = "slot_busy"
-)
-
 // undeliverable reports a burst that cannot go to IPSC peers. The caller
 // holds t.mu.
 func (t *IPSCTranslator) undeliverable(pkt models.Packet, reason string) {
@@ -193,7 +178,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 
 	streamID := pkt.StreamID
 	if streamID > math.MaxUint32 {
-		t.undeliverable(pkt, reasonStreamID)
+		t.undeliverable(pkt, undeliverable.ReasonStreamID)
 		return nil
 	}
 
@@ -229,7 +214,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 	switch pkt.FrameType {
 	case dmrconst.FrameDataSync:
 		if dtypeOrVSeq > 255 {
-			t.undeliverable(pkt, reasonInvalidDataType)
+			t.undeliverable(pkt, undeliverable.ReasonInvalidDataType)
 			return nil
 		}
 		// Voice LC Header, Terminator, or Data
@@ -274,7 +259,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			fallthrough
 		default:
 			if !t.rawBlocksAnXPRDrops {
-				t.undeliverable(pkt, reasonNoIPSCForm)
+				t.undeliverable(pkt, undeliverable.ReasonNoIPSCForm)
 				return nil
 			}
 			data := t.buildRawBlock(pkt, ss, dt, false)
@@ -291,7 +276,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		}
 
 	default:
-		t.undeliverable(pkt, reasonFrameType3)
+		t.undeliverable(pkt, undeliverable.ReasonFrameType3)
 		return nil
 	}
 
@@ -501,7 +486,7 @@ func (t *IPSCTranslator) user(pkt models.Packet, ss *streamState, isData, isEnd,
 func (t *IPSCTranslator) encodeUser(pkt models.Packet, u *ipscwire.User) []byte {
 	data, err := u.AppendBinary(nil)
 	if err != nil {
-		t.undeliverable(pkt, reasonEncode)
+		t.undeliverable(pkt, undeliverable.ReasonEncode)
 		return nil
 	}
 	return data
@@ -530,7 +515,7 @@ func (t *IPSCTranslator) buildVoiceLC(pkt models.Packet, ss *streamState, dt enu
 		_, err = u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindData, DataType: dt, HasDataType: true})
 	}
 	if err != nil {
-		t.undeliverable(pkt, reasonBuild)
+		t.undeliverable(pkt, undeliverable.ReasonBuild)
 		return nil
 	}
 	if heard {
@@ -568,11 +553,11 @@ func (t *IPSCTranslator) buildIPSCDataPacket(pkt models.Packet, ss *streamState,
 	var b ipscwire.User
 	res, err := b.SetRawBurst(layer2.RawBurst(pkt.DMRData), layer2.Hint{Slot: slot, Kind: layer2.KindData, DataType: dataType, HasDataType: true})
 	if err != nil {
-		t.undeliverable(pkt, reasonBuild)
+		t.undeliverable(pkt, undeliverable.ReasonBuild)
 		return nil
 	}
 	if res.Uncorrectable && !t.rawBlocksAnXPRDrops {
-		t.undeliverable(pkt, reasonFEC)
+		t.undeliverable(pkt, undeliverable.ReasonFEC)
 		return nil
 	}
 	u := t.user(pkt, ss, true, last, ss.firstPacket)
@@ -595,7 +580,7 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 	st.DataType = dataType
 	sti, err := st.Info()
 	if err != nil {
-		t.undeliverable(pkt, reasonSlotType)
+		t.undeliverable(pkt, undeliverable.ReasonSlotType)
 		return nil
 	}
 	d.Trailer[1] = byte(sti)
@@ -610,11 +595,11 @@ func (t *IPSCTranslator) buildRawBlock(pkt models.Packet, ss *streamState, dataT
 func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []byte {
 	raw := layer2.RawBurst(pkt.DMRData)
 	if err := t.burst.DecodeFromBytes(raw); err != nil {
-		t.undeliverable(pkt, reasonUndecodable)
+		t.undeliverable(pkt, undeliverable.ReasonUndecodable)
 		return nil
 	}
 	if t.burst.Kind == layer2.KindData {
-		t.undeliverable(pkt, reasonDataInVoice)
+		t.undeliverable(pkt, undeliverable.ReasonDataInVoice)
 		return nil
 	}
 
@@ -633,7 +618,7 @@ func (t *IPSCTranslator) buildVoiceBurst(pkt models.Packet, ss *streamState) []b
 	u := t.user(pkt, ss, false, false, false)
 	u.Voice.LC = lc
 	if _, err := u.SetRawBurst(raw, layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: pos}); err != nil {
-		t.undeliverable(pkt, reasonBuild)
+		t.undeliverable(pkt, undeliverable.ReasonBuild)
 		return nil
 	}
 	return t.encodeUser(pkt, &u)

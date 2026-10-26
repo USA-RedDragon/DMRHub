@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
@@ -193,8 +194,8 @@ func TestTranslateToIPSCReportsADataBurstInAVoiceStream(t *testing.T) {
 	if out := tr.TranslateToIPSC(pkt); len(out) != 0 {
 		t.Fatalf("%d IPSC packets, want none", len(out))
 	}
-	if len(*reasons) != 1 || (*reasons)[0] != reasonDataInVoice {
-		t.Fatalf("reports %v, want [%s]", *reasons, reasonDataInVoice)
+	if len(*reasons) != 1 || (*reasons)[0] != undeliverable.ReasonDataInVoice {
+		t.Fatalf("reports %v, want [%s]", *reasons, undeliverable.ReasonDataInVoice)
 	}
 }
 
@@ -213,7 +214,7 @@ func TestBurstsThatDoNotBuildAreReported(t *testing.T) {
 	if out := tr.encodeUser(pkt, &ipscwire.User{}); out != nil {
 		t.Fatal("AppendBinary took a packet without an opcode")
 	}
-	if want := []string{reasonBuild, reasonBuild, reasonEncode}; !slices.Equal(*reasons, want) {
+	if want := []string{undeliverable.ReasonBuild, undeliverable.ReasonBuild, undeliverable.ReasonEncode}; !slices.Equal(*reasons, want) {
 		t.Fatalf("reports %v, want %v", *reasons, want)
 	}
 }

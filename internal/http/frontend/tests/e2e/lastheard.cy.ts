@@ -164,4 +164,28 @@ describe('Last Heard & Main Page', () => {
     cy.contains('encode_failed').should('not.exist');
     cy.contains('ipsc:').should('not.exist');
   });
+
+  it('words the stored sentences as it words the old entries', () => {
+    cy.fixture('lastheard-kinds.json').then((data) => {
+      data.calls[1].undeliverable = ['IPSC repeater 311304200 cannot carry this kind of burst.'];
+      data.calls[2].undeliverable = [
+        'The burst could not be encoded for IPSC repeater 311304200.',
+        'The burst for IPSC repeater 311304201 was too damaged to repair.',
+      ];
+      cy.intercept('GET', '/api/v1/lastheard*', { statusCode: 200, body: data }).as('getLastHeard');
+    });
+
+    cy.visit('/lastheard');
+    cy.wait('@getLastHeard');
+
+    cy.get('[data-testid="undeliverable"]').should('have.length', 5);
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 311304200').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'The IPSC link cannot carry this kind of burst').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to 2 repeaters').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'IPSC repeater 311304200: the burst could not be prepared for the IPSC link').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'IPSC repeater 311304201: the burst was too damaged to repair').should('be.visible');
+    cy.get('[data-testid="undeliverable"][title]').should('not.exist');
+    cy.contains('encode_failed').should('not.exist');
+    cy.contains('ipsc:').should('not.exist');
+  });
 });

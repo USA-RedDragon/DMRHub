@@ -93,7 +93,7 @@ Each Last Heard entry has a `kind` and a `sub_kind`. The API and the websocket g
 
 The `data_format` of a text message is `tms`, `ip`, `anytone`, `defined_data`, `hytera` or `unknown`.
 
-The `undeliverable` list names each target that could not take a burst of the entry, as `<server>:<repeater>:<reason>`, for example `ipsc:311304200:no_ipsc_form`. The reasons are `no_ipsc_form`, `fec_uncorrectable`, `frame_type_3`, `invalid_data_type` and `slot_type`.
+The `undeliverable` list has one sentence for each target that could not take a burst of the entry. Each sentence names the target and the reason, for example `IPSC repeater 314926 was busy on that slot.`. The `reason` label of the `dmr_undeliverable_bursts_total` metric keeps the reason codes: `invalid_data_type`, `no_ipsc_form`, `frame_type_3`, `fec_uncorrectable`, `slot_type`, `stream_id_range`, `build_failed`, `encode_failed`, `data_in_voice`, `undecodable` and `slot_busy`.
 
 ## Messages
 

@@ -143,7 +143,7 @@ func TestDataBurstInAVoiceStreamIsMarkedOnItsCall(t *testing.T) {
 			if stack.DB.Where("stream_id = ? AND active = ?", stream, false).Find(&calls).Error != nil || len(calls) != 1 {
 				return false
 			}
-			return slices.Contains(calls[0].Undeliverable, "ipsc:200001:data_in_voice")
+			return slices.Contains(calls[0].Undeliverable, "A data burst for IPSC repeater 200001 came in the middle of a voice call.")
 		}, 5*time.Second, 50*time.Millisecond, "the Last Heard row must name the IPSC peer and the reason")
 		assert.GreaterOrEqual(t, undeliverableCount(t, models.RepeaterTypeIPSC, "data_in_voice"), before+1)
 	})

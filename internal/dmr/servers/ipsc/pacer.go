@@ -76,6 +76,11 @@ type queuedCall struct {
 	group    bool
 	preamble bool
 	dataEnd  dataEnd
+	// last is the last frame of the call, and needsEnd is set when it is a
+	// preamble or a data packet in progress, which no frame of the call
+	// ended on IPSC.
+	last     queuedFrame
+	needsEnd bool
 }
 
 // holdEnd returns the end of the call hang that c gives its slot when it
@@ -202,6 +207,7 @@ func (q *slotQueue) frames() int {
 type pacer struct {
 	send    func(slotKey, []byte)
 	discard func(models.Packet)
+	end     func(slotKey, queuedFrame) []byte
 	now     func() time.Time
 	after   func(time.Duration) <-chan time.Time
 	mu      sync.Mutex
@@ -276,6 +282,13 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 	if end {
 		c.ended = true
 	}
+	switch {
+	case end || voice:
+		c.needsEnd = false
+	case b != nil:
+		c.needsEnd = c.preamble || !c.ended
+	}
+	c.last = queuedFrame{frame: frame, pkt: pkt}
 	select {
 	case q.wake <- struct{}{}:
 	default:
@@ -349,7 +362,12 @@ func (q *slotQueue) expire(now time.Time) []models.Packet {
 	return out
 }
 
-func (p *pacer) take(q *slotQueue, now time.Time) (queuedFrame, time.Duration, bool) {
+// take returns the next frame to send on the peer slot k at now, or how
+// long to wait for one. A call whose last frame is a preamble or a block of
+// a data packet in progress ends on IPSC with the frame of p.end when
+// nothing of it comes for preambleGap, or at once when it is a preamble
+// and another call waits.
+func (p *pacer) take(k slotKey, q *slotQueue, now time.Time) (queuedFrame, time.Duration, bool) {
 	var discarded []models.Packet
 	defer func() { p.report(discarded) }()
 	p.mu.Lock()
@@ -377,6 +395,18 @@ func (p *pacer) take(q *slotQueue, now time.Time) (queuedFrame, time.Duration, b
 			return f, 0, true
 		}
 		quiet := now.Sub(c.lastSeen)
+		if c.needsEnd && p.end != nil {
+			if quiet < preambleGap && (!c.preamble || len(q.pending) == 0) {
+				return queuedFrame{}, preambleGap - quiet, false
+			}
+			c.needsEnd, c.ended = false, true
+			if frame := p.end(k, c.last); frame != nil {
+				f := queuedFrame{frame: frame, pkt: c.last.pkt}
+				q.sending = &f
+				q.sendingCall = c
+				return f, 0, true
+			}
+		}
 		if !c.ended && quiet < callHang {
 			if len(q.pending) == 0 {
 				return queuedFrame{}, 0, false
@@ -403,7 +433,7 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 			case <-t.C:
 			}
 		}
-		frame, wait, ok := p.take(q, p.now())
+		frame, wait, ok := p.take(k, q, p.now())
 		if !ok {
 			if p.idle(k, q, wait, idle) {
 				return
@@ -498,6 +528,7 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 			}
 			c.frames = nil
 			c.ended = true
+			c.needsEnd = false
 		}
 		q.sent = nil
 	}

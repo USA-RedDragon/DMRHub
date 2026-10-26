@@ -142,6 +142,9 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 			s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reasonSlotBusy)
 		}
 	})
+	s.pacer.end = func(k slotKey, last queuedFrame) []byte {
+		return s.egressTranslator(k.peer).endCall(last.pkt, last.frame)
+	}
 	m, err := ipscsession.NewMaster(&ipscsession.MasterConfig{
 		ID:         s.localID,
 		MaxPeers:   ipscsession.MaxPeersLimit,

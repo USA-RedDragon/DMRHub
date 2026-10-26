@@ -42,15 +42,17 @@ func newSMSPeer(t *testing.T) (*IPSCServer, *net.UDPConn) {
 	return s, c
 }
 
-func readUsers(t *testing.T, c *net.UDPConn, n int) []ipscwire.User {
+func readUsers(t *testing.T, c *net.UDPConn, n int) ([]ipscwire.User, [][]byte) {
 	t.Helper()
 	users := make([]ipscwire.User, 0, n)
+	bodies := make([][]byte, 0, n)
 	for range n {
 		body, ok := ipscauth.NewKey(testKey(t)).Verify(readUDP(t, c))
 		require.True(t, ok)
 		users = append(users, decodeUserT(t, body))
+		bodies = append(bodies, body)
 	}
-	return users
+	return users, bodies
 }
 
 func assertOneCall(t *testing.T, users []ipscwire.User) {
@@ -74,7 +76,7 @@ func TestMMDVMHostSMSGoesToIPSCAsOneCall(t *testing.T) {
 	pkts := mmdvmHostSMS(t, 1, 5, "one call")
 	sendAll(s, pkts)
 
-	users := readUsers(t, c, len(pkts))
+	users, _ := readUsers(t, c, len(pkts))
 	assertOneCall(t, users)
 	for i, u := range users {
 		last := i == len(users)-1
@@ -85,6 +87,53 @@ func TestMMDVMHostSMSGoesToIPSCAsOneCall(t *testing.T) {
 		}
 		assert.Equal(t, want, u.RTP.PayloadType, "RTP payload type of packet %d", i)
 	}
+	expectNoUDPFor(t, c, preambleGap+200*time.Millisecond)
+}
+
+// TestPreamblesWithNoDataEndWithASyncLostPacket sends preambles on their own
+// streams with no data after them. An XPR 8400 ends such a call with a
+// 34-octet packet of burst type 0x13 with the end flag and RTP payload type
+// 0x5E, and the timeslot in bit 7 of octet 31 (ipsc2hbrp-rig
+// cap/preamble.txt, call controls 0x934 and 0x3290: "13800000").
+func TestPreamblesWithNoDataEndWithASyncLostPacket(t *testing.T) {
+	t.Parallel()
+	s, c := newSMSPeer(t)
+	for i, raw := range preambleBursts(t, 3, 2) {
+		pkt := smsPacketOf(uint(20+i), raw)
+		pkt.Slot = true
+		s.sendTo(smsPeer, pkt)
+	}
+
+	users, bodies := readUsers(t, c, 4)
+	assertOneCall(t, users)
+	end := users[3]
+	assert.Equal(t, ipscwire.BurstSyncLost, end.Burst)
+	assert.True(t, end.Info.End())
+	assert.Equal(t, enums.Slot2, end.Info.Slot())
+	assert.Equal(t, byte(rtpPayloadTypeEnd), end.RTP.PayloadType)
+	assert.Equal(t, []byte{0x13, 0x80, 0x00, 0x00}, bodies[3][30:])
+	expectNoUDPFor(t, c, preambleGap+200*time.Millisecond)
+}
+
+// TestADataCallWithoutItsLastBlockEnds sends a data call whose last block
+// never comes. It ends with the 0x13 packet that an XPR 8400 sends when the
+// signal ends, as ipsc2hbrp does.
+func TestADataCallWithoutItsLastBlockEnds(t *testing.T) {
+	t.Parallel()
+	s, c := newSMSPeer(t)
+	pkts := mmdvmHostSMS(t, 30, 2, "no last block")
+	pkts = pkts[:len(pkts)-1]
+	sendAll(s, pkts)
+
+	users, _ := readUsers(t, c, len(pkts)+1)
+	assertOneCall(t, users)
+	for i, u := range users[:len(pkts)] {
+		assert.False(t, u.Info.End(), "end flag of packet %d", i)
+	}
+	end := users[len(pkts)]
+	assert.Equal(t, ipscwire.BurstSyncLost, end.Burst)
+	assert.True(t, end.Info.End())
+	assert.Equal(t, byte(rtpPayloadTypeEnd), end.RTP.PayloadType)
 }
 
 // TestALateDataHeaderStartsAnotherCall sends a data header from the source
@@ -140,5 +189,14 @@ func TestEachCallHasItsOwnCallSeq(t *testing.T) {
 		}
 		assert.False(t, seqs[seq], "call %d has the call sequence number of an earlier call", n)
 		seqs[seq] = true
+	}
+}
+
+func expectNoUDPFor(t *testing.T, conn *net.UDPConn, d time.Duration) {
+	t.Helper()
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(d)))
+	buf := make([]byte, 1500)
+	if n, _, err := conn.ReadFromUDP(buf); err == nil {
+		t.Fatalf("expected no packet, got %x", buf[:n])
 	}
 }

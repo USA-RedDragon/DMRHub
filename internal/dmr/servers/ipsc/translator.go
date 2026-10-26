@@ -370,6 +370,42 @@ func (t *IPSCTranslator) Continue(streamID uint32, st streamSnapshot) {
 	}
 }
 
+// endCall returns the packet that ends on IPSC the call of the stream of
+// pkt, the last packet of the call, when none of its packets ended it, and
+// forgets the call. last is the IPSC packet of pkt. An XPR 8400 ends such a
+// call with a "sync not detected" placeholder (burst type 0x13) with the
+// end flag and RTP payload type 0x5E, and the timeslot in bit 7 of octet
+// 31. It returns nil when the translator sent the call more after last.
+func (t *IPSCTranslator) endCall(pkt models.Packet, last []byte) []byte {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if pkt.StreamID > math.MaxUint32 {
+		return nil
+	}
+	ss, ok := t.streams[uint32(pkt.StreamID)]
+	if !ok || ss.firstPacket {
+		return nil
+	}
+	u, err := ipscwire.DecodeUser(last)
+	if err != nil || u.CallControl != ss.callControl || u.RTP.Seq+1 != ss.rtpSeq {
+		return nil
+	}
+	end := t.user(pkt, ss, true, true, false)
+	end.Burst = ipscwire.BurstSyncLost
+	if pkt.Slot {
+		end.Data.Status = 0x80
+	}
+	for id, s := range t.streams {
+		if s == ss {
+			delete(t.streams, id)
+		}
+	}
+	if slot := slotIndex(pkt.Slot); t.preambles[slot] != nil && t.preambles[slot].ss == ss {
+		t.preambles[slot] = nil
+	}
+	return t.encodeUser(pkt, &end)
+}
+
 // CleanupStream removes state for a given stream (e.g. on timeout).
 func (t *IPSCTranslator) CleanupStream(streamID uint32) {
 	t.mu.Lock()

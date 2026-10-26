@@ -43,6 +43,8 @@ Click **Add New Talkgroup** in the table header. Name and Description are requir
 
 The admin repeaters page lists all repeaters on the system, not just those owned by the current user.
 
+With several replicas, a repeater that moves to another replica in a rolling restart keeps its login. The load balancer can drop what the old replica sent just before the move, so the old replica hands that over and the new replica sends it again. For an IPSC peer or a browser hotspot, this is what went out in the last 500 ms, and the peer drops what it already got. MMDVMHost and DMRGateway drop a repeated frame only when it repeats the last frame, and play other repeated frames as audio. So for an MMDVM repeater this is only the last frame on each timeslot that went out in the last 60 ms. When the load balancer takes more than 60 ms to pass on the packet that moves an MMDVM repeater, the repeater loses the bursts that the old replica sent before that. After a stall, frames can go out closer together than 60 ms, and the repeater can lose all but the last of them.
+
 ## Users
 
 The users page allows administrators to edit and delete users. Current editable actions include suspending and unsuspending users.

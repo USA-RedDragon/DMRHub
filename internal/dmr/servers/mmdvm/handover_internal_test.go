@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +51,7 @@ func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	time.Sleep(time.Millisecond)
 	since := time.Now()
-	got := s.sentSince(1, since, hub.MoveSlack)
+	got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
 	require.Len(t, got, 1, "the handover misses the packet that waits in the queue")
 	assert.Equal(t, uint(3), got[0].Seq)
 }
@@ -65,7 +64,7 @@ func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 	s := queueServer()
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	assert.Empty(t, s.sentSince(1, time.Now().Add(2*hub.MoveSlack), hub.MoveSlack))
+	assert.Empty(t, s.sentSince(1, time.Now().Add(2*MoveSlack), ruleFor(udpEndpoint(net.UDPAddr{}))))
 }
 
 // TestHandOverAPacketSentJustBeforeTheClaim sends a packet to a repeater
@@ -78,20 +77,72 @@ func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
 	s := queueServer()
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), hub.MoveSlack), 1, "the handover misses the packet sent just before the claim")
+	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses the packet sent just before the claim")
 }
 
-// TestHandOverAPacketSentBeforeAStalledClaim sends a packet to a repeater
-// 300 ms before the packet of the repeater reached the other replica, as a
-// load balancer that stalls under CPU throttling delays it. The load
-// balancer moved the repeater when it got that packet and may have dropped
-// the packet to the repeater, so the handover must hold it.
-func TestHandOverAPacketSentBeforeAStalledClaim(t *testing.T) {
+// TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim sends a
+// packet to a browser hotspot 300 ms before the packet of the hotspot
+// reached the other replica, as a load balancer that stalls under CPU
+// throttling delays it. The load balancer moved the hotspot when it got
+// that packet and may have dropped the packet to it, so the handover must
+// hold it.
+func TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim(t *testing.T) {
 	t.Parallel()
 	s := queueServer()
+	ep := endpoint{transport: webTransportName, addr: wtAddr("a")}
+	s.connected.Store(1, ep)
 	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 	s.writeOut(<-s.outgoingChan)
-	assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), hub.MoveSlack), 1, "the handover misses the packet sent before a stalled claim")
+	assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), ruleFor(ep)), 1, "the handover misses the packet sent before a stalled claim")
+}
+
+// TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame sends a call to an MMDVM
+// repeater, a frame each 60 ms, and moves the repeater just after the last
+// one. MMDVMHost drops a copy of the last frame that it got, but plays a
+// copy of an earlier one as audio, so the handover must hold the last
+// frame and no other.
+func TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	ep, _ := s.connected.Load(1)
+	now := time.Now()
+	for i := range 5 {
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: uint(i)})
+		s.writeOut(<-s.outgoingChan)
+	}
+	s.sentMu.Lock()
+	for i, p := range s.sent[1] {
+		p.at = now.Add(time.Duration(i-4)*60*time.Millisecond - 5*time.Millisecond)
+	}
+	s.sentMu.Unlock()
+	got := s.sentSince(1, now, ruleFor(ep))
+	require.Len(t, got, 1, "the handover holds more than the last frame")
+	assert.Equal(t, uint(4), got[0].Seq)
+}
+
+// TestHandOverToAnMMDVMRepeaterOnlyTheLastOfAClump sends an MMDVM
+// repeater two frames on a slot 6 ms apart, as they leave after a stall,
+// and a frame on the other slot, and moves the repeater just after them.
+// The repeater may have got both frames on the slot, so the handover must
+// hold only the last frame of each slot.
+func TestHandOverToAnMMDVMRepeaterOnlyTheLastOfAClump(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	ep, _ := s.connected.Load(1)
+	now := time.Now()
+	for _, p := range []models.Packet{{StreamID: 7, Seq: 1}, {StreamID: 8, Seq: 1, Slot: true}, {StreamID: 7, Seq: 2}} {
+		s.deliver(context.Background(), 1, p)
+		s.writeOut(<-s.outgoingChan)
+	}
+	s.sentMu.Lock()
+	for i, p := range s.sent[1] {
+		p.at = now.Add(time.Duration(i*3-20) * time.Millisecond)
+	}
+	s.sentMu.Unlock()
+	got := s.sentSince(1, now, ruleFor(ep))
+	require.Len(t, got, 2, "the handover holds more than the last frame of each slot")
+	assert.Equal(t, models.Packet{StreamID: 8, Seq: 1, Slot: true}, got[0])
+	assert.Equal(t, models.Packet{StreamID: 7, Seq: 2}, got[1])
 }
 
 // TestHandOverAPacketSentAfterTheMove sends a packet that was queued
@@ -105,7 +156,7 @@ func TestHandOverAPacketSentAfterTheMove(t *testing.T) {
 	since := time.Now()
 	time.Sleep(time.Millisecond)
 	s.writeOut(o)
-	assert.Len(t, s.sentSince(1, since, hub.MoveSlack), 1)
+	assert.Len(t, s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{}))), 1)
 }
 
 // slowTransport is a transport whose writes wait until release closes.
@@ -142,8 +193,8 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 		s.writeOut(o)
 	}()
 	<-slow.writing
-	time.Sleep(2 * hub.MoveSlack)
-	got := s.sentSince(1, time.Now(), hub.MoveSlack)
+	time.Sleep(2 * MoveSlack)
+	got := s.sentSince(1, time.Now(), ruleFor(udpEndpoint(net.UDPAddr{})))
 	close(slow.release)
 	<-wrote
 	assert.Len(t, got, 1, "the handover misses the packet that left after the move")

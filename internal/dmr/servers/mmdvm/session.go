@@ -32,7 +32,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"go.opentelemetry.io/otel"
@@ -894,25 +893,19 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 // logged in there again.
 // It first stops the packets of the hub to the repeater and takes those
 // already on their way, so that the handover holds every packet that went
-// out after the move. The claim of a browser hotspot comes at the second of
-// the drain notice, before the hotspot moved, so its handover takes no
-// slack.
+// out after the move, and those that ruleFor holds of the ones before.
 func (s *Server) dropMoved(id uint, since time.Time) {
 	if id > math.MaxUint32 || s.hub == nil {
 		return
 	}
 	s.mu.Lock()
 	l, ok := s.byID[uint32(id)]
-	slack := hub.MoveSlack
-	if ok && l.ep.transport == webTransportName {
-		slack = 0
-	}
 	s.mu.Unlock()
 	if !ok {
 		return
 	}
 	s.hub.StopFor(models.RepeaterTypeMMDVM, id)
-	s.handOver(id, since, slack)
+	s.handOver(id, since, ruleFor(l.ep))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.byID[uint32(id)] != l {

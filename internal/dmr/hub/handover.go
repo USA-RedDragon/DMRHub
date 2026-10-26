@@ -46,7 +46,9 @@ const claimedTopic = "hub:claimed"
 // earlier and the load balancer had not passed on yet, is lost with the
 // old session. So the old replica hands over all that it sent from
 // MoveSlack before the claim, and the repeater may get some of it twice,
-// which is better than not at all.
+// which is better than not at all. IPSC peers and browser hotspots take
+// such copies. An MMDVM repeater plays a copy of any but its last frame as
+// audio, so the MMDVM server hands over less; see mmdvm.MoveSlack.
 const MoveSlack = 500 * time.Millisecond
 
 func ownerKey(repeaterID uint) string {

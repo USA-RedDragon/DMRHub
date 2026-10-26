@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 )
 
 // A repeater that moves from a draining replica to this one reaches this
@@ -51,6 +52,36 @@ const (
 	// past 32.
 	wtHandoverGap = 2 * time.Millisecond
 )
+
+// MoveSlack is how long before the claim of an MMDVM repeater that moved
+// the old replica hands over what it sent to it. MMDVMHost and DMRGateway
+// drop a frame from the network only when it repeats the last one; they
+// play a copy of an earlier frame as audio after the silence that they
+// insert for it. So of the frames that left in that time before the claim,
+// the handover holds only the last one on each slot: frames go out 60 ms
+// apart in a call, but may leave closer together after a stall. When the
+// load balancer takes more than MoveSlack to pass on the packet that moved
+// the repeater, or two frames on a slot leave in MoveSlack and the load
+// balancer drops both, the repeater loses the frames that the handover
+// does not hold. A browser hotspot drops all copies, so its handover holds
+// all that left in hub.MoveSlack.
+const MoveSlack = 60 * time.Millisecond
+
+// handoverRule is what a handover holds of the packets that left before
+// the claim: those that left from slack before it, and with last only the
+// last of them on each slot.
+type handoverRule struct {
+	slack time.Duration
+	last  bool
+}
+
+// ruleFor returns the handoverRule of a repeater at ep.
+func ruleFor(ep endpoint) handoverRule {
+	if ep.transport == webTransportName {
+		return handoverRule{slack: hub.MoveSlack}
+	}
+	return handoverRule{slack: MoveSlack, last: true}
+}
 
 // sentPacket is a packet to a repeater, and at is when it left, or zero
 // while it waits in the queue.
@@ -115,16 +146,28 @@ func (s *Server) forgetPacket(id uint, p *sentPacket) {
 }
 
 // sentSince returns the packets to the repeater id that left at or after
-// slack before since, or that still wait in the queue, and forgets the
-// repeater. A packet that waits leaves after the move, which the load
-// balancer no longer takes to the repeater.
-func (s *Server) sentSince(id uint, since time.Time, slack time.Duration) []models.Packet {
-	since = since.Add(-slack)
+// since, or that still wait in the queue, and those that the rule holds of
+// the ones that left before since, in order, and forgets the repeater. A
+// packet that waits leaves after the move, which the load balancer no
+// longer takes to the repeater.
+func (s *Server) sentSince(id uint, since time.Time, rule handoverRule) []models.Packet {
+	from := since.Add(-rule.slack)
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
+	list := s.sent[id]
+	lastOn := map[bool]int{}
+	for i, p := range list {
+		if !p.at.IsZero() && p.at.Before(since) && !p.at.Before(from) {
+			lastOn[p.pkt.Slot] = i
+		}
+	}
 	var out []models.Packet
-	for _, p := range s.sent[id] {
-		if p.at.IsZero() || !p.at.Before(since) {
+	for i, p := range list {
+		switch {
+		case p.at.IsZero() || !p.at.Before(since):
+			out = append(out, p.pkt)
+		case p.at.Before(from):
+		case !rule.last || lastOn[p.pkt.Slot] == i:
 			out = append(out, p.pkt)
 		}
 	}
@@ -133,13 +176,13 @@ func (s *Server) sentSince(id uint, since time.Time, slack time.Duration) []mode
 }
 
 // handOver sends the replica that claimed the repeater id the packets that
-// this one sent to it from slack before since, when its packet reached the
-// other replica.
-func (s *Server) handOver(id uint, since time.Time, slack time.Duration) {
+// this one sent to it after since, when its packet reached the other
+// replica, and those that the rule holds of the ones before.
+func (s *Server) handOver(id uint, since time.Time, rule handoverRule) {
 	if s.hub == nil {
 		return
 	}
-	lost := s.sentSince(id, since, slack)
+	lost := s.sentSince(id, since, rule)
 	h := handover{Packets: make([][]byte, 0, len(lost))}
 	for _, p := range lost {
 		b, err := p.MarshalMsg(nil)

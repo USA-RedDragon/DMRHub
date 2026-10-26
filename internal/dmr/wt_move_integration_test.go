@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,7 +97,7 @@ func checkMovedBrowser(t *testing.T, browser *testutils.WebTransportPeer, draine
 	browser.Drain(drainWait)
 	moved := browser.Moved()
 	require.Len(t, moved, 1, "the browser hotspot did not move")
-	windows := []moveWindow{{from: drained.Truncate(time.Second), at: moved[0]}}
+	windows := []moveWindow{{from: drained.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]}}
 	heard := browser.Heard()
 	checkCopies(t, "the browser hotspot", arrivalsOf(heard, stream), windows)
 	checkResent(t, "the browser hotspot", firstArrivalsOf(heard, stream), n, windows)

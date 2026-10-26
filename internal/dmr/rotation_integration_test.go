@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
@@ -77,8 +78,8 @@ func (c rotationCall) run(t *testing.T, wg *sync.WaitGroup) {
 }
 
 // moveWindow is a move of a client, at which it may get a packet again: the
-// replica that it left sent the packet in the last hub.MoveSlack before the
-// move, and the replica that it moved to sends it again, since the load
+// replica that it left sent the packet in the last slack before the move,
+// and the replica that it moved to sends it again, since the load
 // balancer may have lost it. A copy is in the window when the copy before
 // it came at or after from and the copy at or after at.
 type moveWindow struct {
@@ -86,11 +87,12 @@ type moveWindow struct {
 }
 
 // windowsAt returns the move windows of a client whose sessions at the
-// load balancer ended at the times in ended.
-func windowsAt(ended []time.Time) []moveWindow {
+// load balancer ended at the times in ended, where the replica that it
+// moved to sends again what the old one sent in the last slack.
+func windowsAt(ended []time.Time, slack time.Duration) []moveWindow {
 	out := make([]moveWindow, 0, len(ended))
 	for _, at := range ended {
-		out = append(out, moveWindow{from: at.Add(-hub.MoveSlack), at: at})
+		out = append(out, moveWindow{from: at.Add(-slack), at: at})
 	}
 	return out
 }
@@ -157,7 +159,15 @@ func windowOf(windows []moveWindow, prev, at time.Time) int {
 // order, what the client may have missed.
 func checkCall(t *testing.T, who string, got []arrival, n int, windows []moveWindow) {
 	t.Helper()
-	checkArrivals(t, who, got, n, windows, false)
+	checkArrivals(t, who, got, n, windows, arrivalRules{})
+}
+
+// checkLastCopies is checkCall for an MMDVM repeater, which drops a copy of
+// the last packet that it got and plays a copy of an earlier one as audio:
+// a copy must come right after the packet that it repeats.
+func checkLastCopies(t *testing.T, who string, got []arrival, n int, windows []moveWindow) {
+	t.Helper()
+	checkArrivals(t, who, got, n, windows, arrivalRules{lastOnly: true})
 }
 
 // checkResent is checkCall for a browser hotspot, which may get a burst
@@ -168,16 +178,23 @@ func checkCall(t *testing.T, who string, got []arrival, n int, windows []moveWin
 // hotspot moves to hands the lost ones over only after the move.
 func checkResent(t *testing.T, who string, got []arrival, n int, windows []moveWindow) {
 	t.Helper()
-	checkArrivals(t, who, got, n, windows, true)
+	checkArrivals(t, who, got, n, windows, arrivalRules{resends: true})
 }
 
-func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []moveWindow, resends bool) {
+// arrivalRules are the exceptions that checkArrivals makes: resends lets a
+// packet come after later ones in a move window, and lastOnly lets only a
+// copy of the packet that came last come again.
+type arrivalRules struct {
+	resends, lastOnly bool
+}
+
+func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []moveWindow, rules arrivalRules) {
 	t.Helper()
 	last := map[uint]time.Time{}
 	resent := make([]bool, len(windows))
 	var next uint
 	prev := -1
-	var outside, late, back []uint
+	var outside, notLast, late, back []uint
 	for _, a := range got {
 		at, copied := last[a.n]
 		last[a.n] = a.at
@@ -187,6 +204,8 @@ func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []mov
 			switch {
 			case w < 0:
 				outside = append(outside, a.n)
+			case rules.lastOnly && int(a.n) != prev:
+				notLast = append(notLast, a.n)
 			case int(a.n) <= prev && resent[w]:
 				back = append(back, a.n)
 			case int(a.n) <= prev:
@@ -194,7 +213,7 @@ func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []mov
 			case int(a.n) != prev+1:
 				back = append(back, a.n)
 			}
-		case a.n < next && (!resends || !slices.ContainsFunc(windows, func(w moveWindow) bool { return !a.at.Before(w.at) })):
+		case a.n < next && (!rules.resends || !slices.ContainsFunc(windows, func(w moveWindow) bool { return !a.at.Before(w.at) })):
 			late = append(late, a.n)
 		case a.n < next:
 		default:
@@ -210,9 +229,10 @@ func checkArrivals(t *testing.T, who string, got []arrival, n int, windows []mov
 	}
 	assert.Empty(t, lost, "%s lost packets", who)
 	assert.Empty(t, outside, "%s got packets again outside a move window", who)
+	assert.Empty(t, notLast, "%s got copies of packets other than the last one", who)
 	assert.Empty(t, late, "%s got packets after later ones", who)
 	assert.Empty(t, back, "%s got copies out of order", who)
-	if bad := slices.Concat(lost, outside, late, back); len(bad) > 0 {
+	if bad := slices.Concat(lost, outside, notLast, late, back); len(bad) > 0 {
 		logArrivals(t, who, got, windows, slices.Min(bad), slices.Max(bad))
 	}
 }
@@ -277,7 +297,8 @@ func ipscArrivals(t *testing.T, bursts []testutils.IPSCBurst, c rotationCall) []
 // replica starts, the first one stops, and then the second. No repeater or
 // peer may log in again, and every listener must get every burst of both
 // calls in order. A listener may get a burst twice only at a move, where
-// the replica that it moved to sends again what the move may have lost.
+// the replica that it moved to sends again what the move may have lost, and
+// an MMDVM repeater only its last burst.
 func TestRotationMidCall(t *testing.T) {
 	t.Parallel()
 	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -374,17 +395,17 @@ func TestRotationMidCall(t *testing.T) {
 			streams []uint
 		}{{"repeater 100001", talkerA, []uint{one.stream}}, {"repeater 100002", talkerB, []uint{two.stream}}, {"repeater 100003", slow, []uint{one.stream, two.stream}}} {
 			heard := p.p.Heard()
-			windows := windowsAt(fronts.MMDVM.Ended(p.p.LocalAddr()))
+			windows := windowsAt(fronts.MMDVM.Ended(p.p.LocalAddr()), mmdvm.MoveSlack)
 			for _, stream := range p.streams {
-				checkCall(t, fmt.Sprintf("%s on stream %d", p.name, stream), arrivalsOf(heard, stream), rotationBursts, windows)
+				checkLastCopies(t, fmt.Sprintf("%s on stream %d", p.name, stream), arrivalsOf(heard, stream), rotationBursts, windows)
 			}
 		}
 
 		moved := browser.Moved()
 		require.Len(t, moved, 2)
 		browserWindows := []moveWindow{
-			{from: aStops.Truncate(time.Second), at: moved[0]},
-			{from: bStops.Truncate(time.Second), at: moved[1]},
+			{from: aStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[0]},
+			{from: bStops.Truncate(time.Second).Add(-hub.MoveSlack), at: moved[1]},
 		}
 		for _, stream := range []uint{one.stream, two.stream} {
 			who := fmt.Sprintf("the browser hotspot on stream %d", stream)
@@ -393,7 +414,7 @@ func TestRotationMidCall(t *testing.T) {
 		}
 
 		ipscBursts := ipscPeer.Drain(settleDuration)
-		ipscWindows := windowsAt(fronts.IPSC.Ended(ipscPeer.LocalAddr()))
+		ipscWindows := windowsAt(fronts.IPSC.Ended(ipscPeer.LocalAddr()), hub.MoveSlack)
 		for _, c := range []rotationCall{one, two} {
 			checkCall(t, fmt.Sprintf("the IPSC peer on TG %d", c.tg), ipscArrivals(t, ipscBursts, c), rotationBursts, ipscWindows)
 		}

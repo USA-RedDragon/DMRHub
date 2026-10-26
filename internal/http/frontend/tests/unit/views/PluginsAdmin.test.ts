@@ -53,7 +53,7 @@ const ago = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOStr
 const parrot: AdminPlugin = {
   id: 1, name: 'Parrot', kind: 'external', version: '', author: '', description: '', hosts: [],
   enabled: true, ranges: [{ first: 9990, last: 9990 }], online: true,
-  connected_since: ago(120), last_seen_at: ago(0), address: '10.0.4.7:51234', token_created_at: '2026-10-23T12:00:00Z', calls_today: 12,
+  connected_since: ago(120), last_seen_at: ago(0), address: '10.0.4.7:51234', token_created_at: '2026-10-23T06:00:00Z', calls_today: 12,
 };
 const locator: AdminPlugin = {
   ...parrot, id: 2, name: 'Location server', ranges: [{ first: 5050, last: 5059 }], online: false, connected_since: null,

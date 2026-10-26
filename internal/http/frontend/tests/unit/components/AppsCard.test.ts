@@ -44,7 +44,7 @@ const apps = [
     id: 'g2',
     origin: 'https://ki5vmf.github.io',
     can_use: 'Talkgroups, last heard',
-    allowed: '2026-09-30T12:00:00Z',
+    allowed: '2026-09-30T06:00:00Z',
     last_used: '2026-10-20T12:00:00Z',
   },
 ];

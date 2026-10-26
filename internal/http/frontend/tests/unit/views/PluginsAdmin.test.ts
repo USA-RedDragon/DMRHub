@@ -57,7 +57,7 @@ const parrot: AdminPlugin = {
 };
 const locator: AdminPlugin = {
   ...parrot, id: 2, name: 'Location server', ranges: [{ first: 5050, last: 5059 }], online: false, connected_since: null,
-  last_seen_at: ago(3 * 24 * 60), address: '', calls_today: 0,
+  last_seen_at: '2026-10-21T12:00:00Z', address: '', calls_today: 0,
 };
 const weather: AdminPlugin = {
   ...parrot, id: 3, name: 'Weather net', enabled: false, ranges: [{ first: 9998, last: 9998 }, { first: 310001, last: 310009 }],
@@ -79,7 +79,9 @@ describe('plugins service', () => {
     expect(formatSpan('2026-10-21T12:00:00Z', now)).toBe('3 days');
     expect(formatSpan('2026-10-24T11:55:00Z', now)).toBe('5 minutes');
     expect(status(parrot)).toBe('Connected for 2 hours, from 10.0.4.7');
-    expect(status(locator)).toBe('Not connected, last seen 3 days ago');
+    expect(status(locator, now, 'America/Chicago')).toBe('Not connected since 21 October 2026');
+    expect(status({ ...locator, last_seen_at: '2026-10-24T09:12:00Z' }, now, 'America/Chicago')).toBe('Not connected since 04:12 CDT');
+    expect(status({ ...locator, last_seen_at: '2026-10-23T12:00:01Z' }, now, 'America/Chicago')).toBe('Not connected since 07:00 CDT');
     expect(status(weather)).toBe('Off');
     expect(status({ ...weather, enabled: true })).toBe('Not connected yet');
   });

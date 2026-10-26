@@ -259,7 +259,11 @@ export function status(p: AdminPlugin, now: number = Date.now(), timeZone?: stri
     return `Connected for ${formatSpan(p.connected_since, now)}, from ${p.address.replace(/:\d+$/, '')}`;
   }
   if (p.last_seen_at) {
-    return `Not connected, last seen ${formatSpan(p.last_seen_at, now)} ago`;
+    const seen = new Date(p.last_seen_at);
+    if (now - seen.getTime() < 24 * 60 * 60 * 1000) {
+      return `Not connected since ${shortTime(seen, timeZone)}`;
+    }
+    return `Not connected since ${formatDay(p.last_seen_at, timeZone)}`;
   }
   return 'Not connected yet';
 }
@@ -300,6 +304,6 @@ export function statusTone(p: AdminPlugin, now: number = Date.now()): 'ok' | 'in
 }
 
 /** formatDay is a date in words: 23 October 2026. */
-export function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+export function formatDay(iso: string, timeZone?: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone });
 }

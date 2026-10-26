@@ -43,27 +43,30 @@ export function localToUTC(
 }
 
 /**
- * Convert UTC day-of-week + HH:MM back to local day-of-week + HH:MM.
+ * Convert UTC day-of-week + HH:MM back to local day-of-week + HH:MM, in the
+ * same week that localToUTC uses: the 7 × 24 hours from local midnight today.
+ * Both then agree across a DST change and when the UTC day is not the local
+ * day. In a week with a DST change the local times and the UTC times cannot
+ * all pair up: a local time that the change skips does not exist, and when
+ * the clocks go back, the last local hour of the week falls outside it.
  */
 export function utcToLocal(
   utcDay: number,
   utcTime: string,
 ): { dayOfWeek: number; timeOfDay: string } {
-  const now = new Date();
-  const currentUTCDay = now.getUTCDay();
-  let diff = utcDay - currentUTCDay;
-  if (diff < 0) diff += 7;
-  const target = new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + diff,
-    ),
-  );
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
   const parts = utcTime.split(':').map(Number);
   const hh = parts[0] ?? 0;
   const mm = parts[1] ?? 0;
-  target.setUTCHours(hh, mm, 0, 0);
+  const day = 24 * 60 * 60 * 1000;
+  let at = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), hh, mm);
+  let diff = utcDay - new Date(at).getUTCDay();
+  if (diff < 0) diff += 7;
+  at += diff * day;
+  while (at >= start.getTime() + 7 * day) at -= 7 * day;
+  while (at < start.getTime()) at += 7 * day;
+  const target = new Date(at);
 
   const localDay = target.getDay();
   const localHH = String(target.getHours()).padStart(2, '0');

@@ -17,8 +17,21 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { localToUTC, utcToLocal } from '@/lib/timeConversion';
+
+// pairs reports whether the local day and time has a UTC day and time
+// in the 7 × 24 hours from local midnight today: a DST change can skip
+// it, or, when the clocks go back, push it past the end of the week.
+const pairs = (day: number, time: string) => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const d = new Date(start);
+  d.setDate(start.getDate() + ((day - start.getDay() + 7) % 7));
+  const [hh, mm] = time.split(':').map(Number);
+  d.setHours(hh ?? 0, mm ?? 0, 0, 0);
+  return d.getHours() === hh && d.getMinutes() === mm && d.getTime() < start.getTime() + 7 * 24 * 60 * 60 * 1000;
+};
 
 describe('timeConversion', () => {
   describe('localToUTC / utcToLocal round-trip', () => {
@@ -31,6 +44,9 @@ describe('timeConversion', () => {
     for (const day of days) {
       for (const time of times) {
         it(`round-trips day=${day} time=${time}`, () => {
+          if (!pairs(day, time)) {
+            return;
+          }
           const utc = localToUTC(day, time);
           const local = utcToLocal(utc.dayOfWeek, utc.timeOfDay);
 
@@ -38,6 +54,43 @@ describe('timeConversion', () => {
           expect(local.timeOfDay).toBe(time);
         });
       }
+    }
+  });
+
+  describe('round-trip at any time of the week, across DST changes', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const clocks = [
+      '2026-10-26T01:00:00Z',
+      '2026-10-31T23:30:00Z',
+      '2026-11-01T06:30:00Z',
+      '2026-03-08T07:30:00Z',
+      '2026-03-07T22:00:00Z',
+      '2026-04-04T13:30:00Z',
+      '2026-09-26T13:30:00Z',
+      '2026-10-24T20:00:00Z',
+      '2026-01-04T23:59:00Z',
+    ];
+    const times = ['00:00', '00:30', '02:30', '06:30', '12:00', '18:45', '23:59'];
+
+
+    for (const clock of clocks) {
+      it(`round-trips every day and time at ${clock}`, () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(clock));
+        for (let day = 0; day < 7; day++) {
+          for (const time of times) {
+            if (!pairs(day, time)) {
+              continue;
+            }
+            const utc = localToUTC(day, time);
+            const local = utcToLocal(utc.dayOfWeek, utc.timeOfDay);
+            expect(`${local.dayOfWeek} ${local.timeOfDay}`, `${day} ${time}`).toBe(`${day} ${time}`);
+          }
+        }
+      });
     }
   });
 

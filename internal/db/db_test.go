@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/configulator/v2"
+	"gorm.io/gorm"
 )
 
 func TestMakeDBInMemoryDatabase(t *testing.T) {
@@ -233,5 +235,65 @@ func TestSQLiteSynchronousIsNormal(t *testing.T) {
 				_ = c.Close()
 			}
 		})
+	}
+}
+
+// TestSQLiteWritersTakeTurns writes once while another writer writes
+// again as soon as it commits, each write taking 20 ms. The lone write
+// must get its turn before its busy timeout of 500 ms runs out.
+func TestSQLiteWritersTakeTurns(t *testing.T) {
+	t.Parallel()
+
+	defConfig, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
+	}
+	defConfig.Database.Database = filepath.Join(t.TempDir(), "turns.db")
+	defConfig.Database.ExtraParameters = append(defConfig.Database.ExtraParameters, "_pragma=busy_timeout(500)")
+	gdb, err := db.MakeDB(&defConfig)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		t.Fatalf("Failed to get the pool: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	p, err := models.EnsureBuiltinPlugin(gdb, "parrot", "Parrot", "v1", []models.PluginRange{{First: 9990, Last: 9990}}, time.Now())
+	if err != nil {
+		t.Fatalf("Failed to add the plugin: %v", err)
+	}
+	if err := models.NotePluginConnected(gdb, p.ID, "s", "", time.Now()); err != nil {
+		t.Fatalf("Failed to connect the plugin: %v", err)
+	}
+
+	var stop atomic.Bool
+	var wg sync.WaitGroup
+	busy := make(chan struct{})
+	wg.Go(func() {
+		for i := 0; !stop.Load(); i++ {
+			err := gdb.Transaction(func(tx *gorm.DB) error {
+				if err := models.NotePluginSeen(tx, p.ID, "s", time.Now()); err != nil {
+					return fmt.Errorf("busy write: %w", err)
+				}
+				if i == 0 {
+					close(busy)
+				}
+				time.Sleep(20 * time.Millisecond)
+				return nil
+			})
+			if err != nil {
+				t.Errorf("the busy writer failed: %v", err)
+				return
+			}
+		}
+	})
+	<-busy
+	err = models.NotePluginSeen(gdb, p.ID, "s", time.Now())
+	stop.Store(true)
+	wg.Wait()
+	if err != nil {
+		t.Fatalf("the lone writer got no turn: %v", err)
 	}
 }

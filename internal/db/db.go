@@ -127,10 +127,19 @@ func sqliteParameters(params []string) []string {
 	return append(out, "_txlock=immediate")
 }
 
+func sqliteBeginsImmediately(config *configPkg.Config) bool {
+	return config.Database.Driver == configPkg.DatabaseDriverSQLite && config.Database.Database != "" &&
+		slices.Contains(sqliteParameters(config.Database.ExtraParameters), "_txlock=immediate")
+}
+
 func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	db, err = gorm.Open(getDialect(config))
 	if err != nil {
 		return db, fmt.Errorf("failed to open database: %w", err)
+	}
+	if pool, ok := db.ConnPool.(*sql.DB); ok && sqliteBeginsImmediately(config) {
+		writers := newSQLiteWriters(pool)
+		db.ConnPool, db.Statement.ConnPool = writers, writers
 	}
 
 	if config.Metrics.OTLPEndpoint != "" {

@@ -25,7 +25,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -78,7 +77,7 @@ func TestARefusedSpeechFormatFailsCleanly(t *testing.T) {
 	s := c2.Silence()
 	silence := [layer2.VoiceSlotsPerBurst][9]byte{s, s, s}
 	for i := range in {
-		r, ok := st.Convert(t.Context(), &in[i], time.Now().Add(transcode.Budget))
+		r, ok := st.Convert(t.Context(), &in[i], deadline(st))
 		require.True(t, ok)
 		if !transcode.IsVoice(&in[i]) {
 			continue

@@ -79,7 +79,7 @@ func convertAll(t *testing.T, st *transcode.Stream, in []models.Packet) ([]outBu
 	var out []outBurst
 	var reps []vocoder.FrameReport
 	for i := range in {
-		r, ok := st.Convert(t.Context(), &in[i], time.Now().Add(transcode.Budget))
+		r, ok := st.Convert(t.Context(), &in[i], deadline(st))
 		require.True(t, ok, "packet %d has no copy", i)
 		require.Zero(t, r.Missed, "packet %d", i)
 		for _, f := range r.Fill {
@@ -273,7 +273,7 @@ func TestALateBurstAfterItsFillHasNoCopy(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(st.Close)
 	for i := range in {
-		r, ok := st.Convert(t.Context(), &in[i], time.Now().Add(transcode.Budget))
+		r, ok := st.Convert(t.Context(), &in[i], deadline(st))
 		if in[i].Seq == full[1+2].Seq && i == 4 {
 			assert.False(t, ok, "the late burst has a copy")
 			continue
@@ -305,23 +305,26 @@ func TestBurstsWithoutSequenceNumbersAreNotFilled(t *testing.T) {
 // for a lost frame: the deadline leaves no time to decode the burst after
 // the fill. Close clears LOST_FRAME with a PKT_DCMODE field, and decodes
 // nothing, so that the chip does not keep it set for the next call on it.
+// The budget runs on a modelClock, which each answer moves by 60 ms.
 func TestCloseClearsLostFrame(t *testing.T) {
 	t.Parallel()
-	const delay, attempt = 60 * time.Millisecond, 200 * time.Millisecond
+	const delay = 60 * time.Millisecond
 	srv := testutils.StartFakeAMBEServer(t)
 	svc := newService(t, srv.Addr())
-	svc.SetTiming(attempt+5*delay/2, attempt)
+	svc.SetTiming(patientAttempt+5*delay/2, patientAttempt)
+	clock := &modelClock{at: time.Now()}
+	transcode.SetClock(svc, clock.now)
 	slots := ambeFrames(6 * layer2.VoiceSlotsPerBurst)
 	in := without(seqCall(t, voiceLC(t, enums.FIDStandardized), slots), 1+1)
 
 	st, err := svc.NewStream(transcode.CodecAMBE, transcode.CodecCodec2, codec2.Mode2400)
 	require.NoError(t, err)
 	for i := range in[:2] {
-		_, ok := st.Convert(t.Context(), &in[i], time.Now().Add(time.Second))
+		_, ok := st.Convert(t.Context(), &in[i], deadline(st))
 		require.True(t, ok)
 	}
-	srv.SetDelay(delay)
-	r, ok := st.Convert(t.Context(), &in[2], time.Now().Add(st.Budget()))
+	srv.SetReplyHook(func() { clock.advance(delay) })
+	r, ok := st.Convert(t.Context(), &in[2], deadline(st))
 	require.True(t, ok)
 	require.Len(t, r.Fill, 1)
 	require.Equal(t, layer2.VoiceSlotsPerBurst, r.Missed, "the burst after the fill has no time to decode")
@@ -329,7 +332,7 @@ func TestCloseClearsLostFrame(t *testing.T) {
 	require.Equal(t, 1, srv.DCModes())
 	decodes := srv.Decodes()
 	st.Close()
-	srv.SetDelay(0)
+	srv.SetReplyHook(nil)
 	assert.Equal(t, 2, srv.DCModes(), "Close did not send PKT_DCMODE")
 	assert.Equal(t, decodes, srv.Decodes(), "Close decoded a frame")
 

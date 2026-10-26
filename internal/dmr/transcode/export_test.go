@@ -28,3 +28,8 @@ func SetClock(s *Service, now func() time.Time) {
 	tm.now = now
 	s.timing.Store(&tm)
 }
+
+// StreamNow returns the time on the clock of s.
+func StreamNow(s *Stream) time.Time {
+	return s.now()
+}

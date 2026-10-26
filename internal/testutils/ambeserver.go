@@ -74,6 +74,7 @@ type FakeAMBEServer struct {
 	last    atomic.Pointer[net.UDPAddr]
 	drop    atomic.Int64
 	onDrop  atomic.Pointer[func()]
+	onReply atomic.Pointer[func()]
 	delay   atomic.Int64
 	decodes atomic.Int64
 	encodes atomic.Int64
@@ -90,6 +91,7 @@ type FakeAMBEServer struct {
 	mu      sync.Mutex
 	errs    []string
 	askers  map[string]bool
+	callers map[string]bool
 	pcm     [][dvsi.FrameSamples]int16
 	status  map[[9]byte]uint16
 	done    chan struct{}
@@ -139,11 +141,39 @@ func (f *FakeAMBEServer) DropNext(n int) {
 	f.drop.Store(int64(n))
 }
 
-// SetDropHook makes the server call f each time it drops a reply for
-// DropNext, before the client can time out, so that a test that models
-// time can count the wait of the client.
+// SetDropHook makes the server call hook each time it drops a reply for
+// DropNext, and each time it does not answer a client that has sent it
+// frames, before the client can time out, so that a test that models time
+// can count the wait of the client.
 func (f *FakeAMBEServer) SetDropHook(hook func()) {
 	f.onDrop.Store(&hook)
+}
+
+// SetReplyHook makes the server call hook before each reply to a client
+// that has sent it frames, so that a test that models time can count the
+// time that the chip takes to answer.
+func (f *FakeAMBEServer) SetReplyHook(hook func()) {
+	f.onReply.Store(&hook)
+}
+
+func runHook(hook *func()) {
+	if hook != nil && *hook != nil {
+		(*hook)()
+	}
+}
+
+// caller reports whether from has sent the server frames, and records it
+// when b is a frame.
+func (f *FakeAMBEServer) caller(from string, b []byte) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if b[3] == byte(dvsi.TypeSpeech) || b[3] == byte(dvsi.TypeChannel) {
+		if f.callers == nil {
+			f.callers = map[string]bool{}
+		}
+		f.callers[from] = true
+	}
+	return f.callers[from]
 }
 
 // SetDelay makes the server wait d before each reply.
@@ -266,14 +296,22 @@ func (f *FakeAMBEServer) serve() {
 			f.askers[from.String()] = true
 			f.mu.Unlock()
 		}
-		if reply == nil || !f.answer.Load() {
+		if reply == nil {
+			continue
+		}
+		caller := f.caller(from.String(), buf[:n])
+		if !f.answer.Load() {
+			if caller {
+				runHook(f.onDrop.Load())
+			}
 			continue
 		}
 		if reply[3] != byte(dvsi.TypeControl) && f.drop.Load() > 0 && f.drop.Add(-1) >= 0 {
-			if hook := f.onDrop.Load(); hook != nil && *hook != nil {
-				(*hook)()
-			}
+			runHook(f.onDrop.Load())
 			continue
+		}
+		if caller {
+			runHook(f.onReply.Load())
 		}
 		if f.lastOne.Load() {
 			go func(b []byte) {

@@ -114,17 +114,47 @@ func call(t *testing.T, lc pdu.LCBytes, slots [][9]byte) []models.Packet {
 	return append(out, pkt(vt.Terminator(), dmrconst.FrameDataSync, uint(enums.DataTypeTerminatorWithLC)))
 }
 
+// patientAttempt is how long a request of a stream of newServers waits
+// for its answer. Only a request that the server does not answer waits it
+// out; a test that loses answers uses modeledService or newRealService.
+const patientAttempt = 30 * time.Second
+
 func newService(t *testing.T, addr string) *transcode.Service {
 	t.Helper()
 	return newServers(t, nil, transcode.ServerConfig{Addr: addr})
 }
 
+// newServers returns a service for list whose streams measure the budget
+// of a burst on a clock that does not move and wait patientAttempt for
+// each answer, so that what a test converts does not depend on how loaded
+// the machine is.
 func newServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) *transcode.Service {
+	t.Helper()
+	s := newRealServers(t, store, list...)
+	s.SetTiming(3*patientAttempt, patientAttempt)
+	at := time.Now()
+	transcode.SetClock(s, func() time.Time { return at })
+	return s
+}
+
+// newRealService returns a service for addr with the timing of the hub,
+// on the wall clock.
+func newRealService(t *testing.T, addr string) *transcode.Service {
+	t.Helper()
+	return newRealServers(t, nil, transcode.ServerConfig{Addr: addr})
+}
+
+func newRealServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) *transcode.Service {
 	t.Helper()
 	s := transcode.NewService(store)
 	t.Cleanup(s.Close)
 	s.SetServers(list)
 	return s
+}
+
+// deadline returns the end of the budget of a burst that st gets now.
+func deadline(st *transcode.Stream) time.Time {
+	return transcode.StreamNow(st).Add(st.Budget())
 }
 
 func answered(svc *transcode.Service, i int) bool {
@@ -137,7 +167,7 @@ func convert(t *testing.T, st *transcode.Stream, in []models.Packet) ([]layer2.R
 	out := make([]layer2.RawBurst, 0, len(in))
 	missed := 0
 	for i := range in {
-		r, ok := st.Convert(t.Context(), &in[i], time.Now().Add(transcode.Budget))
+		r, ok := st.Convert(t.Context(), &in[i], deadline(st))
 		require.True(t, ok, "burst %d has no copy", i)
 		out = append(out, r.Burst)
 		missed += r.Missed
@@ -386,10 +416,12 @@ func TestRetryWithinTheBudget(t *testing.T) {
 // TestServerDownMissesWithoutWaiting stops the AMBE server in the middle
 // of a call. Each burst still comes back within its budget, with silence
 // in place of the frames, and conversion resumes once the server answers.
+// The budget runs on a modelClock, which each unanswered request moves by
+// an attempt.
 func TestServerDownMissesWithoutWaiting(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
-	svc := newService(t, srv.Addr())
+	svc, clock := modeledService(t, srv)
 	slots := codec2Frames(t, codec2.Mode2400, 18*layer2.VoiceSlotsPerBurst)
 	in := call(t, voiceLC(t, transcode.Codec2FID), slots)
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
@@ -401,13 +433,13 @@ func TestServerDownMissesWithoutWaiting(t *testing.T) {
 
 	srv.SetAnswering(false)
 	for i := 7; i < 13; i++ {
-		start := time.Now()
-		r, ok := st.Convert(t.Context(), &in[i], start.Add(transcode.Budget))
-		took := time.Since(start)
+		start := clock.now()
+		r, ok := st.Convert(t.Context(), &in[i], start.Add(st.Budget()))
+		took := clock.now().Sub(start)
 		require.True(t, ok)
 		assert.Equal(t, 3, r.Missed, "burst %d", i)
 		assert.Equal(t, transcode.ReasonTimeout, r.Reason, "burst %d", i)
-		assert.LessOrEqual(t, took, transcode.Budget+10*time.Millisecond, "burst %d waited for the server", i)
+		assert.LessOrEqual(t, took, st.Budget(), "burst %d waited for the server", i)
 		for k, s := range r.Burst.VoiceSlots() {
 			assert.Equal(t, vocoder.AMBESilenceSlot(), s, "burst %d frame %d", i, k)
 		}
@@ -467,7 +499,7 @@ func TestUnreachableServerFailsFast(t *testing.T) {
 	require.NoError(t, err)
 	addr := conn.LocalAddr().String()
 	require.NoError(t, conn.Close())
-	svc := newService(t, addr)
+	svc := newRealService(t, addr)
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 6*layer2.VoiceSlotsPerBurst))
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
@@ -623,6 +655,12 @@ func (c *modelClock) dropped() {
 	c.n++
 }
 
+func (c *modelClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = c.at.Add(d)
+}
+
 func (c *modelClock) drops() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -678,7 +716,7 @@ func overlapping(t *testing.T, svc *transcode.Service) [2]*overlap {
 		go func() {
 			defer wg.Done()
 			for i := range c.in {
-				r, ok := c.st.Convert(context.Background(), &c.in[i], time.Now().Add(transcode.Budget))
+				r, ok := c.st.Convert(context.Background(), &c.in[i], deadline(c.st))
 				if ok {
 					c.out = append(c.out, r.Burst)
 					c.res = append(c.res, r)
@@ -786,19 +824,19 @@ func TestServerSlotsAreSharedThroughKV(t *testing.T) {
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, layer2.VoiceSlotsPerBurst))
 	sa, err := a.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
-	r, _ := sa.Convert(t.Context(), &in[1], time.Now().Add(transcode.Budget))
+	r, _ := sa.Convert(t.Context(), &in[1], deadline(sa))
 	require.False(t, r.Busy)
 	assert.Equal(t, 1, b.Status(t.Context())[0].CallsNow, "the other replica sees the call")
 	sb, err := b.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
 	t.Cleanup(sb.Close)
-	r, _ = sb.Convert(t.Context(), &in[1], time.Now().Add(transcode.Budget))
+	r, _ = sb.Convert(t.Context(), &in[1], deadline(sb))
 	assert.True(t, r.Busy, "two replicas together went over the limit of the server")
 	sa.Close()
 	sc, err := b.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
 	t.Cleanup(sc.Close)
-	r, _ = sc.Convert(t.Context(), &in[1], time.Now().Add(transcode.Budget))
+	r, _ = sc.Convert(t.Context(), &in[1], deadline(sc))
 	assert.False(t, r.Busy, "the slot did not come free")
 }
 
@@ -809,7 +847,7 @@ func TestSetTimingGivesLaterCallsRoom(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
 	srv.SetDelay(30 * time.Millisecond)
-	svc := newService(t, srv.Addr())
+	svc := newRealService(t, srv.Addr())
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 2*layer2.VoiceSlotsPerBurst))
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)

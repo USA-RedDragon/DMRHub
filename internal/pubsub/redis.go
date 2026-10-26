@@ -21,9 +21,12 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +50,7 @@ func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisP
 		ContextTimeoutEnabled: true,
 		MaxRetries:            -1,
 	})
+	redis.AddHook(handshakeHook{})
 	_, err = redis.Ping(ctx).Result()
 	if err != nil {
 		err = fmt.Errorf("failed to connect to redis: %w", err)
@@ -83,9 +87,25 @@ type feedSet struct {
 func (ps redisPubSub) Publish(topic string, message []byte) error {
 	ctx := context.Background()
 	if err := ps.client.Publish(ctx, topic, message).Err(); err != nil {
+		if notSent(err) {
+			return fmt.Errorf("failed to publish message to topic %s: %w: %w", topic, ErrNotSent, err)
+		}
 		return fmt.Errorf("failed to publish message to topic %s: %w", topic, err)
 	}
 	return nil
+}
+
+// notSent reports whether err comes before Redis could get the command: no
+// connection was free or could be made, the handshake of a new connection
+// failed, or the command was not written in full. Redis runs only a
+// command that it got in full. A timeout of the reply is not one: Redis
+// may have the command and run it later.
+func notSent(err error) bool {
+	if errors.Is(err, redis.ErrPoolTimeout) || errors.Is(err, redis.ErrPoolExhausted) || errors.Is(err, errHandshake) {
+		return true
+	}
+	var op *net.OpError
+	return errors.As(err, &op) && (op.Op == "dial" || op.Op == "write")
 }
 
 // subscribeWait is the longest time Subscribe waits for Redis to confirm a
@@ -247,4 +267,70 @@ func (f *redisFeed) Close() error {
 		return fmt.Errorf("failed to close redis feed: %w", err)
 	}
 	return nil
+}
+
+// errHandshake marks an error of the handshake of a new connection, which
+// fails before the connection carries the command that needed it.
+var errHandshake = errors.New("the handshake of a new connection to Redis failed")
+
+// handshakeHook marks the errors of the commands that go-redis sends to set
+// up a new connection with errHandshake. go-redis returns such an error in
+// place of the error of the command, so without the mark a timeout of the
+// handshake looks like a timeout of the reply to the command.
+type handshakeHook struct{}
+
+func (handshakeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (handshakeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if err != nil && isHandshake(cmd) {
+			return markHandshake(err)
+		}
+		return err
+	}
+}
+
+func (handshakeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		err := next(ctx, cmds)
+		if err == nil || len(cmds) == 0 {
+			return err
+		}
+		for _, cmd := range cmds {
+			if !isHandshake(cmd) {
+				return err
+			}
+		}
+		return markHandshake(err)
+	}
+}
+
+// markHandshake marks err with errHandshake, unless Redis answered with
+// it, which go-redis must still see as such. It wraps two errors, so the
+// one errors.Unwrap that go-redis does on a handshake error keeps the mark.
+func markHandshake(err error) error {
+	var answer redis.Error
+	if errors.As(err, &answer) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", errHandshake, err)
+}
+
+func isHandshake(cmd redis.Cmder) bool {
+	switch strings.ToLower(cmd.Name()) {
+	case "hello", "auth", "select", "readonly":
+		return true
+	case "client":
+		args := cmd.Args()
+		if len(args) < 2 {
+			return false
+		}
+		sub, _ := args[1].(string)
+		switch strings.ToLower(sub) {
+		case "setname", "setinfo", "tracking", "maint_notifications":
+			return true
+		}
+	}
+	return false
 }

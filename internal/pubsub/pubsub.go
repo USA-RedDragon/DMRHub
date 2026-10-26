@@ -21,9 +21,17 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 )
+
+// ErrNotSent is in the error of a Publish whose message did not reach the
+// broker, such as when no connection to it could be made. A publish that
+// fails with another error may still deliver its message, so only a
+// message that failed with ErrNotSent may be published again without the
+// risk of a second delivery.
+var ErrNotSent = errors.New("the message did not reach the broker")
 
 type PubSub interface {
 	Publish(topic string, message []byte) error

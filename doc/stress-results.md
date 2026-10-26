@@ -46,13 +46,13 @@ The chaos steps:
 
 | Item | Value |
 | --- | --- |
-| Date | 2026-10-26, 11:12 to 11:22 CDT |
+| Date | 2026-10-26, 11:12 to 11:22 CDT. The SQLite ramp ran again at 12:24 CDT with the synchronous change (see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)). |
 | Code | main at `8ecf1dbe` (v1.3.14) plus the changes in [Changes in this branch](#changes-in-this-branch) |
 | Machine | AMD Ryzen 9 7950X, 16 cores, 32 threads, 93 GB RAM, NVMe SSD (ext4 on LVM), Linux 7.2.9 |
 | Other load | The machine also ran training and labeling jobs. The one-minute load average was 11 to 22 during the runs. Each area records it in `loadavg_start` and `loadavg_end`. |
 | Hub and test process | One Go process (Go 1.27.3) in a systemd scope with `CPUQuota=400%`, `nice -n 19` and `GOMAXPROCS=4`. The hub, the simulated repeaters, the ledger and the sampler share these 4 CPUs. |
 | Postgres and Redis | `postgres:16-alpine` and `redis:7-alpine` in Docker 29.9.0, each capped at 4 CPUs (`NanoCPUs`), on loopback |
-| SQLite | A database file with the default parameters of a production install (`foreign_keys(1)`, `journal_mode(WAL)`, `_txlock=immediate`) |
+| SQLite | A database file with the default parameters of a production install: `foreign_keys(1)`, `journal_mode(WAL)`, `_txlock=immediate`, and for the SQLite ramp `synchronous(NORMAL)`. The other SQLite areas ran with the old default, `synchronous(FULL)`. |
 | Network | Loopback only. No public network. |
 | Duration | 20 s of traffic for each area and for each ramp step |
 
@@ -70,7 +70,7 @@ Latency is the time from the send of a burst to its receive at a target, over al
 | transports | postgres-redis | pass | 8596 | 38752 | 0 | 0 | 0 | 516 | 0.28 | 0.69 | 2.14 | 11.7 |
 | chaos | sqlite | pass | 1944 | 7665 | 20 | 0 | 0 | - | 0.18 | 0.29 | 60.2 | 120 |
 | chaos | postgres-redis | fail | 2404 | 8833 | 86 | 0 | 0 | - | 0.34 | 1.11 | 4536 | 5011 |
-| ramp, 100 busy | sqlite | pass | 43077 | 148504 | 0 | 0 | 0 | - | 0.12 | 0.22 | 0.54 | 86.8 |
+| ramp, 100 busy | sqlite | pass | 43077 | 148504 | 0 | 0 | 0 | - | 0.13 | 0.29 | 1.46 | 41.1 |
 | ramp, 100 busy | postgres-redis | pass | 43077 | 148504 | 0 | 0 | 0 | - | 0.27 | 0.75 | 2.50 | 8.34 |
 
 Other checks of callmix and transports, on both backends:
@@ -108,18 +108,21 @@ Data does not wait behind voice: the data p99 is near the voice p99 in each area
 
 | Backend | Busy repeaters | Lanes | Bursts sent | Deliveries expected | Missing | Duplicates | p50 ms | p90 ms | p99 ms | max ms | CPU (cores) | DB statements per burst | DB pool wait ms | Call tracker drops | Load average |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| sqlite | 10 | 20 | 4339 | 17244 | 0 | 0 | 0.11 | 0.19 | 0.29 | 2.93 | 0.06 | 1.30 | 0 | 0 | 14.6 |
-| sqlite | 25 | 50 | 10685 | 38553 | 0 | 0 | 0.11 | 0.18 | 0.33 | 2.35 | 0.11 | 0.93 | 0 | 0 | 16.2 |
-| sqlite | 50 | 100 | 21288 | 72779 | 0 | 0 | 0.11 | 0.20 | 0.39 | 3.03 | 0.19 | 0.74 | 0 | 0 | 16.3 |
-| sqlite | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.12 | 0.22 | 0.54 | 86.8 | 0.28 | 0.57 | 0 | 21491 | 17.7 |
+| sqlite | 10 | 20 | 4339 | 17244 | 0 | 0 | 0.15 | 0.29 | 0.91 | 6.39 | 0.06 | 1.28 | 0 | 0 | 14.4 |
+| sqlite | 25 | 50 | 10685 | 38553 | 0 | 0 | 0.13 | 0.26 | 1.05 | 8.83 | 0.11 | 0.93 | 0 | 0 | 12.2 |
+| sqlite | 50 | 100 | 21288 | 72779 | 0 | 0 | 0.12 | 0.26 | 0.84 | 18.7 | 0.19 | 0.78 | 0 | 0 | 11.3 |
+| sqlite | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.13 | 0.29 | 1.46 | 41.1 | 0.34 | 0.64 | 0 | 0 | 13.6 |
+| sqlite, synchronous FULL | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.12 | 0.22 | 0.54 | 86.8 | 0.28 | 0.57 | 0 | 21491 | 17.7 |
 | postgres-redis | 10 | 20 | 4339 | 17244 | 0 | 0 | 0.34 | 0.64 | 1.42 | 4.86 | 0.09 | 1.28 | 0 | 0 | 16.2 |
 | postgres-redis | 25 | 50 | 10685 | 38553 | 0 | 0 | 0.24 | 0.45 | 1.28 | 5.15 | 0.15 | 0.99 | 0 | 0 | 14.5 |
 | postgres-redis | 50 | 100 | 21288 | 72779 | 0 | 0 | 0.25 | 0.55 | 1.53 | 7.51 | 0.25 | 0.74 | 0 | 0 | 11.4 |
 | postgres-redis | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.27 | 0.75 | 2.50 | 8.34 | 0.46 | 0.64 | 0 | 0 | 15.3 |
 
-The hub forwards every burst at every step on both backends, with a p99 under 3 ms. The CPU column is the CPU time of the whole test process (hub and simulated repeaters) for each second of the step. At 100 busy repeaters the process uses 0.28 cores (SQLite) and 0.46 cores (Postgres and Redis) of its 4.
+The SQLite rows come from the run with `synchronous(NORMAL)`. The last row is the 100 repeater step of the 11:12 run, with the old default `synchronous(FULL)`.
 
-The limit that the ramp finds is in the records, not in the forwarding: at 100 busy repeaters on SQLite, the call tracker dropped 21491 packets because its queue was full (see [Call tracker drops on SQLite](#call-tracker-drops-on-sqlite-at-100-busy-repeaters)).
+The hub forwards every burst at every step on both backends, with a p99 under 3 ms. The CPU column is the CPU time of the whole test process (hub and simulated repeaters) for each second of the step. At 100 busy repeaters the process uses about 0.3 cores (SQLite) and 0.46 cores (Postgres and Redis) of its 4.
+
+With `synchronous(FULL)`, the ramp found a limit in the records, not in the forwarding: at 100 busy repeaters on SQLite, the call tracker dropped 21491 packets because its queue was full. With `synchronous(NORMAL)` it dropped none (see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)).
 
 ![Load ramp, SQLite](stress/ramp-sqlite.png)
 
@@ -162,14 +165,14 @@ In the run of 2026-10-23 (handoff bundle, `stress/run1-sqlite-before-fixes`), th
 
 | Busy repeaters | p99 ms (2026-10-23) | DB pool wait ms in the step (2026-10-23) | p99 ms (now, sqlite) |
 | --- | --- | --- | --- |
-| 10 | 3.79 | 85458 (see note) | 0.29 |
-| 25 | 346 | 4742 | 0.33 |
-| 50 | 11.4 | 0 | 0.39 |
-| 100 | 280 | 70858 | 0.54 |
+| 10 | 3.79 | 85458 (see note) | 0.91 |
+| 25 | 346 | 4742 | 1.05 |
+| 50 | 11.4 | 0 | 0.84 |
+| 100 | 280 | 70858 | 1.46 |
 
 Root cause: in that version, the routing of a burst read the database (for example `FindRepeaterByID` in `subscribeTG`), so a burst waited for a free connection of the database pool. The pool waits came in bursts, and the p99 of each step followed the pool wait of that step, not the load: the step with no pool wait (50 repeaters) had the lowest p99 after the first step.
 
-Main took the database and Redis off the packet path (for example `a764216d` "hub: keep the database off the routing path", `6c1a80ba` "hub: cache the repeater on the delivery path", `ec0d63cc` "hub: hold no burst on a lookup of a stalled database", with its test in `internal/dmr/hub/slow_db_test.go`). Proof that a slow database no longer reaches the bursts: in the 100 repeater step of this run, SQLite writers waited for the write lock for more than the 5 s busy timeout of the driver (25 `SQLITE_BUSY` errors, see [Call tracker drops on SQLite](#call-tracker-drops-on-sqlite-at-100-busy-repeaters)), and the p99 of that step was 0.54 ms. The p99 is now flat: 0.29 to 0.54 ms on SQLite, 1.28 to 2.50 ms on Postgres and Redis.
+Main took the database and Redis off the packet path (for example `a764216d` "hub: keep the database off the routing path", `6c1a80ba` "hub: cache the repeater on the delivery path", `ec0d63cc` "hub: hold no burst on a lookup of a stalled database", with its test in `internal/dmr/hub/slow_db_test.go`). Proof that a slow database no longer reaches the bursts: in the 100 repeater step of the 11:12 run, with `synchronous(FULL)`, SQLite writers waited for the write lock for more than the 5 s busy timeout of the driver (25 `SQLITE_BUSY` errors, see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)), and the p99 of that step was 0.54 ms. The p99 is now flat: 0.84 to 1.46 ms on SQLite (0.29 to 0.54 ms in the 11:12 run with FULL; at the 100 step, the six strace runs below gave 0.44 to 1.93 ms with either setting, so the difference is within the spread of this shared machine), 1.28 to 2.50 ms on Postgres and Redis.
 
 Note: the 85458 ms of the first step of 2026-10-23 are the waits of the rig setup (100 logins and the first call of each user), not of the step. The sampler took its first sample on its own goroutine, so the first step often had no sample to start from and counted the setup. The commit "stress: take the first sample before the sampler returns" fixes this: before the fix, a run of this branch showed 77121 ms for the first step, and in this run the first step shows 0.
 
@@ -209,13 +212,32 @@ The KV client in `internal/kv/redis.go` keeps the retries. The hub calls only Ge
 
 On postgres-redis, the bursts that the hub publishes while Redis is paused arrive when Redis resumes, up to 5.0 s late (p99 4.5 s). Each PUBLISH waits in the socket of Redis, and Redis runs it when it resumes, after the publish timed out on the hub. The chaos area fails for this, because traffic must be dropped and counted, never held. A fix needs the receiver to drop a burst that is too old, which is a change of the wire format.
 
-### Call tracker drops on SQLite at 100 busy repeaters
+### SQLite commits waited for the disk
 
-**Status: open. Needs an owner decision.**
+**Status: fixed in this branch ("db: commit to SQLite with synchronous=NORMAL").**
 
-At 100 busy repeaters (200 lanes) on SQLite, the queue of the call tracker filled up (about 7800 packets) and the tracker dropped 21491 packets. The forwarding was not affected. The log has 25 `database is locked (SQLITE_BUSY)` errors on call rows, repeater saves, pings and the codec record. The process used 0.28 cores, so the limit is the SQLite writer, not the CPU. The number of drops changes from run to run on this shared machine (1, 1081, 10175 and 21491 in four runs). Postgres and Redis dropped nothing.
+With the old default parameters, at 100 busy repeaters (200 lanes) on SQLite, the queue of the call tracker filled up (about 7800 packets) and the tracker dropped 21491 packets. The forwarding was not affected, but a dropped tracker packet can leave a transmission row without its last bursts, or with wrong loss figures. The log had 25 `database is locked (SQLITE_BUSY)` errors. The process used 0.28 cores, so the CPU was not the limit. Postgres and Redis dropped nothing.
 
-Inference (not proven): each commit in WAL mode with the default `synchronous` setting waits for an fsync, and the writers wait for the one write lock for longer than the 5 s busy timeout of the driver when the disk is slow. Options are `_pragma=synchronous(NORMAL)` (a commit can be lost on a power failure, but the database stays consistent) or one write connection. A dropped tracker packet can leave a transmission row without its last bursts, or with wrong loss figures.
+Root cause: in WAL mode with `synchronous=FULL` (the SQLite default), each commit waits for an fsync of the WAL file. SQLite has one writer at a time, so the commits wait for each other, and the fsync time is serial. To prove it, the 100 repeater step ran alone under `strace -f -e trace=fsync,fdatasync -T`, with the same caps, three times with each setting, in turns:
+
+| Run | synchronous | WAL fsyncs in the 20 s step | Fsync time in the step | Fsync p50 ms | Fsync p99 ms | Call tracker drops |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | FULL | 3307 (165/s) | 13.8 s (69%) | 3.72 | 8.18 | 1056 |
+| 1 | NORMAL | 72 (4/s) | 0.7 s (3%) | 3.98 | 14.5 | 0 |
+| 2 | FULL | 3418 (171/s) | 13.3 s (66%) | 3.65 | 8.11 | 826 |
+| 2 | NORMAL | 82 (4/s) | 0.5 s (2%) | 3.86 | 21.0 | 0 |
+| 3 | FULL | 3061 (153/s) | 14.3 s (71%) | 3.67 | 9.40 | 2285 |
+| 3 | NORMAL | 112 (6/s) | 0.7 s (3%) | 4.66 | 14.4 | 0 |
+
+With FULL, the one writer spent about 70% of the step in fsync, at about 3.7 ms for each commit, so the writes could not keep up and the tracker dropped packets. With NORMAL, the WAL is synced only at a checkpoint, the fsync time fell to 2 to 3% of the step, and the tracker dropped nothing. The SQLite ramp of this document, without strace, also had 0 drops and logged no error or warning.
+
+Durability: with `synchronous=NORMAL` in WAL mode, a power cut or an operating system crash can lose the last commits before the next checkpoint. The database stays consistent. A crash of DMRHub alone loses nothing.
+
+How an install gets it:
+
+- The default of `database.extra-parameters` now has `_pragma=synchronous(NORMAL)`.
+- An install that sets its own `database.extra-parameters` for SQLite gets `_pragma=synchronous(NORMAL)` added when none of its parameters is a `_pragma=synchronous(...)`. An install that sets synchronous keeps its own value. This is the same rule as for `_txlock=immediate`.
+- `TestSQLiteSynchronousIsNormal` in `internal/db/db_test.go` checks the three cases on four connections of the pool. Before the change, the default and the own-parameters cases failed (`synchronous is 2, want 1`).
 
 ### Known design limit: replica moves under heavy load
 
@@ -235,6 +257,7 @@ The chaos step `clock-jump` still skips: it has no way to step the clock of the 
 | stress: count each burst that the IPSC server drops as slot_busy | See [Transports and the IPSC slot](#transports-and-the-ipsc-slot). |
 | stress: take the first sample before the sampler returns | See the note in [Load ramp p99 not monotonic](#load-ramp-p99-not-monotonic). |
 | hack: compare the load ramp with an earlier run | `stress_plot.py` takes an earlier results directory and draws `ramp-compare.png`. |
+| db: commit to SQLite with synchronous=NORMAL | See [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk). |
 
 ## Compared with 2026-10-23
 
@@ -245,5 +268,5 @@ The 2026-10-23 results are in the handoff bundle (`stress/run1-sqlite-before-fix
 | callmix | 5.67 | 0.33 | 0 | 0 | 0 | 0 |
 | transports | 4318 | 0.34 | 152 | 0 (516 slot_busy drops) | 94 | 0 |
 | chaos | 60.6 | 60.2 | 20 | 20 | 0 | 0 |
-| ramp, 25 busy | 346 | 0.33 | 0 | 0 | 0 | 0 |
-| ramp, 100 busy | 280 | 0.54 | 0 | 0 | 0 | 0 |
+| ramp, 25 busy | 346 | 1.05 | 0 | 0 | 0 | 0 |
+| ramp, 100 busy | 280 | 1.46 | 0 | 0 | 0 | 0 |

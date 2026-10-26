@@ -41,7 +41,7 @@ func TestAddCallKindColumnsKeepsOldCallsAsVoice(t *testing.T) {
 		"DataFormat", "Confirmed", "Blocks", "Octets", "BadCRC", "LostBlocks", "Response",
 		"TalkerAlias", "AliasFormat", "Latitude", "Longitude", "PositionError", "Partial", "Undeliverable",
 	}
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()

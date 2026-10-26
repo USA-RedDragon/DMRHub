@@ -171,7 +171,7 @@ func requireOpen(t *testing.T, conn *testutils.WSConn, what string) {
 }
 
 func userBackends() []testutils.Backend {
-	return []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()}
+	return []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()}
 }
 
 type userChange struct {

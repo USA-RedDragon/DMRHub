@@ -356,7 +356,7 @@ func BenchmarkPubSubPublishFanOut(b *testing.B) {
 // no message.
 func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -400,7 +400,7 @@ func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
 // others to send, as a replica that takes a repeater over does.
 func TestSubscribeIsActiveWhenItReturns(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -498,7 +498,7 @@ func backendPubSub(t *testing.T, be testutils.Backend) pubsub.PubSub {
 // published, with its topic.
 func TestAFeedGetsItsTopicsInPublishOrder(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			ps := backendPubSub(t, be)
@@ -532,7 +532,7 @@ func TestAFeedGetsItsTopicsInPublishOrder(t *testing.T) {
 // Each message must come.
 func TestAFeedTopicIsActiveWhenAddReturns(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			ps := backendPubSub(t, be)
@@ -561,7 +561,7 @@ func TestAFeedTopicIsActiveWhenAddReturns(t *testing.T) {
 // TestClosingAFeedClosesItsChannel closes a feed, and then the pubsub.
 func TestClosingAFeedClosesItsChannel(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			ps := backendPubSub(t, be)

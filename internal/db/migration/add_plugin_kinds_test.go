@@ -39,7 +39,7 @@ import (
 // as their own programs.
 func TestAddPluginKindsKeepsThePluginsExternal(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()

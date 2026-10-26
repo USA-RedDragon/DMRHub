@@ -57,7 +57,7 @@ func crowdedKV(t *testing.T, be testutils.Backend) kv.KV {
 // one and makes every repeater log in again.
 func TestOtherInstancesExistAmongManyKeys(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			store := crowdedKV(t, be)
@@ -76,7 +76,7 @@ func TestOtherInstancesExistAmongManyKeys(t *testing.T) {
 // many other keys. ListRepeaters must return all of them.
 func TestListRepeatersAmongManyKeys(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			store := crowdedKV(t, be)

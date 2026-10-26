@@ -1073,7 +1073,7 @@ func TestDeleteUserKeepsHistory(t *testing.T) {
 	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
 		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
 	}
-	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })
@@ -1155,7 +1155,7 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
 		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
 	}
-	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })

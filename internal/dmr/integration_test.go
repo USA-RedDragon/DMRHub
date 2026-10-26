@@ -26,6 +26,7 @@
 package dmr_test
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -48,12 +49,18 @@ const (
 	callHoldTime = 500 * time.Millisecond
 )
 
-// allBackends returns the list of backends to test against.
+// allBackends returns the list of backends to test against. MySQL and
+// MariaDB are there only when DMRHUB_TEST_MYSQL is set, since they would
+// take the package past the 30 minute timeout of a full run.
 func allBackends() []testutils.Backend {
-	return []testutils.Backend{
+	backends := []testutils.Backend{
 		testutils.SQLiteMemoryBackend(),
 		testutils.PostgresRedisBackend(),
 	}
+	if os.Getenv("DMRHUB_TEST_MYSQL") != "" {
+		backends = append(backends, testutils.MySQLBackend(), testutils.MariaDBBackend())
+	}
+	return backends
 }
 
 // forAllBackends runs f as a subtest against every configured backend.

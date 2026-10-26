@@ -80,7 +80,7 @@ func concurrentMigrations(t *testing.T, be testutils.Backend) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			for round := range rounds {
-				name := fmt.Sprintf("%s_%d", tc.name, round)
+				name := fmt.Sprintf("%s_%s_%d", cfg.Database.Database, tc.name, round)
 				require.NoError(t, admin.Exec("CREATE DATABASE "+name).Error)
 
 				roundCfg := cfg

@@ -60,7 +60,7 @@ func newEnvOn(t *testing.T, be testutils.Backend) (*env, *config.Config) {
 }
 
 func backends() []testutils.Backend {
-	return []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()}
+	return []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()}
 }
 
 func smsBursts(t *testing.T, text *sms.Text) []layer2.RawBurst {

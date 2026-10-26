@@ -38,7 +38,7 @@ import (
 // ones of the users that still exist must stay.
 func TestDeleteDeletedUserAccess(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -76,7 +76,7 @@ func TestDeleteDeletedUserAccess(t *testing.T) {
 				"position_settings": "user_id", "positions": "radio_id", "o_auth_refresh_tokens": "grant_id",
 			} {
 				var ids []string
-				require.NoError(t, database.Raw(fmt.Sprintf("SELECT CAST(%s AS VARCHAR(16)) FROM %s ORDER BY 1", column, table)).Scan(&ids).Error, table)
+				require.NoError(t, database.Raw(fmt.Sprintf("SELECT %s FROM %s ORDER BY 1", column, table)).Scan(&ids).Error, table)
 				assert.Equal(t, []string{fmt.Sprint(kept)}, ids, table)
 			}
 		})

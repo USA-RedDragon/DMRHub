@@ -52,7 +52,7 @@ func openRaw(t *testing.T, cfg *config.Config) *gorm.DB {
 	var d gorm.Dialector
 	switch cfg.Database.Driver {
 	case config.DatabaseDriverMySQL:
-		d = mysql.Open(fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=True", cfg.Database.Username, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.Database.Database))
+		d = mysql.Open(fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=True&sql_mode=%%27STRICT_TRANS_TABLES%%27", cfg.Database.Username, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.Database.Database))
 	case config.DatabaseDriverPostgres:
 		d = postgres.Open(fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", cfg.Database.Host, cfg.Database.Port, cfg.Database.Username, cfg.Database.Password, cfg.Database.Database))
 	case config.DatabaseDriverSQLite:
@@ -75,7 +75,7 @@ func openRaw(t *testing.T, cfg *config.Config) *gorm.DB {
 // The table must go in both, and a second run must do nothing.
 func TestDropAppSettings(t *testing.T) {
 	t.Parallel()
-	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		for _, had := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/had=%v", be.Name, had), func(t *testing.T) {
 				t.Parallel()

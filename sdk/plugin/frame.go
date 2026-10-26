@@ -14,8 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -36,8 +34,8 @@ var ErrFrameTooLarge = errors.New("the message is too large")
 // WriteFrame writes m as a plugin inside DMRHub and its hub exchange
 // messages on the plugin's stdin and stdout: the length of the protobuf
 // encoding of m, as 4 bytes big-endian, then the encoding.
-func WriteFrame(w io.Writer, m proto.Message) error {
-	b, err := proto.Marshal(m)
+func WriteFrame(w io.Writer, m Message) error {
+	b, err := marshal(m)
 	if err != nil {
 		return fmt.Errorf("could not encode a message: %w", err)
 	}
@@ -52,7 +50,7 @@ func WriteFrame(w io.Writer, m proto.Message) error {
 
 // ReadFrame reads a message that WriteFrame wrote into m, and refuses one
 // longer than limit.
-func ReadFrame(r io.Reader, m proto.Message, limit int) error {
+func ReadFrame(r io.Reader, m Message, limit int) error {
 	var head [4]byte
 	if _, err := io.ReadFull(r, head[:]); err != nil {
 		return fmt.Errorf("could not read a message: %w", err)
@@ -65,7 +63,7 @@ func ReadFrame(r io.Reader, m proto.Message, limit int) error {
 	if _, err := io.ReadFull(r, b); err != nil {
 		return fmt.Errorf("could not read a message: %w", err)
 	}
-	if err := proto.Unmarshal(b, m); err != nil {
+	if err := unmarshal(b, m); err != nil {
 		return fmt.Errorf("could not decode a message: %w", err)
 	}
 	return nil

@@ -13,7 +13,6 @@ import (
 	"runtime/debug"
 
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 // helloOf returns a copy of hello whose version, when hello has none, is
@@ -21,7 +20,7 @@ import (
 func helloOf(hello *pluginv1.Hello) *pluginv1.Hello {
 	out := &pluginv1.Hello{}
 	if hello != nil {
-		out = proto.CloneOf(hello)
+		out = cloneHello(hello)
 	}
 	if out.GetVersion() == "" {
 		if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "(devel)" {

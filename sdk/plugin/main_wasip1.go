@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"syscall"
 
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 )
@@ -34,7 +33,7 @@ func Main(serve func(context.Context, *Conn) error) {
 // It calls serve with the connection to the hub, and exits when serve
 // returns, with status 1 when serve fails. The hub starts the plugin again.
 func MainWith(hello *pluginv1.Hello, serve func(context.Context, *Conn) error) {
-	if err := syscall.SetNonblock(0, true); err != nil {
+	if err := setNonblock(0); err != nil {
 		fmt.Fprintln(os.Stderr, "plugin: stdin stays blocking:", err)
 	}
 	s := newStdio(os.NewFile(0, "stdin"), os.Stdout)

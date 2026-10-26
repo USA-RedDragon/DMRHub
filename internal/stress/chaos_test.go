@@ -236,6 +236,7 @@ func TestChaos(t *testing.T) { //nolint:paralleltest
 	res.set("busy_repeaters", float64(busy))
 	r.runLanes(ctx, 10*time.Hour, callMix(), s.Duty*0.7, busy, nil)
 	recovery := map[string]float64{}
+	outages := map[string]*sentWindow{}
 
 	step(t, "peer-drop", func(t *testing.T) {
 		stop := make(chan struct{})
@@ -285,9 +286,12 @@ func TestChaos(t *testing.T) { //nolint:paralleltest
 				t.Skip("needs DMRHUB_STRESS_BACKEND=postgres-redis")
 			}
 			outage := 5 * time.Second
+			w, end := r.led.window()
+			outages[svc] = w
 			require.NoError(t, docker("pause", id))
 			time.Sleep(outage)
 			require.NoError(t, docker("unpause", id))
+			end()
 			d, ok := r.probe(prober, 30*time.Second)
 			recovery[svc+"-outage"] = d.Seconds()
 			if !ok {
@@ -310,6 +314,7 @@ func TestChaos(t *testing.T) { //nolint:paralleltest
 	time.Sleep(8 * time.Second)
 	r.led.finish(0, true)
 	tot := r.checkDeliveryLenient()
+	r.checkOutageLatency(outages)
 	res.extra("recovery_s", recovery)
 	r.checkNoStuckStreams(20 * time.Second)
 	r.checkLateDeliveries()
@@ -358,6 +363,18 @@ func (r *rig) checkDeliveryLenient() ledgerTotals {
 		r.res.fail(r.t, "the bursts of the lossy path did not reach the targets as often as the proxy passed them: %d missing, %d extra", tot.MissingBy["lossy"], tot.DupBy["lossy"])
 	}
 	return tot
+}
+
+// checkOutageLatency records the latency of the bursts sent during each
+// outage.
+func (r *rig) checkOutageLatency(outages map[string]*sentWindow) {
+	for svc, w := range outages {
+		s := w.lat.summary()
+		r.res.mu.Lock()
+		r.res.Latency[svc+"-outage"] = s
+		r.res.mu.Unlock()
+		r.t.Logf("bursts sent during the %s outage: %d delivered, p50 %.1f ms, p99 %.1f ms, max %.1f ms", svc, s.Count, s.P50, s.P99, s.Max)
+	}
 }
 
 // checkLateDeliveries fails when a burst arrived more than 5 s after it

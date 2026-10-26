@@ -24,6 +24,7 @@ package stress_test
 import (
 	"fmt"
 	"hash/fnv"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,32 @@ type ledger struct {
 	totalMu sync.Mutex
 	samples []string
 	onDone  func(c *callRec)
+	windows atomic.Pointer[[]*sentWindow]
+}
+
+// sentWindow is the latency of the bursts sent between from and to, in
+// ledger time.
+type sentWindow struct {
+	from int64
+	to   atomic.Int64
+	lat  histogram
+}
+
+// window starts a sentWindow at now, which end closes.
+func (l *ledger) window() (w *sentWindow, end func()) {
+	w = &sentWindow{from: l.now()}
+	w.to.Store(math.MaxInt64)
+	for {
+		old := l.windows.Load()
+		var next []*sentWindow
+		if old != nil {
+			next = append(next, *old...)
+		}
+		next = append(next, w)
+		if l.windows.CompareAndSwap(old, &next) {
+			return w, func() { w.to.Store(l.now()) }
+		}
+	}
 }
 
 // ledgerTotals are the counts over the calls that the ledger finished.
@@ -379,6 +406,13 @@ func (l *ledger) countAt(target uint, c *callRec, k int, now int64, ipsc bool) {
 			return
 		}
 		l.latAll.add(d)
+		if ws := l.windows.Load(); ws != nil {
+			for _, w := range *ws {
+				if at >= w.from && at <= w.to.Load() {
+					w.lat.add(d)
+				}
+			}
+		}
 		h, ok := l.lat[kind]
 		if !ok {
 			h = l.lat["other"]

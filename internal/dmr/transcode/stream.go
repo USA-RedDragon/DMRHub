@@ -22,6 +22,7 @@ package transcode
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"syscall"
 	"time"
@@ -73,6 +74,9 @@ const (
 	// ReasonBusy is a call that found every AMBE server busy, so that it
 	// is not converted at all.
 	ReasonBusy = "busy"
+	// ReasonSpeechFormat is an AMBE server that refused the PKT_SPCHFMT
+	// field, so that it cannot report the decoder status of each frame.
+	ReasonSpeechFormat = "speech_format"
 )
 
 // Fill is a voice burst that a Stream made in place of a lost one.
@@ -553,8 +557,12 @@ func (s *Stream) open(ctx context.Context, deadline time.Time) error {
 	c, err := dvsi.New(conn, &dvsi.Config{Timeout: s.attempt, NoReset: true})
 	if err != nil {
 		_ = conn.Close()
+		if errors.Is(err, dvsi.ErrSpeechFormat) && s.srv.formatRefused.CompareAndSwap(false, true) {
+			slog.Error("The AMBE server refused the PKT_SPCHFMT field that reports the decoder status of each frame; calls are not converted until it is updated", "server", s.srv.Addr, "error", err)
+		}
 		return err //nolint:wrapcheck
 	}
+	s.srv.formatRefused.Store(false)
 	s.conn, s.ambe, s.stale, s.codecLost = conn, c, false, false
 	return nil
 }
@@ -562,6 +570,8 @@ func (s *Stream) open(ctx context.Context, deadline time.Time) error {
 func reasonOf(err error) string {
 	var ne net.Error
 	switch {
+	case errors.Is(err, dvsi.ErrSpeechFormat):
+		return ReasonSpeechFormat
 	case errors.Is(err, dvsi.ErrTimeout), errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
 		return ReasonTimeout
 	case errors.Is(err, dvsi.ErrStatus):

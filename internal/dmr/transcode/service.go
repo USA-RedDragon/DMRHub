@@ -81,6 +81,9 @@ type server struct {
 	answered atomic.Int64
 	cancel   context.CancelFunc
 	leases   *leases
+	// formatRefused reports that the server refused PKT_SPCHFMT, so that
+	// the hub logs it once until the server takes it.
+	formatRefused atomic.Bool
 }
 
 func (s *server) answer() {

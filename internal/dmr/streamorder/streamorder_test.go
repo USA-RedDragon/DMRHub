@@ -33,7 +33,7 @@ func TestQueueKeepsOrderPerStream(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
 	defer close(done)
-	q := streamorder.New(200, done)
+	q := streamorder.New[uint](200, done)
 
 	const streams, count = 6, 200
 	var mu sync.Mutex
@@ -63,13 +63,13 @@ func TestQueueKeepsOrderPerStream(t *testing.T) {
 func TestQueueRefusesAfterStop(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
-	q := streamorder.New(1, done)
+	q := streamorder.New[uint](1, done)
 	close(done)
 	assert.False(t, q.Do(context.Background(), 1, func() { t.Error("ran after stop") }))
 
 	liveDone := make(chan struct{})
 	defer close(liveDone)
-	live := streamorder.New(1, liveDone)
+	live := streamorder.New[uint](1, liveDone)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	assert.False(t, live.Do(ctx, 1, func() { t.Error("ran after cancel") }))
@@ -79,7 +79,7 @@ func TestSlowStreamDoesNotDelayOthers(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
 	defer close(done)
-	q := streamorder.New(4, done)
+	q := streamorder.New[uint](4, done)
 
 	release := make(chan struct{})
 	defer close(release)
@@ -100,7 +100,7 @@ func TestDoNeverBlocks(t *testing.T) {
 	t.Parallel()
 	done := make(chan struct{})
 	defer close(done)
-	q := streamorder.New(4, done)
+	q := streamorder.New[uint](4, done)
 
 	release := make(chan struct{})
 	defer close(release)

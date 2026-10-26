@@ -90,7 +90,7 @@ type Server struct {
 	serverID uint32
 
 	hubHandle *hub.ServerHandle
-	ingress   *streamorder.Queue
+	ingress   *streamorder.Queue[uint]
 	wg        sync.WaitGroup
 	done      chan struct{}
 	stopOnce  sync.Once
@@ -305,7 +305,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
-	s.ingress = streamorder.New(ingressQueueSize, s.done)
+	s.ingress = streamorder.New[uint](ingressQueueSize, s.done)
 	if s.peers != nil {
 		s.unwatch = s.hub.OnPeerChange(func(uint) { s.peers.Reload(struct{}{}) })
 	}

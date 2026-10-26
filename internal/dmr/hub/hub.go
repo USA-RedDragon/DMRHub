@@ -139,9 +139,9 @@ type Hub struct {
 	done     chan struct{}
 	stopOnce sync.Once
 
-	peerEgress *streamorder.Queue
-	routing    *streamorder.Queue
-	links      *streamorder.Queue
+	peerEgress *streamorder.Queue[uint]
+	routing    *streamorder.Queue[uint]
+	links      *streamorder.Queue[uint]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
 	userIDs      *lookup.Cache[uint, bool]
@@ -206,9 +206,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 		left:          make(chan struct{}, 1),
 	}
-	h.peerEgress = streamorder.New(peerEgressQueueSize, h.done)
-	h.routing = streamorder.New(routingQueueSize, h.done)
-	h.links = streamorder.New(routingQueueSize, h.done)
+	h.peerEgress = streamorder.New[uint](peerEgressQueueSize, h.done)
+	h.routing = streamorder.New[uint](routingQueueSize, h.done)
+	h.links = streamorder.New[uint](routingQueueSize, h.done)
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)

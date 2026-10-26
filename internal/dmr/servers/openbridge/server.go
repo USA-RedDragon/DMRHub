@@ -404,13 +404,14 @@ func (s *Server) keepalive() {
 		if !s.IsEgressLeader() {
 			continue
 		}
-		peers, err := models.ListPeers(s.DB)
+		table, err := s.peerTable()
 		if err != nil {
 			slog.Error("Failed to list peers for OpenBridge keepalives", "error", err)
 			continue
 		}
 		now := time.Since(s.epoch)
-		for _, p := range peers {
+		for _, k := range table.all {
+			p := k.Peer
 			if !p.Enhanced || p.IP == "" || p.Port == 0 {
 				continue
 			}

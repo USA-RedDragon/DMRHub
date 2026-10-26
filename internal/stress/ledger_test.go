@@ -61,6 +61,7 @@ type callRec struct {
 	shed     bool
 	optional map[uint]bool
 	copies   []atomic.Int32
+	dropped  map[uint]map[int]bool
 	sentAt   []int64
 	hash     []uint32
 	got      [][]uint8
@@ -86,6 +87,8 @@ type ledger struct {
 	badKey  atomic.Int64
 	recv    atomic.Int64
 	sent    atomic.Int64
+	reports atomic.Int64
+	unknown atomic.Int64
 	loose   atomic.Int64
 	bySD    sync.Map
 	byCall  sync.Map
@@ -108,6 +111,8 @@ type ledgerTotals struct {
 	Altered    int            `json:"altered"`
 	Shed       int            `json:"shed"`
 	ShedOK     int            `json:"shed_delivered"`
+	SlotBusy   int            `json:"slot_busy"`
+	SlotBusyOK int            `json:"slot_busy_delivered"`
 	ByLabel    map[string]int `json:"calls_by_label"`
 	MissingBy  map[string]int `json:"missing_by_label"`
 	MissingAt  map[uint]int   `json:"missing_by_target"`
@@ -312,6 +317,45 @@ func (l *ledger) receiveIPSC(target uint, b *testutils.IPSCBurst) {
 	l.deliver(target, v.(*callRec), raw, now, true) //nolint:forcetypeassert
 }
 
+// slotBusy notes that the IPSC server dropped burst p to the target
+// repeater p.Repeater and reported it slot_busy: the slot of the repeater
+// carries one call at a time, and the calls that waited for it too long or
+// found too many calls waiting are dropped. Such a burst is not missing.
+func (l *ledger) slotBusy(p *models.Packet) {
+	l.reports.Add(1)
+	c := l.get(p.StreamID)
+	if c == nil {
+		v, ok := l.bySD.Load(srcDst{p.Src, p.Dst, p.GroupCall})
+		if !ok || !v.(*callRec).foreign { //nolint:forcetypeassert
+			l.unknown.Add(1)
+			return
+		}
+		c = v.(*callRec) //nolint:forcetypeassert
+	}
+	raw := layer2.RawBurst(p.DMRData)
+	k := -1
+	if v, ok := voiceTag(raw); ok {
+		k = v
+	} else if v, ok := c.byLoad[payloadHash(raw)]; ok && c.foreign {
+		k = v
+	} else if !c.foreign {
+		k = int(c.byseq[p.Seq&0xFF])
+	}
+	if k < 0 || k >= len(c.sentAt) {
+		l.unknown.Add(1)
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dropped == nil {
+		c.dropped = map[uint]map[int]bool{}
+	}
+	if c.dropped[p.Repeater] == nil {
+		c.dropped[p.Repeater] = map[int]bool{}
+	}
+	c.dropped[p.Repeater][k] = true
+}
+
 func (l *ledger) count(target uint, c *callRec, k int, now int64) {
 	l.countAt(target, c, k, now, false)
 }
@@ -386,7 +430,7 @@ func (l *ledger) finish(grace time.Duration, all bool) {
 func (l *ledger) tally(c *callRec) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	missing, dup, deliv := 0, 0, 0
+	missing, dup, deliv, dropped, droppedOK := 0, 0, 0, 0, 0
 	missingAt := map[uint]int{}
 	for k := range c.got {
 		if c.sentAt[k] == 0 {
@@ -408,6 +452,14 @@ func (l *ledger) tally(c *callRec) {
 				default:
 					deliv += int(n)
 				}
+				continue
+			}
+			reported := c.dropped[c.want[i]][k]
+			switch {
+			case reported && n > 0:
+				droppedOK++
+			case reported:
+				dropped++
 				continue
 			}
 			switch {
@@ -445,6 +497,8 @@ func (l *ledger) tally(c *callRec) {
 		missing = 0
 	}
 	t.Delivered += deliv
+	t.SlotBusy += dropped
+	t.SlotBusyOK += droppedOK
 	t.Missing += missing
 	t.Duplicates += dup
 	t.Wrong += wrong
@@ -509,7 +563,7 @@ func (c *callRec) missingTargets() map[uint]int {
 			continue
 		}
 		for i, n := range c.got[k] {
-			if n == 0 && !c.optional[c.want[i]] {
+			if n == 0 && !c.optional[c.want[i]] && !c.dropped[c.want[i]][k] {
 				out[c.want[i]]++
 			}
 		}

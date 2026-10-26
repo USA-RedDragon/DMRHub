@@ -411,3 +411,39 @@ func TestHarnessStreamTagSurvivesIPSC(t *testing.T) {
 		require.Equal(t, k, idx)
 	}
 }
+
+func TestHarnessCountsSlotBusyBurstsAsDropped(t *testing.T) {
+	t.Parallel()
+	l := newLedger()
+	bursts, err := voiceScript{group: true, dst: 50000, src: 3100015, frames: 12}.bursts()
+	require.NoError(t, err)
+	bursts, err = stampStream(bursts, 7)
+	require.NoError(t, err)
+	c := &callRec{stream: 7, kind: "voice", src: 3100015, dst: 50000, group: true, loose: map[uint]bool{ipscRptID: true}}
+	require.NoError(t, l.register(c, bursts, []uint{ipscRptID}))
+	var voice []int
+	for k, b := range bursts {
+		l.willSend(c, k)
+		if b.voiceFrame() {
+			voice = append(voice, k)
+		}
+	}
+	c.done.Store(true)
+	packet := func(k int) models.Packet {
+		return packetOf(bursts[k], k, c.src, c.dst, c.stream, true, false)
+	}
+	for _, k := range voice[:4] {
+		l.countAt(ipscRptID, c, k, l.now(), true)
+	}
+	for _, k := range voice[3:] {
+		p := packet(k)
+		p.Repeater = ipscRptID
+		l.slotBusy(&p)
+	}
+	l.finish(0, true)
+	tot, _ := l.snapshot()
+	require.Equal(t, 0, tot.Missing)
+	require.Equal(t, len(voice)-4, tot.SlotBusy)
+	require.Equal(t, 1, tot.SlotBusyOK)
+	require.Equal(t, int64(0), l.unknown.Load())
+}

@@ -146,6 +146,13 @@ func newRig(t *testing.T, s settings, res *result, logs *logCounter, o rigOption
 	r.seed(t)
 	r.queries = countQueries(stack.DB)
 	stack.StartServers(t)
+	ct := stack.CallTracker
+	stack.Hub.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
+		ct.Undeliverable(p, fmt.Sprintf("%s:%d:%s", target, p.Repeater, reason))
+		if reason == "slot_busy" {
+			r.led.slotBusy(&p)
+		}
+	})
 	stack.RunPlugin(t, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, parrot.Serve)
 	if o.withOB {
 		r.ob = testutils.NewOpenBridgeClient(obPeerID, obPassword)

@@ -126,8 +126,7 @@ func TestStreamLoopIsDropped(t *testing.T) {
 		assert.GreaterOrEqual(t, loopDrops(t)-before, float64(2*len(call)), "the looped copies must be counted")
 		assert.Empty(t, talker.Drain(100*time.Millisecond), "the talker must not get its own call back")
 
-		var calls []models.Call
-		require.NoError(t, stack.DB.Where("stream_id = ?", stream).Find(&calls).Error)
+		calls := endedCalls(t, stack, stream)
 		require.Len(t, calls, 1, "the call must be tracked once")
 		require.NotNil(t, calls[0].RepeaterID)
 		assert.Equal(t, uint(100001), *calls[0].RepeaterID)
@@ -229,8 +228,26 @@ func TestStreamLoopIsDroppedAcrossReplicas(t *testing.T) {
 		assert.Equal(t, len(call), got["listener"], "the listener must get each burst once, not the looped copies")
 		assert.Zero(t, got["talker"], "the talker must not get its own call back")
 
-		var calls []models.Call
-		require.NoError(t, stack.DB.Where("stream_id = ?", stream).Find(&calls).Error)
-		require.Len(t, calls, 1, "the call must be tracked once")
+		require.Len(t, endedCalls(t, stack, stream), 1, "the call must be tracked once")
 	})
+}
+
+// endedCalls waits until the call tracker has written the calls of stream
+// and ended them, and returns them.
+func endedCalls(t *testing.T, stack *testutils.IntegrationStack, stream uint) []models.Call {
+	t.Helper()
+	var calls []models.Call
+	require.Eventually(t, func() bool {
+		calls = nil
+		if stack.DB.Where("stream_id = ?", stream).Find(&calls).Error != nil || len(calls) == 0 {
+			return false
+		}
+		for _, c := range calls {
+			if c.Active {
+				return false
+			}
+		}
+		return true
+	}, time.Minute, 10*time.Millisecond, "the call tracker did not end the calls of stream %d", stream)
+	return calls
 }

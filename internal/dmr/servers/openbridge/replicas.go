@@ -242,7 +242,11 @@ func (s *Server) deleteLease(ctx context.Context) {
 // handOver gives the lease of a holder that stops to another replica
 // without a gap: it releases the lease and keeps sending the packets on
 // the egress topic, its own too, until another replica says it took the
-// lease, or a replica holds it, or handoverWait passes.
+// lease, or handoverWait passes. A replica that holds the lease in the KV
+// store sends only after its taken message, or after takeWait when the
+// message does not come, as a replica of an older DMRHub sends no such
+// message, so the holder keeps sending until then too: a packet then goes
+// out twice rather than not at all.
 func (s *Server) handOver(ctx context.Context) {
 	s.roleMu.Lock()
 	if s.kv == nil || s.pubsub == nil || s.role.Load() != roleLeader {
@@ -260,16 +264,27 @@ func (s *Server) handOver(ctx context.Context) {
 	defer check.Stop()
 	deadline := time.NewTimer(handoverWait)
 	defer deadline.Stop()
+	var taken <-chan time.Time
 	for {
 		select {
 		case <-s.handedOver:
 			return
+		case <-taken:
+			return
 		case <-deadline.C:
+			if taken != nil {
+				continue
+			}
 			slog.Warn("No replica took the OpenBridge egress lease in time")
 			return
 		case <-check.C:
+			if taken != nil {
+				continue
+			}
 			if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && len(v) > 0 && string(v) != s.id {
-				return
+				t := time.NewTimer(takeWait)
+				defer t.Stop()
+				taken = t.C
 			}
 		}
 	}
@@ -297,17 +312,28 @@ func (s *Server) publishLater(out chan outMessage, topic string, msg []byte) {
 	}
 }
 
-// runOutbox publishes the messages of out in order.
+// runOutbox publishes the messages of out in order, and at the stop those
+// that still wait, so that the replica that sends egress gets them.
 func (s *Server) runOutbox(out chan outMessage) {
 	defer s.wg.Done()
+	publish := func(m outMessage) {
+		if err := s.pubsub.Publish(m.topic, m.msg); err != nil {
+			slog.Error("Error publishing an OpenBridge message", "topic", m.topic, "error", err)
+		}
+	}
 	for {
 		select {
 		case <-s.done:
-			return
-		case m := <-out:
-			if err := s.pubsub.Publish(m.topic, m.msg); err != nil {
-				slog.Error("Error publishing an OpenBridge message", "topic", m.topic, "error", err)
+			for {
+				select {
+				case m := <-out:
+					publish(m)
+				default:
+					return
+				}
 			}
+		case m := <-out:
+			publish(m)
 		}
 	}
 }

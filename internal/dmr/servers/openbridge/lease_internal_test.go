@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,4 +77,111 @@ func TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage(t *testing.T) {
 		t.Fatal("the holder was not told that the lease was taken")
 	}
 	assert.False(t, s.sends(), "the old holder sends the packets after the taken message too")
+}
+
+// TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage gives a holder's
+// lease up, and another replica takes the lease in the KV store but its
+// taken message comes late. The packets on the egress topic before that
+// message are the old holder's to send, so it must keep sending until the
+// message comes, or they are lost.
+func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ctx := context.Background()
+	store, err := kv.MakeKV(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ps, err := pubsub.MakePubSub(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	s := &Server{kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	require.True(t, s.holdLease(ctx))
+	s.role.Store(roleLeader)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handOver(ctx)
+	}()
+	b := &Server{kv: store, id: "b"}
+	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("the old holder stopped before the taken message of the new one")
+	case <-time.After(5 * handoverCheck):
+	}
+	assert.True(t, s.sends(), "the old holder stopped sending before the taken message")
+	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("the old holder did not stop at the taken message")
+	}
+	assert.False(t, s.sends())
+}
+
+// TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker gives a holder's lease
+// up to a replica of an older DMRHub, which takes it without a taken
+// message and sends at once. The old holder must stop within takeWait.
+func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ctx := context.Background()
+	store, err := kv.MakeKV(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ps, err := pubsub.MakePubSub(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	s := &Server{kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	require.True(t, s.holdLease(ctx))
+	s.role.Store(roleLeader)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handOver(ctx)
+	}()
+	b := &Server{kv: store, id: "b"}
+	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
+	took := time.Now()
+	select {
+	case <-done:
+	case <-time.After(handoverWait):
+		t.Fatal("the old holder did not stop after an old replica took the lease")
+	}
+	assert.Less(t, time.Since(took), takeWait+2*handoverCheck+200*time.Millisecond)
+}
+
+// TestTheOutboxPublishesWhatWaitsAtTheStop stops a replica with egress
+// still in its outbox, as when it hands packets to the holder of the lease
+// up to its stop. The holder sends them, so they must still go out on the
+// egress topic.
+func TestTheOutboxPublishesWhatWaitsAtTheStop(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	sub := ps.Subscribe(egressTopic)
+	t.Cleanup(func() { _ = sub.Close() })
+	s := &Server{pubsub: ps, done: make(chan struct{})}
+	out := make(chan outMessage, 4)
+	for i := range 3 {
+		out <- outMessage{topic: egressTopic, msg: []byte{byte(i)}}
+	}
+	close(s.done)
+	s.wg.Add(1)
+	s.runOutbox(out)
+	for i := range 3 {
+		select {
+		case m := <-sub.Channel():
+			assert.Equal(t, []byte{byte(i)}, m)
+		case <-time.After(time.Second):
+			t.Fatalf("message %d of the outbox was not published", i)
+		}
+	}
 }

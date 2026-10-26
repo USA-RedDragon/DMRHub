@@ -48,9 +48,11 @@ DMRHub is a static Go binary, so it needs no external libraries at run time. It 
 
 ### Which databases does DMRHub support?
 
-- **SQLite** (default): no external database.
-- **PostgreSQL**
-- **MySQL**
+- **SQLite** (default): no external database. Good for one server.
+- **PostgreSQL** (16): a dedicated database server.
+- **MySQL** (8.4) and **MariaDB** (12.3).
+
+See [Supported Databases](Configuration.md#supported-databases) and the MySQL settings in the [Configuration Guide](Configuration.md#mysql-and-mariadb).
 
 ### Is Redis required?
 

@@ -80,6 +80,12 @@ make benchmark  # Go benchmarks
 
 `make test` runs `CGO_ENABLED=0 go test -timeout 30m -p 2 -v ./...`, then the tests of `./sdk/plugin/v1/` with `-tags tinygo`.
 
+The database tests run on SQLite, and on PostgreSQL, MySQL and MariaDB in Docker. Without Docker, the tests on the other databases are skipped. The integration tests in `internal/dmr` run on MySQL and MariaDB only when `DMRHUB_TEST_MYSQL` is set:
+
+```bash
+DMRHUB_TEST_MYSQL=1 go test -timeout 60m -run '/(mysql|mariadb)$' ./internal/dmr/
+```
+
 The race tests in CI need cgo, so they use the Codec2 tag:
 
 ```bash

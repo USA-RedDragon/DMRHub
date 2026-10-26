@@ -13,7 +13,7 @@ For advanced configuration options, see the [Configuration Guide](Configuration.
 
 DMRHub ships with SQLite as the default database, so **no external services are required** for a basic deployment. Optionally, you can use:
 
-- **PostgreSQL** or **MySQL** as the database backend (for larger or multi-server deployments)
+- **PostgreSQL**, **MySQL** or **MariaDB** as the database backend (for larger or multi-server deployments)
 - **Redis** for distributed pub/sub (for multi-instance scaling)
 
 See the [Configuration Guide](Configuration.md) for database setup instructions.

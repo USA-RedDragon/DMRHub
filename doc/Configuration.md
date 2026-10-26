@@ -175,7 +175,9 @@ GRANT ALL PRIVILEGES ON DATABASE dmrhub TO dmrhub;
 GRANT ALL ON SCHEMA public TO dmrhub;
 ```
 
-#### MySQL
+#### MySQL and MariaDB
+
+MySQL and MariaDB both use the `mysql` driver.
 
 ```yaml
 database:
@@ -187,6 +189,34 @@ database:
   database: dmrhub
   extra-parameters: []
 ```
+
+To set up the database:
+
+```sql
+CREATE DATABASE dmrhub CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE USER 'dmrhub'@'%' IDENTIFIED BY 'your-password';
+GRANT ALL PRIVILEGES ON dmrhub.* TO 'dmrhub'@'%';
+```
+
+Notes:
+
+- DMRHub connects with `charset=utf8mb4&parseTime=True&loc=Local`. Each entry of `extra-parameters` is added to these, for example `tls=true`.
+- DMRHub makes its tables with the `utf8mb4_bin` collation, so that names compare by their bytes as on PostgreSQL and SQLite. The first time this version starts, it changes every table of the database that has another collation to `utf8mb4_bin`.
+- DMRHub sets the session `sql_mode` to `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION`. This is the MySQL 8.4 default without `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`, because DMRHub stores unset times as `0000-00-00`. If you set `sql_mode` in `extra-parameters`, DMRHub uses yours, and it must allow zero dates.
+- `loc=Local` stores times in the time zone of the DMRHub process. Run every replica in the same time zone.
+- MySQL has no partial indexes. To allow one active net per talkgroup, the `nets` table has a virtual column `active_talkgroup_id` with a unique index.
+- Replicas take turns to migrate the database with `GET_LOCK`. This needs no extra privilege.
+
+### Supported Databases
+
+The tests run on each of these databases:
+
+| Database   | Version    |
+| ---------- | ---------- |
+| SQLite     | built in   |
+| PostgreSQL | 16         |
+| MySQL      | 8.4 (LTS)  |
+| MariaDB    | 12.3 (LTS) |
 
 ## Environment Variables
 

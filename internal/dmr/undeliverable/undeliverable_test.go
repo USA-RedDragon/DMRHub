@@ -81,3 +81,39 @@ func TestFromOldForm(t *testing.T) {
 		assert.False(t, ok, sentence)
 	}
 }
+
+func TestParseReadsBackEverySentence(t *testing.T) {
+	t.Parallel()
+	for _, target := range []string{"ipsc", "mmdvm", "openbridge", ""} {
+		for _, repeater := range []uint{0, 314926, 4294967295} {
+			for _, reason := range append(undeliverable.Reasons(), "") {
+				sentence := undeliverable.Sentence(target, repeater, reason)
+				got, ok := undeliverable.Parse(sentence)
+				assert.True(t, ok, sentence)
+				assert.Equal(t, undeliverable.Entry{Target: target, Repeater: repeater, Reason: reason}, got, sentence)
+			}
+		}
+	}
+}
+
+func TestParseReadsTheOldForm(t *testing.T) {
+	t.Parallel()
+	for old, want := range map[string]undeliverable.Entry{
+		"ipsc:314926:slot_busy": {Target: "ipsc", Repeater: 314926, Reason: undeliverable.ReasonSlotBusy},
+		"ipsc:311304200":        {Target: "ipsc", Repeater: 311304200},
+		"ipsc::no_ipsc_form":    {Target: "ipsc", Reason: undeliverable.ReasonNoIPSCForm},
+		"newproto:42:new_code":  {Repeater: 42},
+	} {
+		got, ok := undeliverable.Parse(old)
+		assert.True(t, ok, old)
+		assert.Equal(t, want, got, old)
+	}
+}
+
+func TestParseRefusesOtherText(t *testing.T) {
+	t.Parallel()
+	for _, text := range []string{"", "Something: else", "ipsc:abc:slot_busy", "IPSC repeater 99999999999 was busy on that slot.", "IPSC repeater 314926 was busy on that slot. And more."} {
+		_, ok := undeliverable.Parse(text)
+		assert.False(t, ok, text)
+	}
+}

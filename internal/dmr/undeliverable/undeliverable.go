@@ -24,7 +24,9 @@ package undeliverable
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -139,4 +141,87 @@ func FromOldForm(entry string) (string, bool) {
 		}
 	}
 	return Sentence(m[1], uint(repeater), m[3]), true
+}
+
+// Entry is an undeliverable sentence read back into its parts.
+type Entry struct {
+	// Target is the target server, such as "ipsc", or "" for one that
+	// the sentence does not name.
+	Target string
+	// Repeater is the repeater that the sentence names, or 0.
+	Repeater uint
+	// Reason is the reason code, such as ReasonSlotBusy, or "" for a
+	// reason that the sentence does not name.
+	Reason string
+}
+
+func targetOf(kind string) string {
+	switch strings.ToLower(kind) {
+	case "ipsc repeater":
+		return "ipsc"
+	case "mmdvm repeater":
+		return "mmdvm"
+	case "openbridge peer":
+		return "openbridge"
+	default:
+		return ""
+	}
+}
+
+func sentenceReasons() []string {
+	return append(Reasons(), "")
+}
+
+func sentencePattern() string {
+	const who = `(?:an? )?(IPSC repeater|MMDVM repeater|OpenBridge peer|repeater)(?: ([0-9]+))?`
+	reasons := sentenceReasons()
+	alts := make([]string, 0, len(reasons))
+	for _, reason := range reasons {
+		alts = append(alts, strings.Replace(regexp.QuoteMeta(sentenceFormat(reason)), "%s", who, 1))
+	}
+	return `(?i)^(?:` + strings.Join(alts, "|") + `)$`
+}
+
+var sentenceForm = regexp.MustCompile(sentencePattern())
+
+// Parse reads a sentence that Sentence wrote, or an entry of the old form
+// that FromOldForm reads, back into its parts. It reports false for any
+// other text.
+func Parse(text string) (Entry, bool) {
+	if m := sentenceForm.FindStringSubmatch(text); m != nil {
+		for i, reason := range sentenceReasons() {
+			kind, id := m[1+2*i], m[2+2*i]
+			if kind == "" {
+				continue
+			}
+			e := Entry{Target: targetOf(kind), Reason: reason}
+			if id != "" {
+				n, err := strconv.ParseUint(id, 10, 32)
+				if err != nil {
+					return Entry{}, false
+				}
+				e.Repeater = uint(n)
+			}
+			return e, true
+		}
+	}
+	m := oldForm.FindStringSubmatch(text)
+	if m == nil {
+		return Entry{}, false
+	}
+	var e Entry
+	if slices.Contains(Reasons(), m[3]) {
+		e.Reason = m[3]
+	}
+	if _, known := targetName(m[1]); known {
+		e.Target = m[1]
+	}
+	if m[2] != "" {
+		id, err := strconv.ParseUint(m[2], 10, 32)
+		if err != nil {
+			return Entry{}, false
+		}
+		e.Repeater = uint(id)
+	}
+	return e, true
 }

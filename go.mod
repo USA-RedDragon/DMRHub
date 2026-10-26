@@ -61,6 +61,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/aperturerobotics/protobuf-go-lite v0.19.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.4 // indirect
@@ -142,4 +143,7 @@ require (
 	modernc.org/sqlite v1.23.1 // indirect
 )
 
-tool github.com/USA-RedDragon/configulator/v2/cmd/configulator
+tool (
+	github.com/USA-RedDragon/configulator/v2/cmd/configulator
+	github.com/aperturerobotics/protobuf-go-lite/cmd/protoc-gen-go-lite
+)

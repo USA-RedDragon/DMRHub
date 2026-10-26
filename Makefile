@@ -57,6 +57,12 @@ proto:
 	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 generate
 	@awk '/^\/\/ Code generated/ && !done { print "//go:build !wasip1"; print ""; done = 1 } { print }' sdk/plugin/v1/plugin_grpc.pb.go > sdk/plugin/v1/plugin_grpc.pb.go.tmp
 	@mv sdk/plugin/v1/plugin_grpc.pb.go.tmp sdk/plugin/v1/plugin_grpc.pb.go
+	@awk '/^\/\/ Code generated/ && !done { print "//go:build !tinygo"; print ""; done = 1 } { print }' sdk/plugin/v1/plugin.pb.go > sdk/plugin/v1/plugin.pb.go.tmp
+	@mv sdk/plugin/v1/plugin.pb.go.tmp sdk/plugin/v1/plugin.pb.go
+	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 generate --template buf.gen.lite.yaml
+	@mv sdk/plugin/v1/lite.tmp/dmrhub/plugin/v1/plugin.pb.go sdk/plugin/v1/plugin_lite.pb.go
+	@rm -r sdk/plugin/v1/lite.tmp
+	@go run github.com/bufbuild/buf/cmd/buf@v1.59.0 build proto --exclude-source-info --as-file-descriptor-set -o sdk/plugin/v1/testdata/plugin.binpb
 	@echo "--> Done"
 
 lint:
@@ -67,6 +73,7 @@ lint:
 test:
 	@echo "--> Running tests"
 	@env CGO_ENABLED=0 go test -timeout 30m -p 2 -v ./...
+	@env CGO_ENABLED=0 go test -tags tinygo -v ./sdk/plugin/v1/
 	@echo "--> Done"
 
 stress:

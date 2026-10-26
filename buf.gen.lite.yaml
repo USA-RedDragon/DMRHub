@@ -1,0 +1,10 @@
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: ["go", "tool", "protoc-gen-go-lite"]
+    out: sdk/plugin/v1/lite.tmp
+    opt:
+      - paths=source_relative
+      - features=marshal+unmarshal+size+clone
+      - buildTag=tinygo

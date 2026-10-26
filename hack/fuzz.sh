@@ -10,6 +10,10 @@ do
     do
         echo "Fuzzing $func in $file"
         parentDir=$(dirname $file)
-        go test -tags codec2wasm $parentDir -run=$func -fuzz=$func -fuzztime=5m -fuzzminimizetime=5m
+        tags=codec2wasm
+        if grep -q '^//go:build tinygo$' $file; then
+            tags=$tags,tinygo
+        fi
+        go test -tags $tags $parentDir -run=$func -fuzz=$func -fuzztime=5m -fuzzminimizetime=5m
     done
 done

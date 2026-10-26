@@ -41,7 +41,9 @@ import (
 // the hub to a peer server is full, the peer egress workers block in
 // deliverToServer holding the read lock of the server entry, and
 // UnregisterServer, which the server's Stop calls before Hub.Stop closes
-// done, waits for the write lock forever.
+// done, waits for the write lock forever. The packets come from a new
+// repeater every 40 packets, under the 50 that the rate cap lets a
+// repeater slot send at once, so that the cap drops none of them.
 func TestReproUnregisterServerWithBackedUpEgress(t *testing.T) { //nolint:paralleltest
 	stack := testutils.SetupIntegrationStack(t)
 	stack.SeedUser(t, 1000001, "N0CALL")
@@ -53,18 +55,19 @@ func TestReproUnregisterServerWithBackedUpEgress(t *testing.T) { //nolint:parall
 	peers := h.RegisterServer(hub.ServerConfig{Name: "peers", Role: hub.RolePeer})
 	h.RegisterServer(hub.ServerConfig{Name: "repeaters", Role: hub.RoleRepeater})
 
+	const perRepeater = 40
 	for i := range 700 {
 		time.Sleep(2 * time.Millisecond)
 		h.RoutePacket(context.Background(), models.Packet{
 			Signature: string(dmrconst.CommandDMRD), Seq: uint(i & 0xFF), Src: 1000001, Dst: 91, GroupCall: true,
-			FrameType: dmrconst.FrameVoice, StreamID: 0xABC, Repeater: 310000,
+			FrameType: dmrconst.FrameVoice, StreamID: 0xABC + uint(i/perRepeater), Repeater: 310000 + uint(i/perRepeater),
 		}, "repeaters")
 	}
 	full := time.Now().Add(2 * time.Minute)
 	for len(peers.Packets) < cap(peers.Packets) && time.Now().Before(full) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	require.Equal(t, cap(peers.Packets), len(peers.Packets), "the channel of the peer server never filled")
+	require.Equal(t, cap(peers.Packets), len(peers.Packets), "the channel of the peer server never filled; it holds %d", len(peers.Packets))
 	time.Sleep(500 * time.Millisecond)
 
 	done := make(chan struct{})

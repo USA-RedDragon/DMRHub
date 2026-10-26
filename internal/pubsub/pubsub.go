@@ -28,12 +28,34 @@ import (
 type PubSub interface {
 	Publish(topic string, message []byte) error
 	Subscribe(topic string) Subscription
+	// Feed returns a new Feed with no topics.
+	Feed() Feed
 	Close() error
 }
 
 type Subscription interface {
 	Close() error
 	Channel() <-chan []byte
+}
+
+// Feed is one subscription to a set of topics that can change. Its
+// messages come on one channel, in the order in which their topics got
+// them.
+type Feed interface {
+	// Add subscribes the Feed to topic and returns once every message
+	// published after it returns comes, as Subscribe does.
+	Add(topic string)
+	// Remove ends the subscription to topic. Messages of topic that were
+	// on their way can still come.
+	Remove(topic string)
+	Channel() <-chan Message
+	Close() error
+}
+
+// Message is a message of a Feed and its topic.
+type Message struct {
+	Topic   string
+	Payload []byte
 }
 
 func MakePubSub(ctx context.Context, config *config.Config) (PubSub, error) {

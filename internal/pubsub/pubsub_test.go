@@ -477,3 +477,113 @@ func TestSubscribersSeeOneOrder(t *testing.T) {
 		}
 	}
 }
+
+func backendPubSub(t *testing.T, be testutils.Backend) pubsub.PubSub {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	be.Setup(t, &cfg)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+	return ps
+}
+
+// TestAFeedGetsItsTopicsInPublishOrder publishes to three topics in turn.
+// A feed of all three must get every message in the order it was
+// published, with its topic.
+func TestAFeedGetsItsTopicsInPublishOrder(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			ps := backendPubSub(t, be)
+			f := ps.Feed()
+			defer func() { _ = f.Close() }()
+			topics := []string{"feed-a", "feed-b", "feed-c"}
+			for _, topic := range topics {
+				f.Add(topic)
+			}
+			const n = 300
+			for i := range n {
+				if err := ps.Publish(topics[i%7%3], []byte{byte(i), byte(i >> 8)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range n {
+				select {
+				case m := <-f.Channel():
+					if m.Topic != topics[i%7%3] || len(m.Payload) != 2 || int(m.Payload[0])|int(m.Payload[1])<<8 != i {
+						t.Fatalf("message %d: got %q on %s", i, m.Payload, m.Topic)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatalf("message %d did not come", i)
+				}
+			}
+		})
+	}
+}
+
+// TestAFeedTopicIsActiveWhenAddReturns publishes right after each Add.
+// Each message must come.
+func TestAFeedTopicIsActiveWhenAddReturns(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			ps := backendPubSub(t, be)
+			f := ps.Feed()
+			defer func() { _ = f.Close() }()
+			for i := range 100 {
+				topic := fmt.Sprintf("feed-at-once-%d", i)
+				f.Add(topic)
+				if err := ps.Publish(topic, []byte{1}); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case m := <-f.Channel():
+					if m.Topic != topic {
+						t.Fatalf("got a message of %s, want %s", m.Topic, topic)
+					}
+				case <-time.After(time.Second):
+					t.Fatalf("the message published right after Add of %s was lost", topic)
+				}
+				f.Remove(topic)
+			}
+		})
+	}
+}
+
+// TestClosingAFeedClosesItsChannel closes a feed, and then the pubsub.
+func TestClosingAFeedClosesItsChannel(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			ps := backendPubSub(t, be)
+			f := ps.Feed()
+			f.Add("feed-close")
+			_ = f.Close()
+			select {
+			case _, ok := <-f.Channel():
+				if ok {
+					t.Fatal("a closed feed got a message")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("closing the feed left its channel open")
+			}
+			_ = ps.Publish("feed-close", []byte{1})
+			other := ps.Feed()
+			_ = ps.Close()
+			select {
+			case <-other.Channel():
+			case <-time.After(2 * time.Second):
+				t.Fatal("closing the pubsub left a feed open")
+			}
+		})
+	}
+}

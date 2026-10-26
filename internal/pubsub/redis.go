@@ -65,11 +65,18 @@ func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisP
 		}
 	}
 
-	return redisPubSub{client: redis}, nil
+	return redisPubSub{client: redis, feeds: &feedSet{all: map[*redisFeed]struct{}{}}}, nil
 }
 
 type redisPubSub struct {
 	client *redis.Client
+	feeds  *feedSet
+}
+
+// feedSet is the open feeds of a redisPubSub, which Close closes.
+type feedSet struct {
+	mu  sync.Mutex
+	all map[*redisFeed]struct{}
 }
 
 func (ps redisPubSub) Publish(topic string, message []byte) error {
@@ -113,6 +120,15 @@ func (ps redisPubSub) Subscribe(topic string) Subscription {
 }
 
 func (ps redisPubSub) Close() error {
+	ps.feeds.mu.Lock()
+	feeds := make([]*redisFeed, 0, len(ps.feeds.all))
+	for f := range ps.feeds.all {
+		feeds = append(feeds, f)
+	}
+	ps.feeds.mu.Unlock()
+	for _, f := range feeds {
+		_ = f.Close()
+	}
 	if err := ps.client.Close(); err != nil {
 		return fmt.Errorf("failed to close redis client: %w", err)
 	}
@@ -138,4 +154,96 @@ func (s redisSubscription) Close() error {
 
 func (s redisSubscription) Channel() <-chan []byte {
 	return s.ch
+}
+
+// Feed returns a Feed on one Redis connection, which gets the messages of
+// all its topics in the order Redis took them.
+func (ps redisPubSub) Feed() Feed {
+	sub := ps.client.Subscribe(context.Background())
+	f := &redisFeed{sub: sub, set: ps.feeds, ch: make(chan Message, feedQueue), done: make(chan struct{}), waits: map[string][]chan struct{}{}}
+	ps.feeds.mu.Lock()
+	ps.feeds.all[f] = struct{}{}
+	ps.feeds.mu.Unlock()
+	in := sub.ChannelWithSubscriptions()
+	go func() {
+		defer close(f.ch)
+		for v := range in {
+			switch m := v.(type) {
+			case *redis.Subscription:
+				if m.Kind == "subscribe" {
+					f.confirm(m.Channel)
+				}
+			case *redis.Message:
+				select {
+				case f.ch <- Message{Topic: m.Channel, Payload: []byte(m.Payload)}:
+				case <-f.done:
+					return
+				}
+			}
+		}
+	}()
+	return f
+}
+
+type redisFeed struct {
+	sub   *redis.PubSub
+	set   *feedSet
+	ch    chan Message
+	done  chan struct{}
+	once  sync.Once
+	mu    sync.Mutex
+	waits map[string][]chan struct{}
+}
+
+func (f *redisFeed) confirm(topic string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range f.waits[topic] {
+		close(w)
+	}
+	delete(f.waits, topic)
+}
+
+// Add subscribes to topic and waits for Redis to confirm it, for at most
+// subscribeWait.
+func (f *redisFeed) Add(topic string) {
+	w := make(chan struct{})
+	f.mu.Lock()
+	f.waits[topic] = append(f.waits[topic], w)
+	f.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), subscribeWait)
+	defer cancel()
+	if err := f.sub.Subscribe(ctx, topic); err != nil {
+		slog.Warn("Failed to subscribe a feed", "topic", topic, "error", err)
+		return
+	}
+	select {
+	case <-w:
+	case <-ctx.Done():
+		slog.Warn("Redis did not confirm a subscription", "topic", topic, "error", ctx.Err())
+	case <-f.done:
+	}
+}
+
+func (f *redisFeed) Remove(topic string) {
+	ctx, cancel := context.WithTimeout(context.Background(), subscribeWait)
+	defer cancel()
+	if err := f.sub.Unsubscribe(ctx, topic); err != nil {
+		slog.Warn("Failed to unsubscribe a feed", "topic", topic, "error", err)
+	}
+}
+
+func (f *redisFeed) Channel() <-chan Message {
+	return f.ch
+}
+
+func (f *redisFeed) Close() error {
+	f.once.Do(func() { close(f.done) })
+	f.set.mu.Lock()
+	delete(f.set.all, f)
+	f.set.mu.Unlock()
+	if err := f.sub.Close(); err != nil {
+		return fmt.Errorf("failed to close redis feed: %w", err)
+	}
+	return nil
 }

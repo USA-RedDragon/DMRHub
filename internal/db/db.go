@@ -272,7 +272,7 @@ func migrate(db *gorm.DB, config *configPkg.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{}, &models.EmailVerification{})
+	err = db.AutoMigrate(&models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{}, &models.EmailVerification{}, &models.SetupSettings{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}

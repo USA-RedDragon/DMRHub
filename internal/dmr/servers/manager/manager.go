@@ -41,6 +41,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"gorm.io/gorm"
 )
@@ -418,4 +419,17 @@ func (m *Manager) stopAll(ctx context.Context) {
 	for _, k := range kinds() {
 		m.stop(ctx, k)
 	}
+}
+
+// LiveErrors returns errs as the reports of liveconfig carry them.
+func LiveErrors(errs []ApplyError) []liveconfig.ApplyError {
+	out := make([]liveconfig.ApplyError, 0, len(errs))
+	for _, e := range errs {
+		msg := e.Error()
+		if e.Err != nil {
+			msg = e.Err.Error()
+		}
+		out = append(out, liveconfig.ApplyError{Server: string(e.Server), Running: e.Running, Error: msg})
+	}
+	return out
 }

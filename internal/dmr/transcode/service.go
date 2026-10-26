@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder/codec2"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder/dvsi"
 )
@@ -87,7 +88,7 @@ type server struct {
 }
 
 func (s *server) answer() {
-	s.answered.Store(time.Now().UnixNano())
+	s.answered.Store(monotime.Now())
 }
 
 // Service converts calls with the AMBE servers that SetServers sets. Each
@@ -197,7 +198,7 @@ func (s *Service) Status(ctx context.Context) []ServerStatus {
 	for _, srv := range list {
 		st := ServerStatus{ServerConfig: srv.ServerConfig, CallsNow: srv.leases.count(ctx)}
 		if n := srv.answered.Load(); n != 0 {
-			st.AnsweredAt, st.Answered = time.Unix(0, n), true
+			st.AnsweredAt, st.Answered = monotime.Time(n), true
 		}
 		out = append(out, st)
 	}
@@ -264,7 +265,7 @@ func probe(ctx context.Context, srv *server) {
 		}
 	}()
 	for {
-		if time.Since(time.Unix(0, srv.answered.Load())) >= ProbeInterval && srv.leases.count(ctx) == 0 {
+		if n := srv.answered.Load(); (n == 0 || time.Since(monotime.Time(n)) >= ProbeInterval) && srv.leases.count(ctx) == 0 {
 			if conn == nil {
 				var d net.Dialer
 				if c, err := d.DialContext(ctx, "udp", srv.Addr); err == nil {

@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 )
 
 // UndeliverableFunc is told of each burst that a target server could not
@@ -44,7 +45,7 @@ const undeliverableLogEvery = time.Second
 func (h *Hub) ReportUndeliverable(packet models.Packet, target, reason string) {
 	metrics.NewMetrics().IncrementUndeliverable(target, reason)
 	if _, logged := h.undeliverableLogged.LoadOrStore(packet.StreamID, time.Now()); !logged {
-		now := time.Now().UnixNano()
+		now := monotime.Now()
 		next := h.undeliverableLogNext.Load()
 		if now >= next && h.undeliverableLogNext.CompareAndSwap(next, now+int64(undeliverableLogEvery)) {
 			slog.Info("Burst cannot go to its target",

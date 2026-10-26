@@ -35,6 +35,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/builtin"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
@@ -390,7 +391,7 @@ func (m *Manager) retire(r *run, now time.Time) {
 		r.retire = now
 		slog.Info("Plugins: a new version waits for the calls of the plugin to end", "plugin", r.id)
 	}
-	quiet := now.Sub(time.Unix(0, r.last.Load())) >= m.d.Timing.Quiet
+	quiet := now.Sub(monotime.Time(r.last.Load())) >= m.d.Timing.Quiet
 	if quiet || now.Sub(r.retire) >= m.d.Timing.MaxWait {
 		m.stop(r)
 	}
@@ -476,7 +477,7 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 	r := &run{id: p.ID, key: key, since: time.Now(), ready: make(chan struct{}), ended: make(chan struct{})}
 	hosts := allowedOf(p)
 	r.hosts.Store(&hosts)
-	r.last.Store(time.Now().UnixNano())
+	r.last.Store(monotime.Now())
 	m.mu.Lock()
 	m.runs[p.ID] = r
 	m.starts[p.ID]++
@@ -536,7 +537,7 @@ type tracked struct {
 // Send sends m to the plugin.
 func (t *tracked) Send(m *pluginv1.ConnectResponse) error {
 	if m.GetBurst() != nil {
-		t.r.last.Store(time.Now().UnixNano())
+		t.r.last.Store(monotime.Now())
 	}
 	return t.PluginService_ConnectServer.Send(m) //nolint:wrapcheck // the stream's error
 }
@@ -545,7 +546,7 @@ func (t *tracked) Send(m *pluginv1.ConnectResponse) error {
 func (t *tracked) Recv() (*pluginv1.ConnectRequest, error) {
 	m, err := t.PluginService_ConnectServer.Recv()
 	if m.GetBurst() != nil {
-		t.r.last.Store(time.Now().UnixNano())
+		t.r.last.Store(monotime.Now())
 	}
 	return m, err //nolint:wrapcheck // the stream's error
 }

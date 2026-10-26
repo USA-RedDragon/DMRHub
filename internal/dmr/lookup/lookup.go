@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
@@ -64,7 +65,7 @@ func New[K comparable, V any](name string, ttl time.Duration, load func(K) (V, e
 func (c *Cache[K, V]) Get(key K) (V, error) {
 	now := time.Now()
 	if e, ok := c.entries.Load(key); ok {
-		e.read.Store(now.UnixNano())
+		e.read.Store(monotime.Of(now))
 		if now.Sub(e.at) >= c.ttl && e.refreshing.CompareAndSwap(false, true) {
 			go c.refresh(key, e)
 		}
@@ -80,7 +81,7 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 
 func newEntry[V any](v V, now time.Time) *entry[V] {
 	e := &entry[V]{val: v, at: now}
-	e.read.Store(now.UnixNano())
+	e.read.Store(monotime.Of(now))
 	return e
 }
 
@@ -124,7 +125,7 @@ func (c *Cache[K, V]) Drop(key K) {
 // Prune forgets the answers that nobody read for Idle before now.
 func (c *Cache[K, V]) Prune(now time.Time) {
 	c.entries.Range(func(key K, e *entry[V]) bool {
-		if now.Sub(time.Unix(0, e.read.Load())) > Idle {
+		if now.Sub(monotime.Time(e.read.Load())) > Idle {
 			c.entries.Delete(key)
 		}
 		return true

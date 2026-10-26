@@ -37,11 +37,33 @@ import (
 // FakeAMBEProduct is the product name that a FakeAMBEServer reports.
 const FakeAMBEProduct = "AMBE3000R"
 
+// The DCMODE_IN and DCMODE_OUT flags of the CMODE field that a
+// FakeAMBEServer takes in channel packets and puts in speech packets
+// (AMBE-3000R manual Tables 14 and 15).
+const (
+	AMBELostFrame   = 0x0004
+	AMBEVoiceActive = 0x0002
+	AMBEDataInvalid = 0x0020
+	AMBEToneFrame   = 0x8000
+)
+
+const (
+	fieldCMode        = 0x02
+	fieldSpeechFormat = 0x16
+	maxRepeats        = 2
+)
+
 // FakeAMBEServer is an AMBEserver on loopback for tests: it answers the
 // packets of the DVSI chip protocol, one per UDP datagram, to the address
 // that sent each one. It decodes a frame to FakeAMBEDecode of it and
 // encodes audio to FakeAMBEEncode of it, so a test can tell what a
-// transcoder made of each frame.
+// transcoder made of each frame. After a PKT_SPCHFMT field of 0x0001 it
+// puts the decoder status in a CMODE field of each speech packet. A channel
+// packet with a CMODE field that sets LOST_FRAME, with or without a CHAND
+// field, makes it repeat the audio of the last frame, up to 2 times, and
+// then send silence as comfort noise, until a CMODE field of 0x0000 clears
+// it. Like the deployed AMBEserver, it drops a channel packet whose CMODE
+// sets any other flag, and records the error.
 type FakeAMBEServer struct {
 	conn    *net.UDPConn
 	answer  atomic.Bool
@@ -53,10 +75,18 @@ type FakeAMBEServer struct {
 	encodes atomic.Int64
 	queries atomic.Int64
 	bare    atomic.Bool
+	format  atomic.Bool
+	refuse  atomic.Bool
+	losts   atomic.Int64
+	cmodes  atomic.Int64
+	lost    bool
+	repeats int
+	lastPCM [dvsi.FrameSamples]int16
 	mu      sync.Mutex
 	errs    []string
 	askers  map[string]bool
 	pcm     [][dvsi.FrameSamples]int16
+	status  map[[9]byte]uint16
 	done    chan struct{}
 }
 
@@ -107,6 +137,41 @@ func (f *FakeAMBEServer) DropNext(n int) {
 // SetDelay makes the server wait d before each reply.
 func (f *FakeAMBEServer) SetDelay(d time.Duration) {
 	f.delay.Store(int64(d))
+}
+
+// SetRefuseSpeechFormat makes the server answer a PKT_SPCHFMT field with
+// an error status, as an AMBEserver that cannot report the decoder status.
+func (f *FakeAMBEServer) SetRefuseSpeechFormat(on bool) {
+	f.refuse.Store(on)
+}
+
+// SetDecodeStatus makes the server report the DCMODE_OUT flags for each
+// later decode of slot, in place of AMBEVoiceActive.
+func (f *FakeAMBEServer) SetDecodeStatus(slot [9]byte, flags uint16) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.status == nil {
+		f.status = map[[9]byte]uint16{}
+	}
+	f.status[slot] = flags
+}
+
+// SpeechFormat reports whether a client set the speech format that puts
+// the decoder status in each speech packet.
+func (f *FakeAMBEServer) SpeechFormat() bool {
+	return f.format.Load()
+}
+
+// LostFrames returns the number of frames that the server filled while
+// LOST_FRAME was set.
+func (f *FakeAMBEServer) LostFrames() int {
+	return int(f.losts.Load())
+}
+
+// CModes returns the number of channel packets with a CMODE field that
+// the server took.
+func (f *FakeAMBEServer) CModes() int {
+	return int(f.cmodes.Load())
 }
 
 // Decodes returns the number of frames that the server decoded.
@@ -219,20 +284,7 @@ func (f *FakeAMBEServer) handle(b []byte) []byte {
 	case dvsi.TypeControl:
 		return f.control(p.Fields, answering)
 	case dvsi.TypeChannel:
-		if len(p.Fields) != 11 || p.Fields[0] != 0x01 || p.Fields[1] != dvsi.FrameBits {
-			f.fail("channel packet % x is not one 72-bit frame", p.Fields)
-			return nil
-		}
-		if answering {
-			f.decodes.Add(1)
-		}
-		pcm := FakeAMBEDecode([9]byte(p.Fields[2:11]))
-		out, err := dvsi.AppendSpeech(nil, 0, pcm[:], true)
-		if err != nil {
-			f.fail("speech reply: %v", err)
-			return nil
-		}
-		return out
+		return f.channel(p.Fields, answering)
 	case dvsi.TypeSpeech:
 		if len(p.Fields) != 2+2*dvsi.FrameSamples || p.Fields[0] != 0x00 || p.Fields[1] != dvsi.FrameSamples {
 			f.fail("speech packet of %d bytes is not one frame of 160 samples", len(p.Fields))
@@ -259,6 +311,68 @@ func (f *FakeAMBEServer) handle(b []byte) []byte {
 		f.fail("packet type %d", p.Type)
 		return nil
 	}
+}
+
+func (f *FakeAMBEServer) channel(fields []byte, answering bool) []byte {
+	var chand []byte
+	var mode uint16
+	hasMode := false
+	for b := fields; len(b) > 0; {
+		switch {
+		case chand == nil && len(b) >= 11 && b[0] == 0x01 && b[1] == dvsi.FrameBits:
+			chand, b = b[2:11], b[11:]
+		case !hasMode && len(b) >= 3 && b[0] == fieldCMode:
+			mode, hasMode, b = uint16(b[1])<<8|uint16(b[2]), true, b[3:]
+		default:
+			f.fail("channel packet % x is not one 72-bit frame and a CMODE field", fields)
+			return nil
+		}
+	}
+	if hasMode {
+		if mode&^AMBELostFrame != 0 {
+			f.fail("CMODE 0x%04x sets flags other than LOST_FRAME", mode)
+			return nil
+		}
+		f.cmodes.Add(1)
+		f.lost = mode&AMBELostFrame != 0
+	}
+	var pcm [dvsi.FrameSamples]int16
+	var flags uint16
+	switch {
+	case f.lost:
+		if answering {
+			f.losts.Add(1)
+		}
+		f.repeats++
+		flags = AMBEDataInvalid
+		if f.repeats <= maxRepeats {
+			pcm, flags = f.lastPCM, flags|AMBEVoiceActive
+		}
+	case chand == nil:
+		f.fail("channel packet % x has no CHAND field and LOST_FRAME is not set", fields)
+		return nil
+	default:
+		if answering {
+			f.decodes.Add(1)
+		}
+		slot := [9]byte(chand)
+		pcm, flags = FakeAMBEDecode(slot), AMBEVoiceActive
+		f.mu.Lock()
+		if st, ok := f.status[slot]; ok {
+			flags = st
+		}
+		f.mu.Unlock()
+		f.repeats, f.lastPCM = 0, pcm
+	}
+	r := make([]byte, 0, 2+2*dvsi.FrameSamples+3)
+	r = append(r, 0x00, dvsi.FrameSamples)
+	for _, v := range pcm {
+		r = append(r, byte(uint16(v)>>8), byte(v)) //nolint:gosec
+	}
+	if f.format.Load() {
+		r = append(r, fieldCMode, byte(flags>>8), byte(flags))
+	}
+	return packet(dvsi.TypeSpeech, r)
 }
 
 func (f *FakeAMBEServer) control(fields []byte, answering bool) []byte {
@@ -302,8 +416,23 @@ func (f *FakeAMBEServer) control(fields []byte, answering bool) []byte {
 			}
 			r = append(r, id, 0)
 			fields = fields[1:]
+		case fieldSpeechFormat:
+			if len(fields) < 2 || fields[0] != 0x00 || fields[1] != 0x01 {
+				f.fail("PKT_SPCHFMT % x is not 0x0001", fields)
+				return nil
+			}
+			st := byte(0)
+			if f.refuse.Load() {
+				st = 1
+			} else {
+				f.format.Store(true)
+			}
+			r = append(r, id, st)
+			fields = fields[2:]
 		case dvsi.FieldReset:
 			f.fail("the hub reset the chip, which other calls may be using")
+			f.format.Store(false)
+			f.lost, f.repeats = false, 0
 			return controlPacket([]byte{byte(dvsi.FieldReady)})
 		default:
 			f.fail("control field 0x%02x", id)
@@ -317,8 +446,12 @@ func (f *FakeAMBEServer) control(fields []byte, answering bool) []byte {
 }
 
 func controlPacket(fields []byte) []byte {
+	return packet(dvsi.TypeControl, fields)
+}
+
+func packet(t dvsi.PacketType, fields []byte) []byte {
 	n := len(fields) + 2
-	b := append([]byte{dvsi.StartByte, byte(n >> 8), byte(n), byte(dvsi.TypeControl)}, fields...)
+	b := append([]byte{dvsi.StartByte, byte(n >> 8), byte(n), byte(t)}, fields...)
 	b = append(b, 0x2F)
 	var x byte
 	for _, c := range b[1:] {

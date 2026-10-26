@@ -149,6 +149,7 @@ type Hub struct {
 	userIDs      *lookup.Cache[uint, bool]
 	radioCalls   *lookup.Cache[uint, uint]
 	egressTable  *lookup.Cache[struct{}, []egressPeer]
+	lastSeen     *lookup.Flights[uint, []byte]
 
 	sightings      chan sighting
 	sightedStreams *xsync.Map[sightingKey, time.Time]
@@ -218,6 +219,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
 	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
+	h.lastSeen = lookup.NewFlights[uint, []byte]()
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
 	h.heardOn = xsync.NewMap[uint, heardAt]()

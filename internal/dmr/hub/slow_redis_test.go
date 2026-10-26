@@ -32,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/stretchr/testify/assert"
@@ -253,6 +254,32 @@ func TestAPublishThatDidNotReachRedisIsSentAgain(t *testing.T) {
 	assertAllInOrder(t, d, "70202 mmdvm:100002", bursts)
 	assertAllInOrder(t, d, "70202 peers:3100100", bursts)
 	assert.Less(t, d.worst["70202 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
+}
+
+// TestAStalledKVHoldsNoBurstOfAPrivateCall starts a private call to a
+// radio while every call to the KV store takes two seconds, as a paused
+// Redis makes it. Finding where the radio is must wait no longer than a
+// database lookup does, and then fall back to its last call.
+func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
+	t.Parallel()
+	slow := &slowKV{delay: 2 * time.Second}
+	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+		slow.KV = k
+		return slow
+	})
+	seedStalledRedisHub(t, database)
+	arrivals := collect(map[string]*hub.ServerHandle{
+		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+	})
+	h.ActivateRepeater(context.Background(), testRepeaterID)
+	h.ActivateRepeater(context.Background(), 100002)
+	time.Sleep(100 * time.Millisecond)
+
+	slow.on.Store(true)
+	defer slow.on.Store(false)
+	worst := worstDelay(t, arrivals, 70300, sendStream(h, 1000002, 70300, false, 8), "mmdvm:100002")
+	t.Logf("worst delay %v with %v per KV call", worst, slow.delay)
+	assert.Less(t, worst, hub.StreamClaimWait+lookup.Wait+200*time.Millisecond, "a burst of a private call waited on a stalled KV store")
 }
 
 type stalledPlugins struct {

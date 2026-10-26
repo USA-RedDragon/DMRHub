@@ -181,9 +181,13 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 
 // locateRadio returns the repeater to send private traffic for the
 // registered radio userID to: where it was last heard on a repeater that
-// its user owns or an admin trusts.
+// its user owns or an admin trusts. It waits for the KV store at most
+// lookup.Wait, as for the database, and then goes on without its answer,
+// to where this hub heard the radio and to its last call.
 func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
-	if v, err := h.kv.Get(ctx, fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID)); err == nil {
+	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID)
+	read := context.WithoutCancel(ctx)
+	if v, err := h.lastSeen.Do(userID, func() ([]byte, error) { return h.kv.Get(read, key) }); err == nil { //nolint:wrapcheck
 		if id, err := strconv.ParseUint(string(v), 10, 32); err == nil {
 			if rpt, err := h.routingRepeater(uint(id)); err == nil && (rpt.OwnerID == userID || rpt.Trusted) {
 				return uint(id), true

@@ -308,9 +308,8 @@ func TestMultipleRepeatersReceiveGroupCall(t *testing.T) {
 	seedTalkgroup(t, database, 10, "TG10")
 
 	// Only the destination repeater subscribes to TG10.
-	// The source repeater (100001) has no static TG for TG10, so it won't spawn
-	// a subscribeTG goroutine for this talkgroup, avoiding the in-memory pubsub
-	// single-channel race condition.
+	// The source repeater (100001) has no static TG for TG10, so its feed
+	// does not take this talkgroup.
 	var rpt2 models.Repeater
 	require.NoError(t, database.First(&rpt2, 100002).Error)
 	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 10}))

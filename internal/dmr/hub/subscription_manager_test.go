@@ -113,6 +113,20 @@ func (s slowSubscribe) Subscribe(topic string) pubsub.Subscription {
 	return s.PubSub.Subscribe(topic)
 }
 
+func (s slowSubscribe) Feed() pubsub.Feed {
+	return slowFeed{Feed: s.PubSub.Feed(), delay: s.delay}
+}
+
+type slowFeed struct {
+	pubsub.Feed
+	delay time.Duration
+}
+
+func (f slowFeed) Add(topic string) {
+	time.Sleep(f.delay)
+	f.Feed.Add(topic)
+}
+
 // TestActivateRepeaterBothTimeslotStaticTGs verifies that subscriptions are set
 // up for static talkgroups assigned to both TS1 and TS2.
 func TestActivateRepeaterBothTimeslotStaticTGs(t *testing.T) {

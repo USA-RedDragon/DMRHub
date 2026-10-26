@@ -375,3 +375,87 @@ func TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt(t *testing.T) {
 	assert.Equal(t, []uint{0, 1}, got[fast])
 	assert.Less(t, at[fast], 50*time.Millisecond, "the call to TG 2 waited for the claim of the call to TG 1")
 }
+
+// slowTopic delivers the messages of the subscriptions to topic, and of
+// every feed, after delay, as a slow connection of one Redis subscription
+// does.
+type slowTopic struct {
+	pubsub.PubSub
+	topic string
+	delay time.Duration
+}
+
+type delayedSubscription struct {
+	pubsub.Subscription
+	ch chan []byte
+}
+
+func (d *delayedSubscription) Channel() <-chan []byte { return d.ch }
+
+func (s *slowTopic) Subscribe(topic string) pubsub.Subscription {
+	sub := s.PubSub.Subscribe(topic)
+	if topic != s.topic {
+		return sub
+	}
+	d := &delayedSubscription{Subscription: sub, ch: make(chan []byte, 100)}
+	go func() {
+		defer close(d.ch)
+		for msg := range sub.Channel() {
+			time.Sleep(s.delay)
+			d.ch <- msg
+		}
+	}()
+	return d
+}
+
+type delayedFeed struct {
+	pubsub.Feed
+	ch chan pubsub.Message
+}
+
+func (d *delayedFeed) Channel() <-chan pubsub.Message { return d.ch }
+
+func (s *slowTopic) Feed() pubsub.Feed {
+	f := s.PubSub.Feed()
+	d := &delayedFeed{Feed: f, ch: make(chan pubsub.Message, 100)}
+	go func() {
+		defer close(d.ch)
+		for msg := range f.Channel() {
+			time.Sleep(s.delay)
+			d.ch <- msg
+		}
+	}()
+	return d
+}
+
+// TestARepeaterGetsTheCallsOfASourceInOrderAcrossTopics sends a call to
+// TG 1, then at once a call to TG 2 and a private call to the target
+// repeater, while the messages of TG 1 reach the subscriptions to it, and
+// those of a feed reach it, 100 ms late. The repeater, which listens on
+// both talkgroups, must get the three calls in the order they came.
+func TestARepeaterGetsTheCallsOfASourceInOrderAcrossTopics(t *testing.T) {
+	t.Parallel()
+	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub {
+		return &slowTopic{PubSub: ps, topic: "hub:packets:talkgroup:1", delay: 100 * time.Millisecond}
+	}, func(k kv.KV) kv.KV { return k })
+
+	calls := []struct {
+		stream, dst uint
+		group       bool
+	}{{76001, 1, true}, {76002, 2, true}, {76003, 100002, false}}
+	streams := map[uint]bool{}
+	sent := make([]models.Packet, 0, 2*len(calls))
+	for _, c := range calls {
+		streams[c.stream] = true
+		p := makeVoicePacket(c.dst, c.stream, c.group, false)
+		term := makeVoiceTermPacket(c.dst, c.stream, c.group, false)
+		term.Seq = 1
+		sent = append(sent, p, term)
+	}
+	for _, p := range sent {
+		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+	}
+
+	got := receiveOrder(t, arrivals, streams, len(sent), "mmdvm:100002")
+	assert.Equal(t, orderOf(sent), got["mmdvm:100002"])
+}

@@ -42,6 +42,7 @@ import (
 type subscriptionManager struct {
 	// subscriptions stores per-repeater maps of talkgroup/repeater → subscription
 	subscriptions *xsync.Map[uint, *xsync.Map[uint, *subscription]]
+	feeds         *xsync.Map[uint, *repeaterFeed]
 	hub           *Hub
 	mu            sync.Mutex
 }
@@ -49,31 +50,91 @@ type subscriptionManager struct {
 func newSubscriptionManager(h *Hub) *subscriptionManager {
 	return &subscriptionManager{
 		subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *subscription]](),
+		feeds:         xsync.NewMap[uint, *repeaterFeed](),
 		hub:           h,
 	}
 }
 
-// subscription is one fan-out goroutine of a repeater. Once stop returns,
-// the goroutine delivers nothing more, even a packet it was already handling.
+// repeaterFeed is the one feed that brings a repeater its private calls
+// and the calls of its talkgroups. One goroutine reads it, so the
+// repeater gets the bursts of all its topics in the order they were
+// published, and the calls of a source reach it in the order they came.
+// Each repeater has its own, so a slow repeater holds up no other.
+type repeaterFeed struct {
+	feed pubsub.Feed
+	mu   sync.Mutex
+	subs map[string]*subscription
+}
+
+func (f *repeaterFeed) add(sub *subscription) {
+	f.mu.Lock()
+	f.subs[sub.topic] = sub
+	f.mu.Unlock()
+	f.feed.Add(sub.topic)
+}
+
+func (f *repeaterFeed) remove(sub *subscription) {
+	f.mu.Lock()
+	if f.subs[sub.topic] != sub {
+		f.mu.Unlock()
+		return
+	}
+	delete(f.subs, sub.topic)
+	f.mu.Unlock()
+	f.feed.Remove(sub.topic)
+}
+
+func (f *repeaterFeed) of(topic string) *subscription {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.subs[topic]
+}
+
+// subscription is one topic of the feed of a repeater: its private calls,
+// or a talkgroup. Once stop returns, the feed delivers nothing more of it,
+// even a packet it was already handling.
 type subscription struct {
 	done    <-chan struct{}
 	cancel  context.CancelFunc
+	feed    *repeaterFeed
+	topic   string
+	tg      uint
 	mu      sync.RWMutex
 	stopped bool
 }
 
-func newSubscription() *subscription {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &subscription{done: ctx.Done(), cancel: cancel}
+// subscribe adds the topic of the private calls of repeaterID to the feed,
+// and returns its subscription.
+func (f *repeaterFeed) subscribe(repeaterID uint) *subscription {
+	sub := f.newSubscription(repeaterTopic(repeaterID), 0)
+	f.add(sub)
+	return sub
 }
 
-// stop cancels the subscription and waits for a delivery in progress, which
-// the cancel unblocks.
+// subscribeTG adds the topic of the talkgroup tg to the feed, and returns
+// its subscription. Talkgroup 0 gets one that delivers nothing.
+func (f *repeaterFeed) subscribeTG(tg uint) *subscription {
+	if tg == 0 {
+		return f.newSubscription("", 0)
+	}
+	sub := f.newSubscription(talkgroupTopic(tg), tg)
+	f.add(sub)
+	return sub
+}
+
+func (f *repeaterFeed) newSubscription(topic string, tg uint) *subscription {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &subscription{done: ctx.Done(), cancel: cancel, feed: f, tg: tg, topic: topic}
+}
+
+// stop cancels the subscription, removes its topic from the feed and
+// waits for a delivery in progress, which the cancel unblocks.
 func (s *subscription) stop() {
 	s.cancel()
 	s.mu.Lock()
 	s.stopped = true
 	s.mu.Unlock()
+	s.feed.remove(s)
 }
 
 // deliver hands rp to the server unless the subscription is stopped.
@@ -122,6 +183,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		slog.Error("Failed to load radio subscriptions", "repeaterID", repeaterID)
 		return
 	}
+	feed := h.subscriptionMgr.feedOf(repeaterID)
 
 	p, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
@@ -132,26 +194,20 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	// Subscribe to private calls for this repeater
 	_, ok = radioSubs.Load(repeaterID)
 	if !ok {
-		sub := newSubscription()
-		radioSubs.Store(repeaterID, sub)
-		go h.subscriptionMgr.subscribeRepeater(sub, h.pubsub.Subscribe(repeaterTopic(repeaterID)), repeaterID)
+		radioSubs.Store(repeaterID, feed.subscribe(repeaterID))
 	}
 
 	// Subscribe to each static talkgroup
 	for _, tg := range p.TS1StaticTalkgroups {
 		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
-			sub := newSubscription()
-			radioSubs.Store(tg.ID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(tg.ID)), repeaterID, tg.ID)
+			radioSubs.Store(tg.ID, feed.subscribeTG(tg.ID))
 		}
 	}
 	for _, tg := range p.TS2StaticTalkgroups {
 		_, ok := radioSubs.Load(tg.ID)
 		if !ok {
-			sub := newSubscription()
-			radioSubs.Store(tg.ID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(tg.ID)), repeaterID, tg.ID)
+			radioSubs.Store(tg.ID, feed.subscribeTG(tg.ID))
 		}
 	}
 
@@ -159,17 +215,13 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	if p.TS1DynamicTalkgroupID != nil {
 		_, ok := radioSubs.Load(*p.TS1DynamicTalkgroupID)
 		if !ok {
-			sub := newSubscription()
-			radioSubs.Store(*p.TS1DynamicTalkgroupID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(*p.TS1DynamicTalkgroupID)), repeaterID, *p.TS1DynamicTalkgroupID)
+			radioSubs.Store(*p.TS1DynamicTalkgroupID, feed.subscribeTG(*p.TS1DynamicTalkgroupID))
 		}
 	}
 	if p.TS2DynamicTalkgroupID != nil {
 		_, ok := radioSubs.Load(*p.TS2DynamicTalkgroupID)
 		if !ok {
-			sub := newSubscription()
-			radioSubs.Store(*p.TS2DynamicTalkgroupID, sub)
-			go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(*p.TS2DynamicTalkgroupID)), repeaterID, *p.TS2DynamicTalkgroupID)
+			radioSubs.Store(*p.TS2DynamicTalkgroupID, feed.subscribeTG(*p.TS2DynamicTalkgroupID))
 		}
 	}
 }
@@ -204,6 +256,11 @@ func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 		}
 	}
 	h.subscriptionMgr.subscriptions.Delete(repeaterID)
+	if feed, ok := h.subscriptionMgr.feeds.LoadAndDelete(repeaterID); ok {
+		if err := feed.feed.Close(); err != nil {
+			slog.Error("Error closing the feed of a repeater", "repeaterID", repeaterID, "error", err)
+		}
+	}
 	select {
 	case h.left <- struct{}{}:
 	default:
@@ -236,11 +293,13 @@ func (h *Hub) subscribeTalkgroup(ctx context.Context, repeaterID uint, talkgroup
 	if !ok {
 		return
 	}
+	feed, ok := h.subscriptionMgr.feeds.Load(repeaterID)
+	if !ok {
+		return
+	}
 	_, ok = radioSubs.Load(talkgroupID)
 	if !ok {
-		sub := newSubscription()
-		radioSubs.Store(talkgroupID, sub)
-		go h.subscriptionMgr.subscribeTG(sub, h.pubsub.Subscribe(talkgroupTopic(talkgroupID)), repeaterID, talkgroupID)
+		radioSubs.Store(talkgroupID, feed.subscribeTG(talkgroupID))
 	}
 }
 
@@ -449,122 +508,89 @@ func (m *subscriptionManager) forget(repeaterID uint, key uint, sub *subscriptio
 	})
 }
 
-// subscribeRepeater listens for private calls destined to a specific repeater
-// and delivers them to the appropriate server via deliverToServer.
-func (m *subscriptionManager) subscribeRepeater(sub *subscription, feed pubsub.Subscription, repeaterID uint) {
+// feedOf returns the feed of a repeater, and starts it when it has none.
+// The caller holds m.mu.
+func (m *subscriptionManager) feedOf(repeaterID uint) *repeaterFeed {
+	if f, ok := m.feeds.Load(repeaterID); ok {
+		return f
+	}
+	f := &repeaterFeed{feed: m.hub.pubsub.Feed(), subs: map[string]*subscription{}}
+	m.feeds.Store(repeaterID, f)
+	go m.readFeed(f, repeaterID)
+	return f
+}
+
+// readFeed delivers the messages of the feed of a repeater until it
+// closes.
+func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
-	defer func() {
-		err := feed.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub connection", "error", err)
+	for msg := range f.feed.Channel() {
+		sub := f.of(msg.Topic)
+		if sub == nil {
+			continue
 		}
-	}()
-	pubsubChannel := feed.Channel()
-	for {
-		select {
-		case <-sub.done:
-			slog.Debug("Context canceled, stopping subscription to hub:packets:repeater", "repeaterID", repeaterID)
-			m.forget(repeaterID, repeaterID, sub)
-			return
-		case msg := <-pubsubChannel:
-			if msg == nil {
-				return
-			}
-
-			packet, ok := unmarshalRawPacket(msg)
-			if !ok {
-				continue
-			}
-			packet.Repeater = repeaterID
-
-			p, err := m.hub.routingRepeater(repeaterID)
-			if err != nil {
-				slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
-				continue
-			}
-			if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
-				continue
-			}
-			sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-			m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+		packet, ok := unmarshalRawPacket(msg.Payload)
+		if !ok {
+			continue
+		}
+		if sub.tg == 0 {
+			m.deliverPrivate(sub, packet, repeaterID)
+		} else {
+			m.deliverGroup(sub, packet, repeaterID)
 		}
 	}
 }
 
-// subscribeTG listens for group calls on a talkgroup and delivers matching
-// packets to the repeater via the appropriate server.
-func (m *subscriptionManager) subscribeTG(sub *subscription, feed pubsub.Subscription, repeaterID uint, tg uint) {
-	defer func() {
-		err := feed.Close()
-		if err != nil {
-			slog.Error("Error closing pubsub connection", "error", err)
-		}
-	}()
-	if tg == 0 {
+// deliverPrivate delivers a private call to the repeater.
+func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Packet, repeaterID uint) {
+	packet.Repeater = repeaterID
+	p, err := m.hub.routingRepeater(repeaterID)
+	if err != nil {
+		slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
 		return
 	}
-	slog.Debug("Listening for calls on talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
-	pubsubChannel := feed.Channel()
-
-	for {
-		select {
-		case <-sub.done:
-			slog.Debug("Context canceled, stopping subscription to hub:packets:talkgroup", "repeaterID", repeaterID, "talkgroupID", tg)
-			m.forget(repeaterID, tg, sub)
-			return
-		case msg := <-pubsubChannel:
-			if msg == nil {
-				return
-			}
-
-			packet, ok := unmarshalRawPacket(msg)
-			if !ok {
-				continue
-			}
-
-			p, err := m.hub.routingRepeater(repeaterID)
-			if err != nil {
-				slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
-				continue
-			}
-
-			if packet.Repeater == repeaterID {
-				// Simplex repeaters echo their own packets back on the opposite timeslot
-				if !p.SimplexRepeater {
-					continue
-				}
-				packet.Repeater = p.ID
-				packet.Slot = !packet.Slot
-				if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
-					continue
-				}
-
-				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-				m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
-				continue
-			}
-
-			want, slot := p.WantRX(packet)
-			if want {
-				packet.Repeater = p.ID
-				packet.Slot = slot
-				if !wantsVersion(&packet, p.SlotCodec(slot)) {
-					continue
-				}
-
-				sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-				m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
-			} else {
-				// Clean up the subscription map entry and cancel the context
-				// to avoid leaking resources.
-				m.forget(repeaterID, tg, sub)
-				sub.stop()
-				err = feed.Close()
-				if err != nil {
-					slog.Error("Error closing pubsub connection", "error", err)
-				}
-				return
-			}
-		}
+	if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
+		return
 	}
+	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+	m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+}
+
+// deliverGroup delivers a group call of the talkgroup of sub to the
+// repeater, and ends sub when the repeater no longer listens to it.
+func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Packet, repeaterID uint) {
+	p, err := m.hub.routingRepeater(repeaterID)
+	if err != nil {
+		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
+		return
+	}
+
+	if packet.Repeater == repeaterID {
+		// Simplex repeaters echo their own packets back on the opposite timeslot
+		if !p.SimplexRepeater {
+			return
+		}
+		packet.Repeater = p.ID
+		packet.Slot = !packet.Slot
+		if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
+			return
+		}
+		sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+		m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+		return
+	}
+
+	want, slot := p.WantRX(packet)
+	if !want {
+		m.forget(repeaterID, sub.tg, sub)
+		sub.stop()
+		return
+	}
+	packet.Repeater = p.ID
+	packet.Slot = slot
+	if !wantsVersion(&packet, p.SlotCodec(slot)) {
+		return
+	}
+	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+	m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
 }

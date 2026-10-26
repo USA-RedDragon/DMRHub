@@ -95,7 +95,9 @@ Each Last Heard entry has a `kind` and a `sub_kind`. The API and the websocket g
 
 The `data_format` of a text message is `tms`, `ip`, `anytone`, `defined_data`, `hytera` or `unknown`.
 
-The `undeliverable` list has one sentence for each target that could not take a burst of the entry. Each sentence names the target and the reason, for example `IPSC repeater 314926 was busy on that slot.`. The `reason` label of the `dmr_undeliverable_bursts_total` metric keeps the reason codes: `invalid_data_type`, `no_ipsc_form`, `frame_type_3`, `fec_uncorrectable`, `slot_type`, `stream_id_range`, `build_failed`, `encode_failed`, `data_in_voice`, `undecodable` and `slot_busy`.
+The `undeliverable` list has one item for each target that could not take a burst of the entry. Each item has the stored `sentence`, for example `IPSC repeater 314926 was busy on that slot.`, the `target` server (`ipsc`, `mmdvm` or `openbridge`), the `repeater_id`, the repeater `callsign`, and the `reason` code. The reason codes are `invalid_data_type`, `no_ipsc_form`, `frame_type_3`, `fec_uncorrectable`, `slot_type`, `stream_id_range`, `build_failed`, `encode_failed`, `data_in_voice`, `undecodable` and `slot_busy`. The `reason` label of the `dmr_undeliverable_bursts_total` metric uses the same codes.
+
+Each viewer gets only the items they may see. The caller and an admin get every item, and `undeliverable_scope` is `all`. The owner of a repeater gets only the items for their own repeaters, and `undeliverable_scope` is `own`. Anyone else, and a viewer who is not logged in, gets no items, and `undeliverable_scope` is empty. This applies to the REST API and to the websockets.
 
 ## Messages
 

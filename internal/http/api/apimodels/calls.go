@@ -86,13 +86,17 @@ type WSCallResponse struct {
 	Longitude     *float64                `json:"longitude"`
 	PositionError *uint8                  `json:"position_error"`
 	Partial       bool                    `json:"partial"`
-	Undeliverable []string                `json:"undeliverable"`
+	Undeliverable []WSCallUndeliverable   `json:"undeliverable"`
 	Codec         string                  `json:"codec"`
 	Codec2Mode    int                     `json:"codec2_mode"`
 	SentAMBE      int                     `json:"sent_ambe"`
 	SentCodec2    int                     `json:"sent_codec2"`
 	MissedMS      int                     `json:"missed_ms"`
 	Busy          bool                    `json:"busy"`
+
+	// UndeliverableScope tells whose repeaters Undeliverable lists:
+	// UndeliverableScopeAll, UndeliverableScopeOwn, or "" for none.
+	UndeliverableScope string `json:"undeliverable_scope"`
 }
 
 // NewWSCallResponseFromCall converts a models.Call into a WSCallResponse suitable
@@ -136,7 +140,7 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		Longitude:     call.Longitude,
 		PositionError: call.PositionError,
 		Partial:       call.Partial,
-		Undeliverable: call.Undeliverable,
+		Undeliverable: undeliverableEntries(call.Undeliverable),
 		Codec:         call.Codec,
 		Codec2Mode:    call.Codec2Mode,
 		SentAMBE:      call.SentAMBE,
@@ -146,6 +150,9 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 	}
 	if resp.Kind == "" {
 		resp.Kind = models.CallKindVoice
+	}
+	if len(resp.Undeliverable) > 0 {
+		resp.UndeliverableScope = UndeliverableScopeAll
 	}
 	resp.User.ID = call.User.ID
 	resp.User.Callsign = call.User.Callsign
@@ -234,7 +241,9 @@ func Maidenhead(lat, lon float64) string {
 // it carried a message inside the window of window, and the coordinates
 // only of their own GPS rows. A data row is masked by default, so that a
 // response, a retry, or a row published before its message was stored
-// tells nothing either.
+// tells nothing either. Of the repeaters that a call was not sent to, the
+// caller and an admin see all, the owner of a repeater sees their own, and
+// anyone else sees none.
 func NewWSCallResponsesFor(db *gorm.DB, viewer *models.User, window models.SMSWindow, calls []models.Call) ([]WSCallResponse, error) {
 	out := make([]WSCallResponse, 0, len(calls))
 	admin := models.IsAdmin(viewer)
@@ -255,10 +264,13 @@ func NewWSCallResponsesFor(db *gorm.DB, viewer *models.User, window models.SMSWi
 		if !admin && !visible[resp.ID] {
 			resp.MaskData()
 		}
-		if !admin && (viewer == nil || viewer.ID != resp.SourceID) {
+		if !admin && !isCaller(viewer, &resp) {
 			resp.HidePosition()
 		}
 		out = append(out, resp)
+	}
+	if err := showUndeliverable(db, viewer, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

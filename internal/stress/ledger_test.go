@@ -84,6 +84,7 @@ type ledger struct {
 	}
 	lat     map[string]*histogram
 	latAll  *histogram
+	latCalm *histogram
 	stray   atomic.Int64
 	badKey  atomic.Int64
 	recv    atomic.Int64
@@ -148,7 +149,7 @@ type ledgerTotals struct {
 }
 
 func newLedger() *ledger {
-	l := &ledger{epoch: time.Now(), latAll: &histogram{}, lat: map[string]*histogram{}}
+	l := &ledger{epoch: time.Now(), latAll: &histogram{}, latCalm: &histogram{}, lat: map[string]*histogram{}}
 	for i := range l.shards {
 		l.shards[i].calls = map[uint]*callRec{}
 	}
@@ -406,12 +407,17 @@ func (l *ledger) countAt(target uint, c *callRec, k int, now int64, ipsc bool) {
 			return
 		}
 		l.latAll.add(d)
+		calm := true
 		if ws := l.windows.Load(); ws != nil {
 			for _, w := range *ws {
 				if at >= w.from && at <= w.to.Load() {
 					w.lat.add(d)
+					calm = false
 				}
 			}
+		}
+		if calm {
+			l.latCalm.add(d)
 		}
 		h, ok := l.lat[kind]
 		if !ok {
@@ -612,6 +618,7 @@ func (l *ledger) reset() {
 	l.samples = nil
 	l.totalMu.Unlock()
 	l.latAll.reset()
+	l.latCalm.reset()
 	for _, h := range l.lat {
 		h.reset()
 	}

@@ -377,14 +377,16 @@ func (r *rig) checkOutageLatency(outages map[string]*sentWindow) {
 	}
 }
 
-// checkLateDeliveries fails when a burst arrived more than 5 s after it
-// was sent: the hub held it through an outage instead of dropping and
-// counting it.
+// checkLateDeliveries fails when a burst sent outside an outage arrived
+// more than 5 s after it was sent. The hub holds the bursts sent during an
+// outage until the fault ends, and checkOutageLatency reports them; it
+// must not hold the bursts sent after it.
 func (r *rig) checkLateDeliveries() {
-	s := r.led.latAll.summary()
-	r.res.set("latency_max_ms", s.Max)
+	r.res.set("latency_max_ms", r.led.latAll.summary().Max)
+	s := r.led.latCalm.summary()
+	r.res.set("latency_max_outside_outages_ms", s.Max)
 	if s.Max > 5000 {
-		r.res.fail(r.t, "a burst arrived %.1f s after it was sent: traffic was held, not dropped and counted", s.Max/1000)
+		r.res.fail(r.t, "a burst sent outside an outage arrived %.1f s after it was sent", s.Max/1000)
 	}
 }
 

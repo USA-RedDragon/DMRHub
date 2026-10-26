@@ -164,10 +164,10 @@ func (i *Instance) finish(ctx context.Context, mod api.Module, err error) {
 	var exit *sys.ExitError
 	cause := context.Cause(ctx)
 	switch {
+	case i.oom.Load() && (cause == nil || errors.Is(cause, ErrProtocol)):
+		i.err = ErrMemory
 	case cause != nil:
 		i.err = cause
-	case i.oom.Load():
-		i.err = ErrMemory
 	case err == nil, errors.As(err, &exit) && exit.ExitCode() == 0:
 		i.err = ErrExited
 	default:
@@ -339,25 +339,30 @@ func (i *Instance) Stop() {
 // frameWriter is the stdout of a plugin, which holds the messages of the
 // plugin protocol.
 type frameWriter struct {
-	i   *Instance
-	buf []byte
+	i      *Instance
+	buf    []byte
+	broken bool
 }
 
+// Write delivers the messages of the plugin. What breaks the protocol, and
+// all after it, goes to the log of the plugin: TinyGo writes its panics on
+// stdout.
 func (w *frameWriter) Write(p []byte) (int, error) {
+	if w.broken {
+		return w.i.logs.Write(p)
+	}
 	w.buf = append(w.buf, p...)
 	for len(w.buf) >= 4 {
 		n := binary.BigEndian.Uint32(w.buf)
 		if n > plugin.MaxPluginMessage {
-			w.i.kill(ErrProtocol)
-			return 0, ErrProtocol
+			return w.breaks(p)
 		}
 		if uint64(len(w.buf)) < 4+uint64(n) {
 			break
 		}
 		m := &pluginv1.ConnectRequest{}
 		if err := proto.Unmarshal(w.buf[4:4+n], m); err != nil {
-			w.i.kill(ErrProtocol)
-			return 0, ErrProtocol
+			return w.breaks(p)
 		}
 		w.buf = w.buf[4+n:]
 		w.i.deliver(m)
@@ -365,5 +370,13 @@ func (w *frameWriter) Write(p []byte) (int, error) {
 	if len(w.buf) == 0 {
 		w.buf = nil
 	}
+	return len(p), nil
+}
+
+func (w *frameWriter) breaks(p []byte) (int, error) {
+	w.broken = true
+	_, _ = w.i.logs.Write(w.buf)
+	w.buf = nil
+	w.i.kill(ErrProtocol)
 	return len(p), nil
 }

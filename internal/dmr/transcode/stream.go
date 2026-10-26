@@ -24,6 +24,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -132,6 +133,7 @@ type Stream struct {
 	budget  time.Duration
 	attempt time.Duration
 	now     func() time.Time
+	refused *atomic.Uint64
 	pcm     []int16
 	epoch   time.Time
 	pos     layer2.PositionTracker
@@ -374,6 +376,7 @@ func (s *Stream) hold(ctx context.Context) bool {
 			return true
 		}
 	}
+	s.refused.Add(1)
 	return false
 }
 

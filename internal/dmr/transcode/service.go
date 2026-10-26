@@ -101,6 +101,7 @@ type Service struct {
 	servers atomic.Pointer[[]*server]
 	closed  bool
 	wg      sync.WaitGroup
+	refused atomic.Uint64
 }
 
 type timing struct {
@@ -183,6 +184,12 @@ func (s *Service) Enabled() bool {
 	return len(s.list()) > 0
 }
 
+// Refused returns the number of calls since NewService whose first burst
+// found every AMBE server busy, on this replica.
+func (s *Service) Refused() uint64 {
+	return s.refused.Load()
+}
+
 // Status returns the state of each AMBE server, in order.
 func (s *Service) Status(ctx context.Context) []ServerStatus {
 	list := s.list()
@@ -235,7 +242,7 @@ func (s *Service) NewStream(from, to Codec, mode codec2.Mode) (*Stream, error) {
 		return nil, err //nolint:wrapcheck
 	}
 	tm := s.timing.Load()
-	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt, now: tm.now}, nil
+	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt, now: tm.now, refused: &s.refused}, nil
 }
 
 func warmCodec2() {

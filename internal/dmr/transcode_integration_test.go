@@ -665,35 +665,60 @@ func TestDrainingWaitsForTheCopies(t *testing.T) {
 // from both slots of the Codec2 hotspot, with one AMBEserver that takes one
 // call. One call reaches the AMBE hotspot converted; the other is not
 // converted: the AMBE hotspot gets none of it, the Codec2 slot gets it as
-// it came, and its row says every AMBE server was busy.
+// it came, and its row says every AMBE server was busy. The hub routes each
+// stream on its own, so on a loaded machine a database stall can hold the
+// second call back until the first one ended and freed the server. The
+// first call therefore starts the second only once it holds the server,
+// and ends only once the hub refused the second.
 func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
 		n.ambe.SetLastClientOnly(true)
-		stack.Hub.SetAMBEServers([]transcode.ServerConfig{{Addr: n.ambe.Addr(), Calls: 1}})
+		svc := stack.Hub.Transcoder()
+		svc.SetServers([]transcode.ServerConfig{{Addr: n.ambe.Addr(), Calls: 1}})
 		require.Eventually(t, func() bool {
-			st := stack.Hub.Transcoder().Status(t.Context())
+			st := svc.Status(t.Context())
 			return len(st) == 1 && st[0].Answered
 		}, 5*time.Second, 10*time.Millisecond)
-		busy := missedBusy()
+		busy, refused := missedBusy(), svc.Refused()
 
 		group := call{group: true, dst: tcTG, src: tcTalker}
-		s1, s2 := n.nextStream(), n.nextStream()
-		c1 := newC2Call(t, group, false, tcBursts, uint64(s1))
-		c2 := newC2Call(t, group, true, tcBursts, uint64(s2))
-		p1, p2 := c1.tx.packets(s1), c2.tx.packets(s2)
-		for i := range p1 {
-			require.NoError(t, n.c2.SendDMRD(p1[i]))
-			require.NoError(t, n.c2.SendDMRD(p2[i]))
-			time.Sleep(30 * time.Millisecond)
+		conv, rest := n.nextStream(), n.nextStream()
+		c1 := newC2Call(t, group, false, 10*tcBursts, uint64(conv))
+		c2 := newC2Call(t, group, true, tcBursts, uint64(rest))
+		p1, restSent := c1.tx.packets(conv), c2.tx.packets(rest)
+		convSent := make([]models.Packet, 0, len(p1))
+		send := func(p models.Packet, to *[]models.Packet) {
+			require.NoError(t, n.c2.SendDMRD(p))
+			if to != nil {
+				*to = append(*to, p)
+			}
 		}
-		g := n.drain(callWait(p1))
+		j := 0
+		for i := range p1[:len(p1)-1] {
+			send(p1[i], &convSent)
+			if j == 0 && svc.Status(t.Context())[0].CallsNow == 1 {
+				j = 1
+				send(restSent[0], nil)
+			} else if j > 0 && j < len(restSent) {
+				send(restSent[j], nil)
+				j++
+			}
+			time.Sleep(30 * time.Millisecond)
+			if j == len(restSent) && svc.Refused() > refused {
+				break
+			}
+		}
+		require.Equal(t, len(restSent), j, "the first call did not hold the server long enough to send the second")
+		require.Greater(t, svc.Refused(), refused, "the hub did not refuse the second call while the first held the server")
+		send(p1[len(p1)-1], &convSent)
+		g := n.drain(callWait(convSent))
 
 		rows := map[uint]models.Call{}
 		require.Eventually(t, func() bool {
 			var calls []models.Call
-			if stack.DB.Where("stream_id IN ? AND kind = ?", []uint{s1, s2}, models.CallKindVoice).Find(&calls).Error != nil || len(calls) != 2 {
+			if stack.DB.Where("stream_id IN ? AND kind = ?", []uint{conv, rest}, models.CallKindVoice).Find(&calls).Error != nil || len(calls) != 2 {
 				return false
 			}
 			for _, c := range calls {
@@ -704,17 +729,13 @@ func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 			}
 			return true
 		}, tcRowWait, 50*time.Millisecond)
-		conv, rest, restSent := s1, s2, p2
-		if rows[s1].TranscodeBusy {
-			conv, rest, restSent = s2, s1, p1
-		}
-		require.True(t, rows[rest].TranscodeBusy, "neither call found the server busy")
-		require.False(t, rows[conv].TranscodeBusy, "both calls found the server busy")
+		require.True(t, rows[rest].TranscodeBusy, "the second call did not find the server busy")
+		require.False(t, rows[conv].TranscodeBusy, "the first call found the server busy")
 		assert.Zero(t, rows[conv].MissedMS, "the converted call lost audio")
 		assert.Equal(t, 3, rows[conv].SentAMBE, "the AMBE hotspot, IPSC and the AMBE-only peer")
 		assert.Zero(t, rows[rest].SentAMBE)
 
-		assert.Len(t, ofStream(g.ambeListen, conv), len(p1), "the converted call reaches the AMBE hotspot")
+		assert.Len(t, ofStream(g.ambeListen, conv), len(convSent), "the converted call reaches the AMBE hotspot")
 		assert.Empty(t, ofStream(g.ambeListen, rest), "an AMBE hotspot got a call it cannot play")
 		assert.Empty(t, ofStream(g.ob, rest), "the AMBE-only peer got a call it cannot carry")
 		assertSamePackets(t, restSent, ofStream(g.obCodec2, rest), tcOBCodec2, false)

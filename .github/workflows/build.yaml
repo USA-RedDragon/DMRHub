@@ -62,4 +62,7 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - name: Set up TinyGo
+        run: ./hack/install-tinygo.sh
+
       - run: make build

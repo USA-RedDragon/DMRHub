@@ -18,6 +18,7 @@ jobs:
     uses: USA-RedDragon/reusable-actions/.github/workflows/goreleaser.yaml@c5ee15922a0ff4229b0f06a8d0551541b5cabfdc # v2.0.34
     with:
       setup-node: true
+      run-before: ./hack/install-tinygo.sh
       docker-hub-username: jamcswain
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}

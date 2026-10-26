@@ -61,6 +61,9 @@ jobs:
           name: frontend
           path: internal/http/frontend/dist
 
+      - name: Set up TinyGo
+        run: ./hack/install-tinygo.sh
+
       - uses: Wandalen/wretry.action@master
         with:
           command: make build-ci && make test

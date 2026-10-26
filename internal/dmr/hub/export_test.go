@@ -28,11 +28,11 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
 
-// HoldStream keeps the routing worker of stream busy until release is
-// called.
-func (h *Hub) HoldStream(stream uint) (release func()) {
+// HoldSource keeps the routing worker of the source slot of packet from
+// sourceName busy until release is called.
+func (h *Hub) HoldSource(packet models.Packet, sourceName string) (release func()) {
 	ch := make(chan struct{})
-	h.routing.Do(context.Background(), stream, func() { <-ch })
+	h.routing.Do(context.Background(), sourceSlotOf(packet, sourceName), func() { <-ch })
 	return func() { close(ch) }
 }
 

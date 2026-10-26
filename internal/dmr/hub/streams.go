@@ -172,30 +172,56 @@ var (
 	errClaimSlow    = errors.New("the KV store took too long")
 )
 
-// claimWaitKey is a source of a stream of a radio.
-type claimWaitKey struct {
-	claim  claimKey
-	source streamSource
+// sourceSlot is a timeslot of a source of streams: a slot of a repeater,
+// or an OpenBridge peer or a plugin on a slot. The hub keeps the order of
+// the bursts of each across their streams.
+type sourceSlot struct {
+	streamSource
+	slot bool
+}
+
+func sourceSlotOf(packet models.Packet, sourceName string) sourceSlot {
+	return sourceSlot{streamSource: streamSource{server: sourceName, repeater: packet.Repeater}, slot: packet.Slot}
 }
 
 type heldBurst struct {
 	packet models.Packet
 	then   func(bool)
+	ask    *claimAsk
 }
 
-// claimWait holds the bursts of a source of a stream while the hub checks
-// the claim of the stream in the KV store.
+// claimAsk is a check of the claim of a stream in the KV store. owner is
+// set when done is closed.
+type claimAsk struct {
+	done  chan struct{}
+	owner streamSource
+}
+
+// claimWait holds the bursts of a source slot while the hub checks the
+// claims of streams of it in the KV store. The held bursts of a stream
+// share one check.
 type claimWait struct {
 	mu   sync.Mutex
 	held []heldBurst
+	asks map[claimKey]*claimAsk
 	done bool
 }
 
-func (w *claimWait) hold(b heldBurst) bool {
+// hold adds b to the held bursts of src, and starts a check of the claim
+// of its stream when the hub does not know it. It returns false when w no
+// longer holds bursts.
+func (w *claimWait) hold(ctx context.Context, h *Hub, src streamSource, b heldBurst) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.done {
 		return false
+	}
+	claim := claimKey{stream: b.packet.StreamID, src: b.packet.Src}
+	if a, ok := w.asks[claim]; ok {
+		b.ask = a
+	} else if _, known := h.cachedOwner(ctx, b.packet, src); !known {
+		b.ask = h.startAsk(ctx, claim, src)
+		w.asks[claim] = b.ask
 	}
 	w.held = append(w.held, b)
 	return true
@@ -214,46 +240,69 @@ func (w *claimWait) hold(b heldBurst) bool {
 // keeps its stream.
 //
 // The caller never waits on the KV store. The owner of a stream keeps
-// it while its claim is renewed there. For any other source, the bursts of
-// that source of the stream wait for at most streamClaimWait while the
-// claim is checked, and then is called for them on another goroutine, in
-// the order they came. A KV store that is slower than that or fails leaves
-// the decision to this hub alone.
+// it while its claim is renewed there. When the hub has to check the claim
+// of a stream from a source slot, it holds the bursts of that source slot,
+// of any stream, until the checks of the streams of the bursts before
+// them end, each after at most streamClaimWait, and then is called for
+// them on another goroutine, in the order they came, so that the next
+// stream of a source never overtakes the last one. The checks run at
+// once, so a burst waits at most about streamClaimWait. Other source slots
+// do not wait. A KV store that is slower than that or fails leaves the
+// decision to this hub alone.
 func (h *Hub) admitStream(ctx context.Context, packet models.Packet, sourceName string, then func(bool)) {
-	if packet.StreamID == 0 {
-		then(true)
-		return
-	}
-	src := streamSource{server: sourceName, repeater: packet.Repeater}
-	key := claimWaitKey{claim: claimKey{stream: packet.StreamID, src: packet.Src}, source: src}
+	key := sourceSlotOf(packet, sourceName)
+	src := key.streamSource
 	burst := heldBurst{packet: packet, then: then}
 	for {
 		if w, ok := h.claimWaits.Load(key); ok {
-			if w.hold(burst) {
+			if w.hold(ctx, h, src, burst) {
 				return
 			}
 			continue
 		}
-		hold, recheck := h.claimTimes()
-		cached, known := h.streamClaims.Load(key.claim)
-		now := time.Now()
-		if known && now.Sub(cached.checked) < recheck {
-			then(h.admitFrom(packet, src, cached.source))
+		if owner, known := h.cachedOwner(ctx, packet, src); known {
+			then(h.admitFrom(packet, src, owner))
 			return
 		}
-		if known && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold {
-			h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: cached.renewed})
-			go h.askClaim(ctx, key, cached, known)
-			then(true)
-			return
-		}
-		w := &claimWait{held: []heldBurst{burst}}
+		w := &claimWait{asks: map[claimKey]*claimAsk{}}
 		if _, loaded := h.claimWaits.LoadOrStore(key, w); loaded {
 			continue
 		}
-		go h.checkClaim(ctx, key, w, cached, known)
+		w.hold(ctx, h, src, burst)
+		go h.releaseHeld(ctx, key, w)
 		return
 	}
+}
+
+// cachedOwner returns the owner of the stream of packet from src, when the
+// hub knows it without waiting on the KV store.
+func (h *Hub) cachedOwner(ctx context.Context, packet models.Packet, src streamSource) (streamSource, bool) {
+	if packet.StreamID == 0 {
+		return src, true
+	}
+	claim := claimKey{stream: packet.StreamID, src: packet.Src}
+	hold, recheck := h.claimTimes()
+	cached, ok := h.streamClaims.Load(claim)
+	now := time.Now()
+	if ok && now.Sub(cached.checked) < recheck {
+		return cached.source, true
+	}
+	if ok && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold {
+		h.streamClaims.Store(claim, streamClaim{source: src, checked: now, renewed: cached.renewed})
+		go h.askClaim(ctx, claim, src, cached, ok)
+		return src, true
+	}
+	return streamSource{}, false
+}
+
+func (h *Hub) startAsk(ctx context.Context, claim claimKey, src streamSource) *claimAsk {
+	a := &claimAsk{done: make(chan struct{})}
+	cached, known := h.streamClaims.Load(claim)
+	go func() {
+		a.owner = h.askClaim(ctx, claim, src, cached, known)
+		close(a.done)
+	}()
+	return a
 }
 
 type claimResult struct {
@@ -261,8 +310,10 @@ type claimResult struct {
 	err   error
 }
 
-func (h *Hub) checkClaim(ctx context.Context, key claimWaitKey, w *claimWait, cached streamClaim, known bool) {
-	owner := h.askClaim(ctx, key, cached, known)
+// releaseHeld calls then for the held bursts of key in order, each when
+// the check of its stream ends, until none is held.
+func (h *Hub) releaseHeld(ctx context.Context, key sourceSlot, w *claimWait) {
+	src := key.streamSource
 	for {
 		w.mu.Lock()
 		if len(w.held) == 0 {
@@ -274,22 +325,32 @@ func (h *Hub) checkClaim(ctx context.Context, key claimWaitKey, w *claimWait, ca
 		b := w.held[0]
 		w.held = w.held[1:]
 		w.mu.Unlock()
-		b.then(h.admitFrom(b.packet, key.source, owner))
+		var owner streamSource
+		if b.ask != nil {
+			<-b.ask.done
+			owner = b.ask.owner
+		} else if o, known := h.cachedOwner(ctx, b.packet, src); known {
+			owner = o
+		} else {
+			a := h.startAsk(ctx, claimKey{stream: b.packet.StreamID, src: b.packet.Src}, src)
+			<-a.done
+			owner = a.owner
+		}
+		b.then(h.admitFrom(b.packet, src, owner))
 	}
 }
 
-// askClaim takes or renews the claim of key.source in the KV store, waiting
-// for at most streamClaimWait, stores the answer and returns the owner.
-// cached and known are the claim that the hub knew before.
-func (h *Hub) askClaim(ctx context.Context, key claimWaitKey, cached streamClaim, known bool) streamSource {
+// askClaim takes or renews the claim of src in the KV store, waiting for
+// at most streamClaimWait, stores the answer and returns the owner. cached
+// and known are the claim that the hub knew before.
+func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, cached streamClaim, known bool) streamSource {
 	hold, recheck := h.claimTimes()
-	src := key.source
 	owned := known && cached.source == src && !cached.renewed.IsZero() && time.Since(cached.renewed) < hold
 	ctx, cancel := context.WithTimeout(ctx, streamClaimWait)
 	defer cancel()
 	answer := make(chan claimResult, 1)
 	go func() {
-		owner, err := h.sharedClaim(ctx, key.claim, src, owned, hold+recheck)
+		owner, err := h.sharedClaim(ctx, claim, src, owned, hold+recheck)
 		answer <- claimResult{owner: owner, err: err}
 	}()
 	timer := time.NewTimer(streamClaimWait)
@@ -306,16 +367,16 @@ func (h *Hub) askClaim(ctx context.Context, key claimWaitKey, cached streamClaim
 	switch {
 	case r.err == nil && r.owner == src:
 		owner = src
-		h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: now})
+		h.streamClaims.Store(claim, streamClaim{source: src, checked: now, renewed: now})
 	case r.err == nil:
 		owner = r.owner
-		h.streamClaims.Store(key.claim, streamClaim{source: r.owner, checked: now})
+		h.streamClaims.Store(claim, streamClaim{source: r.owner, checked: now})
 	case !known || cached.source == src || now.Sub(cached.checked) > hold+recheck:
 		owner = src
-		h.streamClaims.Store(key.claim, streamClaim{source: src, checked: now, renewed: now})
+		h.streamClaims.Store(claim, streamClaim{source: src, checked: now, renewed: now})
 	}
 	if r.err != nil && !errors.Is(r.err, errNoClaimStore) {
-		slog.Warn("Failed to check the shared claim of a stream", "stream", key.claim.stream, "src", key.claim.src, "error", r.err)
+		slog.Warn("Failed to check the shared claim of a stream", "stream", claim.stream, "src", claim.src, "error", r.err)
 	}
 	return owner
 }

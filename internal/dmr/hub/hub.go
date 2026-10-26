@@ -139,8 +139,8 @@ type Hub struct {
 	done     chan struct{}
 	stopOnce sync.Once
 
-	peerEgress *streamorder.Queue[uint]
-	routing    *streamorder.Queue[uint]
+	peerEgress *streamorder.Queue[sourceSlot]
+	routing    *streamorder.Queue[sourceSlot]
 	links      *streamorder.Queue[uint]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
@@ -160,7 +160,7 @@ type Hub struct {
 	streamTalkgroups      *xsync.Map[streamTarget, time.Time]
 	streamPeers           *xsync.Map[streamTarget, streamPeerSet]
 	streamClaims          *xsync.Map[claimKey, streamClaim]
-	claimWaits            *xsync.Map[claimWaitKey, *claimWait]
+	claimWaits            *xsync.Map[sourceSlot, *claimWait]
 	claimTiming           atomic.Pointer[[2]time.Duration]
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
@@ -206,8 +206,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 		left:          make(chan struct{}, 1),
 	}
-	h.peerEgress = streamorder.New[uint](peerEgressQueueSize, h.done)
-	h.routing = streamorder.New[uint](routingQueueSize, h.done)
+	h.peerEgress = streamorder.New[sourceSlot](peerEgressQueueSize, h.done)
+	h.routing = streamorder.New[sourceSlot](routingQueueSize, h.done)
 	h.links = streamorder.New[uint](routingQueueSize, h.done)
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
@@ -221,7 +221,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamTalkgroups = xsync.NewMap[streamTarget, time.Time]()
 	h.streamPeers = xsync.NewMap[streamTarget, streamPeerSet]()
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
-	h.claimWaits = xsync.NewMap[claimWaitKey, *claimWait]()
+	h.claimWaits = xsync.NewMap[sourceSlot, *claimWait]()
 	h.claimedAt = xsync.NewMap[uint, time.Time]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()

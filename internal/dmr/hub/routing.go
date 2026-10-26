@@ -46,12 +46,13 @@ func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName s
 // RoutePacket is the central routing method for all incoming DMR packets.
 // sourceName identifies the originating server (matches ServerConfig.Name)
 // to prevent echo/loop back to the source. It queues the packet on the
-// worker of its stream and returns at once, so the read loop of a server
-// never waits on routing, and one stream never waits on another. A stream
+// worker of its source slot and returns at once, so the read loop of a
+// server never waits on routing, and one source slot never waits on
+// another. The bursts of a source slot reach each target in the order they
+// came, across the streams of it, so that a transmission that starts right
+// after another on a slot does not overtake the end of that one. A stream
 // that another source is already sending is dropped (see admitStream). The
-// call tracker gets the packet before the worker, in the order it came, so
-// that a transmission that starts right after another on a slot does not
-// overtake the end of that one.
+// call tracker gets the packet before the worker, in the order it came.
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
 	h.RouteStream(ctx, packet, sourceName, nil)
 }
@@ -59,9 +60,9 @@ func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName 
 // RouteStream is RoutePacket that first calls admitted, when it is not nil,
 // with whether the hub takes the stream of packet in. A packet that the
 // rate of its slot drops gets no call. While the hub checks the claim of a
-// stream in the KV store, it holds the packets of that source of the
-// stream, and calls admitted for them later on another goroutine, in the
-// order they came.
+// stream in the KV store, it holds the packets of that source slot, and
+// calls admitted for them later on another goroutine, in the order they
+// came.
 func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName string, admitted func(bool)) {
 	if !h.AdmitSlotRate(packet, sourceName) {
 		return
@@ -74,7 +75,7 @@ func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName 
 			return
 		}
 		h.trackCall(ctx, &packet, sourceName)
-		if !h.routing.Do(ctx, packet.StreamID, func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
+		if !h.routing.Do(ctx, sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
 			slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
 		}
 	})
@@ -118,12 +119,12 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName string) {
 	_, isPlugin := plugins.PluginOfSource(sourceName)
 	if !isPlugin && h.getServerRole(sourceName) != RolePeer {
-		h.publishForPeers(ctx, packet)
+		h.publishForPeers(ctx, packet, sourceName)
 	}
 
 	if packet.GroupCall {
 		if isPlugin {
-			h.publishForPeers(ctx, packet)
+			h.publishForPeers(ctx, packet, sourceName)
 		}
 		h.handleGroupCall(packet)
 		return
@@ -132,7 +133,7 @@ func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName strin
 	// cannot deliver it here, so that a reply to a radio on this hub,
 	// such as the parrot's, does not reach it again through a peer.
 	if !h.handlePrivateCall(ctx, packet) && isPlugin {
-		h.publishForPeers(ctx, packet)
+		h.publishForPeers(ctx, packet, sourceName)
 	}
 }
 

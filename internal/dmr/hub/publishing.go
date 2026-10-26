@@ -53,15 +53,16 @@ func (h *Hub) marshalAndPublish(packet models.Packet, topic string) error {
 	return nil
 }
 
-// publishForPeers queues a packet for egress to all peer servers.
-// Packets of one stream run in order, so peers get them in the order the hub
-// routed them. The context is used to abort the work early during shutdown.
-func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet) {
+// publishForPeers queues a packet from sourceName for egress to all peer
+// servers. The packets of one source slot run in order, so peers get them
+// in the order the hub routed them. The context is used to abort the work
+// early during shutdown.
+func (h *Hub) publishForPeers(ctx context.Context, packet models.Packet, sourceName string) {
 	if !h.hasPeerServers() {
 		return
 	}
 
-	if !h.peerEgress.Do(ctx, packet.StreamID, func() { h.egressToPeers(ctx, packet) }) {
+	if !h.peerEgress.Do(ctx, sourceSlotOf(packet, sourceName), func() { h.egressToPeers(ctx, packet) }) {
 		slog.Warn("Dropping peer egress of a backed-up stream", "stream", packet.StreamID)
 	}
 }

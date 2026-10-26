@@ -58,6 +58,8 @@ type IPSCTranslator struct {
 	rawBlocksAnXPRDrops bool
 	onUndeliverable     func(pkt models.Packet, reason string)
 
+	preambles [2]*preambleRun
+
 	dropLogNext  time.Time
 	dropUnlogged int
 }
@@ -106,6 +108,15 @@ type streamState struct {
 	lc           [9]byte   // the Full LC of the call, for burst E
 	haveLC       bool      // whether lc is set
 	embedded     layer2.EmbeddedLCAssembler
+}
+
+// preambleRun is a call to IPSC whose last packet on a timeslot is a
+// preamble CSBK, with the addresses of that packet and when it came.
+type preambleRun struct {
+	ss       *streamState
+	src, dst uint
+	group    bool
+	at       time.Time
 }
 
 // IPSC burst types (byte 30 of an IPSC user packet).
@@ -185,8 +196,14 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 		return nil
 	}
 
-	// Get or create stream state
+	var b *layer2.Burst
+	if pkt.FrameType == dmrconst.FrameDataSync {
+		b = decodeDataBurst(pkt)
+	}
 	ss, ok := t.streams[uint32(streamID)]
+	if !ok {
+		ss, ok = t.joinPreambles(pkt, b)
+	}
 	if !ok {
 		t.nextCallControl++
 		if t.nextCallControl == 0 {
@@ -199,9 +216,10 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			lastActivity: time.Now(),
 		}
 		t.nextCallSeq++
-		t.streams[uint32(streamID)] = ss
 	}
+	t.streams[uint32(streamID)] = ss
 	ss.lastActivity = time.Now()
+	t.notePreamble(pkt, b, ss)
 
 	dtypeOrVSeq := pkt.DTypeOrVSeq
 
@@ -277,6 +295,49 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 	}
 
 	return results
+}
+
+// joinPreambles returns the call of the preambles on the timeslot of pkt
+// when pkt, with the data burst b, is the CSBK or data header that they
+// announce. MMDVMHost sends each CSBK and data header with a new stream ID,
+// while an XPR 8400 sends the preambles of a data call and the data that
+// follows them as one call. pkt joins when it comes less than preambleGap
+// after the last preamble, from the same source to the same target. The
+// caller holds t.mu.
+func (t *IPSCTranslator) joinPreambles(pkt models.Packet, b *layer2.Burst) (*streamState, bool) {
+	run := t.preambles[slotIndex(pkt.Slot)]
+	if run == nil || b == nil || time.Since(run.at) >= preambleGap {
+		return nil, false
+	}
+	switch b.Data.(type) {
+	case *pdu.CSBK, *pdu.DataHeader:
+	default:
+		return nil, false
+	}
+	if pkt.Src != run.src || pkt.Dst != run.dst || pkt.GroupCall != run.group {
+		return nil, false
+	}
+	return run.ss, true
+}
+
+// notePreamble records the call ss on the timeslot of pkt, with the data
+// burst b, when pkt is a preamble CSBK, and forgets it when the call goes
+// on with another packet. The caller holds t.mu.
+func (t *IPSCTranslator) notePreamble(pkt models.Packet, b *layer2.Burst, ss *streamState) {
+	slot := slotIndex(pkt.Slot)
+	switch {
+	case b != nil && isPreamble(b):
+		t.preambles[slot] = &preambleRun{ss: ss, src: pkt.Src, dst: pkt.Dst, group: pkt.GroupCall, at: time.Now()}
+	case t.preambles[slot] != nil && t.preambles[slot].ss == ss:
+		t.preambles[slot] = nil
+	}
+}
+
+func slotIndex(ts2 bool) int {
+	if ts2 {
+		return 1
+	}
+	return 0
 }
 
 // snapshot returns the state of the call of the stream, and a state that

@@ -45,6 +45,11 @@ const (
 	// sentKeep is how many of the last packets to each repeater the
 	// server remembers.
 	sentKeep = 64
+	// wtHandoverGap is the time between two packets of a handover to a
+	// browser hotspot. Its WebTransport session holds only a few datagrams
+	// that the browser has not read and drops the rest, as quic-go does
+	// past 32.
+	wtHandoverGap = 2 * time.Millisecond
 )
 
 // sentPacket is a packet to a repeater, and at is when it left, or zero
@@ -193,8 +198,9 @@ func (s *Server) awaitHandover(ctx context.Context, id uint) {
 }
 
 // finishHandover sends the repeater id the packets of the handover and
-// then those held for it, in order and each once. Packets that come for
-// the repeater meanwhile are held too and sent after them.
+// then those held for it, in order and each once, wtHandoverGap apart to a
+// browser hotspot. Packets that come for the repeater meanwhile are held
+// too and sent after them.
 func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Packet) {
 	s.movingMu.Lock()
 	m, ok := s.moving[id]
@@ -202,6 +208,11 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 	if !ok {
 		return
 	}
+	var gap time.Duration
+	if ep, ok := s.connected.Load(id); ok && ep.transport == webTransportName {
+		gap = wtHandoverGap
+	}
+	sent := false
 	batch := lost
 	for {
 		for _, p := range batch {
@@ -209,6 +220,10 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 				continue
 			}
 			m.seen[keyOf(p)] = true
+			if sent && gap > 0 && !s.wait(gap) {
+				return
+			}
+			sent = true
 			s.deliver(ctx, id, p)
 		}
 		s.movingMu.Lock()
@@ -219,6 +234,18 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 		}
 		batch, m.held = m.held, nil
 		s.movingMu.Unlock()
+	}
+}
+
+// wait waits for d, and reports false when the server stops first.
+func (s *Server) wait(d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-s.done:
+		return false
+	case <-t.C:
+		return true
 	}
 }
 

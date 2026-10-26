@@ -148,3 +148,32 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 	<-wrote
 	assert.Len(t, got, 1, "the handover misses the packet that left after the move")
 }
+
+// TestAHandoverToABrowserHotspotIsPaced hands over many packets to a
+// browser hotspot that moved here. A WebTransport session holds only a few
+// datagrams that the browser has not read yet and drops the rest, so the
+// packets must not go out at once.
+func TestAHandoverToABrowserHotspotIsPaced(t *testing.T) {
+	t.Parallel()
+	s := queueServer()
+	s.outgoingChan = make(chan outgoing, 64)
+	s.connected.Store(1, endpoint{transport: webTransportName, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+	s.moving = map[uint]*movingRepeater{1: {seen: map[packetKey]bool{}}}
+	const n = 40
+	lost := make([]models.Packet, 0, n)
+	for i := range n {
+		lost = append(lost, models.Packet{StreamID: 7, Seq: uint(i)})
+	}
+	var times []time.Time
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range n {
+			<-s.outgoingChan
+			times = append(times, time.Now())
+		}
+	}()
+	s.finishHandover(context.Background(), 1, lost)
+	<-done
+	assert.GreaterOrEqual(t, times[n-1].Sub(times[0]), (n-1)*wtHandoverGap, "the handover went out at once")
+}

@@ -24,7 +24,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"runtime"
 	"slices"
 	"strings"
@@ -241,31 +240,14 @@ func migrate(db *gorm.DB, config *configPkg.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	// Grab the first (and only) AppSettings record. If that record doesn't exist, create it.
 	var appSettings models.AppSettings
 	result := db.First(&appSettings)
 	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to query app settings: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		slog.Debug("App settings entry doesn't exist, creating it")
-		// The record doesn't exist, so create it
-		appSettings = models.AppSettings{
-			HasSeeded: false,
-		}
-		err = db.Create(&appSettings).Error
-		if err != nil {
+		if err := db.Create(&appSettings).Error; err != nil {
 			return fmt.Errorf("failed to create app settings: %w", err)
-		}
-		slog.Debug("App settings created")
-	}
-
-	// If the record exists and HasSeeded is true, then we don't need to seed the database.
-	if !appSettings.HasSeeded {
-		appSettings.HasSeeded = true
-		err = db.Save(&appSettings).Error
-		if err != nil {
-			return fmt.Errorf("failed to save app settings: %w", err)
 		}
 	}
 

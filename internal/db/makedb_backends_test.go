@@ -149,6 +149,11 @@ func (r *recorder) Trace(_ context.Context, _ time.Time, fc func() (string, int6
 
 var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 
+// newerSchema matches the DDL of the schema changes made after 2026-10-26:
+// the plugin names unique per built-in key, the Setup settings, the
+// generated secrets and the verified email addresses.
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications")
+
 func (r *recorder) ddl() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -217,7 +222,13 @@ func TestMakeDBUpgradesTheSchemaOf20261026(t *testing.T) {
 				t.Logf("DDL: %s", s)
 			}
 			if cfg.Database.Driver != config.DatabaseDriverMySQL {
-				assert.Empty(t, changes, "the schema of 2026-10-26 needs no change")
+				var old []string
+				for _, s := range changes {
+					if !newerSchema.MatchString(s) {
+						old = append(old, s)
+					}
+				}
+				assert.Empty(t, old, "the schema of 2026-10-26 needs no change but the newer ones")
 			}
 
 			if hasUsers {

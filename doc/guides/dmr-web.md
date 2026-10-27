@@ -25,7 +25,7 @@ dmr-web does not ask for your DMRHub password. It sends you to the DMRHub web si
    - Read your text messages, and get new ones as they arrive
    - See your hotspots
    - Add hotspots to your account and see their passwords
-   - Change the static talkgroups of your hotspots
+   - Change the talkgroups of your hotspots
 6. Click **Allow**. DMRHub sends you back to dmr-web.
 
 <!-- screenshot: dmr-web-login.png | the dmr-web start page with the Hub field and the Log in with DMRHub button -->

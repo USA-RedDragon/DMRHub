@@ -49,7 +49,7 @@ Ask for the scopes as a space-separated list in `scope`. Each name must be on th
 | `positions:read`      | See where your radios are, and the radios shared with you, as they report | `GET /api/v1/positions`, `GET /api/v1/positions/:id`, `GET /api/v1/positions/:id/track`, `GET /ws/messages`              |
 | `hotspots:read`       | See your hotspots                                                         | `GET /api/v1/repeaters/my`, `GET /api/v1/repeaters/:id`                                                                  |
 | `hotspots:register`   | Add hotspots to your account and see their passwords                      | `POST /api/v1/repeaters`                                                                                                 |
-| `hotspots:talkgroups` | Change the static talkgroups of your hotspots                             | `POST /api/v1/repeaters/:id/talkgroups`, `GET /api/v1/repeaters/my`, `GET /api/v1/repeaters/:id`                         |
+| `hotspots:talkgroups` | Change the talkgroups of your hotspots                                    | `POST /api/v1/repeaters/:id/talkgroups`, `GET /api/v1/repeaters/my`, `GET /api/v1/repeaters/:id`                         |
 
 Every token, whatever its scopes, may also use these routes:
 

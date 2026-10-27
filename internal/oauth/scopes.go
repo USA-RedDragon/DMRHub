@@ -52,7 +52,7 @@ func scopes() []Scope {
 		{ScopePositionsRead, "positions", "See where your radios are, and the radios shared with you, as they report"},
 		{ScopeHotspotsRead, "hotspots", "See your hotspots"},
 		{ScopeHotspotsRegister, "hotspots", "Add hotspots to your account and see their passwords"},
-		{ScopeHotspotsTalkgroups, "hotspot talkgroups", "Change the static talkgroups of your hotspots"},
+		{ScopeHotspotsTalkgroups, "hotspot talkgroups", "Change the talkgroups of your hotspots"},
 	}
 }
 

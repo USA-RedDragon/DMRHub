@@ -344,6 +344,14 @@ func TestSummaryNamesWhatAnAppCanUse(t *testing.T) {
 	assert.Equal(t, "Hotspot talkgroups", oauth.Summary("hotspots:talkgroups"))
 }
 
+func TestTheHotspotTalkgroupsScopeSaysWhatItChanges(t *testing.T) {
+	t.Parallel()
+	scopes, err := oauth.ParseScopes(oauth.ScopeHotspotsTalkgroups)
+	require.NoError(t, err)
+	require.Len(t, scopes, 1)
+	assert.Equal(t, "Change the talkgroups of your hotspots", scopes[0].Description)
+}
+
 func TestPruneDropsWhatCanNoLongerWork(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

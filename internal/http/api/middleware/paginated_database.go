@@ -31,6 +31,21 @@ import (
 type PaginationConfig struct {
 	DefaultLimit int
 	MaxLimit     int
+	// AllRows are the routes, as "GET /api/v1/talkgroups", that answer
+	// every row for limit=none. Nil is allRowsRoutes. Every other route
+	// takes limit=none as MaxLimit.
+	AllRows map[string]bool
+}
+
+// allRowsRoutes are the lists that the web pages and dmr-web read whole
+// with limit=none: the talkgroups and users to pick from, and the
+// hotspots of the user.
+func allRowsRoutes() map[string]bool {
+	return map[string]bool{
+		"GET /api/v1/talkgroups":   true,
+		"GET /api/v1/users":        true,
+		"GET /api/v1/repeaters/my": true,
+	}
 }
 
 func PaginatedDatabaseProvider(db *gorm.DB, config PaginationConfig) gin.HandlerFunc {
@@ -40,25 +55,29 @@ func PaginatedDatabaseProvider(db *gorm.DB, config PaginationConfig) gin.Handler
 	if config.DefaultLimit == 0 {
 		config.DefaultLimit = 10
 	}
+	if config.AllRows == nil {
+		config.AllRows = allRowsRoutes()
+	}
 	return func(c *gin.Context) {
 		var limit int
 		limitStr, exists := c.GetQuery("limit")
-		if !exists {
+		all := limitStr == "none" && config.AllRows[c.Request.Method+" "+c.FullPath()]
+		switch {
+		case !exists:
 			limit = config.DefaultLimit
-		} else {
-			if limitStr == "none" {
-				limit = math.MaxInt32
-			} else {
-				var err error
-				limit, err = strconv.Atoi(limitStr)
-				if err != nil {
-					// Bad limit, use default
-					limit = config.DefaultLimit
-				}
+		case all:
+			limit = math.MaxInt32
+		case limitStr == "none":
+			limit = config.MaxLimit
+		default:
+			var err error
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil {
+				limit = config.DefaultLimit
 			}
 		}
 
-		if limitStr != "none" && limit > config.MaxLimit {
+		if !all && limit > config.MaxLimit {
 			limit = config.MaxLimit
 		}
 		if limit < 1 {

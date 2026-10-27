@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/JGLTechnologies/gin-rate-limit v1.5.9
 	github.com/USA-RedDragon/configulator/v2 v2.5.0
-	github.com/USA-RedDragon/dmrgo/v2 v2.0.7
+	github.com/USA-RedDragon/dmrgo/v2 v2.0.8
 	github.com/aperturerobotics/protobuf-go-lite v0.19.0
 	github.com/biter777/countries v1.7.5
 	github.com/coder/websocket v1.8.15

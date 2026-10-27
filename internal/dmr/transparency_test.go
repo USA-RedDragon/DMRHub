@@ -23,11 +23,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -796,7 +798,10 @@ func TestTransparencyReplicas(t *testing.T) {
 		defer ipscTarget.Close()
 		require.NoError(t, ipscTarget.Connect(replica.IPSCAddr))
 		require.NoError(t, ipscTarget.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		require.Eventually(t, func() bool {
+			return stack.OpenBridgeServer.IsEgressLeader() != replica.OpenBridgeServer.IsEgressLeader()
+		}, 2*openbridge.EgressLeaseTTL, 10*time.Millisecond, "exactly one replica holds the egress lease")
+		awaitReplicaRoutes(t, src, replicaTargets{target, ipscTarget, ob})
 
 		c := call{group: true, dst: mxTG, src: mxRadio}
 		stream := uint(0xF100)
@@ -817,6 +822,33 @@ func TestTransparencyReplicas(t *testing.T) {
 			}
 		}
 	})
+}
+
+// awaitReplicaRoutes sends calls from src to mxTG, each on the next probe
+// stream, until each of to got one, so that both replicas route the
+// talkgroup to them, and then drains what they got.
+func awaitReplicaRoutes(t *testing.T, src *testutils.MMDVMClient, to replicaTargets) {
+	t.Helper()
+	probes := map[uint]bool{}
+	var mmdvmGot, obGot, ipscGot bool
+	deadline := time.Now().Add(2 * handshakeWait)
+	for stream := uint(0xF000); !mmdvmGot || !obGot || !ipscGot; stream++ {
+		require.True(t, time.Now().Before(deadline), "the replicas did not route the talkgroup: MMDVM %v, OpenBridge %v, IPSC %v", mmdvmGot, obGot, ipscGot)
+		probes[stream] = true
+		require.NoError(t, src.SendDMRD(makeGroupVoicePacket(mxRadio, mxTG, stream, false)))
+		require.NoError(t, src.SendDMRD(makeGroupVoiceTermPacket(mxRadio, mxTG, stream, false)))
+		got := drainAll(300*time.Millisecond, to.mmdvm, to.ob)
+		mmdvmGot = mmdvmGot || slices.ContainsFunc(got[0], func(p models.Packet) bool { return probes[p.StreamID] })
+		obGot = obGot || slices.ContainsFunc(got[1], func(p models.Packet) bool { return probes[p.StreamID] })
+		ipscGot = ipscGot || slices.ContainsFunc(to.ipsc.Drain(100*time.Millisecond), func(b testutils.IPSCBurst) bool { return b.Dst == mxTG })
+	}
+	drained := make(chan struct{})
+	go func() {
+		to.ipsc.Drain(time.Second)
+		close(drained)
+	}()
+	drainQuiet(time.Second, to.mmdvm, to.ob)
+	<-drained
 }
 
 type replicaTargets struct {

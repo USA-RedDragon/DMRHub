@@ -185,6 +185,7 @@ func (l *LiveStack) startReplica(t *testing.T, h *hub.Hub, cfg *config.Config, o
 	}
 	live := liveconfig.New(liveconfig.Options{Base: cfg, Locks: opts.Locks, DB: l.DB})
 	require.NoError(t, live.Boot(context.Background()))
+	h.SetConfig(live.Current())
 
 	m := manager.New(manager.Deps{Hub: h, DB: l.DB, PubSub: l.PubSub, KV: l.KV, Version: "test", Commit: "test"})
 	require.NoError(t, m.Start(context.Background(), live.Current().Get()))

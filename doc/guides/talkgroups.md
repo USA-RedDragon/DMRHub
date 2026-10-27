@@ -3,7 +3,7 @@
 Your hotspot or repeater hears a talkgroup only when it carries that talkgroup on a timeslot. A timeslot carries talkgroups in two ways:
 
 - **Static talkgroups** stay linked until you change them. A timeslot can have many static talkgroups.
-- **One dynamic talkgroup** per timeslot. It links when someone transmits on a talkgroup through your hotspot or repeater, and it stays linked until someone transmits on another talkgroup on that timeslot or unlinks it.
+- **One dynamic talkgroup** per timeslot. It links when someone transmits on a talkgroup through your hotspot or repeater, and it stays linked until someone transmits on another talkgroup on that timeslot, unlinks it, or no one transmits on it through your hotspot or repeater for 15 minutes. The admin can change the time, or turn dynamic links off. See [Routing settings](../admin/routing.md).
 
 To see the talkgroups of the network, go to **Talkgroups** (`<siteurl>/talkgroups`). Admins make the talkgroups. Click a talkgroup to see its details, its nets and its last calls.
 
@@ -57,7 +57,7 @@ The default dial of a timeslot links a talkgroup as the dynamic talkgroup of tha
 
 The hotspot sends its options each time it connects, so DMRHub links the default dial again at each login.
 
-DMRHub has no timers, voice announcements or single mode, so it ignores the other FreeDMR and DMR+ options, such as `TIMER`, `RelinkTime`, `VOICE` and `SINGLE`.
+DMRHub has no per-hotspot timers, voice announcements or single mode, so it ignores the other FreeDMR and DMR+ options, such as `TIMER`, `RelinkTime`, `VOICE` and `SINGLE`. The timeout of dynamic talkgroups is one setting for the whole network.
 
 ## See what is linked
 

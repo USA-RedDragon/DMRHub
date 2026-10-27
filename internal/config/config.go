@@ -128,7 +128,15 @@ type DMR struct {
 	Transcoding              Transcoding  `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
 	PrivateCalls             PrivateCalls `json:"private-calls" yaml:"private-calls" name:"private-calls" description:"How DMRHub finds the radio that a private call, SMS or data message goes to"`
 	IPLists                  IPLists      `json:"ip-lists" yaml:"ip-lists" name:"ip-lists" description:"Source addresses that DMRHub refuses or alone accepts, before any other work on a packet"`
+	Routing                  Routing      `json:"routing" name:"routing" description:"How DMRHub links talkgroups and which transmissions it takes"`
 	DrainTimeout             int          `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
+}
+
+// Routing holds how DMRHub links talkgroups to the timeslots of repeaters
+// and which transmissions it takes.
+type Routing struct {
+	DisableDynamicLinks bool          `json:"disable-dynamic-links" yaml:"disable-dynamic-links" name:"disable-dynamic-links" description:"Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup" default:"false"`
+	DynamicTimeout      time.Duration `json:"dynamic-timeout" yaml:"dynamic-timeout" name:"dynamic-timeout" description:"Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it" default:"15m"`
 }
 
 // PrivateCalls holds how DMRHub finds the radio that private traffic goes

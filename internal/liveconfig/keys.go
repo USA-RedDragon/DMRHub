@@ -73,6 +73,7 @@ func setupPaths() []string {
 		"dmr.private-calls",
 		"dmr.drain-timeout",
 		"dmr.ip-lists",
+		"dmr.routing",
 	}
 }
 

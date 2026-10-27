@@ -259,6 +259,12 @@ dmr:
       # block: []
       # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
       # allow: []
+  # How DMRHub links talkgroups and which transmissions it takes
+  routing:
+    # Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup
+    disable-dynamic-links: false
+    # Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it
+    dynamic-timeout: "15m"
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once
   drain-timeout: 25
 # SMTP configuration for sending emails

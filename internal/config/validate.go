@@ -647,6 +647,23 @@ func (p PrivateCalls) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// ErrInvalidDynamicTimeout indicates a negative dynamic talkgroup timeout.
+var ErrInvalidDynamicTimeout = errors.New("the dynamic talkgroup timeout must be 0 to never unlink or a positive time, such as 15m")
+
+const fieldDynamicTimeout = "dmr.routing.dynamic-timeout"
+
+// Validate validates the routing configuration.
+func (r Routing) Validate() error {
+	return firstValidationError(r.ValidateWithFields())
+}
+
+func (r Routing) ValidateWithFields() (errs []ValidationError) {
+	if r.DynamicTimeout < 0 {
+		errs = append(errs, ValidationError{Field: fieldDynamicTimeout, Err: ErrInvalidDynamicTimeout})
+	}
+	return
+}
+
 // MaxRetentionDays is the longest retention period, in days.
 const MaxRetentionDays = 36500
 
@@ -700,6 +717,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	errs = append(errs, d.Transcoding.ValidateWithFields()...)
 	errs = append(errs, d.PrivateCalls.ValidateWithFields()...)
 	errs = append(errs, d.IPLists.ValidateWithFields()...)
+	errs = append(errs, d.Routing.ValidateWithFields()...)
 
 	if d.DrainTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})

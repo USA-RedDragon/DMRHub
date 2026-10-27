@@ -26,5 +26,5 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	testutils.Main(m)
+	testutils.MainParallel(m, 8)
 }

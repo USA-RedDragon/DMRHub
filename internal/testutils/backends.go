@@ -23,8 +23,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -69,7 +71,25 @@ func SQLiteMemoryBackend() Backend {
 // an earlier test lets them go, cleared of its data. It removes the containers when
 // the tests end. Without Main, each test starts containers of its own.
 func Main(m *testing.M) {
+	MainParallel(m, 0)
+}
+
+// MainParallel is Main for a package whose tests spend their time waiting
+// on the network and on timers rather than on the CPU: unless
+// -test.parallel is given, it runs up to perCPU parallel tests per CPU at
+// once. A perCPU of 0 keeps the default of go test, one per CPU.
+func MainParallel(m *testing.M, perCPU int) {
 	sharing.Store(true)
+	if perCPU > 0 {
+		if !flag.Parsed() {
+			flag.Parse()
+		}
+		given := false
+		flag.Visit(func(f *flag.Flag) { given = given || f.Name == "test.parallel" })
+		if !given {
+			_ = flag.Set("test.parallel", strconv.Itoa(perCPU*runtime.GOMAXPROCS(0)))
+		}
+	}
 	run := func() int {
 		go warm()
 		return m.Run()

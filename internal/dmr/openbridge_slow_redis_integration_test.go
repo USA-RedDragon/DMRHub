@@ -38,9 +38,10 @@ import (
 
 const slowRedisCall = 500 * time.Millisecond
 
-// slowRedis makes the KV calls on the keys with prefix and the publishes
-// to topics take slowRedisCall each while on, or wait for release while
-// held, ignoring their contexts, as a hung Redis does.
+// slowRedis makes the KV calls on the keys with prefix, unless it is
+// empty, and the publishes to topics take slowRedisCall each while on, or
+// wait for release while held, ignoring their contexts, as a hung Redis
+// does.
 type slowRedis struct {
 	on     atomic.Bool
 	prefix string
@@ -87,33 +88,37 @@ func (s *slowRedis) release() {
 	}
 }
 
+func (s *slowRedis) holdsKey(key string) bool {
+	return s.prefix != "" && strings.HasPrefix(key, s.prefix)
+}
+
 type slowRedisKV struct {
 	kv.KV
 	s *slowRedis
 }
 
 func (k slowRedisKV) Has(ctx context.Context, key string) (bool, error) {
-	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	k.s.wait(k.s.holdsKey(key))
 	return k.KV.Has(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Get(ctx context.Context, key string) ([]byte, error) {
-	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	k.s.wait(k.s.holdsKey(key))
 	return k.KV.Get(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Set(ctx context.Context, key string, value []byte) error {
-	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	k.s.wait(k.s.holdsKey(key))
 	return k.KV.Set(ctx, key, value) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
-	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	k.s.wait(k.s.holdsKey(key))
 	return k.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Delete(ctx context.Context, key string) error {
-	k.s.wait(strings.HasPrefix(key, k.s.prefix))
+	k.s.wait(k.s.holdsKey(key))
 	return k.KV.Delete(ctx, key) //nolint:wrapcheck
 }
 
@@ -149,7 +154,7 @@ func forAllSlowRedisBackends(t *testing.T, prefix string, topics []string, f fun
 // right after another must stop its stream at once.
 func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 	t.Parallel()
-	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
+	forAllSlowRedisBackends(t, "", []string{"hub:events:peers", "openbridge:egress", "openbridge:quench"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
@@ -226,7 +231,7 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 // repeaters on both replicas while Redis holds a hand-off of the call.
 func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 	t.Parallel()
-	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
+	forAllSlowRedisBackends(t, "", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
 		r := startReplicaOB(t, stack)
 		_, _, otherAddr := r.leader(t)
 		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)

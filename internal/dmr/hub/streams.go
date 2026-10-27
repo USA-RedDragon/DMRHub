@@ -352,19 +352,17 @@ func (h *Hub) releaseHeld(ctx context.Context, key sourceSlot, w *claimWait) {
 func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, cached streamClaim, known bool) streamSource {
 	hold, recheck := h.claimTimes()
 	owned := known && cached.source == src && !cached.renewed.IsZero() && time.Since(cached.renewed) < hold
-	ctx, cancel := context.WithTimeout(ctx, streamClaimWait)
-	defer cancel()
+	ctx, waited, stop := h.claimWaitFor(ctx)
+	defer stop()
 	answer := make(chan claimResult, 1)
 	go func() {
 		owner, err := h.sharedClaim(ctx, claim, src, owned, hold+recheck)
 		answer <- claimResult{owner: owner, err: err}
 	}()
-	timer := time.NewTimer(streamClaimWait)
-	defer timer.Stop()
 	var r claimResult
 	select {
 	case r = <-answer:
-	case <-timer.C:
+	case <-waited:
 		r.err = errClaimSlow
 	}
 
@@ -430,6 +428,22 @@ func (h *Hub) sharedClaim(ctx context.Context, key claimKey, src streamSource, o
 		return owner, nil
 	}
 	return streamSource{}, errors.New("claim stream: the claim expired while it was read")
+}
+
+// claimWaitFor returns ctx for a check of a claim in the KV store, the
+// channel that ends the wait for its answer after streamClaimWait, and the
+// func that frees both.
+func (h *Hub) claimWaitFor(ctx context.Context) (context.Context, <-chan time.Time, func()) {
+	if end := h.claimWaitEnd.Load(); end != nil {
+		ctx, cancel := context.WithCancel(ctx)
+		return ctx, *end, cancel
+	}
+	ctx, cancel := context.WithTimeout(ctx, streamClaimWait)
+	timer := time.NewTimer(streamClaimWait)
+	return ctx, timer.C, func() {
+		timer.Stop()
+		cancel()
+	}
 }
 
 func (h *Hub) claimTimes() (hold, recheck time.Duration) {

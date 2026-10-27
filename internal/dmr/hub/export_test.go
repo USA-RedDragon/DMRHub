@@ -22,6 +22,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -56,6 +57,16 @@ func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName 
 // SetStreamClaimTiming replaces streamClaimHold and streamClaimRecheck.
 func (h *Hub) SetStreamClaimTiming(hold, recheck time.Duration) {
 	h.claimTiming.Store(&[2]time.Duration{hold, recheck})
+}
+
+// HoldStreamClaimWaits makes the waits of the hub for the answers of the
+// KV store for the claims of streams end only when end is called, instead
+// of after streamClaimWait.
+func (h *Hub) HoldStreamClaimWaits() (end func()) {
+	ch := make(chan time.Time)
+	h.claimWaitEnd.Store(&ch)
+	var once sync.Once
+	return func() { once.Do(func() { close(ch) }) }
 }
 
 // StreamClaimHold is streamClaimHold.

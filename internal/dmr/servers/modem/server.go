@@ -40,6 +40,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/mmdvm"
 	"gorm.io/gorm"
@@ -82,6 +83,11 @@ type Options struct {
 	Reopen time.Duration
 	// Retry is the wait between opens that fail.
 	Retry time.Duration
+	// KV, when set with Replica, is where the server stores its Status
+	// for the other replicas.
+	KV kv.KV
+	// Replica is the ID of this replica.
+	Replica string
 }
 
 // DefaultOptions are the options of MMDVMHost: 2 s after the port opens,
@@ -111,6 +117,9 @@ type Server struct {
 	done       chan struct{}
 	stopOnce   sync.Once
 	wg         sync.WaitGroup
+
+	stmu   sync.Mutex
+	status Status
 }
 
 // NewServer returns the server of the modem of cfg. It opens nothing until
@@ -126,7 +135,7 @@ func NewServerWithOptions(cfg *config.Config, h *hub.Hub, db *gorm.DB, version s
 	}
 	m := cfg.DMR.Modem
 	return &Server{m: m, id: uint32(min(m.RepeaterID, maxUint32)), hub: h, db: db, version: version, opts: opts, //nolint:gosec // clamped
-		epoch: time.Now(), fromHub: make(chan models.Packet, hubQueue), done: make(chan struct{})}
+		epoch: time.Now(), fromHub: make(chan models.Packet, hubQueue), done: make(chan struct{}), status: Status{Port: m.Port, Baud: m.Baud}}
 }
 
 // Addr returns the serial device of the modem.
@@ -158,14 +167,14 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.forward()
 	}
 	s.wg.Add(1)
-	go s.run()
+	go s.run() //nolint:contextcheck // the server outlives Start; its state writes use the context of the server
 	slog.Info("Modem server started", "port", s.m.Port, "repeaterID", s.id, "duplex", s.m.Duplex)
 	return nil
 }
 
 // Stop turns the transmitter off, closes the port and unregisters the
 // server. A modem stays on its host, so a graceful handoff stops it too.
-func (s *Server) Stop(context.Context) error {
+func (s *Server) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		close(s.done)
 		s.wg.Wait()
@@ -176,6 +185,7 @@ func (s *Server) Stop(context.Context) error {
 			s.hub.UnregisterServer(models.RepeaterTypeModem)
 		}
 		s.jobs.Wait()
+		s.dropStatus(ctx)
 	})
 	return nil
 }
@@ -256,13 +266,16 @@ func (s *Server) run() {
 		if err != nil {
 			if !errors.Is(err, errStopped) {
 				slog.Error("Could not open the modem", "port", s.m.Port, "error", err)
+				s.setDown(err)
 			}
 			wait = s.opts.Retry
 			continue
 		}
-		if err := s.serve(l, v); err != nil {
+		err = s.serve(l, v)
+		if err != nil {
 			slog.Error("Modem link down", "port", s.m.Port, "error", err)
 		}
+		s.setDown(err)
 		wait = s.opts.Reopen
 	}
 }
@@ -493,6 +506,7 @@ func (s *Server) serve(l *link, v mmdvm.Version) error {
 		return err
 	}
 	s.linked.Store(true)
+	s.setLinked(v)
 	s.activate()
 	defer func() {
 		s.linked.Store(false)
@@ -530,6 +544,7 @@ func (s *Server) serve(l *link, v mmdvm.Version) error {
 		if now >= ping {
 			ping = now + pingWrite
 			s.writePing()
+			s.storeStatus()
 		}
 		timer.Reset(max(r.deadline()-s.now(), 0))
 	}

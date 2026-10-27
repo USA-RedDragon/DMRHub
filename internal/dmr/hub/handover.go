@@ -153,6 +153,7 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 			if !ok || instance == h.instanceID {
 				continue
 			}
+			h.claimedElsewhere.Store(id, since)
 			h.handOff(context.Background(), id, since)
 		}
 	}

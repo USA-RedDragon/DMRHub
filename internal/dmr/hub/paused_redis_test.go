@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/stretchr/testify/assert"
@@ -163,5 +165,45 @@ func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
 			assert.Fail(t, "the other replicas got the announcement twice", "%s", msg)
 		case <-time.After(300 * time.Millisecond):
 		}
+	}
+}
+
+// TestOwnsRepeaterWaitsOnAPausedRedisNoLongerThanALookup asks whether the
+// hub owns a repeater while each read of the owner of a repeater waits a
+// second and fails, as a paused Redis makes it. The MMDVM server asks it
+// before it sends to a repeater whose session it resumes, so it must wait
+// no longer than a database lookup does, and then answer from what this
+// hub knows: it owns a repeater that it claimed, unless another replica
+// claimed it after that.
+func TestOwnsRepeaterWaitsOnAPausedRedisNoLongerThanALookup(t *testing.T) {
+	t.Parallel()
+	paused := &pausedKV{prefix: "dmrhub:peer_owner:"}
+	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+		paused.KV = k
+		return paused
+	})
+	require.NoError(t, h.SetInstanceID("replica-a"))
+	seedUser(t, database, 1000001, "OWNER")
+	seedRepeater(t, database, 100003, 1000001)
+	seedRepeater(t, database, 100004, 1000001)
+	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	h.ActivateRepeater(context.Background(), 100003)
+	h.ActivateRepeater(context.Background(), 100004)
+	time.Sleep(100 * time.Millisecond)
+	require.True(t, h.OwnsRepeater(context.Background(), 100003))
+	require.True(t, h.OwnsRepeater(context.Background(), 100004))
+
+	require.NoError(t, ps.Publish("hub:claimed", fmt.Appendf(nil, "100004 replica-b %d", time.Now().UnixNano())))
+	time.Sleep(100 * time.Millisecond)
+
+	paused.paused.Store(true)
+	defer paused.paused.Store(false)
+	for id, want := range map[uint]bool{100003: true, 100004: false} {
+		start := time.Now()
+		owns := h.OwnsRepeater(context.Background(), id)
+		waited := time.Since(start)
+		t.Logf("OwnsRepeater(%d) = %v after %v with %v per KV call", id, owns, waited, pausedKVCall)
+		assert.Less(t, waited, lookup.Wait+200*time.Millisecond, "OwnsRepeater waited on a paused KV store")
+		assert.Equal(t, want, owns, "OwnsRepeater(%d) with a paused KV store", id)
 	}
 }

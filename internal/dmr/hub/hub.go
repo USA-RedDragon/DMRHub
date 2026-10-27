@@ -210,6 +210,10 @@ type Hub struct {
 	// claimedAt is the time of the last claim of each repeater that this
 	// replica made, set before the repeater is active here.
 	claimedAt *xsync.Map[uint, time.Time]
+	// claimedElsewhere is the time of the last claim of each repeater
+	// that another replica made, as this replica heard it.
+	claimedElsewhere *xsync.Map[uint, time.Time]
+	owners           *lookup.Flights[uint, []byte]
 }
 
 // NewHub creates a new Hub.
@@ -248,6 +252,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.claimWaits = xsync.NewMap[sourceSlot, *claimWait]()
 	h.claimedAt = xsync.NewMap[uint, time.Time]()
+	h.claimedElsewhere = xsync.NewMap[uint, time.Time]()
+	h.owners = lookup.NewFlights[uint, []byte]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.transcoder = transcode.NewService(kvStore)
@@ -476,24 +482,28 @@ func (h *Hub) writeOwner(ctx context.Context, repeaterID uint) bool {
 	return true
 }
 
-// isLocalPeerOwner returns true if this instance currently owns the given
-// repeater according to the shared KV store. Returns true if the KV read
-// fails (fail-open — direct delivery is the safe default for a single instance).
-func (h *Hub) isLocalPeerOwner(ctx context.Context, repeaterID uint) bool {
-	if h.instanceID == "" {
-		return true // no instance tracking → always local
-	}
-	val, err := h.kv.Get(ctx, ownerKey(repeaterID))
-	if err != nil {
-		return true // fail-open: assume local ownership
-	}
-	return string(val) == h.instanceID
-}
-
 // OwnsRepeater reports whether this hub owns the repeater, as
-// ActivateRepeater claimed it in the KV store.
+// ActivateRepeater claimed it in the KV store. Without an instance ID, as
+// a lone instance, it owns every repeater. It waits for the KV store at
+// most lookup.Wait, as for the database. When the KV store does not
+// answer in that time, or fails, it answers from the claims that this hub
+// heard: it owns the repeater unless another replica claimed it after the
+// last claim of this one.
 func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
-	return h.isLocalPeerOwner(ctx, repeaterID)
+	if h.instanceID == "" {
+		return true
+	}
+	read := context.WithoutCancel(ctx)
+	val, err := h.owners.Do(repeaterID, func() ([]byte, error) { return h.kv.Get(read, ownerKey(repeaterID)) }) //nolint:wrapcheck
+	if err == nil {
+		return string(val) == h.instanceID
+	}
+	other, ok := h.claimedElsewhere.Load(repeaterID)
+	if !ok {
+		return true
+	}
+	mine, ok := h.claimedAt.Load(repeaterID)
+	return ok && other.Before(mine)
 }
 
 // ActivateRepeater sets up pubsub subscriptions for a repeater.

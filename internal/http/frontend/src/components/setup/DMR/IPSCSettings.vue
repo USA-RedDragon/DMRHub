@@ -30,23 +30,25 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="ipsc-enabled"
+            id="ipsc-enabled" v-setting="settingLocked('dmr.ipsc.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="ipsc-enabled">Enabled</label>
+          <label for="ipsc-enabled">Enabled <SettingBadges path="dmr.ipsc.enabled" /></label>
         </div>
+        <SettingNote path="dmr.ipsc.enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="ipsc-bind" v-if="enabled">Bind Address</label>
-        <ShadInput id="ipsc-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="ipsc-bind" v-if="enabled">Bind Address <SettingBadges path="dmr.ipsc.bind" /></label>
+        <ShadInput id="ipsc-bind" v-setting="settingLocked('dmr.ipsc.bind')" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the IPSC server to
         </p>
+        <SettingNote v-if="enabled" path="dmr.ipsc.bind" />
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="ipsc-port" v-if="enabled">Port</label>
+        <label class="field-label" for="ipsc-port" v-if="enabled">Port <SettingBadges path="dmr.ipsc.port" /></label>
         <ShadInput
-          id="ipsc-port"
+          id="ipsc-port" v-setting="settingLocked('dmr.ipsc.port')"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -55,11 +57,12 @@
         <p v-if="enabled">
           The port number to bind the IPSC server to
         </p>
+        <SettingNote v-if="enabled" path="dmr.ipsc.port" />
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="ipsc-network-id" v-if="enabled">Network ID</label>
+        <label class="field-label" for="ipsc-network-id" v-if="enabled">Network ID <SettingBadges path="dmr.ipsc.network-id" /></label>
         <ShadInput
-          id="ipsc-network-id"
+          id="ipsc-network-id" v-setting="settingLocked('dmr.ipsc.network-id')"
           type="number"
           v-model="networkId"
           v-if="enabled"
@@ -68,6 +71,7 @@
         <p v-if="enabled">
           DMR peer ID for this IPSC master server (e.g., your repeater's radio ID)
         </p>
+        <SettingNote v-if="enabled" path="dmr.ipsc.network-id" />
         <span v-if="enabled && errors && errors['network-id']" class="p-error">{{ errors['network-id'] }}</span>
       </CardContent>
     </Card>
@@ -82,8 +86,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

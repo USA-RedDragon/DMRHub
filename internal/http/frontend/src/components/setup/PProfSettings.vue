@@ -26,6 +26,7 @@
         <CardTitle>PProf Settings</CardTitle>
       </CardHeader>
       <CardContent>
+        <SectionNote prefix="pprof" />
         <p>PProf is a tool for analyzing the performance of Go applications. This setting enables a separate
           HTTP server that serves the pprof endpoints. It is recommended to only enable this in development or
           debugging scenarios as it can expose sensitive information about the application.
@@ -33,23 +34,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="pprof-enabled"
+            id="pprof-enabled" v-setting="settingLocked('pprof.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="pprof-enabled">Enabled</label>
+          <label for="pprof-enabled">Enabled <SettingBadges path="pprof.enabled" /></label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="pprof-bind" v-if="enabled">Bind</label>
-        <ShadInput id="pprof-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="pprof-bind" v-if="enabled">Bind <SettingBadges path="pprof.bind" /></label>
+        <ShadInput id="pprof-bind" v-setting="settingLocked('pprof.bind')" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the pprof server to
         </p>
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="pprof-port" v-if="enabled">Port</label>
+        <label class="field-label" for="pprof-port" v-if="enabled">Port <SettingBadges path="pprof.port" /></label>
         <ShadInput
-          id="pprof-port"
+          id="pprof-port" v-setting="settingLocked('pprof.port')"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -60,10 +61,10 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="pprof-trusted-proxies" v-if="enabled">Trusted Proxies</label>
+        <label class="field-label" for="pprof-trusted-proxies" v-if="enabled">Trusted Proxies <SettingBadges path="pprof.trusted-proxies" /></label>
         <textarea
           rows="5"
-          id="pprof-trusted-proxies"
+          id="pprof-trusted-proxies" v-setting="settingLocked('pprof.trusted-proxies')"
           v-model="trustedProxies"
           v-if="enabled"
           class="ui-textarea"
@@ -89,9 +90,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import SectionNote from '@/components/setup/SectionNote.vue';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
+    SectionNote,
     Card,
     CardContent,
     CardHeader,

@@ -33,19 +33,21 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="cors-enabled"
+            id="cors-enabled" v-setting="settingLocked('http.cors.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="cors-enabled">Enabled</label>
+          <label for="cors-enabled">Enabled <SettingBadges path="http.cors.enabled" /></label>
         </div>
+        <SettingNote path="http.cors.enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="cors-hosts" v-if="enabled">Hosts</label>
-        <textarea rows="5" id="cors-hosts" v-model="hosts" v-if="enabled" class="ui-textarea" :class="{ 'ui-textarea-invalid': (errors && errors.hosts) || false }" />
+        <label class="field-label" for="cors-hosts" v-if="enabled">Hosts <SettingBadges path="http.cors.extra-hosts" /></label>
+        <textarea rows="5" id="cors-hosts" v-setting="settingLocked('http.cors.extra-hosts')" v-model="hosts" v-if="enabled" class="ui-textarea" :class="{ 'ui-textarea-invalid': (errors && errors.hosts) || false }" />
         <p v-if="enabled">
           A list of hosts that are allowed to access the DMRHub API.
           Use <code>*</code> to allow all hosts (not recommended for production). One per line.
         </p>
+        <SettingNote v-if="enabled" path="http.cors.extra-hosts" />
         <span v-if="enabled && errors && errors.hosts" class="p-error">{{ errors.hosts }}</span>
       </CardContent>
     </Card>
@@ -59,8 +61,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

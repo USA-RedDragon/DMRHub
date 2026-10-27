@@ -26,28 +26,29 @@
         <CardTitle>Redis Settings</CardTitle>
       </CardHeader>
       <CardContent>
+        <SectionNote prefix="redis" />
         <p>Redis should be used in cases where DMRHub needs to be scaled horizontally.
           Without Redis, DMRHub can only run on a single instance.</p>
         <br />
         <div class="checkbox-row">
           <input
-            id="redis-enabled"
+            id="redis-enabled" v-setting="settingLocked('redis.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="redis-enabled">Enabled</label>
+          <label for="redis-enabled">Enabled <SettingBadges path="redis.enabled" /></label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="redis-host" v-if="enabled">Host</label>
-        <ShadInput id="redis-host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
+        <label class="field-label" for="redis-host" v-if="enabled">Host <SettingBadges path="redis.host" /></label>
+        <ShadInput id="redis-host" v-setting="settingLocked('redis.host')" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">
           The hostname or IP address of the Redis server to connect to.
         </p>
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="redis-port" v-if="enabled">Port</label>
+        <label class="field-label" for="redis-port" v-if="enabled">Port <SettingBadges path="redis.port" /></label>
         <ShadInput
-          id="redis-port"
+          id="redis-port" v-setting="settingLocked('redis.port')"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -58,9 +59,9 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="redis-password" v-if="enabled">Password</label>
+        <label class="field-label" for="redis-password" v-if="enabled">Password <SettingBadges path="redis.password" /></label>
         <ShadInput
-          id="redis-password"
+          id="redis-password" v-setting="settingLocked('redis.password')"
           type="password"
           v-model="password"
           v-if="enabled"
@@ -83,9 +84,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import SectionNote from '@/components/setup/SectionNote.vue';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
+    SectionNote,
     Card,
     CardContent,
     CardHeader,

@@ -310,7 +310,8 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
 
   it('refreshes the status right after a save', async () => {
     let answer: TranscodingStatus = { servers: [status('ambeserver:2460', 3, 0)] };
-    serve(two, () => answer);
+    const saved = [...two];
+    serve(saved, () => answer);
     accept();
     const wrapper = mountWizard('/admin/setup');
     await flushPromises();
@@ -319,6 +320,7 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
     await wrapper.find('[data-test="ambe-server-address-2"]').setValue('new.example.org:2460');
     expect(statusCell(wrapper, 2).text()).toBe('Checked after you save.');
     answer = { servers: [...answer.servers, status('new.example.org:2460', 0, 0)] };
+    saved.push({ address: 'new.example.org:2460', calls: 0 });
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(statusCalls()).toBe(2);

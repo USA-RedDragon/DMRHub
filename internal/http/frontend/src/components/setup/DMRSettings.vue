@@ -30,22 +30,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="disable-radio-id-validation"
+            id="disable-radio-id-validation" v-setting="settingLocked('dmr.disable-radio-id-validation')"
             type="checkbox"
             v-model="disableRadioIDValidation"
           />
-          <label for="disable-radio-id-validation">Disable Radio ID validation</label>
+          <label for="disable-radio-id-validation">Disable Radio ID validation <SettingBadges path="dmr.disable-radio-id-validation" /></label>
         </div>
         <p>
           When enabled, DMRHub allows any 7- to 9-digit radio ID without checking the Radio ID database.
         </p>
+        <SettingNote path="dmr.disable-radio-id-validation" />
         <span v-if="errors && errors['disable-radio-id-validation']" class="p-error">
           {{ errors['disable-radio-id-validation'] }}
         </span>
         <br />
-        <label class="field-label" for="radio-id-url">Radio ID URL</label>
+        <label class="field-label" for="radio-id-url">Radio ID URL <SettingBadges path="dmr.radio-id-url" /></label>
         <ShadInput
-          id="radio-id-url"
+          id="radio-id-url" v-setting="settingLocked('dmr.radio-id-url')"
           type="text"
           v-model="radioIDURL"
           :aria-invalid="(errors && errors['radio-id-url']) || false"
@@ -54,11 +55,12 @@
           URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same
           as RadioID.net.
         </p>
+        <SettingNote path="dmr.radio-id-url" />
         <span v-if="errors && errors['radio-id-url']" class="p-error">{{ errors['radio-id-url'] }}</span>
         <br />
-        <label class="field-label" for="repeater-id-url">Repeater ID URL</label>
+        <label class="field-label" for="repeater-id-url">Repeater ID URL <SettingBadges path="dmr.repeater-id-url" /></label>
         <ShadInput
-          id="repeater-id-url"
+          id="repeater-id-url" v-setting="settingLocked('dmr.repeater-id-url')"
           type="text"
           v-model="repeaterIDURL"
           :aria-invalid="(errors && errors['repeater-id-url']) || false"
@@ -67,6 +69,7 @@
           URL to fetch repeater information for validation and display purposes. Expected JSON format is the same
           as RadioID.net.
         </p>
+        <SettingNote path="dmr.repeater-id-url" />
         <span v-if="errors && errors['repeater-id-url']" class="p-error">{{ errors['repeater-id-url'] }}</span>
         <br />
         <MMDVMSettings v-model="mmdvm" :errors="errors.mmdvm" />
@@ -107,8 +110,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     MMDVMSettings,
     OpenBridgeSettings,

@@ -29,9 +29,12 @@
         <p>How long DMRHub keeps records.</p>
         <template v-for="field in fields" :key="field.key">
           <br />
-          <label class="field-label" :for="`retention-${field.key}`">{{ field.label }}</label>
+          <label class="field-label" :for="`retention-${field.key}`">
+            {{ field.label }} <SettingBadges :path="`dmr.retention.${field.key}`" />
+          </label>
           <ShadSelect
             :model-value="String(value(field.key))"
+            :disabled="settingLocked(`dmr.retention.${field.key}`)"
             @update:model-value="(v) => set(field.key, v)"
           >
             <SelectTrigger :id="`retention-${field.key}`" class="w-full max-w-80" :data-test="`retention-${field.key}`">
@@ -44,6 +47,7 @@
             </SelectContent>
           </ShadSelect>
           <p>{{ field.help }}</p>
+          <SettingNote :path="`dmr.retention.${field.key}`" />
           <span v-if="errors && errors[field.key]" class="p-error">{{ errors[field.key] }}</span>
         </template>
       </CardContent>
@@ -52,6 +56,10 @@
 </template>
 
 <script setup lang="ts">
+import { inject } from 'vue';
+
+import SettingBadges from '@/components/setup/SettingBadges.vue';
+import SettingNote from '@/components/setup/SettingNote.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select as ShadSelect,
@@ -61,8 +69,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { retentionChoices, retentionDays } from '@/lib/retention';
+import { setupStateKey, settingLocked as lockedIn } from '@/lib/setupState';
 
 type RetentionKey = 'messages' | 'transmissions' | 'bursts';
+
+const setupState = inject(setupStateKey, null);
+const settingLocked = (path: string) => lockedIn(setupState, path);
 
 const props = defineProps<{
   modelValue: Record<string, unknown>;

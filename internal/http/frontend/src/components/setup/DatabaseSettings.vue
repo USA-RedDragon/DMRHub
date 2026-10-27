@@ -26,11 +26,12 @@
         <CardTitle>Database Settings</CardTitle>
       </CardHeader>
       <CardContent>
+        <SectionNote prefix="database" />
         <p>DMRHub supports multiple database backends. For small deployments or testing, SQLite is recommended.
           For larger deployments or when high availability is required, PostgreSQL or MySQL/MariaDB is required.</p>
         <br />
-        <label class="field-label" for="database-driver">Driver</label>
-        <select id="database-driver" v-model="driver" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.driver) || false }">
+        <label class="field-label" for="database-driver">Driver <SettingBadges path="database.driver" /></label>
+        <select id="database-driver" v-setting="settingLocked('database.driver')" v-model="driver" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.driver) || false }">
           <option v-for="option in [
             { label: 'SQLite', value: 'sqlite' },
             { label: 'PostgreSQL', value: 'postgres' },
@@ -42,9 +43,9 @@
         </p>
         <span v-if="errors && errors.driver" class="p-error">{{ errors.driver }}</span>
         <br />
-        <label class="field-label" for="database-database">Database</label>
+        <label class="field-label" for="database-database">Database <SettingBadges path="database.database" /></label>
         <ShadInput
-          id="database-database"
+          id="database-database" v-setting="settingLocked('database.database')"
           type="text"
           v-model="database"
           :aria-invalid="(errors && errors.database) || false"
@@ -54,16 +55,16 @@
         </p>
         <span v-if="errors && errors.database" class="p-error">{{ errors.database }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <label class="field-label" for="database-host" v-if="driver !== 'sqlite'">Host</label>
-        <ShadInput id="database-host" type="text" v-model="host" v-if="driver !== 'sqlite'" :aria-invalid="(errors && errors.host) || false" />
+        <label class="field-label" for="database-host" v-if="driver !== 'sqlite'">Host <SettingBadges path="database.host" /></label>
+        <ShadInput id="database-host" v-setting="settingLocked('database.host')" type="text" v-model="host" v-if="driver !== 'sqlite'" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="driver !== 'sqlite'">
           The hostname or IP address of the database server.
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <label class="field-label" for="database-port" v-if="driver !== 'sqlite'">Port</label>
+        <label class="field-label" for="database-port" v-if="driver !== 'sqlite'">Port <SettingBadges path="database.port" /></label>
         <ShadInput
-          id="database-port"
+          id="database-port" v-setting="settingLocked('database.port')"
           type="number"
           v-model="port"
           v-if="driver !== 'sqlite'"
@@ -74,9 +75,9 @@
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <label class="field-label" for="database-username" v-if="driver !== 'sqlite'">Username</label>
+        <label class="field-label" for="database-username" v-if="driver !== 'sqlite'">Username <SettingBadges path="database.username" /></label>
         <ShadInput
-          id="database-username"
+          id="database-username" v-setting="settingLocked('database.username')"
           type="text"
           v-model="username"
           v-if="driver !== 'sqlite'"
@@ -87,9 +88,9 @@
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="driver !== 'sqlite'" />
-        <label class="field-label" for="database-password" v-if="driver !== 'sqlite'">Password</label>
+        <label class="field-label" for="database-password" v-if="driver !== 'sqlite'">Password <SettingBadges path="database.password" /></label>
         <ShadInput
-          id="database-password"
+          id="database-password" v-setting="settingLocked('database.password')"
           type="password"
           v-model="password"
           v-if="driver !== 'sqlite'"
@@ -100,10 +101,10 @@
         </p>
         <span v-if="driver !== 'sqlite' && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br />
-        <label class="field-label" for="database-extra-parameters">Extra Parameters</label>
+        <label class="field-label" for="database-extra-parameters">Extra Parameters <SettingBadges path="database.extra-parameters" /></label>
         <textarea
           rows="5"
-          id="database-extra-parameters"
+          id="database-extra-parameters" v-setting="settingLocked('database.extra-parameters')"
           v-model="extraParameters"
           class="ui-textarea"
           :class="{ 'ui-textarea-invalid': (errors && errors['extra-parameters']) || false }"
@@ -125,9 +126,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import SectionNote from '@/components/setup/SectionNote.vue';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
+    SectionNote,
     Card,
     CardContent,
     CardHeader,

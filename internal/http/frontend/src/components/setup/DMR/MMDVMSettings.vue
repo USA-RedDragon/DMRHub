@@ -29,16 +29,17 @@
         <p>DMRHub can run an MMDVM server to allow connections from DMR radios and
           software such as DMRGateway.</p>
         <br />
-        <label class="field-label" for="mmdvm-bind">Bind</label>
-        <ShadInput id="mmdvm-bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="mmdvm-bind">Bind <SettingBadges path="dmr.mmdvm.bind" /></label>
+        <ShadInput id="mmdvm-bind" v-setting="settingLocked('dmr.mmdvm.bind')" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the MMDVM server to
         </p>
+        <SettingNote path="dmr.mmdvm.bind" />
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <label class="field-label" for="mmdvm-port">Port</label>
+        <label class="field-label" for="mmdvm-port">Port <SettingBadges path="dmr.mmdvm.port" /></label>
         <ShadInput
-          id="mmdvm-port"
+          id="mmdvm-port" v-setting="settingLocked('dmr.mmdvm.port')"
           type="number"
           v-model="port"
           :aria-invalid="(errors && errors.port) || false"
@@ -46,6 +47,7 @@
         <p>
           The port number to bind the MMDVM server to
         </p>
+        <SettingNote path="dmr.mmdvm.port" />
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
         <WebTransportSettings v-model="webtransport" :errors="errors && errors.webtransport" />
@@ -63,8 +65,10 @@ import {
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
 import WebTransportSettings from './WebTransportSettings.vue';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

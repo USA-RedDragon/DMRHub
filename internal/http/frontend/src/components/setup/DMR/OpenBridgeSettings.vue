@@ -30,16 +30,17 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="openbridge-enabled"
+            id="openbridge-enabled" v-setting="settingLocked('dmr.openbridge.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="openbridge-enabled">Enabled</label>
+          <label for="openbridge-enabled">Enabled <SettingBadges path="dmr.openbridge.enabled" /></label>
         </div>
+        <SettingNote path="dmr.openbridge.enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="openbridge-bind" v-if="enabled">Bind Address</label>
+        <label class="field-label" for="openbridge-bind" v-if="enabled">Bind Address <SettingBadges path="dmr.openbridge.bind" /></label>
         <ShadInput
-          id="openbridge-bind"
+          id="openbridge-bind" v-setting="settingLocked('dmr.openbridge.bind')"
           type="text"
           v-model="bind"
           v-if="enabled"
@@ -48,11 +49,12 @@
         <p v-if="enabled">
           The address to bind the OpenBridge server to
         </p>
+        <SettingNote v-if="enabled" path="dmr.openbridge.bind" />
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="openbridge-port" v-if="enabled">Port</label>
+        <label class="field-label" for="openbridge-port" v-if="enabled">Port <SettingBadges path="dmr.openbridge.port" /></label>
         <ShadInput
-          id="openbridge-port"
+          id="openbridge-port" v-setting="settingLocked('dmr.openbridge.port')"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -61,11 +63,12 @@
         <p v-if="enabled">
           The port number to bind the OpenBridge server to
         </p>
+        <SettingNote v-if="enabled" path="dmr.openbridge.port" />
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="openbridge-server-id" v-if="enabled">Server ID</label>
+        <label class="field-label" for="openbridge-server-id" v-if="enabled">Server ID <SettingBadges path="dmr.openbridge.server-id" /></label>
         <ShadInput
-          id="openbridge-server-id"
+          id="openbridge-server-id" v-setting="settingLocked('dmr.openbridge.server-id')"
           type="number"
           v-model="serverID"
           v-if="enabled"
@@ -75,6 +78,7 @@
           The server ID of 4 to 7 digits that FreeDMR enhanced OpenBridge peers see as the source of calls from
           this hub. Leave it at 0 to send the network ID of each peer.
         </p>
+        <SettingNote v-if="enabled" path="dmr.openbridge.server-id" />
         <span v-if="enabled && errors && errors['server-id']" class="p-error">{{ errors['server-id'] }}</span>
       </CardContent>
     </Card>
@@ -89,8 +93,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

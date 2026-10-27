@@ -29,32 +29,34 @@
         <p>Limits for the radios whose owners turn on position tracking.</p>
         <div class="grid gap-4 sm:grid-cols-2 mt-4">
           <div>
-            <label class="field-label" for="positions-min-interval">Shortest report interval</label>
+            <label class="field-label" for="positions-min-interval">Shortest report interval <SettingBadges path="dmr.positions.min-interval" /></label>
             <div class="flex items-center gap-2">
               <ShadInput
-                id="positions-min-interval"
+                id="positions-min-interval" v-setting="settingLocked('dmr.positions.min-interval')"
                 class="w-24"
                 inputmode="numeric"
                 :model-value="String(interval)"
                 :aria-invalid="(errors && errors['min-interval']) ? true : undefined"
                 @update:model-value="(v) => setNumber('min-interval', v)"
               />
+              <SettingNote path="dmr.positions.min-interval" />
               <span class="text-sm text-muted-foreground">minutes</span>
             </div>
             <p class="text-sm text-muted-foreground">Owners can pick 5, 10, 15, 30 or 60 minutes, but not less than this.</p>
             <span v-if="errors && errors['min-interval']" class="p-error">{{ errors['min-interval'] }}</span>
           </div>
           <div>
-            <label class="field-label" for="positions-max-retention">Longest time to keep positions</label>
+            <label class="field-label" for="positions-max-retention">Longest time to keep positions <SettingBadges path="dmr.positions.max-retention" /></label>
             <div class="flex items-center gap-2">
               <ShadInput
-                id="positions-max-retention"
+                id="positions-max-retention" v-setting="settingLocked('dmr.positions.max-retention')"
                 class="w-24"
                 inputmode="numeric"
                 :model-value="String(retention)"
                 :aria-invalid="(errors && errors['max-retention']) ? true : undefined"
                 @update:model-value="(v) => setNumber('max-retention', v)"
               />
+              <SettingNote path="dmr.positions.max-retention" />
               <span class="text-sm text-muted-foreground">days, up to 365</span>
             </div>
             <p class="text-sm text-muted-foreground">Owners can keep a radio's positions for 24 hours, 7 days, 30 days or this.</p>
@@ -69,24 +71,26 @@
           </p>
           <div class="grid gap-4 sm:grid-cols-2 mt-4">
             <div>
-              <label class="field-label" for="positions-aprs-callsign">Callsign</label>
+              <label class="field-label" for="positions-aprs-callsign">Callsign <SettingBadges path="dmr.positions.aprs-is.callsign" /></label>
               <ShadInput
-                id="positions-aprs-callsign"
+                id="positions-aprs-callsign" v-setting="settingLocked('dmr.positions.aprs-is.callsign')"
                 :model-value="aprs.callsign || ''"
                 :aria-invalid="aprsErrors.callsign ? true : undefined"
                 @update:model-value="(v) => setAPRS('callsign', String(v).toUpperCase())"
               />
+              <SettingNote path="dmr.positions.aprs-is.callsign" />
               <span v-if="aprsErrors.callsign" class="p-error">{{ aprsErrors.callsign }}</span>
             </div>
             <div>
-              <label class="field-label" for="positions-aprs-server">Server</label>
+              <label class="field-label" for="positions-aprs-server">Server <SettingBadges path="dmr.positions.aprs-is.server" /></label>
               <ShadInput
-                id="positions-aprs-server"
+                id="positions-aprs-server" v-setting="settingLocked('dmr.positions.aprs-is.server')"
                 :model-value="aprs.server || ''"
                 placeholder="rotate.aprs2.net:14580"
                 :aria-invalid="aprsErrors.server ? true : undefined"
                 @update:model-value="(v) => setAPRS('server', String(v))"
               />
+              <SettingNote path="dmr.positions.aprs-is.server" />
               <span v-if="aprsErrors.server" class="p-error">{{ aprsErrors.server }}</span>
             </div>
           </div>
@@ -101,13 +105,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import SettingBadges from '@/components/setup/SettingBadges.vue';
+import SettingNote from '@/components/setup/SettingNote.vue';
+import { setupStateKey, settingLocked as lockedIn } from '@/lib/setupState';
+import { settingDirective as vSetting } from '@/lib/settingDirective';
 
 const DEFAULT_INTERVAL = 5;
 const DEFAULT_RETENTION = 30;
+
+const setupState = inject(setupStateKey, null);
+const settingLocked = (path: string) => lockedIn(setupState, path);
 
 const props = defineProps<{
   modelValue: Record<string, unknown>;

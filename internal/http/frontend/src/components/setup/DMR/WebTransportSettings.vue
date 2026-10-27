@@ -30,39 +30,42 @@
       <br />
       <div class="flex items-center gap-3">
         <ShadSwitch
-          id="webtransport-enabled"
+          id="webtransport-enabled" v-setting="settingLocked('dmr.mmdvm.webtransport.enabled')"
           aria-labelledby="webtransport-enabled-label"
           :model-value="enabled"
           @update:model-value="setEnabled"
         />
-        <label id="webtransport-enabled-label" for="webtransport-enabled">Accept browser hotspots and radios</label>
+        <label id="webtransport-enabled-label" for="webtransport-enabled">Accept browser hotspots and radios <SettingBadges path="dmr.mmdvm.webtransport.enabled" /></label>
       </div>
+      <SettingNote path="dmr.mmdvm.webtransport.enabled" />
       <div v-if="enabled" data-testid="webtransport-fields">
         <br />
-        <label class="field-label" for="webtransport-port">Port</label>
+        <label class="field-label" for="webtransport-port">Port <SettingBadges path="dmr.mmdvm.webtransport.port" /></label>
         <ShadInput
-          id="webtransport-port"
+          id="webtransport-port" v-setting="settingLocked('dmr.mmdvm.webtransport.port')"
           type="number"
           :model-value="port"
           :aria-invalid="(errors && errors.port) || false"
           @update:model-value="(v: string | number) => update('port', Number(v) || 0)"
         />
         <p>The UDP port that browsers connect to. It must differ from the MMDVM port.</p>
+        <SettingNote path="dmr.mmdvm.webtransport.port" />
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
-        <label class="field-label" for="webtransport-cert-file">Certificate file</label>
+        <label class="field-label" for="webtransport-cert-file">Certificate file <SettingBadges path="dmr.mmdvm.webtransport.cert-file" /></label>
         <ShadInput
-          id="webtransport-cert-file"
+          id="webtransport-cert-file" v-setting="settingLocked('dmr.mmdvm.webtransport.cert-file')"
           type="text"
           placeholder="/tls/tls.crt"
           :model-value="certFile"
           @update:model-value="(v: string | number) => update('cert-file', String(v))"
         />
         <p>The TLS certificate, such as the one that cert-manager mounts. DMRHub reads it again when it changes.</p>
+        <SettingNote path="dmr.mmdvm.webtransport.cert-file" />
         <br />
-        <label class="field-label" for="webtransport-key-file">Key file</label>
+        <label class="field-label" for="webtransport-key-file">Key file <SettingBadges path="dmr.mmdvm.webtransport.key-file" /></label>
         <ShadInput
-          id="webtransport-key-file"
+          id="webtransport-key-file" v-setting="settingLocked('dmr.mmdvm.webtransport.key-file')"
           type="text"
           placeholder="/tls/tls.key"
           :model-value="keyFile"
@@ -70,6 +73,7 @@
           @update:model-value="(v: string | number) => update('key-file', String(v))"
         />
         <p>The key of the certificate.</p>
+        <SettingNote path="dmr.mmdvm.webtransport.key-file" />
         <span v-if="errors && errors['key-file']" class="p-error">{{ errors['key-file'] }}</span>
         <p v-if="!certFile && !keyFile" class="text-muted-foreground" data-testid="webtransport-own">
           With no certificate file, DMRHub uses certificates of its own, which browsers accept with no setup.
@@ -88,10 +92,12 @@ import {
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
 import { Switch as ShadSwitch } from '@/components/ui/switch';
+import { settingMixin } from '@/lib/settingMixin';
 
 const defaultPort = 62032;
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

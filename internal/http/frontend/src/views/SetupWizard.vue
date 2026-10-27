@@ -23,16 +23,49 @@
   <div>
     <h1>Setup</h1>
     <div
+      v-if="databasePhase"
+      role="alert"
+      class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+      data-test="database-problem"
+    >
+      <b class="font-semibold">DMRHub cannot reach its database.</b>
+      <p>{{ databaseAdvice }}</p>
+      <p v-if="setupState.wizard?.database_error" class="font-mono text-xs break-all text-muted-foreground">
+        {{ setupState.wizard.database_error }}
+      </p>
+    </div>
+    <div
       v-if="applyErrors.length > 0"
       role="alert"
       class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
       data-test="apply-errors"
     >
-      <b class="font-semibold">The settings were saved, but some could not be put into effect.</b>
+      <b class="font-semibold">{{ applyHeading }}</b>
       <p v-for="(e, i) in applyErrors" :key="i">
         {{ e.summary }}<br />
-        <span class="text-muted-foreground">{{ e.detail }}</span>
+        <span class="font-mono text-xs break-all text-muted-foreground">{{ e.detail }}</span>
       </p>
+      <p v-if="applyOK">{{ applyOK }}</p>
+    </div>
+    <div
+      v-if="setupState.disagree"
+      role="status"
+      class="my-4 flex flex-col gap-2 rounded-lg border border-amber-500/55 bg-amber-500/10 px-4 py-3 text-sm"
+      data-test="replicas-differ"
+    >
+      <b class="font-semibold">The replicas do not run with the same settings.</b>
+      <p>
+        {{ differText }} A setting that the deployment sets on one replica stays as the deployment sets it there. Look
+        for the amber mark below.
+      </p>
+    </div>
+    <div
+      v-if="unanswered.length > 0"
+      role="status"
+      class="my-4 rounded-lg border px-4 py-3 text-sm text-muted-foreground"
+      data-test="replicas-unanswered"
+    >
+      {{ unansweredText }}
     </div>
     <form @submit.prevent="submit()">
       <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
@@ -56,8 +89,13 @@
       <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
       <br />
       <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
-      <div class="card-footer">
+      <br v-if="setupState.replicas.length > 1" />
+      <ReplicasCard v-if="setupState.replicas.length > 1" :replicas="setupState.replicas" :revision="setupState.revision" />
+      <div class="card-footer mt-4 flex flex-wrap items-center gap-3">
         <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
+        <small v-if="setupState.replicas.length > 1" class="text-muted-foreground">
+          Saving puts the settings into effect on every replica at once, without a restart.
+        </small>
       </div>
     </form>
   </div>
@@ -78,8 +116,12 @@ import SMTPSettings from '@/components/setup/SMTPSettings.vue';
 import MetricsSettings from '@/components/setup/MetricsSettings.vue';
 import PProfSettings from '@/components/setup/PProfSettings.vue';
 
+import ReplicasCard from '@/components/setup/ReplicasCard.vue';
 import API from '@/services/API';
 import { ambeServersError, ambeServersPayload, type AmbeServerRow } from '@/lib/codec';
+import {
+  emptySetupState, replicaName, serverName, settingLabel, setupStateKey, setupStateOf, stateKeys, type SetupState,
+} from '@/lib/setupState';
 
 type SetupSection = Record<string, unknown>;
 
@@ -140,9 +182,17 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => {
 };
 
 type ApplyError = {
+  replica?: string;
   server: string;
+  field?: string;
   running: boolean;
   error: string;
+};
+
+type SaveReplica = {
+  id: string;
+  self: boolean;
+  answered: boolean;
 };
 
 type ShownApplyError = {
@@ -150,19 +200,33 @@ type ShownApplyError = {
   detail: string;
 };
 
-const serverNames: Record<string, string> = {
-  mmdvm: 'MMDVM',
-  ipsc: 'IPSC',
-  openbridge: 'OpenBridge',
+type SaveFailure = {
+  applyErrors: ApplyError[];
+  replicas: SaveReplica[];
 };
 
-const applyErrorsOf = (error: unknown): ApplyError[] | undefined => {
+const saveFailureOf = (error: unknown): SaveFailure | undefined => {
   const response = asRecord(asRecord(error)?.response);
   const data = asRecord(response?.data);
   if (response?.status !== 409 || !Array.isArray(data?.applyErrors)) {
     return undefined;
   }
-  return data.applyErrors as ApplyError[];
+  return {
+    applyErrors: data.applyErrors as ApplyError[],
+    replicas: Array.isArray(data.replicas) ? (data.replicas as SaveReplica[]) : [],
+  };
+};
+
+const replicasOf = (data: unknown): SaveReplica[] => {
+  const replicas = asRecord(data)?.replicas;
+  return Array.isArray(replicas) ? (replicas as SaveReplica[]) : [];
+};
+
+const listNames = (names: string[]): string => {
+  if (names.length <= 1) {
+    return names.join('');
+  }
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 };
 
 const ambeServerRows = (config: Record<string, unknown>): AmbeServerRow[] | undefined => {
@@ -178,11 +242,19 @@ const localErrors = (config: Record<string, unknown>): SetupErrors | undefined =
   return { ...createInitialErrors(), dmr: { transcoding: { 'ambe-servers': error } } };
 };
 
-const showApplyError = (e: ApplyError): ShownApplyError => {
-  const name = serverNames[e.server] ?? 'DMR';
+const showApplyError = (e: ApplyError, self: boolean): ShownApplyError => {
+  const replica = e.replica ? replicaName(e.replica) : '';
+  if (e.field) {
+    return {
+      summary: `Replica ${replica} cannot run with the saved ${settingLabel(e.field)}. It keeps its previous settings.`,
+      detail: e.error,
+    };
+  }
+  const name = serverName(e.server);
   const state = e.running ? 'It keeps running with its previous settings.' : 'It is not running.';
+  const of = self || !replica ? '' : ` of replica ${replica}`;
   return {
-    summary: `The ${name} server could not start with the new settings. ${state}`,
+    summary: `The ${name} server${of} could not start with the new settings. ${state}`,
     detail: e.error,
   };
 };
@@ -190,6 +262,7 @@ const showApplyError = (e: ApplyError): ShownApplyError => {
 export default defineComponent({
   components: {
     ShadButton,
+    ReplicasCard,
     DatabaseSettings,
     HTTPSettings,
     DMRSettings,
@@ -204,6 +277,9 @@ export default defineComponent({
       title: this.isAdminSetup ? 'Admin Setup' : 'Setup',
     };
   },
+  provide() {
+    return { [setupStateKey as symbol]: this.setupState };
+  },
   created() {
     this.getConfig();
   },
@@ -214,6 +290,10 @@ export default defineComponent({
       config: createInitialConfig() as SetupConfig,
       errors: createInitialErrors() as SetupErrors,
       applyErrors: [] as ShownApplyError[],
+      failedReplicas: [] as string[],
+      applyOK: '',
+      unanswered: [] as string[],
+      setupState: emptySetupState() as SetupState,
       saves: 0,
       secretStatus: {
         secretSet: false,
@@ -226,8 +306,59 @@ export default defineComponent({
     isAdminSetup() {
       return this.$route.path.startsWith('/admin/setup');
     },
+    databasePhase(): boolean {
+      return this.setupState.wizard?.phase === 'database';
+    },
+    databaseAdvice(): string {
+      const w = this.setupState.wizard;
+      if (w?.database_locked) {
+        return 'The deployment sets the database. Fix it in the config file or the environment, then restart DMRHub.';
+      }
+      if (w?.store_error) {
+        return `The setup wizard cannot keep a database setting here: ${w.store_error}. Set the database in the config file or the environment of the deployment, then restart DMRHub.`;
+      }
+      return `Fix the database settings below and save. DMRHub tries them at once and keeps them in ${w?.database_file ?? 'its working directory'}. The other settings open once DMRHub reaches its database.`;
+    },
+    applyHeading(): string {
+      if (this.failedReplicas.length === 0) {
+        return 'The settings were saved, but some could not be put into effect.';
+      }
+      const names = this.failedReplicas.map(replicaName);
+      const who = names.length === 1 ? `replica ${names[0]}` : `replicas ${listNames(names)}`;
+      return `The settings were saved, but ${who} could not put all of them into effect.`;
+    },
+    differText(): string {
+      const paths = Object.entries(this.setupState.settings).filter(([, s]) => s.disagree).map(([p]) => settingLabel(p));
+      const n = paths.length;
+      return `${n} ${n === 1 ? 'setting differs' : 'settings differ'} between replicas: ${listNames(paths)}.`;
+    },
+    unansweredText(): string {
+      const names = listNames(this.unanswered.map(replicaName));
+      return `Replica ${names} did not report in time. The Replicas table shows its state once it reports.`;
+    },
   },
   methods: {
+    afterDatabase(phase: unknown) {
+      if (phase === 'done') {
+        this.$toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'DMRHub reached its database and is starting',
+          life: 5000,
+        });
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 3000);
+        return;
+      }
+      this.$toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'DMRHub reached its database. Check the other settings and save.',
+        life: 5000,
+      });
+      this.getConfig();
+    },
     setupWizardHeaders(): Record<string, string> {
       const token = this.$route.query.token;
       if (typeof token === 'string' && token.length > 0) {
@@ -245,8 +376,11 @@ export default defineComponent({
         .then((response: AxiosResponse) => {
           const payload = response.data && response.data.config ? response.data.config : response.data;
           this.secretStatus = response.data && response.data.secrets ? response.data.secrets : this.secretStatus;
-          if (payload && payload.secrets) {
-            delete payload.secrets;
+          Object.assign(this.setupState, setupStateOf(response.data));
+          for (const key of stateKeys) {
+            if (payload && key in payload) {
+              delete payload[key];
+            }
           }
           this.config = {
             ...createInitialConfig(),
@@ -337,9 +471,17 @@ export default defineComponent({
         if (!await this.checkConfig(payload, true)) {
           return;
         }
-        await API.put('/config', payload, { headers: this.setupWizardHeaders() });
+        const response = await API.put('/config', payload, { headers: this.setupWizardHeaders() });
         this.saves++;
         this.applyErrors = [];
+        this.failedReplicas = [];
+        this.applyOK = '';
+        this.unanswered = replicasOf(response?.data).filter((r) => !r.self && !r.answered).map((r) => r.id);
+        if (this.databasePhase) {
+          this.afterDatabase(response?.data?.phase);
+          return;
+        }
+        this.getConfig();
         this.$toast.add({
           severity: 'success',
           summary: 'Success',
@@ -358,10 +500,19 @@ export default defineComponent({
           }, 500);
         }
       } catch (error: unknown) {
-        const applyErrors = applyErrorsOf(error);
-        if (applyErrors) {
+        const failure = saveFailureOf(error);
+        if (failure) {
           this.saves++;
-          this.applyErrors = applyErrors.map(showApplyError);
+          const self = failure.replicas.find((r) => r.self)?.id;
+          this.applyErrors = failure.applyErrors.map((e) => showApplyError(e, !e.replica || e.replica === self));
+          this.failedReplicas = [...new Set(failure.applyErrors.map((e) => e.replica ?? ''))]
+            .filter((r) => r !== '' && r !== self);
+          const selfFailed = failure.applyErrors.some((e) => !e.replica || e.replica === self);
+          this.applyOK = self && !selfFailed && this.failedReplicas.length > 0
+            ? `Replica ${replicaName(self)} runs with the new settings.`
+            : '';
+          this.unanswered = failure.replicas.filter((r) => !r.self && !r.answered).map((r) => r.id);
+          this.getConfig();
           this.$toast.add({
             severity: 'error',
             summary: 'Error',

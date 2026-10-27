@@ -34,17 +34,19 @@
         </ul>
         <br />
         <div class="checkbox-row">
-          <input id="smtp-enabled" type="checkbox" v-model="enabled" />
-          <label for="smtp-enabled">Enabled</label>
+          <input id="smtp-enabled" v-setting="settingLocked('smtp.enabled')" type="checkbox" v-model="enabled" />
+          <label for="smtp-enabled">Enabled <SettingBadges path="smtp.enabled" /></label>
         </div>
+        <SettingNote path="smtp.enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-from" v-if="enabled">From Address</label>
-        <ShadInput id="smtp-from" type="text" v-model="from" v-if="enabled" :aria-invalid="(errors && errors.from) || false" />
+        <label class="field-label" for="smtp-from" v-if="enabled">From Address <SettingBadges path="smtp.from" /></label>
+        <ShadInput id="smtp-from" v-setting="settingLocked('smtp.from')" type="text" v-model="from" v-if="enabled" :aria-invalid="(errors && errors.from) || false" />
         <p v-if="enabled">The email address used as the From address in email notifications</p>
+        <SettingNote v-if="enabled" path="smtp.from" />
         <span v-if="enabled && errors && errors.from" class="p-error">{{ errors.from }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-auth-method" v-if="enabled">Authentication Method</label>
-        <select id="smtp-auth-method" v-model="authMethod" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['auth-method']) || false }">
+        <label class="field-label" for="smtp-auth-method" v-if="enabled">Authentication Method <SettingBadges path="smtp.auth-method" /></label>
+        <select id="smtp-auth-method" v-setting="settingLocked('smtp.auth-method')" v-model="authMethod" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['auth-method']) || false }">
           <option v-for="option in [
             { label: 'Plain', value: 'plain' },
             { label: 'Login', value: 'login' },
@@ -55,43 +57,48 @@
           The authentication method to use when connecting to the SMTP server.
           One of <code>plain</code>, <code>login</code>, or <code>none</code>.
         </p>
+        <SettingNote v-if="enabled" path="smtp.auth-method" />
         <span v-if="enabled && errors && errors['auth-method']" class="p-error">{{ errors['auth-method'] }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-host" v-if="enabled">Host</label>
-        <ShadInput id="smtp-host" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
+        <label class="field-label" for="smtp-host" v-if="enabled">Host <SettingBadges path="smtp.host" /></label>
+        <ShadInput id="smtp-host" v-setting="settingLocked('smtp.host')" type="text" v-model="host" v-if="enabled" :aria-invalid="(errors && errors.host) || false" />
         <p v-if="enabled">
           The hostname or IP address of the SMTP server to connect to.
         </p>
+        <SettingNote v-if="enabled" path="smtp.host" />
         <span v-if="enabled && errors && errors.host" class="p-error">{{ errors.host }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-port" v-if="enabled">Port</label>
-        <ShadInput id="smtp-port" type="number" v-model="port" v-if="enabled"
+        <label class="field-label" for="smtp-port" v-if="enabled">Port <SettingBadges path="smtp.port" /></label>
+        <ShadInput id="smtp-port" v-setting="settingLocked('smtp.port')" type="number" v-model="port" v-if="enabled"
           :aria-invalid="(errors && errors.port) || false" />
         <p v-if="enabled">
           The port number of the SMTP server to connect to.
         </p>
+        <SettingNote v-if="enabled" path="smtp.port" />
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-username" v-if="enabled">Username</label>
-        <ShadInput id="smtp-username" type="text" v-model="username" v-if="enabled"
+        <label class="field-label" for="smtp-username" v-if="enabled">Username <SettingBadges path="smtp.username" /></label>
+        <ShadInput id="smtp-username" v-setting="settingLocked('smtp.username')" type="text" v-model="username" v-if="enabled"
           :aria-invalid="(errors && errors.username) || false" />
         <p v-if="enabled">
           The username to use when connecting to the SMTP server.
         </p>
+        <SettingNote v-if="enabled" path="smtp.username" />
         <span v-if="enabled && errors && errors.username" class="p-error">{{ errors.username }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-password" v-if="enabled">Password</label>
-        <ShadInput id="smtp-password" type="password" v-model="password" v-if="enabled"
+        <label class="field-label" for="smtp-password" v-if="enabled">Password <SettingBadges path="smtp.password" /></label>
+        <ShadInput id="smtp-password" v-setting="settingLocked('smtp.password')" type="password" v-model="password" v-if="enabled"
           :aria-invalid="(errors && errors.password) || false" />
         <p v-if="enabled">
           The password to use when connecting to the SMTP server.
         </p>
+        <SettingNote v-if="enabled" path="smtp.password" />
         <small v-if="enabled" class="p-text-secondary">{{ passwordStatusMessage }}</small>
         <span v-if="enabled && errors && errors.password" class="p-error">{{ errors.password }}</span>
         <br v-if="enabled" />
         <br v-if="enabled" />
-        <label class="field-label" for="smtp-tls" v-if="enabled">TLS Mode</label>
-        <select id="smtp-tls" v-model="tls" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.tls) || false }">
+        <label class="field-label" for="smtp-tls" v-if="enabled">TLS Mode <SettingBadges path="smtp.tls" /></label>
+        <select id="smtp-tls" v-setting="settingLocked('smtp.tls')" v-model="tls" v-if="enabled" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.tls) || false }">
           <option v-for="option in [
             { label: 'None', value: 'none' },
             { label: 'STARTTLS', value: 'starttls' },
@@ -102,6 +109,7 @@
           The TLS mode to use when connecting to the SMTP server. One of
           <code>none</code>, <code>starttls</code>, or <code>implicit</code>.
         </p>
+        <SettingNote v-if="enabled" path="smtp.tls" />
         <span v-if="enabled && errors && errors.tls" class="p-error">{{ errors.tls }}</span>
       </CardContent>
     </Card>
@@ -116,8 +124,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

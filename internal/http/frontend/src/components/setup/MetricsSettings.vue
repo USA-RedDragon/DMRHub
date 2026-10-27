@@ -26,13 +26,14 @@
         <CardTitle>Metrics Settings</CardTitle>
       </CardHeader>
       <CardContent>
+        <SectionNote prefix="metrics" />
         <p>DMRHub can export metrics in the Prometheus format and traces in the OTLP format.
           These settings enable a separate HTTP server that serves the metrics endpoints.
         </p>
         <br />
-        <label class="field-label" for="metrics-otlp-endpoint">OTLP Endpoint</label>
+        <label class="field-label" for="metrics-otlp-endpoint">OTLP Endpoint <SettingBadges path="metrics.otlp-endpoint" /></label>
         <ShadInput
-          id="metrics-otlp-endpoint"
+          id="metrics-otlp-endpoint" v-setting="settingLocked('metrics.otlp-endpoint')"
           type="text"
           v-model="otlpEndpoint"
           :aria-invalid="(errors && errors['otlp-endpoint']) || false"
@@ -45,23 +46,23 @@
         <br />
         <div class="checkbox-row">
           <input
-            id="metrics-enabled"
+            id="metrics-enabled" v-setting="settingLocked('metrics.enabled')"
             type="checkbox"
             v-model="enabled"
           />
-          <label for="metrics-enabled">Enable Prometheus Metrics</label>
+          <label for="metrics-enabled">Enable Prometheus Metrics <SettingBadges path="metrics.enabled" /></label>
         </div>
         <br v-if="enabled" />
-        <label class="field-label" for="metrics-bind" v-if="enabled">Bind</label>
-        <ShadInput id="metrics-bind" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="metrics-bind" v-if="enabled">Bind <SettingBadges path="metrics.bind" /></label>
+        <ShadInput id="metrics-bind" v-setting="settingLocked('metrics.bind')" type="text" v-model="bind" v-if="enabled" :aria-invalid="(errors && errors.bind) || false" />
         <p v-if="enabled">
           The address to bind the metrics server to
         </p>
         <span v-if="enabled && errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="metrics-port" v-if="enabled">Port</label>
+        <label class="field-label" for="metrics-port" v-if="enabled">Port <SettingBadges path="metrics.port" /></label>
         <ShadInput
-          id="metrics-port"
+          id="metrics-port" v-setting="settingLocked('metrics.port')"
           type="number"
           v-model="port"
           v-if="enabled"
@@ -72,10 +73,10 @@
         </p>
         <span v-if="enabled && errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br v-if="enabled" />
-        <label class="field-label" for="metrics-trusted-proxies" v-if="enabled">Trusted Proxies</label>
+        <label class="field-label" for="metrics-trusted-proxies" v-if="enabled">Trusted Proxies <SettingBadges path="metrics.trusted-proxies" /></label>
         <textarea
           rows="5"
-          id="metrics-trusted-proxies"
+          id="metrics-trusted-proxies" v-setting="settingLocked('metrics.trusted-proxies')"
           v-model="trustedProxies"
           v-if="enabled"
           class="ui-textarea"
@@ -101,9 +102,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import SectionNote from '@/components/setup/SectionNote.vue';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
+    SectionNote,
     Card,
     CardContent,
     CardHeader,

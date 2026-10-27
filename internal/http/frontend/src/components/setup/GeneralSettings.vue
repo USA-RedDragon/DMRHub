@@ -28,17 +28,18 @@
       <CardContent>
         <p>General application settings</p>
         <br />
-        <label class="field-label" for="network-name">Network Name</label>
-        <ShadInput id="network-name" type="text" v-model="networkName"
+        <label class="field-label" for="network-name">Network Name <SettingBadges path="network-name" /></label>
+        <ShadInput id="network-name" v-setting="settingLocked('network-name')" type="text" v-model="networkName"
           :aria-invalid="(errors && errors['network-name']) || false" />
         <p>
           The name of the DMR network. This is used in various places throughout the application.
         </p>
+        <SettingNote path="network-name" />
         <span v-if="errors && errors['network-name']" class="p-error">{{ errors['network-name'] }}</span>
         <br />
         <div class="checkbox-row">
-          <input id="auto-approve-users" type="checkbox" v-model="autoApprove" />
-          <label for="auto-approve-users">Approve new users automatically</label>
+          <input id="auto-approve-users" v-setting="settingLocked('auto-approve-users')" type="checkbox" v-model="autoApprove" />
+          <label for="auto-approve-users">Approve new users automatically <SettingBadges path="auto-approve-users" /></label>
         </div>
         <p v-if="autoApprove" data-test="auto-approve-on">
           A new user can log in as soon as they register. DMRHub still checks that the DMR ID and callsign match the
@@ -47,9 +48,10 @@
         <p v-else data-test="auto-approve-off">
           A new user waits until an admin approves them on the Approvals page under Admin.
         </p>
+        <SettingNote path="auto-approve-users" />
         <br />
-        <label class="field-label" for="log-level">Log Level</label>
-        <select id="log-level" v-model="logLevel" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['log-level']) || false }">
+        <label class="field-label" for="log-level">Log Level <SettingBadges path="log-level" /></label>
+        <select id="log-level" v-setting="settingLocked('log-level')" v-model="logLevel" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors['log-level']) || false }">
           <option v-for="option in [
             { label: 'Debug', value: 'debug' },
             { label: 'Info', value: 'info' },
@@ -61,35 +63,39 @@
           The log level for the application. One of <code>debug</code>, <code>info</code>,
           <code>warn</code>, or <code>error</code>.
         </p>
+        <SettingNote path="log-level" />
         <span v-if="errors && errors['log-level']" class="p-error">{{ errors['log-level'] }}</span>
         <br />
-        <label class="field-label" for="secret">Secret</label>
-        <ShadInput id="secret" type="password" v-model="secret"
+        <label class="field-label" for="secret">Secret <SettingBadges path="secret" /></label>
+        <ShadInput id="secret" v-setting="settingLocked('secret')" type="password" v-model="secret"
           :aria-invalid="(errors && errors.secret) || false" />
         <p>
           The secret used to sign session cookies. This should be a long, random string.
         </p>
+        <SettingNote path="secret" />
         <small class="p-text-secondary">{{ secretStatusMessage }}</small>
         <span v-if="errors && errors.secret" class="p-error">{{ errors.secret }}</span>
         <br />
         <br />
-        <label class="field-label" for="password-salt">Password Salt</label>
-        <ShadInput id="password-salt" type="password" v-model="passwordSalt"
+        <label class="field-label" for="password-salt">Password Salt <SettingBadges path="password-salt" /></label>
+        <ShadInput id="password-salt" v-setting="settingLocked('password-salt')" type="password" v-model="passwordSalt"
           :aria-invalid="(errors && errors['password-salt']) || false" />
         <p>
           The salt used to hash user passwords in the database. This should be a long, random string.
         </p>
+        <SettingNote path="password-salt" />
         <small class="p-text-secondary">{{ passwordSaltStatusMessage }}</small>
         <span v-if="errors && errors['password-salt']" class="p-error">{{ errors['password-salt'] }}</span>
         <br />
         <br />
-        <label class="field-label" for="hibp-api-key">HaveIBeenPwned API Key</label>
-        <ShadInput id="hibp-api-key" type="password" v-model="hibpApiKey"
+        <label class="field-label" for="hibp-api-key">HaveIBeenPwned API Key <SettingBadges path="hibp-api-key" /></label>
+        <ShadInput id="hibp-api-key" v-setting="settingLocked('hibp-api-key')" type="password" v-model="hibpApiKey"
           :aria-invalid="(errors && errors['hibp-api-key']) || false" />
         <p>
           The API key to use when querying the HaveIBeenPwned API to check for compromised passwords.
           If empty, password checks are disabled.
         </p>
+        <SettingNote path="hibp-api-key" />
         <span v-if="errors && errors['hibp-api-key']" class="p-error">{{ errors['hibp-api-key'] }}</span>
       </CardContent>
     </Card>
@@ -104,8 +110,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

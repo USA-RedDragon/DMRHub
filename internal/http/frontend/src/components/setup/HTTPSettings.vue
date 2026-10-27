@@ -29,16 +29,17 @@
         <p>These settings control the main HTTP server that serves the web interface and API.
           A canonical host is required by DMRHub to allow it to generate absolute URLs.</p>
         <br />
-        <label class="field-label" for="http-bind">Bind</label>
-        <ShadInput id="http-bind" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
+        <label class="field-label" for="http-bind">Bind <SettingBadges path="http.bind" /></label>
+        <ShadInput id="http-bind" v-setting="settingLocked('http.bind')" type="text" v-model="bind" :aria-invalid="(errors && errors.bind) || false" />
         <p>
           The address to bind the HTTP server to
         </p>
+        <SettingNote path="http.bind" />
         <span v-if="errors && errors.bind" class="p-error">{{ errors.bind }}</span>
         <br />
-        <label class="field-label" for="http-port">Port</label>
+        <label class="field-label" for="http-port">Port <SettingBadges path="http.port" /></label>
         <ShadInput
-          id="http-port"
+          id="http-port" v-setting="settingLocked('http.port')"
           type="number"
           v-model="port"
           :aria-invalid="(errors && errors.port) || false"
@@ -46,12 +47,13 @@
         <p>
           The port number to bind the HTTP server to
         </p>
+        <SettingNote path="http.port" />
         <span v-if="errors && errors.port" class="p-error">{{ errors.port }}</span>
         <br />
-        <label class="field-label" for="http-trusted-proxies">Trusted Proxies</label>
+        <label class="field-label" for="http-trusted-proxies">Trusted Proxies <SettingBadges path="http.trusted-proxies" /></label>
         <textarea
           rows="5"
-          id="http-trusted-proxies"
+          id="http-trusted-proxies" v-setting="settingLocked('http.trusted-proxies')"
           v-model="trustedProxies"
           class="ui-textarea"
           :class="{ 'ui-textarea-invalid': (errors && errors['trusted-proxies']) || false }"
@@ -60,11 +62,12 @@
           A list of trusted proxy IP addresses. If set, the HTTP server will only accept
           requests from these IP addresses. One per line.
         </p>
+        <SettingNote path="http.trusted-proxies" />
         <span v-if="errors && errors['trusted-proxies']" class="p-error">{{ errors['trusted-proxies'] }}</span>
         <br />
-        <label class="field-label" for="http-canonical-host">Canonical Host</label>
+        <label class="field-label" for="http-canonical-host">Canonical Host <SettingBadges path="http.canonical-host" /></label>
         <ShadInput
-          id="http-canonical-host"
+          id="http-canonical-host" v-setting="settingLocked('http.canonical-host')"
           type="text"
           v-model="canonicalHost"
           :aria-invalid="(errors && errors['canonical-host']) || false"
@@ -72,6 +75,7 @@
         <p>
           The canonical host name for the DMRHub instance. This is used to generate absolute URLs.
         </p>
+        <SettingNote path="http.canonical-host" />
         <span v-if="errors && errors['canonical-host']" class="p-error">{{ errors['canonical-host'] }}</span>
         <br />
         <RobotsTXTSettings v-model="robotsTXT" :errors="errors['robots-txt']" />
@@ -93,8 +97,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     RobotsTXTSettings,
     CORSSettings,

@@ -26,8 +26,8 @@
         <CardTitle>robots.txt Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <label class="field-label" for="robots-txt-mode">Mode</label>
-        <select id="robots-txt-mode" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
+        <label class="field-label" for="robots-txt-mode">Mode <SettingBadges path="http.robots-txt.mode" /></label>
+        <select id="robots-txt-mode" v-setting="settingLocked('http.robots-txt.mode')" v-model="mode" class="ui-select" :class="{ 'ui-select-invalid': (errors && errors.mode) || false }">
           <option v-for="option in [
             { label: 'Disabled', value: 'disabled' },
             { label: 'Allow', value: 'allow' },
@@ -41,12 +41,13 @@
           If <code>allow</code> is selected, a robots.txt file will be served that allows all web crawlers.
           If <code>custom</code> is selected, the content of the robots.txt file can be customized.
         </p>
+        <SettingNote path="http.robots-txt.mode" />
         <span v-if="errors && errors.mode" class="p-error">{{ errors.mode }}</span>
         <br v-if="mode === 'custom'" />
-        <label class="field-label" for="robots-txt-content" v-if="mode === 'custom'">Content</label>
+        <label class="field-label" for="robots-txt-content" v-if="mode === 'custom'">Content <SettingBadges path="http.robots-txt.content" /></label>
         <textarea
           rows="5"
-          id="robots-txt-content"
+          id="robots-txt-content" v-setting="settingLocked('http.robots-txt.content')"
           v-model="content"
           v-if="mode === 'custom'"
           class="ui-textarea"
@@ -55,6 +56,7 @@
         <p v-if="mode === 'custom'">
           The content of the robots.txt file when the mode is set to <code>custom</code>.
         </p>
+        <SettingNote v-if="mode === 'custom'" path="http.robots-txt.content" />
         <span v-if="mode === 'custom' && errors && errors.content" class="p-error">{{ errors.content }}</span>
       </CardContent>
     </Card>
@@ -68,8 +70,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { settingMixin } from '@/lib/settingMixin';
 
 export default {
+  mixins: [settingMixin],
   components: {
     Card,
     CardContent,

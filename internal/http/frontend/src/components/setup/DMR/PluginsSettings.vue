@@ -29,12 +29,12 @@
         <p>Plugins answer the calls to their IDs. Give them their IDs on the Plugins page under Admin.</p>
         <div class="mt-4 flex items-center gap-3">
           <Switch
-            id="plugins-in-process"
+            id="plugins-in-process" v-setting="settingLocked('dmr.plugins.in-process')"
             aria-labelledby="plugins-in-process-label"
             :model-value="inProcess"
             @update:model-value="(v: boolean) => set('in-process', v)"
           />
-          <label id="plugins-in-process-label" for="plugins-in-process" class="text-sm">Run plugins inside DMRHub</label>
+          <label id="plugins-in-process-label" for="plugins-in-process" class="text-sm">Run plugins inside DMRHub <SettingBadges path="dmr.plugins.in-process" /></label>
         </div>
         <p v-if="inProcess" class="mt-2 text-sm text-muted-foreground" data-test="in-process-on">
           The parrot, the location server and the plugins you upload run as part of DMRHub, with nothing else to install.
@@ -42,43 +42,48 @@
         <p v-else class="mt-2 text-sm text-muted-foreground" data-test="in-process-off">
           Turn this off only if you run every plugin as its own program, such as dmrhub-parrot and dmrhub-locator.
         </p>
+        <SettingNote path="dmr.plugins.in-process" />
         <div class="mt-4 flex items-center gap-3">
-          <Switch id="plugins-enabled" aria-labelledby="plugins-enabled-label" :model-value="enabled" @update:model-value="(v: boolean) => set('enabled', v)" />
-          <label id="plugins-enabled-label" for="plugins-enabled" class="text-sm">Accept plugins that run as their own programs</label>
+          <Switch id="plugins-enabled" v-setting="settingLocked('dmr.plugins.enabled')" aria-labelledby="plugins-enabled-label" :model-value="enabled" @update:model-value="(v: boolean) => set('enabled', v)" />
+          <label id="plugins-enabled-label" for="plugins-enabled" class="text-sm">Accept plugins that run as their own programs <SettingBadges path="dmr.plugins.enabled" /></label>
         </div>
+        <SettingNote path="dmr.plugins.enabled" />
         <div v-if="enabled" class="mt-4 grid gap-4 sm:grid-cols-3" data-test="plugins-fields">
           <div>
-            <label class="field-label" for="plugins-port">Port</label>
+            <label class="field-label" for="plugins-port">Port <SettingBadges path="dmr.plugins.port" /></label>
             <ShadInput
-              id="plugins-port"
+              id="plugins-port" v-setting="settingLocked('dmr.plugins.port')"
               inputmode="numeric"
               :model-value="String(port)"
               :aria-invalid="errors?.port ? true : undefined"
               @update:model-value="(v) => set('port', Number(v) || 0)"
             />
             <p class="text-sm text-muted-foreground">The TCP port that plugins connect to.</p>
+            <SettingNote path="dmr.plugins.port" />
             <span v-if="errors?.port" class="p-error">{{ errors.port }}</span>
           </div>
           <div>
-            <label class="field-label" for="plugins-cert-file">Certificate file</label>
+            <label class="field-label" for="plugins-cert-file">Certificate file <SettingBadges path="dmr.plugins.cert-file" /></label>
             <ShadInput
-              id="plugins-cert-file"
+              id="plugins-cert-file" v-setting="settingLocked('dmr.plugins.cert-file')"
               placeholder="/tls/tls.crt"
               :model-value="certFile"
               @update:model-value="(v) => set('cert-file', String(v))"
             />
             <p class="text-sm text-muted-foreground">The TLS certificate. DMRHub reads it again when it changes.</p>
+            <SettingNote path="dmr.plugins.cert-file" />
           </div>
           <div>
-            <label class="field-label" for="plugins-key-file">Key file</label>
+            <label class="field-label" for="plugins-key-file">Key file <SettingBadges path="dmr.plugins.key-file" /></label>
             <ShadInput
-              id="plugins-key-file"
+              id="plugins-key-file" v-setting="settingLocked('dmr.plugins.key-file')"
               placeholder="/tls/tls.key"
               :model-value="keyFile"
               :aria-invalid="errors?.['key-file'] ? true : undefined"
               @update:model-value="(v) => set('key-file', String(v))"
             />
             <p class="text-sm text-muted-foreground">The key of the certificate.</p>
+            <SettingNote path="dmr.plugins.key-file" />
             <span v-if="errors?.['key-file']" class="p-error">{{ errors['key-file'] }}</span>
           </div>
         </div>
@@ -93,13 +98,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import SettingBadges from '@/components/setup/SettingBadges.vue';
+import SettingNote from '@/components/setup/SettingNote.vue';
+import { setupStateKey, settingLocked as lockedIn } from '@/lib/setupState';
+import { settingDirective as vSetting } from '@/lib/settingDirective';
 
 const DEFAULT_PORT = 3006;
+
+const setupState = inject(setupStateKey, null);
+const settingLocked = (path: string) => lockedIn(setupState, path);
 
 const props = defineProps<{
   modelValue: Record<string, unknown>;

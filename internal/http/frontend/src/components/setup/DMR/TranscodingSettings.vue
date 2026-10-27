@@ -23,7 +23,7 @@
   <div data-test="transcoding-card">
     <Card>
       <CardHeader>
-        <CardTitle>Transcoding</CardTitle>
+        <CardTitle>Transcoding <SettingBadges path="dmr.transcoding.ambe-servers" /></CardTitle>
       </CardHeader>
       <CardContent>
         <p>
@@ -44,6 +44,7 @@
             <TableRow v-for="(row, i) in rows" :key="i" :data-test="`ambe-server-${i}`">
               <TableCell>
                 <ShadInput
+                  v-setting="locked"
                   aria-label="AMBE server"
                   placeholder="ambeserver.example.org:2460"
                   :model-value="row.address"
@@ -54,6 +55,7 @@
               </TableCell>
               <TableCell>
                 <ShadInput
+                  v-setting="locked"
                   aria-label="Calls at once"
                   inputmode="numeric"
                   placeholder="No limit"
@@ -83,6 +85,7 @@
                   type="button"
                   variant="outline"
                   size="sm"
+                  :disabled="locked"
                   :data-test="`ambe-server-remove-${i}`"
                   @click="removeRow(i)"
                 >Remove</ShadButton>
@@ -91,7 +94,7 @@
           </TableBody>
         </Table>
         <div class="mt-3">
-          <ShadButton type="button" variant="outline" size="sm" data-test="ambe-server-add" @click="addRow">
+          <ShadButton type="button" variant="outline" size="sm" :disabled="locked" data-test="ambe-server-add" @click="addRow">
             Add AMBE server
           </ShadButton>
         </div>
@@ -100,6 +103,7 @@
           AMBEserver with one DVSI chip. Each converted call uses one server for its whole length. When every server is
           busy, a call passes through in its own codec. With no server, transcoding is off.
         </p>
+        <SettingNote path="dmr.transcoding.ambe-servers" />
         <span v-if="errors?.['ambe-servers']" class="p-error">{{ errors['ambe-servers'] }}</span>
       </CardContent>
     </Card>
@@ -107,8 +111,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue';
 
+import SettingBadges from '@/components/setup/SettingBadges.vue';
+import SettingNote from '@/components/setup/SettingNote.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
@@ -123,9 +129,14 @@ import {
   type StatusText,
   type TranscodingStatus,
 } from '@/lib/codec';
+import { setupStateKey, settingLocked } from '@/lib/setupState';
+import { settingDirective as vSetting } from '@/lib/settingDirective';
 import API from '@/services/API';
 
 const REFRESH_MS = 5000;
+
+const setupState = inject(setupStateKey, null);
+const locked = computed(() => settingLocked(setupState, 'dmr.transcoding.ambe-servers'));
 
 const props = withDefaults(defineProps<{
   modelValue: Record<string, unknown>;

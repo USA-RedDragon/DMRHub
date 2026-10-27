@@ -82,4 +82,13 @@ describe('NewRepeaterPage', () => {
     expect(text).toContain('Port: 50010\n');
     expect(text).not.toContain('50000');
   });
+
+  it('says the repeater could not be created when the API refuses it', async () => {
+    mockAPI.post.mockRejectedValue(new Error('network'));
+    const { wrapper, toast } = await mountPage({ ipsc: false, mmdvm_port: 62031, ipsc_port: 50000 });
+    await wrapper.find('input#radioID').setValue('310000101');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ detail: 'Error creating repeater' }));
+  });
 });

@@ -78,7 +78,7 @@ export default {
   },
   mounted() {
     this.fetchData();
-    this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
+    this.connectSocket();
     this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
   },
   unmounted() {
@@ -90,6 +90,9 @@ export default {
     }
   },
   watch: {
+    loggedIn() {
+      this.connectSocket();
+    },
     filter: {
       deep: true,
       handler() {
@@ -115,6 +118,13 @@ export default {
     },
   },
   methods: {
+    connectSocket() {
+      if (this.socket) {
+        this.socket.close();
+      }
+      const path = this.loggedIn ? '/calls' : '/lastheard';
+      this.socket = ws.connect(getWebsocketURI() + path, this.onWebsocketMessage);
+    },
     handlePageIndexUpdate(pageIndex: number) {
       const nextPage = pageIndex + 1;
       if (nextPage === this.page || nextPage < 1) {

@@ -4,7 +4,7 @@ This page tells how to approve new users, and how to edit, suspend and delete us
 
 ## Approve new users
 
-When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lists the DMR ID under the callsign (see [RadioID checks](#radioid-checks)). If you set the HIBP API key (`hibp-api-key`), DMRHub also refuses passwords that are in the Have I Been Pwned list.
+When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lists the DMR ID under the callsign (see [RadioID checks](#radioid-checks)). A new password must have at least 8 characters. This applies when a user registers, changes their password, or uses a reset link, and when an admin sets a password. A password set before this rule still works until the user changes it. If you set the HIBP API key (`hibp-api-key`), DMRHub also refuses passwords that are in the Have I Been Pwned list.
 
 Then the new user waits for an admin, unless `auto-approve-users` is on. With `auto-approve-users` on, the new user can log in at once.
 

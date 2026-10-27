@@ -178,6 +178,10 @@ func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, h
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
 		return models.User{}, false
 	}
+	if utils.ShortPassword(json.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: utils.MsgShortPassword})
+		return models.User{}, false
+	}
 	email := strings.TrimSpace(json.Email)
 	if !authctl.CheckEmail(c, email) {
 		return models.User{}, false
@@ -817,7 +821,7 @@ func checkNewCallsign(c *gin.Context, db *gorm.DB, radioID bool, id uint, callsi
 
 // checkPasswordChange answers the request and returns false when the
 // PATCH of user must not go on: a user with a temporary password who
-// does not change it, a change of one's own password without the right
+// does not change it, a new password that is too short, a change of one's own password without the right
 // current one or to the same one, or a reset of an admin by an admin who
 // is not the System Admin. adminReset reports a password that an admin
 // sets for another user.
@@ -829,6 +833,10 @@ func checkPasswordChange(c *gin.Context, db *gorm.DB, json apimodels.UserPatch, 
 	actorID, _ := sessions.Default(c).Get("user_id").(uint)
 	if json.Password == "" && actorID == user.ID && user.MustChangePassword {
 		c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgMustChangePassword, "must_change_password": true})
+		return false, false
+	}
+	if json.Password != "" && utils.ShortPassword(json.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: utils.MsgShortPassword})
 		return false, false
 	}
 	if json.Password != "" && actorID == user.ID {

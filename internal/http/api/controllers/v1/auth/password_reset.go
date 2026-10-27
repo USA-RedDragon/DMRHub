@@ -227,6 +227,10 @@ func POSTResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgResetNoPass})
 		return
 	}
+	if utils.ShortPassword(json.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: utils.MsgShortPassword})
+		return
+	}
 	now := time.Now()
 	if _, found, err := models.PasswordResetUser(db, json.Token, now); err != nil || !found {
 		if err != nil {

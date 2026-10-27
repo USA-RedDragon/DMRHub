@@ -32,9 +32,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
+
+// MinPasswordLength is the fewest characters that a new password may have.
+// A password set before the minimum still logs in until it is changed.
+const MinPasswordLength = 8
+
+// MsgShortPassword is the answer to a new password that is too short.
+const MsgShortPassword = "The password must have at least 8 characters."
+
+// ShortPassword reports whether password has fewer than MinPasswordLength
+// characters.
+func ShortPassword(password string) bool {
+	return utf8.RuneCountInString(password) < MinPasswordLength
+}
 
 const (
 	memory      = 64 * 1024

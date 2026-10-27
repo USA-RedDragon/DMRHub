@@ -291,3 +291,16 @@ func TestForgotPasswordLimitsAnIPv6NetworkAsOneAddress(t *testing.T) {
 	mailer.next(t)
 	assert.Equal(t, int64(2), resets(t, db, 1000001), "each IPv4 address has a limit of its own")
 }
+
+func TestPasswordResetNeedsEightCharacters(t *testing.T) {
+	t.Parallel()
+	router, _, mailer := resetRouter(t, true)
+	forgot(t, router, "jdoe")
+	token := mailer.token(t)
+
+	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "seven77"})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"error":"The password must have at least 8 characters."}`, w.Body.String())
+	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "eight888"})
+	assert.Equal(t, http.StatusOK, w.Code, "the link still works: %s", w.Body.String())
+}

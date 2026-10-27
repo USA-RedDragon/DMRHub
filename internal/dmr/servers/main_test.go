@@ -17,18 +17,14 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-package websocket_test
+package servers_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/ory/dockertest/v4"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 )
 
-// TestMain removes the Docker containers of the tests when the tests end or
-// the process gets SIGINT or SIGTERM, and the containers that an earlier
-// killed run left behind once their run has expired.
 func TestMain(m *testing.M) {
-	dockertest.TestMain(context.Background(), m)
+	testutils.Main(m)
 }

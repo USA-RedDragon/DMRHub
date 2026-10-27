@@ -42,7 +42,7 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	var c testutils.Containers
-	testutils.PostgresRedisBackendInto(&c).Setup(t, &cfg)
+	testutils.PostgresOwnRedisBackendInto(&c).Setup(t, &cfg)
 	store, err := kv.MakeKV(t.Context(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })

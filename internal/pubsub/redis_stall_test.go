@@ -47,7 +47,7 @@ func TestAPublishToAStalledRedisIsSentOnce(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	var c testutils.Containers
-	testutils.PostgresRedisBackendInto(&c).Setup(t, &cfg)
+	testutils.PostgresOwnRedisBackendInto(&c).Setup(t, &cfg)
 	pub, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Close() })
@@ -112,7 +112,7 @@ func TestAPublishToAStoppedRedisIsNotSent(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	var c testutils.Containers
-	testutils.PostgresRedisBackendInto(&c).Setup(t, &cfg)
+	testutils.PostgresOwnRedisBackendInto(&c).Setup(t, &cfg)
 	pub, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Close() })
@@ -136,7 +136,7 @@ func TestOnlyAPublishThatRedisMayHaveFailsWithoutErrNotSent(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	var c testutils.Containers
-	testutils.PostgresRedisBackendInto(&c).Setup(t, &cfg)
+	testutils.PostgresOwnRedisBackendInto(&c).Setup(t, &cfg)
 	pub, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pub.Close() })

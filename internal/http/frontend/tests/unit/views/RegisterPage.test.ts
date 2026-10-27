@@ -30,11 +30,11 @@ import RegisterPage from '@/views/auth/RegisterPage.vue';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock };
 
-async function register(smtp: boolean, email?: string) {
+async function register(smtp: boolean, email?: string, add = vi.fn()) {
   mockAPI.get.mockResolvedValue({ data: { password_reset: smtp } });
   mockAPI.post.mockResolvedValue({ data: { message: 'ok' } });
   const wrapper = mount(RegisterPage, {
-    global: { plugins: [createPinia()], mocks: { $toast: { add: vi.fn() }, $router: { push: vi.fn() } } },
+    global: { plugins: [createPinia()], mocks: { $toast: { add }, $router: { push: vi.fn() } } },
   });
   await flushPromises();
   await wrapper.find('input#dmr_id').setValue('3100001');
@@ -70,5 +70,12 @@ describe('RegisterPage email', () => {
     expect(wrapper.find('input#email').exists()).toBe(false);
     expect(wrapper.find('[data-test="no-email"]').text()).toBe('This network cannot send email. To reset a forgotten password, ask an admin.');
     expect(mockAPI.post.mock.calls[0]![1]).not.toHaveProperty('email');
+  });
+
+  it('shows the error of the API', async () => {
+    const add = vi.fn();
+    mockAPI.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'Username is the callsign of another user' } } });
+    await register(false, undefined, add);
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'error', detail: 'Username is the callsign of another user' }));
   });
 });

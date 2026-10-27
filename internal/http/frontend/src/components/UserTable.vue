@@ -317,7 +317,7 @@ export default {
           this.$toast.add({
             severity: 'error',
             summary: 'Error',
-            detail: `Error updating user ${user.id}`,
+            detail: err.response?.data?.error ?? `Error updating user ${user.id}`,
             life: 3000,
           });
         });

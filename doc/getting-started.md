@@ -1,6 +1,6 @@
 # Get started
 
-This page is for a ham who wants to use a DMRHub network. It tells you what DMRHub is, how to get an account, and how to connect your first hotspot.
+This page is for a ham who wants to use a DMRHub network. It tells you what DMRHub is, how to get an account, and how to connect your first hotspot. To run a DMRHub server of your own, see [Set up a DMRHub server](setup.md).
 
 In these docs, `<siteurl>` is the web address of the DMRHub network that you use.
 

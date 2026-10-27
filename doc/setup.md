@@ -38,7 +38,6 @@ The image runs as user and group 65534, so the data volume must belong to that u
    docker run -d \
        --restart unless-stopped \
        --name dmrhub \
-       -e XDG_CONFIG_HOME=/data \
        -e DATABASE_DATABASE=/data/DMRHub.db \
        -p 3005:3005 \
        -p 62031:62031/udp \
@@ -46,7 +45,7 @@ The image runs as user and group 65534, so the data volume must belong to that u
        ghcr.io/usa-reddragon/dmrhub:v1
    ```
 
-   With these two environment variables, DMRHub keeps its database at `/data/DMRHub.db` and the setup wizard saves the configuration to `/data/DMRHub/config.yaml`. Both are in the volume.
+   `DATABASE_DATABASE` puts the SQLite file at `/data/DMRHub.db`, in the volume. DMRHub keeps the Setup settings, the secret and the password salt in that database.
 
 3. Get the address of the setup wizard from the log:
 
@@ -79,7 +78,6 @@ services:
       volume-owner:
         condition: service_completed_successfully
     environment:
-      XDG_CONFIG_HOME: /data
       DATABASE_DATABASE: /data/DMRHub.db
     ports:
       - "3005:3005"
@@ -98,15 +96,15 @@ docker compose logs dmrhub | grep 'setup wizard at'
 
 ### Option B: Release binary with systemd
 
-1. Download the release for your platform from [GitHub Releases](https://github.com/USA-RedDragon/DMRHub/releases) and check it. For v1.3.16 on `amd64`:
+1. Download the release for your platform from [GitHub Releases](https://github.com/USA-RedDragon/DMRHub/releases) and check it. For v1.3.17 on `amd64`:
 
    ```bash
-   curl -sSLO https://github.com/USA-RedDragon/DMRHub/releases/download/v1.3.16/DMRHub_1.3.16_linux_amd64.tar.gz
-   curl -sSLO https://github.com/USA-RedDragon/DMRHub/releases/download/v1.3.16/DMRHub_1.3.16_checksums.txt
-   sha256sum --ignore-missing -c DMRHub_1.3.16_checksums.txt
+   curl -sSLO https://github.com/USA-RedDragon/DMRHub/releases/download/v1.3.17/DMRHub_1.3.17_linux_amd64.tar.gz
+   curl -sSLO https://github.com/USA-RedDragon/DMRHub/releases/download/v1.3.17/DMRHub_1.3.17_checksums.txt
+   sha256sum --ignore-missing -c DMRHub_1.3.17_checksums.txt
    ```
 
-   The last command must print `DMRHub_1.3.16_linux_amd64.tar.gz: OK`.
+   The last command must print `DMRHub_1.3.17_linux_amd64.tar.gz: OK`.
 
 2. Make a system user and its directory:
 
@@ -122,14 +120,14 @@ docker compose logs dmrhub | grep 'setup wizard at'
 3. Install the program:
 
    ```bash
-   tar -xzf DMRHub_1.3.16_linux_amd64.tar.gz DMRHub
+   tar -xzf DMRHub_1.3.17_linux_amd64.tar.gz DMRHub
    sudo install -m 0755 DMRHub /usr/local/bin/DMRHub
    ```
 
 4. Install the unit file [`hack/dmrhub.service`](../hack/dmrhub.service) from the repository, and start DMRHub. The release archive does not contain the unit file.
 
    ```bash
-   sudo cp dmrhub.service /etc/systemd/system/
+   sudo cp hack/dmrhub.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now dmrhub.service
    ```
@@ -140,14 +138,14 @@ docker compose logs dmrhub | grep 'setup wizard at'
    journalctl -u dmrhub.service | grep 'setup wizard at'
    ```
 
-The unit runs DMRHub as the `dmrhub` user. DMRHub keeps its database in `/etc/dmrhub/DMRHub.db` and the wizard saves the configuration to `/etc/dmrhub/.config/DMRHub/config.yaml`.
+The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. DMRHub keeps its database in `/etc/dmrhub/DMRHub.db`, and the Setup settings, the secret and the password salt in that database. See [Install DMRHub](admin/install.md#run-dmrhub-with-systemd) for the other files in that directory.
 
 ## Step 2: Finish the setup wizard
 
 1. Open the address from the log in a web browser. If the browser is on another computer, replace `localhost` with the address of the server. Keep the token. The token changes each time DMRHub starts.
-2. In **General Settings**, enter a **Network Name**. Enter a long random value in **Secret** and another one in **Password Salt**. Both are required. To make a random value, you can use `openssl rand -hex 32`.
+2. In **General Settings**, enter a **Network Name**. Leave **Secret** and **Password Salt** blank: DMRHub made random values for them at the first start and keeps them in the database, so both show `Stored. Leave blank to keep the existing value.`
 
-   ![The General Settings card of the setup wizard, with a network name, a secret and a password salt](Screenshots/setup-wizard-general.png)
+   ![The General Settings card of the setup wizard, with a network name](Screenshots/setup-wizard-general.png)
 
 3. In **DMR Settings**, keep the defaults. The MMDVM server listens on port 62031. Keep **Disable Radio ID validation** off: DMRHub then checks each DMR ID and callsign against the RadioID.net data.
 
@@ -201,7 +199,7 @@ The browser then shows a dialog with a DMRGateway configuration, like this one:
 
 ```ini
 [DMR Network 2]
-Name=AREDN
+Name=DMRHub
 Enabled=1
 Address=dmrhub.example.org
 Port=62031
@@ -213,11 +211,11 @@ Debug=0
 
 > **Important:** Copy the password now. DMRHub shows it only once. If you lose it, delete the hotspot on the Repeaters page and enroll it again.
 
-The dialog takes `Address` from the address in your browser, and always shows port 62031. If you opened DMRHub by another name, or you changed the MMDVM port, use the real values.
+The dialog takes `Address` from the address in your browser, and `Port` from the MMDVM port of the server. If you opened DMRHub by another name, use the real address.
 
 ## Step 6: Configure the hotspot
 
-Use the values from step 5: the address of the server, port 62031, the hotspot ID and the password.
+Use the values from step 5: the address of the server, the port, the hotspot ID and the password.
 
 ### Pi-Star
 
@@ -274,7 +272,7 @@ MMDVMHost releases since June 2023 cannot connect to a master directly. They con
 
    ```ini
    [DMR Network 2]
-   Name=AREDN
+   Name=DMRHub
    Enabled=1
    Address=dmrhub.example.org
    Port=62031
@@ -313,7 +311,7 @@ Click **Repeaters**. When the hotspot is logged in, **Last Connected** and **Las
 2. Talk for a few seconds, then release the PTT.
 3. About 3 seconds later, the parrot plays your call back, as a private call from 9990 to your DMR ID.
 
-The **Last Heard** page shows only calls to talkgroups, so the parrot call is not there. To see it, click the hotspot ID on the **Repeaters** page. The **Last Heard** card at the bottom of the repeater page shows your call to `TG 9990`.
+The **Last Heard** page shows your call to 9990. The **Last Heard** card at the bottom of the repeater page also shows it: click the hotspot ID on the **Repeaters** page.
 
 ### Call a talkgroup
 
@@ -328,7 +326,7 @@ Your call to a talkgroup makes that talkgroup the dynamic talkgroup of the times
 
 ## Step 8: Start DMRHub when the server starts
 
-- **Docker:** with `--restart unless-stopped` (or `restart: unless-stopped` in the Compose file), Docker starts the container again when Docker starts, unless you stopped it with `docker stop`. The configuration and the database stay in the volume, so after `docker restart dmrhub`, or `docker compose down` and `docker compose up -d`, DMRHub starts the network and not the wizard.
+- **Docker:** with `--restart unless-stopped` (or `restart: unless-stopped` in the Compose file), Docker starts the container again when Docker starts, unless you stopped it with `docker stop`. The database, with the Setup settings, stays in the volume, so after `docker restart dmrhub`, or `docker compose down` and `docker compose up -d`, DMRHub starts the network and not the wizard.
 - **systemd:** `systemctl enable` in step 1 starts DMRHub at boot. To restart it by hand, use `sudo systemctl restart dmrhub.service`.
 
 When DMRHub restarts, the hotspots log in again by themselves. In the test, MMDVMHost logged in again about 10 seconds after a `docker restart`.
@@ -350,6 +348,8 @@ The steps were done on 2026-10-27 with these versions:
 | MMDVMHost with DMRGateway | MMDVMHost `9384d68` (2026-10-18), DMRGateway `d751e20` (2026-10-22) |
 | MMDVMHost in Pi-Star direct mode | MMDVMHost `0ecf2de` (2023-01-19), the last version before direct mode was removed |
 | Pi-Star settings | From the source of the Pi-Star dashboard, `Pi-Star_DV_Dash` `ca50804` |
+
+v1.3.17 keeps the Setup settings, the secret and the password salt in the database, and the hotspot dialog shows `Name=DMRHub` and the MMDVM port of the server. The install, wizard and dialog steps above follow v1.3.17. Of these changes, only the stored secret and password salt of a new install were checked again, with a build of v1.3.17. The screenshots of the wizard are from before v1.3.17.
 
 No radio and no RF were used. A fake MMDVM modem stood in for the modem board and the radio. It is the `modemtest` package of DMRHub (`internal/dmr/servers/modem/modemtest`). It spoke the MMDVM modem protocol to MMDVMHost over UDP (`Protocol=udp` in the `[Modem]` section), sent voice calls on timeslot 2 as a radio does, and counted the bursts that MMDVMHost sent back for the air. MMDVMHost, DMRGateway and DMRHub ran on the same computer, so the test used other ports between MMDVMHost and DMRGateway (62037 and 62038) than the examples on this page.
 

@@ -18,6 +18,6 @@ The parrot keeps at most 3 minutes of one call.
 ## If you hear nothing
 
 - Check on the Repeaters page that your hotspot connected. **Last Ping** must show a recent time.
-- Check the **Last Heard** page. If your call to 9990 is not there, DMRHub did not get it. Check the hotspot configuration.
+- Check the **Last Heard** page. It shows calls to the parrot too. If your call to 9990 is not there, DMRHub did not get it. Check the hotspot configuration.
 - If your call is there but no reply comes, check that your radio receives private calls from 9990. Some radios need a contact or an RX group list entry, or a "monitor private calls" setting.
 - Ask your admin whether the parrot plugin runs on this network.

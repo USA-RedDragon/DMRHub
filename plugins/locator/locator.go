@@ -511,13 +511,12 @@ func (l *Locator) queue(k linkKey, ln *link, port ip.Port, payload []byte) {
 		slog.Error("Locator: cannot build a datagram", "error", err)
 		return
 	}
-	var h pdu.DataHeader
-	err = h.SetUnconfirmed(pdu.UnconfirmedDataHeader{
+	h, err := pdu.UnconfirmedDataHeader{
 		SAP:             enums.SAPIPBasedPacketData,
 		LLIDDestination: k.radio,
 		LLIDSource:      k.service,
 		FullMessageFlag: true,
-	})
+	}.DataHeader()
 	if err != nil {
 		slog.Error("Locator: cannot build a data header", "error", err)
 		return

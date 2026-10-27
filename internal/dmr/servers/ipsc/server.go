@@ -289,32 +289,26 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 	return nil
 }
 
-// rekey makes the registered peer id use its auth key from the database at
-// once, after the key changed, so that neither side takes a packet signed
-// with the old key. The peer stays registered until it times out or
-// registers again with the new key.
+// rekey drops the registered peer id at once, after its auth key changed,
+// so that neither side takes a packet signed with the old key. The peer
+// must register again with the new key.
 func (s *IPSCServer) rekey(id uint) {
 	if id > math.MaxUint32 || s.m == nil {
 		return
 	}
 	peer := uint32(id)
 	s.keys.Reload(peer)
-	key, useAuth, err := s.keyFor(peer)
-	if err != nil || !useAuth {
-		slog.Error("Cannot load the new auth key of an IPSC peer", "peerID", peer, "error", err)
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped.Load() {
 		return
 	}
-	info, ok := s.m.Peer(peer)
+	out, ok := s.m.Drop(peer, s.out[:0])
 	if !ok {
 		return
 	}
-	slog.Info("IPSC peer takes its new auth key", "peerID", peer)
-	s.apply(context.Background(), s.m.Adopt(s.now(), info.Addr, peer, &key, s.out[:0]))
+	slog.Info("Dropping an IPSC peer whose auth key changed", "peerID", peer, "reason", ipscsession.ReasonDropped)
+	s.apply(context.Background(), out)
 }
 
 func (s *IPSCServer) closeSessions(ctx context.Context) {

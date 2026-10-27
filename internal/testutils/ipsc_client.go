@@ -70,6 +70,7 @@ type IPSCClient struct {
 	rxAt    time.Time
 
 	downs    atomic.Int32
+	heard    atomic.Int64
 	ready    chan struct{}
 	upOnce   sync.Once
 	done     chan struct{}
@@ -313,6 +314,11 @@ func (c *IPSCClient) Downs() int {
 	return int(c.downs.Load())
 }
 
+// Heard returns the number of datagrams that the client got.
+func (c *IPSCClient) Heard() int {
+	return int(c.heard.Load())
+}
+
 // Close shuts down the client.
 func (c *IPSCClient) Close() {
 	c.stopOnce.Do(func() {
@@ -374,6 +380,7 @@ func (c *IPSCClient) rx() {
 			return
 		}
 		at := time.Now()
+		c.heard.Add(1)
 		addr, ok := ipscsession.AddrOf(from.IP, from.Port)
 		if !ok {
 			continue

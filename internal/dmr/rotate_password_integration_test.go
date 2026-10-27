@@ -72,8 +72,9 @@ func TestRotatedPasswordEndsTheSessionOnEveryReplica(t *testing.T) {
 // TestRotatedAuthKeyStopsAtOnceOnEveryReplica rotates the auth key of an
 // IPSC repeater that is registered with the second replica through the hub
 // of the first: from then on neither side may take a packet signed with
-// the old key, and the repeater works again once it registers with the new
-// key.
+// the old key, the replica that holds the repeater must drop it at once and
+// send it nothing more, and the repeater works again once it registers
+// anew with the new key.
 func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -104,14 +105,18 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		}
 		call(301)
 		require.NotEmpty(t, old.Drain(drainWait), "the repeater must get the call before the rotation")
+		before, err := models.FindRepeaterByID(stack.DB, 200001)
+		require.NoError(t, err)
 
 		require.NoError(t, models.SetRepeaterPassword(stack.DB, 200001, newKey))
 		stack.Hub.ReloadRepeater(t.Context(), 200001)
 		stack.Hub.RepeaterSecretChanged(200001)
 		time.Sleep(settleDuration)
 
+		heard := old.Heard()
 		call(302)
 		assert.Empty(t, old.Drain(drainWait), "a repeater with the old key must not take the packets of DMRHub")
+		assert.Equal(t, heard, old.Heard(), "the replica must drop the repeater at once and send it nothing more")
 		require.NoError(t, old.SendGroupVoice(1000001, 1, false, 303))
 		assert.Empty(t, mc.Drain(drainWait), "DMRHub must not take a packet signed with the old key")
 
@@ -119,6 +124,10 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		require.NoError(t, fresh.Connect(second.IPSCAddr))
 		defer fresh.Close()
 		require.NoError(t, fresh.WaitReady(handshakeWait), "the repeater must register with the new key")
+		assert.Eventually(t, func() bool {
+			r, err := models.FindRepeaterByID(stack.DB, 200001)
+			return err == nil && r.Connected.After(before.Connected)
+		}, 2*time.Second, 10*time.Millisecond, "the repeater must register anew, not stay registered")
 		time.Sleep(settleDuration)
 		call(304)
 		assert.NotEmpty(t, fresh.Drain(drainWait), "the repeater must get calls with the new key")

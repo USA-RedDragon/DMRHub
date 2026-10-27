@@ -94,13 +94,15 @@ func TestGroupCallPublishesOnlyItsTalkgroupTopic(t *testing.T) {
 	sub := ps.Subscribe("hub:packets:talkgroup:1")
 	defer func() { _ = sub.Close() }()
 
-	h.RoutePacket(context.Background(), makeVoicePacket(1, 44444, true, false), models.RepeaterTypeMMDVM)
+	knowTalkgroups(t, h)
+	pkt := makeVoicePacket(1, 44444, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	select {
 	case <-sub.Channel():
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for the talkgroup publish")
 	}
-	time.Sleep(100 * time.Millisecond)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 
 	assert.Equal(t, []string{"hub:packets:talkgroup:1"}, rec.packetTopics())
 }
@@ -191,7 +193,8 @@ func TestPeerEgressKeepsStreamOrder(t *testing.T) {
 
 	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
 	defer h.UnregisterServer("peer-srv")
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
+	require.NoError(t, h.KnowPeers())
 
 	const count = 90
 	for i := range count {
@@ -205,7 +208,7 @@ func TestPeerEgressKeepsStreamOrder(t *testing.T) {
 		select {
 		case rp := <-peerHandle.Packets:
 			got = append(got, rp.Packet.Seq)
-		case <-time.After(5 * time.Second):
+		case <-time.After(failAfter):
 			t.Fatalf("got %d of %d peer packets", len(got), count)
 		}
 	}

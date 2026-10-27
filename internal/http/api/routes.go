@@ -220,6 +220,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Admin.POST("/plugins/upload", v1PluginsControllers.POSTPluginUpload)
 	v1Admin.POST("/plugins/:id/module", v1PluginsControllers.POSTPluginModule)
 	v1Admin.GET("/messages/:id", v1MessagesControllers.GETAdminMessage)
+	v1Admin.GET("/message-access", v1MessagesControllers.GETAdminMessageAccesses)
 	v1Admin.GET("/radio-id-drift", v1UsersControllers.GETRadioIDDrifts)
 	v1Admin.GET("/invites", v1UsersControllers.GETInvites)
 	v1Admin.POST("/invites", v1UsersControllers.POSTInvite)

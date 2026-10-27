@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -37,6 +38,7 @@ import (
 const (
 	adminDefaultLimit = 25
 	adminMaxLimit     = 100
+	maxAccessPage     = 1000000
 )
 
 var likeEscaper = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_") //nolint:gochecknoglobals
@@ -86,6 +88,58 @@ func search(c *gin.Context, db *gorm.DB) (*gorm.DB, string) {
 	return q, ""
 }
 
+// logAccess logs that the admin of the request saw msgs. When it cannot,
+// it answers the request and returns false, so that no admin sees a
+// message that the log does not show.
+func logAccess(c *gin.Context, db *gorm.DB, kind models.MessageAccessKind, id *uint, msgs []models.Message) bool {
+	admin, _ := sessions.Default(c).Get("user_id").(uint)
+	if err := models.LogMessageAccess(db, admin, kind, id, c.Request.URL.RawQuery, msgs, time.Now()); err != nil {
+		failed(c, "cannot log a message access", err)
+		return false
+	}
+	return true
+}
+
+// GETAdminMessageAccesses lists the times that admins saw stored messages,
+// newest first, with the radio IDs whose messages they saw and the users
+// of those radio IDs. The admin and radio_id parameters pick the accesses
+// of one admin and of the messages of one radio ID.
+func GETAdminMessageAccesses(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	var q models.MessageAccessQuery
+	for _, p := range []struct {
+		name string
+		into *uint
+	}{{"admin", &q.AdminID}, {"radio_id", &q.RadioID}} {
+		v := c.Query(p.name)
+		if v == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid " + p.name})
+			return
+		}
+		*p.into = uint(id)
+	}
+	limit := intParam(c, queryParamLim, adminDefaultLimit, adminMaxLimit)
+	page := intParam(c, queryParamPg, 1, maxAccessPage)
+	rows, ids, total, err := models.ListMessageAccesses(db, q, (page-1)*limit, limit)
+	if err != nil {
+		failed(c, "cannot list the message accesses", err)
+		return
+	}
+	out, err := apimodels.NewMessageAccessList(db, rows, ids, total)
+	if err != nil {
+		failed(c, "cannot show the message accesses", err)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // GETAdminMessages searches every stored message, with no opt-in filter and
 // no cap.
 func GETAdminMessages(c *gin.Context) {
@@ -122,6 +176,9 @@ func GETAdminMessages(c *gin.Context) {
 		failed(c, "cannot show a search", err)
 		return
 	}
+	if !logAccess(c, db, models.MessageAccessSearch, nil, msgs) {
+		return
+	}
 	out.Messages = view
 	c.JSON(http.StatusOK, out)
 }
@@ -150,6 +207,9 @@ func GETAdminMessage(c *gin.Context) {
 	view, err := messages.AdminView(db, []models.Message{msg}, true)
 	if err != nil {
 		failed(c, "cannot show a message", err)
+		return
+	}
+	if !logAccess(c, db, models.MessageAccessRead, &msg.ID, []models.Message{msg}) {
 		return
 	}
 	c.JSON(http.StatusOK, view[0])

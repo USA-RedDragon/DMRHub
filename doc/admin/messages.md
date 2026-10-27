@@ -30,6 +30,12 @@ Click a row to see the details of the message and its raw bytes.
 
 <!-- screenshot: admin-messages.png | /admin/messages with a search for From ID 3000001 and one result row open, showing the details and raw bytes -->
 
+## Message access log
+
+DMRHub logs each time that an admin sees stored messages: each search that shows at least one message, and each message that an admin opens. Each entry has the admin, the time, the search or the message, the number of messages shown, and the radio IDs whose messages the admin saw, with the users who have those radio IDs. DMRHub always keeps this log. If DMRHub cannot write an entry, it does not show the messages.
+
+Admins read the log with `GET /api/v1/admin/message-access`. Add `radio_id=<id>` to see who saw the messages of one radio ID, or `admin=<id>` to see what one admin saw. DMRHub never deletes entries from this log.
+
 ## Retention
 
 By default, DMRHub keeps all records forever. To delete old records:

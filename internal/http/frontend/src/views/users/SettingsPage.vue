@@ -131,7 +131,7 @@
                 v-model="newID"
                 inputmode="numeric"
                 autocomplete="off"
-                placeholder="7-digit DMR ID, for example 3191877"
+                placeholder="7-digit DMR ID, for example 3100001"
               />
             </div>
             <ShadButton type="submit" :disabled="saving">Add</ShadButton>

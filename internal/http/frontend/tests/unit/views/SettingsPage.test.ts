@@ -159,6 +159,12 @@ describe('SettingsPage', () => {
     expect(added.find('button').text()).toBe('Remove');
   });
 
+  it('shows a made-up example ID in the radio ID field', async () => {
+    serve(true);
+    const wrapper = await mountPage();
+    expect(wrapper.find('#add-radio-id').attributes('placeholder')).toBe('7-digit DMR ID, for example 3100001');
+  });
+
   it('checks a new radio ID before it sends it', async () => {
     serve(true);
     const wrapper = await mountPage();

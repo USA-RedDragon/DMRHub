@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -60,12 +61,34 @@ func liveSMS(t *testing.T, c call) transmission {
 // every burst reaches the other.
 func crossLive(t *testing.T, from, to *testutils.MMDVMClient, tx transmission, stream uint, name string) {
 	t.Helper()
-	for _, p := range tx.packets(stream) {
+	crossLiveKeeping(t, from, to, tx, stream, name, func(int, models.Packet) bool { return true })
+}
+
+// crossLiveKeeping is crossLive for an external server that forwards only
+// the bursts for which keep, given the index of the burst, is true.
+func crossLiveKeeping(t *testing.T, from, to *testutils.MMDVMClient, tx transmission, stream uint, name string, keep func(int, models.Packet) bool) {
+	t.Helper()
+	var want []uint
+	for i, p := range tx.packets(stream) {
 		require.NoError(t, from.SendDMRD(p))
+		if keep(i, p) {
+			want = append(want, p.Seq)
+		}
 		time.Sleep(60 * time.Millisecond)
 	}
-	got := ofCall(to.Drain(3*time.Second), uint(tx.src), uint(tx.dst))
-	assert.Len(t, got, len(tx.bursts), "%s: every packet of the call arrives", name)
+	arrived := ofCall(to.Drain(3*time.Second), uint(tx.src), uint(tx.dst))
+	got := make([]uint, 0, len(arrived))
+	for _, p := range arrived {
+		got = append(got, p.Seq)
+	}
+	assert.Equal(t, want, got, "%s: every packet of the call arrives", name)
+}
+
+// firstCSBKOnly keeps every burst but the CSBKs after the first, which
+// FreeDMR takes from OpenBridge only as the start of a unit data stream
+// (bridge_master.py, "Match UNIT data").
+func firstCSBKOnly(i int, p models.Packet) bool {
+	return i == 0 || p.DTypeOrVSeq != uint(enums.DataTypeCSBK)
 }
 
 // checkForgedPacketsAreDropped sends the hub OpenBridge packets for the

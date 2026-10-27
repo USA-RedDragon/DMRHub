@@ -8,9 +8,9 @@ Usage: hack/freedmr-test.sh FREEDMR_SRC PYTHON [test flags]
 
 Runs TestExternalFreeDMR of internal/dmr: a FreeDMR server (bridge_master.py
 of FREEDMR_SRC, run by PYTHON) links to a test hub over enhanced OpenBridge
-version 5. Calls must cross the link both ways, and FreeDMR must keep
-sending to the hub after a minute, which it does only while the hub sends
-BCKA keepalives.
+version 5. Group calls and SMS must cross the link both ways, the hub must
+drop forged packets on the link, and FreeDMR must keep sending to the hub
+after a minute, which it does only while the hub sends BCKA keepalives.
 
 PYTHON is a Python with the packages of FreeDMR's requirements.txt. FreeDMR
 can fetch ID lists from public hosts, so the test runs in a network

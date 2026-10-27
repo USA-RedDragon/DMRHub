@@ -182,8 +182,12 @@ func (l *lockedLog) String() string {
 
 // TestExternalFreeDMR links a real FreeDMR server (bridge_master.py) to
 // the hub over enhanced OpenBridge version 5. A call on TG 91 from a
-// repeater on the hub must reach a repeater on FreeDMR, and back, and
-// FreeDMR must keep sending to the hub after a minute, which it does only
+// repeater on the hub must reach a repeater on FreeDMR, and back, and so
+// must an SMS to a radio on each, and the hub must drop forged packets on
+// the link. FreeDMR carries no private voice over OpenBridge
+// (bridge_master.py takes only unit data from it, and makes a private call
+// from a repeater a Dial-A-TG). FreeDMR must keep sending to the hub after
+// a minute, which it does only
 // while the hub sends BCKA keepalives (bridge_master.py stops sending to an
 // enhanced link after 60 s without one). It runs only when DMRHUB_FREEDMR
 // names the FreeDMR source and the process is in a network namespace with
@@ -237,7 +241,7 @@ func TestExternalFreeDMR(t *testing.T) {
 
 	var remote *testutils.MMDVMClient
 	require.Eventually(t, func() bool {
-		c := testutils.NewMMDVMClient(312910101, "", testPassword)
+		c := testutils.NewMMDVMClient(liveRemoteHotspot, "", testPassword)
 		if c.Connect(fmt.Sprintf("127.0.0.1:%d", masterPort)) != nil || c.WaitReady(3*time.Second) != nil {
 			c.Close()
 			return false
@@ -266,7 +270,12 @@ func TestExternalFreeDMR(t *testing.T) {
 	}
 	send(local, remote, "hub to FreeDMR")
 	time.Sleep(6 * time.Second)
+	crossLiveKeeping(t, local, remote, liveSMS(t, call{dst: liveRemoteRadio, src: mxRadio}), 0x7E81, "SMS from the hub", firstCSBKOnly)
+	time.Sleep(6 * time.Second)
+	crossLive(t, remote, local, liveSMS(t, call{dst: mxRadio, src: liveRemoteRadio}), 0x7E82, "SMS to the hub")
+	time.Sleep(6 * time.Second)
 	send(remote, local, "FreeDMR to hub")
+	checkForgedPacketsAreDropped(t, stack.OpenBridgeAddr, freeDMRServerID, obPassword, true, local)
 
 	time.Sleep(65 * time.Second)
 	send(remote, local, "FreeDMR to hub after a minute of keepalives")

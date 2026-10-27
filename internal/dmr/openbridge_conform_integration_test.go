@@ -138,3 +138,19 @@ func TestOpenBridgeTakesAPrivateCallOnTimeslot2(t *testing.T) {
 		}
 	})
 }
+
+// TestOpenBridgeQuenchesAStreamItsRulesRefuse sends an enhanced peer's
+// call to a talkgroup that its ingress rules do not take. FreeDMR answers
+// a call that its ACLs refuse with a BCSQ, so the peer stops sending it;
+// the hub must too.
+func TestOpenBridgeQuenchesAStreamItsRulesRefuse(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, true)
+		p := makeGroupVoicePacket(conformUser, 2, 9621, false)
+		p.Repeater = conformPeer
+		require.NoError(t, s.peer.SendEnhancedPacket(p, 5))
+		assert.Empty(t, s.mc.Drain(drainWait), "a call the rules refuse reached the repeater")
+		assert.Positive(t, quenches(s.peer.DrainControls(300*time.Millisecond), 9621), "the refused stream was not quenched")
+	})
+}

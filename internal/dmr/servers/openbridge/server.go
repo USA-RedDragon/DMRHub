@@ -616,6 +616,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	}
 
 	if !peer.Ingress || !rules.IngressAllows(known.ingress, &packet) {
+		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
 		return
 	}
 

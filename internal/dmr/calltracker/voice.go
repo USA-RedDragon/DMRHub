@@ -203,8 +203,9 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 			call.HasHeader = true
 		}
 		if call.LastFrameNum != 0 && call.LastFrameNum != dmrconst.VoiceF {
-			call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
-			call.TotalPackets += packet.DTypeOrVSeq - call.LastFrameNum - 1
+			lost := lostBursts(call.LastFrameNum, packet.DTypeOrVSeq)
+			call.LostSequences += lost
+			call.TotalPackets += lost
 		}
 		call.TotalPackets++
 		call.LastFrameNum = packet.DTypeOrVSeq
@@ -214,15 +215,26 @@ func calcSequenceLoss(call *models.Call, packet models.Packet) {
 			call.TotalPackets += 1 + packet.DTypeOrVSeq
 			call.HasHeader = true
 		} else if packet.DTypeOrVSeq != call.LastFrameNum+1 {
-			if packet.DTypeOrVSeq < call.LastFrameNum {
-				call.LostSequences += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq
-				call.TotalPackets += dmrconst.VoiceF - call.LastFrameNum + packet.DTypeOrVSeq
-			} else {
-				call.LostSequences += packet.DTypeOrVSeq - call.LastFrameNum - 1
-				call.TotalPackets += packet.DTypeOrVSeq - call.LastFrameNum - 1
-			}
+			lost := lostBursts(call.LastFrameNum, packet.DTypeOrVSeq)
+			call.LostSequences += lost
+			call.TotalPackets += lost
 		}
 		call.TotalPackets++
 		call.LastFrameNum = packet.DTypeOrVSeq
+	}
+}
+
+// lostBursts returns how many voice bursts are missing between the burst
+// last and the next burst seq that came, where the bursts run from VoiceA
+// to VoiceF and then start again. A repeated burst, or a burst number
+// past VoiceF, counts no loss.
+func lostBursts(last, seq uint) uint {
+	switch {
+	case last > dmrconst.VoiceF || seq > dmrconst.VoiceF || seq == last:
+		return 0
+	case seq > last:
+		return seq - last - 1
+	default:
+		return dmrconst.VoiceF - last + seq
 	}
 }

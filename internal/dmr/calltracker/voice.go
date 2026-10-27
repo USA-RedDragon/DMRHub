@@ -152,7 +152,7 @@ func (s *shard) updateVoice(r *row, t *task) {
 	if packet.RSSI > 0 {
 		call.RSSI = (call.RSSI + float32(packet.RSSI)) / 2
 	}
-	s.t.publishCall(call)
+	s.t.publishCall(s.idx, call)
 }
 
 // heardBefore reports whether seq, an 8-bit sequence number, is last, the

@@ -36,6 +36,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
@@ -123,13 +124,12 @@ type CallTracker struct {
 	recent   map[pair][]recentRow
 
 	observer atomic.Pointer[observerBox]
-	// outbox publishes the marks for the other replicas, so that the
-	// callers, which deliver bursts, never wait on pubsub.
-	outbox     chan outMark
-	outDropped atomic.Uint64
-	dropped    atomic.Uint64
-	metrics    *metrics.Metrics
-	bursts     atomic.Uint64
+	// out publishes what the workers and the callers, which deliver
+	// bursts, send to pubsub, so that they never wait on it.
+	out     *outbox.Outbox[outKey]
+	dropped atomic.Uint64
+	metrics *metrics.Metrics
+	bursts  atomic.Uint64
 }
 
 type observerBox struct{ o DataObserver }
@@ -167,8 +167,10 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 		recent:     map[pair][]recentRow{},
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
-		outbox:     make(chan outMark, outboxSize),
 	}
+	ct.out = outbox.New(pubsub, ct.done, "the messages of the call tracker", func(k outKey) []any {
+		return []any{"worker", k.shard, "topic", k.topic}
+	})
 	var seed [8]byte
 	_, _ = rand.Read(seed[:])
 	ct.bursts.Store(binary.LittleEndian.Uint64(seed[:]) >> (shardBits + 2))
@@ -178,9 +180,6 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 	ct.subscribe(dropsTopic, ct.remoteDrop)
 	ct.subscribe(convertedTopic, ct.remoteConverted)
 	ct.subscribe(undeliverableTopic, ct.remoteUndeliverable)
-	if pubsub != nil {
-		go ct.publishMarks()
-	}
 	ct.shards = make([]*shard, shardCount)
 	for i := range ct.shards {
 		ct.shards[i] = newShard(ct, i)
@@ -329,36 +328,25 @@ func (c *CallTracker) Undeliverable(p models.Packet, target string) {
 	c.publishLater(undeliverableTopic, msg)
 }
 
-// outboxSize is the most marks that wait for pubsub.
-const outboxSize = 1024
-
-type outMark struct {
+// outKey names a queue of the outbox: the messages that the worker shard
+// publishes on topic, or, with shard -1, the marks for other replicas.
+type outKey struct {
+	shard int
 	topic string
-	msg   []byte
 }
 
-// publishLater queues msg for the outbox. A full outbox drops it.
+// publishLater queues msg, a mark for other replicas, for the outbox.
 func (c *CallTracker) publishLater(topic string, msg []byte) {
-	select {
-	case c.outbox <- outMark{topic: topic, msg: msg}:
-	default:
-		if n := c.outDropped.Add(1); n&(n-1) == 0 {
-			slog.Warn("CallTracker: outbox full, marks for other replicas dropped", "topic", topic, "dropped", n)
-		}
-	}
+	c.publish(-1, topic, msg)
 }
 
-func (c *CallTracker) publishMarks() {
-	for {
-		select {
-		case <-c.done:
-			return
-		case m := <-c.outbox:
-			if err := c.pubsub.Publish(m.topic, m.msg); err != nil {
-				slog.Error("CallTracker: cannot publish a mark for other replicas", "topic", m.topic, "error", err)
-			}
-		}
+// publish queues msg on topic for the outbox, which publishes the messages
+// of each worker and topic in order and never makes the worker wait.
+func (c *CallTracker) publish(shard int, topic string, msg []byte) {
+	if c.pubsub == nil {
+		return
 	}
+	c.out.Add(outKey{shard: shard, topic: topic}, outbox.Job{Topic: topic, Data: msg})
 }
 
 type undeliverableNote struct {
@@ -543,7 +531,7 @@ func (c *CallTracker) remember(s *shard, r *row) {
 	}
 	if a := c.takeAnswer(k, what); a != nil {
 		r.call.Response = a.Response
-		c.drop(pair{src: k.dst, dst: k.src}, a.RowID)
+		c.drop(s.idx, pair{src: k.dst, dst: k.src}, a.RowID)
 	}
 }
 
@@ -606,8 +594,9 @@ type dropRequest struct {
 	Dst uint `json:"dst"`
 }
 
-// drop deletes the row id of k, here or on the replica that holds it.
-func (c *CallTracker) drop(k pair, id uint) {
+// drop deletes the row id of k, here or on the replica that holds it. The
+// worker idx calls it.
+func (c *CallTracker) drop(idx int, k pair, id uint) {
 	if c.dropLocal(k, id) {
 		return
 	}
@@ -616,9 +605,7 @@ func (c *CallTracker) drop(k pair, id uint) {
 		slog.Error("CallTracker: cannot marshal a drop", "error", err)
 		return
 	}
-	if err := c.pubsub.Publish(dropsTopic, msg); err != nil {
-		slog.Error("CallTracker: cannot publish a drop", "error", err)
-	}
+	c.publish(idx, dropsTopic, msg)
 }
 
 func (c *CallTracker) dropLocal(k pair, id uint) bool {
@@ -713,8 +700,9 @@ func (c *CallTracker) pruneRecent() {
 
 // answer sets resp on the newest row from dst to src within the response
 // window that an answer of kind what can be set on, and reports whether
-// there is one. The row can be on another replica.
-func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, what string) bool {
+// there is one. The row can be on another replica. The worker idx calls
+// it.
+func (c *CallTracker) answer(idx int, src, dst uint, resp models.CallResponse, what string) bool {
 	k := pair{src: dst, dst: src}
 	if c.answerLocal(k, resp, func(r *recentRow) bool { return answerable(r.kind, r.sub, r.confirmed) == what }) {
 		return true
@@ -734,10 +722,7 @@ func (c *CallTracker) answer(src, dst uint, resp models.CallResponse, what strin
 		slog.Error("CallTracker: cannot marshal an answer", "error", err)
 		return false
 	}
-	if err := c.pubsub.Publish(responsesTopic, msg); err != nil {
-		slog.Error("CallTracker: cannot publish an answer", "error", err)
-		return false
-	}
+	c.publish(idx, responsesTopic, msg)
 	return true
 }
 
@@ -771,7 +756,8 @@ func (c *CallTracker) remoteResponse(msg []byte) {
 	c.answerLocal(pair{src: a.Src, dst: a.Dst}, a.Response, func(r *recentRow) bool { return r.row.call.ID == a.ID })
 }
 
-func (c *CallTracker) publishCall(call *models.Call) {
+// publishCall publishes call for the web clients. The worker idx calls it.
+func (c *CallTracker) publishCall(idx int, call *models.Call) {
 	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
 		rows, err := apimodels.NewWSCallResponsesFor(c.db, nil, models.CurrentSMSWindow(), []models.Call{*call})
 		if err != nil || len(rows) != 1 {
@@ -783,10 +769,7 @@ func (c *CallTracker) publishCall(call *models.Call) {
 			slog.Error("Error marshalling call JSON", "error", err)
 			return
 		}
-		if err = c.pubsub.Publish("calls:public", callJSON); err != nil {
-			slog.Error("Error publishing call JSON", "error", err)
-			return
-		}
+		c.publish(idx, "calls:public", callJSON)
 	}
 
 	origCallJSON, err := json.Marshal(call)
@@ -794,13 +777,12 @@ func (c *CallTracker) publishCall(call *models.Call) {
 		slog.Error("Error marshalling call JSON", "error", err)
 		return
 	}
-	if err = c.pubsub.Publish("calls", origCallJSON); err != nil {
-		slog.Error("Error publishing call JSON", "error", err)
-	}
+	c.publish(idx, "calls", origCallJSON)
 }
 
-// publishNetCheckIn publishes a check-in event if the call's talkgroup has an active net.
-func (c *CallTracker) publishNetCheckIn(call *models.Call) {
+// publishNetCheckIn publishes a check-in event if the call's talkgroup has
+// an active net. The worker idx calls it.
+func (c *CallTracker) publishNetCheckIn(idx int, call *models.Call) {
 	if call.Kind != models.CallKindVoice || call.UserID == nil || !call.GroupCall || call.ToTalkgroupID == nil {
 		return
 	}
@@ -828,9 +810,7 @@ func (c *CallTracker) publishNetCheckIn(call *models.Call) {
 	}
 
 	topic := fmt.Sprintf("net:checkins:%d", netID)
-	if err := c.pubsub.Publish(topic, data); err != nil {
-		slog.Error("CallTracker: failed to publish net check-in", "error", err)
-	}
+	c.publish(idx, topic, data)
 }
 
 func (c *CallTracker) resolve(call *models.Call, peer bool) {
@@ -1061,8 +1041,8 @@ func (s *shard) finish(r *row, at time.Time) {
 		slog.Error("CallTracker: error saving call", "error", err)
 		return
 	}
-	s.t.publishCall(call)
-	s.t.publishNetCheckIn(call)
+	s.t.publishCall(s.idx, call)
+	s.t.publishNetCheckIn(s.idx, call)
 	slog.Info("Transmission ended", "kind", call.Kind, "sub", call.SubKind, "streamID", call.StreamID, "src", call.SourceID, "dst", call.DestinationID, "repeater", call.IngressID, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
 }
 
@@ -1172,7 +1152,7 @@ func (s *shard) setResponse(r *row, resp models.CallResponse) {
 		slog.Error("CallTracker: error saving response", "error", err)
 		return
 	}
-	s.t.publishCall(r.call)
+	s.t.publishCall(s.idx, r.call)
 }
 
 // drop deletes the row r, which another row replaces.

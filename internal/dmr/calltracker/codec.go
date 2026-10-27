@@ -150,5 +150,5 @@ func (s *shard) codecNote(n codecNote) {
 		slog.Error("CallTracker: error saving the codec of a call", "error", err)
 		return
 	}
-	s.t.publishCall(call)
+	s.t.publishCall(s.idx, call)
 }

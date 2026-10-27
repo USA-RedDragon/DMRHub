@@ -36,15 +36,20 @@ import (
 // sees the address of that socket and not the client's. When the backend
 // of a session drains, as Envoy Gateway marks a pod that is terminating,
 // the next packet of the client opens a new session, from a new socket, to
-// a backend that does not drain. When a backend is removed, its sessions
-// end, and the next packet of each client opens a new one. Once a session
-// ends, nothing more of it reaches the client.
+// a backend that does not drain; the client first gets what the front
+// already received of the old session, and nothing that the old backend
+// sends after. When a backend is removed, its sessions end, and the next
+// packet of each client opens a new one. Once a session ends, nothing more of
+// it reaches the client.
 type UDPFront struct {
 	conn *net.UDPConn
+	// marker marks the end of what a session that moves received.
+	marker *net.UDPConn
 
 	mu       sync.Mutex
 	backends []*frontBackend
 	sessions map[string]*frontSession
+	moving   map[*frontSession]struct{}
 	moves    int
 	ended    map[string][]time.Time
 	// holdUntil drops the packets of clients with no session until then.
@@ -62,6 +67,12 @@ type frontSession struct {
 	client  *net.UDPAddr
 	up      *net.UDPConn
 	backend *frontBackend
+	// moved is whether the session moved and passes on what it received
+	// before; done closes once it passed it on or ended; after is the done
+	// of the session that it replaced.
+	moved bool
+	done  chan struct{}
+	after <-chan struct{}
 }
 
 // NewUDPFront starts a UDPFront on a port of the loopback with no backend.
@@ -70,7 +81,9 @@ func NewUDPFront(t *testing.T) *UDPFront {
 	t.Helper()
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
-	f := &UDPFront{conn: conn, sessions: map[string]*frontSession{}, ended: map[string][]time.Time{}}
+	marker, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	f := &UDPFront{conn: conn, marker: marker, sessions: map[string]*frontSession{}, moving: map[*frontSession]struct{}{}, ended: map[string][]time.Time{}}
 	f.wg.Add(1)
 	go f.serve()
 	t.Cleanup(f.close)
@@ -152,6 +165,23 @@ func (f *UDPFront) end(key string, s *frontSession) {
 	f.ended[key] = append(f.ended[key], time.Now())
 }
 
+// move ends the session s of the client key at a move: s passes on what it
+// received up to a marker that the front sends it now, and then closes. The
+// caller holds f.mu.
+func (f *UDPFront) move(key string, s *frontSession) {
+	delete(f.sessions, key)
+	f.ended[key] = append(f.ended[key], time.Now())
+	s.moved = true
+	f.moving[s] = struct{}{}
+	if a, ok := s.up.LocalAddr().(*net.UDPAddr); ok {
+		if _, err := f.marker.WriteToUDP([]byte{0}, a); err == nil {
+			return
+		}
+	}
+	delete(f.moving, s)
+	_ = s.up.Close()
+}
+
 // Ended returns when the sessions of the client at addr ended, as at a
 // move, oldest first.
 func (f *UDPFront) Ended(addr string) []time.Time {
@@ -210,7 +240,7 @@ func (f *UDPFront) serve() {
 			continue
 		}
 		if s := f.sessionFor(client); s != nil {
-			_, _ = s.up.Write(buf[:n])
+			_, _ = s.up.WriteToUDP(buf[:n], s.backend.addr)
 		}
 	}
 }
@@ -218,6 +248,12 @@ func (f *UDPFront) serve() {
 func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.sessionLocked(client)
+}
+
+// sessionLocked returns the session of client for its next packet. The
+// caller holds f.mu.
+func (f *UDPFront) sessionLocked(client *net.UDPAddr) *frontSession {
 	s, ok := f.sessions[client.String()]
 	if ok && !s.backend.draining {
 		return s
@@ -229,16 +265,18 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
 	if b == nil {
 		return s
 	}
+	var after <-chan struct{}
 	if ok {
 		f.moves++
 		s.backend.sessions--
-		f.end(client.String(), s)
+		f.move(client.String(), s)
+		after = s.done
 	}
-	up, err := net.DialUDP("udp", nil, b.addr)
+	up, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		return nil
 	}
-	s = &frontSession{client: client, up: up, backend: b}
+	s = &frontSession{client: client, up: up, backend: b, done: make(chan struct{}), after: after}
 	b.sessions++
 	f.sessions[client.String()] = s
 	f.wg.Add(1)
@@ -248,18 +286,30 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
 
 func (f *UDPFront) back(s *frontSession) {
 	defer f.wg.Done()
+	defer close(s.done)
+	marker := f.marker.LocalAddr().String()
 	buf := make([]byte, 65535)
 	for {
-		n, err := s.up.Read(buf)
+		n, from, err := s.up.ReadFromUDP(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
 			continue
 		}
+		if s.after != nil {
+			<-s.after
+			s.after = nil
+		}
 		f.mu.Lock()
-		if f.sessions[s.client.String()] == s {
-			_, _ = f.conn.WriteToUDP(buf[:n], s.client)
+		switch from.String() {
+		case marker:
+			delete(f.moving, s)
+			_ = s.up.Close()
+		case s.backend.addr.String():
+			if s.moved || f.sessions[s.client.String()] == s {
+				_, _ = f.conn.WriteToUDP(buf[:n], s.client)
+			}
 		}
 		f.mu.Unlock()
 	}
@@ -267,8 +317,12 @@ func (f *UDPFront) back(s *frontSession) {
 
 func (f *UDPFront) close() {
 	_ = f.conn.Close()
+	_ = f.marker.Close()
 	f.mu.Lock()
 	for _, s := range f.sessions {
+		_ = s.up.Close()
+	}
+	for s := range f.moving {
 		_ = s.up.Close()
 	}
 	f.mu.Unlock()

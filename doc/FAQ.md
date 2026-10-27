@@ -60,4 +60,6 @@ No. Redis is optional and off by default. Without it, DMRHub uses an in-memory p
 
 ### How does the first setup work?
 
-When DMRHub starts and the configuration is not valid, no admin exists yet, or the database cannot be reached, it starts a setup wizard in your web browser. The wizard fixes the database settings if needed, saves the other settings in the database and makes the first admin user. DMRHub makes its own secret and password salt when you set none. See [Configuration](admin/configuration.md).
+When DMRHub starts and the configuration is not valid, no admin exists yet, or the database cannot be reached, it starts a setup wizard at `http://<server>:3005/`. The wizard fixes the database settings if needed, saves the other settings in the database and makes the first admin user. DMRHub makes its own secret and password salt when you set none. See [Configuration](admin/configuration.md).
+
+The wizard has no password: the first visitor to make an account becomes the admin. Finish setup before you expose a new DMRHub to the internet. See [First start and the setup wizard](admin/install.md#first-start-and-the-setup-wizard).

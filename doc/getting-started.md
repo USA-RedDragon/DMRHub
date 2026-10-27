@@ -4,6 +4,8 @@ This page is for a ham who wants to use a DMRHub network. It tells you what DMRH
 
 In these docs, `<siteurl>` is the web address of the DMRHub network that you use.
 
+To run a DMRHub network of your own, see [Install DMRHub](admin/install.md). Finish its setup before you expose a new DMRHub to the internet: until then, the first visitor of the site becomes its admin.
+
 ## What DMRHub is
 
 DMRHub is a DMR network server. It does the same job as the master servers of networks such as BrandMeister and TGIF, but it is one program that a club or a group can run for itself.

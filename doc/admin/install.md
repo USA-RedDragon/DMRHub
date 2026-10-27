@@ -13,27 +13,29 @@ See [Configuration](configuration.md) for the database settings.
 
 ## First start and the setup wizard
 
-DMRHub starts the setup wizard instead of the network when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database:
+DMRHub starts the setup wizard instead of the network when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database.
+
+**Finish setup before you expose a new DMRHub to the internet.** The setup wizard has no password. Anyone who opens it can change the settings, and the first visitor to make an account becomes the super admin. Keep port 3005 closed to the internet, or open it only to you, until you have made the admin.
 
 1. DMRHub writes the reason and the wizard address to its log, for example:
 
    ```text
    INF No admin exists yet
-   INF Opening setup wizard at http://localhost:3005/setup?token=AbCdEfGhIjKl
+   INF Opening setup wizard at http://localhost:3005/setup
    ```
 
-   The wizard listens on `http.bind` and `http.port`, the same address as the web interface. The token changes at each start. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
+   The wizard listens on `http.bind` and `http.port`, the same address as the web interface. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
 
-2. Open the address from the log. If the browser is on another computer, replace `localhost` with the address of the server, and keep the token.
-3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database.
-4. Make the first admin user on the **Create Initial Admin User** page. DMRHub checks the DMR ID and callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
+2. Open `http://<server>:<http.port>/setup` in a browser, such as `http://<server>:3005/setup`. You do not need anything from the log.
+3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database. When the deployment sets every needed setting, the wizard opens on the next page.
+4. Make the first admin user on the **Create the first admin** page. DMRHub checks the DMR ID and callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
 5. DMRHub stops the wizard and starts the network in the same process, with the new settings. Log in at `<siteurl>/login`.
 
-The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete.
+The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete. The database lets only one visitor make the first admin, also when several replicas run the wizard at once. A visitor who comes second gets the message that the admin exists, and can log in when that admin gives them an account.
 
-<!-- screenshot: setup-wizard.png | /setup?token=... on a fresh install: the Setup page with the General Settings card at the top -->
+<!-- screenshot: setup-wizard.png | /setup on a fresh install: the Setup page with the General Settings card at the top -->
 
-<!-- screenshot: setup-initial-user.png | /setup/user?token=...: the Create Initial Admin User card, filled in with N0CALL and 3000001 -->
+<!-- screenshot: setup-initial-user.png | /setup/user: the first-admin banner above the Create the first admin card, filled in with N0CALL and 3000001 -->
 
 ## Docker
 
@@ -68,11 +70,7 @@ The image runs `/app/DMRHub` as user and group 65534, with `/app` as the working
 
    `DATABASE_DATABASE` puts the SQLite file in the volume. DMRHub keeps the Setup settings, the secret and the password salt in that database. Without this setting, DMRHub keeps its database in the container, where you lose it when you remove the container.
 
-3. Get the wizard address from the log, and open it:
-
-   ```bash
-   docker logs dmrhub 2>&1 | grep 'setup wizard at'
-   ```
+3. Before you expose port 3005 to the internet, open `http://<server>:3005/` and finish the setup wizard (see [First start and the setup wizard](#first-start-and-the-setup-wizard)).
 
 Add a `-p` option for each other port that you turn on (see [Ports](#ports)). To use another port on the host, change the number before the `:`.
 
@@ -144,11 +142,7 @@ Each file has the `DMRHub` program, the `dmrhub-parrot` and `dmrhub-locator` plu
    sudo systemctl enable --now dmrhub.service
    ```
 
-4. Get the wizard address from the log, and open it:
-
-   ```bash
-   journalctl -u dmrhub.service | grep 'setup wizard at'
-   ```
+4. Before you expose port 3005 to the internet, open `http://<server>:3005/` and finish the setup wizard (see [First start and the setup wizard](#first-start-and-the-setup-wizard)).
 
 5. To see the log as it grows:
 

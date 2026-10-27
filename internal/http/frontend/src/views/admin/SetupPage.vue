@@ -118,7 +118,7 @@
           <h2 :id="`tab-title-${tab.id}`" class="text-[22px] leading-tight font-bold">{{ tab.name }}</h2>
           <span class="text-xs text-muted-foreground">Link: <code class="font-mono">/admin/setup#{{ tab.id }}</code></span>
         </div>
-        <p class="mb-4 max-w-[70ch] text-muted-foreground">
+        <p v-if="tab.intro.length > 0" class="mb-4 max-w-[70ch] text-muted-foreground">
           <template v-for="(part, i) in tab.intro" :key="i">
             <template v-if="typeof part === 'string'">{{ part }}</template>
             <RouterLink v-else :to="part.to">{{ part.text }}</RouterLink>
@@ -190,7 +190,7 @@ import TranscodingTab from '@/components/setup/menu/TranscodingTab.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { ambeServersError, type AmbeServerRow } from '@/lib/codec';
 import {
-  AMBE_SERVERS, clone, getAt, keepEdits, setAt, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload,
+  AMBE_SERVERS, clone, getAt, keepEdits, setAt, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload,
   tabReadOnly, tabStartOnly, visibleTabs, TABS, type FieldDef, type TabDef, type TabGroup, type Values,
 } from '@/lib/setupMenu';
 import {
@@ -399,7 +399,7 @@ export default defineComponent({
     },
     localError(tab: TabDef): Record<string, string> {
       if (tab.custom !== 'transcoding') {
-        return {};
+        return tabCheckErrors(tab, this.read);
       }
       const rows = getAt(this.edited, AMBE_SERVERS);
       const error = ambeServersError(Array.isArray(rows) ? (rows as AmbeServerRow[]) : []);

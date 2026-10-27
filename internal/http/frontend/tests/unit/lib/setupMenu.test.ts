@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  TABS, defaultNote, keepEdits, sourceChips, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload, tabReadOnly,
+  TABS, defaultNote, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload, tabReadOnly,
   tabStartOnly, visibleTabs, type FieldDef, type TabDef,
 } from '@/lib/setupMenu';
 import { emptySetupState, type Setting, type SetupState } from '@/lib/setupState';
@@ -36,7 +36,7 @@ describe('setup menu tabs', () => {
   it('splits General and HTTP and keeps Metrics and PProf', () => {
     expect(TABS.map((t) => t.id)).toEqual([
       'general', 'http', 'database', 'redis', 'smtp', 'metrics', 'dmr', 'ipsc', 'openbridge', 'webtransport', 'modem',
-      'transcoding', 'positions', 'messages', 'plugins', 'pcroute',
+      'transcoding', 'iplists', 'positions', 'messages', 'plugins', 'pcroute',
     ]);
     expect(tabPaths(tab('general'))).toEqual(['network-name', 'log-level', 'auto-approve-users', 'secret', 'password-salt', 'hibp-api-key']);
     expect(tabPaths(tab('http'))).toContain('http.canonical-host');
@@ -172,5 +172,53 @@ describe('source chips and locks', () => {
     const hang: Setting = { ...plain, source: 'setup', default: 2500000000 };
     expect(defaultNote(field('dmr.ipsc.call-hang-hold'), hang, 1000000000)).toBe('2.5 seconds');
     expect(defaultNote(field('dmr.modem.duplex'), { ...plain, source: 'setup', default: false }, true)).toBe('Hotspot (simplex)');
+  });
+});
+
+describe('setup menu IP lists', () => {
+  const lists = ['mmdvm', 'webtransport', 'ipsc', 'openbridge'];
+  const reader = (values: Record<string, unknown>) => (p: string) => values[p];
+
+  it('has a card with a mode and two lists for each protocol, and no explainer text', () => {
+    const t = tab('iplists');
+    expect(t.intro).toEqual([]);
+    expect(t.cards.map((c) => c.title)).toEqual(['MMDVM hotspots and repeaters', 'Browser radios', 'Motorola IPSC repeaters', 'OpenBridge peers']);
+    expect(tabPaths(t)).toEqual(lists.flatMap((l) => [`dmr.ip-lists.${l}.mode`, `dmr.ip-lists.${l}.block`, `dmr.ip-lists.${l}.allow`]));
+    expect(field('dmr.ip-lists.ipsc.mode').options?.map((o) => o.label)).toEqual(['Off', 'Block listed', 'Allow only listed']);
+    for (const f of tabFields(t)) {
+      expect(f.help).toBeUndefined();
+    }
+  });
+
+  it('shows only the list of the mode', () => {
+    const block = field('dmr.ip-lists.mmdvm.block');
+    const allow = field('dmr.ip-lists.mmdvm.allow');
+    for (const [mode, b, a] of [['off', false, false], ['block', true, false], ['allow', false, true]] as const) {
+      const read = reader({ 'dmr.ip-lists.mmdvm.mode': mode });
+      expect({ mode, block: block.show?.(read), allow: allow.show?.(read) }).toEqual({ mode, block: b, allow: a });
+    }
+  });
+
+  it('checks the entries of the shown list only', () => {
+    const t = tab('iplists');
+    const values = {
+      'dmr.ip-lists.mmdvm.mode': 'block', 'dmr.ip-lists.mmdvm.block': ['203.0.113.7', '10.1.2.3/8'],
+      'dmr.ip-lists.webtransport.mode': 'off', 'dmr.ip-lists.webtransport.block': ['nope'],
+      'dmr.ip-lists.ipsc.mode': 'allow', 'dmr.ip-lists.ipsc.allow': ['192.0.2.0/24'], 'dmr.ip-lists.ipsc.block': ['nope'],
+      'dmr.ip-lists.openbridge.mode': 'allow', 'dmr.ip-lists.openbridge.allow': ['x'],
+    };
+    expect(tabCheckErrors(t, reader(values))).toEqual({
+      'dmr.ip-lists.mmdvm.block': '10.1.2.3/8 has bits set after its prefix; use 10.0.0.0/8',
+      'dmr.ip-lists.openbridge.allow': 'x is not an IP address or CIDR range',
+    });
+    expect(tabCheckErrors(tab('general'), reader({}))).toEqual({});
+  });
+
+  it('warns about an empty allow list, without blocking the save', () => {
+    const allow = field('dmr.ip-lists.openbridge.allow');
+    expect(allow.warn?.(reader({ 'dmr.ip-lists.openbridge.allow': [] }))).toBe('With no address listed, every peer is refused.');
+    expect(allow.warn?.(reader({ 'dmr.ip-lists.openbridge.allow': ['192.0.2.1'] }))).toBeUndefined();
+    expect(allow.check?.([])).toBeUndefined();
+    expect(field('dmr.ip-lists.mmdvm.allow').warn?.(reader({}))).toBe('With no address listed, every hotspot and repeater is refused.');
   });
 });

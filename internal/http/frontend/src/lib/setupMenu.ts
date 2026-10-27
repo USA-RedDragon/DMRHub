@@ -18,6 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 import { ambeServersPayload, type AmbeServerRow } from '@/lib/codec';
+import { ipListCount, ipListError } from '@/lib/ipList';
 import { formatValue, type Setting, type SetupState } from '@/lib/setupState';
 
 export type Values = Record<string, unknown>;
@@ -38,7 +39,8 @@ export type FieldKind =
   | 'minutes'
   | 'mhz'
   | 'mode'
-  | 'port';
+  | 'port'
+  | 'segment';
 
 export type Option = { value: string | number; label: string; description?: string };
 
@@ -56,6 +58,14 @@ export type FieldDef = {
   step?: string;
   uppercase?: boolean;
   required?: boolean;
+  /** Lines of a list or a textarea. */
+  rows?: number;
+  /** Shows the number of entries of a list next to its label. */
+  count?: boolean;
+  /** Why the value cannot be saved, checked while it is typed. */
+  check?: (value: unknown) => string | undefined;
+  /** A warning about a value that can be saved. */
+  warn?: (read: Read) => string | undefined;
 };
 
 export type GridRow = { grid: FieldDef[] };
@@ -119,6 +129,32 @@ const unknown: Option[] = [
 ];
 
 const sameAsVoice: Option = { value: '', label: 'The same as voice calls' };
+
+const ipModes: Option[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'block', label: 'Block listed' },
+  { value: 'allow', label: 'Allow only listed' },
+];
+
+const ipListCard = (key: string, title: string, refused: string): CardDef => {
+  const base = `dmr.ip-lists.${key}`;
+  const mode = (read: Read) => read(`${base}.mode`);
+  return {
+    title,
+    rows: [
+      { path: `${base}.mode`, label: 'Mode', kind: 'segment', options: ipModes },
+      {
+        path: `${base}.block`, label: 'Blocked addresses', kind: 'list', rows: 6, count: true, placeholder: '203.0.113.7',
+        show: (read) => mode(read) === 'block', check: ipListError,
+      },
+      {
+        path: `${base}.allow`, label: 'Allowed addresses', kind: 'list', rows: 6, count: true, placeholder: '192.0.2.0/24',
+        show: (read) => mode(read) === 'allow', check: ipListError,
+        warn: (read) => (ipListCount(read(`${base}.allow`)) === 0 ? `With no address listed, every ${refused} is refused.` : undefined),
+      },
+    ],
+  };
+};
 
 /** The tabs of the Setup page, in the order of the menu. */
 export const TABS: TabDef[] = [
@@ -582,6 +618,18 @@ export const TABS: TabDef[] = [
     cards: [],
   },
   {
+    id: 'iplists',
+    group: 'DMR',
+    name: 'IP lists',
+    intro: [],
+    cards: [
+      ipListCard('mmdvm', 'MMDVM hotspots and repeaters', 'hotspot and repeater'),
+      ipListCard('webtransport', 'Browser radios', 'browser radio'),
+      ipListCard('ipsc', 'Motorola IPSC repeaters', 'IPSC repeater'),
+      ipListCard('openbridge', 'OpenBridge peers', 'peer'),
+    ],
+  },
+  {
     id: 'positions',
     group: 'Features',
     name: 'Positions and APRS',
@@ -749,6 +797,24 @@ export const AMBE_SERVERS = 'dmr.transcoding.ambe-servers';
 /** The paths of the settings that the Save of a tab saves. */
 export const tabPaths = (tab: TabDef): string[] =>
   tab.custom === 'transcoding' ? [AMBE_SERVERS] : tabFields(tab).map((f) => f.path);
+
+/**
+ * The errors of the shown settings of tab that their checks find, by
+ * path.
+ */
+export const tabCheckErrors = (tab: TabDef, read: Read): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const f of tabFields(tab)) {
+    if (!f.check || (f.show && !f.show(read))) {
+      continue;
+    }
+    const e = f.check(normalize(f, read(f.path)));
+    if (e) {
+      out[f.path] = e;
+    }
+  }
+  return out;
+};
 
 /** The tabs that the menu shows: an optional tab needs its settings. */
 export const visibleTabs = (state: SetupState): TabDef[] =>

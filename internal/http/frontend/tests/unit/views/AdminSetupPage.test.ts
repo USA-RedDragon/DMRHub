@@ -306,3 +306,79 @@ describe('Admin Setup page locks and sources', () => {
     wrapper.unmount();
   });
 });
+
+describe('Admin Setup page IP lists', () => {
+  const ipLists = {
+    mmdvm: { mode: 'block', block: ['203.0.113.7', '198.51.100.0/24'], allow: [] },
+    webtransport: { mode: 'off', block: [], allow: [] },
+    ipsc: { mode: 'allow', block: [], allow: [] },
+    openbridge: { mode: 'off', block: [], allow: ['192.0.2.10'] },
+  };
+  const ipSettings = Object.fromEntries(
+    tabPaths(TABS.find((t) => t.id === 'iplists')!).map((p) => [p, { ...plain, default: p.endsWith('.mode') ? 'off' : [] }]),
+  );
+  const withLists = () => {
+    const cfg = config();
+    (cfg.dmr as Record<string, unknown>)['ip-lists'] = JSON.parse(JSON.stringify(ipLists));
+    getConfig(() => response(cfg, ipSettings));
+  };
+  const area = (w: VueWrapper, path: string) => w.find(`[data-test="field-${path}"]`);
+
+  it('shows a card for each protocol with only the list of its mode', async () => {
+    withLists();
+    const { wrapper } = await mountAt('/admin/setup#iplists');
+    const text = wrapper.find('[data-test="tab-iplists"]').text();
+    for (const title of ['MMDVM hotspots and repeaters', 'Browser radios', 'Motorola IPSC repeaters', 'OpenBridge peers']) {
+      expect(text).toContain(title);
+    }
+    expect(area(wrapper, 'dmr.ip-lists.mmdvm.block').exists()).toBe(true);
+    expect(area(wrapper, 'dmr.ip-lists.mmdvm.allow').exists()).toBe(false);
+    expect((wrapper.find('#setup-dmr-ip-lists-mmdvm-block').element as HTMLTextAreaElement).value).toBe('203.0.113.7\n198.51.100.0/24');
+    expect(area(wrapper, 'dmr.ip-lists.mmdvm.block').find('[data-test="field-count"]').text()).toBe('2 entries');
+    expect(area(wrapper, 'dmr.ip-lists.webtransport.block').exists()).toBe(false);
+    expect(area(wrapper, 'dmr.ip-lists.webtransport.allow').exists()).toBe(false);
+    expect(area(wrapper, 'dmr.ip-lists.ipsc.allow').find('[data-test="field-warning"]').text())
+      .toBe('With no address listed, every IPSC repeater is refused.');
+    expect(text).not.toMatch(/dmr\.ip-lists/);
+    wrapper.unmount();
+  });
+
+  it('switches the shown list with the mode', async () => {
+    withLists();
+    const { wrapper } = await mountAt('/admin/setup#iplists');
+    const radios = area(wrapper, 'dmr.ip-lists.openbridge.mode').findAll('input[type="radio"]');
+    await radios[2]!.setValue(true);
+    expect(area(wrapper, 'dmr.ip-lists.openbridge.allow').exists()).toBe(true);
+    expect((wrapper.find('#setup-dmr-ip-lists-openbridge-allow').element as HTMLTextAreaElement).value).toBe('192.0.2.10');
+    expect(wrapper.find('[data-test="menu-dirty-iplists"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('shows a bad entry at once and does not save it', async () => {
+    withLists();
+    const { wrapper } = await mountAt('/admin/setup#iplists');
+    await wrapper.find('#setup-dmr-ip-lists-mmdvm-block').setValue('203.0.113.7\n10.1.2.3/8');
+    expect(area(wrapper, 'dmr.ip-lists.mmdvm.block').find('[data-test="field-error"]').text())
+      .toBe('10.1.2.3/8 has bits set after its prefix; use 10.0.0.0/8');
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.post).not.toHaveBeenCalled();
+    expect(mockAPI.put).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="savebar-message"]').text()).toContain('not valid');
+    wrapper.unmount();
+  });
+
+  it('saves the lists of the tab, an empty allow list among them', async () => {
+    withLists();
+    const { wrapper } = await mountAt('/admin/setup#iplists');
+    await wrapper.find('#setup-dmr-ip-lists-mmdvm-block').setValue('203.0.113.7\n\n2001:db8::/32 ');
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    const payload = mockAPI.put.mock.calls[0]![1];
+    expect(payload.dmr['ip-lists']).toEqual({
+      ...ipLists,
+      mmdvm: { mode: 'block', block: ['203.0.113.7', '2001:db8::/32'], allow: [] },
+    });
+    wrapper.unmount();
+  });
+});

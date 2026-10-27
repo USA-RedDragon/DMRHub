@@ -35,6 +35,7 @@
       <div class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 font-semibold">
         <label v-if="labelFor" :for="id">{{ field.label }}</label>
         <span v-else :id="`${id}-label`">{{ field.label }}</span>
+        <span v-if="field.count && entries > 0" class="text-xs font-medium text-muted-foreground" data-test="field-count">{{ entries }} {{ entries === 1 ? 'entry' : 'entries' }}</span>
         <SourceChips :setting="setting" />
       </div>
       <select
@@ -79,13 +80,13 @@
         </label>
       </div>
       <div
-        v-else-if="field.kind === 'mode'"
+        v-else-if="field.kind === 'mode' || field.kind === 'segment'"
         role="radiogroup"
         :aria-labelledby="`${id}-label`"
         class="inline-flex flex-wrap gap-1 rounded-lg border p-1"
       >
         <label
-          v-for="o in modes"
+          v-for="o in segments"
           :key="String(o.value)"
           class="rounded-md px-3 py-1"
           :class="[
@@ -117,10 +118,12 @@
         v-else-if="field.kind === 'list' || field.kind === 'textarea'"
         :id="id"
         :class="[boxClass, 'font-mono']"
-        :rows="field.kind === 'list' ? 3 : 5"
+        :rows="field.rows ?? (field.kind === 'list' ? 3 : 5)"
+        :placeholder="field.placeholder"
+        spellcheck="false"
         :disabled="disabled"
         :model-value="text"
-        :aria-invalid="error ? true : undefined"
+        :aria-invalid="shownError ? true : undefined"
         @update:model-value="(v: string | number) => set(String(v))"
       />
       <ShadInput
@@ -144,7 +147,8 @@
       class="mt-1"
       @use-default="$emit('set', field.path, setting?.default)"
     />
-    <p v-if="error" class="mt-1 text-sm text-destructive-foreground" data-test="field-error">{{ error }}</p>
+    <p v-if="shownError" class="mt-1 text-sm text-destructive-foreground" data-test="field-error">{{ shownError }}</p>
+    <p v-else-if="warning" class="mt-1 text-sm text-destructive-foreground" data-test="field-warning">{{ warning }}</p>
   </div>
 </template>
 
@@ -177,13 +181,17 @@ const locked = computed(() => fieldLocked(props.setting));
 const disabled = computed(() => locked.value || (props.field.off?.(props.read) ?? false));
 const normalized = computed(() => normalize(props.field, props.value));
 const text = computed(() => inputValue(props.field, props.value));
-const labelFor = computed(() => props.field.kind !== 'choice' && props.field.kind !== 'mode');
+const labelFor = computed(() => props.field.kind !== 'choice' && props.field.kind !== 'mode' && props.field.kind !== 'segment');
+const shownError = computed(() => props.error ?? props.field.check?.(normalized.value));
+const warning = computed(() => props.field.warn?.(props.read));
+const entries = computed(() => (Array.isArray(normalized.value) ? normalized.value.length : 0));
 const help = computed(() => (typeof props.field.help === 'function' ? props.field.help(props.read) : props.field.help));
 const defaultText = computed(() => defaultNote(props.field, props.setting, props.value));
 const modes = [
   { value: false, label: 'Hotspot (simplex)' },
   { value: true, label: 'Repeater (duplex)' },
 ];
+const segments = computed(() => (props.field.kind === 'segment' ? props.field.options ?? [] : modes));
 
 const inputType = computed(() => {
   switch (props.field.kind) {

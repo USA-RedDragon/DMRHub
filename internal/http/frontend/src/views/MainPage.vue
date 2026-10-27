@@ -30,8 +30,7 @@
         <p>
           DMRHub is an <a href="https://github.com/USA-RedDragon/DMRHub" target="_blank">open-source</a> DMR
           network server for hotspots and repeaters that use the MMDVM network protocol. The idea is to be an open source, easy to use alternative to existing
-          networks like BrandMeister and TGIF, but for use in local communication environments, such as over an
-          <a href="https://www.arednmesh.org/" target="_blank">AREDN mesh</a> network.
+          networks like BrandMeister and TGIF, but for use in local communication environments.
         </p>
         <br />
         <h2>Special Talkgroups</h2>

@@ -6,7 +6,7 @@ In these docs, `<siteurl>` is the web address of the DMRHub network that you use
 
 ## What DMRHub is
 
-DMRHub is a DMR network server. It does the same job as the master servers of networks such as BrandMeister and TGIF, but it is one program that a club or a group can run for itself, for example on an [AREDN mesh](https://www.arednmesh.org/) network.
+DMRHub is a DMR network server. It does the same job as the master servers of networks such as BrandMeister and TGIF, but it is one program that a club or a group can run for itself.
 
 A DMRHub network has:
 

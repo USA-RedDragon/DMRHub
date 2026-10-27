@@ -5,7 +5,7 @@ You need an account to enroll a hotspot, pick talkgroups, read your text message
 ## Before you start
 
 - Get a DMR ID from [RadioID.net](https://radioid.net/). DMRHub checks that RadioID.net lists your DMR ID under your callsign, unless the admin turned this check off. DMRHub updates its copy of the RadioID.net database when it starts and then once a day at midnight, in the time zone of the server. A DMR ID that you got today can fail until the next update.
-- Pick a password that you do not use anywhere else. On a network without HTTPS, such as some AREDN networks, other people on the network can see your password when you log in.
+- Pick a password that you do not use anywhere else. On a network without HTTPS, other people on the network can see your password when you log in.
 
 ## Register
 

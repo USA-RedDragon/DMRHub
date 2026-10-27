@@ -28,7 +28,7 @@ DMRHub then shows a DMRGateway configuration, like this one:
 
 ```ini
 [DMR Network 2]
-Name=AREDN
+Name=DMRHub
 Enabled=1
 Address=dmrhub.example.org
 Port=62031

@@ -182,7 +182,7 @@ export default {
                 + 'You will need to use this DMRGateway configuration to connect to the network. '
                 + 'Save this now, as you will not be able to retrieve it again.\n\n'
                 + '[DMR Network 2]\n'
-                + 'Name=AREDN\n'
+                + 'Name=DMRHub\n'
                 + 'Enabled=1\n'
                 + `Address=${this.hostname}\n`
                 + `Port=${settingsStore.mmdvmPort}\n`

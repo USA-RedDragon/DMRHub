@@ -27,6 +27,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -53,9 +56,10 @@ const (
 	egressLeaseRenew = EgressLeaseTTL / 4
 	egressTopic      = "openbridge:egress"
 
-	quenchTopic  = "openbridge:quench"
-	versionTopic = "openbridge:version"
-	outboxSize   = 1024
+	quenchTopic      = "openbridge:quench"
+	versionTopic     = "openbridge:version"
+	versionKeyPrefix = "openbridge:version:"
+	outboxSize       = 1024
 
 	// takeWait is the longest time a replica that took the lease waits for
 	// its taken message before it sends.
@@ -460,21 +464,45 @@ func (s *Server) consumeQuenches() {
 }
 
 type sharedVersionMsg struct {
-	Peer    uint  `json:"peer"`
-	Version uint8 `json:"version"`
+	Peer       uint  `json:"peer"`
+	Version    uint8 `json:"version"`
+	Generation int64 `json:"generation"`
+}
+
+// peerVersion is the version that a peer named for its link, and the
+// generation of the settings of the peer when it named it.
+type peerVersion struct {
+	version    uint8
+	generation int64
+}
+
+// generation names the settings of peer: every change of the peer moves
+// its UpdatedAt, and a peer added again has a new one. A version of an older
+// generation is of settings that changed since.
+func generation(peer models.Peer) int64 {
+	if peer.UpdatedAt.IsZero() {
+		return 0
+	}
+	return peer.UpdatedAt.UnixNano()
 }
 
 // noteVersion moves the link of peer up to version, which the peer named,
 // on every replica, when DMRHub sends that version and the link is older.
-func (s *Server) noteVersion(peer models.Peer, version uint8) {
-	if s.linkVersion(peer) >= version || !s.raiseVersion(peer.ID, version) {
+func (s *Server) noteVersion(ctx context.Context, peer models.Peer, version uint8) {
+	gen := generation(peer)
+	if s.linkVersion(peer) >= version || !s.raiseVersion(peer.ID, version, gen) {
 		return
 	}
 	slog.Info("OpenBridge peer moved its link to a newer version", "peerID", peer.ID, "version", version)
+	if s.kv != nil {
+		if err := s.kv.Set(ctx, versionKey(peer.ID, gen), []byte{version}); err != nil {
+			slog.Error("Error storing an OpenBridge version", "peerID", peer.ID, "error", err)
+		}
+	}
 	if s.pubsub == nil {
 		return
 	}
-	b, err := json.Marshal(sharedVersionMsg{Peer: peer.ID, Version: version})
+	b, err := json.Marshal(sharedVersionMsg{Peer: peer.ID, Version: version, Generation: gen})
 	if err != nil {
 		slog.Error("Error encoding an OpenBridge version", "error", err)
 		return
@@ -482,20 +510,21 @@ func (s *Server) noteVersion(peer models.Peer, version uint8) {
 	s.publishLater(s.egressOut, versionTopic, b)
 }
 
-// raiseVersion records version for the link of peer and reports whether
-// that moved the link up. Only versions 4 and 5 move it, as DMRHub sends
-// no other DMRE.
-func (s *Server) raiseVersion(peer uint, version uint8) bool {
+// raiseVersion records version of generation gen for the link of peer and
+// reports whether that moved the link up. It drops a version of an older
+// generation than the one it holds. Only versions 4 and 5 move it, as
+// DMRHub sends no other DMRE.
+func (s *Server) raiseVersion(peer uint, version uint8, gen int64) bool {
 	if s.versions == nil || (version != 4 && version != enhancedVersion) {
 		return false
 	}
 	raised := false
-	s.versions.Compute(peer, func(old uint8, loaded bool) (uint8, xsync.ComputeOp) {
-		if loaded && old >= version {
+	s.versions.Compute(peer, func(old peerVersion, loaded bool) (peerVersion, xsync.ComputeOp) {
+		if loaded && (old.generation > gen || (old.generation == gen && old.version >= version)) {
 			return old, xsync.CancelOp
 		}
 		raised = true
-		return version, xsync.UpdateOp
+		return peerVersion{version: version, generation: gen}, xsync.UpdateOp
 	})
 	return raised
 }
@@ -519,7 +548,98 @@ func (s *Server) consumeVersions() {
 				slog.Error("Error decoding an OpenBridge version", "error", err)
 				continue
 			}
-			s.raiseVersion(m.Peer, m.Version)
+			s.raiseVersion(m.Peer, m.Version, m.Generation)
 		}
+	}
+}
+
+func versionKey(peer uint, gen int64) string {
+	return versionKeyPrefix + strconv.FormatUint(uint64(peer), 10) + ":" + strconv.FormatInt(gen, 10)
+}
+
+// parseVersionKey returns the peer and the generation of a key of
+// versionKey.
+func parseVersionKey(key string) (uint, int64, bool) {
+	id, gen, ok := strings.Cut(strings.TrimPrefix(key, versionKeyPrefix), ":")
+	if !ok {
+		return 0, 0, false
+	}
+	peer, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return 0, 0, false
+	}
+	g, err := strconv.ParseInt(gen, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return uint(peer), g, true
+}
+
+// forgetVersion drops the versions that peer named for settings that
+// changed since, after the peer table was read again.
+func (s *Server) forgetVersion(ctx context.Context, peer uint) {
+	table, err := s.peerTable()
+	if err != nil {
+		slog.Error("Error reading the peers to forget an OpenBridge version", "peerID", peer, "error", err)
+		return
+	}
+	current := int64(math.MaxInt64)
+	if k, ok := table.byID[peer]; ok {
+		current = generation(k.Peer)
+	}
+	if s.versions != nil {
+		s.versions.Compute(peer, func(old peerVersion, loaded bool) (peerVersion, xsync.ComputeOp) {
+			if loaded && old.generation < current {
+				return old, xsync.DeleteOp
+			}
+			return old, xsync.CancelOp
+		})
+	}
+	if s.kv == nil {
+		return
+	}
+	s.scanVersions(ctx, versionKeyPrefix+strconv.FormatUint(uint64(peer), 10)+":*", func(key string, _ uint, gen int64) {
+		if gen >= current {
+			return
+		}
+		if err := s.kv.Delete(ctx, key); err != nil {
+			slog.Error("Error forgetting an OpenBridge version", "peerID", peer, "error", err)
+		}
+	})
+}
+
+// loadVersions takes the link versions that the replicas stored, so that a
+// replica that starts after a peer named its version sends that version.
+func (s *Server) loadVersions(ctx context.Context) {
+	if s.kv == nil {
+		return
+	}
+	s.scanVersions(ctx, versionKeyPrefix+"*", func(key string, peer uint, gen int64) {
+		v, err := s.kv.Get(ctx, key)
+		if err != nil || len(v) != 1 {
+			return
+		}
+		s.raiseVersion(peer, v[0], gen)
+	})
+}
+
+// scanVersions calls fn for each stored version key that matches match.
+func (s *Server) scanVersions(ctx context.Context, match string, fn func(key string, peer uint, gen int64)) {
+	var cursor uint64
+	for {
+		keys, next, err := s.kv.Scan(ctx, cursor, match, 1000)
+		if err != nil {
+			slog.Error("Error listing the OpenBridge versions", "error", err)
+			return
+		}
+		for _, key := range keys {
+			if peer, gen, ok := parseVersionKey(key); ok {
+				fn(key, peer, gen)
+			}
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
 	}
 }

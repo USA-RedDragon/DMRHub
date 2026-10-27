@@ -106,7 +106,7 @@ type Server struct {
 	epoch     time.Time
 
 	quenched *xsync.Map[quench, time.Time]
-	versions *xsync.Map[uint, uint8]
+	versions *xsync.Map[uint, peerVersion]
 
 	egressOut  chan outMessage
 	eventsOut  chan outMessage
@@ -306,7 +306,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
-		versions:      xsync.NewMap[uint, uint8](),
+		versions:      xsync.NewMap[uint, peerVersion](),
 		egressOut:     make(chan outMessage, outboxSize),
 		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
@@ -331,8 +331,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.ingress = streamorder.New[ingressLane](ingressQueueSize, s.done)
 	if s.peers != nil {
-		s.unwatch = s.hub.OnPeerChange(func(uint) { s.peers.Reload(struct{}{}) })
+		changes := context.WithoutCancel(ctx)
+		s.unwatch = s.hub.OnPeerChange(func(id uint) {
+			s.peers.Reload(struct{}{})
+			s.forgetVersion(changes, id)
+		})
 	}
+	s.loadVersions(ctx)
 
 	egress := s.pubsub.Subscribe(egressTopic)
 	s.renewLease(ctx)
@@ -454,13 +459,13 @@ func (s *Server) keepalive() {
 }
 
 // linkVersion returns the OpenBridge version that DMRHub sends to peer: the
-// newest that the peer named in a BCVE or a DMRE, as FreeDMR moves a link
-// up to it (hblink.py "Version upgrade"), or else enhancedVersion for an
-// enhanced peer and 1 for the others.
+// newest that the peer named in a BCVE or a DMRE for its current settings,
+// as FreeDMR moves a link up to it (hblink.py "Version upgrade"), or else
+// enhancedVersion for an enhanced peer and 1 for the others.
 func (s *Server) linkVersion(peer models.Peer) uint8 {
 	if s.versions != nil {
-		if v, ok := s.versions.Load(peer.ID); ok {
-			return v
+		if v, ok := s.versions.Load(peer.ID); ok && v.generation == generation(peer) {
+			return v.version
 		}
 	}
 	if peer.Enhanced {
@@ -590,7 +595,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	bridge, err := dmrd.DecodeBridge(data)
 	if err != nil {
 		if control, cerr := dmrd.DecodeBridgeControl(data); cerr == nil {
-			s.handleControl(remoteAddr, data, control)
+			s.handleControl(ctx, remoteAddr, data, control)
 			return
 		}
 		slog.Debug("Dropping a packet that is not OpenBridge", "length", len(data), "error", err)
@@ -643,7 +648,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 
 	var org origin
 	if bridge.Version != 1 {
-		s.noteVersion(peer, bridge.Version)
+		s.noteVersion(ctx, peer, bridge.Version)
 		org = origin{server: bridge.SourceServer, repeater: bridge.SourceRepeater, hops: bridge.Hops}
 		if int(org.hops)+1 > maxHops {
 			slog.Warn("Dropping an OpenBridge call that crossed too many links", "peerID", peerID, "hops", org.hops, "sourceServer", org.server, "stream", packet.StreamID)
@@ -686,7 +691,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 // It carries no peer ID, so the peer is the one at the source address
 // whose key signed it. A BCSQ asks not to get a stream and a BCVE names the
 // newest version of the peer; BCKA and BCST change nothing here.
-func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
+func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
 	table, err := s.peerTable()
 	if err != nil {
 		slog.Error("Failed to list peers", "error", err)
@@ -707,7 +712,7 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 			return
 		}
 		if control.Command == dmrd.CommandBCVE {
-			s.noteVersion(p, control.Version)
+			s.noteVersion(ctx, p, control.Version)
 		}
 		slog.Debug("OpenBridge control packet", "peerID", p.ID, "command", string(control.Command), "version", control.Version)
 		return

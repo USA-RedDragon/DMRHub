@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -204,5 +205,85 @@ func TestOpenBridgeMovesALinkUpToThePeersVersion(t *testing.T) {
 			}
 		}
 		assert.Positive(t, keepalives, "the hub sends no keepalives on the link that moved up")
+	})
+}
+
+// moveUp sends the hub a BCVE of version 5 from the peer of s, and checks
+// that the next call goes to the peer as DMRE of version 5.
+func (s conformStack) moveUp(t *testing.T, stream uint) {
+	t.Helper()
+	require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: 5}))
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, []uint8{5}, s.versionsOf(t, stream), "the hub moved the link up to version 5")
+}
+
+// versionsOf sends a call from the repeater of s and returns the version
+// of each packet of it that reaches the peer.
+func (s conformStack) versionsOf(t *testing.T, stream uint) []uint8 {
+	t.Helper()
+	require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
+	got := dataOf(s.peer.DrainBridges(drainWait), uint32(stream)) //nolint:gosec
+	out := make([]uint8, 0, len(got))
+	for _, b := range got {
+		out = append(out, b.Version)
+	}
+	return out
+}
+
+// TestOpenBridgeForgetsTheVersionOfAChangedPeer moves a version 1 link up
+// with a BCVE, then changes the peer, as an admin does when they edit it or
+// delete it and add it again. The hub must send version 1 again until the
+// peer names a newer one.
+func TestOpenBridgeForgetsTheVersionOfAChangedPeer(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, false)
+
+		s.moveUp(t, 9641)
+		require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", conformPeer).Update("enhanced", false).Error)
+		stack.Hub.PeerChanged(conformPeer)
+		time.Sleep(200 * time.Millisecond)
+		assert.Equal(t, []uint8{1}, s.versionsOf(t, 9642), "an edit of the peer keeps the version that the peer named before it")
+
+		s.moveUp(t, 9643)
+		require.NoError(t, models.DeletePeer(stack.DB, conformPeer))
+		stack.Hub.PeerChanged(conformPeer)
+		addr := s.peer.LocalAddr()
+		stack.SeedPeer(t, conformPeer, conformUser, obPassword, addr.IP.String(), addr.Port, true, true)
+		stack.SeedPeerRule(t, conformPeer, false, 1, dmrconst.MaxDMRAddress)
+		stack.Hub.PeerChanged(conformPeer)
+		time.Sleep(200 * time.Millisecond)
+		assert.Equal(t, []uint8{1}, s.versionsOf(t, 9644), "a peer added again keeps the version of the deleted one")
+	})
+}
+
+// TestOpenBridgeReplicaThatStartsLaterKnowsTheLinkVersion moves a version 1
+// link up with a BCVE, then starts a second replica and stops the first, as
+// a rolling restart does. The second replica must send DMRE of version 5:
+// FreeDMR drops the DMRD of a link that it moved up.
+func TestOpenBridgeReplicaThatStartsLaterKnowsTheLinkVersion(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, false)
+		s.moveUp(t, 9651)
+
+		const lateRepeater = conformRepeater + 1
+		stack.SeedMMDVMRepeater(t, lateRepeater, conformUser, testPassword)
+		second := stack.SpawnSecondReplica(t)
+		mc := testutils.NewMMDVMClient(lateRepeater, "", testPassword)
+		t.Cleanup(mc.Close)
+		require.NoError(t, mc.Connect(second.MMDVMAddr))
+		require.NoError(t, mc.WaitReady(handshakeWait))
+		require.NoError(t, stack.OpenBridgeServer.Stop(t.Context()))
+
+		var got []testutils.ReceivedBridge
+		stream := uint32(9652)
+		for start := time.Now(); len(got) == 0 && time.Since(start) < 3*openbridge.EgressLeaseTTL; stream++ {
+			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, uint(stream), false)))
+			got = dataOf(s.peer.DrainBridges(100*time.Millisecond), stream)
+		}
+		if assert.NotEmpty(t, got, "the second replica sends to the peer") {
+			assert.Equal(t, uint8(5), got[0].Version, "the second replica sends the version that the peer named")
+		}
 	})
 }

@@ -4,7 +4,7 @@ A web app can use a DMRHub account with OAuth 2.0. The user signs in to DMRHub, 
 
 DMRHub uses the authorization code flow with PKCE (RFC 7636), for public clients. An app has no client secret.
 
-Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHub instance.
+In this page, `<siteurl>` is the URL of your DMRHub instance.
 
 ## Register an app
 
@@ -14,7 +14,13 @@ An app needs no registration. No admin or user adds it first, and there is no se
 - The origin must use HTTPS. Plain HTTP works only when the host is `localhost` or a loopback address, such as `127.0.0.1` or `[::1]`, so that you can test on your own machine.
 - The redirect URI must be on that same origin. It can have any path and a query, but no fragment and no user name or password.
 
-The user allows the app on the consent page of DMRHub. Each user sees the apps they allowed in **Settings**, in the **Apps** card, with what each app can use, the day they allowed it, and when it was last used. **Remove** signs the app out at once.
+The user allows the app on the consent page of DMRHub.
+
+<!-- screenshot: oauth-consent.png | /oauth/authorize for the app http://localhost:8080 asking for talkgroups:read and lastheard:read, signed in as N0CALL, with the Don't allow and Allow buttons -->
+
+Each user sees the apps they allowed in **Settings** (`<siteurl>/settings`), in the **Apps** card. The card shows the app, what it **Can use**, the day it was **Allowed**, and when it was **Last used**. **Remove** signs the app out at once.
+
+<!-- screenshot: settings-apps-card.png | The Apps card on /settings with one allowed app, showing the Can use, Allowed and Last used columns and the Remove button -->
 
 ## Endpoints
 
@@ -59,8 +65,8 @@ A token acts as the user who allowed the app, and answers the same as the web pa
 - `/api/v1/lastheard` gives the calls of the network, and adds the details that the user may see of their own radio IDs and hotspots.
 - The messages routes and the `messages` frames of `/ws/messages` give the messages only when the user turned on SMS Storage. See [Messages and SMS Storage](messages.md).
 - [Positions](positions.md#for-apps) tells what the positions routes give.
-- `POST /api/v1/repeaters` with `{"id": 123456701}` adds a hotspot, and answers its password once. `POST /api/v1/repeaters/:id/talkgroups` with `{"ts1_static_talkgroups": [{"id": 3100}], "ts2_static_talkgroups": []}` replaces both lists of static talkgroups.
-- Routes that return a list take `page` and `limit`. `limit` is 10 by default and 100 at most.
+- `POST /api/v1/repeaters` with `{"id": 123456701}` adds a hotspot, and answers its password once. `POST /api/v1/repeaters/:id/talkgroups` with `{"ts1_static_talkgroups": [{"id": 3100}], "ts2_static_talkgroups": []}` replaces both lists of static talkgroups. The body also takes `ts1_dynamic_talkgroup` and `ts2_dynamic_talkgroup`, such as `{"id": 3100}`. A dynamic talkgroup that the body leaves out is cleared, so send the current dynamic talkgroups from `GET /api/v1/repeaters/:id` to keep them. A talkgroup that does not exist gives `400`.
+- Routes that return a list take `page` and `limit`. `limit` is 10 by default and 100 at most. `limit=none` returns every row.
 
 ### Ask for every scope at once
 
@@ -296,7 +302,7 @@ When the client ID or the redirect URI is wrong, DMRHub cannot trust the redirec
 
 | `error`                     | Cause                                                                                       | Back to the app |
 | --------------------------- | ------------------------------------------------------------------------------------------- | --------------- |
-| `invalid_client`            | `client_id` is not an origin, uses HTTP on a host that is not loopback, or `redirect_uri` is not on it | No       |
+| `invalid_client`            | `client_id` is not an origin in lower case, uses HTTP on a host that is not loopback, or `redirect_uri` is not on it or has a fragment or a user name | No |
 | `invalid_scope`             | No scope, or a scope that is not on the list                                                | Yes             |
 | `invalid_request`           | `code_challenge_method` is not `S256`, or `code_challenge` is not a SHA-256 in base64url    | Yes             |
 | `unsupported_response_type` | `response_type` is not `code`                                                               | Yes             |

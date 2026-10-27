@@ -165,6 +165,8 @@ dmr:
   radio-id-url: "https://www.radioid.net/static/users.json"
   # URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.
   repeater-id-url: "https://www.radioid.net/static/rptrs.json"
+  # Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server
+  # public-address: ""
   # How long DMRHub keeps its records
   retention:
     # Days to keep text and data messages, with their raw bytes. 0 keeps them forever

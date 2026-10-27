@@ -121,6 +121,7 @@ type DMR struct {
 	DisableRadioIDValidation bool         `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
 	RadioIDURL               string       `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
 	RepeaterIDURL            string       `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
+	PublicAddress            string       `json:"public-address" yaml:"public-address" name:"public-address" description:"Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server"`
 	Retention                Retention    `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
 	Positions                Positions    `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
 	Plugins                  Plugins      `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
@@ -183,6 +184,24 @@ func (p PrivateCalls) DataRoute() PrivateRoute {
 		r.MaxAge = p.Data.MaxAge
 	}
 	return r
+}
+
+// ServerAddress returns the host name or IP address that hotspots and
+// repeaters connect to: dmr.public-address, else the host name of
+// http.canonical-host, else empty.
+func (c Config) ServerAddress() string {
+	if c.DMR.PublicAddress != "" {
+		return c.DMR.PublicAddress
+	}
+	host := strings.TrimSpace(c.HTTP.CanonicalHost)
+	if !strings.Contains(host, "://") {
+		host = "//" + host
+	}
+	u, err := url.Parse(host)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
 
 // Transcoding holds the AMBE servers that convert calls between Codec2 and

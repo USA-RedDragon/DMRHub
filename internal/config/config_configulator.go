@@ -185,6 +185,7 @@ type dMRShadow struct {
 	DisableRadioIDValidation *bool               `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
 	RadioIDURL               *string             `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
 	RepeaterIDURL            *string             `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
+	PublicAddress            *string             `json:"public-address"              toml:"public-address"              yaml:"public-address"`
 	Retention                *retentionShadow    `json:"retention"                   toml:"retention"                   yaml:"retention"`
 	Positions                *positionsShadow    `json:"positions"                   toml:"positions"                   yaml:"positions"`
 	Plugins                  *pluginsShadow      `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
@@ -727,6 +728,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 		if s.DMR.RepeaterIDURL != nil {
 			cfg.DMR.RepeaterIDURL = *s.DMR.RepeaterIDURL
 			set("dmr.repeater-id-url", configulator.LayerFile, file)
+		}
+		if s.DMR.PublicAddress != nil {
+			cfg.DMR.PublicAddress = *s.DMR.PublicAddress
+			set("dmr.public-address", configulator.LayerFile, file)
 		}
 		if s.DMR.Retention != nil {
 			if s.DMR.Retention.Messages != nil {
@@ -1609,6 +1614,10 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.RepeaterIDURL = v
 		set("dmr.repeater-id-url", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "public-address"); ok {
+		cfg.DMR.PublicAddress = v
+		set("dmr.public-address", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "retention", "messages"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2016,6 +2025,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "disable-radio-id-validation",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
+		"dmr" + o.Separator + "public-address",
 		"dmr" + o.Separator + "retention" + o.Separator + "messages",
 		"dmr" + o.Separator + "retention" + o.Separator + "transmissions",
 		"dmr" + o.Separator + "retention" + o.Separator + "bursts",
@@ -2142,46 +2152,47 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[67], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
 	fs.String(names[68], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
 	fs.String(names[69], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[70], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[71], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[72], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[73], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[74], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[75], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[76], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[77], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[78], false, "Accept plugins that run as their own programs")
-	fs.String(names[79], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[80], "TCP port that plugins connect to")
-	fs.String(names[81], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[82], "", "TLS key file of the certificate file")
-	fs.String(names[83], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
-	fs.String(names[84], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
-	fs.Duration(names[85], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
-	fs.String(names[86], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
-	fs.String(names[87], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
-	fs.Duration(names[88], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
-	fs.Var(impl.NewInt(25), names[89], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[90], false, "Enable SMTP support for sending emails")
-	fs.String(names[91], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[92], "SMTP server port")
-	fs.String(names[93], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[94], "", "SMTP server username")
-	fs.String(names[95], "", "SMTP server password")
-	fs.String(names[96], "", "Email address to use as the sender")
-	fs.String(names[97], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[98], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[99], false, "Enable metrics collection and export")
-	fs.String(names[100], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[101], "Metrics server port")
-	fs.StringSlice(names[102], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[103], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[104], false, "Enable PProf profiling and debugging support")
-	fs.String(names[105], "[::]", "PProf server listen address")
-	fs.StringSlice(names[106], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[107], "PProf server port")
-	fs.String(names[108], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[109], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[70], "", "Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server")
+	fs.Var(impl.NewInt(0), names[71], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[72], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[73], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[74], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[75], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[76], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[77], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[78], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[79], false, "Accept plugins that run as their own programs")
+	fs.String(names[80], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[81], "TCP port that plugins connect to")
+	fs.String(names[82], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[83], "", "TLS key file of the certificate file")
+	fs.String(names[84], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
+	fs.String(names[85], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
+	fs.Duration(names[86], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
+	fs.String(names[87], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
+	fs.String(names[88], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
+	fs.Duration(names[89], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
+	fs.Var(impl.NewInt(25), names[90], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[91], false, "Enable SMTP support for sending emails")
+	fs.String(names[92], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[93], "SMTP server port")
+	fs.String(names[94], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[95], "", "SMTP server username")
+	fs.String(names[96], "", "SMTP server password")
+	fs.String(names[97], "", "Email address to use as the sender")
+	fs.String(names[98], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[99], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[100], false, "Enable metrics collection and export")
+	fs.String(names[101], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[102], "Metrics server port")
+	fs.StringSlice(names[103], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[104], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[105], false, "Enable PProf profiling and debugging support")
+	fs.String(names[106], "[::]", "PProf server listen address")
+	fs.StringSlice(names[107], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[108], "PProf server port")
+	fs.String(names[109], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[110], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3025,6 +3036,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.RepeaterIDURL = v
 		set("dmr.repeater-id-url", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "public-address"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.public-address",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PublicAddress = v
+		set("dmr.public-address", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "retention" + o.Separator + "messages"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -4348,6 +4371,19 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				s.RepeaterIDURL = &str
 			default:
 				return configJSONError(path+".repeater-id-url", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "public-address":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.PublicAddress = &str
+			default:
+				return configJSONError(path+".public-address", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "retention":
 			if dec.PeekKind() == jsontext.KindNull {
@@ -6505,6 +6541,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)
+	fmt.Fprintf(&b, "dmr.public-address = %v\n", c.DMR.PublicAddress)
 	fmt.Fprintf(&b, "dmr.retention.messages = %v\n", c.DMR.Retention.Messages)
 	fmt.Fprintf(&b, "dmr.retention.transmissions = %v\n", c.DMR.Retention.Transmissions)
 	fmt.Fprintf(&b, "dmr.retention.bursts = %v\n", c.DMR.Retention.Bursts)

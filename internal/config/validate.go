@@ -190,6 +190,8 @@ var (
 	ErrInvalidDMRRadioIDURL = errors.New("invalid DMR radio ID URL provided")
 	// ErrInvalidRetention indicates that a retention period is not 0 or a number of days up to MaxRetentionDays.
 	ErrInvalidRetention = errors.New("retention must be 0 (keep forever) or a number of days up to 36500")
+	// ErrInvalidDMRPublicAddress indicates that the public address of the DMR servers is not a host name or IP address.
+	ErrInvalidDMRPublicAddress = errors.New("enter a host name or IP address with no scheme or port, such as dmr.example.org")
 	// ErrInvalidDMRRepeaterIDURL indicates that the provided DMR repeater ID URL is not valid.
 	ErrInvalidDMRRepeaterIDURL = errors.New("invalid DMR repeater ID URL provided")
 )
@@ -702,6 +704,10 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})
 	}
 
+	if d.PublicAddress != "" && !isHostOrIP(d.PublicAddress) {
+		errs = append(errs, ValidationError{Field: fieldDMRPublicAddress, Err: ErrInvalidDMRPublicAddress})
+	}
+
 	if !isValidURL(d.RadioIDURL) {
 		errs = append(errs, ValidationError{
 			Field: "dmr.radio-id-url",
@@ -876,7 +882,33 @@ const (
 	fieldPluginsPort  = "dmr.plugins.port"
 	fieldDrainTimeout = "dmr.drain-timeout"
 	fieldAMBEServers  = "dmr.transcoding.ambe-servers"
+
+	fieldDMRPublicAddress = "dmr.public-address"
+	maxHostNameLength     = 253
+	maxHostLabelLength    = 63
 )
+
+// isHostOrIP reports whether s is an IP address or a host name of letters,
+// digits and hyphens in dot-separated labels.
+func isHostOrIP(s string) bool {
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	if len(s) > maxHostNameLength {
+		return false
+	}
+	for _, label := range strings.Split(s, ".") {
+		if label == "" || len(label) > maxHostLabelLength || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 // ValidateWithFields validates the address and calls at once of each AMBE
 // server.

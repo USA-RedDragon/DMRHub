@@ -189,6 +189,30 @@ func TestPrecedence(t *testing.T) {
 	}
 }
 
+// TestPublicAddressIsASetupSetting saves the public address in Setup and
+// sets it back to its default, which removes the saved value.
+func TestPublicAddressIsASetupSetting(t *testing.T) {
+	t.Parallel()
+	database := newDB(t, testutils.SQLiteMemoryBackend())
+	l := boot(t, database, deployment{file: validDeployment})
+	save(t, l, func(c *config.Config) { c.DMR.PublicAddress = "dmr.example.org" })
+	st, err := l.Status(context.Background())
+	require.NoError(t, err)
+	s := st.Settings["dmr.public-address"]
+	assert.True(t, s.Editable)
+	assert.False(t, s.StartOnly)
+	assert.Equal(t, liveconfig.SourceSetup, s.Source)
+	assert.JSONEq(t, `"dmr.example.org"`, string(s.Saved))
+	assert.JSONEq(t, `""`, string(s.Default))
+	assert.Equal(t, "dmr.example.org", l.Current().Get().ServerAddress())
+
+	save(t, l, func(c *config.Config) { c.DMR.PublicAddress = "" })
+	st, err = l.Status(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, liveconfig.SourceDefault, st.Settings["dmr.public-address"].Source)
+	assert.Equal(t, "localhost", l.Current().Get().ServerAddress())
+}
+
 // TestALockedListIsLockedWhole sets one AMBE server in the config file.
 // The list is locked as a whole, and the saved list does not mix in.
 func TestALockedListIsLockedWhole(t *testing.T) {

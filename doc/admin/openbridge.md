@@ -20,7 +20,7 @@ The configuration keys are `dmr.openbridge.enabled`, `dmr.openbridge.bind`, `dmr
    | ----- | ------------- |
    | **Owner** | The user who owns the peer. The owner can see and change the peer on the **Peers** page in the main menu. |
    | **Peer ID** | The network ID of the link. Both ends of the link use the same ID. |
-   | **IP Address** and **Port** | Where the other server listens for OpenBridge. DMRHub sends to this address. |
+   | **IP Address** and **Port** | Where the other server listens for OpenBridge. DMRHub sends to this address. To refuse the packets of other addresses, see [IP lists](ip-lists.md#openbridge-peers-and-their-ip-address). |
    | **Receive DMR traffic from this peer** | Turn on to take calls from the peer. |
    | **Transmit DMR traffic to this peer** | Turn on to send calls to the peer. |
    | **Use FreeDMR enhanced OpenBridge with this peer** | See [Enhanced peers](#enhanced-peers-for-freedmr). |

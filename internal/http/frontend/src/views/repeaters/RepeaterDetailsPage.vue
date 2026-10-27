@@ -395,6 +395,9 @@ type RepeaterData = {
 
 type SlotKey = 'ts1' | 'ts2';
 
+/** SESSION_TIMEOUT_MS is how long after its last ping the hub keeps a repeater logged in. */
+const SESSION_TIMEOUT_MS = 60_000;
+
 const CODEC_OPTIONS: { value: SlotCodec; label: string }[] = [
   { value: 'auto', label: 'Automatic' },
   { value: 'codec2', label: 'Codec2' },
@@ -476,8 +479,8 @@ export default {
   },
   computed: {
     isOnline(): boolean {
-      if (!this.repeater) return false;
-      return this.hasTimestamp(this.repeater.last_ping_time);
+      if (!this.repeater || !this.hasTimestamp(this.repeater.last_ping_time)) return false;
+      return this.now - new Date(this.repeater.last_ping_time).getTime() < SESSION_TIMEOUT_MS;
     },
     protocol(): string {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';

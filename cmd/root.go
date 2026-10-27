@@ -140,6 +140,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	callTracker.SetDataObserver(messageStore)
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
+	dmrHub.SetConfig(current)
 
 	servers, err := initializeServers(ctx, live, dmrHub, callTracker, kvStore, pubsubClient, database, version, commit)
 	if err != nil {

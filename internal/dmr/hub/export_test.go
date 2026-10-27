@@ -21,8 +21,7 @@ package hub
 
 import (
 	"context"
-	"fmt"
-	"strconv"
+	"encoding/json"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -71,20 +70,35 @@ func (h *Hub) LiftSlotRate(lift bool) {
 	h.slotRateOff.Store(lift)
 }
 
-// HeardAt returns the repeater where the radio userID was last heard, or 0.
+// HeardAt returns the repeater where private traffic in the hybrid and
+// members reach follows the radio userID to, as the KV store keeps it, or
+// 0.
 func (h *Hub) HeardAt(ctx context.Context, userID uint) uint {
-	v, err := h.kv.Get(ctx, fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID))
+	v, err := h.kv.Get(ctx, lastHeardKey(userID))
 	if err != nil {
 		return 0
 	}
-	id, err := strconv.ParseUint(string(v), 10, 32)
-	if err != nil {
+	var rec lastHeard
+	if json.Unmarshal(v, &rec) != nil {
 		return 0
 	}
-	return uint(id)
+	return rec.Vetted.Repeater
+}
+
+// ResyncRepeater runs one resync of the repeater id, and reports whether
+// it reloaded the subscriptions.
+func (h *Hub) ResyncRepeater(id uint) bool {
+	return h.resyncRepeater(id)
 }
 
 // OutboxDepth is the number of bursts in the outboxes.
 func (h *Hub) OutboxDepth() int64 {
 	return h.outbox.Depth()
+}
+
+// StoreSighting adds to the record in the KV store that repeater heard
+// radio at, as a sighting that private traffic in the hybrid and members
+// reach may follow when vetted is set.
+func (h *Hub) StoreSighting(radio, repeater uint, at time.Time, vetted bool) error {
+	return h.storeSighting(sighting{src: radio, repeater: repeater, at: at}, lastHeardKey(radio), vetted)
 }

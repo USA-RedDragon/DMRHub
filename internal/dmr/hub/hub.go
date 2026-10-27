@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
@@ -160,7 +161,7 @@ type Hub struct {
 
 	talkgroupIDs *lookup.Cache[uint, bool]
 	radioOwners  *lookup.Cache[uint, uint]
-	radioCalls   *lookup.Cache[uint, uint]
+	radioCalls   *lookup.Cache[uint, heardAt]
 	egressTable  *lookup.Cache[struct{}, []egressPeer]
 	lastSeen     *lookup.Flights[uint, []byte]
 
@@ -180,8 +181,10 @@ type Hub struct {
 	claimTiming           atomic.Pointer[[2]time.Duration]
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
-	slotRateOff atomic.Bool
-	loopLogged  *xsync.Map[uint, time.Time]
+	slotRateOff       atomic.Bool
+	loopLogged        *xsync.Map[uint, time.Time]
+	privateDropLogged *xsync.Map[uint, time.Time]
+	cfg               atomic.Pointer[config.Source]
 
 	repeaters *repeaterCache
 	origin    string
@@ -256,6 +259,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.owners = lookup.NewFlights[uint, []byte]()
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
+	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
 	h.transcoder = transcode.NewService(kvStore)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
 	h.copyOrders = map[sourceSlot]*copyOrder{}

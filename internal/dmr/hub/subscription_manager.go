@@ -99,6 +99,7 @@ type subscription struct {
 	feed    *repeaterFeed
 	topic   string
 	tg      uint
+	flood   bool
 	mu      sync.RWMutex
 	stopped bool
 }
@@ -107,6 +108,15 @@ type subscription struct {
 // and returns its subscription.
 func (f *repeaterFeed) subscribe(repeaterID uint) *subscription {
 	sub := f.newSubscription(repeaterTopic(repeaterID), 0)
+	f.add(sub)
+	return sub
+}
+
+// subscribeFlood adds the topic of the private traffic that floods every
+// repeater to the feed, and returns its subscription.
+func (f *repeaterFeed) subscribeFlood() *subscription {
+	sub := f.newSubscription(privateFloodTopic, 0)
+	sub.flood = true
 	f.add(sub)
 	return sub
 }
@@ -146,6 +156,11 @@ func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
 	}
 	h.deliverToServerUnless(s.done, serverName, rp)
 }
+
+const (
+	privateFloodTopic = "hub:packets:private-flood"
+	floodSubKey       = uint(1<<32 - 1)
+)
 
 func repeaterTarget(repeaterID uint) string {
 	return "repeater:" + strconv.FormatUint(uint64(repeaterID), 10)
@@ -195,6 +210,10 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	_, ok = radioSubs.Load(repeaterID)
 	if !ok {
 		radioSubs.Store(repeaterID, feed.subscribe(repeaterID))
+	}
+
+	if _, ok = radioSubs.Load(floodSubKey); !ok {
+		radioSubs.Store(floodSubKey, feed.subscribeFlood())
 	}
 
 	// Subscribe to each static talkgroup
@@ -531,6 +550,9 @@ func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
 		}
 		packet, ok := unmarshalRawPacket(msg.Payload)
 		if !ok {
+			continue
+		}
+		if sub.flood && packet.Repeater == repeaterID {
 			continue
 		}
 		if sub.tg == 0 {

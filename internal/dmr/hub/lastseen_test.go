@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -158,9 +159,10 @@ func TestPrivateTrafficFollowsASightingThatIsNotStoredYet(t *testing.T) {
 	expectAt(t, srv, 100003, "private traffic goes where the radio was just heard")
 }
 
-func TestPrivateTrafficToUnregisteredRadioIsDropped(t *testing.T) {
+func TestPrivateTrafficToUnregisteredRadioIsDroppedInTheMembersReach(t *testing.T) {
 	t.Parallel()
 	h, _, srv := lastSeenHub(t)
+	h.SetConfig(config.Config{DMR: config.DMR{PrivateCalls: config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}}}})
 
 	h.RoutePacket(context.Background(), dataHeader(1234567, 1, 100003, 1), models.RepeaterTypeMMDVM)
 	time.Sleep(200 * time.Millisecond)

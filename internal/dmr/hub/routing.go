@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
@@ -265,45 +266,86 @@ func (h *Hub) routeToRepeater(key sourceSlot, packet models.Packet) bool {
 	return true
 }
 
-// routeToUser sends private traffic to the repeater where the registered
-// radio was last heard. Traffic to a radio that is not a user is dropped.
-// It reports whether the hub knows where the radio is.
+// routeToUser sends private traffic to the repeater where the radio was
+// last heard, or floods it to every repeater, as the private call settings
+// say. It reports whether the hub sent it.
 func (h *Hub) routeToUser(ctx context.Context, key sourceSlot, packet models.Packet) bool {
 	repeaterID, ok := h.privateTarget(ctx, packet)
 	if !ok {
 		return false
 	}
+	if repeaterID == 0 {
+		h.marshalAndPublish(key, packet, privateFloodTopic)
+		return true
+	}
 	h.publishToRepeater(key, repeaterID, packet)
 	return true
 }
 
+// SetConfig makes src the config whose private call settings the hub
+// routes private traffic with. Without one it uses the defaults.
+func (h *Hub) SetConfig(src config.Source) {
+	h.cfg.Store(&src)
+}
+
+// privateRoute returns the private call settings for packet: those of
+// voice for a voice burst, those of SMS and data for the others.
+func (h *Hub) privateRoute(packet models.Packet) config.PrivateRoute {
+	var pc config.PrivateCalls
+	if src := h.cfg.Load(); src != nil {
+		if c := (*src).Get(); c != nil {
+			pc = c.DMR.PrivateCalls
+		}
+	}
+	if isVoice, _ := utils.CheckPacketType(packet); isVoice {
+		return pc.Route()
+	}
+	return pc.DataRoute()
+}
+
 // privateTarget returns the repeater that the private stream of packet to
-// a registered radio goes to: where its first burst went, or where the
-// radio was last heard.
+// a radio goes to: where its first burst went, or where the radio was last
+// heard, as the private call settings let it follow the radio. A repeater
+// of 0 floods the stream to every repeater.
 func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bool) {
 	key := streamTarget{stream: packet.StreamID, dst: packet.Dst}
 	if at, ok := h.streamTargets.Load(key); ok {
 		return at.repeater, true
 	}
+	route := h.privateRoute(packet)
 	owner, err := h.radioOwners.Get(packet.Dst)
 	if err != nil {
 		slog.Error("Error finding the owner of a radio", "error", err)
 		return 0, false
 	}
-	if owner == 0 {
+	if owner == 0 && route.Reach == config.PrivateReachMembers {
+		h.logPrivateDrop(key, packet, route, "the radio ID is not a member's")
 		return 0, false
 	}
-	repeaterID, ok := h.locateRadio(ctx, packet.Dst, owner)
+	repeaterID, ok := h.locateRadio(ctx, packet.Dst, owner, route)
 	if !ok {
-		slog.Debug("Dropping private traffic to a radio with no known location", "userID", packet.Dst, "src", packet.Src)
-		return 0, false
+		if route.Unknown != config.PrivateUnknownFlood {
+			h.logPrivateDrop(key, packet, route, "the radio was not heard where its traffic may follow it")
+			return 0, false
+		}
+		repeaterID = 0
 	}
 	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})
 	return repeaterID, true
 }
 
+// logPrivateDrop logs once per stream that the hub drops private traffic
+// to a radio, and why.
+func (h *Hub) logPrivateDrop(key streamTarget, packet models.Packet, route config.PrivateRoute, why string) {
+	if _, logged := h.privateDropLogged.LoadOrStore(key.stream, time.Now()); logged {
+		return
+	}
+	slog.Info("Dropping private traffic to a radio", "dst", packet.Dst, "src", packet.Src, "stream", packet.StreamID,
+		"reach", route.Reach, "maxAge", route.MaxAge, "reason", why)
+}
+
 // privateTargetRepeater returns the repeater that the private burst
-// packet goes to.
+// packet goes to. A flooded burst goes to no one repeater.
 func (h *Hub) privateTargetRepeater(ctx context.Context, packet models.Packet) (*models.Repeater, bool) {
 	id := packet.Dst
 	if !isRepeaterID(id) {
@@ -311,7 +353,7 @@ func (h *Hub) privateTargetRepeater(ctx context.Context, packet models.Packet) (
 			return nil, false
 		}
 		var ok bool
-		if id, ok = h.privateTarget(ctx, packet); !ok {
+		if id, ok = h.privateTarget(ctx, packet); !ok || id == 0 {
 			return nil, false
 		}
 	}

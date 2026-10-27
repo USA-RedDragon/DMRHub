@@ -90,7 +90,7 @@ func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) er
 // Redis goes on.
 func TestAPausedRedisLosesNoSighting(t *testing.T) {
 	t.Parallel()
-	paused := &pausedKV{prefix: "dmrhub:lastseen:"}
+	paused := &pausedKV{prefix: "dmrhub:lastheard:"}
 	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
 		paused.KV = k
 		return paused

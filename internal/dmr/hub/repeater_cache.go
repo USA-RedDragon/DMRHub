@@ -238,19 +238,21 @@ func (h *Hub) resyncRepeaters() {
 				return true
 			})
 			for _, id := range ids {
-				h.resyncRepeater(id)
+				_ = h.resyncRepeater(id)
 			}
 		}
 	}
 }
 
-func (h *Hub) resyncRepeater(id uint) {
+// resyncRepeater reloads the subscriptions of the repeater id when they
+// differ from the database, and reports whether it did.
+func (h *Hub) resyncRepeater(id uint) bool {
 	rpt, err := models.FindRepeaterByID(h.db, id)
 	if err != nil {
 		slog.Error("Failed to find repeater to resync", "repeaterID", id, "error", err)
-		return
+		return false
 	}
-	want := map[uint]bool{id: true}
+	want := map[uint]bool{id: true, floodSubKey: true}
 	for _, tg := range rpt.TS1StaticTalkgroups {
 		want[tg.ID] = true
 	}
@@ -265,7 +267,7 @@ func (h *Hub) resyncRepeater(id uint) {
 	}
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(id)
 	if !ok {
-		return
+		return false
 	}
 	have := 0
 	same := true
@@ -275,11 +277,12 @@ func (h *Hub) resyncRepeater(id uint) {
 		return same
 	})
 	if same && have == len(want) {
-		return
+		return false
 	}
 	slog.Info("Repeater subscriptions differ from the database, reloading", "repeaterID", id)
 	h.reloadRepeater(id)
 	h.reloadLocal(context.Background(), id)
+	return true
 }
 
 func newOrigin() string {

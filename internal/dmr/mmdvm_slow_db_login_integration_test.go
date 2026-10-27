@@ -31,11 +31,13 @@ import (
 
 // TestMMDVMSlowDatabaseLoginsHoldNoCall streams a call from one repeater to
 // another while three more log in at once, as after a restart of the hub,
-// and every database statement takes 300 ms. No burst of the call may wait
-// on the database for the logins, and each login must still complete.
-func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) { //nolint:paralleltest,tparallel // the parallel tests of the package starve the call of CPU for more than half a statement
+// and the database holds every statement. Every burst of the call must
+// pass while the logins wait on the database, and each login must
+// complete when the database lets its statements go.
+func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
+	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		slow := slowDown(t, stack.DB)
+		db := holdDatabase(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		joiners := []uint32{100004, 100005, 100006}
@@ -76,8 +78,7 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) { //nolint:paralleltest
 		worstBursts(t, 8401, 16, send(16, nil), listener.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
-		slow.Store(true)
-		defer slow.Store(false)
+		db.hold()
 		var wg sync.WaitGroup
 		ready := make(chan error, len(joiners))
 		login := func() {
@@ -89,18 +90,17 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) { //nolint:paralleltest
 						ready <- err
 						return
 					}
-					start := time.Now()
-					err := c.WaitReady(30 * time.Second)
-					t.Logf("repeater %d logged in after %v", id, time.Since(start))
-					ready <- err
+					ready <- c.WaitReady(30 * time.Second)
 				})
 			}
 		}
-		worst := worstBursts(t, 8402, 100, send(100, login), listener.ReceivedPackets())
+		worstBursts(t, 8402, 100, send(100, login), listener.ReceivedPackets())
+		assert.Empty(t, ready, "a login passed while the database held its statements")
+		assert.Positive(t, db.held.Load(), "the logins ran no statement for the database to hold")
+		t.Logf("the call passed while the database held %d statements of %d logins", db.held.Load(), len(joiners))
+		db.release()
 		wg.Wait()
 		close(ready)
-		t.Logf("worst delay of the call with %v per statement while %d repeaters log in: %v", slowStatement, len(joiners), worst[0])
-		assert.Less(t, worst[0], slowStatement/2, "a burst of the call waited on the database for a login")
 		for err := range ready {
 			assert.NoError(t, err, "a repeater could not log in")
 		}

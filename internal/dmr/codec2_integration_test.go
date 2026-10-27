@@ -324,6 +324,24 @@ func (n *c2Net) drain(d time.Duration) c2Got {
 	return g
 }
 
+// awaitStream returns the first n packets of stream that c gets.
+func awaitStream(t *testing.T, c *testutils.MMDVMClient, stream uint, n int) []models.Packet {
+	t.Helper()
+	var got []models.Packet
+	deadline := time.After(handshakeWait)
+	for len(got) < n {
+		select {
+		case p := <-c.ReceivedPackets():
+			if p.StreamID == stream {
+				got = append(got, p)
+			}
+		case <-deadline:
+			require.Failf(t, "the packets did not come", "got %d of %d packets of stream %d", len(got), n, stream)
+		}
+	}
+	return got
+}
+
 func sendC2(t *testing.T, send func(models.Packet) error, pkts []models.Packet) {
 	t.Helper()
 	for _, p := range pkts {
@@ -610,8 +628,9 @@ func checkLateIPSC(t *testing.T, sent []models.Packet, lc pdu.LCBytes, got []ips
 }
 
 // TestCodec2HandoffResume starts a Codec2 call, restarts the MMDVM server
-// as in a handoff in the middle of it, and finishes the call. The
-// listening hotspot must get the whole call unchanged.
+// as in a handoff in the middle of it, once the listening hotspot got the
+// first half, and finishes the call. The listening hotspot must get the
+// whole call unchanged.
 func TestCodec2HandoffResume(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -623,10 +642,11 @@ func TestCodec2HandoffResume(t *testing.T) {
 		const half = 1 + 6 + 3
 
 		sendC2(t, n.talker.SendDMRD, sent[:half])
+		got := awaitStream(t, n.listen, stream, half)
 		stack.RestartMMDVM(t, testutils.RestartHandoff)
 		sendC2(t, n.talker.SendDMRD, sent[half:])
 		g := n.drain(callWait(sent))
-		got := ofStream(g.listen, stream)
+		got = append(got, ofStream(g.listen, stream)...)
 		checkC2(t, sent, cc.lc, got)
 		assertSamePackets(t, sent, got, c2ListenRpt, false)
 		n.checkRow(t, stream, c.src)

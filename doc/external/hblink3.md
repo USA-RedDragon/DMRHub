@@ -127,6 +127,8 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 ```
 
+An older peer or repeater password can have a `%`. HBlink3 reads `%` as the start of a variable, so write each `%` as `%%` in `PASSPHRASE`.
+
 This `rules.py` bridges TG 91 on timeslot 1 between DMRHub and the local hotspots, and TG 3100 between the OpenBridge link and timeslot 2 of the local hotspots:
 
 ```python

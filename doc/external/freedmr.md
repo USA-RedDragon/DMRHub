@@ -48,6 +48,8 @@ PROTO_VER: 5
 
 Run it with `python bridge_master.py -c freedmr.cfg`. `bridge_master.py` takes no rules file.
 
+An older peer password can have a `%`. FreeDMR reads `%` as the start of a variable, so write each `%` as `%%` in `PASSPHRASE`.
+
 ## Check that it works
 
 In our run, a hotspot on DMRHub and a hotspot on FreeDMR both had TG 91 on timeslot 1:

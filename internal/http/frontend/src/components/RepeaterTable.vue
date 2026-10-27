@@ -79,6 +79,23 @@ type RepeaterRow = {
   editable: boolean;
 };
 
+/**
+ * carriesSlot reports whether a repeater carries timeslot ts, from the Slots
+ * digit of its RPTC config: 1 is TS1 only, 2 is TS2 only, 3 is both, 4 is a
+ * simplex hotspot, which uses TS2, and 0 is not known.
+ */
+function carriesSlot(slots: number, ts: 1 | 2): boolean {
+  switch (slots) {
+  case 1:
+    return ts === 1;
+  case 2:
+  case 4:
+    return ts === 2;
+  default:
+    return true;
+  }
+}
+
 export default {
   name: 'RepeaterTable',
   props: {
@@ -191,7 +208,7 @@ export default {
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
             if (!repeater.editable) {
-              const options = repeater.slots === 1 || repeater.ts1_static_talkgroups.length === 0
+              const options = !carriesSlot(repeater.slots, 1) || repeater.ts1_static_talkgroups.length === 0
                 ? [{ id: 0, label: 'None' }]
                 : repeater.ts1_static_talkgroups.map((tg) => ({ id: tg.id, label: `${tg.id} - ${tg.name}` }));
               return h(
@@ -208,7 +225,7 @@ export default {
               );
             }
 
-            if (repeater.slots === 1) {
+            if (!carriesSlot(repeater.slots, 1)) {
               return '';
             }
 
@@ -243,7 +260,7 @@ export default {
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
             if (!repeater.editable) {
-              const options = repeater.ts2_static_talkgroups.length === 0
+              const options = !carriesSlot(repeater.slots, 2) || repeater.ts2_static_talkgroups.length === 0
                 ? [{ id: 0, label: 'None' }]
                 : repeater.ts2_static_talkgroups.map((tg) => ({ id: tg.id, label: `${tg.id} - ${tg.name}` }));
               return h(
@@ -258,6 +275,10 @@ export default {
                   h('option', { value: option.id }, option.label),
                 ),
               );
+            }
+
+            if (!carriesSlot(repeater.slots, 2)) {
+              return '';
             }
 
             return h(
@@ -291,7 +312,7 @@ export default {
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
             if (!repeater.editable) {
-              const hasDynamic = repeater.slots !== 1 && repeater.ts1_dynamic_talkgroup.id !== 0;
+              const hasDynamic = carriesSlot(repeater.slots, 1) && repeater.ts1_dynamic_talkgroup.id !== 0;
               const options = hasDynamic
                 ? [{ id: repeater.ts1_dynamic_talkgroup.id, label: `${repeater.ts1_dynamic_talkgroup.id} - ${repeater.ts1_dynamic_talkgroup.name}` }]
                 : [{ id: 0, label: 'None' }];
@@ -307,7 +328,7 @@ export default {
               );
             }
 
-            if (repeater.slots === 1) {
+            if (!carriesSlot(repeater.slots, 1)) {
               return '';
             }
 
@@ -335,7 +356,7 @@ export default {
           cell: ({ row }: { row: { original: RepeaterRow } }) => {
             const repeater = row.original;
             if (!repeater.editable) {
-              const hasDynamic = repeater.ts2_dynamic_talkgroup.id !== 0;
+              const hasDynamic = carriesSlot(repeater.slots, 2) && repeater.ts2_dynamic_talkgroup.id !== 0;
               const options = hasDynamic
                 ? [{ id: repeater.ts2_dynamic_talkgroup.id, label: `${repeater.ts2_dynamic_talkgroup.id} - ${repeater.ts2_dynamic_talkgroup.name}` }]
                 : [{ id: 0, label: 'None' }];
@@ -349,6 +370,10 @@ export default {
                 },
                 options.map((option) => h('option', { value: option.id }, option.label)),
               );
+            }
+
+            if (!carriesSlot(repeater.slots, 2)) {
+              return '';
             }
 
             const options = [{ id: 0, name: 'None', display: '0 - None' }, ...this.talkgroups];

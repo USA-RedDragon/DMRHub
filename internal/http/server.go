@@ -134,13 +134,13 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 }
 
 // MakeSetupWizardServer returns the server of the setup wizard, whose
-// phase state holds.
+// phase state holds. It listens on http.bind and http.port of config.
 func MakeSetupWizardServer(config *configPkg.Config, state *setupwizard.State, token string, configCompleteChan chan any, version, commit string) Server {
 	r := CreateSetupWizardRouter(config, state, token, configCompleteChan, version, commit)
 
-	slog.Info("HTTP Server listening", "bind", "[::]", "port", "3005")
+	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
-		Addr:         "[::]:3005",
+		Addr:         fmt.Sprintf("%s:%d", config.HTTP.Bind, config.HTTP.Port),
 		Handler:      r,
 		ReadTimeout:  defTimeout,
 		WriteTimeout: defTimeout,

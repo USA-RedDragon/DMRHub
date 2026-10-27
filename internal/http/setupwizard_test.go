@@ -244,3 +244,15 @@ func TestSetupWizardSaysWhenItCannotKeepTheDatabase(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 	assert.Contains(t, w.Body.String(), "cannot keep a database setting")
 }
+
+// TestSetupWizardListensOnTheConfiguredAddress makes the setup wizard
+// listen on http.bind and http.port, as the hub does after setup.
+func TestSetupWizardListensOnTheConfiguredAddress(t *testing.T) {
+	t.Parallel()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.HTTP.Bind = "127.0.0.1"
+	base.HTTP.Port = 3018
+	s := internalhttp.MakeSetupWizardServer(&base, setupwizard.NewState(), wizardToken, make(chan any, 1), "test", "test")
+	assert.Equal(t, "127.0.0.1:3018", s.Addr)
+}

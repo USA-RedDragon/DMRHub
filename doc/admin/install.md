@@ -22,7 +22,7 @@ DMRHub starts the setup wizard instead of the network when its configuration is 
    INF Opening setup wizard at http://localhost:3005/setup?token=AbCdEfGhIjKl
    ```
 
-   The wizard always listens on TCP port 3005 on all addresses, whatever `http.port` is. The token changes at each start. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
+   The wizard listens on `http.bind` and `http.port`, the same address as the web interface. The token changes at each start. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
 
 2. Open the address from the log. If the browser is on another computer, replace `localhost` with the address of the server, and keep the token.
 3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database.
@@ -171,7 +171,7 @@ The unit mounts `/etc` read-only for DMRHub, except `/etc/dmrhub`, and hides the
 
 | Port  | Protocol | What it is | When it is open |
 | ----- | -------- | ---------- | --------------- |
-| 3005  | TCP      | The web interface, the API and the websockets (`http.port`) | Always. The setup wizard always uses 3005. |
+| 3005  | TCP      | The web interface, the API and the websockets (`http.port`) | Always. The setup wizard uses it too. |
 | 62031 | UDP      | The MMDVM server for hotspots and repeaters (`dmr.mmdvm.port`) | Always |
 | 62032 | UDP      | WebTransport for browser hotspots and radios (`dmr.mmdvm.webtransport.port`) | When `dmr.mmdvm.webtransport.enabled` is on |
 | 62035 | UDP      | The OpenBridge server (`dmr.openbridge.port`) | When `dmr.openbridge.enabled` is on |

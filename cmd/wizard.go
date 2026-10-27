@@ -60,7 +60,7 @@ func startWizard(cfg *config.Config, version, commit string) (*wizard, error) {
 	if err := w.server.Start(); err != nil && !strings.Contains(err.Error(), "server closed") {
 		slog.Error("failed to start HTTP server", "error", err)
 	}
-	url := "http://localhost:3005/setup?token=" + token
+	url := fmt.Sprintf("http://localhost:%d/setup?token=%s", cfg.HTTP.Port, token)
 	slog.Info("Setup can be completed in a web browser")
 	slog.Info("Opening setup wizard at " + url)
 	if err := browser.OpenURL(url); err != nil {

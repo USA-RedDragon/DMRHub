@@ -72,6 +72,7 @@ func setupPaths() []string {
 		"dmr.transcoding",
 		"dmr.private-calls",
 		"dmr.drain-timeout",
+		"dmr.ip-lists",
 	}
 }
 

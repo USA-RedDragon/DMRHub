@@ -699,6 +699,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	errs = append(errs, d.Plugins.ValidateWithFields()...)
 	errs = append(errs, d.Transcoding.ValidateWithFields()...)
 	errs = append(errs, d.PrivateCalls.ValidateWithFields()...)
+	errs = append(errs, d.IPLists.ValidateWithFields()...)
 
 	if d.DrainTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})

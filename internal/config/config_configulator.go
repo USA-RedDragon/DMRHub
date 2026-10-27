@@ -177,6 +177,17 @@ type privateCallsShadow struct {
 	Data  *privateDataShadow  `json:"data"  toml:"data"  yaml:"data"`
 }
 
+type iPListShadow struct {
+	Mode  *string   `json:"mode"  toml:"mode"  yaml:"mode"`
+	Block *[]string `json:"block" toml:"block" yaml:"block"`
+	Allow *[]string `json:"allow" toml:"allow" yaml:"allow"`
+}
+
+type iPListsShadow struct {
+	Repeaters *iPListShadow `json:"repeaters" toml:"repeaters" yaml:"repeaters"`
+	Peers     *iPListShadow `json:"peers"     toml:"peers"     yaml:"peers"`
+}
+
 type dMRShadow struct {
 	MMDVM                    *mMDVMShadow        `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
 	OpenBridge               *openBridgeShadow   `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
@@ -191,6 +202,7 @@ type dMRShadow struct {
 	Plugins                  *pluginsShadow      `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
 	Transcoding              *transcodingShadow  `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
 	PrivateCalls             *privateCallsShadow `json:"private-calls"               toml:"private-calls"               yaml:"private-calls"`
+	IPLists                  *iPListsShadow      `json:"ip-lists"                    toml:"ip-lists"                    yaml:"ip-lists"`
 	DrainTimeout             *int                `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
 }
 
@@ -371,6 +383,10 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.private-calls.voice.max-age", configulator.LayerDefault, "default tag")
 	cfg.DMR.PrivateCalls.Data.MaxAge = time.Duration(int64(0))
 	set("dmr.private-calls.data.max-age", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.Repeaters.Mode = IPListMode("off")
+	set("dmr.ip-lists.repeaters.mode", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.Peers.Mode = IPListMode("off")
+	set("dmr.ip-lists.peers.mode", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
 	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
@@ -854,6 +870,36 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 					}
 					cfg.DMR.PrivateCalls.Data.MaxAge = v
 					set("dmr.private-calls.data.max-age", configulator.LayerFile, file)
+				}
+			}
+		}
+		if s.DMR.IPLists != nil {
+			if s.DMR.IPLists.Repeaters != nil {
+				if s.DMR.IPLists.Repeaters.Mode != nil {
+					cfg.DMR.IPLists.Repeaters.Mode = IPListMode(*s.DMR.IPLists.Repeaters.Mode)
+					set("dmr.ip-lists.repeaters.mode", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.Repeaters.Block != nil {
+					cfg.DMR.IPLists.Repeaters.Block = *s.DMR.IPLists.Repeaters.Block
+					set("dmr.ip-lists.repeaters.block", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.Repeaters.Allow != nil {
+					cfg.DMR.IPLists.Repeaters.Allow = *s.DMR.IPLists.Repeaters.Allow
+					set("dmr.ip-lists.repeaters.allow", configulator.LayerFile, file)
+				}
+			}
+			if s.DMR.IPLists.Peers != nil {
+				if s.DMR.IPLists.Peers.Mode != nil {
+					cfg.DMR.IPLists.Peers.Mode = IPListMode(*s.DMR.IPLists.Peers.Mode)
+					set("dmr.ip-lists.peers.mode", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.Peers.Block != nil {
+					cfg.DMR.IPLists.Peers.Block = *s.DMR.IPLists.Peers.Block
+					set("dmr.ip-lists.peers.block", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.Peers.Allow != nil {
+					cfg.DMR.IPLists.Peers.Allow = *s.DMR.IPLists.Peers.Allow
+					set("dmr.ip-lists.peers.allow", configulator.LayerFile, file)
 				}
 			}
 		}
@@ -1784,6 +1830,34 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.PrivateCalls.Data.MaxAge = d
 		set("dmr.private-calls.data.max-age", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "mode"); ok {
+		cfg.DMR.IPLists.Repeaters.Mode = IPListMode(v)
+		set("dmr.ip-lists.repeaters.mode", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "block"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.Repeaters.Block = lst
+		set("dmr.ip-lists.repeaters.block", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "allow"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.Repeaters.Allow = lst
+		set("dmr.ip-lists.repeaters.allow", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "mode"); ok {
+		cfg.DMR.IPLists.Peers.Mode = IPListMode(v)
+		set("dmr.ip-lists.peers.mode", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "block"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.Peers.Block = lst
+		set("dmr.ip-lists.peers.block", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "allow"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.Peers.Allow = lst
+		set("dmr.ip-lists.peers.allow", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2045,6 +2119,12 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "reach",
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "unknown",
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "max-age",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "allow",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "allow",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -2172,27 +2252,33 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[87], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
 	fs.String(names[88], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
 	fs.Duration(names[89], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
-	fs.Var(impl.NewInt(25), names[90], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[91], false, "Enable SMTP support for sending emails")
-	fs.String(names[92], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[93], "SMTP server port")
-	fs.String(names[94], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[95], "", "SMTP server username")
-	fs.String(names[96], "", "SMTP server password")
-	fs.String(names[97], "", "Email address to use as the sender")
-	fs.String(names[98], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[99], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[100], false, "Enable metrics collection and export")
-	fs.String(names[101], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[102], "Metrics server port")
-	fs.StringSlice(names[103], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[104], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[105], false, "Enable PProf profiling and debugging support")
-	fs.String(names[106], "[::]", "PProf server listen address")
-	fs.StringSlice(names[107], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[108], "PProf server port")
-	fs.String(names[109], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[110], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[90], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[91], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[92], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[93], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[94], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[95], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.Var(impl.NewInt(25), names[96], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[97], false, "Enable SMTP support for sending emails")
+	fs.String(names[98], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[99], "SMTP server port")
+	fs.String(names[100], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[101], "", "SMTP server username")
+	fs.String(names[102], "", "SMTP server password")
+	fs.String(names[103], "", "Email address to use as the sender")
+	fs.String(names[104], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[105], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[106], false, "Enable metrics collection and export")
+	fs.String(names[107], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[108], "Metrics server port")
+	fs.StringSlice(names[109], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[110], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[111], false, "Enable PProf profiling and debugging support")
+	fs.String(names[112], "[::]", "PProf server listen address")
+	fs.StringSlice(names[113], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[114], "PProf server port")
+	fs.String(names[115], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[116], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3276,6 +3362,78 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.PrivateCalls.Data.MaxAge = v
 		set("dmr.private-calls.data.max-age", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "mode"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.repeaters.mode",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Repeaters.Mode = IPListMode(v)
+		set("dmr.ip-lists.repeaters.mode", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "block"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.repeaters.block",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Repeaters.Block = v
+		set("dmr.ip-lists.repeaters.block", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "allow"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.repeaters.allow",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Repeaters.Allow = v
+		set("dmr.ip-lists.repeaters.allow", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "mode"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.peers.mode",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Peers.Mode = IPListMode(v)
+		set("dmr.ip-lists.peers.mode", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "block"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.peers.block",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Peers.Block = v
+		set("dmr.ip-lists.peers.block", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "allow"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.peers.allow",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.Peers.Allow = v
+		set("dmr.ip-lists.peers.allow", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -4479,6 +4637,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				s.PrivateCalls = &sub
+			}
+		case "ip-lists":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".ip-lists", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub iPListsShadow
+				if err := sub.decodeJSON(dec, path+".ip-lists"); err != nil {
+					return err
+				}
+				s.IPLists = &sub
 			}
 		case "drain-timeout":
 			v, err := dec.ReadToken()
@@ -6114,6 +6291,163 @@ func (s *privateDataShadow) decodeJSON(dec *jsontext.Decoder, path string) error
 
 // decodeJSON decodes the members of an object whose opening brace has
 // been read. path is the object's dotted path.
+func (s *iPListsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "repeaters":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".repeaters", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub iPListShadow
+				if err := sub.decodeJSON(dec, path+".repeaters"); err != nil {
+					return err
+				}
+				s.Repeaters = &sub
+			}
+		case "peers":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".peers", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub iPListShadow
+				if err := sub.decodeJSON(dec, path+".peers"); err != nil {
+					return err
+				}
+				s.Peers = &sub
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *iPListShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "mode":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Mode = &str
+			default:
+				return configJSONError(path+".mode", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "block":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".block", open, fmt.Errorf("expected an array, got %v", open.Kind()))
+				}
+				out := []string{}
+				for dec.PeekKind() != jsontext.KindEndArray {
+					v, err := dec.ReadToken()
+					if err != nil {
+						return err
+					}
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".block"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+					}
+					el := v.String()
+					out = append(out, el)
+				}
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				s.Block = &out
+			}
+		case "allow":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".allow", open, fmt.Errorf("expected an array, got %v", open.Kind()))
+				}
+				out := []string{}
+				for dec.PeekKind() != jsontext.KindEndArray {
+					v, err := dec.ReadToken()
+					if err != nil {
+						return err
+					}
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".allow"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+					}
+					el := v.String()
+					out = append(out, el)
+				}
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				s.Allow = &out
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
 func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
@@ -6562,6 +6896,12 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.private-calls.data.reach = %v\n", c.DMR.PrivateCalls.Data.Reach)
 	fmt.Fprintf(&b, "dmr.private-calls.data.unknown = %v\n", c.DMR.PrivateCalls.Data.Unknown)
 	fmt.Fprintf(&b, "dmr.private-calls.data.max-age = %v\n", c.DMR.PrivateCalls.Data.MaxAge)
+	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.mode = %v\n", c.DMR.IPLists.Repeaters.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.block = %v\n", c.DMR.IPLists.Repeaters.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.allow = %v\n", c.DMR.IPLists.Repeaters.Allow)
+	fmt.Fprintf(&b, "dmr.ip-lists.peers.mode = %v\n", c.DMR.IPLists.Peers.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.peers.block = %v\n", c.DMR.IPLists.Peers.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.peers.allow = %v\n", c.DMR.IPLists.Peers.Allow)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

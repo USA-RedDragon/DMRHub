@@ -225,6 +225,24 @@ dmr:
       # unknown: ""
       # Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit
       max-age: "0s"
+  # Source addresses that DMRHub refuses or alone accepts, before any other work on a packet
+  ip-lists:
+    # Addresses of MMDVM hotspots and repeaters, browser radios over WebTransport and IPSC repeaters
+    repeaters:
+      # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
+      mode: "off"
+      # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses
+      # block: []
+      # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
+      # allow: []
+    # Addresses of OpenBridge peers
+    peers:
+      # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
+      mode: "off"
+      # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses
+      # block: []
+      # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
+      # allow: []
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once
   drain-timeout: 25
 # SMTP configuration for sending emails

@@ -207,7 +207,7 @@ func runContainer(ctx context.Context, pool dockertest.Pool, repo, tag string, e
 		dockertest.WithHostConfig(func(hc *container.HostConfig) {
 			hc.AutoRemove = true
 			hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
-			hc.NanoCPUs = 4e9
+			hc.NanoCPUs = 2e9
 		}),
 	}
 	if env != nil {
@@ -487,7 +487,7 @@ func startRedisGroup(pool dockertest.Pool) (spare, bool, error) {
 		dockertest.WithHostConfig(func(hc *container.HostConfig) {
 			hc.AutoRemove = true
 			hc.RestartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
-			hc.NanoCPUs = 4e9
+			hc.NanoCPUs = 2e9
 		}),
 	)
 	if err != nil {

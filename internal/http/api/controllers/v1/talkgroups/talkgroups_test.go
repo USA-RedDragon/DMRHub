@@ -457,3 +457,36 @@ func TestDELETETalkgroup(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Empty(t, rpt.TS1StaticTalkgroups, "Deleting a talkgroup should remove it from repeater associations")
 }
+
+func TestGETMyTalkgroupsReturnsAdminsAndNCOs(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	var admin models.User
+	require.NoError(t, tdb.DB().Where("username = ?", "Admin").First(&admin).Error)
+	nco := testutils.SeedAccount(t, tdb.DB(), 3000001, "N0TEST", "nco")
+	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 3000, Name: "Demo", Admins: []models.User{admin}, NCOs: []models.User{nco}}).Error)
+
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/talkgroups/my", nil)
+	for _, cookie := range adminJar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var res struct {
+		Talkgroups []models.Talkgroup `json:"talkgroups"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res))
+	require.Len(t, res.Talkgroups, 1)
+	require.Len(t, res.Talkgroups[0].Admins, 1)
+	assert.Equal(t, admin.ID, res.Talkgroups[0].Admins[0].ID)
+	require.Len(t, res.Talkgroups[0].NCOs, 1)
+	assert.Equal(t, "N0TEST", res.Talkgroups[0].NCOs[0].Callsign)
+}

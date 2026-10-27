@@ -196,13 +196,13 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 			}
 		}
 
-		worstDelays(t, 8101, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
-		worstDelays(t, 8102, send(false), to.ReceivedPackets())
+		allBurstsArrive(t, 8101, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
+		allBurstsArrive(t, 8102, send(false), to.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
 		slow.hold()
-		worstDelays(t, 8103, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
-		worstDelays(t, 8104, send(false), to.ReceivedPackets())
+		allBurstsArrive(t, 8103, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
+		allBurstsArrive(t, 8104, send(false), to.ReceivedPackets())
 		assert.Positive(t, slow.held.Load(), "the calls sent no peer event for Redis to hold")
 		t.Logf("the calls passed while Redis held %d calls", slow.held.Load())
 
@@ -251,11 +251,11 @@ func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 			}
 			return sent
 		}
-		worstDelays(t, 8201, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
+		allBurstsArrive(t, 8201, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
 		slow.hold()
-		worstDelays(t, 8202, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
+		allBurstsArrive(t, 8202, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
 		assert.Positive(t, slow.held.Load(), "the call sent no hand-off for Redis to hold")
 		t.Logf("the call passed while Redis held %d calls", slow.held.Load())
 	})

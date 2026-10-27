@@ -27,33 +27,11 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-const (
-	slowStatement = 300 * time.Millisecond
-	burstPeriod   = 60 * time.Millisecond
-)
-
-func slowDown(t *testing.T, database *gorm.DB) *atomic.Bool {
-	t.Helper()
-	var on atomic.Bool
-	wait := func(*gorm.DB) {
-		if on.Load() {
-			time.Sleep(slowStatement)
-		}
-	}
-	cb := database.Callback()
-	require.NoError(t, cb.Query().Before("gorm:query").Register("test:slow_query", wait))
-	require.NoError(t, cb.Row().Before("gorm:row").Register("test:slow_row", wait))
-	require.NoError(t, cb.Raw().Before("gorm:raw").Register("test:slow_raw", wait))
-	require.NoError(t, cb.Create().Before("gorm:create").Register("test:slow_create", wait))
-	require.NoError(t, cb.Update().Before("gorm:update").Register("test:slow_update", wait))
-	require.NoError(t, cb.Delete().Before("gorm:delete").Register("test:slow_delete", wait))
-	return &on
-}
+const burstPeriod = 60 * time.Millisecond
 
 // dbHold holds every statement of a database while it is held.
 type dbHold struct {
@@ -131,9 +109,11 @@ func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]t
 	return out
 }
 
-func worstDelays(t *testing.T, stream uint, send func(uint) []time.Time, targets ...<-chan models.Packet) []time.Duration {
+// allBurstsArrive sends 8 bursts of stream and requires each target to get
+// all of them.
+func allBurstsArrive(t *testing.T, stream uint, send func(uint) []time.Time, targets ...<-chan models.Packet) {
 	t.Helper()
-	return worstBursts(t, stream, 8, send, targets...)
+	worstBursts(t, stream, 8, send, targets...)
 }
 
 func worstBursts(t *testing.T, stream uint, bursts int, send func(uint) []time.Time, targets ...<-chan models.Packet) []time.Duration {
@@ -156,13 +136,14 @@ func worstBursts(t *testing.T, stream uint, bursts int, send func(uint) []time.T
 }
 
 // TestOpenBridgeSlowDatabaseHoldsNoBurst sends calls from an OpenBridge
-// peer and from a local repeater while every database statement takes
-// 300 ms, after the same calls ran once. Each burst must reach the other
-// peer and the repeater in less than half a statement.
+// peer and from a local repeater while the database holds every
+// statement, after the same calls ran once. Every burst must reach the
+// other peer and the repeater while the database holds a statement of the
+// calls, and the statements must run when the database lets them go.
 func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		slow := slowDown(t, stack.DB)
+		db := holdDatabase(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
@@ -206,18 +187,16 @@ func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 			}
 		}
 
-		worstDelays(t, 8001, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
-		worstDelays(t, 8002, send(false), to.ReceivedPackets())
+		allBurstsArrive(t, 8001, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
+		allBurstsArrive(t, 8002, send(false), to.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
-		slow.Store(true)
-		defer slow.Store(false)
-		fromPeer := worstDelays(t, 8003, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
-		fromRepeater := worstDelays(t, 8004, send(false), to.ReceivedPackets())
-		t.Logf("worst delay with %v per statement: peer to peer %v, peer to repeater %v, repeater to peer %v",
-			slowStatement, fromPeer[0], fromPeer[1], fromRepeater[0])
-		assert.Less(t, fromPeer[0], slowStatement/2, "a burst from a peer to a peer waited on the database")
-		assert.Less(t, fromPeer[1], slowStatement/2, "a burst from a peer to a repeater waited on the database")
-		assert.Less(t, fromRepeater[0], slowStatement/2, "a burst from a repeater to a peer waited on the database")
+		db.hold()
+		allBurstsArrive(t, 8003, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
+		allBurstsArrive(t, 8004, send(false), to.ReceivedPackets())
+		require.Eventually(t, func() bool { return db.held.Load() > 0 }, handshakeWait, 10*time.Millisecond, "the calls ran no statement for the database to hold")
+		t.Logf("the calls passed while the database held %d statements", db.held.Load())
+		db.release()
+		require.Eventually(t, func() bool { return db.held.Load() == 0 }, handshakeWait, 10*time.Millisecond, "the held statements did not run when the database let them go")
 	})
 }

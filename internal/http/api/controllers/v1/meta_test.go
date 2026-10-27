@@ -148,6 +148,7 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 			"server_address":      tc.wantS,
 			"radio_id_validation": !tc.noRadioIDCheck,
 			"registration":        "open",
+			"visibility":          "public",
 			"radio_id_checks": map[string]any{
 				"user_id": !tc.noRadioIDCheck, "callsign": !tc.noRadioIDCheck, "radio_ids": !tc.noRadioIDCheck,
 				"repeater_ids": !tc.noRadioIDCheck, "hotspot_ids": !tc.noRadioIDCheck,

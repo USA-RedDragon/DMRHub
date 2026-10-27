@@ -34,6 +34,16 @@ When `registration` is `invite`, an admin makes an invite with `POST /api/v1/adm
 
 `GET /api/v1/admin/invites` lists each invite, who made it, and who used it. `DELETE /api/v1/admin/invites/<id>` stops an unused invite.
 
+## What visitors see
+
+`visibility` sets what visitors who are not logged in see:
+
+- `public`: the last heard calls, the talkgroups, the nets and the RadioID details of a radio. This is the default.
+- `login`: none of these. Visitors must log in first.
+- `hide-names`: the same as `public`, without the talker alias, the position and the grid square of each call, and without the name, city and state from RadioID. Callsigns and DMR IDs still show.
+
+A logged-in user sees the same in each mode. The login, register and password reset pages work in each mode.
+
 ## Edit a user
 
 1. Go to **Admin**, then **Users** (`<siteurl>/admin/users`).

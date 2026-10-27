@@ -343,5 +343,7 @@ pprof:
 auto-approve-users: false
 # Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode
 registration: "open"
+# What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)
+visibility: "public"
 # Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes
 login-backoff: false

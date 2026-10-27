@@ -218,6 +218,14 @@ func (r *WSCallResponse) HidePosition() {
 	r.Latitude, r.Longitude = nil, nil
 }
 
+// HideNames drops the talker alias, which often holds a name, and the
+// position of a row, grid square too, for a visitor who is not logged in
+// while visibility is hide-names.
+func (r *WSCallResponse) HideNames() {
+	r.TalkerAlias, r.AliasFormat, r.Grid = "", "", ""
+	r.Latitude, r.Longitude, r.PositionError = nil, nil, nil
+}
+
 // Maidenhead returns the 4-character Maidenhead grid square of a position,
 // such as EM12, or "" for a position out of range.
 func Maidenhead(lat, lon float64) string {

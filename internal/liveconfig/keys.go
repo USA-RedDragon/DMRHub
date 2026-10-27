@@ -51,6 +51,7 @@ func setupPaths() []string {
 		"auto-approve-users",
 		"login-backoff",
 		"registration",
+		"visibility",
 		"http.robots-txt",
 		"http.canonical-host",
 		"http.session-length",

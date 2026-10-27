@@ -23,8 +23,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/biter777/countries"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,6 +45,17 @@ func alpha2ToFlag(alpha2 string) string {
 	r0 := regionalA + rune(alpha2[0]) - 'A'
 	r1 := regionalA + rune(alpha2[1]) - 'A'
 	return string([]rune{r0, r1})
+}
+
+// hideNames reports whether the request is from a visitor who is not
+// logged in while visibility is hide-names.
+func hideNames(c *gin.Context) bool {
+	cfg, ok := c.Value("Config").(*config.Config)
+	if !ok || cfg.Visibility.Mode() != config.VisibilityHideNames {
+		return false
+	}
+	_, loggedIn := sessions.Default(c).Get("user_id").(uint)
+	return !loggedIn
 }
 
 func GETUserDBEntry(c *gin.Context) {
@@ -66,6 +79,9 @@ func GETUserDBEntry(c *gin.Context) {
 	resp := UserDBResponse{
 		DMRUser: dmrUser,
 		Flag:    flag,
+	}
+	if hideNames(c) {
+		resp.Name, resp.FName, resp.Surname, resp.City, resp.State = "", "", "", "", ""
 	}
 
 	c.JSON(http.StatusOK, resp)

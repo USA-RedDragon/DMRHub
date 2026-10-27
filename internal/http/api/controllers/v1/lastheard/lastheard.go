@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strconv"
 
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
@@ -97,6 +98,13 @@ func (q query) respond(c *gin.Context, calls []models.Call, findErr error, count
 		slog.Error("Unable to show calls", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
+	}
+	if q.viewer == nil {
+		if config, ok := c.Value("Config").(*configPkg.Config); ok && config.Visibility.Mode() == configPkg.VisibilityHideNames {
+			for i := range rows {
+				rows[i].HideNames()
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{callsKey: rows, totalKey: count})
 }

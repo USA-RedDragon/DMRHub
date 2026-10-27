@@ -25,6 +25,7 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/gin-contrib/sessions"
@@ -183,6 +184,17 @@ func RequireLogin() gin.HandlerFunc {
 
 		if !user.Approved || user.Suspended {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+		}
+	}
+}
+
+// RequireLoginToView is RequireLogin while visibility is login, and lets
+// every request through otherwise. It reads the config at each request.
+func RequireLoginToView(current config.Source) gin.HandlerFunc {
+	login := RequireLogin()
+	return func(c *gin.Context) {
+		if current.Get().Visibility.Mode() == config.VisibilityLogin {
+			login(c)
 		}
 	}
 }

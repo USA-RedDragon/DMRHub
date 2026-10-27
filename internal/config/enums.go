@@ -93,6 +93,19 @@ const (
 	RegistrationClosed Registration = "closed"
 )
 
+// Visibility is what visitors who are not logged in see.
+type Visibility string
+
+const (
+	// VisibilityPublic shows the public pages to everyone.
+	VisibilityPublic Visibility = "public"
+	// VisibilityLogin shows the public pages only to logged-in users.
+	VisibilityLogin Visibility = "login"
+	// VisibilityHideNames shows the public pages to everyone, without the
+	// names and positions of the radios to visitors who are not logged in.
+	VisibilityHideNames Visibility = "hide-names"
+)
+
 // PrivateReach is which radios private traffic reaches.
 type PrivateReach string
 

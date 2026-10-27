@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -77,21 +78,28 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 // PublicCallsWebsocket sends the public calls, which the last heard page
 // shows to everyone, whoever opens it.
 type PublicCallsWebsocket struct {
-	pubsub pubsub.PubSub
+	current config.Source
+	pubsub  pubsub.PubSub
 }
 
 // CreatePublicCallsWebsocket returns the websocket of the public calls.
-func CreatePublicCallsWebsocket(pubsub pubsub.PubSub) *PublicCallsWebsocket {
-	return &PublicCallsWebsocket{pubsub: pubsub}
+// A visitor who is not logged in gets no calls while visibility is login,
+// and the calls without names and positions while it is hide-names.
+func CreatePublicCallsWebsocket(current config.Source, pubsub pubsub.PubSub) *PublicCallsWebsocket {
+	return &PublicCallsWebsocket{current: current, pubsub: pubsub}
 }
 
 func (c *PublicCallsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocket.Writer, _ sessions.Session, _ []byte, _ int) {
 }
 
-func (c *PublicCallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
+func (c *PublicCallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, session sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
 	subscription := c.pubsub.Subscribe("calls:public")
-	go forward(newCtx, subscription, w)
+	if session != nil && session.Get("user_id") != nil {
+		go forward(newCtx, subscription, w)
+	} else {
+		go forwardPublic(newCtx, subscription, w, c.current)
+	}
 	return func() {
 		closeSubscription(subscription, "calls")
 		cancel()

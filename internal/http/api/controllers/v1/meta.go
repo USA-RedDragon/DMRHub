@@ -109,6 +109,7 @@ func GETNetworkFeatures(c *gin.Context) {
 		"openbridge_port":     config.DMR.OpenBridge.Port,
 		"server_address":      config.ServerAddress(),
 		"registration":        config.Registration.Mode(),
+		"visibility":          config.Visibility.Mode(),
 		"radio_id_validation": checks.Drift(),
 		"radio_id_checks": gin.H{
 			"user_id":      checks.UserID,

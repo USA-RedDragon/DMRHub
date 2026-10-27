@@ -272,6 +272,7 @@ type configShadow struct {
 	HIBPAPIKey   *string         `json:"hibp-api-key"       toml:"hibp-api-key"       yaml:"hibp-api-key"`
 	AutoApprove  *bool           `json:"auto-approve-users" toml:"auto-approve-users" yaml:"auto-approve-users"`
 	Registration *string         `json:"registration"       toml:"registration"       yaml:"registration"`
+	Visibility   *string         `json:"visibility"         toml:"visibility"         yaml:"visibility"`
 	LoginBackoff *bool           `json:"login-backoff"      toml:"login-backoff"      yaml:"login-backoff"`
 }
 
@@ -474,6 +475,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("pprof.port", configulator.LayerDefault, "default tag")
 	cfg.Registration = Registration("open")
 	set("registration", configulator.LayerDefault, "default tag")
+	cfg.Visibility = Visibility("public")
+	set("visibility", configulator.LayerDefault, "default tag")
 	cfg.LoginBackoff = false
 	set("login-backoff", configulator.LayerDefault, "default tag")
 	return nil
@@ -1182,6 +1185,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 	if s.Registration != nil {
 		cfg.Registration = Registration(*s.Registration)
 		set("registration", configulator.LayerFile, file)
+	}
+	if s.Visibility != nil {
+		cfg.Visibility = Visibility(*s.Visibility)
+		set("visibility", configulator.LayerFile, file)
 	}
 	if s.LoginBackoff != nil {
 		cfg.LoginBackoff = *s.LoginBackoff
@@ -2418,6 +2425,10 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.Registration = Registration(v)
 		set("registration", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "visibility"); ok {
+		cfg.Visibility = Visibility(v)
+		set("visibility", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "login-backoff"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -2583,6 +2594,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"hibp-api-key",
 		"auto-approve-users",
 		"registration",
+		"visibility",
 		"login-backoff",
 	}
 	for i, name := range names {
@@ -2739,7 +2751,8 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[136], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	fs.Bool(names[137], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	fs.String(names[138], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
-	fs.Bool(names[139], false, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
+	fs.String(names[139], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
+	fs.Bool(names[140], false, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
 	return nil
 }
 
@@ -4412,6 +4425,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.Registration = Registration(v)
 		set("registration", configulator.LayerCLI, "--"+n)
 	}
+	if n := "visibility"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "visibility",
+				Source: "--" + n,
+			}
+		}
+		cfg.Visibility = Visibility(v)
+		set("visibility", configulator.LayerCLI, "--"+n)
+	}
 	if n := "login-backoff"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
 		if err != nil {
@@ -4667,6 +4692,19 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.Registration = &str
 			default:
 				return configJSONError("registration", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "visibility":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Visibility = &str
+			default:
+				return configJSONError("visibility", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
 		case "login-backoff":
 			v, err := dec.ReadToken()
@@ -8044,6 +8082,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "hibp-api-key = %v\n", c.HIBPAPIKey)
 	fmt.Fprintf(&b, "auto-approve-users = %v\n", c.AutoApprove)
 	fmt.Fprintf(&b, "registration = %v\n", c.Registration)
+	fmt.Fprintf(&b, "visibility = %v\n", c.Visibility)
 	fmt.Fprintf(&b, "login-backoff = %v\n", c.LoginBackoff)
 	return b.String()
 }

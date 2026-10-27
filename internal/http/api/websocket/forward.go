@@ -21,8 +21,11 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	coderWebsocket "github.com/coder/websocket"
@@ -37,6 +40,45 @@ func forward(ctx context.Context, subscription pubsub.Subscription, w websocket.
 		case msg, ok := <-channel:
 			if !ok {
 				return
+			}
+			w.WriteMessage(websocket.Message{
+				Type: int(coderWebsocket.MessageText),
+				Data: msg,
+			})
+		}
+	}
+}
+
+// forwardPublic is forward for a visitor who is not logged in: it drops
+// each call while visibility is login, and drops the names and positions
+// of each call while it is hide-names.
+func forwardPublic(ctx context.Context, subscription pubsub.Subscription, w websocket.Writer, current config.Source) {
+	channel := subscription.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-channel:
+			if !ok {
+				return
+			}
+			switch current.Get().Visibility.Mode() {
+			case config.VisibilityLogin:
+				continue
+			case config.VisibilityHideNames:
+				var call apimodels.WSCallResponse
+				if err := json.Unmarshal(msg, &call); err != nil {
+					slog.Error("Failed to read a public call", "error", err)
+					continue
+				}
+				call.HideNames()
+				b, err := json.Marshal(call)
+				if err != nil {
+					slog.Error("Failed to write a public call", "error", err)
+					continue
+				}
+				msg = b
+			case config.VisibilityPublic:
 			}
 			w.WriteMessage(websocket.Message{
 				Type: int(coderWebsocket.MessageText),

@@ -27,7 +27,20 @@ import (
 const (
 	fieldSessionLength = "http.session-length"
 	fieldRegistration  = "registration"
+	fieldVisibility    = "visibility"
 )
+
+// ErrInvalidVisibility indicates a visibility that is not public, login or
+// hide-names.
+var ErrInvalidVisibility = errors.New("visibility must be public, login or hide-names")
+
+// Mode returns the visibility, with public for empty.
+func (v Visibility) Mode() Visibility {
+	if v == "" {
+		return VisibilityPublic
+	}
+	return v
+}
 
 // ErrInvalidRegistration indicates a registration mode that is not open,
 // invite or closed.
@@ -67,6 +80,11 @@ func (c Config) accountErrors() (errs []ValidationError) {
 	case RegistrationOpen, RegistrationInvite, RegistrationClosed:
 	default:
 		errs = append(errs, ValidationError{Field: fieldRegistration, Err: ErrInvalidRegistration})
+	}
+	switch c.Visibility.Mode() {
+	case VisibilityPublic, VisibilityLogin, VisibilityHideNames:
+	default:
+		errs = append(errs, ValidationError{Field: fieldVisibility, Err: ErrInvalidVisibility})
 	}
 	return errs
 }

@@ -70,7 +70,7 @@ func ApplyRoutes(current configPkg.Source, router *gin.Engine, dmrHub *hub.Hub, 
 	apiV1.Use(ratelimit, bearer, ownPassword)
 	v1(current, apiV1, userSuspension, v1AuthControllers.NewResetLimits(db))
 
-	router.GET("/ws/lastheard", ratelimit, websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(pubsub)))
+	router.GET("/ws/lastheard", ratelimit, middleware.RequireLoginToView(current), websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(current, pubsub)))
 
 	ws := router.Group("/ws")
 	ws.Use(ratelimit, bearer, ownPassword, websocket.WatchUser(pubsub))
@@ -95,6 +95,7 @@ func requireOpenBridge(current configPkg.Source) gin.HandlerFunc {
 }
 
 func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.HandlerFunc, resetLimits *v1AuthControllers.ResetLimits) {
+	view := middleware.RequireLoginToView(current)
 	v1Auth := group.Group("/auth")
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
@@ -133,7 +134,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 
 	v1Talkgroups := group.Group("/talkgroups")
 	// Paginated
-	v1Talkgroups.GET("", v1TalkgroupsControllers.GETTalkgroups)
+	v1Talkgroups.GET("", view, v1TalkgroupsControllers.GETTalkgroups)
 	// Paginated
 	v1Talkgroups.GET("/my", middleware.RequireLogin(), userSuspension, v1TalkgroupsControllers.GETMyTalkgroups)
 	v1Talkgroups.POST("", middleware.RequireAdmin(), userSuspension, v1TalkgroupsControllers.POSTTalkgroup)
@@ -141,7 +142,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Talkgroups.POST("/:id/ncos", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.POSTTalkgroupNCOs)
 	v1Talkgroups.GET("/:id/access", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.GETTalkgroupAccess)
 	v1Talkgroups.PATCH("/:id/access", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.PATCHTalkgroupAccess)
-	v1Talkgroups.GET("/:id", v1TalkgroupsControllers.GETTalkgroup)
+	v1Talkgroups.GET("/:id", view, v1TalkgroupsControllers.GETTalkgroup)
 	v1Talkgroups.PATCH("/:id", middleware.RequireTalkgroupOwnerOrAdmin(), userSuspension, v1TalkgroupsControllers.PATCHTalkgroup)
 	v1Talkgroups.DELETE("/:id", middleware.RequireAdmin(), userSuspension, v1TalkgroupsControllers.DELETETalkgroup)
 
@@ -228,13 +229,13 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in
 	// Paginated
-	v1Lastheard.GET("", v1LastheardControllers.GETLastheard)
+	v1Lastheard.GET("", view, v1LastheardControllers.GETLastheard)
 	// Paginated
 	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardUser)
 	// Paginated
 	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
-	v1Lastheard.GET("/talkgroup/:id", v1LastheardControllers.GETLastheardTalkgroup)
+	v1Lastheard.GET("/talkgroup/:id", view, v1LastheardControllers.GETLastheardTalkgroup)
 
 	v1Config := group.Group("/config")
 	v1Config.Use(middleware.RequireAdmin(), userSuspension)
@@ -249,25 +250,25 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 
 	v1Nets := group.Group("/nets")
 	// Paginated
-	v1Nets.GET("", v1NetsControllers.GETNets)
-	v1Nets.GET("/:id", v1NetsControllers.GETNet)
+	v1Nets.GET("", view, v1NetsControllers.GETNets)
+	v1Nets.GET("/:id", view, v1NetsControllers.GETNet)
 	v1Nets.POST("/start", middleware.RequireLogin(), userSuspension, v1NetsControllers.POSTNetStart)
 	v1Nets.POST("/:id/stop", middleware.RequireNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.POSTNetStop)
 	v1Nets.PATCH("/:id", middleware.RequireAdmin(), userSuspension, v1NetsControllers.PATCHNet)
 	// Paginated
-	v1Nets.GET("/:id/checkins", v1NetsControllers.GETNetCheckIns)
+	v1Nets.GET("/:id/checkins", view, v1NetsControllers.GETNetCheckIns)
 	v1Nets.GET("/:id/checkins/export", middleware.RequireLogin(), userSuspension, v1NetsControllers.GETNetCheckInsExport)
 
 	v1ScheduledNets := v1Nets.Group("/scheduled")
 	// Paginated
-	v1ScheduledNets.GET("", v1NetsControllers.GETScheduledNets)
-	v1ScheduledNets.GET("/:id", v1NetsControllers.GETScheduledNet)
+	v1ScheduledNets.GET("", view, v1NetsControllers.GETScheduledNets)
+	v1ScheduledNets.GET("/:id", view, v1NetsControllers.GETScheduledNet)
 	v1ScheduledNets.POST("", middleware.RequireLogin(), userSuspension, v1NetsControllers.POSTScheduledNet)
 	v1ScheduledNets.PATCH("/:id", middleware.RequireScheduledNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.PATCHScheduledNet)
 	v1ScheduledNets.DELETE("/:id", middleware.RequireScheduledNetNCOOrOwnerOrAdmin(), userSuspension, v1NetsControllers.DELETEScheduledNet)
 
 	v1UserDB := group.Group("/userdb")
-	v1UserDB.GET("/:id", v1UserDBControllers.GETUserDBEntry)
+	v1UserDB.GET("/:id", view, v1UserDBControllers.GETUserDBEntry)
 
 	group.GET("/network/name", v1Controllers.GETNetworkName)
 	group.GET("/network/features", v1Controllers.GETNetworkFeatures)

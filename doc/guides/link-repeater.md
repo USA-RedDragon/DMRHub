@@ -52,7 +52,7 @@ DMRHub accepts Motorola repeaters (for example the SLR 5500 or XPR 8400) over IP
    - **Master UDP Port**: the port on the connect page (50000 by default).
    - **Authentication Key**: the 40-digit hex key.
 
-If you lose the auth key, open the page of the repeater, click **Connect**, then click **Rotate auth key** and confirm. The old key stops working at once, and the repeater cannot link until you put the new key in the CPS and write the codeplug.
+If you lose the auth key, open the page of the repeater, click **Connect**, then click **Rotate auth key** and confirm. The old key stops working at once, and DMRHub drops the repeater. The repeater cannot link until you put the new key in the CPS and write the codeplug.
 
 For CPS details, see the [BrandMeister IPSC wiki](https://wiki.brandmeister.network/index.php/IPSC).
 

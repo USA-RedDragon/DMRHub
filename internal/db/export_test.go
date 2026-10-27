@@ -22,7 +22,16 @@ package db
 import (
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+// SetGormLogWriter makes the databases that MakeDB opens next log to w, and
+// returns a func that undoes it.
+func SetGormLogWriter(w logger.Writer) func() {
+	prev := gormLogWriter
+	gormLogWriter = w
+	return func() { gormLogWriter = prev }
+}
 
 // LockMigrations is lockMigrations.
 func LockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error) {

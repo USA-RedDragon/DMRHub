@@ -24,9 +24,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/consts"
@@ -37,7 +40,19 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+var gormLogWriter logger.Writer = log.New(os.Stdout, "\r\n", log.LstdFlags) //nolint:gochecknoglobals // a test points it at a buffer
+
+func gormLogger() logger.Interface {
+	return logger.New(gormLogWriter, logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: true,
+		Colorful:                  true,
+	})
+}
 
 func getDialect(config *configPkg.Config) gorm.Dialector {
 	var dialector gorm.Dialector
@@ -146,7 +161,7 @@ func sqliteBeginsImmediately(config *configPkg.Config) bool {
 }
 
 func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
-	db, err = gorm.Open(getDialect(config))
+	db, err = gorm.Open(getDialect(config), &gorm.Config{Logger: gormLogger()})
 	if err != nil {
 		return db, fmt.Errorf("failed to open database: %w", err)
 	}

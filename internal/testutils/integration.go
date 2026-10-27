@@ -435,9 +435,17 @@ func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, passwor
 // does.
 func (s *IntegrationStack) SeedPeerRule(t *testing.T, peerID uint, direction bool, subjectIDMin uint, subjectIDMax uint) {
 	t.Helper()
+	s.SeedPeerRuleMatch(t, peerID, direction, models.DefaultPeerRuleMatch(direction), subjectIDMin, subjectIDMax)
+}
+
+// SeedPeerRuleMatch is SeedPeerRule for a rule that checks the ID that
+// match names.
+func (s *IntegrationStack) SeedPeerRuleMatch(t *testing.T, peerID uint, direction bool, match models.PeerRuleMatch, subjectIDMin uint, subjectIDMax uint) {
+	t.Helper()
 	err := s.DB.Create(&models.PeerRule{
 		PeerID:       peerID,
 		Direction:    direction,
+		Match:        match,
 		SubjectIDMin: subjectIDMin,
 		SubjectIDMax: subjectIDMax,
 	}).Error

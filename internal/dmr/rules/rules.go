@@ -37,15 +37,13 @@ func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) (boo
 	return false, nil
 }
 
-// EgressAllows reports whether one of the egress rules of a peer covers
-// the source of packet.
+// EgressAllows reports whether the egress rules of a peer let it get
+// packet. It mirrors the SUB_ACL and TGID_ACL of an HBlink3 or FreeDMR
+// OpenBridge system: for each match that has rules, one of them must cover
+// the ID of packet that it checks, and a match with no rules does not
+// restrict. With no rules at all, the peer gets nothing.
 func EgressAllows(egressRules []models.PeerRule, packet *models.Packet) bool {
-	for _, rule := range egressRules {
-		if rule.SubjectIDMin <= packet.Src && rule.SubjectIDMax >= packet.Src {
-			return true
-		}
-	}
-	return false
+	return allows(egressRules, packet)
 }
 
 func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (bool, error) {
@@ -59,13 +57,28 @@ func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (b
 	return false, nil
 }
 
-// IngressAllows reports whether one of the ingress rules of a peer covers
-// the destination of packet.
+// IngressAllows reports whether the ingress rules of a peer let packet
+// in, by the same logic as EgressAllows.
 func IngressAllows(ingressRules []models.PeerRule, packet *models.Packet) bool {
-	for _, rule := range ingressRules {
-		if rule.SubjectIDMin <= packet.Dst && rule.SubjectIDMax >= packet.Dst {
-			return true
+	return allows(ingressRules, packet)
+}
+
+func allows(rs []models.PeerRule, packet *models.Packet) bool {
+	var hasSrc, srcOK, hasDst, dstOK bool
+	for i := range rs {
+		r := &rs[i]
+		match := r.Match
+		if match == "" {
+			match = models.DefaultPeerRuleMatch(r.Direction)
+		}
+		switch match {
+		case models.PeerRuleMatchSource:
+			hasSrc = true
+			srcOK = srcOK || (r.SubjectIDMin <= packet.Src && packet.Src <= r.SubjectIDMax)
+		case models.PeerRuleMatchDestination:
+			hasDst = true
+			dstOK = dstOK || (r.SubjectIDMin <= packet.Dst && packet.Dst <= r.SubjectIDMax)
 		}
 	}
-	return false
+	return (hasSrc || hasDst) && (!hasSrc || srcOK) && (!hasDst || dstOK)
 }

@@ -373,15 +373,18 @@ func TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce(t *testing.T) {
 }
 
 // TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt starts a call of a peer
-// to TG 1 whose claim the KV store answers in 500 ms, and at once a call of
-// the same peer to TG 2. The call to TG 2 must not wait for the claim of
-// the call to TG 1, and each must arrive in order.
+// to TG 1 whose claim the KV store does not answer, and at once a call of
+// the same peer to TG 2, and holds the wait of the hub for the claim. The
+// call to TG 2 must pass while the call to TG 1 waits for its claim, and
+// the call to TG 1 must pass in order when the wait ends.
 func TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt(t *testing.T) {
 	t.Parallel()
 	const slow, fast = uint(75001), uint(75002)
 	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		return &claimSlowFor{KV: k, streams: []uint{slow}}
+		return &claimHungFor{KV: k, streams: []uint{slow}}
 	})
+	endWait := h.HoldStreamClaimWaits()
+	t.Cleanup(endWait)
 
 	sent := make([]models.Packet, 0, 4)
 	for i := range 2 {
@@ -391,31 +394,32 @@ func TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt(t *testing.T) {
 			sent = append(sent, p)
 		}
 	}
-	start := time.Now()
 	for _, p := range sent {
 		h.RoutePacket(context.Background(), p, "openbridge")
 	}
 
 	got := map[uint][]uint{}
-	at := map[uint]time.Duration{}
 	deadline := time.After(30 * time.Second)
-	for len(got[slow]) < 2 || len(got[fast]) < 2 {
-		select {
-		case a := <-arrivals:
-			if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
-				continue
+	receive := func(stream uint, what string) {
+		for len(got[stream]) < 2 {
+			select {
+			case a := <-arrivals:
+				if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
+					continue
+				}
+				s := a.rp.Packet.StreamID
+				got[s] = append(got[s], a.rp.Packet.Seq)
+			case <-deadline:
+				t.Fatalf("%s: deliveries %v", what, got)
 			}
-			s := a.rp.Packet.StreamID
-			got[s] = append(got[s], a.rp.Packet.Seq)
-			at[s] = a.at.Sub(start)
-		case <-deadline:
-			t.Fatalf("deliveries %v", got)
 		}
 	}
-	t.Logf("TG 1 done at %v, TG 2 done at %v", at[slow], at[fast])
+	receive(fast, "the call to TG 2 waited for the claim of the call to TG 1")
+	assert.Empty(t, got[slow], "the call to TG 1 passed before the wait for its claim ended")
+	endWait()
+	receive(slow, "the call to TG 1 did not pass when the wait for its claim ended")
 	assert.Equal(t, []uint{0, 1}, got[slow])
 	assert.Equal(t, []uint{0, 1}, got[fast])
-	assert.Less(t, at[fast], 50*time.Millisecond, "the call to TG 2 waited for the claim of the call to TG 1")
 }
 
 // slowTopic delivers the messages of the subscriptions to topic, and of

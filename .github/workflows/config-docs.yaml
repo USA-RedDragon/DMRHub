@@ -21,7 +21,7 @@ jobs:
     with:
       dir: internal/config
       type: Config
-      file: doc/Configuration.md
+      file: doc/admin/configuration.md
       app-id: ${{ vars.AUTO_COMMIT_APP_ID }}
     secrets:
       app-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}

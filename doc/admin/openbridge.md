@@ -40,23 +40,29 @@ If you lose the password, open the page of the peer and click **Rotate password*
 
 ## Add the rules of a peer
 
-A peer carries only the traffic that its rules allow. A new peer has no rules, so it carries nothing, even with **Receive** and **Transmit** on. The web interface does not have a page for rules yet. Add them with the API:
+A peer carries only the traffic that its rules allow. A new peer has no rules, so it carries nothing, even with **Receive** and **Transmit** on. The web interface does not have a page for rules yet. Add them with the API.
 
-- A receive rule (`"direction": true`) lets in the calls from the peer to the destination IDs from `subject_id_min` to `subject_id_max`.
-- A transmit rule (`"direction": false`) sends the peer the calls from the source radio IDs from `subject_id_min` to `subject_id_max`.
+A rule has a direction, a match and a range of IDs from `subject_id_min` to `subject_id_max`:
 
-For example, to take the calls to talkgroups 1 to 999999 from peer 3000900, and to send it the calls of every radio:
+- `"direction": true` is a receive rule, for calls from the peer. `"direction": false` is a transmit rule, for calls to the peer.
+- `"match": "destination"` checks the destination ID of the call: the talkgroup of a group call, the radio ID of a private call. `"match": "source"` checks the radio ID of the caller. With no match, a receive rule checks the destination and a transmit rule the source.
+
+A call passes the rules of a direction when one destination rule covers its destination and one source rule covers its caller. When a direction has rules of only one match, the other match does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls; add a destination rule for a range of radio IDs to also send private calls to those radios.
+
+For example, to take the calls to talkgroups 1 to 999999 from peer 3000900, and to send it the calls to talkgroups 3100 and 31665:
 
 ```bash
 curl -c cookies -H 'Content-Type: application/json' \
     -d '{"username":"<admin username>","password":"<password>"}' \
     <siteurl>/api/v1/auth/login
 curl -b cookies -H 'Content-Type: application/json' \
-    -d '{"direction":true,"subject_id_min":1,"subject_id_max":999999}' \
+    -d '{"direction":true,"match":"destination","subject_id_min":1,"subject_id_max":999999}' \
     <siteurl>/api/v1/peers/3000900/rules
-curl -b cookies -H 'Content-Type: application/json' \
-    -d '{"direction":false,"subject_id_min":1,"subject_id_max":4294967295}' \
-    <siteurl>/api/v1/peers/3000900/rules
+for tg in 3100 31665; do
+  curl -b cookies -H 'Content-Type: application/json' \
+      -d '{"direction":false,"match":"destination","subject_id_min":'$tg',"subject_id_max":'$tg'}' \
+      <siteurl>/api/v1/peers/3000900/rules
+done
 ```
 
 `GET <siteurl>/api/v1/peers/<peer ID>/rules` lists the rules, and `DELETE <siteurl>/api/v1/peers/<peer ID>/rules/<rule ID>` deletes one. The rules take effect at once, on every replica.

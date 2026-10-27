@@ -26,9 +26,15 @@ The configuration keys are `dmr.openbridge.enabled`, `dmr.openbridge.bind`, `dmr
    | **Use FreeDMR enhanced OpenBridge with this peer** | See [Enhanced peers](#enhanced-peers-for-freedmr). |
    | **This peer carries Codec2** | Turn on when the peer can take calls in Codec2. Off, DMRHub sends the peer AMBE only, and converts Codec2 calls when transcoding is on (see [Transcoding](transcoding.md)). |
 
-4. Click **Save**. The browser shows the password of the peer. Copy it now: DMRHub does not show it again. Put it in the configuration of the other server as the passphrase of the link.
+4. Click **Save**. DMRHub opens the page of the peer. It shows the password once, the connection details, and the configuration of the other server: FreeDMR for an enhanced peer, else HBlink3 or the settings of any other OpenBridge server. Copy the password now: DMRHub does not show it again. Put it in the configuration of the other server as the passphrase of the link.
 
    An older peer password can have a `%`. FreeDMR and HBlink3 read `%` as the start of a variable, so write each `%` as `%%` in `PASSPHRASE`.
+
+To change a peer later, click its ID on the **Peers** page.
+
+### Rotate the password of a peer
+
+If you lose the password, open the page of the peer and click **Rotate password**, then **Rotate password** again in the dialog. The owner of the peer or an admin can do this. DMRHub makes a new password and shows it once. The old password stops working at once on every replica, so the link stays down until you put the new password in the other server.
 
 <!-- screenshot: admin-new-peer.png | /admin/peers/new filled in with peer ID 3000900, IP 192.0.2.10, port 62035, receive and transmit on -->
 

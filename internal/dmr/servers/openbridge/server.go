@@ -753,6 +753,12 @@ func (s *Server) quenchStream(peer, stream uint) {
 	}
 }
 
+// IsQuenched reports whether this replica keeps the stream from the peer,
+// after a BCSQ of the peer that any replica got.
+func (s *Server) IsQuenched(peer, stream uint) bool {
+	return s.isQuenched(peer, stream)
+}
+
 func (s *Server) isQuenched(peer, stream uint) bool {
 	at, ok := s.quenched.Load(quench{peer: peer, stream: stream})
 	if !ok {

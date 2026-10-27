@@ -27,6 +27,10 @@ linters:
           - dogsled
           - goconst
           - gosec
+      - path: ^hack/
+        linters:
+          - goconst
+          - gosec
       - path: internal/(db/models/packet|dmr/dmrconst/const|dmr/hub/publishing|dmr/servers/ipsc/translator|kv/memory)\.go
         text: G115
         linters:

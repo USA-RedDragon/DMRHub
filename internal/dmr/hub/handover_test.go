@@ -114,7 +114,7 @@ func TestWaitMovedReturnsWhenAnotherReplicaClaims(t *testing.T) {
 	select {
 	case n := <-left:
 		assert.Zero(t, n)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("WaitMoved did not return after both repeaters moved")
 	}
 }
@@ -146,7 +146,7 @@ func TestWaitMovedReturnsWhenARepeaterLeaves(t *testing.T) {
 	select {
 	case n := <-left:
 		assert.Zero(t, n)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("WaitMoved did not return after the repeater left")
 	}
 }
@@ -204,7 +204,7 @@ func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	select {
 	case id := <-gone:
 		assert.Equal(t, uint(100001), id, "only a repeater that is active here is reported")
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("the old owner was not told")
 	}
 	select {
@@ -296,7 +296,7 @@ func TestWaitMovedWaitsForTheHandOverOfAClaim(t *testing.T) {
 	select {
 	case n := <-left:
 		assert.Zero(t, n)
-	case <-time.After(5 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("WaitMoved did not return after the repeater moved")
 	}
 	select {

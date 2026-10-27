@@ -10,7 +10,6 @@ Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHu
 
 - Each WebTransport session is one MMDVM peer: one hotspot, with one repeater ID. To connect two hotspots, open two sessions.
 - Each WebTransport datagram is one packet of the MMDVM network protocol, the same octets that an MMDVM hotspot sends in one UDP packet. There is no other framing.
-- The login, the pings and the DMRD packets are the same as on the UDP port. The DMRHub code that handles them is the same code.
 - DMRHub also accepts the HBRP dialect in the datagrams, as it does on the UDP port. HBRP is a different protocol from the MMDVM network protocol. This page covers only the MMDVM network protocol, which dmr-web speaks.
 - Streams of the session carry a small number of JSON control messages. They exist only for the move to another replica when a replica of DMRHub stops. See [Control streams](#control-streams).
 
@@ -117,129 +116,14 @@ await wt.ready;
 
 Browsers keep only a few datagrams that the page has not read, and drop the rest. dmr-web comments that Chromium keeps one and Firefox five by default. DMRHub can send many datagrams close together: after a move to another replica it sends them 2 ms apart. Make the buffer larger before you read. dmr-web sets `datagrams.incomingMaxBufferedDatagrams` (or `incomingHighWaterMark` in browsers that have that name) to `1024`.
 
-## Log in
+## Log in and send traffic
 
-The login is the login of the MMDVM network protocol, in datagrams. The client is the repeater, and DMRHub is the master.
+Each datagram carries one MMDVM network protocol packet, exactly as on the UDP port. Log in and send traffic as any MMDVM hotspot does. DMRHub handles the packets with the same code as on the UDP port, with the same timers.
 
-### Before the login
+These points are particular to WebTransport:
 
-The hotspot must be a hotspot in DMRHub, with a password:
-
-- A user adds it on the new hotspot page of DMRHub, which shows its password when it adds the hotspot.
-- An OAuth app adds it with `POST /api/v1/repeaters` and the `hotspots:register` scope. DMRHub answers the password once, in the answer to that request. See [OAuth Apps](oauth-apps.md).
-
-The OAuth access token never goes over WebTransport. DMRHub checks only the repeater ID and the password, as it does for a hotspot on the UDP port. An app uses its token to add the hotspot and to read the password, and then logs in with the password.
-
-DMRHub refuses the login of an ID that is not a hotspot, of a hotspot with no password, and of the ID of the modem of the server. It looks up at most 5 logins of unknown IDs each second, and refuses the others at once.
-
-### The steps
-
-All numbers are big-endian. The repeater ID is 4 binary octets.
-
-| Step | The client sends                                                                         | DMRHub answers                                                         |
-| ---- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 1    | `RPTL` and the ID (8 octets)                                                             | `RPTACK` and a random 4-octet salt (10 octets)                         |
-| 2    | `RPTK`, the ID, and the SHA-256 hash of the 4 salt octets followed by the password (40 octets) | `RPTACK` and the ID (10 octets)                                  |
-| 3    | `RPTC`, the configuration (302 octets)                                                   | `RPTACK` and the ID                                                    |
-| 4    | Optional: `RPTO`, the ID, and the options text                                           | `RPTACK` and the ID                                                    |
-
-The login is complete after the `RPTACK` of step 3. DMRHub answers `MSTNAK` and the ID (10 octets) when it refuses a step: a wrong password, an unknown ID, an `RPTC` that it cannot accept, or a packet of a step that the session has not reached.
-
-For hotspot `312345601` (`0x129E0401`), step 1 is these 8 octets:
-
-```text
-52 50 54 4c 12 9e 04 01        RPTL, ID 312345601
-```
-
-DMRHub answers, with a salt of `0xA1B2C3D4`:
-
-```text
-52 50 54 41 43 4b a1 b2 c3 d4  RPTACK, salt a1b2c3d4
-```
-
-Step 2 is `RPTK`, the ID, and `SHA-256(a1 b2 c3 d4 || password octets)`.
-
-Timers of the login:
-
-- The client must finish the login within 15 seconds of its first `RPTL`. After the `RPTK` is accepted, a new period of 15 seconds starts for the `RPTC`. When the time ends, DMRHub ends the session without a packet.
-- A second `RPTL` for the same ID while DMRHub waits for the `RPTK` gets the same salt again. It does not restart the timer.
-- An `RPTL` for another ID, or after the login, ends the old login and starts a new one.
-
-### The RPTC
-
-The `RPTC` is 302 octets. The text fields are ASCII. Pad them with spaces or NUL octets; DMRHub removes leading and trailing spaces and NULs.
-
-| Octets  | Field                                                         |
-| ------- | ------------------------------------------------------------- |
-| 0-3     | `RPTC`                                                        |
-| 4-7     | Repeater ID                                                   |
-| 8-15    | Callsign                                                      |
-| 16-24   | RX frequency in Hz, 9 digits                                  |
-| 25-33   | TX frequency in Hz, 9 digits                                  |
-| 34-35   | Power in dBm, 2 digits                                        |
-| 36-37   | Color code, 2 digits                                          |
-| 38-45   | Latitude, 8 characters                                        |
-| 46-54   | Longitude, 9 characters                                       |
-| 55-57   | Antenna height in meters, 3 digits                            |
-| 58-77   | Location                                                      |
-| 78-96   | Description                                                   |
-| 97      | Slots: `1` or `2` for one slot, `3` for both, `4` for simplex |
-| 98-221  | URL                                                           |
-| 222-261 | Software ID                                                   |
-| 262-301 | Package ID                                                    |
-
-Only the callsign can make DMRHub refuse the `RPTC`. It must be 4 to 8 letters and digits after DMRHub makes it upper case. DMRHub logs any other field that it cannot read and stores it as zero. dmr-web sends its callsign, color code 1, slots `3`, its software and package ID, and the description `dmr-web radio`.
-
-### The options
-
-The `RPTO` options text sets the static talkgroups and the default talkgroup of each slot, in the form that FreeDMR reads, such as `TS1=8;TS2=1`. A text with static talkgroup keys replaces the static talkgroups of both slots, and a slot that the text does not name is cleared. The default dial of a slot (`DIAL` and its aliases) links that talkgroup to the slot, and `0` unlinks it. DMRHub logs and ignores the other options, and ignores a text longer than 255 octets.
-
-## Packets after the login
-
-### What the client sends
-
-| Packet    | What DMRHub does                                                                                               |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| `DMRD`    | Routes the burst. It takes 53, 55 and 71 octets. It drops a burst with destination 0                           |
-| `DMRA`    | Records the talker alias                                                                                       |
-| `DMRG`    | Records the GPS position                                                                                       |
-| `RPTPING` | Answers `MSTPONG` and the ID (11 octets). `RPTPING` is `RPTPING` and the ID (11 octets)                         |
-| `RPTO`    | Answers `RPTACK` and applies the options again                                                                 |
-| `RPTC`    | Stores the configuration again and answers `RPTACK`, or answers `MSTNAK` and ends the session                  |
-| `RPTCL`   | Ends the session. `RPTCL` is `RPTCL` and the ID (9 octets)                                                     |
-
-A `DMRD`, `DMRA`, `DMRG` or ping before the login is complete, or with another repeater ID, gets `MSTNAK`. When a slot sends more bursts than DMRHub takes, DMRHub drops the extra bursts.
-
-The `DMRD` layout, as DMRHub sends it (55 octets):
-
-| Octets | Field                                                                                                           |
-| ------ | --------------------------------------------------------------------------------------------------------------- |
-| 0-3    | `DMRD`                                                                                                          |
-| 4      | Sequence number                                                                                                 |
-| 5-7    | Source radio ID                                                                                                 |
-| 8-10   | Destination talkgroup or radio ID                                                                               |
-| 11-14  | Repeater ID                                                                                                     |
-| 15     | Bit 7: slot (0 is slot 1, 1 is slot 2). Bit 6: private call. Bits 5-4: frame type (0 voice, 1 voice sync, 2 data sync). Bits 3-0: data type, or the voice burst A to F as 0 to 5 |
-| 16-19  | Stream ID                                                                                                       |
-| 20-52  | The 33-octet burst                                                                                              |
-| 53     | BER                                                                                                             |
-| 54     | RSSI                                                                                                            |
-
-### What DMRHub sends
-
-| Packet    | When                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------- |
-| `DMRD`    | Each burst that DMRHub routes to the hotspot, 55 octets                                                 |
-| `MSTPONG` | The answer to each ping                                                                                 |
-| `RPTSBKN` | Once, 1 minute after the login: a request for a beacon. `RPTSBKN` and the ID (11 octets)                |
-| `MSTNAK`  | A packet that the session does not accept. Log in again                                                 |
-| `MSTCL`   | DMRHub stops and no other replica serves. `MSTCL` and the ID (9 octets). Log in again later             |
-
-### Timers
-
-- DMRHub ends the session when it gets no packet from the hotspot for 60 seconds. Every packet that it accepts restarts this time. It checks once each second, and it sends nothing when it ends the session; the next packet of the client gets `MSTNAK`.
-- Send `RPTPING` every 10 seconds. dmr-web uses the session of the dmrgo library with its defaults: a ping every 10 seconds, the same time between two sends of a login step, and a new login after 60 seconds without an acknowledgement or a pong.
-- The WebTransport session stays open when the MMDVM session ends. The client can log in again on the same session.
+- The hotspot logs in with its hotspot password, as on the UDP port. An OAuth access token never goes over WebTransport. An app can use its token to add a hotspot with `POST /api/v1/repeaters` and the `hotspots:register` scope, which answers the password once. See [OAuth Apps](oauth-apps.md).
+- The WebTransport session stays open when the MMDVM session ends, such as after `MSTNAK` or a timeout. The client can log in again on the same session.
 
 ## Control streams
 
@@ -325,19 +209,13 @@ A load balancer can also move the QUIC connection of a session to another path w
 | Wait for a control stream              | 5 seconds to open, read or write a control stream                        |
 | Drain notices                          | Sent within 2 seconds                                                    |
 | Resume token                           | Good for 1 minute and for one takeover                                   |
-| Login                                  | 15 seconds after the first `RPTL`, and 15 seconds after the `RPTK`       |
-| Session timeout                        | 60 seconds without a packet                                              |
-| Sessions that are not logged in        | 1024 for each DMRHub replica, for the UDP port and WebTransport together |
 | Size of a QUIC packet at the start     | 1200 octets                                                              |
-
-The longest packet of a client is the 302-octet `RPTC`. A `DMRD` packet is 55 octets.
 
 ## Rules for client authors
 
 - Get `GET /api/v1/network/webtransport` again before each connection, and pass `serverCertificateHashes` only when the list is not empty.
 - Make the buffer of incoming datagrams larger before you read.
 - Log in with the hotspot password, not with an OAuth token.
-- Send a ping every 10 seconds.
 - Read the unidirectional streams, and move to another replica on a drain notice.
 - Drop copies of `DMRD` packets.
 - When the session closes without a drain notice, connect again with a growing wait. dmr-web waits 1 second, then twice as long each time, up to 30 seconds.

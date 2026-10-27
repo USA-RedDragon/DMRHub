@@ -21,7 +21,9 @@ Set the modem on the **Modem** tab of the Setup page (`<siteurl>/admin/setup#mod
        color-code: 1
    ```
 
-   Set `duplex: true` for a duplex repeater with two timeslots. A simplex hotspot has one channel, which is timeslot 2.
+   A simplex hotspot sends and receives on the same frequency, so `rx-frequency` and `tx-frequency` are the same. It has one channel, which is timeslot 2 on the network. Calls on timeslot 1 do not go to it.
+
+   Set `duplex: true` for a duplex repeater. It receives on `rx-frequency` and transmits on `tx-frequency`, uses both timeslots, and repeats what it hears.
 
 4. Restart DMRHub. The log shows `Modem server started` with the port and the repeater ID.
 
@@ -38,6 +40,14 @@ On the **Modem** tab:
 If the board does not answer, check the port and its speed, and that no other program, such as MMDVMHost, uses the port.
 
 With more than one replica, the list shows the ports of each replica, under the name of the replica. The test runs on the replica of the port that you choose. For a path that you type, choose its replica next to the path. If that replica does not answer in time, the test says so.
+
+## Signal strength (RSSI)
+
+The board reports a raw signal reading for each call. To show the signal strength of calls in dBm, DMRHub needs an RSSI.dat file in the MMDVMHost format. Without one, the signal strength of modem calls is not shown.
+
+1. Start from the [RSSI.dat](https://github.com/g4klx/MMDVM-Host/blob/master/RSSI.dat) of MMDVMHost. It holds only comments.
+2. Add one line for each point: the raw value, then its dBm, apart by spaces or tabs, such as `1134 -90`. DMRHub works out the values between the points. Lines that start with `#` are comments. The points depend on the board. If you used MMDVMHost with the same board, use its RSSI.dat as it is.
+3. Put the path of the file in **RSSI mapping file** on the **Modem** tab, or set `dmr.modem.rssi-mapping-file`. DMRHub reads the file each time the modem starts.
 
 ## Limits
 

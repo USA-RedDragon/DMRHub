@@ -29,16 +29,15 @@
         <h2>What is DMRHub?</h2>
         <p>
           DMRHub is an <a href="https://github.com/USA-RedDragon/DMRHub" target="_blank">open-source</a> DMR
-          network server compatible with MMDVM-like devices using the
-          <a href="https://wiki.brandmeister.network/index.php/Homebrew_repeater_protocol" target="_blank">
-            Homebrew repeater prococol</a>. The idea is to be an open source, easy to use alternative to existing
+          network server for hotspots and repeaters that use the MMDVM network protocol. The idea is to be an open source, easy to use alternative to existing
           networks like BrandMeister and TGIF, but for use in local communication environments, such as over an
           <a href="https://www.arednmesh.org/" target="_blank">AREDN mesh</a> network.
         </p>
         <br />
         <h2>Special Talkgroups</h2>
         <p>
-          DMRHub implements a Parrot on Talkgroup 9990 and unlink on Talkgroup 4000.
+          Talkgroup 4000 unlinks the dynamic talkgroup of the timeslot you call it on. The parrot is a plugin.
+          When the admin installed the parrot plugin, it answers on 9990.
         </p>
         <br />
         <h2>Useful Links</h2>

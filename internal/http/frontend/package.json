@@ -15,6 +15,7 @@
     "test:e2e:chrome": "start-server-and-test preview localhost:4173 'cypress run --e2e --headed --browser chrome'",
     "test:e2e:firefox": "start-server-and-test preview localhost:4173 'cypress run --e2e --headed --browser firefox'",
     "test:e2e:dev": "start-server-and-test 'vite dev --port 4173' localhost:4173 'cypress open --e2e'",
+    "test:hub": "cypress run --e2e --headless --config-file cypress.hub.config.ts",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "test:unit:dev": "vitest",

@@ -232,6 +232,9 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Config.GET("/validate", v1ConfigControllers.GETConfigValidate)
 	v1Config.POST("/validate", v1ConfigControllers.POSTConfigValidate)
 	v1Config.GET("/transcoding", v1ConfigControllers.GETTranscoding)
+	v1Config.GET("/modem", v1ConfigControllers.GETModem)
+	v1Config.GET("/modem/ports", v1ConfigControllers.GETModemPorts)
+	v1Config.POST("/modem/test", v1ConfigControllers.POSTModemTest)
 
 	v1Nets := group.Group("/nets")
 	// Paginated

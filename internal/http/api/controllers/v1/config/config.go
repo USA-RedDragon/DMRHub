@@ -37,6 +37,7 @@ import (
 const (
 	errorKey  = "error"
 	errorsKey = "errors"
+	tryAgain  = "Try again later"
 )
 
 // LiveKey is the key of the *liveconfig.Live in the gin context.
@@ -122,7 +123,7 @@ func GETConfig(c *gin.Context) {
 	status, err := live.Status(c.Request.Context())
 	if err != nil {
 		slog.Error("Failed to read the state of the Setup settings", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: tryAgain})
 		return
 	}
 
@@ -236,7 +237,7 @@ func GETTranscoding(c *gin.Context) {
 	dmrHub, isHub := h.(*hub.Hub)
 	if !ok || !isHub || dmrHub == nil {
 		slog.Error("Hub not found in context")
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: tryAgain})
 		return
 	}
 	status := TranscodingStatus{Servers: []AMBEServerStatus{}}

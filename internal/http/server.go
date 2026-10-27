@@ -83,6 +83,7 @@ type options struct {
 	mailer       smtp.Mailer
 	pluginEngine *wasm.Engine
 	kv           kv.KV
+	modemHost    v1ConfigControllers.ModemHost
 }
 
 // WithLiveConfig makes the router run with the config of l and save the
@@ -108,6 +109,12 @@ func WithPluginEngine(e *wasm.Engine) Option {
 // DMRHub last stopped.
 func WithKV(store kv.KV) Option {
 	return func(o *options) { o.kv = store }
+}
+
+// WithModemHost makes the modem API show the live state of the modem
+// server of h.
+func WithModemHost(h v1ConfigControllers.ModemHost) Option {
+	return func(o *options) { o.modemHost = h }
 }
 
 // WithMailer makes the password reset emails go out through m instead of
@@ -174,6 +181,11 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 	r.Use(middleware.Provider("PubSub", pubsub))
 	r.Use(currentConfig(o.live.Current()))
 	r.Use(middleware.Provider(v1ConfigControllers.LiveKey, o.live))
+	modemAPI := &v1ConfigControllers.Modem{Host: o.modemHost, KV: o.kv}
+	if dmrHub != nil {
+		modemAPI.Replica = dmrHub.InstanceID()
+	}
+	r.Use(middleware.Provider(v1ConfigControllers.ModemKey, modemAPI))
 	r.Use(middleware.Provider("Ready", ready))
 	r.Use(middleware.Provider("Hub", dmrHub))
 	r.Use(middleware.Provider("NetScheduler", ns))

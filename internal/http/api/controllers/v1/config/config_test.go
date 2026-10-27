@@ -97,6 +97,9 @@ func TestConfigRoutesRequireAdmin(t *testing.T) {
 		{http.MethodGet, "/api/v1/config/validate", nil},
 		{http.MethodPost, "/api/v1/config/validate", []byte("{}")},
 		{http.MethodGet, "/api/v1/config/transcoding", nil},
+		{http.MethodGet, "/api/v1/config/modem", nil},
+		{http.MethodGet, "/api/v1/config/modem/ports", nil},
+		{http.MethodPost, "/api/v1/config/modem/test", []byte("{}")},
 	}
 	for _, r := range routes {
 		w := serve(t, router, r.method, r.path, r.body, nil)

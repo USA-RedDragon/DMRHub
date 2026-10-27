@@ -50,7 +50,8 @@ type PeerRotatePasswordResponse struct {
 }
 
 type PeerRulePost struct {
-	Direction    bool `json:"direction"`
-	SubjectIDMin uint `json:"subject_id_min"`
-	SubjectIDMax uint `json:"subject_id_max" binding:"required"`
+	Direction    bool   `json:"direction"`
+	Match        string `json:"match"`
+	SubjectIDMin uint   `json:"subject_id_min"`
+	SubjectIDMax uint   `json:"subject_id_max" binding:"required"`
 }

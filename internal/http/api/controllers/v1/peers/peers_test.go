@@ -898,3 +898,45 @@ func TestPeerOwnerCanReadTheirPeer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, get(testutils.Login(t, router, "owner")), "the owner reads their peer")
 	assert.Equal(t, http.StatusForbidden, get(testutils.Login(t, router, "other")), "another user does not")
 }
+
+func TestPOSTPeerRuleMatch(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	var adminUser models.User
+	require.NoError(t, tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error)
+
+	peer := apimodels.PeerPost{ID: 300020, OwnerID: adminUser.ID, IP: "10.1.0.20", Port: 62035, Ingress: true, Egress: true}
+	_, w := testutils.CreatePeer(t, router, adminJar, peer)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	for _, c := range []struct {
+		rule apimodels.PeerRulePost
+		want models.PeerRuleMatch
+	}{
+		{apimodels.PeerRulePost{Direction: false, SubjectIDMin: 3000001, SubjectIDMax: 3000099}, models.PeerRuleMatchSource},
+		{apimodels.PeerRulePost{Direction: false, Match: "destination", SubjectIDMin: 3100, SubjectIDMax: 3100}, models.PeerRuleMatchDestination},
+		{apimodels.PeerRulePost{Direction: true, SubjectIDMin: 91, SubjectIDMax: 91}, models.PeerRuleMatchDestination},
+		{apimodels.PeerRulePost{Direction: true, Match: "source", SubjectIDMin: 3000001, SubjectIDMax: 3000099}, models.PeerRuleMatchSource},
+	} {
+		resp, w := testutils.CreatePeerRule(t, router, peer.ID, adminJar, c.rule)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, c.want, resp.Rule.Match)
+	}
+
+	_, w = testutils.CreatePeerRule(t, router, peer.ID, adminJar, apimodels.PeerRulePost{Match: "talkgroup", SubjectIDMin: 1, SubjectIDMax: 1})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	rulesResp, w := testutils.GetPeerRules(t, router, peer.ID, adminJar)
+	require.Equal(t, http.StatusOK, w.Code)
+	got := make([]models.PeerRuleMatch, 0, len(rulesResp.Rules))
+	for _, r := range rulesResp.Rules {
+		got = append(got, r.Match)
+	}
+	assert.Equal(t, []models.PeerRuleMatch{models.PeerRuleMatchSource, models.PeerRuleMatchDestination, models.PeerRuleMatchDestination, models.PeerRuleMatchSource}, got)
+}

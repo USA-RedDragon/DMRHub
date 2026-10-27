@@ -95,9 +95,19 @@ func POSTPeerRule(c *gin.Context) {
 		return
 	}
 
+	match := models.PeerRuleMatch(json.Match)
+	if match == "" {
+		match = models.DefaultPeerRuleMatch(json.Direction)
+	}
+	if !match.Valid() {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "match must be source or destination"})
+		return
+	}
+
 	rule := models.PeerRule{
 		PeerID:       uint(peerID),
 		Direction:    json.Direction,
+		Match:        match,
 		SubjectIDMin: json.SubjectIDMin,
 		SubjectIDMax: json.SubjectIDMax,
 	}

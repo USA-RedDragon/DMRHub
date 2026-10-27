@@ -38,4 +38,12 @@ describe('AppHeader', () => {
     expect(admin).not.toMatch(/router-link|\bto=|href=/);
     expect(admin).toMatch(/<button[^>]*type="button"/);
   });
+
+  it('shows RadioID Drift only with radio ID validation on', () => {
+    const at = [...source.matchAll(/to="\/admin\/users\/radio-id-drift"/g)].map((m) => m.index!);
+    expect(at).toHaveLength(2);
+    for (const i of at) {
+      expect(source.slice(i - 160, i)).toContain('v-if="settingsStore.radioIDValidation"');
+    }
+  });
 });

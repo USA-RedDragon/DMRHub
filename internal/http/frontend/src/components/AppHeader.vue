@@ -227,6 +227,16 @@
                 User Approvals
               </router-link>
               <router-link
+                v-if="settingsStore.radioIDValidation"
+                to="/admin/users/radio-id-drift"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/users/radio-id-drift' }"
+                @click="mobileOpen = false"
+              >
+                <UserX class="h-4 w-4" />
+                RadioID Drift
+              </router-link>
+              <router-link
                 to="/admin/messages"
                 class="mobile-nav-link"
                 :class="{ active: route.path === '/admin/messages' }"
@@ -506,6 +516,15 @@
                   User Approvals
                 </router-link>
               </DropdownMenuItem>
+              <DropdownMenuItem v-if="settingsStore.radioIDValidation" as-child>
+                <router-link
+                  to="/admin/users/radio-id-drift"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  RadioID Drift
+                </router-link>
+              </DropdownMenuItem>
               <DropdownMenuItem as-child>
                 <router-link
                   to="/admin/messages"
@@ -596,6 +615,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  UserX,
 } from 'lucide-vue-next';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';

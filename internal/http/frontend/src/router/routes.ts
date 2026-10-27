@@ -258,6 +258,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/UsersApprovalPage.vue'),
     },
     {
+      path: '/admin/users/radio-id-drift',
+      name: 'AdminRadioIDDrift',
+      component: () => import('@/views/admin/RadioIDDriftPage.vue'),
+    },
+    {
       path: '/admin/messages',
       name: 'AdminMessages',
       component: () => import('@/views/admin/MessagesPage.vue'),

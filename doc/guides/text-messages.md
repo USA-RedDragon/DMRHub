@@ -7,7 +7,7 @@ DMRHub routes text messages (SMS) between radios like it routes voice. You send 
 1. On your radio, write a message.
 2. Send it to the DMR ID of the other radio, as a private message. To send to everyone on a talkgroup, send it to the talkgroup as a group message.
 
-A private message reaches the other radio when it has an account on the network and DMRHub heard it in the last 15 minutes. See [How DMRHub finds the other radio](private-calls.md#how-dmrhub-finds-the-other-radio).
+A private message reaches the other radio when a user on the network owns its ID and DMRHub heard it in the last 15 minutes. See [How DMRHub finds the other radio](private-calls.md#how-dmrhub-finds-the-other-radio).
 
 Send the message in a text format that the other radio reads. Radios of different makes often use different formats. The [Messages reference](../messages.md#formats) lists the formats that DMRHub can show.
 

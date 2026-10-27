@@ -121,7 +121,7 @@ func (h *Hub) applyChange(topic string, id uint) {
 	case talkgroupChangedTopic:
 		h.talkgroupIDs.Reload(id)
 	case userChangedTopic:
-		h.userIDs.Reload(id)
+		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})

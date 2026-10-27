@@ -285,15 +285,15 @@ func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bo
 	if at, ok := h.streamTargets.Load(key); ok {
 		return at.repeater, true
 	}
-	exists, err := h.userIDs.Get(packet.Dst)
+	owner, err := h.radioOwners.Get(packet.Dst)
 	if err != nil {
-		slog.Error("Error finding user", "error", err)
+		slog.Error("Error finding the owner of a radio", "error", err)
 		return 0, false
 	}
-	if !exists {
+	if owner == 0 {
 		return 0, false
 	}
-	repeaterID, ok := h.locateRadio(ctx, packet.Dst)
+	repeaterID, ok := h.locateRadio(ctx, packet.Dst, owner)
 	if !ok {
 		slog.Debug("Dropping private traffic to a radio with no known location", "userID", packet.Dst, "src", packet.Src)
 		return 0, false

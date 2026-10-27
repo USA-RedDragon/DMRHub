@@ -159,7 +159,7 @@ type Hub struct {
 	later      *outbox.Outbox[laterKey]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
-	userIDs      *lookup.Cache[uint, bool]
+	radioOwners  *lookup.Cache[uint, uint]
 	radioCalls   *lookup.Cache[uint, uint]
 	egressTable  *lookup.Cache[struct{}, []egressPeer]
 	lastSeen     *lookup.Flights[uint, []byte]
@@ -238,7 +238,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		return []any{"work", k.what, "id", k.id}
 	})
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
-	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
+	h.radioOwners = lookup.New("radio owners", lookup.TTL, h.radioOwner)
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
 	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
 	h.lastSeen = lookup.NewFlights[uint, []byte]()

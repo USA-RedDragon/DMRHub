@@ -327,3 +327,32 @@ func TestStreamListsPeersOnce(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, first, peers.Load(), "peer lookups after the first burst of a stream")
 }
+
+func addRadioID(t *testing.T, database *gorm.DB, userID, radioID uint) {
+	t.Helper()
+	require.NoError(t, database.Create(&models.UserRadioID{UserID: userID, RadioID: radioID, VerifiedAt: time.Now()}).Error)
+}
+
+func TestPrivateTrafficReachesARadioIDThatAUserAdded(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	addRadioID(t, database, 1000002, 1000005)
+
+	h.RoutePacket(context.Background(), dataHeader(1000005, 1, 100003, 1), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100004, 2), models.RepeaterTypeMMDVM)
+	expectAt(t, srv, 100003, "private data to an added radio ID heard on its owner's hotspot")
+}
+
+func TestAddedRadioIDHeardOnAnotherUsersHotspotIsNotRouted(t *testing.T) {
+	t.Parallel()
+	h, database, srv := lastSeenHub(t)
+	addRadioID(t, database, 1000002, 1000005)
+
+	h.RoutePacket(context.Background(), dataHeader(1000005, 1, 100004, 1), models.RepeaterTypeMMDVM)
+	time.Sleep(200 * time.Millisecond)
+
+	h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100003, 2), models.RepeaterTypeMMDVM)
+	expectNone(t, srv, "an added radio ID heard on a hotspot its owner does not own")
+}

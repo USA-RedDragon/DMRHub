@@ -26,7 +26,7 @@ No. Each DMRHub network has its own accounts, talkgroups and hotspot passwords.
 
 ### Why does my private call not reach the other ham?
 
-DMRHub sends a private call only to a radio ID that has an account on the network and that DMRHub heard in the last 15 minutes. See [Make a private call](guides/private-calls.md#how-dmrhub-finds-the-other-radio).
+DMRHub sends a private call only to a radio ID that a user on the network owns, and that DMRHub heard in the last 15 minutes on a hotspot or repeater of that user. See [Make a private call](guides/private-calls.md#how-dmrhub-finds-the-other-radio).
 
 ### I lost the password of my hotspot. Can I see it again?
 

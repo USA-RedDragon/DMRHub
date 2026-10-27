@@ -4,10 +4,10 @@ A private call goes to one radio, not to a talkgroup. On DMRHub you can make a p
 
 ## How DMRHub finds the other radio
 
-DMRHub sends a private call to a radio ID that has an account on the network. It sends the call to the hotspot or repeater where that radio was last heard in the last 15 minutes. DMRHub drops the call when:
+DMRHub sends a private call to a radio ID that a user on the network owns: the DMR ID of an account, or a radio ID that a user added on the Settings page. It sends the call to the hotspot or repeater where that radio was last heard in the last 15 minutes. That hotspot or repeater must belong to the owner of the radio, or an admin must trust it. DMRHub drops the call when:
 
-- the ID has no account on this network, or
-- DMRHub did not hear that radio in the last 15 minutes.
+- no user on this network owns the ID, or
+- DMRHub did not hear that radio in the last 15 minutes on a hotspot or repeater of its owner.
 
 So the other ham must have transmitted recently, for example with a key-up, a call or an ARS registration from the radio. A radio that registers with ARS when it turns on is easier to reach.
 

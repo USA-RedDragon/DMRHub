@@ -97,7 +97,7 @@ func (h *Hub) runSightings() {
 			pruneStreams(h.loopLogged, now)
 			pruneStreams(h.streamTalkgroups, now)
 			h.talkgroupIDs.Prune(now)
-			h.userIDs.Prune(now)
+			h.radioOwners.Prune(now)
 			h.radioCalls.Prune(now)
 			h.egressTable.Prune(now)
 			h.repeaters.prune(now)
@@ -120,19 +120,23 @@ func (h *Hub) runSightings() {
 	}
 }
 
-// recordSighting moves the routing location of a registered radio to the
-// repeater that heard it, when the radio's user owns that repeater or an
-// admin trusts it. Other sightings are logged only, so a hotspot that
-// spoofs a source ID cannot pull that radio's private traffic. The record
-// in the KV store, and the word to the plugins, go through the outbox of
-// the radio, so that a paused Redis holds no other sighting.
+// recordSighting moves the routing location of a radio that a user owns,
+// as the account ID or a radio ID the user added, to the repeater that
+// heard it, when that user owns the repeater or an admin trusts it. Other
+// sightings are logged only, so a hotspot that spoofs a source ID cannot
+// pull that radio's private traffic. The record in the KV store, and the
+// word to the plugins, go through the outbox of the radio, so that a
+// paused Redis holds no other sighting.
 func (h *Hub) recordSighting(s sighting) {
-	user, err := models.FindUserByID(h.db, s.src)
+	owner, err := h.radioOwners.Get(s.src)
 	if err != nil {
-		h.noteHeardRadio(s)
+		slog.Error("Error finding the owner of a radio", "radioID", s.src, "error", err)
 		return
 	}
-	rpt, ok := h.routableFor(user.ID, s.repeater)
+	if owner == 0 {
+		return
+	}
+	rpt, ok := h.routableFor(owner, s.repeater)
 	if !ok && rpt.ID == 0 {
 		return
 	}
@@ -142,12 +146,12 @@ func (h *Hub) recordSighting(s sighting) {
 		return
 	}
 	h.tellHeard(s, &rpt)
-	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, user.ID)
+	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, s.src)
 	value := strconv.FormatUint(uint64(rpt.ID), 10)
 	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
 		Topic:      key,
 		Repeatable: true,
-		Send:       func() error { return h.storeSighting(user.ID, key, value) },
+		Send:       func() error { return h.storeSighting(s.src, key, value) },
 	})
 }
 
@@ -167,16 +171,14 @@ func (h *Hub) storeSighting(radio uint, key, value string) error {
 	return nil
 }
 
-// noteHeardRadio tells the plugins where a radio ID that a user
-// added was heard, on the same terms as a sighting of an account ID.
-func (h *Hub) noteHeardRadio(s sighting) {
-	owner, ok, err := models.RadioIDOwner(h.db, s.src)
+// radioOwner returns the user who owns the radio ID id, as the account ID
+// or as a radio ID the user added, and 0 when no user does.
+func (h *Hub) radioOwner(id uint) (uint, error) {
+	owner, ok, err := models.RadioIDOwner(h.db, id)
 	if err != nil || !ok {
-		return
+		return 0, err //nolint:wrapcheck // RadioIDOwner wraps its errors
 	}
-	if rpt, ok := h.routableFor(owner, s.repeater); ok {
-		h.tellHeard(s, &rpt)
-	}
+	return owner, nil
 }
 
 // tellHeard tells the plugins that the radio of s was heard on rpt, when
@@ -196,29 +198,33 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 	})
 }
 
-// locateRadio returns the repeater to send private traffic for the
-// registered radio userID to: where it was last heard on a repeater that
-// its user owns or an admin trusts. It waits for the KV store at most
+// locateRadio returns the repeater to send private traffic for the radio
+// radioID of the user owner to: where it was last heard on a repeater that
+// owner owns or an admin trusts. It waits for the KV store at most
 // lookup.Wait, as for the database, and then goes on without its answer,
-// to where this hub heard the radio and to its last call.
-func (h *Hub) locateRadio(ctx context.Context, userID uint) (uint, bool) {
-	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, userID)
+// to where this hub heard the radio and, for an account ID, to its last
+// call.
+func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint) (uint, bool) {
+	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, radioID)
 	read := context.WithoutCancel(ctx)
-	if v, err := h.lastSeen.Do(userID, func() ([]byte, error) { return h.kv.Get(read, key) }); err == nil { //nolint:wrapcheck
+	if v, err := h.lastSeen.Do(radioID, func() ([]byte, error) { return h.kv.Get(read, key) }); err == nil { //nolint:wrapcheck
 		if id, err := strconv.ParseUint(string(v), 10, 32); err == nil {
-			if rpt, err := h.routingRepeater(uint(id)); err == nil && (rpt.OwnerID == userID || rpt.Trusted) {
+			if rpt, err := h.routingRepeater(uint(id)); err == nil && (rpt.OwnerID == owner || rpt.Trusted) {
 				return uint(id), true
 			}
 		}
 	}
-	if heard, ok := h.heardOn.Load(userID); ok && time.Since(heard.at) < sightedStreamTTL {
-		if rpt, err := h.routingRepeater(heard.repeater); err == nil && (rpt.OwnerID == userID || rpt.Trusted) {
+	if heard, ok := h.heardOn.Load(radioID); ok && time.Since(heard.at) < sightedStreamTTL {
+		if rpt, err := h.routingRepeater(heard.repeater); err == nil && (rpt.OwnerID == owner || rpt.Trusted) {
 			return heard.repeater, true
 		}
 	}
-	repeaterID, err := h.radioCalls.Get(userID)
+	if radioID != owner {
+		return 0, false
+	}
+	repeaterID, err := h.radioCalls.Get(radioID)
 	if err != nil {
-		slog.Error("Error querying where a radio was last heard", "userID", userID, "error", err)
+		slog.Error("Error querying where a radio was last heard", "userID", radioID, "error", err)
 		return 0, false
 	}
 	return repeaterID, repeaterID != 0

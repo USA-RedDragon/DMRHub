@@ -125,6 +125,14 @@ type modemShadow struct {
 	Beacons         *modemBeaconsShadow `json:"beacons"           toml:"beacons"           yaml:"beacons"`
 }
 
+type radioIDChecksShadow struct {
+	UserID      *bool `json:"user-id"      toml:"user-id"      yaml:"user-id"`
+	Callsign    *bool `json:"callsign"     toml:"callsign"     yaml:"callsign"`
+	RadioIDs    *bool `json:"radio-ids"    toml:"radio-ids"    yaml:"radio-ids"`
+	RepeaterIDs *bool `json:"repeater-ids" toml:"repeater-ids" yaml:"repeater-ids"`
+	HotspotIDs  *bool `json:"hotspot-ids"  toml:"hotspot-ids"  yaml:"hotspot-ids"`
+}
+
 type retentionShadow struct {
 	Messages      *int `json:"messages"      toml:"messages"      yaml:"messages"`
 	Transmissions *int `json:"transmissions" toml:"transmissions" yaml:"transmissions"`
@@ -202,23 +210,24 @@ type routingShadow struct {
 }
 
 type dMRShadow struct {
-	MMDVM                    *mMDVMShadow        `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
-	OpenBridge               *openBridgeShadow   `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
-	IPSC                     *iPSCShadow         `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
-	Modem                    *modemShadow        `json:"modem"                       toml:"modem"                       yaml:"modem"`
-	DisableRadioIDValidation *bool               `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
-	RadioIDURL               *string             `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
-	RepeaterIDURL            *string             `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
-	PublicAddress            *string             `json:"public-address"              toml:"public-address"              yaml:"public-address"`
-	Retention                *retentionShadow    `json:"retention"                   toml:"retention"                   yaml:"retention"`
-	Positions                *positionsShadow    `json:"positions"                   toml:"positions"                   yaml:"positions"`
-	Plugins                  *pluginsShadow      `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
-	Transcoding              *transcodingShadow  `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
-	PrivateCalls             *privateCallsShadow `json:"private-calls"               toml:"private-calls"               yaml:"private-calls"`
-	IPLists                  *iPListsShadow      `json:"ip-lists"                    toml:"ip-lists"                    yaml:"ip-lists"`
-	Routing                  *routingShadow      `json:"routing"                     toml:"routing"                     yaml:"routing"`
-	RepeaterQuota            *int                `json:"repeater-quota"              toml:"repeater-quota"              yaml:"repeater-quota"`
-	DrainTimeout             *int                `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
+	MMDVM                    *mMDVMShadow         `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
+	OpenBridge               *openBridgeShadow    `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
+	IPSC                     *iPSCShadow          `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
+	Modem                    *modemShadow         `json:"modem"                       toml:"modem"                       yaml:"modem"`
+	DisableRadioIDValidation *bool                `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
+	RadioIDChecks            *radioIDChecksShadow `json:"radio-id-checks"             toml:"radio-id-checks"             yaml:"radio-id-checks"`
+	RadioIDURL               *string              `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
+	RepeaterIDURL            *string              `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
+	PublicAddress            *string              `json:"public-address"              toml:"public-address"              yaml:"public-address"`
+	Retention                *retentionShadow     `json:"retention"                   toml:"retention"                   yaml:"retention"`
+	Positions                *positionsShadow     `json:"positions"                   toml:"positions"                   yaml:"positions"`
+	Plugins                  *pluginsShadow       `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
+	Transcoding              *transcodingShadow   `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
+	PrivateCalls             *privateCallsShadow  `json:"private-calls"               toml:"private-calls"               yaml:"private-calls"`
+	IPLists                  *iPListsShadow       `json:"ip-lists"                    toml:"ip-lists"                    yaml:"ip-lists"`
+	Routing                  *routingShadow       `json:"routing"                     toml:"routing"                     yaml:"routing"`
+	RepeaterQuota            *int                 `json:"repeater-quota"              toml:"repeater-quota"              yaml:"repeater-quota"`
+	DrainTimeout             *int                 `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
 }
 
 type sMTPShadow struct {
@@ -366,6 +375,16 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.modem.beacons.duration", configulator.LayerDefault, "default tag")
 	cfg.DMR.DisableRadioIDValidation = false
 	set("dmr.disable-radio-id-validation", configulator.LayerDefault, "default tag")
+	cfg.DMR.RadioIDChecks.UserID = true
+	set("dmr.radio-id-checks.user-id", configulator.LayerDefault, "default tag")
+	cfg.DMR.RadioIDChecks.Callsign = true
+	set("dmr.radio-id-checks.callsign", configulator.LayerDefault, "default tag")
+	cfg.DMR.RadioIDChecks.RadioIDs = true
+	set("dmr.radio-id-checks.radio-ids", configulator.LayerDefault, "default tag")
+	cfg.DMR.RadioIDChecks.RepeaterIDs = true
+	set("dmr.radio-id-checks.repeater-ids", configulator.LayerDefault, "default tag")
+	cfg.DMR.RadioIDChecks.HotspotIDs = true
+	set("dmr.radio-id-checks.hotspot-ids", configulator.LayerDefault, "default tag")
 	cfg.DMR.RadioIDURL = "https://www.radioid.net/static/users.json"
 	set("dmr.radio-id-url", configulator.LayerDefault, "default tag")
 	cfg.DMR.RepeaterIDURL = "https://www.radioid.net/static/rptrs.json"
@@ -773,6 +792,28 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 		if s.DMR.DisableRadioIDValidation != nil {
 			cfg.DMR.DisableRadioIDValidation = *s.DMR.DisableRadioIDValidation
 			set("dmr.disable-radio-id-validation", configulator.LayerFile, file)
+		}
+		if s.DMR.RadioIDChecks != nil {
+			if s.DMR.RadioIDChecks.UserID != nil {
+				cfg.DMR.RadioIDChecks.UserID = *s.DMR.RadioIDChecks.UserID
+				set("dmr.radio-id-checks.user-id", configulator.LayerFile, file)
+			}
+			if s.DMR.RadioIDChecks.Callsign != nil {
+				cfg.DMR.RadioIDChecks.Callsign = *s.DMR.RadioIDChecks.Callsign
+				set("dmr.radio-id-checks.callsign", configulator.LayerFile, file)
+			}
+			if s.DMR.RadioIDChecks.RadioIDs != nil {
+				cfg.DMR.RadioIDChecks.RadioIDs = *s.DMR.RadioIDChecks.RadioIDs
+				set("dmr.radio-id-checks.radio-ids", configulator.LayerFile, file)
+			}
+			if s.DMR.RadioIDChecks.RepeaterIDs != nil {
+				cfg.DMR.RadioIDChecks.RepeaterIDs = *s.DMR.RadioIDChecks.RepeaterIDs
+				set("dmr.radio-id-checks.repeater-ids", configulator.LayerFile, file)
+			}
+			if s.DMR.RadioIDChecks.HotspotIDs != nil {
+				cfg.DMR.RadioIDChecks.HotspotIDs = *s.DMR.RadioIDChecks.HotspotIDs
+				set("dmr.radio-id-checks.hotspot-ids", configulator.LayerFile, file)
+			}
 		}
 		if s.DMR.RadioIDURL != nil {
 			cfg.DMR.RadioIDURL = *s.DMR.RadioIDURL
@@ -1776,6 +1817,71 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.DisableRadioIDValidation = p
 		set("dmr.disable-radio-id-validation", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-checks", "user-id"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.user-id",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RadioIDChecks.UserID = p
+		set("dmr.radio-id-checks.user-id", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-checks", "callsign"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.callsign",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RadioIDChecks.Callsign = p
+		set("dmr.radio-id-checks.callsign", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-checks", "radio-ids"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.radio-ids",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RadioIDChecks.RadioIDs = p
+		set("dmr.radio-id-checks.radio-ids", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-checks", "repeater-ids"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.repeater-ids",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RadioIDChecks.RepeaterIDs = p
+		set("dmr.radio-id-checks.repeater-ids", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-checks", "hotspot-ids"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.hotspot-ids",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RadioIDChecks.HotspotIDs = p
+		set("dmr.radio-id-checks.hotspot-ids", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "radio-id-url"); ok {
 		cfg.DMR.RadioIDURL = v
 		set("dmr.radio-id-url", configulator.LayerEnv, n)
@@ -2348,6 +2454,11 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "modem" + o.Separator + "beacons" + o.Separator + "interval",
 		"dmr" + o.Separator + "modem" + o.Separator + "beacons" + o.Separator + "duration",
 		"dmr" + o.Separator + "disable-radio-id-validation",
+		"dmr" + o.Separator + "radio-id-checks" + o.Separator + "user-id",
+		"dmr" + o.Separator + "radio-id-checks" + o.Separator + "callsign",
+		"dmr" + o.Separator + "radio-id-checks" + o.Separator + "radio-ids",
+		"dmr" + o.Separator + "radio-id-checks" + o.Separator + "repeater-ids",
+		"dmr" + o.Separator + "radio-id-checks" + o.Separator + "hotspot-ids",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
 		"dmr" + o.Separator + "public-address",
@@ -2495,71 +2606,76 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[64], false, "Key up the transmitter of a duplex modem at each interval while the channel is idle")
 	fs.Var(impl.NewUint(60), names[65], "Seconds between beacons, 1 to 86400")
 	fs.Var(impl.NewUint(3), names[66], "Seconds that each beacon keys up, at least 1 and less than the interval")
-	fs.Bool(names[67], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[68], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[69], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[70], "", "Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server")
-	fs.Var(impl.NewInt(0), names[71], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[72], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[73], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[74], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[75], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[76], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[77], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[78], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[79], false, "Accept plugins that run as their own programs")
-	fs.String(names[80], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[81], "TCP port that plugins connect to")
-	fs.String(names[82], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[83], "", "TLS key file of the certificate file")
-	fs.String(names[84], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
-	fs.String(names[85], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
-	fs.Duration(names[86], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
-	fs.String(names[87], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
-	fs.String(names[88], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
-	fs.Duration(names[89], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
-	fs.String(names[90], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[91], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[92], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[93], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[94], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[95], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[96], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[97], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[98], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[99], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[100], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[101], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.Bool(names[102], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
-	fs.Duration(names[103], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
-	fs.Bool(names[104], false, "Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call")
-	fs.Bool(names[105], false, "Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept")
-	fs.Duration(names[106], time.Duration(int64(86400000000000)), "Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h")
-	fs.String(names[107], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
-	fs.Duration(names[108], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
-	fs.String(names[109], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
-	fs.Var(impl.NewInt(100), names[110], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
-	fs.Var(impl.NewInt(25), names[111], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[112], false, "Enable SMTP support for sending emails")
-	fs.String(names[113], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[114], "SMTP server port")
-	fs.String(names[115], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[116], "", "SMTP server username")
-	fs.String(names[117], "", "SMTP server password")
-	fs.String(names[118], "", "Email address to use as the sender")
-	fs.String(names[119], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[120], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[121], false, "Enable metrics collection and export")
-	fs.String(names[122], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[123], "Metrics server port")
-	fs.StringSlice(names[124], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[125], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[126], false, "Enable PProf profiling and debugging support")
-	fs.String(names[127], "[::]", "PProf server listen address")
-	fs.StringSlice(names[128], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[129], "PProf server port")
-	fs.String(names[130], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[131], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Bool(names[67], false, "Turn off all the RadioID checks of radio-id-checks, whatever they are set to")
+	fs.Bool(names[68], true, "Refuse a registration whose DMR ID does not have 7 digits")
+	fs.Bool(names[69], true, "Refuse a registration or a callsign change whose callsign RadioID does not list under the DMR ID of the account, and list on the RadioID drift page the accounts whose callsign RadioID no longer lists")
+	fs.Bool(names[70], true, "Refuse an added radio ID that RadioID does not list under the callsign of the user, and list on the RadioID drift page the added radio IDs that RadioID no longer lists under it")
+	fs.Bool(names[71], true, "Refuse a 6-digit repeater ID that RadioID does not list under the callsign of its owner, and fill in the details of the repeater from RadioID")
+	fs.Bool(names[72], true, "Refuse a 9-digit hotspot ID that does not start with the DMR ID of its owner")
+	fs.String(names[73], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[74], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[75], "", "Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server")
+	fs.Var(impl.NewInt(0), names[76], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[77], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[78], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[79], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[80], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[81], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[82], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[83], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[84], false, "Accept plugins that run as their own programs")
+	fs.String(names[85], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[86], "TCP port that plugins connect to")
+	fs.String(names[87], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[88], "", "TLS key file of the certificate file")
+	fs.String(names[89], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
+	fs.String(names[90], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
+	fs.Duration(names[91], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
+	fs.String(names[92], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
+	fs.String(names[93], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
+	fs.Duration(names[94], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
+	fs.String(names[95], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[96], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[97], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[98], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[99], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[100], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[101], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[102], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[103], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[104], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[105], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[106], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.Bool(names[107], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
+	fs.Duration(names[108], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
+	fs.Bool(names[109], false, "Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call")
+	fs.Bool(names[110], false, "Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept")
+	fs.Duration(names[111], time.Duration(int64(86400000000000)), "Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h")
+	fs.String(names[112], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
+	fs.Duration(names[113], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
+	fs.String(names[114], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
+	fs.Var(impl.NewInt(100), names[115], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
+	fs.Var(impl.NewInt(25), names[116], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[117], false, "Enable SMTP support for sending emails")
+	fs.String(names[118], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[119], "SMTP server port")
+	fs.String(names[120], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[121], "", "SMTP server username")
+	fs.String(names[122], "", "SMTP server password")
+	fs.String(names[123], "", "Email address to use as the sender")
+	fs.String(names[124], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[125], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[126], false, "Enable metrics collection and export")
+	fs.String(names[127], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[128], "Metrics server port")
+	fs.StringSlice(names[129], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[130], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[131], false, "Enable PProf profiling and debugging support")
+	fs.String(names[132], "[::]", "PProf server listen address")
+	fs.StringSlice(names[133], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[134], "PProf server port")
+	fs.String(names[135], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[136], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3379,6 +3495,66 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.DisableRadioIDValidation = v
 		set("dmr.disable-radio-id-validation", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "radio-id-checks" + o.Separator + "user-id"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.user-id",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RadioIDChecks.UserID = v
+		set("dmr.radio-id-checks.user-id", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "radio-id-checks" + o.Separator + "callsign"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.callsign",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RadioIDChecks.Callsign = v
+		set("dmr.radio-id-checks.callsign", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "radio-id-checks" + o.Separator + "radio-ids"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.radio-ids",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RadioIDChecks.RadioIDs = v
+		set("dmr.radio-id-checks.radio-ids", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "radio-id-checks" + o.Separator + "repeater-ids"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.repeater-ids",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RadioIDChecks.RepeaterIDs = v
+		set("dmr.radio-id-checks.repeater-ids", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "radio-id-checks" + o.Separator + "hotspot-ids"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.radio-id-checks.hotspot-ids",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RadioIDChecks.HotspotIDs = v
+		set("dmr.radio-id-checks.hotspot-ids", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "radio-id-url"; fs.Changed(n) {
 		v, err := fs.GetString(n)
@@ -4965,6 +5141,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".disable-radio-id-validation", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
+		case "radio-id-checks":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".radio-id-checks", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub radioIDChecksShadow
+				if err := sub.decodeJSON(dec, path+".radio-id-checks"); err != nil {
+					return err
+				}
+				s.RadioIDChecks = &sub
+			}
 		case "radio-id-url":
 			v, err := dec.ReadToken()
 			if err != nil {
@@ -6151,6 +6346,94 @@ func (s *modemBeaconsShadow) decodeJSON(dec *jsontext.Decoder, path string) erro
 				s.Duration = &num
 			default:
 				return configJSONError(path+".duration", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *radioIDChecksShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "user-id":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.UserID = &b
+			default:
+				return configJSONError(path+".user-id", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "callsign":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Callsign = &b
+			default:
+				return configJSONError(path+".callsign", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "radio-ids":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.RadioIDs = &b
+			default:
+				return configJSONError(path+".radio-ids", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "repeater-ids":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.RepeaterIDs = &b
+			default:
+				return configJSONError(path+".repeater-ids", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "hotspot-ids":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.HotspotIDs = &b
+			default:
+				return configJSONError(path+".hotspot-ids", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -7547,6 +7830,11 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.modem.beacons.interval = %v\n", c.DMR.Modem.Beacons.Interval)
 	fmt.Fprintf(&b, "dmr.modem.beacons.duration = %v\n", c.DMR.Modem.Beacons.Duration)
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
+	fmt.Fprintf(&b, "dmr.radio-id-checks.user-id = %v\n", c.DMR.RadioIDChecks.UserID)
+	fmt.Fprintf(&b, "dmr.radio-id-checks.callsign = %v\n", c.DMR.RadioIDChecks.Callsign)
+	fmt.Fprintf(&b, "dmr.radio-id-checks.radio-ids = %v\n", c.DMR.RadioIDChecks.RadioIDs)
+	fmt.Fprintf(&b, "dmr.radio-id-checks.repeater-ids = %v\n", c.DMR.RadioIDChecks.RepeaterIDs)
+	fmt.Fprintf(&b, "dmr.radio-id-checks.hotspot-ids = %v\n", c.DMR.RadioIDChecks.HotspotIDs)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)
 	fmt.Fprintf(&b, "dmr.public-address = %v\n", c.DMR.PublicAddress)

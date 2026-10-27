@@ -114,23 +114,49 @@ type RobotsTXT struct {
 
 // DMR holds the DMR server configuration.
 type DMR struct {
-	MMDVM                    MMDVM        `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
-	OpenBridge               OpenBridge   `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
-	IPSC                     IPSC         `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
-	Modem                    Modem        `json:"modem" name:"modem" description:"MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost"`
-	DisableRadioIDValidation bool         `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
-	RadioIDURL               string       `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
-	RepeaterIDURL            string       `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
-	PublicAddress            string       `json:"public-address" yaml:"public-address" name:"public-address" description:"Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server"`
-	Retention                Retention    `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
-	Positions                Positions    `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
-	Plugins                  Plugins      `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
-	Transcoding              Transcoding  `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
-	PrivateCalls             PrivateCalls `json:"private-calls" yaml:"private-calls" name:"private-calls" description:"How DMRHub finds the radio that a private call, SMS or data message goes to"`
-	IPLists                  IPLists      `json:"ip-lists" yaml:"ip-lists" name:"ip-lists" description:"Source addresses that DMRHub refuses or alone accepts, before any other work on a packet"`
-	Routing                  Routing      `json:"routing" name:"routing" description:"How DMRHub links talkgroups and which transmissions it takes"`
-	RepeaterQuota            int          `json:"repeater-quota" yaml:"repeater-quota" name:"repeater-quota" description:"Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit" default:"100"`
-	DrainTimeout             int          `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
+	MMDVM                    MMDVM         `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
+	OpenBridge               OpenBridge    `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
+	IPSC                     IPSC          `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
+	Modem                    Modem         `json:"modem" name:"modem" description:"MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost"`
+	DisableRadioIDValidation bool          `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Turn off all the RadioID checks of radio-id-checks, whatever they are set to" default:"false"`
+	RadioIDChecks            RadioIDChecks `json:"radio-id-checks" yaml:"radio-id-checks" name:"radio-id-checks" description:"Checks of DMR IDs and callsigns against the RadioID data, each of which can be on or off"`
+	RadioIDURL               string        `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
+	RepeaterIDURL            string        `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
+	PublicAddress            string        `json:"public-address" yaml:"public-address" name:"public-address" description:"Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server"`
+	Retention                Retention     `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+	Positions                Positions     `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
+	Plugins                  Plugins       `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
+	Transcoding              Transcoding   `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
+	PrivateCalls             PrivateCalls  `json:"private-calls" yaml:"private-calls" name:"private-calls" description:"How DMRHub finds the radio that a private call, SMS or data message goes to"`
+	IPLists                  IPLists       `json:"ip-lists" yaml:"ip-lists" name:"ip-lists" description:"Source addresses that DMRHub refuses or alone accepts, before any other work on a packet"`
+	Routing                  Routing       `json:"routing" name:"routing" description:"How DMRHub links talkgroups and which transmissions it takes"`
+	RepeaterQuota            int           `json:"repeater-quota" yaml:"repeater-quota" name:"repeater-quota" description:"Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit" default:"100"`
+	DrainTimeout             int           `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
+}
+
+// RadioIDChecks holds the checks of DMR IDs and callsigns against the
+// RadioID data.
+type RadioIDChecks struct {
+	UserID      bool `json:"user-id" yaml:"user-id" name:"user-id" description:"Refuse a registration whose DMR ID does not have 7 digits" default:"true"`
+	Callsign    bool `json:"callsign" yaml:"callsign" name:"callsign" description:"Refuse a registration or a callsign change whose callsign RadioID does not list under the DMR ID of the account, and list on the RadioID drift page the accounts whose callsign RadioID no longer lists" default:"true"`
+	RadioIDs    bool `json:"radio-ids" yaml:"radio-ids" name:"radio-ids" description:"Refuse an added radio ID that RadioID does not list under the callsign of the user, and list on the RadioID drift page the added radio IDs that RadioID no longer lists under it" default:"true"`
+	RepeaterIDs bool `json:"repeater-ids" yaml:"repeater-ids" name:"repeater-ids" description:"Refuse a 6-digit repeater ID that RadioID does not list under the callsign of its owner, and fill in the details of the repeater from RadioID" default:"true"`
+	HotspotIDs  bool `json:"hotspot-ids" yaml:"hotspot-ids" name:"hotspot-ids" description:"Refuse a 9-digit hotspot ID that does not start with the DMR ID of its owner" default:"true"`
+}
+
+// Checks returns the RadioID checks that are on: none when
+// disable-radio-id-validation is on, else those of radio-id-checks.
+func (d DMR) Checks() RadioIDChecks {
+	if d.DisableRadioIDValidation {
+		return RadioIDChecks{}
+	}
+	return d.RadioIDChecks
+}
+
+// Drift reports whether the RadioID drift check runs: when the callsign
+// check or the radio IDs check is on.
+func (r RadioIDChecks) Drift() bool {
+	return r.Callsign || r.RadioIDs
 }
 
 // Routing holds how DMRHub links talkgroups to the timeslots of repeaters

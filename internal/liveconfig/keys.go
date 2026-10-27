@@ -63,6 +63,7 @@ func setupPaths() []string {
 		"dmr.ipsc",
 		"dmr.modem",
 		"dmr.disable-radio-id-validation",
+		"dmr.radio-id-checks",
 		"dmr.radio-id-url",
 		"dmr.repeater-id-url",
 		"dmr.public-address",

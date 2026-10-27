@@ -4,7 +4,7 @@ This page tells how to approve new users, and how to edit, suspend and delete us
 
 ## Approve new users
 
-When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lists the DMR ID under the callsign. You can turn this check off with `dmr.disable-radio-id-validation`. If you set the HIBP API key (`hibp-api-key`), DMRHub also refuses passwords that are in the Have I Been Pwned list.
+When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lists the DMR ID under the callsign (see [RadioID checks](#radioid-checks)). If you set the HIBP API key (`hibp-api-key`), DMRHub also refuses passwords that are in the Have I Been Pwned list.
 
 Then the new user waits for an admin, unless `auto-approve-users` is on. With `auto-approve-users` on, the new user can log in at once.
 
@@ -26,15 +26,29 @@ The RadioID.net check shows that the DMR ID and the callsign go together. It doe
 2. Click **Edit** in the row of the user.
 3. Change the **Callsign** or the **Username**, then click **Save Changes**. Click **Cancel** to keep the old values.
 
-DMRHub checks a new callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. When RadioID.net lists another callsign for the DMR ID, DMRHub shows that callsign. Click **Save <callsign> anyway** to keep yours. The RadioID drift check then skips the user. DMRHub refuses a callsign that another user has.
+DMRHub checks a new callsign against RadioID.net when the callsign check is on. When RadioID.net lists another callsign for the DMR ID, DMRHub shows that callsign. Click **Save <callsign> anyway** to keep yours. The RadioID drift check then skips the user. DMRHub refuses a callsign that another user has.
 
 Users can change their own username and callsign in the **Account** card on **Settings**. A user can only set the callsign that RadioID.net lists for their DMR ID.
 
 Usernames are the same in any case, so a user can log in as `alice` or `Alice`, and two users cannot have usernames that differ only by case. A user can log in with their callsign in any case too. A username cannot be the callsign of another user, in any case, and a callsign cannot be the username of another user, because a login by a username comes before a login by a callsign. A user can have their own callsign as their username.
 
+## RadioID checks
+
+DMRHub has five checks of DMR IDs and callsigns, most of them against the RadioID.net data. Each one is on by default. Turn each on or off under `dmr.radio-id-checks`:
+
+| Key | When it is on |
+|-----|---------------|
+| `dmr.radio-id-checks.user-id` | DMRHub refuses a registration whose DMR ID does not have 7 digits. |
+| `dmr.radio-id-checks.callsign` | DMRHub refuses a registration or a callsign change whose callsign RadioID.net does not list under the DMR ID of the account. The RadioID drift check covers the DMR ID of each account. |
+| `dmr.radio-id-checks.radio-ids` | DMRHub refuses an added radio ID that RadioID.net does not list under the callsign of the user. The RadioID drift check covers the added radio IDs. |
+| `dmr.radio-id-checks.repeater-ids` | DMRHub refuses a 6-digit repeater ID that RadioID.net does not list under the callsign of its owner, and fills in the details of the repeater from RadioID.net. |
+| `dmr.radio-id-checks.hotspot-ids` | DMRHub refuses a 9-digit hotspot ID that does not start with the DMR ID of its owner. |
+
+`dmr.disable-radio-id-validation` turns off all five checks, whatever they are set to. Older configs use it.
+
 ## Fix RadioID drift
 
-A callsign can change on RadioID.net after a user registers. Each night at 01:00 (server time), DMRHub compares the DMR ID and the added radio IDs of each user with RadioID.net. Go to **Admin**, then **RadioID Drift** (`<siteurl>/admin/users/radio-id-drift`) to see the radio IDs that no longer match. This page shows only when radio ID validation is on.
+A callsign can change on RadioID.net after a user registers. Each night at 01:00 (server time), DMRHub compares the DMR ID and the added radio IDs of each user with RadioID.net. Go to **Admin**, then **RadioID Drift** (`<siteurl>/admin/users/radio-id-drift`) to see the radio IDs that no longer match. This page shows only when the callsign check or the radio IDs check is on. The callsign check covers the DMR ID of each account, and the radio IDs check covers the added radio IDs.
 
 - Click **Fix** to give the user the callsign that RadioID.net lists. If the user confirmed an email address, you can also send them an email about the change.
 - **Not listed** means that RadioID.net no longer has the radio ID.

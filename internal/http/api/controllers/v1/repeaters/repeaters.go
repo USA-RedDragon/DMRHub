@@ -436,7 +436,7 @@ func POSTRepeater(c *gin.Context) {
 
 		switch {
 		case repeaterIDRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-			if !config.DMR.DisableRadioIDValidation {
+			if config.DMR.Checks().RepeaterIDs {
 				if !repeaterdb.IsValidRepeaterID(json.RadioID) {
 					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Repeater ID is not valid"})
 					return
@@ -498,7 +498,7 @@ func POSTRepeater(c *gin.Context) {
 				}
 			}
 		case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
-			if !config.DMR.DisableRadioIDValidation {
+			if config.DMR.Checks().HotspotIDs {
 				// check that first 7 digits of hotspot ID match userID
 				userIDStr := fmt.Sprintf("%d", userID)
 				if !strings.HasPrefix(fmt.Sprintf("%d", json.RadioID), userIDStr) {

@@ -330,3 +330,39 @@ func TestNextRunIsTheNextOneOClock(t *testing.T) {
 		assert.Equal(t, want, radioiddrift.NextRun(from), from.String())
 	}
 }
+
+func TestCheckCoversOnlyTheIDsOfTheChecksThatAreOn(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct {
+				name     string
+				checks   config.RadioIDChecks
+				expected []uint
+			}{
+				{"callsign", config.RadioIDChecks{Callsign: true}, []uint{3100002}},
+				{"radio-ids", config.RadioIDChecks{RadioIDs: true}, []uint{3100012}},
+				{"both", config.RadioIDChecks{Callsign: true, RadioIDs: true}, []uint{3100002, 3100012}},
+				{"neither", config.RadioIDChecks{UserID: true, RepeaterIDs: true, HotspotIDs: true}, nil},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					cfg, database, kvStore := setup(t, be)
+					cfg.DMR.DisableRadioIDValidation = false
+					cfg.DMR.RadioIDChecks = tc.checks
+					require.NoError(t, database.Create(&models.User{ID: 3100002, Callsign: "N0OLD", Username: "moved"}).Error)
+					require.NoError(t, database.Create(&models.UserRadioID{UserID: 3100002, RadioID: 3100012, VerifiedAt: time.Now()}).Error)
+					dir := directory{3100002: "N0NEW", 3100012: "N0OTHER"}
+					_, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), time.Now())
+					require.NoError(t, err)
+					got := drifts(t, database)
+					assert.Len(t, got, len(tc.expected))
+					for _, id := range tc.expected {
+						assert.Contains(t, got, id)
+					}
+				})
+			}
+		})
+	}
+}

@@ -115,9 +115,9 @@ func GETMyRadioIDs(c *gin.Context) {
 	listRadioIDs(c, db, &user)
 }
 
-// POSTMyRadioID adds a radio ID to the logged-in user. With radio ID
-// validation on, the user database must show that it is registered to
-// their callsign.
+// POSTMyRadioID adds a radio ID to the logged-in user. With the radio IDs
+// check on, the user database must show that it is registered to their
+// callsign.
 func POSTMyRadioID(c *gin.Context) {
 	config, ok := utils.GetConfig(c)
 	if !ok {
@@ -131,7 +131,7 @@ func POSTMyRadioID(c *gin.Context) {
 	if !ok {
 		return
 	}
-	addRadioID(c, db, &user, !config.DMR.DisableRadioIDValidation)
+	addRadioID(c, db, &user, config.DMR.Checks().RadioIDs)
 }
 
 // DELETEMyRadioID removes a radio ID of the logged-in user.

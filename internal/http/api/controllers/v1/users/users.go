@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -95,7 +96,7 @@ func POSTUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	user, ok := registration(c, db, config.DMR.DisableRadioIDValidation, config.HIBPAPIKey, config.PasswordSalt)
+	user, ok := registration(c, db, config.DMR.Checks(), config.HIBPAPIKey, config.PasswordSalt)
 	if !ok {
 		return
 	}
@@ -133,7 +134,7 @@ func POSTFirstAdmin(c *gin.Context) {
 	if !ok {
 		return
 	}
-	user, ok := registration(c, db, config.DMR.DisableRadioIDValidation, config.HIBPAPIKey, config.PasswordSalt)
+	user, ok := registration(c, db, config.DMR.Checks(), config.HIBPAPIKey, config.PasswordSalt)
 	if !ok {
 		return
 	}
@@ -154,22 +155,20 @@ func POSTFirstAdmin(c *gin.Context) {
 // registration checks the registration in the request and returns the
 // user to create, with the password hashed. On a bad registration it
 // answers the request and returns false.
-func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, salt string) (models.User, bool) {
+func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, hibpKey, salt string) (models.User, bool) {
 	var json apimodels.UserRegistration
 	if err := c.ShouldBindJSON(&json); err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return models.User{}, false
 	}
-	if !skipRadioIDCheck {
-		if !userdb.IsValidUserID(json.DMRId) {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
-			return models.User{}, false
-		}
-		if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch})
-			return models.User{}, false
-		}
+	if checks.UserID && !userdb.IsValidUserID(json.DMRId) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
+		return models.User{}, false
+	}
+	if checks.Callsign && !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch})
+		return models.User{}, false
 	}
 	if isValid, errString := json.IsValidUsername(); !isValid {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: errString})
@@ -662,7 +661,7 @@ func PATCHUser(c *gin.Context) {
 			}
 		}
 
-		override, ok := patchNames(c, db, !config.DMR.DisableRadioIDValidation, &user, json)
+		override, ok := patchNames(c, db, config.DMR.Checks().Callsign, &user, json)
 		if !ok {
 			return
 		}

@@ -99,6 +99,7 @@ func GETNetworkFeatures(c *gin.Context) {
 		return
 	}
 
+	checks := config.DMR.Checks()
 	c.JSON(http.StatusOK, gin.H{
 		"ipsc":                config.DMR.IPSC.Enabled,
 		"openbridge":          config.DMR.OpenBridge.Enabled,
@@ -107,7 +108,14 @@ func GETNetworkFeatures(c *gin.Context) {
 		"ipsc_port":           config.DMR.IPSC.Port,
 		"openbridge_port":     config.DMR.OpenBridge.Port,
 		"server_address":      config.ServerAddress(),
-		"radio_id_validation": !config.DMR.DisableRadioIDValidation,
+		"radio_id_validation": checks.Drift(),
+		"radio_id_checks": gin.H{
+			"user_id":      checks.UserID,
+			"callsign":     checks.Callsign,
+			"radio_ids":    checks.RadioIDs,
+			"repeater_ids": checks.RepeaterIDs,
+			"hotspot_ids":  checks.HotspotIDs,
+		},
 	})
 }
 

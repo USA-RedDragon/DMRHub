@@ -28,7 +28,7 @@ DMRHub starts the setup wizard instead of the network when its configuration is 
 
 2. Open `http://<server>:<http.port>/setup` in a browser, such as `http://<server>:3005/setup`. You do not need anything from the log.
 3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database. When the deployment sets every needed setting, the wizard opens on the next page.
-4. Make the first admin user on the **Create the first admin** page. DMRHub checks the DMR ID and callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
+4. Make the first admin user on the **Create the first admin** page. DMRHub checks the DMR ID and callsign against RadioID.net when those checks are on (see [RadioID checks](users.md#radioid-checks)). This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
 5. DMRHub stops the wizard and starts the network in the same process, with the new settings. Log in at `<siteurl>/login`.
 
 The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete. The database lets only one visitor make the first admin, also when several replicas run the wizard at once. A visitor who comes second gets the message that the admin exists, and can log in when that admin gives them an account.

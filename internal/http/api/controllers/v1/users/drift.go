@@ -120,7 +120,7 @@ func POSTRadioIDDriftFix(c *gin.Context) {
 			return
 		}
 	}
-	if config.DMR.DisableRadioIDValidation {
+	if !config.DMR.Checks().Drift() {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Radio ID validation is off"})
 		return
 	}

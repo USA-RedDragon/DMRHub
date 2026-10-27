@@ -163,12 +163,14 @@ func (c *Checker) Stop() {
 // that RadioID does not list under the callsign of their user the RadioID
 // drift list. It emails each user once about each radio ID found, when
 // SMTP is on and the user verified an address. It does nothing when
-// another replica ran it in the last 23 hours. Without radio ID
-// validation it empties the list.
+// another replica ran it in the last 23 hours. The callsign check covers
+// the account IDs and the radio IDs check the added radio IDs; with both
+// off it empties the list.
 func (c *Checker) Run(ctx context.Context, now time.Time) (Result, error) {
 	db := c.db.WithContext(ctx)
 	cfg := c.cfg.Get()
-	if cfg.DMR.DisableRadioIDValidation {
+	checks := cfg.DMR.Checks()
+	if !checks.Drift() {
 		if err := models.ReplaceRadioIDDrifts(db, nil, now); err != nil {
 			return Result{}, fmt.Errorf("radioiddrift: %w", err)
 		}
@@ -185,7 +187,7 @@ func (c *Checker) Run(ctx context.Context, now time.Time) (Result, error) {
 		return Result{}, nil
 	}
 	res := Result{Ran: true}
-	found, checked, err := c.find(db)
+	found, checked, err := c.find(db, checks)
 	if err != nil {
 		return res, err
 	}
@@ -205,7 +207,7 @@ func (c *Checker) Run(ctx context.Context, now time.Time) (Result, error) {
 	return res, err
 }
 
-func (c *Checker) find(db *gorm.DB) ([]models.RadioIDDrift, int, error) {
+func (c *Checker) find(db *gorm.DB, checks config.RadioIDChecks) ([]models.RadioIDDrift, int, error) {
 	var found []models.RadioIDDrift
 	checked := 0
 	check := func(radioID, userID uint, callsign string) {
@@ -231,9 +233,11 @@ func (c *Checker) find(db *gorm.DB) ([]models.RadioIDDrift, int, error) {
 			}
 			ids = append(ids, u.ID)
 			callsigns[u.ID] = u.Callsign
-			check(u.ID, u.ID, u.Callsign)
+			if checks.Callsign {
+				check(u.ID, u.ID, u.Callsign)
+			}
 		}
-		if len(ids) > 0 {
+		if checks.RadioIDs && len(ids) > 0 {
 			var extra []models.UserRadioID
 			if err := db.Select("user_id", "radio_id").Where("user_id IN ?", ids).Order("radio_id").Find(&extra).Error; err != nil {
 				return nil, 0, fmt.Errorf("radioiddrift: cannot list the radio IDs: %w", err)

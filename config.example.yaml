@@ -159,8 +159,20 @@ dmr:
       interval: 60
       # Seconds that each beacon keys up, at least 1 and less than the interval
       duration: 3
-  # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
+  # Turn off all the RadioID checks of radio-id-checks, whatever they are set to
   disable-radio-id-validation: false
+  # Checks of DMR IDs and callsigns against the RadioID data, each of which can be on or off
+  radio-id-checks:
+    # Refuse a registration whose DMR ID does not have 7 digits
+    user-id: true
+    # Refuse a registration or a callsign change whose callsign RadioID does not list under the DMR ID of the account, and list on the RadioID drift page the accounts whose callsign RadioID no longer lists
+    callsign: true
+    # Refuse an added radio ID that RadioID does not list under the callsign of the user, and list on the RadioID drift page the added radio IDs that RadioID no longer lists under it
+    radio-ids: true
+    # Refuse a 6-digit repeater ID that RadioID does not list under the callsign of its owner, and fill in the details of the repeater from RadioID
+    repeater-ids: true
+    # Refuse a 9-digit hotspot ID that does not start with the DMR ID of its owner
+    hotspot-ids: true
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.
   radio-id-url: "https://www.radioid.net/static/users.json"
   # URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.

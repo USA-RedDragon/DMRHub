@@ -32,6 +32,14 @@
     <template v-else-if="state === 'ready'">
       <PasswordCard :user-id="userID" :must-change="mustChange" @changed="onPasswordChanged" />
 
+      <AccountCard
+        v-if="!mustChange"
+        :id="userID"
+        :username="username"
+        :callsign="callsign"
+        @saved="onAccountSaved"
+      />
+
       <Card v-if="!mustChange" data-test="sms-storage-card">
         <CardHeader>
           <CardTitle>SMS Storage</CardTitle>
@@ -166,6 +174,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AccountCard from '@/components/users/AccountCard.vue';
 import AppsCard from '@/components/users/AppsCard.vue';
 import EmailCard from '@/components/users/EmailCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
@@ -191,6 +200,8 @@ const privacyText =
 
 const state = ref<'loading' | 'anon' | 'ready' | 'error'>('loading');
 const userID = ref(0);
+const username = ref('');
+const callsign = ref('');
 const mustChange = ref(false);
 const email = ref('');
 const emailVerified = ref(false);
@@ -211,6 +222,8 @@ const load = async () => {
   try {
     const me = await getMe();
     userID.value = me.id;
+    username.value = me.username;
+    callsign.value = me.callsign;
     mustChange.value = me.must_change_password === true;
     email.value = me.email ?? '';
     emailVerified.value = me.email_verified === true;
@@ -304,6 +317,13 @@ const remove = async (id: number) => {
   } finally {
     saving.value = false;
   }
+};
+
+const onAccountSaved = (name: string, call: string) => {
+  username.value = name;
+  callsign.value = call;
+  userStore.username = name;
+  userStore.callsign = call;
 };
 
 const onPasswordChanged = () => {

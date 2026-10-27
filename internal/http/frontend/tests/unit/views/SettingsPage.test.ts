@@ -84,6 +84,7 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-test="sms-storage-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="apps-card"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="account-card"]').exists()).toBe(false);
   });
 
   it('shows the Password card first, for the logged-in user', async () => {
@@ -91,6 +92,7 @@ describe('SettingsPage', () => {
     const wrapper = await mountPage();
     const cards = wrapper.findAll('[data-test$="-card"]').map((c) => c.attributes('data-test'));
     expect(cards[0]).toBe('password-card');
+    expect(cards[1]).toBe('account-card');
     expect(wrapper.find('[data-test="password-card"]').text()).toContain('Change password');
   });
 

@@ -60,8 +60,7 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = ""
-	cfg.Database.ExtraParameters = []string{}
+	sharedMemoryDB(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
@@ -112,8 +111,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 			const id = 311861
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
 			require.NoError(t, err)
-			cfg.Database.Database = ""
-			cfg.Database.ExtraParameters = []string{}
+			sharedMemoryDB(&cfg)
 			database, err := db.MakeDB(&cfg)
 			require.NoError(t, err)
 			kvStore, err := kv.MakeKV(context.Background(), &cfg)

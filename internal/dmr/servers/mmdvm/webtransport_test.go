@@ -53,8 +53,7 @@ func webTransportServerWith(t *testing.T, set func(*config.Config)) (*Server, *c
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = ""
-	cfg.Database.ExtraParameters = []string{}
+	sharedMemoryDB(&cfg)
 	cfg.DMR.MMDVM.Bind = "127.0.0.1"
 	cfg.DMR.MMDVM.Port = 0
 	cfg.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: 0}

@@ -36,7 +36,10 @@ import (
 )
 
 // openPTY returns the master of a new pseudo terminal and the path of its
-// slave, or skips the test when the system has none for it.
+// slave, or skips the test when the system has none for it. It holds the
+// slave open until the test ends: a read of the master fails with EIO
+// while no slave is open, which would stop a fake modem when a test
+// closes the port, where a board keeps running.
 func openPTY(t *testing.T) (*os.File, string) {
 	t.Helper()
 	fd, err := unix.Open("/dev/ptmx", unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
@@ -52,7 +55,14 @@ func openPTY(t *testing.T) (*os.File, string) {
 		_ = unix.Close(fd)
 		t.Skipf("no pseudo terminal number: %v", err)
 	}
-	return os.NewFile(uintptr(fd), "/dev/ptmx"), "/dev/pts/" + strconv.Itoa(n)
+	slave := "/dev/pts/" + strconv.Itoa(n)
+	hold, err := unix.Open(slave, unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	if err != nil {
+		_ = unix.Close(fd)
+		t.Skipf("cannot open the pseudo terminal: %v", err)
+	}
+	t.Cleanup(func() { _ = unix.Close(hold) })
+	return os.NewFile(uintptr(fd), "/dev/ptmx"), slave
 }
 
 // TestServerOverAPseudoTerminal runs the server through OpenSerial, the

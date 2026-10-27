@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -126,6 +127,20 @@ func (r *InstanceRegistry) MarkDraining(ctx context.Context) {
 func InstanceDraining(ctx context.Context, store kv.KV, id string) bool {
 	v, err := store.Get(ctx, instanceKeyPrefix+id)
 	return err == nil && string(v) == drainingValue
+}
+
+// InstanceIDs returns the IDs of the instances that are registered in
+// store.
+func InstanceIDs(ctx context.Context, store kv.KV) ([]string, error) {
+	keys, err := scanAll(ctx, store, instanceKeyPrefix+"*")
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(keys))
+	for _, k := range keys {
+		ids = append(ids, strings.TrimPrefix(k, instanceKeyPrefix))
+	}
+	return ids, nil
 }
 
 // OtherInstancesExist returns true if any other instance (not this one) has a

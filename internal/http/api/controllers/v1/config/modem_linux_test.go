@@ -33,10 +33,12 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/modem"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/modem/modemtest"
 	configcontroller "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -68,7 +70,14 @@ func openPTY(t *testing.T) (*os.File, string) {
 		_ = unix.Close(fd)
 		t.Skipf("no pseudo terminal number: %v", err)
 	}
-	return os.NewFile(uintptr(fd), "/dev/ptmx"), "/dev/pts/" + strconv.Itoa(n)
+	slave := "/dev/pts/" + strconv.Itoa(n)
+	hold, err := unix.Open(slave, unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	if err != nil {
+		_ = unix.Close(fd)
+		t.Skipf("cannot open the pseudo terminal: %v", err)
+	}
+	t.Cleanup(func() { _ = unix.Close(hold) })
+	return os.NewFile(uintptr(fd), "/dev/ptmx"), slave
 }
 
 type modemAPI struct {
@@ -76,7 +85,7 @@ type modemAPI struct {
 	opens  *atomic.Int32
 }
 
-func newModemAPI(t *testing.T, m *configcontroller.Modem) modemAPI {
+func newModemAPI(t *testing.T, m *modem.Replicas) modemAPI {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -104,10 +113,10 @@ func modemBody(t *testing.T, port string, baud int) []byte {
 	return b
 }
 
-func (a modemAPI) test(t *testing.T, body []byte) (int, configcontroller.ModemTest) {
+func (a modemAPI) test(t *testing.T, body []byte) (int, modem.TestAnswer) {
 	t.Helper()
 	w := serve(t, a.router, http.MethodPost, "/modem/test", body, nil)
-	var out configcontroller.ModemTest
+	var out modem.TestAnswer
 	if w.Code == http.StatusOK {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 	}
@@ -119,7 +128,7 @@ func TestModemTestReadsTheBoard(t *testing.T) {
 	master, slave := openPTY(t)
 	fake := modemtest.New(master, 1)
 	t.Cleanup(fake.Close)
-	api := newModemAPI(t, &configcontroller.Modem{})
+	api := newModemAPI(t, &modem.Replicas{})
 	code, out := api.test(t, modemBody(t, slave, 115200))
 	require.Equal(t, http.StatusOK, code)
 	require.False(t, out.Live)
@@ -138,7 +147,7 @@ func TestModemTestOfABoardThatDoesNotAnswer(t *testing.T) {
 	t.Parallel()
 	master, slave := openPTY(t)
 	t.Cleanup(func() { _ = master.Close() })
-	api := newModemAPI(t, &configcontroller.Modem{})
+	api := newModemAPI(t, &modem.Replicas{})
 	code, out := api.test(t, modemBody(t, slave, 57600))
 	require.Equal(t, http.StatusOK, code)
 	require.NotNil(t, out.Result)
@@ -152,7 +161,7 @@ func TestModemTestOfABoardThatDoesNotAnswer(t *testing.T) {
 
 func TestModemTestRefusesSettingsThatDoNotWork(t *testing.T) {
 	t.Parallel()
-	api := newModemAPI(t, &configcontroller.Modem{})
+	api := newModemAPI(t, &modem.Replicas{})
 	w := serve(t, api.router, http.MethodPost, "/modem/test", modemBody(t, "", 1200), nil)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), `"port"`)
@@ -168,7 +177,7 @@ func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	local := &modem.Status{Replica: "r1", Port: "/dev/ttyAMA0", Baud: 115200, Error: "no version reply from the modem"}
-	api := newModemAPI(t, &configcontroller.Modem{Host: modemHost{st: local}, Replica: "r1"})
+	api := newModemAPI(t, &modem.Replicas{Host: modemHost{st: local}, ID: "r1"})
 	code, out := api.test(t, modemBody(t, "/dev/ttyAMA0", 115200))
 	require.Equal(t, http.StatusOK, code)
 	require.True(t, out.Live)
@@ -193,10 +202,10 @@ func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 		}})
 	require.NoError(t, srv.Start(ctx))
 	t.Cleanup(func() { _ = srv.Stop(ctx) })
-	remote := newModemAPI(t, &configcontroller.Modem{KV: store, Replica: "r1"})
+	remote := newModemAPI(t, &modem.Replicas{KV: store, ID: "r1"})
 	require.Eventually(t, func() bool {
 		w := serve(t, remote.router, http.MethodGet, "/modem", nil, nil)
-		var st configcontroller.ModemState
+		var st modem.State
 		return w.Code == http.StatusOK && json.Unmarshal(w.Body.Bytes(), &st) == nil && st.Status != nil && st.Status.Linked
 	}, 5*time.Second, 10*time.Millisecond)
 	code, out = remote.test(t, modemBody(t, "/dev/ttyACM0", 115200))
@@ -218,7 +227,7 @@ func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 
 func TestGETModemWithNoModem(t *testing.T) {
 	t.Parallel()
-	api := newModemAPI(t, &configcontroller.Modem{})
+	api := newModemAPI(t, &modem.Replicas{})
 	w := serve(t, api.router, http.MethodGet, "/modem", nil, nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{"status":null,"self":false}`, w.Body.String())
@@ -226,10 +235,60 @@ func TestGETModemWithNoModem(t *testing.T) {
 
 func TestGETModemPorts(t *testing.T) {
 	t.Parallel()
-	api := newModemAPI(t, &configcontroller.Modem{Ports: func() []modem.SerialPort {
+	api := newModemAPI(t, &modem.Replicas{ID: "r1", Ports: func() []modem.SerialPort {
 		return []modem.SerialPort{{Path: "/dev/serial/by-id/usb-MMDVM-if00", Device: "/dev/ttyACM0"}, {Path: "/dev/ttyAMA0"}}
 	}})
 	w := serve(t, api.router, http.MethodGet, "/modem/ports", nil, nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"ports":[{"path":"/dev/serial/by-id/usb-MMDVM-if00","device":"/dev/ttyACM0"},{"path":"/dev/ttyAMA0"}]}`, w.Body.String())
+	assert.JSONEq(t, `{"replicas":[{"replica":"r1","self":true,"ports":[{"path":"/dev/serial/by-id/usb-MMDVM-if00","device":"/dev/ttyACM0"},{"path":"/dev/ttyAMA0"}]}]}`, w.Body.String())
+}
+
+// TestModemTestOnAnotherReplica runs the test on the replica of the query,
+// which shares the KV store and the pubsub with this one, lists the ports
+// of both, and answers that a replica that is gone did not answer.
+func TestModemTestOnAnotherReplica(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := kv.MakeKV(ctx, &config.Config{})
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(ctx, &config.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = ps.Close()
+		_ = store.Close()
+	})
+	regs := []*servers.InstanceRegistry{servers.NewInstanceRegistry(ctx, store, "r1"), servers.NewInstanceRegistry(ctx, store, "r2")}
+	t.Cleanup(func() {
+		for _, r := range regs {
+			r.Deregister(ctx)
+		}
+	})
+	master, slave := openPTY(t)
+	fake := modemtest.New(master, 2)
+	t.Cleanup(fake.Close)
+	other := &modem.Replicas{ID: "r2", PubSub: ps, KV: store, Probe: modem.Options{Open: modem.OpenSerial, Reply: 200 * time.Millisecond},
+		Ports: func() []modem.SerialPort { return []modem.SerialPort{{Path: slave}} }}
+	other.Start(ctx)
+	t.Cleanup(other.Stop)
+	api := newModemAPI(t, &modem.Replicas{ID: "r1", PubSub: ps, KV: store, PortsWait: time.Second, TestWait: 2 * time.Second,
+		Ports: func() []modem.SerialPort { return []modem.SerialPort{{Path: "/dev/ttyAMA0"}} }})
+
+	w := serve(t, api.router, http.MethodGet, "/modem/ports", nil, nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"replicas":[{"replica":"r1","self":true,"ports":[{"path":"/dev/ttyAMA0"}]},{"replica":"r2","self":false,"ports":[{"path":"`+slave+`"}]}]}`, w.Body.String())
+
+	w = serve(t, api.router, http.MethodPost, "/modem/test?replica=r2", modemBody(t, slave, 115200), nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var out modem.TestAnswer
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Equal(t, "r2", out.Replica)
+	assert.False(t, out.Self)
+	require.NotNil(t, out.Result)
+	assert.True(t, out.Result.Answered)
+	assert.Zero(t, api.opens.Load(), "this replica opened no port")
+
+	other.Stop()
+	w = serve(t, api.router, http.MethodPost, "/modem/test?replica=r2", modemBody(t, slave, 115200), nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"replica":"r2","self":false,"unanswered":true,"live":false}`, w.Body.String())
 }

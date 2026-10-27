@@ -41,6 +41,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/modem"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
@@ -389,6 +390,7 @@ type serverManager struct {
 	database     *gorm.DB
 	cfg          config.Source
 	live         *liveconfig.Live
+	modem        *modem.Replicas
 	registry     *servers.InstanceRegistry
 	ready        *atomic.Bool
 }
@@ -459,6 +461,9 @@ func (l liveConfig) Apply(next *config.Config) []liveconfig.ApplyError {
 // closeResources tears down the HTTP server, pubsub, and KV connections.
 // Call this after hub.Stop() has cancelled all subscriptions.
 func (sm *serverManager) closeResources(ctx context.Context) {
+	if sm.modem != nil {
+		sm.modem.Stop()
+	}
 	if sm.live != nil {
 		sm.live.Stop(ctx)
 	}
@@ -566,7 +571,10 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 
 	live.Start(ctx, liveconfig.Replica{ID: instanceID, PubSub: pubsubClient, KV: kvStore, Applier: applier})
 
-	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithLiveConfig(live), http.WithPluginEngine(pluginEngine), http.WithKV(kvStore), http.WithModemHost(sm.dmr))
+	sm.modem = &modem.Replicas{ID: instanceID, PubSub: pubsubClient, KV: kvStore, Host: sm.dmr}
+	sm.modem.Start(ctx)
+
+	httpServer := http.MakeServer(ctx, cfg, hub, database, pubsubClient, ready, ns, version, commit, http.WithLiveConfig(live), http.WithPluginEngine(pluginEngine), http.WithKV(kvStore), http.WithModem(sm.modem))
 	err = httpServer.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HTTP server: %w", err)

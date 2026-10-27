@@ -28,6 +28,8 @@ The configuration keys are `dmr.openbridge.enabled`, `dmr.openbridge.bind`, `dmr
 
 4. Click **Save**. The browser shows the password of the peer. Copy it now: DMRHub does not show it again. Put it in the configuration of the other server as the passphrase of the link.
 
+   An older peer password can have a `%`. FreeDMR and HBlink3 read `%` as the start of a variable, so write each `%` as `%%` in `PASSPHRASE`.
+
 <!-- screenshot: admin-new-peer.png | /admin/peers/new filled in with peer ID 3000900, IP 192.0.2.10, port 62035, receive and transmit on -->
 
 ## Add the rules of a peer

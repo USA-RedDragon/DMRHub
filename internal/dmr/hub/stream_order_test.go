@@ -38,11 +38,13 @@ import (
 const orderPeerID = uint(3100100)
 
 // heldPublish holds the publish of the terminator of stream until a burst
-// of next is published, or until wait passes.
+// of next is published, or until release is closed. It closes holding
+// when it starts to hold.
 type heldPublish struct {
 	pubsub.PubSub
 	stream, next uint
-	wait         time.Duration
+	holding      chan struct{}
+	release      chan struct{}
 	once         sync.Once
 	nextSeen     chan struct{}
 }
@@ -56,9 +58,10 @@ func (p *heldPublish) Publish(topic string, message []byte) error {
 				p.once.Do(func() { close(p.nextSeen) })
 			case p.stream:
 				if pkt.FrameType == makeVoiceTermPacket(0, 0, false, false).FrameType {
+					close(p.holding)
 					select {
 					case <-p.nextSeen:
-					case <-time.After(p.wait):
+					case <-p.release:
 					}
 				}
 			}
@@ -89,7 +92,7 @@ func orderHub(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(
 	})
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	require.Eventually(t, func() bool { return h.LookupsLoaded([]uint{1, 2}, nil) }, 30*time.Second, 10*time.Millisecond, "the hub did not load the talkgroups and peers")
 	return h, arrivals
 }
 
@@ -132,13 +135,13 @@ func orderOf(sent []models.Packet) []delivered {
 
 // TestTheNextStreamOfASourceDoesNotOvertakeItsLastOne ends a stream and
 // starts the next on the same repeater slot at once, and holds the publish
-// of the terminator of the first until the second is published, or for
-// 300 ms. Each target must get all of the first stream before any of the
-// second.
+// of the terminator of the first until the second is published, or until
+// the three bursts of the second wait in the outbox behind it. Each target must
+// get all of the first stream before any of the second.
 func TestTheNextStreamOfASourceDoesNotOvertakeItsLastOne(t *testing.T) {
 	t.Parallel()
 	const first, second = uint(71001), uint(71002)
-	held := &heldPublish{stream: first, next: second, wait: 300 * time.Millisecond, nextSeen: make(chan struct{})}
+	held := &heldPublish{stream: first, next: second, holding: make(chan struct{}), release: make(chan struct{}), nextSeen: make(chan struct{})}
 	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub {
 		held.PubSub = ps
 		return held
@@ -161,6 +164,17 @@ func TestTheNextStreamOfASourceDoesNotOvertakeItsLastOne(t *testing.T) {
 	for _, p := range sent {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	}
+	require.Eventually(t, func() bool {
+		select {
+		case <-held.nextSeen:
+			return true
+		case <-held.holding:
+			return h.OutboxDepth() >= 4
+		default:
+			return false
+		}
+	}, 30*time.Second, time.Millisecond, "the terminator of the first stream and the bursts of the second did not reach the outbox")
+	close(held.release)
 
 	got := receiveOrder(t, arrivals, map[uint]bool{first: true, second: true}, len(sent), "mmdvm:100002", "peers:3100100")
 	for target, order := range got {

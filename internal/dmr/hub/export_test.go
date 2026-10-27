@@ -102,6 +102,27 @@ func (h *Hub) HeardAt(ctx context.Context, userID uint) uint {
 	return rec.Vetted.Repeater
 }
 
+// LookupsLoaded reports whether the hub holds the peers, whether each of
+// talkgroups exists and the owner of each of radios, so that no burst
+// waits on the database for them. It starts the loads that are missing,
+// and waits for each at most lookup.Wait.
+func (h *Hub) LookupsLoaded(talkgroups, radios []uint) bool {
+	if _, err := h.egressTable.Get(struct{}{}); err != nil {
+		return false
+	}
+	for _, tg := range talkgroups {
+		if _, err := h.talkgroupIDs.Get(tg); err != nil {
+			return false
+		}
+	}
+	for _, radio := range radios {
+		if _, err := h.radioOwners.Get(radio); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // ResyncRepeater runs one resync of the repeater id, and reports whether
 // it reloaded the subscriptions.
 func (h *Hub) ResyncRepeater(id uint) bool {

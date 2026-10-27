@@ -940,3 +940,35 @@ func TestPOSTPeerRuleMatch(t *testing.T) {
 	}
 	assert.Equal(t, []models.PeerRuleMatch{models.PeerRuleMatchSource, models.PeerRuleMatchDestination, models.PeerRuleMatchDestination, models.PeerRuleMatchSource}, got)
 }
+
+func TestPeerPrivateCallSwitches(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+
+	var adminUser models.User
+	require.NoError(t, tdb.DB().Where("username = ?", "Admin").First(&adminUser).Error)
+
+	peer := apimodels.PeerPost{ID: 300021, OwnerID: adminUser.ID, IP: "10.1.0.21", Port: 62035, Ingress: true, Egress: true, EgressPrivate: true}
+	_, w := testutils.CreatePeer(t, router, adminJar, peer)
+	require.Equal(t, http.StatusOK, w.Code)
+	got, w := testutils.GetPeer(t, router, peer.ID, adminJar)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, got.IngressPrivate)
+	assert.True(t, got.EgressPrivate)
+
+	on, off := true, false
+	got, w = testutils.PatchPeer(t, router, peer.ID, adminJar, apimodels.PeerPatch{IngressPrivate: &on, EgressPrivate: &off})
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, got.IngressPrivate)
+	assert.False(t, got.EgressPrivate)
+
+	got, w = testutils.PatchPeer(t, router, peer.ID, adminJar, apimodels.PeerPatch{IngressPrivate: &off})
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, got.IngressPrivate)
+	assert.False(t, got.EgressPrivate)
+}

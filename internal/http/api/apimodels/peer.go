@@ -22,23 +22,31 @@ package apimodels
 import "time"
 
 type PeerPost struct {
-	ID       uint   `json:"id" binding:"required"`
-	OwnerID  uint   `json:"owner" binding:"required"`
-	IP       string `json:"ip" binding:"required"`
-	Port     int    `json:"port"`
-	Ingress  bool   `json:"ingress"`
-	Egress   bool   `json:"egress"`
-	Enhanced bool   `json:"enhanced"`
-	Codec2   bool   `json:"codec2"`
+	ID      uint   `json:"id" binding:"required"`
+	OwnerID uint   `json:"owner" binding:"required"`
+	IP      string `json:"ip" binding:"required"`
+	Port    int    `json:"port"`
+	Ingress bool   `json:"ingress"`
+	Egress  bool   `json:"egress"`
+	// IngressPrivate and EgressPrivate let private calls past the
+	// destination rules of each direction.
+	IngressPrivate bool `json:"ingress_private"`
+	EgressPrivate  bool `json:"egress_private"`
+	Enhanced       bool `json:"enhanced"`
+	Codec2         bool `json:"codec2"`
 }
 
 type PeerPatch struct {
-	IP       *string `json:"ip"`
-	Port     *int    `json:"port"`
-	Ingress  *bool   `json:"ingress"`
-	Egress   *bool   `json:"egress"`
-	Enhanced *bool   `json:"enhanced"`
-	Codec2   *bool   `json:"codec2"`
+	IP      *string `json:"ip"`
+	Port    *int    `json:"port"`
+	Ingress *bool   `json:"ingress"`
+	Egress  *bool   `json:"egress"`
+	// IngressPrivate and EgressPrivate let private calls past the
+	// destination rules of each direction.
+	IngressPrivate *bool `json:"ingress_private"`
+	EgressPrivate  *bool `json:"egress_private"`
+	Enhanced       *bool `json:"enhanced"`
+	Codec2         *bool `json:"codec2"`
 }
 
 // PeerRotatePasswordResponse is the answer to a rotation of the password

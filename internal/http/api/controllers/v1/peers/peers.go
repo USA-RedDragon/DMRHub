@@ -219,6 +219,12 @@ func PATCHPeer(c *gin.Context) {
 	if json.Egress != nil {
 		updates["egress"] = *json.Egress
 	}
+	if json.IngressPrivate != nil {
+		updates["ingress_private"] = *json.IngressPrivate
+	}
+	if json.EgressPrivate != nil {
+		updates["egress_private"] = *json.EgressPrivate
+	}
 	if json.Enhanced != nil {
 		if !requesterIsAdmin(c, db) {
 			c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can change whether a peer uses enhanced OpenBridge"})
@@ -312,6 +318,8 @@ func POSTPeer(c *gin.Context) {
 
 		peer.Egress = json.Egress
 		peer.Ingress = json.Ingress
+		peer.IngressPrivate = json.IngressPrivate
+		peer.EgressPrivate = json.EgressPrivate
 		peer.Enhanced = json.Enhanced
 		peer.Codec2 = json.Codec2
 		peer.IP = json.IP

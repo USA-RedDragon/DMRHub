@@ -112,3 +112,29 @@ func TestOpenBridgeDropsStaleEnhancedPackets(t *testing.T) {
 		assert.Len(t, s.mc.Drain(drainWait), 1, "a fresh DMRE packet must reach the repeater")
 	})
 }
+
+// TestOpenBridgeTakesAPrivateCallOnTimeslot2 sends a private call on TS2,
+// as HBlink3 does to a peer with BOTH_SLOTS (bridge.py unit_received). The
+// hub must take it, as hblink.py does, and still drop a group call on TS2.
+func TestOpenBridgeTakesAPrivateCallOnTimeslot2(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, false)
+
+		group := makeGroupVoicePacket(conformUser, 1, 9611, true)
+		group.Repeater = conformPeer
+		require.NoError(t, s.peer.SendRawPacket(group))
+		assert.Empty(t, s.mc.Drain(drainWait), "a group call on TS2 reached the repeater")
+
+		private := makePrivateVoicePacket(conformRepeater, 9612)
+		private.Src = conformUser
+		private.Slot = true
+		private.Repeater = conformPeer
+		require.NoError(t, s.peer.SendRawPacket(private))
+		got := s.mc.Drain(drainWait)
+		if assert.Len(t, got, 1, "a private call on TS2 must reach the repeater") {
+			assert.Equal(t, uint(conformRepeater), got[0].Dst)
+			assert.False(t, got[0].GroupCall)
+		}
+	})
+}

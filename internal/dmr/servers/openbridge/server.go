@@ -559,11 +559,11 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 
 	slog.Debug("OpenBridge packet received", "packet", packet.String())
 
-	if packet.Slot {
-		// Drop TS2 packets on OpenBridge
+	if packet.Slot && packet.GroupCall {
 		slog.Debug("Dropping TS2 packet from OpenBridge")
 		return
 	}
+	packet.Slot = false
 
 	peerID := uint(bridge.Data.Repeater)
 	slog.Debug("OpenBridge packet peer ID", "peerID", peerID)

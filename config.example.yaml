@@ -53,6 +53,8 @@ http:
   # trusted-proxies: []
   # URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required
   # canonical-host: ""
+  # How long a login lasts, such as 720h. A shorter length also ends the older logins. 0 is 720h
+  session-length: "720h"
 # DMR server configuration for the application
 dmr:
   # MMDVM server configuration for DMR

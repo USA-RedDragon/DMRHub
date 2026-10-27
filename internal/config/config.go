@@ -92,12 +92,13 @@ type Database struct {
 
 // HTTP holds the HTTP server configuration.
 type HTTP struct {
-	Bind           string    `json:"bind,omitempty" name:"bind" description:"HTTP server listen address" default:"[::]"`
-	Port           int       `json:"port,omitempty" name:"port" description:"HTTP server port" default:"3005"`
-	RobotsTXT      RobotsTXT `json:"robots-txt,omitempty" yaml:"robots-txt" name:"robots-txt" description:"Robots.txt configuration for the HTTP server"`
-	CORS           CORS      `json:"cors,omitempty" name:"cors" description:"CORS configuration for the HTTP server"`
-	TrustedProxies []string  `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the HTTP server"`
-	CanonicalHost  string    `json:"canonical-host,omitempty" yaml:"canonical-host" name:"canonical-host" description:"URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required"`
+	Bind           string        `json:"bind,omitempty" name:"bind" description:"HTTP server listen address" default:"[::]"`
+	Port           int           `json:"port,omitempty" name:"port" description:"HTTP server port" default:"3005"`
+	RobotsTXT      RobotsTXT     `json:"robots-txt,omitempty" yaml:"robots-txt" name:"robots-txt" description:"Robots.txt configuration for the HTTP server"`
+	CORS           CORS          `json:"cors,omitempty" name:"cors" description:"CORS configuration for the HTTP server"`
+	TrustedProxies []string      `json:"trusted-proxies,omitempty" yaml:"trusted-proxies" name:"trusted-proxies" description:"List of trusted proxy IPs for the HTTP server"`
+	CanonicalHost  string        `json:"canonical-host,omitempty" yaml:"canonical-host" name:"canonical-host" description:"URL the HTTP server is reached at, used for generating absolute URLs, e.g. https://dmrhub.example.com. Required"`
+	SessionLength  time.Duration `json:"session-length" yaml:"session-length" name:"session-length" description:"How long a login lasts, such as 720h. A shorter length also ends the older logins. 0 is 720h" default:"720h"`
 }
 
 // CORS holds the CORS configuration for the HTTP server.

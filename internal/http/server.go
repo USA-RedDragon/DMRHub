@@ -226,6 +226,8 @@ func addMiddleware(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hu
 
 	// Sessions
 	sessionStore := sessionstore.New(db, config.GetDerivedSecret())
+	sessionCurrent := o.live.Current()
+	sessionStore.SetLength(func() time.Duration { return sessionCurrent.Get().HTTP.Session() })
 	go sessionStore.PeriodicCleanup(ctx, time.Hour)
 	r.Use(middleware.Provider("SessionStore", sessionStore))
 	r.Use(sessions.Sessions(sessionstore.CookieName, sessionStore))

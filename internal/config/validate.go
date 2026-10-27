@@ -1040,5 +1040,7 @@ func (c Config) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, pprofErrs...)
 	}
 
+	errs = append(errs, c.accountErrors()...)
+
 	return
 }

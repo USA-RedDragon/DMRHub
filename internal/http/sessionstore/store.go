@@ -50,6 +50,7 @@ type Store struct {
 	db     *gorm.DB
 	codecs []securecookie.Codec
 	opts   sessions.Options
+	length func() time.Duration
 }
 
 // New returns a Store on the sessions table of db that signs the session
@@ -62,6 +63,23 @@ func New(db *gorm.DB, keyPairs ...[]byte) *Store {
 	}
 	st.setCodecMaxAge(defaultMaxAge)
 	return st
+}
+
+// SetLength makes length give how long a session lasts from its last save,
+// for each new session and each session it loads. A session saved longer
+// ago than length is ended, so a shorter length ends the older sessions
+// at once. The cookies then carry no time limit of their own. It must be
+// called before the store serves requests.
+func (st *Store) SetLength(length func() time.Duration) {
+	st.length = length
+	st.setCodecMaxAge(0)
+}
+
+func (st *Store) maxAge() (int, bool) {
+	if st.length == nil {
+		return 0, false
+	}
+	return int(st.length() / time.Second), true
 }
 
 // Options sets the options of new sessions.
@@ -92,6 +110,9 @@ func (st *Store) Get(r *http.Request, name string) (*sessions.Session, error) {
 func (st *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 	session := sessions.NewSession(st, name)
 	opts := st.opts
+	if age, ok := st.maxAge(); ok {
+		opts.MaxAge = age
+	}
 	session.Options = &opts
 	session.IsNew = true
 	if row := st.fromCookie(r, name); row != nil {
@@ -158,7 +179,12 @@ func (st *Store) fromCookie(r *http.Request, name string) *models.Session {
 		return nil
 	}
 	var row models.Session
-	res := st.db.WithContext(r.Context()).Where("id = ? AND expires_at > ?", id, time.Now()).Limit(1).Find(&row)
+	now := time.Now()
+	q := st.db.WithContext(r.Context()).Where("id = ? AND expires_at > ?", id, now)
+	if age, ok := st.maxAge(); ok {
+		q = q.Where("updated_at > ?", now.Add(-time.Duration(age)*time.Second))
+	}
+	res := q.Limit(1).Find(&row)
 	if res.Error != nil || res.RowsAffected == 0 {
 		return nil
 	}

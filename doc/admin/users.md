@@ -56,6 +56,10 @@ A callsign can change on RadioID.net after a user registers. Each night at 01:00
 
 When SMTP is on, DMRHub sends one email to a user with a confirmed address when the check first finds one of their radio IDs. If more than 5 radio IDs and more than 5% of the checked radio IDs drift in one check, DMRHub sends no emails and logs a warning, because a bad RadioID.net download is more likely than a real change.
 
+## Logins
+
+A login lasts 30 days. Change this with `http.session-length` on the Setup page, such as `12h` or `2160h`. The new length applies to each new login at once. A shorter length also ends the older logins that are past it. A longer length does not make the older logins last longer.
+
 ## Suspend a user
 
 On the **Users** page, turn on the **Suspend?** box of the user. A suspended user cannot log in, and DMRHub refuses the API calls of their open sessions. Turn the box off to let the user in again. You cannot suspend yourself.

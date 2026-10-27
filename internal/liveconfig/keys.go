@@ -51,6 +51,7 @@ func setupPaths() []string {
 		"auto-approve-users",
 		"http.robots-txt",
 		"http.canonical-host",
+		"http.session-length",
 		"smtp.enabled",
 		"smtp.host",
 		"smtp.port",

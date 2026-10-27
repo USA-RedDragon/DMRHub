@@ -152,9 +152,9 @@ var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 
 // newerSchema matches the DDL of the schema changes made after 2026-10-26:
 // the plugin names unique per built-in key, the Setup settings, the
-// generated secrets, the verified email addresses, the first admin and the
-// usernames unique in any case.
-var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci")
+// generated secrets, the verified email addresses, the first admin, the
+// usernames unique in any case and the calls to a plugin.
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin")
 
 func (r *recorder) ddl() []string {
 	r.mu.Lock()

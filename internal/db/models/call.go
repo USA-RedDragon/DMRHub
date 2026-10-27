@@ -80,6 +80,7 @@ type Call struct {
 	IsToRepeater   bool           `json:"is_to_repeater"`
 	ToRepeaterID   *uint          `json:"-"`
 	ToRepeater     Repeater       `json:"to_repeater" gorm:"foreignKey:ToRepeaterID"`
+	IsToPlugin     bool           `json:"is_to_plugin" gorm:"not null;default:false"`
 	DestinationID  uint           `json:"destination_id"`
 	TotalPackets   uint           `json:"-"`
 	LostSequences  uint           `json:"-"`
@@ -144,15 +145,20 @@ func (c *Call) BeforeSave(*gorm.DB) error {
 	return nil
 }
 
+// lastHeard picks the calls of the public last heard: those to a
+// talkgroup, and the group calls to an ID that a plugin owns, such as the
+// parrot, which has no talkgroup.
+const lastHeard = "(is_to_talkgroup = ? OR (group_call = ? AND is_to_plugin = ?))"
+
 func FindCalls(db *gorm.DB) ([]Call, error) {
 	var calls []Call
-	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where("is_to_talkgroup = ?", true).Order("start_time desc").Find(&calls).Error
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where(lastHeard, true, true, true).Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
 
 func CountCalls(db *gorm.DB) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ?", true).Count(&count).Error
+	err := db.Model(&Call{}).Where(lastHeard, true, true, true).Count(&count).Error
 	return int(count), err
 }
 

@@ -1280,3 +1280,55 @@ func TestCallUpdatesLeaveOutRepeatersOfUsers(t *testing.T) {
 		}
 	}
 }
+
+type pluginIDs []models.PluginRange
+
+func (p pluginIDs) Owner(id uint) (uint, bool) {
+	for i, r := range p {
+		if r.Contains(id) {
+			return uint(i + 1), true
+		}
+	}
+	return 0, false
+}
+
+// TestTrackGroupCallToAPluginIsOnLastHeard sends group calls to the parrot
+// and the location server, which have no talkgroup. They go on the public
+// last heard as calls to a plugin, with no lookup of a repeater.
+func TestTrackGroupCallToAPluginIsOnLastHeard(t *testing.T) {
+	t.Parallel()
+	ct, database, _ := newTracker(t)
+	ct.SetPlugins(pluginIDs{{First: 9990, Last: 9990}, {First: 5050, Last: 5059}})
+	var mu sync.Mutex
+	lookups := 0
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("count_missing_repeaters", func(tx *gorm.DB) {
+		if tx.Statement.Table == "repeaters" && errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+			mu.Lock()
+			defer mu.Unlock()
+			lookups++
+		}
+	}))
+
+	for i, dst := range []uint{9990, 5055} {
+		s := newSender(t, ct, userA, dst, true, uint(7101+i))
+		s.slot = i == 0
+		s.voiceCall(3, false)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+	}
+
+	calls := waitDone(t, ct, database, 2)
+	for _, c := range calls {
+		assert.True(t, c.IsToPlugin, c.DestinationID)
+		assert.False(t, c.IsToTalkgroup, c.DestinationID)
+	}
+	heard, err := models.FindCalls(database)
+	require.NoError(t, err)
+	assert.Len(t, heard, 2)
+	n, err := models.CountCalls(database)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Zero(t, lookups)
+}

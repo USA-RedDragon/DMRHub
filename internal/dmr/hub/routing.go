@@ -407,4 +407,7 @@ type Plugins interface {
 // SetPlugins makes p the plugins that the hub hands the bursts to their IDs.
 func (h *Hub) SetPlugins(p Plugins) {
 	h.plugins.Store(&p)
+	if h.callTracker != nil {
+		h.callTracker.SetPlugins(p)
+	}
 }

@@ -124,6 +124,7 @@ type CallTracker struct {
 	recent   map[pair][]recentRow
 
 	observer atomic.Pointer[observerBox]
+	plugins  atomic.Pointer[pluginsBox]
 	// out publishes what the workers and the callers, which deliver
 	// bursts, send to pubsub, so that they never wait on it.
 	out     *outbox.Outbox[outKey]
@@ -133,6 +134,13 @@ type CallTracker struct {
 }
 
 type observerBox struct{ o DataObserver }
+
+// PluginOwners tells which plugin owns a DMR ID.
+type PluginOwners interface {
+	Owner(id uint) (uint, bool)
+}
+
+type pluginsBox struct{ p PluginOwners }
 
 type streamRef struct {
 	shard int
@@ -193,6 +201,20 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 // before the first Track.
 func (c *CallTracker) SetDataObserver(o DataObserver) {
 	c.observer.Store(&observerBox{o: o})
+}
+
+// SetPlugins makes p the plugins whose IDs the calls go to.
+func (c *CallTracker) SetPlugins(p PluginOwners) {
+	c.plugins.Store(&pluginsBox{p: p})
+}
+
+func (c *CallTracker) toPlugin(id uint) bool {
+	b := c.plugins.Load()
+	if b == nil || b.p == nil {
+		return false
+	}
+	_, ok := b.p.Owner(id)
+	return ok
 }
 
 func (c *CallTracker) dataObserver() DataObserver {
@@ -758,7 +780,7 @@ func (c *CallTracker) remoteResponse(msg []byte) {
 
 // publishCall publishes call for the web clients. The worker idx calls it.
 func (c *CallTracker) publishCall(idx int, call *models.Call) {
-	if (call.IsToRepeater || call.IsToTalkgroup) && call.GroupCall {
+	if (call.IsToRepeater || call.IsToTalkgroup || call.IsToPlugin) && call.GroupCall {
 		rows, err := apimodels.NewWSCallResponsesFor(c.db, nil, models.CurrentSMSWindow(), []models.Call{*call})
 		if err != nil || len(rows) != 1 {
 			slog.Error("Error showing call", "error", err)
@@ -834,6 +856,10 @@ func (c *CallTracker) resolve(call *models.Call, peer bool) {
 		}
 	} else if user, err := models.FindUserWithoutRepeaters(c.db, dst); err == nil {
 		call.IsToUser, call.ToUserID, call.ToUser = true, &user.ID, user
+		return
+	}
+	if c.toPlugin(dst) {
+		call.IsToPlugin = true
 		return
 	}
 	if repeater, err := models.FindRepeaterByID(c.db, dst); err == nil {

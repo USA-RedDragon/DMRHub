@@ -172,3 +172,37 @@ func TestOpenBridgeSendsItsVersion(t *testing.T) {
 		assert.Contains(t, versions, uint8(5), "the hub sent no BCVE of version 5")
 	})
 }
+
+// TestOpenBridgeMovesALinkUpToThePeersVersion links a peer as version 1,
+// which then sends a BCVE of version 5, as FreeDMR does to a link that
+// sends it DMRD while its PROTO_VER is 5 (hblink.py "Version 1 protocol
+// prohibited"), and drops every DMRD until the link moves up. The hub must
+// move the link up as FreeDMR does on a BCVE: send DMRE of version 5 and
+// BCKA keepalives from then on.
+func TestOpenBridgeMovesALinkUpToThePeersVersion(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, false)
+		send := func(stream uint) []testutils.ReceivedBridge {
+			require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
+			return s.peer.DrainBridges(drainWait)
+		}
+		got := send(9631)
+		require.Len(t, got, 1)
+		require.Equal(t, uint8(1), got[0].Version, "the link starts at version 1")
+
+		require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: 5}))
+		time.Sleep(200 * time.Millisecond)
+		got = send(9632)
+		if assert.Len(t, got, 1) {
+			assert.Equal(t, uint8(5), got[0].Version, "the hub did not move the link up to version 5")
+		}
+		keepalives := 0
+		for _, c := range s.peer.DrainControls(2 * time.Second) {
+			if c.Command == dmrd.CommandBCKA {
+				keepalives++
+			}
+		}
+		assert.Positive(t, keepalives, "the hub sends no keepalives on the link that moved up")
+	})
+}

@@ -106,6 +106,7 @@ type Server struct {
 	epoch     time.Time
 
 	quenched *xsync.Map[quench, time.Time]
+	versions *xsync.Map[uint, uint8]
 
 	egressOut  chan outMessage
 	eventsOut  chan outMessage
@@ -190,17 +191,18 @@ type bridge struct {
 func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
 	s.bridgesMu.Lock()
 	defer s.bridgesMu.Unlock()
-	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password && b.enhanced == peer.Enhanced {
+	enhanced := s.enhanced(peer)
+	if b, ok := s.bridges[peer.ID]; ok && b.password == peer.Password && b.enhanced == enhanced {
 		return b, nil
 	}
-	sb, err := dmrdsession.NewBridge(&dmrdsession.BridgeConfig{Key: []byte(peer.Password), Enhanced: peer.Enhanced})
+	sb, err := dmrdsession.NewBridge(&dmrdsession.BridgeConfig{Key: []byte(peer.Password), Enhanced: enhanced})
 	if err != nil {
 		return nil, fmt.Errorf("failed to make OpenBridge link: %w", err)
 	}
 	if s.bridges == nil {
 		s.bridges = map[uint]*bridge{}
 	}
-	b := &bridge{password: peer.Password, enhanced: peer.Enhanced, b: sb, key: dmrdauth.NewBridgeKey([]byte(peer.Password))}
+	b := &bridge{password: peer.Password, enhanced: enhanced, b: sb, key: dmrdauth.NewBridgeKey([]byte(peer.Password))}
 	s.bridges[peer.ID] = b
 	return b, nil
 }
@@ -304,6 +306,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		done:          make(chan struct{}),
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
+		versions:      xsync.NewMap[uint, uint8](),
 		egressOut:     make(chan outMessage, outboxSize),
 		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
@@ -333,12 +336,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	egress := s.pubsub.Subscribe(egressTopic)
 	s.renewLease(ctx)
-	s.wg.Add(8)
+	s.wg.Add(9)
 	go s.consumeHubPackets()
 	go s.keepalive()
 	go s.runLease(context.WithoutCancel(ctx))
 	go s.consumeEgress(egress)
 	go s.consumeQuenches()
+	go s.consumeVersions()
 	go s.runOutbox(s.egressOut)
 	go s.runOutbox(s.eventsOut)
 
@@ -433,7 +437,7 @@ func (s *Server) keepalive() {
 		now := time.Since(s.epoch)
 		for _, k := range table.all {
 			p := k.Peer
-			if !p.Enhanced || p.IP == "" || p.Port == 0 {
+			if !s.enhanced(p) || p.IP == "" || p.Port == 0 {
 				continue
 			}
 			b, err := s.bridgeFor(p)
@@ -449,12 +453,33 @@ func (s *Server) keepalive() {
 	}
 }
 
+// linkVersion returns the OpenBridge version that DMRHub sends to peer: the
+// newest that the peer named in a BCVE or a DMRE, as FreeDMR moves a link
+// up to it (hblink.py "Version upgrade"), or else enhancedVersion for an
+// enhanced peer and 1 for the others.
+func (s *Server) linkVersion(peer models.Peer) uint8 {
+	if s.versions != nil {
+		if v, ok := s.versions.Load(peer.ID); ok {
+			return v
+		}
+	}
+	if peer.Enhanced {
+		return enhancedVersion
+	}
+	return 1
+}
+
+func (s *Server) enhanced(peer models.Peer) bool {
+	return s.linkVersion(peer) != 1
+}
+
 // encode returns the unsigned OpenBridge packet of packet for peer: DMRE
-// of enhancedVersion for an enhanced peer, which keeps the source server
-// and repeater of org and counts one more hop, and the 73-octet DMRD of
-// version 1 for the others.
+// of the version of the link for an enhanced peer, which keeps the source
+// server and repeater of org and counts one more hop, and the 73-octet
+// DMRD of version 1 for the others.
 func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]byte, error) {
-	if !peer.Enhanced {
+	version := s.linkVersion(peer)
+	if version == 1 {
 		bridge := dmrd.Bridge{Version: 1, Data: packet.Data()}
 		bridge.Data.Size = dmrconst.MMDVMPacketLength
 		out, err := bridge.AppendBinary(make([]byte, 0, packetLength))
@@ -471,7 +496,7 @@ func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]b
 		server = uint32(peer.ID) //nolint:gosec
 	}
 	bridge := dmrd.Bridge{
-		Version:        enhancedVersion,
+		Version:        version,
 		Data:           packet.Data(),
 		Time:           uint64(time.Now().UnixNano()), //nolint:gosec
 		SourceServer:   server,
@@ -618,6 +643,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 
 	var org origin
 	if bridge.Version != 1 {
+		s.noteVersion(peer, bridge.Version)
 		org = origin{server: bridge.SourceServer, repeater: bridge.SourceRepeater, hops: bridge.Hops}
 		if int(org.hops)+1 > maxHops {
 			slog.Warn("Dropping an OpenBridge call that crossed too many links", "peerID", peerID, "hops", org.hops, "sourceServer", org.server, "stream", packet.StreamID)
@@ -658,8 +684,8 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 
 // handleControl takes a control packet of FreeDMR's enhanced OpenBridge.
 // It carries no peer ID, so the peer is the one at the source address
-// whose key signed it. A BCSQ asks not to get a stream; BCKA, BCST and BCVE
-// change nothing here.
+// whose key signed it. A BCSQ asks not to get a stream and a BCVE names the
+// newest version of the peer; BCKA and BCST change nothing here.
 func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmrd.BridgeControl) {
 	table, err := s.peerTable()
 	if err != nil {
@@ -680,6 +706,9 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 			s.quenchStream(p.ID, uint(control.Stream))
 			return
 		}
+		if control.Command == dmrd.CommandBCVE {
+			s.noteVersion(p, control.Version)
+		}
 		slog.Debug("OpenBridge control packet", "peerID", p.ID, "command", string(control.Command), "version", control.Version)
 		return
 	}
@@ -689,7 +718,7 @@ func (s *Server) handleControl(remoteAddr *net.UDPAddr, data []byte, control dmr
 // sendQuench asks an enhanced peer with a BCSQ not to send the stream to
 // the talkgroup any more, as FreeDMR does for a call over the hop limit.
 func (s *Server) sendQuench(peer models.Peer, b *bridge, talkgroup, stream uint32, to *net.UDPAddr) {
-	if !peer.Enhanced || to == nil {
+	if !s.enhanced(peer) || to == nil {
 		return
 	}
 	p, err := (&dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: talkgroup, Stream: stream}).AppendBinary(nil)

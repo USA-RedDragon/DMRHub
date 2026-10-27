@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 // One replica, the holder of the egress lease in the KV store, sends all
@@ -52,8 +53,9 @@ const (
 	egressLeaseRenew = EgressLeaseTTL / 4
 	egressTopic      = "openbridge:egress"
 
-	quenchTopic = "openbridge:quench"
-	outboxSize  = 1024
+	quenchTopic  = "openbridge:quench"
+	versionTopic = "openbridge:version"
+	outboxSize   = 1024
 
 	// takeWait is the longest time a replica that took the lease waits for
 	// its taken message before it sends.
@@ -453,6 +455,71 @@ func (s *Server) consumeQuenches() {
 				continue
 			}
 			s.quenched.Store(quench{peer: m.Peer, stream: m.Stream}, time.Now())
+		}
+	}
+}
+
+type sharedVersionMsg struct {
+	Peer    uint  `json:"peer"`
+	Version uint8 `json:"version"`
+}
+
+// noteVersion moves the link of peer up to version, which the peer named,
+// on every replica, when DMRHub sends that version and the link is older.
+func (s *Server) noteVersion(peer models.Peer, version uint8) {
+	if s.linkVersion(peer) >= version || !s.raiseVersion(peer.ID, version) {
+		return
+	}
+	slog.Info("OpenBridge peer moved its link to a newer version", "peerID", peer.ID, "version", version)
+	if s.pubsub == nil {
+		return
+	}
+	b, err := json.Marshal(sharedVersionMsg{Peer: peer.ID, Version: version})
+	if err != nil {
+		slog.Error("Error encoding an OpenBridge version", "error", err)
+		return
+	}
+	s.publishLater(s.egressOut, versionTopic, b)
+}
+
+// raiseVersion records version for the link of peer and reports whether
+// that moved the link up. Only versions 4 and 5 move it, as DMRHub sends
+// no other DMRE.
+func (s *Server) raiseVersion(peer uint, version uint8) bool {
+	if s.versions == nil || (version != 4 && version != enhancedVersion) {
+		return false
+	}
+	raised := false
+	s.versions.Compute(peer, func(old uint8, loaded bool) (uint8, xsync.ComputeOp) {
+		if loaded && old >= version {
+			return old, xsync.CancelOp
+		}
+		raised = true
+		return version, xsync.UpdateOp
+	})
+	return raised
+}
+
+// consumeVersions takes the link versions that the replicas share.
+func (s *Server) consumeVersions() {
+	defer s.wg.Done()
+	sub := s.pubsub.Subscribe(versionTopic)
+	defer func() { _ = sub.Close() }()
+	ch := sub.Channel()
+	for {
+		select {
+		case <-s.done:
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			var m sharedVersionMsg
+			if err := json.Unmarshal(msg, &m); err != nil {
+				slog.Error("Error decoding an OpenBridge version", "error", err)
+				continue
+			}
+			s.raiseVersion(m.Peer, m.Version)
 		}
 	}
 }

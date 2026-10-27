@@ -140,6 +140,15 @@
         </CardContent>
       </Card>
 
+      <PeerRules
+        :peer-id="peer.id"
+        :ingress="form.ingress"
+        :egress="form.egress"
+        :ingress-private="peer.ingress_private ?? false"
+        :egress-private="peer.egress_private ?? false"
+        @private-changed="privateChanged"
+      />
+
       <Card class="gap-5 pb-5">
         <CardHeader><CardTitle data-test="setup-title">{{ setupTitle }}</CardTitle></CardHeader>
         <Tabs v-model="tab" class="gap-0">
@@ -174,13 +183,6 @@
       <Card class="gap-5">
         <CardHeader><CardTitle>Next</CardTitle></CardHeader>
         <CardContent class="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-          <a
-            :href="rulesDoc"
-            target="_blank"
-            rel="noopener"
-            class="no-underline block rounded-[10px] border px-3.5 py-3 font-bold text-inherit hover:bg-accent"
-            data-test="next-rules"
-          >Add the rules of this peer</a>
           <RouterLink
             :to="listPath"
             class="no-underline block rounded-[10px] border px-3.5 py-3 font-bold text-inherit hover:bg-accent"
@@ -244,11 +246,11 @@ import { Input as ShadInput } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
 import CopyButton from '@/components/enroll/CopyButton.vue';
+import PeerRules from '@/components/peer/PeerRules.vue';
 import PeerSteps from '@/components/peer/PeerSteps.vue';
 import {
   PEER_PASSWORD_PLACEHOLDER,
   PEER_TABS,
-  RULES_DOC,
   peerTabs,
   takePeerPassword,
   type PeerTab,
@@ -267,6 +269,8 @@ type PeerData = {
   port: number;
   ingress: boolean;
   egress: boolean;
+  ingress_private?: boolean;
+  egress_private?: boolean;
   enhanced: boolean;
   codec2: boolean;
   owner?: { id: number; callsign: string };
@@ -295,6 +299,7 @@ export default {
     DialogContent,
     DialogDescription,
     DialogTitle,
+    PeerRules,
     PeerSteps,
     RouterLink,
     ShadButton,
@@ -323,7 +328,6 @@ export default {
       saving: false,
       tab: '' as PeerTab | '',
       tabInfo: PEER_TABS,
-      rulesDoc: RULES_DOC,
       now: Date.now(),
       poll: null as ReturnType<typeof setInterval> | null,
       clock: null as ReturnType<typeof setInterval> | null,
@@ -421,6 +425,11 @@ export default {
         enhanced: p.enhanced,
         codec2: p.codec2,
       };
+    },
+    privateChanged(e: { ingress: boolean; on: boolean }) {
+      if (!this.peer) return;
+      if (e.ingress) this.peer.ingress_private = e.on;
+      else this.peer.egress_private = e.on;
     },
     fetchPeer() {
       API.get(`/peers/${this.peerID}`)

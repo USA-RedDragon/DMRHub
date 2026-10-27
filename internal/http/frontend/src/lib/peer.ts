@@ -45,9 +45,6 @@ export type PeerValues = {
 /** PEER_PASSWORD_PLACEHOLDER stands in for the password when the page does not show it. */
 export const PEER_PASSWORD_PLACEHOLDER = '<peer password>';
 
-/** RULES_DOC is the section of the OpenBridge guide on the rules of a peer. */
-export const RULES_DOC = 'https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/openbridge.md#add-the-rules-of-a-peer';
-
 const passwords = new Map<number, string>();
 
 /** Keeps the password of the peer id for the next takePeerPassword, as the new peer page hands it to the peer page. */

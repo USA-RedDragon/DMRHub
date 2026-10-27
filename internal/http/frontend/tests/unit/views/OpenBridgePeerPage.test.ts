@@ -225,11 +225,11 @@ describe('OpenBridgePeerPage', () => {
     w.unmount();
   });
 
-  it('links the rules section of the guide', async () => {
+  it('shows the rules of the peer', async () => {
     const w = await mountPage(false);
-    expect(w.find('[data-test="next-rules"]').attributes('href')).toBe(
-      'https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/openbridge.md#add-the-rules-of-a-peer',
-    );
+    expect(mockAPI.get).toHaveBeenCalledWith('/peers/3000/rules');
+    expect(w.find('[data-test="rules"]').exists()).toBe(true);
+    expect(w.find('[data-test="summary-rx"]').text()).toBe('Receives nothing.');
     w.unmount();
   });
 

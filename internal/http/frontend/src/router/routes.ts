@@ -270,7 +270,7 @@ export function routes(): DMRRoute[] {
     {
       path: '/admin/setup',
       name: 'SetupWizard',
-      component: () => import('@/views/SetupWizard.vue'),
+      component: () => import('@/views/admin/SetupPage.vue'),
     },
   ];
 

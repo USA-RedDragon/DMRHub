@@ -161,13 +161,13 @@ describe('First start and the setup wizard', () => {
         start('b', dirB, { ...backends, HTTP_PORT: '3105', DMR_MMDVM_PORT: '62231' }).its('wizard').should('eq', false);
       });
       login();
-      cy.visit(`${hub}/admin/setup`);
-      cy.get('[data-test="replicas"]', { timeout: 30000 }).find('tbody tr').should('have.length', 2);
+      cy.visit(`${hub}/admin/setup#general`);
+      cy.get('[data-test="setup-status"]', { timeout: 30000 }).should('contain.text', '2 replicas');
       cy.get('[data-test="replicas-differ"]').should('contain.text', 'Port (MMDVM)');
-      cy.get('#network-name').clear();
-      cy.get('#network-name').type('Shared Net');
+      cy.get('#setup-network-name').clear();
+      cy.get('#setup-network-name').type('Shared Net');
       cy.intercept('PUT', '**/api/v1/config').as('save');
-      save();
+      cy.get('[data-test="save"]').click();
       cy.wait('@save').then(({ response }) => {
         expect(response?.statusCode).to.eq(200);
         const replicas = response?.body.replicas as { self: boolean; answered: boolean }[];

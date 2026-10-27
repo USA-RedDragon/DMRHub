@@ -33,6 +33,7 @@ export type Setting = {
   locked: boolean;
   start_only: boolean;
   source: SettingSource;
+  origin?: string;
   saved?: unknown;
   default?: unknown;
   not_in_effect: boolean;
@@ -197,6 +198,7 @@ const labels: Record<string, string> = {
   'dmr.disable-radio-id-validation': 'Radio ID check',
   'dmr.radio-id-url': 'Radio ID URL',
   'dmr.repeater-id-url': 'Repeater ID URL',
+  'dmr.public-address': 'Public server address',
   'dmr.retention.messages': 'Keep messages',
   'dmr.retention.transmissions': 'Keep last heard',
   'dmr.retention.bursts': 'Keep raw bursts',

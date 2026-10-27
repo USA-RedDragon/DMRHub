@@ -38,29 +38,31 @@ describe('Admin Setup: OpenBridge', () => {
   });
 
   it('shows the Server ID field and saves it', () => {
-    cy.visit('/admin/setup');
+    cy.visit('/admin/setup#openbridge');
     cy.wait('@config');
-    cy.contains('OpenBridge Settings').should('be.visible');
+    cy.contains('OpenBridge server').should('be.visible');
     cy.contains('label', 'Server ID').should('be.visible');
-    cy.get('#openbridge-server-id').should('be.visible').clear();
-    cy.get('#openbridge-server-id').type('3129');
-    cy.contains('button', 'Save').click();
+    cy.get('#setup-dmr-openbridge-server-id').should('be.visible').clear();
+    cy.get('#setup-dmr-openbridge-server-id').type('3129');
+    cy.contains('button', 'Save OpenBridge').click();
     cy.wait('@validate');
     cy.wait('@save').its('request.body.dmr.openbridge').should('deep.equal', {
       enabled: true, bind: '[::]', port: 62035, 'server-id': 3129,
     });
   });
 
-  it('turns OpenBridge on from its own Enabled box', () => {
+  it('turns OpenBridge on from its own switch', () => {
     cy.mockAPI('GET', '/config', {
       dmr: { ipsc: { enabled: true }, openbridge: { enabled: false } },
       http: {}, database: {}, smtp: {}, redis: {}, metrics: {}, pprof: {},
     }).as('config');
-    cy.visit('/admin/setup');
+    cy.visit('/admin/setup#openbridge');
     cy.wait('@config');
-    cy.get('#openbridge-server-id').should('not.exist');
-    cy.get('label[for="openbridge-enabled"]').click();
-    cy.get('#openbridge-server-id').should('be.visible');
-    cy.get('#ipsc-enabled').should('be.checked');
+    cy.get('#setup-dmr-openbridge-server-id').should('not.exist');
+    cy.get('label[for="setup-dmr-openbridge-enabled"]').click();
+    cy.get('#setup-dmr-openbridge-server-id').should('be.visible');
+    cy.get('[data-test="menu-openbridge"] [title="Unsaved changes"]').should('exist');
+    cy.get('[data-test="menu-ipsc"]').click();
+    cy.get('#setup-dmr-ipsc-enabled').should('have.attr', 'data-state', 'checked');
   });
 });

@@ -22,6 +22,15 @@
 <template>
   <div v-if="setting" class="flex flex-col gap-1" data-test="setting-note">
     <small v-for="(line, i) in lines" :key="i" class="text-muted-foreground">{{ line }}</small>
+    <small v-if="defaultText !== undefined" class="text-muted-foreground" data-test="setting-default">
+      Saved in Setup. The default is {{ defaultText }}.
+      <button
+        type="button"
+        class="cursor-pointer text-[oklch(0.7_0.15_210)] underline underline-offset-[0.2rem]"
+        data-test="use-default"
+        @click="$emit('use-default')"
+      >Use the default</button>
+    </small>
     <ul
       v-if="setting.disagree && setting.replicas && setting.replicas.length > 0"
       class="mt-1 flex flex-col gap-0.5 rounded-md bg-amber-500/10 px-3 py-2 text-xs"
@@ -53,7 +62,10 @@ export default defineComponent({
   components: { SettingBadge },
   props: {
     path: { type: String, required: true },
+    menu: { type: Boolean, default: false },
+    defaultText: { type: String, default: undefined },
   },
+  emits: ['use-default'],
   setup() {
     return { state: inject(setupStateKey, null) };
   },
@@ -82,7 +94,7 @@ export default defineComponent({
         out.push(line);
       } else if (s.start_only) {
         out.push('DMRHub reads this at start. Set it in the config file or the environment of the deployment, then restart DMRHub.');
-      } else if (s.source === 'setup' && s.default !== undefined) {
+      } else if (s.source === 'setup' && s.default !== undefined && !this.menu) {
         out.push(`Saved in Setup. Set it back to the default, ${formatValue(s.default)}, to follow the default.`);
       }
       if (s.not_in_effect) {

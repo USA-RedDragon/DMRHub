@@ -128,6 +128,35 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 	})
 }
 
+// awaitPeerRoute sends calls from the OpenBridge peer of obc to tg, each
+// on the next stream after *stream, until mc gets one, so that the hub
+// routes tg to the repeater of mc. It adds each stream it used to probes.
+func awaitPeerRoute(t *testing.T, obc *testutils.OpenBridgeClient, mc *testutils.MMDVMClient, tg uint, stream *uint, probes map[uint]bool) {
+	t.Helper()
+	deadline := time.After(handshakeWait)
+	for {
+		*stream++
+		probes[*stream] = true
+		for _, pkt := range []models.Packet{makeGroupVoicePacket(1000001, tg, *stream, false), makeGroupVoiceTermPacket(1000001, tg, *stream, false)} {
+			pkt.Repeater = 500001
+			require.NoError(t, obc.SendRawPacket(pkt))
+		}
+		retry := time.After(200 * time.Millisecond)
+		for waiting := true; waiting; {
+			select {
+			case p := <-mc.ReceivedPackets():
+				if probes[p.StreamID] && p.Dst == tg {
+					return
+				}
+			case <-retry:
+				waiting = false
+			case <-deadline:
+				require.Failf(t, "the hub did not route the talkgroup", "TG %d", tg)
+			}
+		}
+	}
+}
+
 // TestOpenBridgeInboundKeepsOrderAcrossStreams sends short calls from an
 // OpenBridge peer back to back, to TG 1 and TG 2 in turn. The repeater on
 // each talkgroup must get every packet of each call of it before any
@@ -154,11 +183,15 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 			require.NoError(t, mc.WaitReady(handshakeWait))
 			clients[tg] = mc
 		}
-		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
+		probes := map[uint]bool{}
+		probe := uint(7300)
+		for tg, mc := range clients {
+			awaitPeerRoute(t, obc, mc, tg, &probe, probes)
+		}
 
 		type sent struct{ stream, seq uint }
 		want := map[uint][]sent{}
@@ -181,7 +214,9 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 			for len(got) < len(want[tg]) {
 				select {
 				case p := <-mc.ReceivedPackets():
-					got = append(got, sent{p.StreamID, p.Seq})
+					if !probes[p.StreamID] {
+						got = append(got, sent{p.StreamID, p.Seq})
+					}
 				case <-deadline:
 					t.Fatalf("TG %d: got %d of %d packets: %v", tg, len(got), len(want[tg]), got)
 				}

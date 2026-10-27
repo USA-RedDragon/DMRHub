@@ -58,10 +58,14 @@ type User struct {
 	// MustChangePassword reports that an admin set the password of the
 	// user, who must choose their own before they use the rest of
 	// DMRHub. Only SetPassword writes it.
-	MustChangePassword bool           `json:"must_change_password" gorm:"<-:create;not null;default:false"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"-"`
-	DeletedAt          gorm.DeletedAt `json:"-" gorm:"index"`
+	MustChangePassword bool `json:"must_change_password" gorm:"<-:create;not null;default:false"`
+	// CallsignOverride reports that an admin set a callsign that RadioID
+	// did not give the DMR ID of the user, so the RadioID drift check
+	// skips the user. Only SetCallsignOverride writes it.
+	CallsignOverride bool           `json:"callsign_override" gorm:"<-:create;not null;default:false"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"-"`
+	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {
@@ -146,6 +150,15 @@ func UsernameIsCallsign(db *gorm.DB, name string, except uint) (bool, error) {
 		return false, fmt.Errorf("could not check username %q against the callsigns: %w", name, err)
 	}
 	return count > 0, nil
+}
+
+// SetCallsignOverride sets whether an admin chose the callsign of the
+// user id against RadioID.
+func SetCallsignOverride(db *gorm.DB, id uint, override bool) error {
+	if err := db.Exec("UPDATE users SET callsign_override = ? WHERE id = ?", override, id).Error; err != nil {
+		return fmt.Errorf("could not set the callsign override of %d: %w", id, err)
+	}
+	return nil
 }
 
 func ListUsers(db *gorm.DB) ([]User, error) {

@@ -87,5 +87,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_generated_secrets_migration_202610261600(db, cfg),
 		mysql_portability_migration_202610262000(db, cfg),
 		add_email_verified_migration_202610270100(db, cfg),
+		add_callsign_override_migration_202610271300(db, cfg),
 	}
 }

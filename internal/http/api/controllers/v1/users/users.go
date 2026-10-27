@@ -45,17 +45,19 @@ import (
 )
 
 const (
-	usersKey           = "users"
-	errorKey           = "error"
-	totalKey           = "total"
-	msgErrGettingUser  = "Error getting user"
-	messageKey         = "message"
-	msgInvalidUserID   = "Invalid User ID"
-	msgErrDeletingUser = "Error deleting user"
-	msgNotLoggedIn     = "Not logged in"
-	msgErrSavingUser   = "Error saving user"
-	msgUserNotFound    = "User does not exist"
-	msgErrFindingUser  = "Error finding user"
+	usersKey            = "users"
+	errorKey            = "error"
+	totalKey            = "total"
+	msgErrGettingUser   = "Error getting user"
+	messageKey          = "message"
+	msgInvalidUserID    = "Invalid User ID"
+	msgErrDeletingUser  = "Error deleting user"
+	msgNotLoggedIn      = "Not logged in"
+	msgErrSavingUser    = "Error saving user"
+	msgUserNotFound     = "User does not exist"
+	msgErrFindingUser   = "Error finding user"
+	msgCallsignMismatch = "Callsign does not match DMR ID"
+	msgInvalidJSON      = "JSON data is invalid"
 )
 
 func GETUsers(c *gin.Context) {
@@ -156,7 +158,7 @@ func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, s
 	var json apimodels.UserRegistration
 	if err := c.ShouldBindJSON(&json); err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return models.User{}, false
 	}
 	if !skipRadioIDCheck {
@@ -165,7 +167,7 @@ func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, s
 			return models.User{}, false
 		}
 		if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch})
 			return models.User{}, false
 		}
 	}
@@ -636,7 +638,7 @@ func PATCHUser(c *gin.Context) {
 	err = c.ShouldBindJSON(&json)
 	if err != nil {
 		slog.Error("JSON data is invalid", "function", "PATCHUser", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 	} else {
 		user, err := models.FindUserByID(db, uint(idInt))
 		if err != nil {
@@ -660,28 +662,9 @@ func PATCHUser(c *gin.Context) {
 			}
 		}
 
-		if json.Callsign != "" {
-			// Check DMR ID is in the database
-			if userdb.ValidUserCallsign(user.ID, json.Callsign) {
-				user.Callsign = strings.ToUpper(json.Callsign)
-			} else {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
-				return
-			}
-		}
-
-		if json.Username != "" {
-			// Check if the username is already taken
-			taken, err := models.UsernameTaken(db, json.Username, user.ID)
-			if err != nil {
-				slog.Error(msgErrFindingUser, "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
-				return
-			} else if taken {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
-				return
-			}
-			user.Username = json.Username
+		override, ok := patchNames(c, db, !config.DMR.DisableRadioIDValidation, &user, json)
+		if !ok {
+			return
 		}
 
 		var hashedPassword string
@@ -702,6 +685,11 @@ func PATCHUser(c *gin.Context) {
 		err = db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Save(&user).Error; err != nil {
 				return fmt.Errorf("could not save user %d: %w", user.ID, err)
+			}
+			if override != nil {
+				if err := models.SetCallsignOverride(tx, user.ID, *override); err != nil {
+					return err
+				}
 			}
 			if json.Email != nil && email != user.Email {
 				if err := models.SetEmail(tx, user.ID, email); err != nil {
@@ -731,6 +719,82 @@ func PATCHUser(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
+}
+
+// patchNames applies the new callsign and username of json to user. It
+// answers the request and returns false when one of them is refused. A new
+// callsign gives override, which reports that an admin chose it against
+// RadioID.
+func patchNames(c *gin.Context, db *gorm.DB, radioID bool, user *models.User, json apimodels.UserPatch) (override *bool, ok bool) {
+	if callsign := strings.ToUpper(strings.TrimSpace(json.Callsign)); callsign != "" && callsign != user.Callsign {
+		o, ok := checkNewCallsign(c, db, radioID, user.ID, callsign, json.OverrideRadioID)
+		if !ok {
+			return nil, false
+		}
+		user.Callsign = callsign
+		override = &o
+	}
+	if json.Username == "" || json.Username == user.Username {
+		return override, true
+	}
+	if valid, msg := apimodels.IsValidUsername(json.Username); !valid {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msg})
+		return nil, false
+	}
+	taken, err := models.UsernameTaken(db, json.Username, user.ID)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return nil, false
+	}
+	if taken {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
+		return nil, false
+	}
+	user.Username = json.Username
+	return override, true
+}
+
+// checkNewCallsign answers the request and returns false when the user
+// id must not get the new callsign: another user has it, or radioID
+// is set and RadioID gives the DMR ID another callsign. An admin who sets
+// override gets the callsign anyway, and override is then true. An admin
+// who does not set it learns the callsign that RadioID gives, to override
+// it on purpose.
+func checkNewCallsign(c *gin.Context, db *gorm.DB, radioID bool, id uint, callsign string, wantOverride bool) (override bool, ok bool) {
+	taken, err := models.UsernameIsCallsign(db, callsign, id)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return false, false
+	}
+	if taken {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign is already taken"})
+		return false, false
+	}
+	if !radioID || userdb.ValidUserCallsign(id, callsign) {
+		return false, true
+	}
+	actorID, _ := sessions.Default(c).Get("user_id").(uint)
+	actor, err := models.FindUserWithoutRepeaters(db, actorID)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return false, false
+	}
+	if !actor.Admin && !actor.SuperAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch})
+		return false, false
+	}
+	if wantOverride {
+		return true, true
+	}
+	var known string
+	if entry, found := userdb.Get(id); found {
+		known = strings.ToUpper(entry.Callsign)
+	}
+	c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch, "radio_id_mismatch": true, "radio_id_callsign": known})
+	return false, false
 }
 
 // checkPasswordChange answers the request and returns false when the

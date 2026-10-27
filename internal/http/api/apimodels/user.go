@@ -35,13 +35,18 @@ type UserRegistration struct {
 }
 
 func (r *UserRegistration) IsValidUsername() (bool, string) {
-	if len(r.Username) < minUsernameLength {
+	return IsValidUsername(r.Username)
+}
+
+// IsValidUsername reports whether name can be a username, and if not, why.
+func IsValidUsername(name string) (bool, string) {
+	if len(name) < minUsernameLength {
 		return false, "Username must be at least 3 characters"
 	}
-	if len(r.Username) > maxUsernameLength {
+	if len(name) > maxUsernameLength {
 		return false, "Username must be less than 20 characters"
 	}
-	if !regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString(r.Username) {
+	if !regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`).MatchString(name) {
 		return false, "Username must be alphanumeric, _, -, or ."
 	}
 	return true, ""
@@ -58,4 +63,7 @@ type UserPatch struct {
 	// Email, when set, is the new email address, which stays unverified
 	// until its link is used. An empty one removes the address.
 	Email *string `json:"email"`
+	// OverrideRadioID lets an admin set a callsign that RadioID does not
+	// give the DMR ID of the user. Others cannot override the check.
+	OverrideRadioID bool `json:"override_radio_id"`
 }

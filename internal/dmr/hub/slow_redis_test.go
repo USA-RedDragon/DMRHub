@@ -340,12 +340,49 @@ func (b *blockedPubSub) Publish(topic string, message []byte) error {
 	return b.PubSub.Publish(topic, message) //nolint:wrapcheck
 }
 
+// outboxHeap returns the bytes in use of the allocations that the outbox
+// and the publishes of routed bursts made, as the memory profile counts
+// them at a profile rate of one byte, so that what other tests and other
+// parts of the hub hold does not count.
+func outboxHeap(t *testing.T) float64 {
+	t.Helper()
+	runtime.GC()
+	runtime.GC()
+	var recs []runtime.MemProfileRecord
+	n, _ := runtime.MemProfile(nil, true)
+	for {
+		recs = make([]runtime.MemProfileRecord, n+100)
+		var ok bool
+		if n, ok = runtime.MemProfile(recs, true); ok {
+			break
+		}
+	}
+	var inUse int64
+	for i := range recs[:n] {
+		frames := runtime.CallersFrames(recs[i].Stack())
+		for {
+			f, more := frames.Next()
+			if strings.Contains(f.Function, "/internal/dmr/outbox.") || strings.HasSuffix(f.Function, "hub.(*Hub).marshalAndPublish") {
+				inUse += recs[i].InUseBytes()
+				break
+			}
+			if !more {
+				break
+			}
+		}
+	}
+	return float64(inUse)
+}
+
 // TestTheOutboxHoldsALongOutage routes 20000 bursts, about 20 minutes of
 // one slot, while pubsub takes none. The outbox must hold them all, and
 // publish them all once pubsub is back. It reports the memory that each
-// burst in the outbox takes, so it does not run in parallel with other
-// tests.
+// burst in the outbox takes, from a memory profile of every allocation,
+// so it does not run in parallel with other tests.
 func TestTheOutboxHoldsALongOutage(t *testing.T) { //nolint:paralleltest
+	rate := runtime.MemProfileRate
+	runtime.MemProfileRate = 1
+	t.Cleanup(func() { runtime.MemProfileRate = rate })
 	blocked := &blockedPubSub{release: make(chan struct{})}
 	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
 		blocked.PubSub = ps
@@ -357,9 +394,7 @@ func TestTheOutboxHoldsALongOutage(t *testing.T) { //nolint:paralleltest
 	time.Sleep(100 * time.Millisecond)
 
 	const bursts, batch = 20000, 250
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
+	before := outboxHeap(t)
 	for i := range bursts {
 		p := makeVoicePacket(1, 70500, true, false)
 		p.Seq = uint(i % 256)
@@ -368,10 +403,9 @@ func TestTheOutboxHoldsALongOutage(t *testing.T) { //nolint:paralleltest
 			require.Eventually(t, func() bool { return h.OutboxDepth() == int64(i+1) }, 10*time.Second, time.Millisecond, "the outbox did not take burst %d", i)
 		}
 	}
-	runtime.GC()
-	runtime.ReadMemStats(&after)
-	perBurst := float64(after.HeapAlloc-before.HeapAlloc) / bursts
-	t.Logf("%d bursts in the outbox take %.1f MB of heap, %.0f bytes each", bursts, float64(after.HeapAlloc-before.HeapAlloc)/1e6, perBurst)
+	held := outboxHeap(t) - before
+	perBurst := held / bursts
+	t.Logf("%d bursts in the outbox take %.1f MB of heap, %.0f bytes each", bursts, held/1e6, perBurst)
 	assert.Less(t, perBurst, 600.0, "a burst in the outbox takes too much memory")
 
 	close(blocked.release)

@@ -20,15 +20,22 @@
 package users_test
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/userdb"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -187,4 +194,162 @@ func TestDeleteUserRemovesItsRadioIDDrift(t *testing.T) {
 			assert.False(t, drifted)
 		})
 	}
+}
+
+type sentMail struct {
+	to, subject, body string
+}
+
+type fakeMailer struct {
+	sent chan sentMail
+}
+
+func (f *fakeMailer) SendText(to, subject, body string) error {
+	f.sent <- sentMail{to, subject, body}
+	return nil
+}
+
+func driftRequest(t *testing.T, router *gin.Engine, jar testutils.CookieJar, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, path, strings.NewReader(body))
+	require.NoError(t, err)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for _, cookie := range jar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func unknownToRadioID(t *testing.T) uint {
+	t.Helper()
+	for id := uint(9999999); id > 9990000; id-- {
+		if _, known := userdb.Get(id); !known {
+			return id
+		}
+	}
+	require.FailNow(t, "RadioID has every DMR ID that the test tried")
+	return 0
+}
+
+func TestRadioIDDriftListAndFix(t *testing.T) {
+	t.Parallel()
+	unknownDMRID := unknownToRadioID(t)
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			mailer := &fakeMailer{sent: make(chan sentMail, 4)}
+			router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) {
+				be.Migrated().Setup(t, c)
+				c.SMTP.Enabled = true
+				c.NetworkName = "Test Hub"
+			}, dmrhttp.WithMailer(mailer))
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+			database := tdb.DB()
+
+			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+			_, _, adminJar := testutils.LoginAdmin(t, router)
+			require.NoError(t, database.Exec("UPDATE users SET callsign = ?, email = ?, email_verified = ? WHERE id = ?", "OLDCALL", "ki5vmf@example.com", true, user.DMRId).Error)
+			require.NoError(t, database.Create(&models.User{ID: unknownDMRID, Callsign: "N0GONE", Username: "gone", Approved: true}).Error)
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{
+				{UserID: user.DMRId, RadioIDCallsign: "KI5VMF"},
+				{UserID: unknownDMRID},
+			}, time.Now()))
+
+			w := driftRequest(t, router, userJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
+			assert.Equal(t, http.StatusForbidden, w.Code)
+			w = driftRequest(t, router, userJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", "")
+			assert.Equal(t, http.StatusForbidden, w.Code)
+
+			w = driftRequest(t, router, adminJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			var list apimodels.RadioIDDriftList
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+			require.Equal(t, int64(2), list.Total)
+			require.Len(t, list.Drifts, 2)
+			byID := map[uint]apimodels.RadioIDDrift{}
+			for _, d := range list.Drifts {
+				byID[d.UserID] = d
+			}
+			assert.Equal(t, apimodels.RadioIDDrift{UserID: user.DMRId, Username: "testuser", Callsign: "OLDCALL", RadioIDCallsign: "KI5VMF", CanNotify: true},
+				withoutTimes(byID[user.DMRId]))
+			assert.Equal(t, apimodels.RadioIDDrift{UserID: unknownDMRID, Username: "gone", Callsign: "N0GONE"}, withoutTimes(byID[unknownDMRID]))
+
+			w = driftRequest(t, router, adminJar, http.MethodPost, fmt.Sprintf("/api/v1/admin/radio-id-drift/%d/fix", unknownDMRID), "")
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "RadioID does not have this DMR ID", patchAnswerOf(t, w.Body.Bytes()).Error)
+
+			require.NoError(t, database.Model(&models.User{}).Where("id = ?", unknownDMRID).UpdateColumn("username", "ki5vmf").Error)
+			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "Callsign is the username of another user", patchAnswerOf(t, w.Body.Bytes()).Error)
+			require.NoError(t, database.Model(&models.User{}).Where("id = ?", unknownDMRID).UpdateColumn("username", "gone").Error)
+
+			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			var fixed apimodels.RadioIDDriftFixed
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &fixed))
+			assert.Equal(t, apimodels.RadioIDDriftFixed{Message: "User updated", Callsign: "KI5VMF", Notified: true}, fixed)
+			u, err := models.FindUserWithoutRepeaters(database, user.DMRId)
+			require.NoError(t, err)
+			assert.Equal(t, "KI5VMF", u.Callsign)
+			_, drifted, err := models.FindRadioIDDrift(database, user.DMRId)
+			require.NoError(t, err)
+			assert.False(t, drifted)
+			select {
+			case m := <-mailer.sent:
+				assert.Equal(t, "ki5vmf@example.com", m.to)
+				assert.Equal(t, "Your Test Hub callsign is now KI5VMF", m.subject)
+				assert.Contains(t, m.body, "from OLDCALL to KI5VMF")
+			case <-time.After(testTimeout):
+				require.FailNow(t, "no callsign notice was sent")
+			}
+		})
+	}
+}
+
+func TestRadioIDDriftFixWithoutNotice(t *testing.T) {
+	t.Parallel()
+	mailer := &fakeMailer{sent: make(chan sentMail, 4)}
+	router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { c.SMTP.Enabled = true }, dmrhttp.WithMailer(mailer))
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+	database := tdb.DB()
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "OLDCALL", Username: "testuser", Approved: true}).Error)
+	require.NoError(t, models.SetCallsignOverride(database, 3191868, true))
+
+	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var fixed apimodels.RadioIDDriftFixed
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &fixed))
+	assert.False(t, fixed.Notified, "the user has no verified address")
+	u, err := models.FindUserWithoutRepeaters(database, 3191868)
+	require.NoError(t, err)
+	assert.Equal(t, "KI5VMF", u.Callsign)
+	assert.False(t, u.CallsignOverride)
+	assert.Empty(t, mailer.sent)
+}
+
+func TestRadioIDDriftFixNeedsRadioIDValidation(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { c.DMR.DisableRadioIDValidation = true })
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func withoutTimes(d apimodels.RadioIDDrift) apimodels.RadioIDDrift {
+	d.FoundAt = time.Time{}
+	d.CheckedAt = time.Time{}
+	return d
 }

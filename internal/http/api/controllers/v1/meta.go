@@ -89,9 +89,10 @@ func GETNetworkWebTransport(c *gin.Context) {
 	})
 }
 
-// GETNetworkFeatures answers which optional servers are on, and whether
-// users can have a forgotten password emailed, for the frontend to show
-// their pages without the admin-only config.
+// GETNetworkFeatures answers which optional servers are on, whether users
+// can have a forgotten password emailed, and the address and ports that
+// hotspots and repeaters connect to, for the frontend to show its pages
+// without the admin-only config.
 func GETNetworkFeatures(c *gin.Context) {
 	config, ok := utils.GetConfig(c)
 	if !ok {
@@ -104,6 +105,7 @@ func GETNetworkFeatures(c *gin.Context) {
 		"password_reset": config.SMTP.Enabled,
 		"mmdvm_port":     config.DMR.MMDVM.Port,
 		"ipsc_port":      config.DMR.IPSC.Port,
+		"server_address": config.ServerAddress(),
 	})
 }
 

@@ -103,7 +103,7 @@ func POSTUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 		return
 	}
-	publishUserChanged(c, user.ID)
+	hubUserChanged(c, user.ID)
 	authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, user.Email)
 	body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, user.Callsign, user.ID)
 	if config.AutoApprove {
@@ -897,11 +897,7 @@ type userWithEmail struct {
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {
-	if v, ok := c.Get("Hub"); ok {
-		if h, ok := v.(*hub.Hub); ok && h != nil {
-			h.UserChanged(userID)
-		}
-	}
+	hubUserChanged(c, userID)
 	ps, ok := c.Value("PubSub").(pubsub.PubSub)
 	if !ok {
 		slog.Error("PubSub not found in context, the websockets of a changed user stay open", "user", userID)
@@ -909,6 +905,14 @@ func publishUserChanged(c *gin.Context, userID uint) {
 	}
 	if err := websocket.PublishUserChanged(ps, userID); err != nil {
 		slog.Error("Failed to close the websockets of a changed user", "user", userID, "error", err)
+	}
+}
+
+func hubUserChanged(c *gin.Context, userID uint) {
+	if v, ok := c.Get("Hub"); ok {
+		if h, ok := v.(*hub.Hub); ok && h != nil {
+			h.UserChanged(userID)
+		}
 	}
 }
 

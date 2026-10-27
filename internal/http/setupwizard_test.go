@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,6 +34,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
@@ -362,4 +364,48 @@ func TestSetupWizardLetsTheFirstVisitorMakeTheAdmin(t *testing.T) {
 			t.Errorf("replica %d did not end its setup wizard", i)
 		}
 	}
+}
+
+// TestSetupWizardMakesTheFirstAdminQuietly makes the first admin through
+// the setup wizard, which serves no websockets, and logs no error.
+func TestSetupWizardMakesTheFirstAdminQuietly(t *testing.T) { //nolint:paralleltest // it swaps the default logger
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.Database.Database = fmt.Sprintf("file:wizard_%p", t)
+	base.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	base.Secret = "a-secret-that-is-long-enough-for-the-check"
+	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
+	base.DMR.DisableRadioIDValidation = true
+	database, err := db.MakeDB(&base)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
+	require.NoError(t, live.Boot(context.Background()))
+	state := setupwizard.NewState()
+	state.SetLive(live, database)
+	r := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	var body bytes.Buffer
+	require.NoError(t, json.NewEncoder(&body).Encode(map[string]any{
+		"id": 3000001, "callsign": "N0DEMO", "username": "admin", "password": "a-long-enough-password",
+	}))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/users", &body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var admin models.User
+	require.NoError(t, database.First(&admin, 3000001).Error)
+	assert.True(t, admin.SuperAdmin)
+	assert.Empty(t, logs.String())
 }

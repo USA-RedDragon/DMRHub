@@ -20,6 +20,7 @@
 package dmr_test
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -52,6 +53,61 @@ func slowDown(t *testing.T, database *gorm.DB) *atomic.Bool {
 	require.NoError(t, cb.Update().Before("gorm:update").Register("test:slow_update", wait))
 	require.NoError(t, cb.Delete().Before("gorm:delete").Register("test:slow_delete", wait))
 	return &on
+}
+
+// dbHold holds every statement of a database while it is held.
+type dbHold struct {
+	mu      sync.Mutex
+	gate    chan struct{}
+	held    atomic.Int64
+	entered atomic.Int64
+}
+
+// holdDatabase returns a dbHold of database that does not hold yet, and
+// lets the held statements go when the test ends.
+func holdDatabase(t *testing.T, database *gorm.DB) *dbHold {
+	t.Helper()
+	d := &dbHold{}
+	wait := func(*gorm.DB) {
+		d.mu.Lock()
+		gate := d.gate
+		d.mu.Unlock()
+		if gate == nil {
+			return
+		}
+		d.entered.Add(1)
+		d.held.Add(1)
+		<-gate
+		d.held.Add(-1)
+	}
+	cb := database.Callback()
+	require.NoError(t, cb.Query().Before("gorm:query").Register("test:hold_query", wait))
+	require.NoError(t, cb.Row().Before("gorm:row").Register("test:hold_row", wait))
+	require.NoError(t, cb.Raw().Before("gorm:raw").Register("test:hold_raw", wait))
+	require.NoError(t, cb.Create().Before("gorm:create").Register("test:hold_create", wait))
+	require.NoError(t, cb.Update().Before("gorm:update").Register("test:hold_update", wait))
+	require.NoError(t, cb.Delete().Before("gorm:delete").Register("test:hold_delete", wait))
+	t.Cleanup(d.release)
+	return d
+}
+
+// hold makes every statement from now on wait for release.
+func (d *dbHold) hold() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.gate == nil {
+		d.gate = make(chan struct{})
+	}
+}
+
+// release lets the held statements go, and holds no more.
+func (d *dbHold) release() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.gate != nil {
+		close(d.gate)
+		d.gate = nil
+	}
 }
 
 func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]time.Time {

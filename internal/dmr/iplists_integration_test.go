@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -285,6 +286,50 @@ func TestIPListsChangeOnOneReplicaAppliesAtOnceOnAnother(t *testing.T) { //nolin
 			})
 			require.Equal(t, http.StatusOK, code, raw)
 			assert.Equal(t, dmrd.CommandRPTACK, loginAnswer(t, addrB), "the other replica must take the address again")
+		})
+	}
+}
+
+// TestIPListsDropRefusedIPSCPeersOnEveryReplica saves on one replica a
+// list that refuses the IPSC repeaters of both replicas. Each replica must
+// drop its repeater at once, so that once the list takes the address
+// again the repeater registers anew instead of staying registered.
+func TestIPListsDropRefusedIPSCPeersOnEveryReplica(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
+	for _, be := range allBackends() { //nolint:paralleltest // as the test above
+		t.Run(be.Name, func(t *testing.T) { //nolint:paralleltest // as the test above
+			l := testutils.SetupLiveStack(t, be)
+			l.SeedUser(t, 1000001, "N0CALL")
+			l.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+			l.SeedIPSCRepeater(t, 200002, 1000001, ipscAuthKey)
+			b := l.SpawnLiveReplica(t, testutils.LiveOptions{})
+			ids := []uint{200001, 200002}
+			addrs := []string{l.First().Addr(t, manager.IPSC), b.Addr(t, manager.IPSC)}
+			for i, id := range ids {
+				c := testutils.NewIPSCClient(uint32(id), ipscAuthKey) //nolint:gosec // the test IDs fit in 32 bits
+				t.Cleanup(c.Close)
+				require.NoError(t, c.Connect(addrs[i]))
+				require.NoError(t, c.WaitReady(handshakeWait))
+			}
+			connected := func(id uint) time.Time {
+				r, err := models.FindRepeaterByID(l.DB, id)
+				require.NoError(t, err)
+				return r.Connected
+			}
+			require.Eventually(t, func() bool { return !connected(200001).IsZero() && !connected(200002).IsZero() }, handshakeWait, 10*time.Millisecond)
+			before := map[uint]time.Time{200001: connected(200001), 200002: connected(200002)}
+
+			code, _, raw := putSetting(t, l.First(), map[string]any{
+				"dmr.ip-lists.repeaters": map[string]any{"mode": "allow", "allow": []string{"192.0.2.0/24"}},
+			})
+			require.Equal(t, http.StatusOK, code, raw)
+			code, _, raw = putSetting(t, l.First(), map[string]any{
+				"dmr.ip-lists.repeaters": map[string]any{"mode": "off"},
+			})
+			require.Equal(t, http.StatusOK, code, raw)
+			for _, id := range ids {
+				assert.Eventually(t, func() bool { return connected(id).After(before[id]) }, 2*time.Second, 10*time.Millisecond,
+					"replica of IPSC repeater %d must drop it at once, so that it registers anew", id)
+			}
 		})
 	}
 }

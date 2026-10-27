@@ -32,7 +32,7 @@ DMRHub logs a refused address at the info level, at most once a minute for each 
 
 ## Changes
 
-A change in Setup goes into effect at once on every replica. Each replica ends the sessions of the addresses that the changed list refuses: an MMDVM hotspot gets `MSTCL`, and a browser radio loses its session. An IPSC repeater stays registered until it times out, but DMRHub drops its packets and sends it nothing from the change on.
+A change in Setup goes into effect at once on every replica. Each replica ends the sessions of the addresses that the changed list refuses: an MMDVM hotspot gets `MSTCL`, a browser radio loses its session, and DMRHub drops an IPSC repeater at once, as when it times out.
 
 ## OpenBridge peers and their IP address
 

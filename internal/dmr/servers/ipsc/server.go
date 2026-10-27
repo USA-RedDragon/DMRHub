@@ -97,6 +97,8 @@ type IPSCServer struct {
 	movingMu   sync.Mutex
 	moving     map[uint32]*moving
 	stopClaims func()
+	// stopIPLists stops the calls of dropRefused.
+	stopIPLists func()
 
 	wg       sync.WaitGroup
 	done     chan struct{}
@@ -235,6 +237,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
 	s.unwatchKeys = s.hub.OnRepeaterSecretChange(s.rekey)
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
+	s.stopIPLists = s.hub.OnIPListsChange(s.dropRefused)
 
 	s.SetBurstHandler(s.peerBursts(ctx))
 
@@ -276,6 +279,9 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		if s.stopClaims != nil {
 			s.stopClaims()
 		}
+		if s.stopIPLists != nil {
+			s.stopIPLists()
+		}
 		s.pacer.drain(pacerDrainTimeout)
 
 		if !servers.IsGracefulHandoff(ctx) {
@@ -314,6 +320,34 @@ func (s *IPSCServer) rekey(id uint) {
 	}
 	slog.Info("Dropping an IPSC peer whose auth key changed", "peerID", peer, "reason", ipscsession.ReasonDropped)
 	s.apply(context.Background(), out)
+}
+
+// dropRefused drops at once, after a change of the IP lists, the
+// registered peers whose address the IP list of the repeaters now refuses.
+func (s *IPSCServer) dropRefused() {
+	l := s.ipList()
+	if !l.Active() || s.m == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped.Load() {
+		return
+	}
+	var refused []uint32
+	for i := range s.m.Peers() {
+		if info := s.m.PeerAt(i); !l.Allows(netip.AddrFrom4(info.Addr.IP)) {
+			refused = append(refused, info.ID)
+		}
+	}
+	for _, id := range refused {
+		out, ok := s.m.Drop(id, s.out[:0])
+		if !ok {
+			continue
+		}
+		slog.Info("Dropping an IPSC peer whose address the IP list now refuses", "peerID", id, "reason", ipscsession.ReasonDropped)
+		s.apply(context.Background(), out)
+	}
 }
 
 func (s *IPSCServer) closeSessions(ctx context.Context) {

@@ -49,7 +49,7 @@ Every token, whatever its scopes, may also use these routes:
 
 - `GET /api/v1/users/me`: the account of the user, with `sms_storage` and `position_tracking`. It has `repeaters`, the hotspots of the user, only when the token has `hotspots:read` or `hotspots:talkgroups`.
 - `GET /api/v1/userdb/:id`: the RadioID.net entry of a DMR ID.
-- `GET /api/v1/network/webtransport`: how to reach the WebTransport listener.
+- `GET /api/v1/network/webtransport`: how to reach the WebTransport listener. See [MMDVM over WebTransport](webtransport.md).
 
 All other routes refuse a token with `403` and `insufficient_scope`, also when the user is signed in to DMRHub in the same browser.
 

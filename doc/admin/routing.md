@@ -6,6 +6,7 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | ------- | ------------ | ------- | ----------------- |
 | Dynamic links off | When `true`, a call on a talkgroup and the default dial of a hotspot link no dynamic talkgroup. See [Dynamic talkgroups](#dynamic-talkgroups). | `false` | `dmr.routing.disable-dynamic-links` |
 | Dynamic talkgroup timeout | The time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks the talkgroup from that timeslot, such as `15m`. `0s` never unlinks it. | `15m` | `dmr.routing.dynamic-timeout` |
+| Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 
 ## Dynamic talkgroups
 
@@ -18,3 +19,14 @@ Each voice call from the repeater on its dynamic talkgroup starts the timeout ag
 - A change of the timeout applies to the links that exist. With `0s`, no link times out.
 
 With dynamic links off, calls still reach the repeaters that carry the talkgroup as a static talkgroup or as a dynamic talkgroup that was linked before. A user or an admin can still pick a dynamic talkgroup on the **Repeaters** page, and talkgroup 4000 still unlinks.
+
+## Two calls at once
+
+Two radios can key up the same talkgroup at the same time, on two hotspots or repeaters. Each call is its own stream.
+
+- With `mix`, DMRHub sends the bursts of both calls to each hotspot and repeater that carries the talkgroup, interleaved on the same timeslot. A listener hears a mix of both, or the radio follows one of them. This is what DMRHub always did.
+- With `first`, the first call that reaches a timeslot of a hotspot or repeater holds that timeslot until the call ends: at its terminator, or 2 seconds after its last burst. DMRHub drops the other group calls to that timeslot to their end, and logs each dropped call once. A call that starts after the first one ends goes through.
+
+The setting applies to each timeslot of each hotspot and repeater, so it also applies when calls on two talkgroups reach the same timeslot. The replica that serves the hotspot or repeater decides, so the setting works the same with any number of replicas. It does not apply to private calls.
+
+A Motorola repeater on IPSC gets one call at a time on a timeslot with either setting. With `mix`, DMRHub queues the bursts of a second call for it and sends them after the first call ends, and drops a call that waits too long and reports it as undeliverable (slot busy).

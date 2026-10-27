@@ -106,3 +106,14 @@ const (
 	// PrivateUnknownFlood sends the traffic to every repeater.
 	PrivateUnknownFlood PrivateUnknown = "flood"
 )
+
+// Contention is what a repeater gets when two group calls reach the same
+// timeslot of it at once.
+type Contention string
+
+const (
+	// ContentionMix sends both calls, their bursts interleaved.
+	ContentionMix Contention = "mix"
+	// ContentionFirst lets the first call hold the timeslot until it ends.
+	ContentionFirst Contention = "first"
+)

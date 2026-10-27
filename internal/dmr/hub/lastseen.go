@@ -115,6 +115,7 @@ func (h *Hub) runSightings() {
 			})
 			h.pruneStreamClaims(now)
 			h.pruneSlotBuckets(now)
+			h.pruneSlotHolders(now)
 			h.pruneCodecStreams(now)
 			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {
 				if now.Sub(v.at) > sightedStreamTTL {

@@ -194,6 +194,8 @@ type Hub struct {
 	privateDropLogged *xsync.Map[uint, time.Time]
 	cfg               atomic.Pointer[config.Source]
 	dynamicUses       *xsync.Map[repeaterSlot, dynamicUse]
+	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
+	slotRefused       *xsync.Map[slotStream, time.Time]
 
 	repeaters *repeaterCache
 	origin    string
@@ -273,6 +275,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
 	h.dynamicUses = xsync.NewMap[repeaterSlot, dynamicUse]()
+	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
+	h.slotRefused = xsync.NewMap[slotStream, time.Time]()
 	h.transcoder = transcode.NewService(kvStore)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
 	h.copyOrders = map[sourceSlot]*copyOrder{}

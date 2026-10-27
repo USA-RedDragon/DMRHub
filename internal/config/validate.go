@@ -647,6 +647,9 @@ func (p PrivateCalls) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// ErrInvalidContention indicates a contention setting that is not mix or first.
+var ErrInvalidContention = errors.New("the contention setting must be mix or first")
+
 // ErrInvalidDynamicTimeout indicates a negative dynamic talkgroup timeout.
 var ErrInvalidDynamicTimeout = errors.New("the dynamic talkgroup timeout must be 0 to never unlink or a positive time, such as 15m")
 
@@ -660,6 +663,9 @@ func (r Routing) Validate() error {
 func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	if r.DynamicTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDynamicTimeout, Err: ErrInvalidDynamicTimeout})
+	}
+	if r.Contention != "" && r.Contention != ContentionMix && r.Contention != ContentionFirst {
+		errs = append(errs, ValidationError{Field: "dmr.routing.contention", Err: ErrInvalidContention})
 	}
 	return
 }

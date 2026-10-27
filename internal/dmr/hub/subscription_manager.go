@@ -692,6 +692,9 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 	if m.hub.refusal(repeaterID, slot, packet, true) != "" {
 		return
 	}
+	if !m.hub.holdsSlot(p.ID, slot, packet) {
+		return
+	}
 	packet.Repeater = p.ID
 	packet.Slot = slot
 	if !wantsVersion(&packet, p.SlotCodec(slot)) {

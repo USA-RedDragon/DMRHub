@@ -193,6 +193,7 @@ type iPListsShadow struct {
 type routingShadow struct {
 	DisableDynamicLinks *bool          `json:"disable-dynamic-links" toml:"disable-dynamic-links" yaml:"disable-dynamic-links"`
 	DynamicTimeout      *impl.Duration `json:"dynamic-timeout"       toml:"dynamic-timeout"       yaml:"dynamic-timeout"`
+	Contention          *string        `json:"contention"            toml:"contention"            yaml:"contention"`
 }
 
 type dMRShadow struct {
@@ -403,6 +404,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.routing.disable-dynamic-links", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.DynamicTimeout = time.Duration(int64(900000000000))
 	set("dmr.routing.dynamic-timeout", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.Contention = Contention("mix")
+	set("dmr.routing.contention", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
 	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
@@ -962,6 +965,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				}
 				cfg.DMR.Routing.DynamicTimeout = v
 				set("dmr.routing.dynamic-timeout", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.Contention != nil {
+				cfg.DMR.Routing.Contention = Contention(*s.DMR.Routing.Contention)
+				set("dmr.routing.contention", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.DrainTimeout != nil {
@@ -1973,6 +1980,10 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Routing.DynamicTimeout = d
 		set("dmr.routing.dynamic-timeout", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "contention"); ok {
+		cfg.DMR.Routing.Contention = Contention(v)
+		set("dmr.routing.contention", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2248,6 +2259,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "allow",
 		"dmr" + o.Separator + "routing" + o.Separator + "disable-dynamic-links",
 		"dmr" + o.Separator + "routing" + o.Separator + "dynamic-timeout",
+		"dmr" + o.Separator + "routing" + o.Separator + "contention",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -2389,27 +2401,28 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.StringSlice(names[101], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
 	fs.Bool(names[102], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
 	fs.Duration(names[103], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
-	fs.Var(impl.NewInt(25), names[104], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[105], false, "Enable SMTP support for sending emails")
-	fs.String(names[106], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[107], "SMTP server port")
-	fs.String(names[108], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[109], "", "SMTP server username")
-	fs.String(names[110], "", "SMTP server password")
-	fs.String(names[111], "", "Email address to use as the sender")
-	fs.String(names[112], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[113], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[114], false, "Enable metrics collection and export")
-	fs.String(names[115], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[116], "Metrics server port")
-	fs.StringSlice(names[117], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[118], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[119], false, "Enable PProf profiling and debugging support")
-	fs.String(names[120], "[::]", "PProf server listen address")
-	fs.StringSlice(names[121], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[122], "PProf server port")
-	fs.String(names[123], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[124], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[104], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
+	fs.Var(impl.NewInt(25), names[105], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[106], false, "Enable SMTP support for sending emails")
+	fs.String(names[107], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[108], "SMTP server port")
+	fs.String(names[109], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[110], "", "SMTP server username")
+	fs.String(names[111], "", "SMTP server password")
+	fs.String(names[112], "", "Email address to use as the sender")
+	fs.String(names[113], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[114], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[115], false, "Enable metrics collection and export")
+	fs.String(names[116], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[117], "Metrics server port")
+	fs.StringSlice(names[118], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[119], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[120], false, "Enable PProf profiling and debugging support")
+	fs.String(names[121], "[::]", "PProf server listen address")
+	fs.StringSlice(names[122], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[123], "PProf server port")
+	fs.String(names[124], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[125], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3661,6 +3674,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Routing.DynamicTimeout = v
 		set("dmr.routing.dynamic-timeout", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "contention"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.contention",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.Contention = Contention(v)
+		set("dmr.routing.contention", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -6771,6 +6796,19 @@ func (s *routingShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".dynamic-timeout", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
 			}
+		case "contention":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Contention = &str
+			default:
+				return configJSONError(path+".contention", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -7246,6 +7284,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.ip-lists.openbridge.allow = %v\n", c.DMR.IPLists.OpenBridge.Allow)
 	fmt.Fprintf(&b, "dmr.routing.disable-dynamic-links = %v\n", c.DMR.Routing.DisableDynamicLinks)
 	fmt.Fprintf(&b, "dmr.routing.dynamic-timeout = %v\n", c.DMR.Routing.DynamicTimeout)
+	fmt.Fprintf(&b, "dmr.routing.contention = %v\n", c.DMR.Routing.Contention)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

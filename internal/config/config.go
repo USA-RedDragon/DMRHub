@@ -137,6 +137,7 @@ type DMR struct {
 type Routing struct {
 	DisableDynamicLinks bool          `json:"disable-dynamic-links" yaml:"disable-dynamic-links" name:"disable-dynamic-links" description:"Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup" default:"false"`
 	DynamicTimeout      time.Duration `json:"dynamic-timeout" yaml:"dynamic-timeout" name:"dynamic-timeout" description:"Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it" default:"15m"`
+	Contention          Contention    `json:"contention" name:"contention" description:"What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)" default:"mix"`
 }
 
 // PrivateCalls holds how DMRHub finds the radio that private traffic goes

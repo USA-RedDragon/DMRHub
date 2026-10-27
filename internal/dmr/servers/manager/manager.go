@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -104,17 +105,27 @@ type settings struct {
 	bind    string
 	port    int
 	id      uint32
-	wt      config.MMDVMWebTransport
+	wt      wtSettings
 	holds   [2]time.Duration
 	modem   config.Modem
+}
+
+// wtSettings is config.MMDVMWebTransport in a form that compares, with the
+// allowed origins joined by newlines.
+type wtSettings struct {
+	enabled  bool
+	port     int
+	certFile string
+	keyFile  string
+	origins  string
 }
 
 func settingsOf(k Kind, c *config.Config) settings {
 	switch k {
 	case MMDVM:
 		s := settings{enabled: true, bind: c.DMR.MMDVM.Bind, port: c.DMR.MMDVM.Port}
-		if c.DMR.MMDVM.WebTransport.Enabled {
-			s.wt = c.DMR.MMDVM.WebTransport
+		if wt := c.DMR.MMDVM.WebTransport; wt.Enabled {
+			s.wt = wtSettings{enabled: true, port: wt.Port, certFile: wt.CertFile, keyFile: wt.KeyFile, origins: strings.Join(wt.AllowedOrigins, "\n")}
 		}
 		return s
 	case IPSC:
@@ -303,7 +314,7 @@ func (m *Manager) Apply(next *config.Config) []ApplyError {
 // holdsAPortOf reports whether a server with the settings cur holds a port
 // that a server with the settings next binds.
 func holdsAPortOf(cur, next settings) bool {
-	return cur.port == next.port || (cur.wt.Enabled && next.wt.Enabled && cur.wt.Port == next.wt.Port)
+	return cur.port == next.port || (cur.wt.enabled && next.wt.enabled && cur.wt.port == next.wt.port)
 }
 
 // restart replaces server k, if any, with one made with next. It binds

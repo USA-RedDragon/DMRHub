@@ -21,6 +21,8 @@ package config
 
 import (
 	"crypto/sha256"
+	"net/url"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -218,6 +220,45 @@ type MMDVMWebTransport struct {
 	Port     int    `json:"port,omitempty" name:"port" description:"UDP port of the WebTransport listener" default:"62032"`
 	CertFile string `json:"cert-file,omitempty" yaml:"cert-file" name:"cert-file" description:"TLS certificate file, such as the one that cert-manager mounts. Empty makes DMRHub use short-lived certificates of its own, which browsers accept through the hashes that DMRHub publishes"`
 	KeyFile  string `json:"key-file,omitempty" yaml:"key-file" name:"key-file" description:"TLS key file of the certificate file"`
+	// AllowedOrigins are the origins of the web pages that may open a
+	// session, in the form scheme://host[:port]. Empty allows every origin.
+	AllowedOrigins []string `json:"allowed-origins,omitempty" yaml:"allowed-origins" name:"allowed-origins" description:"Origins of the web pages that may open a session, such as https://radio.example. Empty allows every origin"`
+}
+
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
+// NormalizeOrigin returns the origin s in the form that browsers send in
+// the Origin header: the scheme and host in lower case, and the port only
+// when it is not the default port of the scheme. ok is false when s is not
+// an http or https origin, or has a path other than "/", a query, a
+// fragment or user information.
+func NormalizeOrigin(s string) (origin string, ok bool) {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery ||
+		(u.Path != "" && u.Path != "/") || u.Opaque != "" {
+		return "", false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != schemeHTTP && scheme != schemeHTTPS {
+		return "", false
+	}
+	host, port := strings.ToLower(u.Hostname()), u.Port()
+	if host == "" {
+		return "", false
+	}
+	if (scheme == schemeHTTPS && port == "443") || (scheme == schemeHTTP && port == "80") {
+		port = ""
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port != "" {
+		return scheme + "://" + host + ":" + port, true
+	}
+	return scheme + "://" + host, true
 }
 
 // IPSC holds the configuration for the IPSC server.

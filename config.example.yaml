@@ -71,6 +71,8 @@ dmr:
       # cert-file: ""
       # TLS key file of the certificate file
       # key-file: ""
+      # Origins of the web pages that may open a session, such as https://radio.example. Empty allows every origin
+      # allowed-origins: []
   # OpenBridge server configuration for DMR
   openbridge:
     # Enable OpenBridge server support

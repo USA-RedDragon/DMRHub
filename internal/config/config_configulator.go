@@ -57,10 +57,11 @@ type hTTPShadow struct {
 }
 
 type mMDVMWebTransportShadow struct {
-	Enabled  *bool   `json:"enabled"   toml:"enabled"   yaml:"enabled"`
-	Port     *int    `json:"port"      toml:"port"      yaml:"port"`
-	CertFile *string `json:"cert-file" toml:"cert-file" yaml:"cert-file"`
-	KeyFile  *string `json:"key-file"  toml:"key-file"  yaml:"key-file"`
+	Enabled        *bool     `json:"enabled"         toml:"enabled"         yaml:"enabled"`
+	Port           *int      `json:"port"            toml:"port"            yaml:"port"`
+	CertFile       *string   `json:"cert-file"       toml:"cert-file"       yaml:"cert-file"`
+	KeyFile        *string   `json:"key-file"        toml:"key-file"        yaml:"key-file"`
+	AllowedOrigins *[]string `json:"allowed-origins" toml:"allowed-origins" yaml:"allowed-origins"`
 }
 
 type mMDVMShadow struct {
@@ -506,6 +507,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				if s.DMR.MMDVM.WebTransport.KeyFile != nil {
 					cfg.DMR.MMDVM.WebTransport.KeyFile = *s.DMR.MMDVM.WebTransport.KeyFile
 					set("dmr.mmdvm.webtransport.key-file", configulator.LayerFile, file)
+				}
+				if s.DMR.MMDVM.WebTransport.AllowedOrigins != nil {
+					cfg.DMR.MMDVM.WebTransport.AllowedOrigins = *s.DMR.MMDVM.WebTransport.AllowedOrigins
+					set("dmr.mmdvm.webtransport.allowed-origins", configulator.LayerFile, file)
 				}
 			}
 		}
@@ -1058,6 +1063,11 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "key-file"); ok {
 		cfg.DMR.MMDVM.WebTransport.KeyFile = v
 		set("dmr.mmdvm.webtransport.key-file", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "mmdvm", "webtransport", "allowed-origins"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.MMDVM.WebTransport.AllowedOrigins = lst
+		set("dmr.mmdvm.webtransport.allowed-origins", configulator.LayerEnv, n)
 	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "openbridge", "enabled"); ok {
 		p, err := strconv.ParseBool(v)
@@ -1852,6 +1862,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "port",
 		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "cert-file",
 		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "key-file",
+		"dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "allowed-origins",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "enabled",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "bind",
 		"dmr" + o.Separator + "openbridge" + o.Separator + "port",
@@ -1971,81 +1982,82 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(62032), names[25], "UDP port of the WebTransport listener")
 	fs.String(names[26], "", "TLS certificate file, such as the one that cert-manager mounts. Empty makes DMRHub use short-lived certificates of its own, which browsers accept through the hashes that DMRHub publishes")
 	fs.String(names[27], "", "TLS key file of the certificate file")
-	fs.Bool(names[28], false, "Enable OpenBridge server support")
-	fs.String(names[29], "[::]", "OpenBridge server listen address")
-	fs.Var(impl.NewInt(62035), names[30], "OpenBridge server port")
-	fs.Uint32(names[31], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")
-	fs.Bool(names[32], false, "Enable IPSC server support")
-	fs.String(names[33], "[::]", "IPSC server listen address")
-	fs.Var(impl.NewInt(50000), names[34], "IPSC server port")
-	fs.Uint32(names[35], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
-	fs.Duration(names[36], time.Duration(int64(2500000000)), "Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off")
-	fs.Duration(names[37], time.Duration(int64(1200000000)), "Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off")
-	fs.Bool(names[38], false, "Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server")
-	fs.String(names[39], "", "Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled")
-	fs.Var(impl.NewInt(115200), names[40], "Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600")
-	fs.Var(impl.NewUint(0), names[41], "ID of the repeater that the modem is on the network. DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. A repeater that does not exist is made with no owner, and an admin assigns its owner. Required when the modem is enabled")
-	fs.Bool(names[42], false, "Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2")
-	fs.Var(impl.NewUint(1), names[43], "Color code of the modem, 0 to 15")
-	fs.Var(impl.NewUint(0), names[44], "Receive frequency in Hz. Required when the modem is enabled")
-	fs.Var(impl.NewUint(0), names[45], "Transmit frequency in Hz. Required when the modem is enabled")
-	fs.Var(impl.NewInt(0), names[46], "Correction in Hz added to the receive frequency, for the frequency error of the board")
-	fs.Var(impl.NewInt(0), names[47], "Correction in Hz added to the transmit frequency, for the frequency error of the board")
-	fs.Float64(names[48], 100.0, "Transmit power in percent, on boards that set it, such as MMDVM_HS hats")
-	fs.Float64(names[49], 50.0, "Receive audio level in percent")
-	fs.Float64(names[50], 50.0, "Transmit deviation level in percent")
-	fs.Var(impl.NewInt(0), names[51], "Receive DC offset, -128 to 127")
-	fs.Var(impl.NewInt(0), names[52], "Transmit DC offset, -128 to 127")
-	fs.Bool(names[53], false, "Invert the receive audio")
-	fs.Bool(names[54], true, "Invert the transmit audio, which most boards need")
-	fs.Bool(names[55], false, "Invert the PTT output")
-	fs.Var(impl.NewInt(100), names[56], "Time in milliseconds, 0 to 500, that the transmitter is on before the first burst")
-	fs.Var(impl.NewInt(0), names[57], "Delay of the duplex receiver in symbols, 0 to 255")
-	fs.Bool(names[58], false, "Ask the modem for its debug messages and log them")
-	fs.String(names[59], "", "Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known")
-	fs.Bool(names[60], false, "Send a morse station ID while the channel is idle")
-	fs.Var(impl.NewUint(10), names[61], "Minutes between station IDs, 1 to 1440. The first goes out a quarter of this time after the modem connects or the channel goes idle")
-	fs.String(names[62], "", "Callsign to send in morse: letters, digits, spaces and / ? , - = . Required when the station ID is on")
-	fs.Bool(names[63], false, "Key up the transmitter of a duplex modem at each interval while the channel is idle")
-	fs.Var(impl.NewUint(60), names[64], "Seconds between beacons, 1 to 86400")
-	fs.Var(impl.NewUint(3), names[65], "Seconds that each beacon keys up, at least 1 and less than the interval")
-	fs.Bool(names[66], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[67], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[68], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[69], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[70], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[71], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[72], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[73], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[74], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[75], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[76], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[77], false, "Accept plugins that run as their own programs")
-	fs.String(names[78], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[79], "TCP port that plugins connect to")
-	fs.String(names[80], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[81], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[82], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[83], false, "Enable SMTP support for sending emails")
-	fs.String(names[84], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[85], "SMTP server port")
-	fs.String(names[86], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[87], "", "SMTP server username")
-	fs.String(names[88], "", "SMTP server password")
-	fs.String(names[89], "", "Email address to use as the sender")
-	fs.String(names[90], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[91], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[92], false, "Enable metrics collection and export")
-	fs.String(names[93], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[94], "Metrics server port")
-	fs.StringSlice(names[95], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[96], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[97], false, "Enable PProf profiling and debugging support")
-	fs.String(names[98], "[::]", "PProf server listen address")
-	fs.StringSlice(names[99], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[100], "PProf server port")
-	fs.String(names[101], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[102], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.StringSlice(names[28], nil, "Origins of the web pages that may open a session, such as https://radio.example. Empty allows every origin")
+	fs.Bool(names[29], false, "Enable OpenBridge server support")
+	fs.String(names[30], "[::]", "OpenBridge server listen address")
+	fs.Var(impl.NewInt(62035), names[31], "OpenBridge server port")
+	fs.Uint32(names[32], 0, "Server ID of 4 to 7 digits that DMRHub sends to enhanced (FreeDMR) OpenBridge peers as the source server. 0 sends the network ID of each peer")
+	fs.Bool(names[33], false, "Enable IPSC server support")
+	fs.String(names[34], "[::]", "IPSC server listen address")
+	fs.Var(impl.NewInt(50000), names[35], "IPSC server port")
+	fs.Uint32(names[36], 0, "DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled")
+	fs.Duration(names[37], time.Duration(int64(2500000000)), "Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off")
+	fs.Duration(names[38], time.Duration(int64(1200000000)), "Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off")
+	fs.Bool(names[39], false, "Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server")
+	fs.String(names[40], "", "Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled")
+	fs.Var(impl.NewInt(115200), names[41], "Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600")
+	fs.Var(impl.NewUint(0), names[42], "ID of the repeater that the modem is on the network. DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. A repeater that does not exist is made with no owner, and an admin assigns its owner. Required when the modem is enabled")
+	fs.Bool(names[43], false, "Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2")
+	fs.Var(impl.NewUint(1), names[44], "Color code of the modem, 0 to 15")
+	fs.Var(impl.NewUint(0), names[45], "Receive frequency in Hz. Required when the modem is enabled")
+	fs.Var(impl.NewUint(0), names[46], "Transmit frequency in Hz. Required when the modem is enabled")
+	fs.Var(impl.NewInt(0), names[47], "Correction in Hz added to the receive frequency, for the frequency error of the board")
+	fs.Var(impl.NewInt(0), names[48], "Correction in Hz added to the transmit frequency, for the frequency error of the board")
+	fs.Float64(names[49], 100.0, "Transmit power in percent, on boards that set it, such as MMDVM_HS hats")
+	fs.Float64(names[50], 50.0, "Receive audio level in percent")
+	fs.Float64(names[51], 50.0, "Transmit deviation level in percent")
+	fs.Var(impl.NewInt(0), names[52], "Receive DC offset, -128 to 127")
+	fs.Var(impl.NewInt(0), names[53], "Transmit DC offset, -128 to 127")
+	fs.Bool(names[54], false, "Invert the receive audio")
+	fs.Bool(names[55], true, "Invert the transmit audio, which most boards need")
+	fs.Bool(names[56], false, "Invert the PTT output")
+	fs.Var(impl.NewInt(100), names[57], "Time in milliseconds, 0 to 500, that the transmitter is on before the first burst")
+	fs.Var(impl.NewInt(0), names[58], "Delay of the duplex receiver in symbols, 0 to 255")
+	fs.Bool(names[59], false, "Ask the modem for its debug messages and log them")
+	fs.String(names[60], "", "Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known")
+	fs.Bool(names[61], false, "Send a morse station ID while the channel is idle")
+	fs.Var(impl.NewUint(10), names[62], "Minutes between station IDs, 1 to 1440. The first goes out a quarter of this time after the modem connects or the channel goes idle")
+	fs.String(names[63], "", "Callsign to send in morse: letters, digits, spaces and / ? , - = . Required when the station ID is on")
+	fs.Bool(names[64], false, "Key up the transmitter of a duplex modem at each interval while the channel is idle")
+	fs.Var(impl.NewUint(60), names[65], "Seconds between beacons, 1 to 86400")
+	fs.Var(impl.NewUint(3), names[66], "Seconds that each beacon keys up, at least 1 and less than the interval")
+	fs.Bool(names[67], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[68], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[69], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[70], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[71], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[72], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[73], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[74], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[75], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[76], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[77], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[78], false, "Accept plugins that run as their own programs")
+	fs.String(names[79], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[80], "TCP port that plugins connect to")
+	fs.String(names[81], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[82], "", "TLS key file of the certificate file")
+	fs.Var(impl.NewInt(25), names[83], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[84], false, "Enable SMTP support for sending emails")
+	fs.String(names[85], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[86], "SMTP server port")
+	fs.String(names[87], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[88], "", "SMTP server username")
+	fs.String(names[89], "", "SMTP server password")
+	fs.String(names[90], "", "Email address to use as the sender")
+	fs.String(names[91], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[92], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[93], false, "Enable metrics collection and export")
+	fs.String(names[94], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[95], "Metrics server port")
+	fs.StringSlice(names[96], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[97], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[98], false, "Enable PProf profiling and debugging support")
+	fs.String(names[99], "[::]", "PProf server listen address")
+	fs.StringSlice(names[100], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[101], "PProf server port")
+	fs.String(names[102], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[103], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -2385,6 +2397,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.MMDVM.WebTransport.KeyFile = v
 		set("dmr.mmdvm.webtransport.key-file", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "mmdvm" + o.Separator + "webtransport" + o.Separator + "allowed-origins"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.mmdvm.webtransport.allowed-origins",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.MMDVM.WebTransport.AllowedOrigins = v
+		set("dmr.mmdvm.webtransport.allowed-origins", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "openbridge" + o.Separator + "enabled"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -4382,6 +4406,36 @@ func (s *mMDVMWebTransportShadow) decodeJSON(dec *jsontext.Decoder, path string)
 			default:
 				return configJSONError(path+".key-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
 			}
+		case "allowed-origins":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginArray {
+					return configJSONError(path+".allowed-origins", open, fmt.Errorf("expected an array, got %v", open.Kind()))
+				}
+				out := []string{}
+				for dec.PeekKind() != jsontext.KindEndArray {
+					v, err := dec.ReadToken()
+					if err != nil {
+						return err
+					}
+					if v.Kind() != jsontext.KindString {
+						return configJSONError(path+".allowed-origins"+"["+strconv.Itoa(len(out))+"]", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+					}
+					el := v.String()
+					out = append(out, el)
+				}
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				s.AllowedOrigins = &out
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -6003,6 +6057,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.port = %v\n", c.DMR.MMDVM.WebTransport.Port)
 	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.cert-file = %v\n", c.DMR.MMDVM.WebTransport.CertFile)
 	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.key-file = %v\n", c.DMR.MMDVM.WebTransport.KeyFile)
+	fmt.Fprintf(&b, "dmr.mmdvm.webtransport.allowed-origins = %v\n", c.DMR.MMDVM.WebTransport.AllowedOrigins)
 	fmt.Fprintf(&b, "dmr.openbridge.enabled = %v\n", c.DMR.OpenBridge.Enabled)
 	fmt.Fprintf(&b, "dmr.openbridge.bind = %v\n", c.DMR.OpenBridge.Bind)
 	fmt.Fprintf(&b, "dmr.openbridge.port = %v\n", c.DMR.OpenBridge.Port)

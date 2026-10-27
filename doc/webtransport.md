@@ -23,6 +23,7 @@ The listener is off by default. The admin turns it on in the config:
 | `dmr.mmdvm.webtransport.port`        | `62032`  | `DMR_MMDVM_WEBTRANSPORT_PORT`      | UDP port of the WebTransport listener                                                                |
 | `dmr.mmdvm.webtransport.cert-file`   | (empty)  | `DMR_MMDVM_WEBTRANSPORT_CERT_FILE` | TLS certificate file. Empty makes DMRHub use short-lived certificates of its own                      |
 | `dmr.mmdvm.webtransport.key-file`    | (empty)  | `DMR_MMDVM_WEBTRANSPORT_KEY_FILE`  | TLS key file of the certificate file                                                                 |
+| `dmr.mmdvm.webtransport.allowed-origins` | (empty) | `DMR_MMDVM_WEBTRANSPORT_ALLOWED_ORIGINS` | Origins of the web pages that may open a session, such as `https://radio.example`. Empty allows every origin |
 
 ```yaml
 dmr:
@@ -101,13 +102,15 @@ await wt.ready;
 ```
 
 - The listener accepts TLS 1.3 only. QUIC uses TLS 1.3, so a browser always does.
-- DMRHub does not check the `Origin` of the request. Any page can open a session. The login with the hotspot password is the access check.
+- When `allowed-origins` is empty, DMRHub does not check the `Origin` of the request, and any page can open a session. Then the login with the hotspot password is the only access check.
+- When `allowed-origins` has entries, DMRHub opens a session only for a request whose `Origin` is one of them, and answers `403` to any other request, also to one without an `Origin`. Write each entry as `scheme://host` or `scheme://host:port`, with `http` or `https` and no path. DMRHub compares the scheme and the host without regard to case, and treats port 443 of `https` and port 80 of `http` as no port. DMRHub refuses a config with an entry that is not such an origin.
 - DMRHub answers the request to open a session with:
 
 | Status | When                                                                                                                                          |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `200`  | The session is open                                                                                                                           |
 | `400`  | The request is not a WebTransport request                                                                                                     |
+| `403`  | `allowed-origins` is set, and the `Origin` of the request is not one of them                                                                  |
 | `404`  | The path is not `/mmdvm`                                                                                                                      |
 | `503`  | This replica of DMRHub drains and takes no new sessions. Try again; the load balancer can send the new session to another replica. See [When a replica stops](#when-a-replica-stops) |
 

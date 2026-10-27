@@ -191,6 +191,34 @@ func TestApplyTurnsWebTransportOnMovesItAndTurnsItOff(t *testing.T) {
 	assert.Nil(t, webTransportAddr(t, l.Manager), "turning WebTransport off stops its listener")
 }
 
+// TestApplyRestartsMMDVMForNewAllowedOrigins changes the allowed origins of
+// WebTransport. The listener takes them when it is made, so a change makes
+// a new server, and the same list keeps the one that runs.
+func TestApplyRestartsMMDVMForNewAllowedOrigins(t *testing.T) {
+	t.Parallel()
+	l := testutils.SetupLiveStack(t)
+	next := *l.Config
+	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: testutils.FreeUDPPort(t)}
+	require.Empty(t, l.Manager.Apply(&next))
+	before := l.Manager.Server(manager.MMDVM)
+
+	same := next
+	same.DMR.MMDVM.WebTransport.AllowedOrigins = nil
+	require.Empty(t, l.Manager.Apply(&same))
+	assert.Same(t, before, l.Manager.Server(manager.MMDVM), "the same settings keep the server")
+
+	limited := next
+	limited.DMR.MMDVM.WebTransport.AllowedOrigins = []string{"https://radio.example"}
+	require.Empty(t, l.Manager.Apply(&limited))
+	after := l.Manager.Server(manager.MMDVM)
+	assert.NotSame(t, before, after, "new allowed origins make a new server")
+
+	again := limited
+	again.DMR.MMDVM.WebTransport.AllowedOrigins = []string{"https://radio.example"}
+	require.Empty(t, l.Manager.Apply(&again))
+	assert.Same(t, after, l.Manager.Server(manager.MMDVM), "an equal list keeps the server")
+}
+
 // TestApplyRestartsIPSCForNewHangHolds changes each IPSC hang hold. The
 // IPSC server takes its holds when it is made, so each change makes a new
 // one, and the same holds keep the one that runs.

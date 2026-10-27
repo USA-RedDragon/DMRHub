@@ -25,6 +25,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -45,6 +46,11 @@ import (
 
 func webTransportServer(t *testing.T) (*Server, *config.Config) {
 	t.Helper()
+	return webTransportServerWith(t, func(*config.Config) {})
+}
+
+func webTransportServerWith(t *testing.T, set func(*config.Config)) (*Server, *config.Config) {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Database.Database = ""
@@ -52,6 +58,7 @@ func webTransportServer(t *testing.T) (*Server, *config.Config) {
 	cfg.DMR.MMDVM.Bind = "127.0.0.1"
 	cfg.DMR.MMDVM.Port = 0
 	cfg.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: 0}
+	set(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
@@ -79,6 +86,16 @@ func webTransportServer(t *testing.T) (*Server, *config.Config) {
 // with serverCertificateHashes does.
 func dialByHash(t *testing.T, s *Server, cfg *config.Config) *webtransport.Session {
 	t.Helper()
+	status, sess := dialFrom(t, s, cfg, "")
+	require.Equal(t, 200, status)
+	return sess
+}
+
+// dialFrom opens a WebTransport session as a page of origin does, and
+// returns the status of the answer and the session when it opened. An
+// empty origin sends no Origin header.
+func dialFrom(t *testing.T, s *Server, cfg *config.Config, origin string) (int, *webtransport.Session) {
+	t.Helper()
 	certs, err := wtcert.New(cfg.GetDerivedSecret(), "", "")
 	require.NoError(t, err)
 	hashes, err := certs.Hashes()
@@ -99,11 +116,46 @@ func dialByHash(t *testing.T, s *Server, cfg *config.Config) *webtransport.Sessi
 	t.Cleanup(func() { _ = d.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rsp, sess, err := d.Dial(ctx, fmt.Sprintf("https://%s%s", s.WebTransportAddr().String(), wtcert.Path), nil)
-	require.NoError(t, err)
-	require.Equal(t, 200, rsp.StatusCode)
+	header := http.Header{}
+	if origin != "" {
+		header.Set("Origin", origin)
+	}
+	rsp, sess, err := d.Dial(ctx, fmt.Sprintf("https://%s%s", s.WebTransportAddr().String(), wtcert.Path), header)
+	if err != nil {
+		require.NotNil(t, rsp, "no answer: %v", err)
+		return rsp.StatusCode, nil
+	}
 	t.Cleanup(func() { _ = sess.CloseWithError(0, "") })
-	return sess
+	return rsp.StatusCode, sess
+}
+
+func TestWebTransportTakesEveryOriginByDefault(t *testing.T) {
+	t.Parallel()
+	s, cfg := webTransportServer(t)
+	for _, origin := range []string{"", "https://radio.example", "https://elsewhere.example"} {
+		status, _ := dialFrom(t, s, cfg, origin)
+		assert.Equal(t, http.StatusOK, status, "origin %q", origin)
+	}
+}
+
+func TestWebTransportTakesOnlyTheAllowedOrigins(t *testing.T) {
+	t.Parallel()
+	s, cfg := webTransportServerWith(t, func(c *config.Config) {
+		c.DMR.MMDVM.WebTransport.AllowedOrigins = []string{"HTTPS://Radio.Example:443/", "http://localhost:8080"}
+	})
+	for origin, want := range map[string]int{
+		"https://radio.example":     http.StatusOK,
+		"https://RADIO.example:443": http.StatusOK,
+		"http://localhost:8080":     http.StatusOK,
+		"http://localhost":          http.StatusForbidden,
+		"http://radio.example":      http.StatusForbidden,
+		"https://elsewhere.example": http.StatusForbidden,
+		"null":                      http.StatusForbidden,
+		"":                          http.StatusForbidden,
+	} {
+		status, _ := dialFrom(t, s, cfg, origin)
+		assert.Equal(t, want, status, "origin %q", origin)
+	}
 }
 
 func rptlAck(t *testing.T, sess *webtransport.Session, id uint32) []byte {

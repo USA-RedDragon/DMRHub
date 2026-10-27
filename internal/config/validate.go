@@ -36,6 +36,7 @@ const (
 	fieldDMRMMDVMPort      = "dmr.mmdvm.port"
 	fieldDMRMMDVMWTPort    = "dmr.mmdvm.webtransport.port"
 	fieldDMRMMDVMWTKey     = "dmr.mmdvm.webtransport.key-file"
+	fieldDMRMMDVMWTOrigins = "dmr.mmdvm.webtransport.allowed-origins"
 	fieldDMROpenBridgePort = "dmr.openbridge.port"
 	fieldDMROpenBridgeSrv  = "dmr.openbridge.server-id"
 	fieldDMRIPSCPort       = "dmr.ipsc.port"
@@ -105,6 +106,8 @@ var (
 	ErrPluginsKeyPair = errors.New("set both the plugin certificate and key files, or neither")
 	// ErrDMRMMDVMWebTransportKeyPair indicates that only one of the WebTransport certificate and key files is set.
 	ErrDMRMMDVMWebTransportKeyPair = errors.New("set both the WebTransport certificate and key files, or neither")
+	// ErrInvalidDMRMMDVMWebTransportOrigin indicates that an allowed WebTransport origin is not an origin.
+	ErrInvalidDMRMMDVMWebTransportOrigin = errors.New("enter each allowed origin as scheme://host or scheme://host:port, such as https://radio.example")
 	// ErrInvalidDMROpenBridgeHost indicates that the provided DMR OpenBridge host is not valid.
 	ErrInvalidDMROpenBridgeHost = errors.New("invalid DMR OpenBridge host provided")
 	// ErrInvalidDMROpenBridgePort indicates that the provided DMR OpenBridge port is not valid.
@@ -341,6 +344,15 @@ func (h MMDVM) ValidateWithFields() (errs []ValidationError) {
 				Field: fieldDMRMMDVMWTKey,
 				Err:   ErrDMRMMDVMWebTransportKeyPair,
 			})
+		}
+		for _, o := range wt.AllowedOrigins {
+			if _, ok := NormalizeOrigin(o); !ok {
+				errs = append(errs, ValidationError{
+					Field: fieldDMRMMDVMWTOrigins,
+					Err:   ErrInvalidDMRMMDVMWebTransportOrigin,
+				})
+				break
+			}
 		}
 	}
 

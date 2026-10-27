@@ -580,12 +580,42 @@ func TestMMDVMWebTransportValidate(t *testing.T) {
 		{"the MMDVM port", config.MMDVMWebTransport{Enabled: true, Port: 62031}, config.ErrInvalidDMRMMDVMWebTransportPort},
 		{"certificate without key", config.MMDVMWebTransport{Enabled: true, Port: 443, CertFile: "/tls/tls.crt"}, config.ErrDMRMMDVMWebTransportKeyPair},
 		{"key without certificate", config.MMDVMWebTransport{Enabled: true, Port: 443, KeyFile: "/tls/tls.key"}, config.ErrDMRMMDVMWebTransportKeyPair},
+		{"allowed origins", config.MMDVMWebTransport{Enabled: true, Port: 62032, AllowedOrigins: []string{"https://radio.example", "http://localhost:8080"}}, nil},
+		{"an origin with a path", config.MMDVMWebTransport{Enabled: true, Port: 62032, AllowedOrigins: []string{"https://radio.example/app"}}, config.ErrInvalidDMRMMDVMWebTransportOrigin},
+		{"a host without a scheme", config.MMDVMWebTransport{Enabled: true, Port: 62032, AllowedOrigins: []string{"radio.example"}}, config.ErrInvalidDMRMMDVMWebTransportOrigin},
 	} {
 		m := base
 		m.WebTransport = tc.wt
 		if err := m.Validate(); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
 			t.Errorf("%s: got %v, want %v", tc.name, err, tc.want)
 		}
+	}
+}
+
+func TestNormalizeOrigin(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"https://radio.example":      "https://radio.example",
+		"HTTPS://Radio.Example:443/": "https://radio.example",
+		"http://localhost:80":        "http://localhost",
+		"http://localhost:8080":      "http://localhost:8080",
+		"https://[::1]:8443":         "https://[::1]:8443",
+		"radio.example":              "",
+		"ftp://radio.example":        "",
+		"https://radio.example/app":  "",
+		"https://radio.example?a=1":  "",
+		"https://radio.example#a":    "",
+		"https://user@radio.example": "",
+		"null":                       "",
+		"":                           "",
+	} {
+		got, ok := config.NormalizeOrigin(in)
+		if got != want || ok != (want != "") {
+			t.Errorf("NormalizeOrigin(%q) = %q, %v; want %q", in, got, ok, want)
+		}
+	}
+	if got, ok := config.NormalizeOrigin("\thttps://radio.example "); !ok || got != "https://radio.example" {
+		t.Errorf("NormalizeOrigin of an origin with spaces around it = %q, %v", got, ok)
 	}
 }
 

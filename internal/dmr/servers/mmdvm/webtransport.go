@@ -37,6 +37,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -84,6 +85,9 @@ type webTransport struct {
 	// onPathMoved takes each session whose QUIC connection the load
 	// balancer moved to another path, and the time of it.
 	onPathMoved atomic.Pointer[func(wtAddr, time.Time)]
+	// origins are the normalized origins that may open a session, or nil
+	// for every origin.
+	origins map[string]bool
 }
 
 // controlWait is the longest time the listener waits to open or read a
@@ -96,8 +100,9 @@ const maxControl = 1024
 // listenWebTransport listens for WebTransport sessions on the UDP port.
 // The replicas share secret, from which they make one stateless reset key,
 // and forward the packets of each other's connections over ps; with a nil
-// ps or store the listener works alone.
-func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []byte, ps pubsub.PubSub, store kv.KV) (*webTransport, error) {
+// ps or store the listener works alone. A session from a page whose origin
+// is not one of origins is refused; no origins allows every origin.
+func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []byte, origins []string, ps pubsub.PubSub, store kv.KV) (*webTransport, error) {
 	sock, _, err := servers.ListenUDP(bind, port)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOpenSocket, err)
@@ -116,6 +121,14 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []by
 		sessions: xsync.NewMap[string, *webtransport.Session](),
 		in:       make(chan wtDatagram, channelBufferSize),
 		done:     make(chan struct{}),
+	}
+	if len(origins) > 0 {
+		t.origins = map[string]bool{}
+		for _, o := range origins {
+			if n, ok := config.NormalizeOrigin(o); ok {
+				t.origins[n] = true
+			}
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(wtcert.Path, t.accept)
@@ -190,6 +203,11 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	if !t.originAllowed(r) {
+		slog.Debug("WebTransport session from an origin that is not allowed", "remoteAddr", r.RemoteAddr, "origin", r.Header.Get("Origin"))
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	sess, err := t.srv.Upgrade(w, r)
 	if err != nil {
 		slog.Debug("WebTransport session not accepted", "remoteAddr", r.RemoteAddr, "error", err)
@@ -203,6 +221,16 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("WebTransport session opened", "session", addr, "remoteAddr", r.RemoteAddr)
 	go t.read(sess.Context(), addr, sess)    //nolint:contextcheck // the request context ends when this handler returns, the session lives on
 	go t.control(sess.Context(), addr, sess) //nolint:contextcheck // the request context ends when this handler returns, the session lives on
+}
+
+// originAllowed reports whether the page that opens the session of r may
+// open one.
+func (t *webTransport) originAllowed(r *http.Request) bool {
+	if t.origins == nil {
+		return true
+	}
+	o, ok := config.NormalizeOrigin(r.Header.Get("Origin"))
+	return ok && t.origins[o]
 }
 
 // control answers the resume requests that the browser sends on streams

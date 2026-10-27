@@ -153,7 +153,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 			_ = server.Close()
 			return Server{}, fmt.Errorf("WebTransport certificate: %w", err)
 		}
-		if wt, err = listenWebTransport(config.DMR.MMDVM.Bind, c.Port, certs, config.GetDerivedSecret(), pubsub, kv); err != nil {
+		if wt, err = listenWebTransport(config.DMR.MMDVM.Bind, c.Port, certs, config.GetDerivedSecret(), c.AllowedOrigins, pubsub, kv); err != nil {
 			_ = server.Close()
 			return Server{}, err
 		}

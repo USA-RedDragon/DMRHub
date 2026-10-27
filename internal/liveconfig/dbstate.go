@@ -39,6 +39,11 @@ const DatabaseStateFile = "dmrhub-database.json"
 // settings, which the deployment sets.
 var ErrDatabaseLocked = errors.New("the deployment sets the database, in the config file, the environment or a flag; fix it there and restart DMRHub")
 
+// ErrDatabaseSaved is a change in the setup wizard of the database
+// settings after a database setting was saved once. The setup wizard is open
+// to anyone, so only the deployment can change a database that DMRHub used.
+var ErrDatabaseSaved = errors.New("a database setting was saved before, so the setup wizard cannot change it; fix the database in the config file, the environment or a flag and restart DMRHub")
+
 // DatabaseState is the database setting that the setup wizard keeps in
 // Path. DMRHub uses it only when the config file, the environment and the
 // flags set no database setting.
@@ -64,6 +69,14 @@ func DatabaseLocked(locks Locks) bool {
 		}
 	}
 	return false
+}
+
+// Saved reports whether the file exists, so that the setup wizard saved a
+// database setting there once. A file that DMRHub cannot check counts as
+// saved.
+func (s DatabaseState) Saved() bool {
+	_, err := os.Lstat(s.Path)
+	return !errors.Is(err, os.ErrNotExist)
 }
 
 // Load returns the database setting of the file, and whether there is one.

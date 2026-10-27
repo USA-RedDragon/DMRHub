@@ -461,3 +461,39 @@ func TestBootMakesTheSecretsOnce(t *testing.T) {
 		})
 	}
 }
+
+// TestDatabaseFixKeepsASavedDatabase gives the database fix a state file
+// that keeps a database setting. Neither Check nor Fix lets the setup
+// wizard change the database, and the file stays as it was.
+func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	fresh := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, errors.New("down"))
+	assert.False(t, fresh.Closed())
+	assert.False(t, fresh.Problem().Saved)
+
+	saved := base.Database
+	saved.Database = filepath.Join(t.TempDir(), "gone", "DMRHub.db")
+	require.NoError(t, store.Save(saved))
+	base.Database = saved
+	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, errors.New("down"))
+	assert.True(t, fix.Closed())
+	assert.True(t, fix.Problem().Saved)
+
+	next := base
+	next.Database.Database = filepath.Join(t.TempDir(), "theirs.db")
+	errs := fix.Check(&next)
+	require.Len(t, errs, 1)
+	assert.ErrorIs(t, errs[0].Err, liveconfig.ErrDatabaseSaved)
+	_, err = fix.Fix(context.Background(), next.Database)
+	require.ErrorIs(t, err, liveconfig.ErrDatabaseSaved)
+	kept, ok, err := store.Load()
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, saved.Database, kept.Database)
+
+	locked := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store, db.MakeDB, errors.New("down"))
+	assert.False(t, locked.Closed(), "the deployment, not the state file, sets a locked database")
+}

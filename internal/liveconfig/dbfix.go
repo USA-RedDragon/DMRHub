@@ -96,6 +96,9 @@ type Problem struct {
 	// Locked is whether the deployment sets the database, so that only the
 	// deployment can fix it.
 	Locked bool `json:"database_locked"`
+	// Saved is whether a database setting was saved before, so that only
+	// the deployment can change it.
+	Saved bool `json:"database_saved"`
 	// File is where the wizard keeps the setting it fixes, and StoreError
 	// why it cannot write there.
 	File       string `json:"database_file"`
@@ -104,7 +107,7 @@ type Problem struct {
 
 // Problem returns why DMRHub cannot reach its database.
 func (f *DatabaseFix) Problem() Problem {
-	p := Problem{File: f.State.Path, Locked: DatabaseLocked(f.Locks)}
+	p := Problem{File: f.State.Path, Locked: DatabaseLocked(f.Locks), Saved: f.Closed()}
 	if f.Err != nil {
 		p.Error = f.Err.Error()
 	}
@@ -114,11 +117,19 @@ func (f *DatabaseFix) Problem() Problem {
 	return p
 }
 
+// Closed reports whether a database setting was saved before and the
+// deployment sets none, so that the setup wizard cannot change the
+// database.
+func (f *DatabaseFix) Closed() bool {
+	return !DatabaseLocked(f.Locks) && f.State.Saved()
+}
+
 // Check returns why next cannot be tried: a change of a setting other than
 // the database, or of a database setting that the deployment sets.
 func (f *DatabaseFix) Check(next *config.Config) []config.ValidationError {
 	var errs []config.ValidationError
 	locked := DatabaseLocked(f.Locks)
+	closed := f.Closed()
 	for _, k := range Keys() {
 		if k.Equal(next, f.Base) {
 			continue
@@ -128,6 +139,8 @@ func (f *DatabaseFix) Check(next *config.Config) []config.ValidationError {
 			errs = append(errs, config.ValidationError{Field: k.Path, Err: ErrNeedsDatabase})
 		case locked:
 			errs = append(errs, config.ValidationError{Field: k.Path, Err: ErrDatabaseLocked})
+		case closed:
+			errs = append(errs, config.ValidationError{Field: k.Path, Err: ErrDatabaseSaved})
 		}
 	}
 	if len(errs) > 0 {
@@ -147,6 +160,9 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, er
 	}
 	if DatabaseLocked(f.Locks) {
 		return "", ErrDatabaseLocked
+	}
+	if f.State.Saved() {
+		return "", ErrDatabaseSaved
 	}
 	if err := f.State.Writable(); err != nil {
 		return "", fmt.Errorf("the setup wizard cannot keep a database setting, so set the database in the config file or the environment of the deployment: %w", err)

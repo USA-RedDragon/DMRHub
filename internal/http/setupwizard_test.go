@@ -158,6 +158,7 @@ func TestSetupWizardFixesTheDatabase(t *testing.T) {
 	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
 	fix, r := brokenDatabase(t, liveconfig.Locks{}, store)
 
+	assert.Empty(t, wizardClosed(t, r), "a new hub gets the database step")
 	raw, cfg := wizardGET(t, r)
 	require.NotNil(t, cfg.Wizard)
 	assert.Equal(t, liveconfig.PhaseDatabase, cfg.Wizard.Phase)
@@ -208,7 +209,7 @@ func TestSetupWizardFixesTheDatabase(t *testing.T) {
 	assert.Equal(t, good, kept.Database)
 
 	w = wizardRequest(t, r, http.MethodPut, raw)
-	require.Equal(t, http.StatusBadRequest, w.Code, "a second fix is refused")
+	require.Equal(t, http.StatusConflict, w.Code, "a second fix is refused")
 }
 
 // TestSetupWizardLeavesALockedDatabaseToTheDeployment starts the wizard of
@@ -408,4 +409,125 @@ func TestSetupWizardMakesTheFirstAdminQuietly(t *testing.T) { //nolint:parallelt
 	require.NoError(t, database.First(&admin, 3000001).Error)
 	assert.True(t, admin.SuperAdmin)
 	assert.Empty(t, logs.String())
+}
+
+func wizardClosed(t *testing.T, r *gin.Engine) string {
+	t.Helper()
+	w := wizardCall(t, r, http.MethodGet, "/api/v1/setupwizard", nil, "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var got struct {
+		Closed string `json:"closed"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	return got.Closed
+}
+
+// TestSetupWizardKeepsASavedDatabase starts DMRHub as bootConfig does when
+// the state file keeps a database setting that DMRHub cannot reach, as
+// when the database of a running hub goes down. A visitor cannot read the
+// settings or point DMRHub at another database, and the wizard says to fix
+// the config and restart.
+func TestSetupWizardKeepsASavedDatabase(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	saved := base.Database
+	saved.Database = filepath.Join(t.TempDir(), "gone", "DMRHub.db")
+	require.NoError(t, store.Save(saved))
+	kept, ok, err := store.Load()
+	require.NoError(t, err)
+	require.True(t, ok)
+	base.Database = kept
+	_, openErr := db.MakeDB(&base)
+	require.Error(t, openErr)
+	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, openErr)
+	state := setupwizard.NewState()
+	state.SetDatabaseFix(fix)
+	r := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
+
+	got := make(chan liveconfig.Fixed, 1)
+	go func() {
+		f, ok := <-fix.Fixed()
+		if !ok {
+			return
+		}
+		got <- f
+		f.Done(liveconfig.PhaseSetup)
+	}()
+
+	assert.Equal(t, "database", wizardClosed(t, r))
+	w := wizardRequest(t, r, http.MethodGet, nil)
+	assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+
+	raw := map[string]any{}
+	require.NoError(t, json.Unmarshal(mustJSON(t, base), &raw))
+	setDatabase(raw, filepath.Join(t.TempDir(), "theirs.db"))
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "restart DMRHub")
+
+	select {
+	case f := <-got:
+		if sqlDB, err := f.DB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		t.Fatalf("the wizard switched DMRHub to %s", f.Config.Database.Database)
+	default:
+	}
+	kept, ok, err = store.Load()
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, saved.Database, kept.Database)
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return b
+}
+
+// TestSetupWizardKeepsTheSettingsOfAnAdmin starts the setup wizard of a hub
+// that has an admin but settings that are not valid, as after an upgrade
+// that needs a new setting. A visitor cannot read or change the settings,
+// and the wizard says to fix the config and restart.
+func TestSetupWizardKeepsTheSettingsOfAnAdmin(t *testing.T) {
+	t.Parallel()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.Database.Database = filepath.Join(t.TempDir(), "DMRHub.db")
+	base.Secret = "a-secret-that-is-long-enough-for-the-check"
+	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
+	base.DMR.DisableRadioIDValidation = true
+	database, err := db.MakeDB(&base)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, models.ClaimFirstAdmin(database, &models.User{ID: 3000001, Callsign: "N0ADM", Username: "admin", Password: "x"}))
+	live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
+	require.NoError(t, live.Boot(context.Background()))
+	require.Error(t, live.Current().Get().Validate())
+	state := setupwizard.NewState()
+	state.SetLive(live, database)
+	r := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
+
+	assert.Equal(t, "settings", wizardClosed(t, r))
+	w := wizardRequest(t, r, http.MethodGet, nil)
+	assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+
+	raw := map[string]any{}
+	require.NoError(t, json.Unmarshal(mustJSON(t, base), &raw))
+	delete(raw, "secret")
+	delete(raw, "password-salt")
+	httpSection, ok := raw["http"].(map[string]any)
+	require.True(t, ok)
+	httpSection["canonical-host"] = "https://theirs.example"
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "restart DMRHub")
+	assert.Empty(t, live.Current().Get().HTTP.CanonicalHost)
 }

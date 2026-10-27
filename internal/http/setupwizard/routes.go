@@ -35,11 +35,12 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
 }
 
 func v1(group *gin.RouterGroup) {
-	group.PUT("/config", v1SetupWizardControllers.PUTConfig)
+	refuseClosed := v1SetupWizardControllers.RefuseClosed
+	group.PUT("/config", refuseClosed, v1SetupWizardControllers.PUTConfig)
 	group.POST("/setupwizard/complete", v1SetupWizardControllers.POSTSetupWizardComplete)
-	group.GET("/config", v1SetupWizardControllers.GETConfig)
-	group.GET("/config/validate", v1APIConfigControllers.GETConfigValidate)
-	group.POST("/config/validate", v1SetupWizardControllers.POSTConfigValidate)
+	group.GET("/config", refuseClosed, v1SetupWizardControllers.GETConfig)
+	group.GET("/config/validate", refuseClosed, v1APIConfigControllers.GETConfigValidate)
+	group.POST("/config/validate", refuseClosed, v1SetupWizardControllers.POSTConfigValidate)
 
 	group.POST("/users", v1SetupWizardControllers.ProvideDB, v1APIUsersControllers.POSTFirstAdmin)
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)

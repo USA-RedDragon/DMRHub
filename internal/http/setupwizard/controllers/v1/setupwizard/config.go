@@ -71,7 +71,7 @@ func GETConfig(c *gin.Context) {
 			PasswordSaltSet: fix.Base.PasswordSalt != "",
 			SMTPPasswordSet: fix.Base.SMTP.Password != "",
 		},
-		Status: liveconfig.PendingStatus(fix.Locks, problem.StoreError == ""),
+		Status: liveconfig.PendingStatus(fix.Locks, problem.StoreError == "" && !problem.Saved),
 		Wizard: &apimodels.WizardStatus{Phase: liveconfig.PhaseDatabase, Problem: problem},
 	})
 }

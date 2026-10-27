@@ -19,6 +19,7 @@
 package setupwizard
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -46,7 +47,73 @@ func GETSetupWizard(c *gin.Context) {
 		}
 		valid = p.Live() != nil && p.Live().Current().Get().Validate() == nil
 	}
-	c.JSON(http.StatusOK, gin.H{"setupwizard": true, "config_valid": valid, "first_admin_open": open})
+	closed, err := closedFor(c)
+	if err != nil {
+		slog.Error("Failed to check for an admin", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgInternalServerError})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"setupwizard": true, "config_valid": valid, "first_admin_open": open, closedKey: closed})
+}
+
+const (
+	closedKey      = "closed"
+	closedDatabase = "database"
+	closedSettings = "settings"
+	msgClosedDB    = "DMRHub cannot reach its database, and a database setting was saved before, so the setup wizard cannot change it. An admin must fix the database in the config file, the environment or the flags, then restart DMRHub."
+	msgClosedSet   = "DMRHub has an admin, so the setup wizard cannot change the settings. An admin must fix them in the config file, the environment or the flags, then restart DMRHub."
+)
+
+// closedFor returns why the setup wizard can change no setting: a
+// database setting saved before that DMRHub cannot reach, or an admin that
+// exists. It returns "" while the wizard is open.
+func closedFor(c *gin.Context) (string, error) {
+	p := phaseOf(c)
+	if p == nil {
+		return "", nil
+	}
+	if fix := p.Fix(); fix != nil {
+		if fix.Closed() {
+			return closedDatabase, nil
+		}
+		return "", nil
+	}
+	if p.DB() == nil {
+		return "", nil
+	}
+	db := p.DB().WithContext(c.Request.Context())
+	open, err := models.FirstAdminOpen(db)
+	if err != nil {
+		return "", fmt.Errorf("failed to check for the first admin: %w", err)
+	}
+	if !open {
+		return closedSettings, nil
+	}
+	admins, err := models.CountUserAdmins(db)
+	if err != nil {
+		return "", fmt.Errorf("failed to count the admins: %w", err)
+	}
+	if admins > 0 {
+		return closedSettings, nil
+	}
+	return "", nil
+}
+
+// RefuseClosed refuses a request for the settings once the setup wizard
+// can change none: a visitor of the wizard is not an admin.
+func RefuseClosed(c *gin.Context) {
+	closed, err := closedFor(c)
+	switch {
+	case err != nil:
+		slog.Error("Failed to check for an admin", "error", err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{errorKey: msgInternalServerError})
+	case closed == closedDatabase:
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{errorKey: msgClosedDB, closedKey: closed})
+	case closed == closedSettings:
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{errorKey: msgClosedSet, closedKey: closed})
+	default:
+		c.Next()
+	}
 }
 
 // POSTSetupWizardComplete ends the setup wizard once the settings are

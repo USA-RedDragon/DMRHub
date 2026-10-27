@@ -193,9 +193,17 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 		return booted{}, false, fmt.Errorf("an admin must fix the users first: %w", err)
 	}
 	if err != nil {
-		slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
+		fix := liveconfig.NewDatabaseFix(base, locks, state, db.MakeDB, err)
+		switch {
+		case liveconfig.DatabaseLocked(locks):
+			slog.Error("DMRHub cannot reach its database; fix it in the config file, the environment or the flags and restart DMRHub", "error", err)
+		case fix.Closed():
+			slog.Error("DMRHub cannot reach the database setting saved in "+state.Path+"; fix the database in the config file, the environment or the flags and restart DMRHub", "error", err)
+		default:
+			slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
+		}
 		wiz = startWizard(base, version, commit)
-		f, exit := wiz.waitForDatabase(liveconfig.NewDatabaseFix(base, locks, state, db.MakeDB, err))
+		f, exit := wiz.waitForDatabase(fix)
 		if exit {
 			return booted{}, true, nil
 		}

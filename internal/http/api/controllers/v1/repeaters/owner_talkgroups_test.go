@@ -20,14 +20,19 @@
 package repeaters_test
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestAnOwnerSetsTheTalkgroupsOfTheirRepeater sets the talkgroups of a
@@ -57,4 +62,67 @@ func TestAnOwnerSetsTheTalkgroupsOfTheirRepeater(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rpt.TS1StaticTalkgroups, 1)
 	assert.Equal(t, uint(50001), rpt.TS1StaticTalkgroups[0].ID)
+}
+
+func postRawTalkgroups(t *testing.T, router *gin.Engine, id uint, jar testutils.CookieJar, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("/api/v1/repeaters/%d/talkgroups", id), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for _, cookie := range jar.Cookies() {
+		req.Header.Add("Cookie", cookie.String())
+	}
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func dynamicIDs(t *testing.T, db *gorm.DB, id uint) (*uint, *uint) {
+	t.Helper()
+	rpt, err := models.FindRepeaterByID(db, id)
+	require.NoError(t, err)
+	return rpt.TS1DynamicTalkgroupID, rpt.TS2DynamicTalkgroupID
+}
+
+func TestADynamicTalkgroupLeftOutOfTheBodyStays(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "owner", Password: "password"}
+	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
+	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807, Type: "mmdvm"}
+	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
+	require.Equal(t, http.StatusOK, w.Code)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	for _, tg := range []uint{50001, 50002} {
+		_, w = testutils.CreateTalkgroup(t, router, adminJar, apimodels.TalkgroupPost{ID: tg, Name: fmt.Sprintf("TG %d", tg), Description: "Test talkgroup"})
+		require.Equal(t, http.StatusOK, w.Code)
+	}
+
+	w = postRawTalkgroups(t, router, repeaterPost.RadioID, userJar,
+		`{"ts1_static_talkgroups":[],"ts2_static_talkgroups":[],"ts1_dynamic_talkgroup":{"id":50001},"ts2_dynamic_talkgroup":{"id":50002}}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	ts1, ts2 := dynamicIDs(t, tdb.DB(), repeaterPost.RadioID)
+	require.NotNil(t, ts1)
+	require.NotNil(t, ts2)
+
+	w = postRawTalkgroups(t, router, repeaterPost.RadioID, userJar, `{"ts1_static_talkgroups":[{"id":50001}],"ts2_static_talkgroups":[]}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	ts1, ts2 = dynamicIDs(t, tdb.DB(), repeaterPost.RadioID)
+	require.NotNil(t, ts1, "a left out dynamic talkgroup stays")
+	assert.Equal(t, uint(50001), *ts1)
+	require.NotNil(t, ts2, "a left out dynamic talkgroup stays")
+	assert.Equal(t, uint(50002), *ts2)
+
+	w = postRawTalkgroups(t, router, repeaterPost.RadioID, userJar, `{"ts1_static_talkgroups":[],"ts2_static_talkgroups":[],"ts1_dynamic_talkgroup":null}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	ts1, ts2 = dynamicIDs(t, tdb.DB(), repeaterPost.RadioID)
+	assert.Nil(t, ts1, "null clears it")
+	require.NotNil(t, ts2)
+
+	w = postRawTalkgroups(t, router, repeaterPost.RadioID, userJar, `{"ts1_static_talkgroups":[],"ts2_static_talkgroups":[],"ts2_dynamic_talkgroup":{"id":0}}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	_, ts2 = dynamicIDs(t, tdb.DB(), repeaterPost.RadioID)
+	assert.Nil(t, ts2, "the ID 0 clears it")
 }

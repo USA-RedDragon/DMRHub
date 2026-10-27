@@ -20,6 +20,7 @@
 package repeaters
 
 import (
+	encjson "encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -213,12 +214,18 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	}
 
 	var json apimodels.RepeaterTalkgroupsPost
-	err = c.ShouldBindJSON(&json)
+	var fields map[string]encjson.RawMessage
+	err = c.ShouldBindBodyWithJSON(&json)
+	if err == nil {
+		err = c.ShouldBindBodyWithJSON(&fields)
+	}
 	if err != nil {
 		slog.Error(msgInvalidJSON, "function", "POSTRepeaterTalkgroups", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
+	_, setTS1Dynamic := fields["ts1_dynamic_talkgroup"]
+	_, setTS2Dynamic := fields["ts2_dynamic_talkgroup"]
 
 	// Validate and fetch repeater
 	repeater, err := validateAndFetchRepeater(db, repeaterID)
@@ -256,7 +263,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 	}
 	repeater.TS2StaticTalkgroups = json.TS2StaticTalkgroups
 
-	if json.TS1DynamicTalkgroup.ID == 0 {
+	switch {
+	case !setTS1Dynamic:
+	case json.TS1DynamicTalkgroup.ID == 0:
 		repeater.TS1DynamicTalkgroupID = nil
 		err = db.Model(repeater).Association("TS1DynamicTalkgroup").Delete(&repeater.TS1DynamicTalkgroup)
 		if err != nil {
@@ -264,7 +273,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting TS1DynamicTalkgroup"})
 			return
 		}
-	} else {
+	default:
 		repeater.TS1DynamicTalkgroupID = &json.TS1DynamicTalkgroup.ID
 		repeater.TS1DynamicTalkgroup = json.TS1DynamicTalkgroup
 		err = db.Model(repeater).Association("TS1DynamicTalkgroup").Replace(&json.TS1DynamicTalkgroup)
@@ -275,7 +284,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		}
 	}
 
-	if json.TS2DynamicTalkgroup.ID == 0 {
+	switch {
+	case !setTS2Dynamic:
+	case json.TS2DynamicTalkgroup.ID == 0:
 		repeater.TS2DynamicTalkgroupID = nil
 		err = db.Model(repeater).Association("TS2DynamicTalkgroup").Delete(&repeater.TS2DynamicTalkgroup)
 		if err != nil {
@@ -283,7 +294,7 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting TS2DynamicTalkgroup"})
 			return
 		}
-	} else {
+	default:
 		repeater.TS2DynamicTalkgroupID = &json.TS2DynamicTalkgroup.ID
 		repeater.TS2DynamicTalkgroup = json.TS2DynamicTalkgroup
 		err = db.Model(repeater).Association("TS2DynamicTalkgroup").Replace(&json.TS2DynamicTalkgroup)

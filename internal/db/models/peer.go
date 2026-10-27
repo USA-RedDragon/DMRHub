@@ -36,7 +36,7 @@ type Peer struct {
 	LastPing time.Time `json:"last_ping_time" msg:"last_ping"`
 	IP       string    `json:"ip" msg:"ip"`
 	Port     int       `json:"port" msg:"port"`
-	Password string    `json:"-" msg:"-"`
+	Password string    `json:"-" gorm:"<-:create" msg:"-"`
 	Owner    User      `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID  uint      `json:"-" msg:"-"`
 	Ingress  bool      `json:"ingress" msg:"-"`
@@ -91,6 +91,21 @@ func FindPeerByID(db *gorm.DB, id uint) (Peer, error) {
 	var peer Peer
 	err := db.Preload("Owner").First(&peer, id).Error
 	return peer, err
+}
+
+// SetPeerPassword sets the password of the peer id to password in one
+// update, and moves the generation of the peer. A Save of a copy of the
+// peer read before it does not undo it, as Save does not write the
+// password. It returns gorm.ErrRecordNotFound when the peer does not exist.
+func SetPeerPassword(db *gorm.DB, id uint, password string) error {
+	res := db.Exec("UPDATE peers SET password = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL", password, time.Now(), id)
+	if res.Error != nil {
+		return fmt.Errorf("failed to save the password of peer %d: %w", id, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func PeerIDExists(db *gorm.DB, id uint) (bool, error) {

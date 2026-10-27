@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -111,33 +112,66 @@ func TestAStreamStaysWithItsSourceForTheHold(t *testing.T) {
 	forKVBackends(t, testStaysForTheHold)
 }
 
+// testStaysForTheHold checks the hold of a claim, which the KV store keeps
+// in real time. A run in which the test itself was held so long that the
+// timing of its bursts no longer fits the case proves nothing, so the test
+// runs the case again on another stream, up to staysAttempts times.
 func testStaysForTheHold(t *testing.T, be testutils.Backend) {
-	const hold, recheck = time.Second, 50 * time.Millisecond
+	const hold, recheck = 2 * time.Second, 50 * time.Millisecond
 	one, two := replicaHubs(t, be)
 	one.SetStreamClaimTiming(hold, recheck)
 	two.SetStreamClaimTiming(hold, recheck)
+	for stream := uint(1); stream <= staysAttempts; stream++ {
+		late := staysForTheHold(t, one, two, stream, hold, recheck)
+		if late == "" {
+			return
+		}
+		t.Logf("stream %d: %s; running the case again", stream, late)
+	}
+	t.Fatalf("the test was held too long in each of %d runs", staysAttempts)
+}
+
+const staysAttempts = 5
+
+func staysForTheHold(t *testing.T, one, two *hub.Hub, stream uint, hold, recheck time.Duration) string {
+	t.Helper()
 	ctx := t.Context()
 	burst := func(repeater uint) models.Packet {
-		p := makeVoicePacket(1, 42, true, false)
+		p := makeVoicePacket(1, stream, true, false)
 		p.Repeater = repeater
 		return p
 	}
 	owner, copied := burst(100001), burst(100002)
 
-	for start := time.Now(); time.Since(start) < 2*hold; time.Sleep(recheck) {
-		require.True(t, one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM), "a call longer than the hold keeps its source")
-		require.False(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "a copy during the call is dropped")
-		require.False(t, one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM))
+	prev := time.Now()
+	for start := prev; time.Since(start) < 2*hold; time.Sleep(recheck) {
+		at := time.Now()
+		kept := one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM)
+		copyTwo := two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
+		copyOne := one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
+		if gap := time.Since(prev); gap > hold/2 {
+			return fmt.Sprintf("the source sent nothing for %v", gap)
+		}
+		prev = at
+		require.True(t, kept, "a call longer than the hold keeps its source")
+		require.False(t, copyTwo, "a copy during the call is dropped")
+		require.False(t, copyOne)
 	}
-	last := time.Now()
+	last := prev
 
-	time.Sleep(hold * 2 / 5)
-	assert.False(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "a copy that loops back within the hold after the last burst is dropped")
-	assert.False(t, one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM))
+	time.Sleep(hold / 5)
+	copyTwo := two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
+	copyOne := one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
+	if after := time.Since(last); after > hold/2+recheck {
+		return fmt.Sprintf("the copy came %v after the last burst", after)
+	}
+	assert.False(t, copyTwo, "a copy that loops back within the hold after the last burst is dropped")
+	assert.False(t, copyOne)
 
 	time.Sleep(time.Until(last.Add(hold + recheck + 250*time.Millisecond)))
 	assert.True(t, two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM), "after the hold with no burst from the source, dropped copies do not keep the claim")
 	assert.False(t, one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM), "the new source owns the stream on every replica")
+	return ""
 }
 
 func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {

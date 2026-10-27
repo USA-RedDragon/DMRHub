@@ -65,7 +65,7 @@ var (
 // one that runs inside DMRHub. Only the hash of its token is kept.
 type Plugin struct {
 	ID              uint      `gorm:"primaryKey"`
-	Name            string    `gorm:"size:64;not null;uniqueIndex"`
+	Name            string    `gorm:"size:64;not null;uniqueIndex:idx_plugins_builtin_name,priority:2"`
 	TokenHash       []byte    `gorm:"size:32;not null;uniqueIndex"`
 	TokenCreatedAt  time.Time `gorm:"not null"`
 	Enabled         bool      `gorm:"not null;default:true"`
@@ -74,7 +74,7 @@ type Plugin struct {
 	LastAddress     string        `gorm:"size:64"`
 	Session         string        `gorm:"size:32;not null;default:''"`
 	Kind            string        `gorm:"size:16;not null;default:'external'"`
-	Builtin         string        `gorm:"size:32;not null;default:''"`
+	Builtin         string        `gorm:"size:32;not null;default:'';uniqueIndex:idx_plugins_builtin_name,priority:1"`
 	Version         string        `gorm:"size:32;not null;default:''"`
 	Author          string        `gorm:"size:64;not null;default:''"`
 	Description     string        `gorm:"size:500;not null;default:''"`
@@ -157,7 +157,8 @@ func (e *PluginIDTakenError) Unwrap() error {
 
 // checkPluginRanges checks that ranges are valid and do not overlap each
 // other, and, when the plugin self is on, that they do not overlap the
-// ranges of the other plugins that are on.
+// ranges of the other plugins that are on. A built-in plugin never keeps
+// another plugin from its IDs: it waits for them, as WaitingPlugins says.
 func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange, on bool) error {
 	if len(ranges) > MaxPluginRanges {
 		return fmt.Errorf("%w: at most %d ranges", ErrPluginRange, MaxPluginRanges)
@@ -180,15 +181,26 @@ func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange, on bool) er
 	if !on {
 		return nil
 	}
+	selfBuiltin := false
+	if self != 0 {
+		var kinds []string
+		if err := tx.Model(&Plugin{}).Where("id = ?", self).Pluck("kind", &kinds).Error; err != nil {
+			return fmt.Errorf("could not find the kind of plugin %d: %w", self, err)
+		}
+		selfBuiltin = len(kinds) > 0 && kinds[0] == PluginBuiltin
+	}
 	for _, r := range sorted {
 		var taken []struct {
 			FirstID uint
 			Name    string
 		}
-		err := tx.Table("plugin_ranges").Select("plugin_ranges.first_id, plugins.name").
+		q := tx.Table("plugin_ranges").Select("plugin_ranges.first_id, plugins.name").
 			Joins("JOIN plugins ON plugins.id = plugin_ranges.plugin_id").
-			Where("plugin_ranges.plugin_id <> ? AND plugins.enabled = ? AND plugin_ranges.first_id <= ? AND plugin_ranges.last_id >= ?", self, true, r.Last, r.First).
-			Order("plugin_ranges.first_id").Limit(1).Scan(&taken).Error
+			Where("plugin_ranges.plugin_id <> ? AND plugins.enabled = ? AND plugin_ranges.first_id <= ? AND plugin_ranges.last_id >= ?", self, true, r.Last, r.First)
+		if !selfBuiltin {
+			q = q.Where("plugins.kind <> ?", PluginBuiltin)
+		}
+		err := q.Order("plugin_ranges.first_id").Limit(1).Scan(&taken).Error
 		if err != nil {
 			return fmt.Errorf("could not check the plugin ID ranges: %w", err)
 		}
@@ -205,10 +217,12 @@ func CheckPluginRanges(db *gorm.DB, self uint, ranges []PluginRange, on bool) er
 	return checkPluginRanges(db, self, ranges, on)
 }
 
-// PluginByName returns the plugin called name, and false when there is none.
+// PluginByName returns the plugin that is not built in and is called name,
+// and false when there is none. The built-in plugins have names of their
+// own, which another plugin may also have.
 func PluginByName(db *gorm.DB, name string) (Plugin, bool, error) {
 	var found []Plugin
-	if err := db.Where("name = ?", name).Limit(1).Find(&found).Error; err != nil {
+	if err := db.Where("name = ? AND builtin = ?", name, "").Limit(1).Find(&found).Error; err != nil {
 		return Plugin{}, false, fmt.Errorf("could not find the plugin %q: %w", name, err)
 	}
 	if len(found) == 0 {
@@ -256,12 +270,12 @@ func WaitingPlugins(list []Plugin) map[uint]PluginWait {
 	return out
 }
 
-func checkPluginName(tx *gorm.DB, self uint, name string) error {
+func checkPluginName(tx *gorm.DB, self uint, builtin, name string) error {
 	if name == "" || len(name) > MaxPluginName || strings.TrimSpace(name) != name {
 		return fmt.Errorf("%w: %q", ErrPluginName, name)
 	}
 	var n int64
-	if err := tx.Model(&Plugin{}).Where("name = ? AND id <> ?", name, self).Count(&n).Error; err != nil {
+	if err := tx.Model(&Plugin{}).Where("name = ? AND builtin = ? AND id <> ?", name, builtin, self).Count(&n).Error; err != nil {
 		return fmt.Errorf("could not check the plugin name: %w", err)
 	}
 	if n > 0 {
@@ -293,7 +307,7 @@ func CreatePlugin(db *gorm.DB, name string, ranges []PluginRange, now time.Time)
 	token, hash := newPluginToken()
 	p := Plugin{Name: name, TokenHash: hash, TokenCreatedAt: now.UTC(), Enabled: true, Kind: PluginExternal}
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := checkPluginName(tx, 0, name); err != nil {
+		if err := checkPluginName(tx, 0, "", name); err != nil {
 			return err
 		}
 		if err := checkPluginRanges(tx, 0, ranges, true); err != nil {
@@ -315,10 +329,11 @@ func CreatePlugin(db *gorm.DB, name string, ranges []PluginRange, now time.Time)
 // id.
 func UpdatePlugin(db *gorm.DB, id uint, name string, enabled bool, ranges []PluginRange) (Plugin, error) {
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if _, err := FindPlugin(tx, id); err != nil {
+		p, err := FindPlugin(tx, id)
+		if err != nil {
 			return err
 		}
-		if err := checkPluginName(tx, id, name); err != nil {
+		if err := checkPluginName(tx, id, p.Builtin, name); err != nil {
 			return err
 		}
 		if err := checkPluginRanges(tx, id, ranges, enabled); err != nil {

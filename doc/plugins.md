@@ -79,7 +79,7 @@ You cannot remove a built-in plugin. Turn it off on its page instead. You can ch
 
 A plugin file is at most 32 MiB. DMRHub refuses a file when:
 
-- the name is empty, longer than 64 characters, or the name of another plugin;
+- the name is empty, longer than 64 characters, or the name of another plugin that is not built in;
 - the plugin gives no version;
 - the author is longer than 64 characters, or the description is longer than 500 characters;
 - its IDs are not free;
@@ -117,8 +117,10 @@ The **Connection** card of the plugin shows the address and the certificate fing
 
 Rules for IDs:
 
-- Two plugins that are on never share an ID.
+- Two plugins that are on never share an ID, except a built-in plugin.
+- A built-in plugin never keeps another plugin from its IDs. When another plugin that is on has some of them, the built-in plugin waits until they are free.
 - A plugin that is off keeps its IDs, but another plugin can take them. The first plugin then cannot be turned on until its IDs are free.
+- A built-in plugin and another plugin can have the same name. Two plugins that are not built in cannot.
 - DMRHub does not give IDs to an external plugin. The admin sets them all.
 - A plugin has at most 32 ranges, and each ID is a 24-bit DMR ID.
 
@@ -155,9 +157,10 @@ Before plugins, DMRHub answered 9990 and 5050 to 5059 itself. With **Run plugins
 To run them as programs instead:
 
 1. Turn off **Run plugins inside DMRHub**, and turn on **Accept plugins that run as their own programs**. Restart DMRHub.
-2. When the plugins page lists the built-in **Parrot** and **Location server**, open each one, turn off **On**, and click **Save**. Turning off **Run plugins inside DMRHub** does not turn them off. While they are on, they keep 9990 and 5050 to 5059, and DMRHub refuses an external plugin with those IDs.
-3. Add an external plugin with the ID 9990, and run `dmrhub-parrot` with its token. Give it a name that no other plugin has, such as Parrot program. The built-in plugin already has the name Parrot.
-4. Add an external plugin with the IDs 5050 to 5059, such as Location program, and run `dmrhub-locator` with its token.
+2. Add an external plugin named Parrot with the ID 9990, and run `dmrhub-parrot` with its token.
+3. Add an external plugin named Location server with the IDs 5050 to 5059, and run `dmrhub-locator` with its token.
+
+The built-in plugins stay on the plugins page with the status **Off**. When you turn **Run plugins inside DMRHub** on again, they show **Waiting for its IDs** while the external plugins have their IDs.
 
 The upgrade removes the user 9990 (callsign Parrot) and the talkgroup 9990 (DMRHub Parrot) that older versions made, unless an admin changed them. When it removes the talkgroup, it also removes it from the static and dynamic talkgroups of every repeater. The old calls to and from the parrot stay in Last Heard.
 

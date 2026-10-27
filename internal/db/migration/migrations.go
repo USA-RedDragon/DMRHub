@@ -69,6 +69,7 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		drop_app_settings_has_seeded_migration_202610261000(db, cfg),
 		drop_app_settings_migration_202610261100(db, cfg),
 		undeliverable_sentences_migration_202610261200(db, cfg),
+		builtin_plugin_names_migration_202610261300(db, cfg),
 		mysql_portability_migration_202610262000(db, cfg),
 	}
 }

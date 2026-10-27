@@ -161,10 +161,53 @@ func TestABuiltinPluginWhoseIDsAreTakenWaitsForThem(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, models.WaitingPlugins(list), "it has its IDs once the other plugin is off")
 	_, err = models.UpdatePlugin(database, mine.ID, "Old locator", true, mine.Ranges)
+	require.NoError(t, err, "a built-in plugin never keeps another plugin from its IDs")
+	list, err = models.ListPlugins(database)
+	require.NoError(t, err)
+	assert.Equal(t, map[uint]models.PluginWait{p.ID: {ID: 5052, By: "Old locator"}}, models.WaitingPlugins(list), "it waits again")
+}
+
+func TestAnExternalPluginCanTakeTheNameAndIDsOfABuiltinPlugin(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	builtin, err := models.EnsureBuiltinPlugin(database, "parrot", "Parrot", "v1.3.4", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	require.NoError(t, err)
+	require.True(t, builtin.Enabled)
+
+	external, _, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, models.PluginExternal, external.Kind)
+	list, err := models.ListPlugins(database)
+	require.NoError(t, err)
+	assert.Equal(t, map[uint]models.PluginWait{builtin.ID: {ID: 9990, By: "Parrot"}}, models.WaitingPlugins(list))
+
+	_, _, err = models.CreatePlugin(database, "Parrot", nil, time.Now())
+	require.ErrorIs(t, err, models.ErrPluginName, "two plugins that are not built in never share a name")
+	info := netCheckIn()
+	info.Name = "Parrot"
+	_, err = models.CreateUploadedPlugin(database, info, nil, nil, []byte("\x00asm"), time.Now())
+	require.ErrorIs(t, err, models.ErrPluginName)
+	found, ok, err := models.PluginByName(database, "Parrot")
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, external.ID, found.ID, "the name is the external plugin's")
+
+	_, err = models.UpdatePlugin(database, builtin.ID, "Parrot", true, []models.PluginRange{rng(9990, 9990)})
 	var taken *models.PluginIDTakenError
-	require.ErrorAs(t, err, &taken)
-	assert.Equal(t, uint(5052), taken.ID)
-	assert.Equal(t, "Location server", taken.By)
+	require.ErrorAs(t, err, &taken, "a built-in plugin cannot take the IDs of another plugin that is on")
+	assert.Equal(t, uint(9990), taken.ID)
+}
+
+func TestABuiltinPluginIsMadeBesideAnExternalOneOfItsName(t *testing.T) {
+	t.Parallel()
+	database, cleanup := openDB(t)
+	defer cleanup()
+	_, _, err := models.CreatePlugin(database, "Parrot", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	require.NoError(t, err)
+	p, err := models.EnsureBuiltinPlugin(database, "parrot", "Parrot", "v1.3.4", []models.PluginRange{rng(9990, 9990)}, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, models.PluginBuiltin, p.Kind)
 }
 
 func TestAnExternalPluginSaysItsVersion(t *testing.T) {

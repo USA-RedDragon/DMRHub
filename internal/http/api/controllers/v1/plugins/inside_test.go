@@ -350,7 +350,7 @@ func TestAFileThatIsNoPluginIsRefusedWithWhy(t *testing.T) {
 func TestEachProblemOfAPluginIsUnderItsField(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	_, err := models.EnsureBuiltinPlugin(e.db, "parrot", "Parrot", "v1.3.12", []models.PluginRange{{First: 9200, Last: 9200}}, time.Now())
+	_, _, err := models.CreatePlugin(e.db, "Parrot", []models.PluginRange{{First: 9200, Last: 9200}}, time.Now())
 	require.NoError(t, err)
 	code, body := e.upload(e.admin, "/api/v1/admin/plugins/inspect", guest(t, "netprobe"), nil, nil)
 	require.Equal(t, http.StatusBadRequest, code, body)

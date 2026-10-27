@@ -190,7 +190,7 @@ func CreateUploadedPlugin(db *gorm.DB, info PluginInfo, ranges []PluginRange, al
 		Version: info.Version, Author: info.Author, Description: info.Description,
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := checkPluginName(tx, 0, info.Name); err != nil {
+		if err := checkPluginName(tx, 0, "", info.Name); err != nil {
 			return err
 		}
 		if err := checkPluginRanges(tx, 0, ranges, true); err != nil {
@@ -305,7 +305,7 @@ func EnsureBuiltinPlugin(db *gorm.DB, key, name, version string, ranges []Plugin
 			id = found[0].ID
 			return tx.Model(&Plugin{}).Where("id = ?", id).Update("version", version).Error
 		}
-		if err := checkPluginName(tx, 0, name); err != nil {
+		if err := checkPluginName(tx, 0, key, name); err != nil {
 			return err
 		}
 		if err := checkPluginRanges(tx, 0, ranges, false); err != nil {

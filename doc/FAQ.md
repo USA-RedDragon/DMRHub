@@ -1,37 +1,61 @@
-# Frequently Asked Questions
+# Frequently asked questions
 
-## About the Project
+## Using a network
 
 ### What is DMRHub?
 
-DMRHub is a DMR master system that can be deployed with minimal fuss. It is an open source, easy-to-use alternative to existing networks like BrandMeister and TGIF, designed for use in local communication environments such as over an [AREDN mesh](https://www.arednmesh.org/) network.
+DMRHub is a DMR network server. It is an open source alternative to networks such as BrandMeister and TGIF, made for local networks, for example over an [AREDN mesh](https://www.arednmesh.org/). See [Get started](getting-started.md).
 
-### What systems is it compatible with?
+### Is my DMRHub account good on BrandMeister, TGIF or another DMRHub network?
 
-DMRHub supports DMR layer 2 packets sent over UDP using the MMDVM protocol. This is the method that MMDVM hotspots typically use with networks like BrandMeister or TGIF. It supports private and group calls, plugins such as a Parrot at 9990, and OpenBridge peering. I have another project for IPSC repeaters to convert the packets to MMDVM format <https://github.com/USA-RedDragon/ipsc2mmdvm>. This requires a spare NIC attached to the repeater directly, which may not be possible in all deployments. DroidStar also works with DMRHub.
+No. Each DMRHub network has its own accounts, talkgroups and hotspot passwords.
 
-### Can you make it work with my repeater technology?
+### Which hotspots and repeaters work?
 
-Probably, depending on the situation. If you have access to the hardware or captured DMR data to work with, support can be investigated. Well-defined documentation of the protocol also helps. The goal is to support the most common DMR deployments.
+- Hotspots and repeaters that use the MMDVM network protocol, such as MMDVMHost, DMRGateway and Pi-Star. See [Connect a hotspot](guides/connect-hotspot.md).
+- Repeaters that follow the published Homebrew repeater specification. See [Link a repeater](guides/link-repeater.md).
+- Motorola repeaters over IPSC, when the admin turned on IPSC. See [Link a repeater](guides/link-repeater.md#motorola-ipsc-repeaters).
+- DroidStar, as an MMDVM client.
+- dmr-web, in a browser, when the admin turned on WebTransport. See [Use dmr-web](guides/dmr-web.md).
 
-## Software
+### Which talkgroups are special?
+
+- **4000** unlinks the dynamic talkgroup of the timeslot you call it on. See [Pick your talkgroups](guides/talkgroups.md#unlink-the-dynamic-talkgroup).
+- **9990** is the parrot, when the admin installed the parrot plugin. See [Test with the parrot](guides/parrot.md).
+- **5050 to 5059** are the location server, when the admin installed the location server plugin. See the [Positions reference](positions.md#location-server-ids).
+
+### Why does my private call not reach the other ham?
+
+DMRHub sends a private call only to a radio ID that has an account on the network and that DMRHub heard in the last 15 minutes. See [Make a private call](guides/private-calls.md#how-dmrhub-finds-the-other-radio).
+
+### I lost the password of my hotspot. Can I see it again?
+
+No. DMRHub shows it only once. Delete the hotspot on the Repeaters page and enroll it again.
+
+### Who can see my text messages and positions?
+
+Your text messages show on the web site only when you turn on SMS Storage, and only you and the admins see them. Your positions show only to you, until you turn on **Share my positions**. See the [Messages reference](messages.md) and the [Positions reference](positions.md#who-sees-a-position).
+
+### Can my repeater technology be added?
+
+Probably, depending on the case. Access to the hardware, or captured DMR data, makes support possible to investigate. Good documentation of the protocol also helps.
+
+## Running a network
 
 ### Why is the binary so big?
 
-DMRHub is written in Go and statically compiles its binaries, meaning no external libraries or dependencies are needed at runtime. It also embeds the [RadioID.net](https://radioid.net/) DMR radio ID and repeater ID databases. Compressed, these account for about 4 MB of the binary. On startup, they are decompressed into memory and take up about 40 MB.
+DMRHub is a static Go binary, so it needs no external libraries at run time. It also has the [RadioID.net](https://radioid.net/) DMR ID and repeater ID databases built in. Compressed, they take about 5 MB of the binary. DMRHub decompresses them into memory when it starts, and then downloads new copies when it starts and once a day.
 
-### What databases are supported?
+### Which databases does DMRHub support?
 
-DMRHub supports three database backends:
-
-- **SQLite** (default) — no external database needed, perfect for single-server deployments
-- **PostgreSQL** — for production deployments requiring a dedicated database server
-- **MySQL** — alternative relational database option
+- **SQLite** (default): no external database.
+- **PostgreSQL**
+- **MySQL**
 
 ### Is Redis required?
 
-No. Redis is optional and disabled by default. When enabled, Redis is used for the pub/sub backend, which allows scaling across multiple DMRHub instances. For single-server deployments, the in-memory pub/sub backend works fine.
+No. Redis is optional and off by default. Without it, DMRHub uses an in-memory pub/sub, which is enough for one server. With Redis, more than one DMRHub instance can share the work.
 
-### How does initial setup work?
+### How does the first setup work?
 
-When DMRHub starts and the configuration is missing or invalid, it automatically launches a **setup wizard** in your web browser. The wizard walks you through configuring the application and creating your first admin user. No manual configuration file editing is required for basic setups. See the [Configuration Guide](Configuration.md) for details.
+When DMRHub starts with a configuration that is missing or not valid, it opens a setup wizard in the web browser. The wizard walks you through the settings and makes the first admin user. See the [Configuration guide](Configuration.md).

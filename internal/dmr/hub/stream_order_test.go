@@ -225,18 +225,58 @@ func (c *claimSlowFor) Expire(ctx context.Context, key string, ttl time.Duration
 	return c.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
 }
 
+// claimHungFor holds the KV calls for the stream claims of streams until
+// their context ends, as a KV store that does not answer does.
+type claimHungFor struct {
+	kv.KV
+	streams []uint
+}
+
+func (c *claimHungFor) hung(ctx context.Context, key string) bool {
+	for _, s := range c.streams {
+		if strings.HasPrefix(key, "dmrhub:stream_claim:"+strconv.FormatUint(uint64(s), 10)+":") {
+			<-ctx.Done()
+			return true
+		}
+	}
+	return false
+}
+
+func (c *claimHungFor) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	if c.hung(ctx, key) {
+		return false, ctx.Err() //nolint:wrapcheck
+	}
+	return c.KV.SetNX(ctx, key, value, ttl) //nolint:wrapcheck
+}
+
+func (c *claimHungFor) Get(ctx context.Context, key string) ([]byte, error) {
+	if c.hung(ctx, key) {
+		return nil, ctx.Err() //nolint:wrapcheck
+	}
+	return c.KV.Get(ctx, key) //nolint:wrapcheck
+}
+
+func (c *claimHungFor) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	if c.hung(ctx, key) {
+		return ctx.Err() //nolint:wrapcheck
+	}
+	return c.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
+}
+
 // TestTheNextStreamWaitsForTheClaimOfTheLastOne starts a stream whose
-// claim the KV store answers in 500 ms, ends it, and starts the next on the
-// same repeater slot, whose claim is answered at once. The first stream
-// waits for StreamClaimWait; the second must still come after it, and
-// neither may wait much longer than StreamClaimWait. A stream of another
-// slot must not wait at all.
+// claim the KV store does not answer, ends it, and starts the next on the
+// same repeater slot, whose claim is answered at once, and holds the wait
+// of the hub for the claim. The read loop must not wait, a stream of
+// another slot must pass, and neither stream of the held slot may pass.
+// When the wait ends, both streams must pass in order.
 func TestTheNextStreamWaitsForTheClaimOfTheLastOne(t *testing.T) {
 	t.Parallel()
 	const first, second, other = uint(73001), uint(73002), uint(73003)
 	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		return &claimSlowFor{KV: k, streams: []uint{first}}
+		return &claimHungFor{KV: k, streams: []uint{first}}
 	})
+	endWait := h.HoldStreamClaimWaits()
+	t.Cleanup(endWait)
 
 	sent := make([]models.Packet, 0, 5)
 	p := makeVoicePacket(1, first, true, false)
@@ -249,42 +289,44 @@ func TestTheNextStreamWaitsForTheClaimOfTheLastOne(t *testing.T) {
 		p.Seq = uint(i)
 		sent = append(sent, p)
 	}
-	start := time.Now()
-	var worstCall time.Duration
-	for _, p := range sent {
-		called := time.Now()
-		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-		worstCall = max(worstCall, time.Since(called))
-	}
 	otherSlot := makeVoicePacket(1, other, true, true)
 	otherSlot.Src = 1000002
-	h.RoutePacket(context.Background(), otherSlot, models.RepeaterTypeMMDVM)
+	routed := make(chan struct{})
+	go func() {
+		defer close(routed)
+		for _, p := range append(sent, otherSlot) {
+			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+		}
+	}()
 
-	got := map[string][]delivered{}
-	var last, otherAt time.Duration
+	var got []delivered
+	otherSeen := false
 	deadline := time.After(30 * time.Second)
-	for len(got["mmdvm:100002"]) < len(sent) || otherAt == 0 {
-		select {
-		case a := <-arrivals:
-			if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
-				continue
+	receive := func(done func() bool, what string) {
+		for !done() {
+			select {
+			case <-routed:
+				routed = nil
+			case a := <-arrivals:
+				if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
+					continue
+				}
+				switch a.rp.Packet.StreamID {
+				case other:
+					otherSeen = true
+				case first, second:
+					got = append(got, delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
+				}
+			case <-deadline:
+				t.Fatalf("%s: read loop done %v, other slot passed %v, deliveries %v", what, routed == nil, otherSeen, got)
 			}
-			switch a.rp.Packet.StreamID {
-			case other:
-				otherAt = a.at.Sub(start)
-			case first, second:
-				got["mmdvm:100002"] = append(got["mmdvm:100002"], delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
-				last = a.at.Sub(start)
-			}
-		case <-deadline:
-			t.Fatalf("deliveries %v, other slot at %v", got, otherAt)
 		}
 	}
-	t.Logf("worst RoutePacket call %v, last burst at %v, other slot at %v", worstCall, last, otherAt)
-	assert.Equal(t, orderOf(sent), got["mmdvm:100002"], "the next stream overtook the last one")
-	assert.Less(t, worstCall, 20*time.Millisecond, "the read loop waited on the KV store")
-	assert.Less(t, last, hub.StreamClaimWait+100*time.Millisecond, "the streams waited too long")
-	assert.Less(t, otherAt, 50*time.Millisecond, "another slot waited on the claim")
+	receive(func() bool { return routed == nil && otherSeen }, "the read loop waited on the KV store, or another slot waited on the claim")
+	assert.Empty(t, got, "a stream passed before the claim of the last one was answered")
+	endWait()
+	receive(func() bool { return len(got) >= len(sent) }, "the streams did not pass when the wait for the claim ended")
+	assert.Equal(t, orderOf(sent), got, "the next stream overtook the last one")
 }
 
 // TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce starts three short

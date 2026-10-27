@@ -28,7 +28,7 @@
       <CardContent>
         <p>
           Repeaters and hotspots that send Codec2 can talk with AMBE radios. DMRHub converts each call once, only for
-          the targets that need the other codec. Codec2 is built in. AMBE needs an AMBE server, such as a DVSI vocoder
+          the targets that need the other codec. Codec2 is built in. AMBE needs an AMBE server, such as a hardware vocoder
           behind AMBEserver.
         </p>
         <Table class="mt-4" data-test="ambe-servers">
@@ -100,7 +100,7 @@
         </div>
         <p class="mt-3 text-sm text-muted-foreground">
           Host and UDP port of each server. Calls at once: leave it empty when the server has no limit; use 1 for an
-          AMBEserver with one DVSI chip. Each converted call uses one server for its whole length. When every server is
+          AMBE server with one chip, which answers only its last client. Each converted call uses one server for its whole length. When every server is
           busy, a call passes through in its own codec. With no server, transcoding is off.
         </p>
         <SettingNote path="dmr.transcoding.ambe-servers" />

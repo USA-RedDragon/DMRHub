@@ -19,7 +19,7 @@
 
 // Package transcode converts DMR voice calls between Codec2 and AMBE+2.
 // AMBE+2 runs on an AMBE server that speaks the AMBEserver protocol over
-// UDP (dmrgo vocoder/dvsi); Codec2 runs in the hub (dmrgo vocoder/codec2,
+// UDP; Codec2 runs in the hub (dmrgo vocoder/codec2,
 // on the WebAssembly build of libcodec2 when cgo is off).
 package transcode
 

@@ -35,11 +35,11 @@ import (
 )
 
 // FakeAMBEProduct is the product name that a FakeAMBEServer reports.
-const FakeAMBEProduct = "AMBE3000R"
+const FakeAMBEProduct = "FAKEAMBE"
 
 // The DCMODE_IN and DCMODE_OUT flags of the CMODE field that a
 // FakeAMBEServer takes in channel packets and puts in speech packets
-// (AMBE-3000R manual Tables 14 and 15).
+// (the CMODE field of the AMBEserver protocol).
 const (
 	AMBELostFrame   = 0x0004
 	AMBEVoiceActive = 0x0002
@@ -55,7 +55,7 @@ const (
 )
 
 // FakeAMBEServer is an AMBEserver on loopback for tests: it answers the
-// packets of the DVSI chip protocol, one per UDP datagram, to the address
+// packets of the AMBEserver protocol, one per UDP datagram, to the address
 // that sent each one. It decodes a frame to FakeAMBEDecode of it and
 // encodes audio to FakeAMBEEncode of it, so a test can tell what a
 // transcoder made of each frame. After a PKT_SPCHFMT field of 0x0001 it
@@ -122,8 +122,8 @@ func (f *FakeAMBEServer) SetAnswering(on bool) {
 	f.answer.Store(on)
 }
 
-// SetLastClientOnly makes the server answer as an AMBEserver with one DVSI
-// chip does: each answer goes to the client whose request came last, and
+// SetLastClientOnly makes the server answer as an AMBE server with one chip
+// does: each answer goes to the client whose request came last, and
 // it takes 3 ms. Two clients at once then get each other's answers.
 func (f *FakeAMBEServer) SetLastClientOnly(on bool) {
 	f.lastOne.Store(on)

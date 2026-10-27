@@ -137,7 +137,7 @@ type Transcoding struct {
 // AMBEServer is one AMBE server.
 type AMBEServer struct {
 	Address string `json:"address" yaml:"address" name:"address" description:"Host and UDP port of the AMBE server, such as ambeserver:2460"`
-	Calls   int    `json:"calls" yaml:"calls" name:"calls" description:"Calls the server converts at once. 0 is no limit; use 1 for an AMBEserver with one DVSI chip, which answers only its last client"`
+	Calls   int    `json:"calls" yaml:"calls" name:"calls" description:"Calls the server converts at once. 0 is no limit; use 1 for an AMBE server with one chip, which answers only its last client"`
 }
 
 // Plugins holds where the plugins run: inside DMRHub, and the listener that

@@ -90,7 +90,7 @@ func TestConfigChecksTheAMBEServers(t *testing.T) {
 func TestTranscodingFromAFile(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	data := []byte("secret: a-secret-of-some-length\npassword-salt: a-salt-of-some-length\nhttp:\n  canonical-host: http://localhost:3005\ndmr:\n  transcoding:\n    ambe-servers:\n      - address: ambeserver:2460\n      - address: thumbdv:2460\n        calls: 1\n")
+	data := []byte("secret: a-secret-of-some-length\npassword-salt: a-salt-of-some-length\nhttp:\n  canonical-host: http://localhost:3005\ndmr:\n  transcoding:\n    ambe-servers:\n      - address: ambeserver:2460\n      - address: ambe2:2460\n        calls: 1\n")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestTranscodingFromAFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []config.AMBEServer{{Address: "ambeserver:2460"}, {Address: "thumbdv:2460", Calls: 1}}
+	want := []config.AMBEServer{{Address: "ambeserver:2460"}, {Address: "ambe2:2460", Calls: 1}}
 	got := cfg.DMR.Transcoding.AMBEServers
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("AMBE servers %v, want %v", got, want)

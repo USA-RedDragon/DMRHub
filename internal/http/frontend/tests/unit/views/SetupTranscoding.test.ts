@@ -40,12 +40,12 @@ type Server = { address: string; calls: number };
 const HOST_PORT = 'Enter a host and port for each server, such as ambeserver:2460.';
 const CALLS = 'Calls at once is a whole number of 1 or more, or empty for no limit.';
 const HELP = 'Host and UDP port of each server. Calls at once: leave it empty when the server has no limit; use 1 for an '
-  + 'AMBEserver with one DVSI chip. Each converted call uses one server for its whole length. When every server is '
+  + 'AMBE server with one chip, which answers only its last client. Each converted call uses one server for its whole length. When every server is '
   + 'busy, a call passes through in its own codec. With no server, transcoding is off.';
 
 const two: Server[] = [
   { address: 'ambeserver:2460', calls: 0 },
-  { address: 'thumbdv.example.org:2460', calls: 1 },
+  { address: 'ambe2.example.org:2460', calls: 1 },
 ];
 
 const status = (server: string, answered: number | null, calls = 0, limit = 0): ServerStatus => ({
@@ -132,7 +132,7 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
     expect(calls0.attributes('placeholder')).toBe('No limit');
     expect(calls0.attributes('inputmode')).toBe('numeric');
     expect((wrapper.find('[data-test="ambe-server-address-1"]').element as HTMLInputElement).value)
-      .toBe('thumbdv.example.org:2460');
+      .toBe('ambe2.example.org:2460');
     expect((wrapper.find('[data-test="ambe-server-calls-1"]').element as HTMLInputElement).value).toBe('1');
   });
 
@@ -195,7 +195,7 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
     await flushPromises();
     const want = [
       { address: 'ambeserver:2460', calls: 0 },
-      { address: 'thumbdv.example.org:2460', calls: 0 },
+      { address: 'ambe2.example.org:2460', calls: 0 },
       { address: '[::1]:2460', calls: 4 },
     ];
     expect(sent(mockAPI.post)).toEqual(want);
@@ -251,7 +251,7 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
 
   it('shows the status of each server by its address', async () => {
     serve(two, () => ({
-      servers: [status('thumbdv.example.org:2460', null, 0, 1), status('ambeserver:2460', 2, 3)],
+      servers: [status('ambe2.example.org:2460', null, 0, 1), status('ambeserver:2460', 2, 3)],
     }));
     const wrapper = mountWizard('/admin/setup');
     await flushPromises();
@@ -262,14 +262,14 @@ describe('Transcoding settings', { timeout: 20000 }, () => {
   });
 
   it('says 1 second and 1 call', async () => {
-    serve(two, () => ({ servers: [status('ambeserver:2460', 1, 1), status('thumbdv.example.org:2460', 1, 1, 1)] }));
+    serve(two, () => ({ servers: [status('ambeserver:2460', 1, 1), status('ambe2.example.org:2460', 1, 1, 1)] }));
     const wrapper = mountWizard('/admin/setup');
     await flushPromises();
     expect(statusCell(wrapper, 0).text()).toBe('Answered 1 second ago. 1 call now.');
   });
 
   it('says a server that is not saved yet is checked after the save', async () => {
-    serve(two, () => ({ servers: [status('ambeserver:2460', 2, 3), status('thumbdv.example.org:2460', 1, 0, 1)] }));
+    serve(two, () => ({ servers: [status('ambeserver:2460', 2, 3), status('ambe2.example.org:2460', 1, 0, 1)] }));
     const wrapper = mountWizard('/admin/setup');
     await flushPromises();
     await wrapper.find('[data-test="ambe-server-add"]').trigger('click');

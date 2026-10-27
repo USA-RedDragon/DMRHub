@@ -57,8 +57,8 @@ var (
 )
 
 // ServerConfig is one AMBE server: its host and UDP port, and the calls it
-// converts at once, 0 for no limit. An AMBEserver with one DVSI chip takes
-// 1, as it answers only its last client.
+// converts at once, 0 for no limit. An AMBE server with one chip takes 1,
+// as it answers only its last client.
 type ServerConfig struct {
 	Addr  string
 	Calls int

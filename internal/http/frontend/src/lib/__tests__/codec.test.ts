@@ -228,12 +228,12 @@ describe('ambeServersPayload', () => {
   it('saves an empty limit as 0 and a limit as a number', () => {
     expect(ambeServersPayload([
       { address: ' ambeserver:2460 ', calls: '' },
-      { address: 'thumbdv.example.org:2460', calls: '1' },
+      { address: 'ambe2.example.org:2460', calls: '1' },
       { address: '[::1]:2460', calls: 3 },
       { address: 'a:1', calls: 0 },
     ])).toEqual([
       { address: 'ambeserver:2460', calls: 0 },
-      { address: 'thumbdv.example.org:2460', calls: 1 },
+      { address: 'ambe2.example.org:2460', calls: 1 },
       { address: '[::1]:2460', calls: 3 },
       { address: 'a:1', calls: 0 },
     ]);
@@ -244,12 +244,12 @@ describe('serverStatus', () => {
   const status = {
     servers: [
       { server: 'ambeserver:2460', calls_limit: 0, answered_seconds: 2, calls: 3 },
-      { server: 'thumbdv.example.org:2460', calls_limit: 1, answered_seconds: null, calls: 0 },
+      { server: 'ambe2.example.org:2460', calls_limit: 1, answered_seconds: null, calls: 0 },
     ],
   };
 
   it('finds the status of an address', () => {
-    expect(serverStatus(status, 'thumbdv.example.org:2460')).toBe(status.servers[1]);
+    expect(serverStatus(status, 'ambe2.example.org:2460')).toBe(status.servers[1]);
     expect(serverStatus(status, ' ambeserver:2460 ')).toBe(status.servers[0]);
   });
 

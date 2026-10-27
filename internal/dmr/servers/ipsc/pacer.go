@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 )
 
 const (
@@ -149,6 +150,57 @@ type slotQueue struct {
 	// holdUntil is the end of the call hang of the peer on the slot, until
 	// which data and CSBK calls wait.
 	holdUntil time.Time
+	// heard is the voice or data call that the peer sends on the slot, and
+	// heardEnded the stream of the last one that ended.
+	heard      *heardCall
+	heardEnded uint
+	// running is set while the sender of the slot runs.
+	running bool
+}
+
+// heardCall is a voice or data call that the hub gets from the peer.
+type heardCall struct {
+	stream   uint
+	voice    bool
+	data     bool
+	ended    bool
+	endedAt  time.Time
+	lastSeen time.Time
+	dataEnd  dataEnd
+}
+
+// holdEnd returns the end of the call hang that c gives its slot. It
+// starts at the terminator or last block of c, or callHang after its last
+// burst when that never came.
+func (c *heardCall) holdEnd(callHold, dataHold time.Duration) time.Time {
+	end := c.endedAt
+	if !c.ended {
+		end = c.lastSeen.Add(callHang)
+	}
+	var until time.Time
+	if c.voice {
+		until = end.Add(callHold)
+	}
+	if c.data {
+		until = later(until, end.Add(dataHold))
+	}
+	return until
+}
+
+// hold returns the end of the call hang of the slot at now, from the calls
+// sent to the peer and the call heard from it.
+func (q *slotQueue) hold(now time.Time, callHold, dataHold time.Duration) time.Time {
+	c := q.heard
+	if c == nil {
+		return q.holdUntil
+	}
+	until := c.holdEnd(callHold, dataHold)
+	if c.ended || !now.Before(c.lastSeen.Add(callHang)) {
+		q.holdUntil = later(q.holdUntil, until)
+		q.heardEnded = c.stream
+		q.heard = nil
+	}
+	return later(q.holdUntil, until)
 }
 
 func (q *slotQueue) find(stream uint) *queuedCall {
@@ -175,11 +227,11 @@ func (q *slotQueue) drop(c *queuedCall) []models.Packet {
 
 // next returns the index of the waiting call to start at now, or -1 when
 // every waiting call is held by the call hang. A voice call is never held.
-func (q *slotQueue) next(now time.Time) int {
+func (q *slotQueue) next(now, until time.Time) int {
 	if len(q.pending) == 0 {
 		return -1
 	}
-	if !now.Before(q.holdUntil) {
+	if !now.Before(until) {
 		return 0
 	}
 	return slices.IndexFunc(q.pending, func(c *queuedCall) bool { return c.voice })
@@ -262,7 +314,7 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 			return
 		}
 		c = &queuedCall{stream: stream, queuedAt: now, voice: voice, src: pkt.Src, dst: pkt.Dst, group: pkt.GroupCall}
-		if q.active == nil && len(q.pending) == 0 && (voice || !now.Before(q.holdUntil)) {
+		if q.active == nil && len(q.pending) == 0 && (voice || !now.Before(q.hold(now, p.callHold, p.dataHold))) {
 			q.active = c
 		} else {
 			q.pending = append(q.pending, c)
@@ -301,14 +353,36 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 // queue returns the queue of k, and starts its sender when it is new. The
 // caller holds p.mu.
 func (p *pacer) queue(k slotKey) *slotQueue {
-	q, ok := p.slots[k]
-	if !ok {
-		q = &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
-		p.slots[k] = q
+	q := p.slot(k)
+	if !q.running {
+		q.running = true
 		p.wg.Add(1)
 		go p.run(k, q)
 	}
 	return q
+}
+
+// slot returns the queue of k, with no sender started. When it is new, it
+// first drops the queues that have no sender and nothing to hold. The
+// caller holds p.mu.
+func (p *pacer) slot(k slotKey) *slotQueue {
+	if q, ok := p.slots[k]; ok {
+		return q
+	}
+	now := p.now()
+	for key, q := range p.slots {
+		if !q.running && q.idle(now, p.callHold, p.dataHold) {
+			delete(p.slots, key)
+		}
+	}
+	q := &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
+	p.slots[k] = q
+	return q
+}
+
+// idle reports whether q has nothing to send and no call hang at now.
+func (q *slotQueue) idle(now time.Time, callHold, dataHold time.Duration) bool {
+	return q.frames() == 0 && len(q.pending) == 0 && len(q.discarded) == 0 && !now.Before(q.hold(now, callHold, dataHold)) && q.heard == nil
 }
 
 // holdFor holds the data and CSBK calls to the peer slot k for left, the
@@ -323,6 +397,64 @@ func (p *pacer) holdFor(k slotKey, left time.Duration) {
 	}
 	q := p.queue(k)
 	q.holdUntil = later(q.holdUntil, p.now().Add(left))
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+// heard follows pkt, which the hub got from the peer on the slot k. A
+// voice or data call from the peer holds the data and CSBK calls to it as
+// a call sent to it does: for callHold after the terminator of a voice
+// call, and for dataHold after the last block of a data call, or after
+// callHang with no burst when the call does not end.
+func (p *pacer) heard(k slotKey, pkt models.Packet) {
+	voice, data := burstKind(pkt)
+	if !voice && !data {
+		return
+	}
+	var b *layer2.Burst
+	if data {
+		b = decodeDataBurst(pkt)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	select {
+	case <-p.done:
+		return
+	default:
+	}
+	q := p.slot(k)
+	now := p.now()
+	q.hold(now, p.callHold, p.dataHold)
+	c := q.heard
+	if c != nil && c.stream != pkt.StreamID {
+		c.ended, c.endedAt = true, now
+		q.hold(now, p.callHold, p.dataHold)
+		c = nil
+	}
+	if c == nil {
+		if q.heardEnded == pkt.StreamID {
+			return
+		}
+		c = &heardCall{stream: pkt.StreamID}
+		q.heard = c
+	}
+	c.voice = c.voice || voice
+	c.data = c.data || data
+	c.lastSeen = now
+	if voice && pkt.FrameType == dmrconst.FrameDataSync && pkt.DTypeOrVSeq == uint(enums.DataTypeTerminatorWithLC) {
+		c.ended = true
+	}
+	if b != nil {
+		if e, known := c.dataEnd.ends(b); known && e {
+			c.ended = true
+		}
+	}
+	if c.ended {
+		c.endedAt = now
+		q.hold(now, p.callHold, p.dataHold)
+	}
 	select {
 	case q.wake <- struct{}{}:
 	default:
@@ -378,12 +510,13 @@ func (p *pacer) take(k slotKey, q *slotQueue, now time.Time) (queuedFrame, time.
 	discarded = q.expire(now)
 	for {
 		if q.active == nil {
-			i := q.next(now)
+			until := q.hold(now, p.callHold, p.dataHold)
+			i := q.next(now, until)
 			if i < 0 {
 				if len(q.pending) == 0 {
 					return queuedFrame{}, 0, false
 				}
-				return queuedFrame{}, q.holdUntil.Sub(now), false
+				return queuedFrame{}, until.Sub(now), false
 			}
 			q.active = q.pending[i]
 			q.pending = slices.Delete(q.pending, i, i+1)
@@ -500,7 +633,7 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 		if !ok {
 			continue
 		}
-		until := q.holdUntil
+		until := q.hold(now, p.callHold, p.dataHold)
 		if q.active != nil {
 			until = later(until, q.active.holdEnd(now, p.callHold, p.dataHold))
 		}
@@ -559,7 +692,10 @@ func (p *pacer) idle(k slotKey, q *slotQueue, wait time.Duration, idle *time.Tim
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if q.frames() == 0 && len(q.pending) == 0 && len(q.discarded) == 0 {
-			delete(p.slots, k)
+			q.running = false
+			if q.idle(p.now(), p.callHold, p.dataHold) {
+				delete(p.slots, k)
+			}
 			return true
 		}
 		idle.Reset(pacerIdleExpiry)

@@ -228,11 +228,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
 
 	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
-		for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
-			if s.hub != nil {
-				s.hub.RoutePacket(ctx, pkt, models.RepeaterTypeIPSC)
-			}
-		}
+		s.fromPeer(ctx, packetType, data)
 	})
 
 	s.wg.Add(3)
@@ -479,6 +475,19 @@ func isUserPacket(op ipscwire.Opcode) bool {
 		return true
 	}
 	return false
+}
+
+// fromPeer routes the user packet data of the type packetType, which a
+// peer sent, and starts the call hang that its calls give the peer.
+func (s *IPSCServer) fromPeer(ctx context.Context, packetType byte, data []byte) {
+	for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
+		if s.pacer != nil && pkt.Repeater <= math.MaxUint32 {
+			s.pacer.heard(slotKey{peer: uint32(pkt.Repeater), slot: pkt.Slot}, pkt)
+		}
+		if s.hub != nil {
+			s.hub.RoutePacket(ctx, pkt, models.RepeaterTypeIPSC)
+		}
+	}
 }
 
 func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, addr *net.UDPAddr)) {

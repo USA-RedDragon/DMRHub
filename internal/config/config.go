@@ -231,10 +231,10 @@ type IPSC struct {
 	Bind      string `json:"bind,omitempty" name:"bind" description:"IPSC server listen address" default:"[::]"`
 	Port      int    `json:"port,omitempty" name:"port" description:"IPSC server port" default:"50000"`
 	NetworkID uint32 `json:"network-id,omitempty" yaml:"network-id" name:"network-id" description:"DMR network ID that identifies this server to IPSC peers. Required when IPSC is enabled"`
-	// CallHangHold is how long after a voice call to an IPSC peer ends on
+	// CallHangHold is how long after a voice call to or from an IPSC peer ends on
 	// a slot that DMRHub holds the data and CSBK calls to that slot.
 	CallHangHold time.Duration `json:"call-hang-hold,omitempty" yaml:"call-hang-hold" name:"call-hang-hold" description:"Wait for data and CSBK calls to IPSC after a voice call on a slot; 0 is off" default:"2.5s"`
-	// DataHangHold is how long after a data call to an IPSC peer ends on
+	// DataHangHold is how long after a data call to or from an IPSC peer ends on
 	// a slot that DMRHub holds the data and CSBK calls to that slot.
 	DataHangHold time.Duration `json:"data-hang-hold,omitempty" yaml:"data-hang-hold" name:"data-hang-hold" description:"Wait for data and CSBK calls to IPSC after a data call on a slot; 0 is off" default:"1.2s"`
 }

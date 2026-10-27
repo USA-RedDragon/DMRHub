@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -79,14 +80,6 @@ func (t *TestDB) DB() *gorm.DB {
 	return t.database
 }
 
-//nolint:gochecknoglobals
-var memoryDBs atomic.Uint64
-
-func useMemoryDB(cfg *config.Config) {
-	cfg.Database.Database = fmt.Sprintf("file:testdb_%d", memoryDBs.Add(1))
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}
-}
-
 func CreateTestDBRouter() (*gin.Engine, *TestDB, error) {
 	return CreateTestDBRouterWithConfig(nil)
 }
@@ -100,7 +93,7 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	useMemoryDB(&defConfig)
+	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 	if change != nil {
@@ -166,7 +159,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	useMemoryDB(&defConfig)
+	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
 	defConfig.DMR.DisableRadioIDValidation = true
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
@@ -233,7 +226,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	useMemoryDB(&defConfig)
+	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 	defConfig.DMR.DisableRadioIDValidation = true

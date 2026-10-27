@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -60,7 +61,7 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	sharedMemoryDB(&cfg)
+	memdb.Use(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
@@ -111,7 +112,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 			const id = 311861
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
 			require.NoError(t, err)
-			sharedMemoryDB(&cfg)
+			memdb.Use(&cfg)
 			database, err := db.MakeDB(&cfg)
 			require.NoError(t, err)
 			kvStore, err := kv.MakeKV(context.Background(), &cfg)

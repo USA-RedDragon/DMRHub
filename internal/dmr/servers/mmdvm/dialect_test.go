@@ -23,9 +23,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"net"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -156,18 +155,11 @@ type dialectRig struct {
 	from net.UDPAddr
 }
 
-var memoryDBs atomic.Uint64 //nolint:gochecknoglobals // gives each test database of the package its own name
-
-func sharedMemoryDB(cfg *config.Config) {
-	cfg.Database.Database = fmt.Sprintf("file:mmdvm_test_%d", memoryDBs.Add(1))
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
-}
-
 func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	sharedMemoryDB(&cfg)
+	memdb.Use(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)

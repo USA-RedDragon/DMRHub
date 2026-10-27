@@ -40,16 +40,25 @@ If you lose the password, open the page of the peer and click **Rotate password*
 
 ## Add the rules of a peer
 
-A peer carries only the traffic that its rules allow. A new peer has no rules, so it carries nothing, even with **Receive** and **Transmit** on. The web interface does not have a page for rules yet. Add them with the API.
+A peer carries only the traffic that its rules allow. A new peer has no rules, so it carries nothing, even with **Receive** and **Transmit** on.
 
-A rule has a direction, a match and a range of IDs from `subject_id_min` to `subject_id_max`:
+Open the page of the peer. The **Rules** card has a **Receive** group for calls from the peer and a **Transmit** group for calls to the peer. The top of the card sums up what each direction carries. To add a rule, click **Add rule** in a group, then:
 
-- `"direction": true` is a receive rule, for calls from the peer. `"direction": false` is a transmit rule, for calls to the peer.
-- `"match": "destination"` checks the destination ID of the call: the talkgroup of a group call, the radio ID of a private call. `"match": "source"` checks the radio ID of the caller. With no match, a receive rule checks the destination and a transmit rule the source.
+1. Under **Calls**, pick **To** to match the destination of a call (the talkgroup of a group call, the radio ID of a private call), or **From** to match the radio ID of the caller.
+2. Enter the **First ID** and, for a range, the **Last ID**.
+3. Click **Add**.
 
-A call passes the rules of a direction when one destination rule covers its destination and one source rule covers its caller. When a direction has rules of only one match, the other match does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls.
+To delete a rule, click **Delete** on its row, then **Delete** again. The owner of the peer or an admin can change the rules. They take effect at once, on every replica.
 
-To let private calls pass the destination rules, turn on the private call switch of a direction: `"ingress_private": true` for receive, `"egress_private": true` for transmit. Set them with `PATCH <siteurl>/api/v1/peers/<peer ID>`. A private call then needs only the source rules of that direction. The switches cover private data too, such as SMS. They are off by default.
+<!-- screenshot: peer-rules.png | the Rules card of peer 3000900 with receive rules to 91 and 3100, transmit rules to 3100 and 31665 and from radios 3000001 to 3000099, and Private calls on for transmit -->
+
+A call passes the rules of a direction when one **To** rule covers its destination and one **From** rule covers its caller. When a direction has rules of only one kind, the other kind does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls.
+
+Turn on **Private calls** in a group to let private calls skip the **To** rules of that direction. A private call then needs only the **From** rules. The switch covers private data too, such as SMS. It is off by default. The page does not show it for a direction with only **From** rules, where it changes nothing.
+
+### Rules in the API
+
+A rule has a `direction` (`true` for receive, `false` for transmit), a `match` (`"destination"` for **To**, `"source"` for **From**) and a range of IDs from `subject_id_min` to `subject_id_max`. With no match, a receive rule matches the destination and a transmit rule the source. The private call switches are `ingress_private` and `egress_private`, set with `PATCH <siteurl>/api/v1/peers/<peer ID>`.
 
 For example, to take the calls to talkgroups 1 to 999999 from peer 3000900, and to send it the calls to talkgroups 3100 and 31665:
 
@@ -67,7 +76,7 @@ for tg in 3100 31665; do
 done
 ```
 
-`GET <siteurl>/api/v1/peers/<peer ID>/rules` lists the rules, and `DELETE <siteurl>/api/v1/peers/<peer ID>/rules/<rule ID>` deletes one. The rules take effect at once, on every replica.
+`GET <siteurl>/api/v1/peers/<peer ID>/rules` lists the rules, and `DELETE <siteurl>/api/v1/peers/<peer ID>/rules/<rule ID>` deletes one.
 
 ## Enhanced peers for FreeDMR
 

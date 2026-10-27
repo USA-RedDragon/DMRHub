@@ -40,14 +40,18 @@ func Migrate(db *gorm.DB, cfg *config.Config) error {
 // MigrateSchema runs the migrations that need the tables that AutoMigrate
 // makes, on a new database too.
 func MigrateSchema(db *gorm.DB, cfg *config.Config) error {
-	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
-		case_insensitive_usernames_migration_202610270200(db, cfg),
-		username_callsign_clashes_migration_202610271200(db, cfg),
-	})
+	m := gormigrate.New(db, gormigrate.DefaultOptions, schemaMigrations(db, cfg))
 	if err := m.Migrate(); err != nil {
 		return fmt.Errorf("could not migrate: %w", err)
 	}
 	return nil
+}
+
+func schemaMigrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
+	return []*gormigrate.Migration{
+		case_insensitive_usernames_migration_202610270200(db, cfg),
+		username_callsign_clashes_migration_202610271200(db, cfg),
+	}
 }
 
 func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {

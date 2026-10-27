@@ -23,7 +23,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -33,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -55,8 +55,7 @@ func webTransportRouter(t *testing.T, enabled bool) (http.Handler, *config.Confi
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:wt_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	cfg.Secret = "a secret"
 	cfg.PasswordSalt = "a salt"
 	cfg.DMR.MMDVM.WebTransport.Enabled = enabled

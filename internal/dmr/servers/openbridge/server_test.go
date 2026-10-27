@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,8 +49,7 @@ func TestMakeServer(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)
@@ -82,8 +82,7 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	defConfig.DMR.OpenBridge.Bind = "0.0.0.0"
 	defConfig.DMR.OpenBridge.Port = 62035
 
@@ -144,8 +143,7 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	defConfig.DMR.OpenBridge.Port = 0 // OS-assigned port
 
 	database, err := db.MakeDB(&defConfig)
@@ -233,8 +231,7 @@ func FuzzHandleOpenBridgePacket(f *testing.F) {
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 
-		defConfig.Database.Database = ""
-		defConfig.Database.ExtraParameters = []string{}
+		memdb.Use(&defConfig)
 		defConfig.DMR.OpenBridge.Port = 0
 
 		database, err := db.MakeDB(&defConfig)
@@ -307,8 +304,7 @@ func FuzzValidateOpenBridgeHMAC(f *testing.F) {
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 
-		defConfig.Database.Database = ""
-		defConfig.Database.ExtraParameters = []string{}
+		memdb.Use(&defConfig)
 		defConfig.DMR.OpenBridge.Port = 0
 
 		database, err := db.MakeDB(&defConfig)

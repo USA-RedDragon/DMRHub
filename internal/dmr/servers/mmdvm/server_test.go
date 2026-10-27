@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 )
 
@@ -42,8 +43,7 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	defConfig.DMR.MMDVM.Port = 0 // Use ephemeral port to avoid conflicts under -count >1
 
 	db, err := db.MakeDB(&defConfig)

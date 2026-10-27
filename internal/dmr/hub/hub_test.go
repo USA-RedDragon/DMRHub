@@ -32,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,8 +90,7 @@ func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub,
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	defConfig.Database.Database = fmt.Sprintf("file:memdb_%p", t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)

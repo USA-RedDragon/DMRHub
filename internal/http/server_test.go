@@ -34,6 +34,7 @@ import (
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 )
@@ -156,8 +157,7 @@ func TestHealthcheckNotReady(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)

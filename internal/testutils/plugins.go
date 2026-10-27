@@ -22,7 +22,6 @@ package testutils
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -37,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -122,8 +122,7 @@ func RepeaterHub(t testing.TB, owner, repeater uint) (*hub.Hub, *gorm.DB, pubsub
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_repeaterhub_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)

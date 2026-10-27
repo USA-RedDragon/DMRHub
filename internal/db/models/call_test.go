@@ -25,6 +25,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,8 +39,7 @@ func TestFindCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -59,8 +59,7 @@ func TestCountCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -79,8 +78,7 @@ func TestFindUserCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -99,8 +97,7 @@ func TestCountUserCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -119,8 +116,7 @@ func TestFindRepeaterCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -139,8 +135,7 @@ func TestFindTalkgroupCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -159,8 +154,7 @@ func TestActiveCallExistsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -179,8 +173,7 @@ func TestCallQueriesSucceedOnValidDB(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	defer func() {

@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	kvPkg "github.com/USA-RedDragon/DMRHub/internal/kv"
 	psPkg "github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,8 +40,7 @@ func makeTestStack(t *testing.T) (*netscheduler.NetScheduler, func()) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 

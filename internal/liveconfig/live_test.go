@@ -23,7 +23,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	cpflag "github.com/USA-RedDragon/configulator/v2/flags/pflag"
 	"github.com/goccy/go-yaml"
@@ -49,8 +49,7 @@ func newDB(t *testing.T, be testutils.Backend) *gorm.DB {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_live_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	be.Setup(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

@@ -22,7 +22,6 @@ package ipsc
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -33,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,8 +47,7 @@ func TestAPeerCallIsTimedFromWhenItsBurstsCame(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:ipsc_arrival_%d", time.Now().UnixNano())
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)

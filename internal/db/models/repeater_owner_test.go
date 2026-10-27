@@ -21,12 +21,12 @@ package models_test
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -38,8 +38,7 @@ func foreignKeyDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:unowned_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}
+	memdb.Use(&cfg, "_pragma=foreign_keys(1)")
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

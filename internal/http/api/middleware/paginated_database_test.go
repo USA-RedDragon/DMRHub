@@ -20,7 +20,6 @@
 package middleware_test
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -28,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -41,7 +41,7 @@ type pageRow struct {
 
 func TestLimitNoneAnswersEveryRowOnlyWhereARouteAllowsIt(t *testing.T) {
 	t.Parallel()
-	database, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:pages_%p?mode=memory&cache=shared", t)), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, database.AutoMigrate(&pageRow{}))
 	rows := make([]pageRow, 150)

@@ -26,6 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
@@ -37,8 +38,7 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)
@@ -369,8 +369,7 @@ func benchmarkPeerShouldEgress(b *testing.B, numRules uint) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {
@@ -421,8 +420,7 @@ func benchmarkPeerShouldIngress(b *testing.B, numRules uint) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {

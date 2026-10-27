@@ -21,7 +21,6 @@ package messages_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -33,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -66,8 +66,7 @@ func openDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_msg_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

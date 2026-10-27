@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -56,9 +57,9 @@ func openRaw(t *testing.T, cfg *config.Config) *gorm.DB {
 	case config.DatabaseDriverPostgres:
 		d = postgres.Open(fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", cfg.Database.Host, cfg.Database.Port, cfg.Database.Username, cfg.Database.Password, cfg.Database.Database))
 	case config.DatabaseDriverSQLite:
-		d = sqlite.Open(fmt.Sprintf("file:memdb_seeded_%p?mode=memory&cache=shared", t))
+		d = sqlite.Open(memdb.DSN())
 	default:
-		d = sqlite.Open(fmt.Sprintf("file:memdb_seeded_%p?mode=memory&cache=shared", t))
+		d = sqlite.Open(memdb.DSN())
 	}
 	gdb, err := gorm.Open(d, &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)

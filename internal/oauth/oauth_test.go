@@ -22,12 +22,12 @@ package oauth_test
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:oauth_%p?mode=memory&cache=shared", t)))
+	db, err := gorm.Open(sqlite.Open(memdb.DSN()))
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}))
 	t.Cleanup(func() {

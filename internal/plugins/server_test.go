@@ -21,7 +21,6 @@ package plugins_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -30,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -41,8 +41,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	cfg.Database.Database = fmt.Sprintf("file:memdb_pluginsrv_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
@@ -100,8 +99,7 @@ func TestStoppingTheListenerTwiceIsSafe(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	cfg.Database.Database = fmt.Sprintf("file:memdb_pluginstop_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

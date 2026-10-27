@@ -38,6 +38,7 @@ import (
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -65,8 +66,7 @@ func TestSetupWizardSavesToTheDatabase(t *testing.T) {
 	t.Parallel()
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	base.Database.Database = fmt.Sprintf("file:wizard_%p", t)
-	base.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&base)
 	base.Secret = "a-secret-that-is-long-enough-for-the-check"
 	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
 	database, err := db.MakeDB(&base)
@@ -372,8 +372,7 @@ func TestSetupWizardLetsTheFirstVisitorMakeTheAdmin(t *testing.T) {
 func TestSetupWizardMakesTheFirstAdminQuietly(t *testing.T) { //nolint:paralleltest // it swaps the default logger
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	base.Database.Database = fmt.Sprintf("file:wizard_%p", t)
-	base.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&base)
 	base.Secret = "a-secret-that-is-long-enough-for-the-check"
 	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
 	base.DMR.DisableRadioIDValidation = true

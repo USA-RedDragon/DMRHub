@@ -21,7 +21,6 @@ package plugins
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	dbpkg "github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -39,8 +39,7 @@ func TestEachProblemOfAHelloIsWorded(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_hello_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}
+	memdb.Use(&cfg, "_pragma=foreign_keys(1)")
 	db, err := dbpkg.MakeDB(&cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

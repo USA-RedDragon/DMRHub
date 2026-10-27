@@ -21,13 +21,13 @@ package modem_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/modem"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,8 +35,7 @@ func TestServerCreatesAMissingRepeaterWithNoOwner(t *testing.T) {
 	t.Parallel()
 	cfg := modemConfig(t, false)
 	cfg.DMR.Modem.CWID.Callsign = "ki5vmf"
-	cfg.Database.Database = fmt.Sprintf("file:modemrecord_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}
+	memdb.Use(cfg, "_pragma=foreign_keys(1)")
 	database, err := db.MakeDB(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

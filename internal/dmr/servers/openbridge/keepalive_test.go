@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,8 +45,7 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = ""
-	cfg.Database.ExtraParameters = []string{}
+	memdb.Use(&cfg)
 	cfg.DMR.OpenBridge.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

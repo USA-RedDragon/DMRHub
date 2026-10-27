@@ -21,7 +21,6 @@ package calltracker
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,8 +40,7 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 	t.Parallel()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = fmt.Sprintf("file:memdb_ctq_%p", t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)

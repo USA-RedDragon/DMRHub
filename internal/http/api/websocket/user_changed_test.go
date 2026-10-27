@@ -36,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -57,8 +58,7 @@ type userEnv struct {
 func newUserEnv(t *testing.T, be testutils.Backend) *userEnv {
 	t.Helper()
 	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
-		c.Database.Database = fmt.Sprintf("file:wsuser_%p", t)
-		c.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+		memdb.Use(c)
 		be.Migrated().Setup(t, c)
 	})
 	require.NoError(t, err)

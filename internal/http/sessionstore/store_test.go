@@ -21,7 +21,6 @@ package sessionstore_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +37,7 @@ import (
 
 func newStore(t *testing.T) (*sessionstore.Store, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:store_%p?mode=memory&cache=shared", t)))
+	db, err := gorm.Open(sqlite.Open(memdb.DSN()))
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&models.Session{}))
 	t.Cleanup(func() {

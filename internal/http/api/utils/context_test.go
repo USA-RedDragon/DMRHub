@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -44,7 +45,7 @@ func makeTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
 func TestGetDB_Success(t *testing.T) {
 	t.Parallel()
 	c, _ := makeTestContext(t)
-	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open test DB: %v", err)
 	}
@@ -79,7 +80,7 @@ func TestGetDB_WrongType(t *testing.T) {
 func TestGetPaginatedDB_Success(t *testing.T) {
 	t.Parallel()
 	c, _ := makeTestContext(t)
-	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open test DB: %v", err)
 	}

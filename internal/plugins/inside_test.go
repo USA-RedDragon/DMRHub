@@ -21,7 +21,6 @@ package plugins_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -182,8 +182,7 @@ func TestPluginsInsideDMRHubNeedNoListener(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:memdb_pluginsinside_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	require.False(t, cfg.DMR.Plugins.Enabled)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

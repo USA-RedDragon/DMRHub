@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
@@ -41,8 +42,7 @@ func closedDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -320,8 +320,7 @@ func openDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -338,8 +337,7 @@ func benchOpenDB(b *testing.B) (*gorm.DB, func()) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {
 		b.Fatal(err)

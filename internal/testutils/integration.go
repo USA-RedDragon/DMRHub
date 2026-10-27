@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -77,8 +78,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	// In-memory SQLite — use a named shared-cache DB so all connections within
 	// the same test share data. Without cache=shared, each connection in the pool
 	// gets its own empty in-memory database, causing "no such table" errors.
-	defConfig.Database.Database = fmt.Sprintf("file:memdb_%p", t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&defConfig)
 
 	// Apply backend overrides (e.g. Postgres+Redis instead of SQLite+memory).
 	for _, be := range backends {

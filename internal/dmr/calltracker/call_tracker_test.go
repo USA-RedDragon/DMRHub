@@ -36,6 +36,7 @@ import (
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -92,8 +93,7 @@ func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = fmt.Sprintf("file:memdb_ct_%p", t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
@@ -895,8 +895,7 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 	t.Parallel()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	defConfig.Database.Database = fmt.Sprintf("file:memdb_ctnet_%p", t)
-	defConfig.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)

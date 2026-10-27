@@ -21,7 +21,6 @@ package http_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -31,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -41,8 +41,7 @@ func corsRouter(t *testing.T, enabled bool) *gin.Engine {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.Database.Database = fmt.Sprintf("file:cors_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	cfg.HTTP.CORS.Enabled = enabled
 	cfg.HTTP.CORS.Hosts = []string{"https://hub.example"}
 	database, err := db.MakeDB(&cfg)

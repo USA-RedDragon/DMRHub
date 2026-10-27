@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"gorm.io/gorm"
 )
@@ -42,8 +43,7 @@ func TestMakeDBInMemoryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
-	defConfig.Database.Database = ""
-	defConfig.Database.ExtraParameters = []string{}
+	memdb.Use(&defConfig)
 	db, err := db.MakeDB(&defConfig)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)

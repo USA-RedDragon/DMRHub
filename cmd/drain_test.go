@@ -22,7 +22,6 @@ package cmd
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"testing"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
@@ -53,8 +53,7 @@ func drainRig(t *testing.T, otherReplica bool) (*serverManager, <-chan *pluginv1
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	cfg.Database.Database = fmt.Sprintf("file:memdb_cmddrain_%p", t)
-	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
+	memdb.Use(&cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	cfg.DMR.DrainTimeout = 1
 	database, err := db.MakeDB(&cfg)

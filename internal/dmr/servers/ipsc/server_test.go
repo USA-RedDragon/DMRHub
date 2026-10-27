@@ -32,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -178,7 +179,7 @@ func register(t *testing.T, s *IPSCServer, client *net.UDPConn, addr *net.UDPAdd
 
 func TestUnknownPeerDropped(t *testing.T) {
 	t.Parallel()
-	dbConn, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	dbConn, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -197,7 +198,7 @@ func TestUnknownPeerDropped(t *testing.T) {
 
 func TestDBKeyLookup(t *testing.T) {
 	t.Parallel()
-	dbConn, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	dbConn, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

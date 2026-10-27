@@ -21,6 +21,7 @@ package repeaters
 
 import (
 	encjson "encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -43,13 +44,16 @@ import (
 )
 
 const (
-	errorKey              = "error"
-	msgAuthFailed         = "Authentication failed"
-	msgTryAgainLater      = "Try again later"
-	msgErrGettingRepeater = "Error getting repeater"
-	messageKey            = "message"
-	msgInvalidJSON        = "JSON data is invalid"
-	msgErrSavingRepeater  = "Error saving repeater"
+	errorKey               = "error"
+	msgAuthFailed          = "Authentication failed"
+	msgTryAgainLater       = "Try again later"
+	msgErrGettingRepeater  = "Error getting repeater"
+	messageKey             = "message"
+	msgInvalidJSON         = "JSON data is invalid"
+	msgErrSavingRepeater   = "Error saving repeater"
+	msgErrGettingRepeaters = "Error getting repeaters"
+	keyRepeaters           = "repeaters"
+	keyTotal               = "total"
 )
 
 const (
@@ -75,19 +79,19 @@ func GETRepeaters(c *gin.Context) {
 	}
 	repeaters, err := models.ListRepeaters(db)
 	if err != nil {
-		slog.Error("Error getting repeaters", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters"})
+		slog.Error(msgErrGettingRepeaters, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeaters})
 		return
 	}
 
 	count, err := models.CountRepeaters(cDb)
 	if err != nil {
-		slog.Error("Error getting repeaters", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting repeaters"})
+		slog.Error(msgErrGettingRepeaters, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeaters})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
+	c.JSON(http.StatusOK, gin.H{keyTotal: count, keyRepeaters: repeaters})
 }
 
 func GETMyRepeaters(c *gin.Context) {
@@ -130,7 +134,7 @@ func GETMyRepeaters(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"total": count, "repeaters": repeaters})
+	c.JSON(http.StatusOK, gin.H{keyTotal: count, keyRepeaters: repeaters})
 }
 
 func GETRepeater(c *gin.Context) {
@@ -179,7 +183,7 @@ func DELETERepeater(c *gin.Context) {
 	}
 
 	var owners []uint
-	if err := db.Model(&models.Repeater{}).Where("id = ?", repeaterID).Pluck("owner_id", &owners).Error; err != nil {
+	if err := db.Model(&models.Repeater{}).Where("id = ? AND owner_id IS NOT NULL", repeaterID).Pluck("owner_id", &owners).Error; err != nil {
 		slog.Error("Error finding the owner of a repeater", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error deleting repeater"})
 		return
@@ -940,6 +944,77 @@ func publishOwnerChanged(c *gin.Context, ownerID uint) {
 	if err := websocket.PublishUserChanged(ps, ownerID); err != nil {
 		slog.Error("Failed to close the websockets of a repeater owner", "user", ownerID, "error", err)
 	}
+}
+
+// GETUnassignedRepeaters lists the repeaters with no owner, such as the
+// one that DMRHub makes for a modem whose repeater did not exist.
+func GETUnassignedRepeaters(c *gin.Context) {
+	db, ok := utils.GetPaginatedDB(c)
+	if !ok {
+		return
+	}
+	cDb, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	repeaters, err := models.ListUnassignedRepeaters(db)
+	if err != nil {
+		slog.Error("Error getting the unassigned repeaters", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeaters})
+		return
+	}
+	count, err := models.CountUnassignedRepeaters(cDb)
+	if err != nil {
+		slog.Error("Error counting the unassigned repeaters", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingRepeaters})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{keyTotal: count, keyRepeaters: repeaters})
+}
+
+// POSTRepeaterOwner assigns the owner of a repeater with no owner.
+func POSTRepeaterOwner(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid repeater ID"})
+		return
+	}
+	var json apimodels.RepeaterOwnerPost
+	if err := c.ShouldBindJSON(&json); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
+		return
+	}
+	var user models.User
+	if err := db.Select("id").First(&user, json.Owner).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner does not exist"})
+			return
+		}
+		slog.Error("Error finding the owner of a repeater", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	switch err := models.AssignRepeaterOwner(db, uint(id), user.ID); {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "Repeater does not exist"})
+		return
+	case errors.Is(err, models.ErrRepeaterHasOwner):
+		c.JSON(http.StatusConflict, gin.H{errorKey: "Repeater already has an owner"})
+		return
+	case err != nil:
+		slog.Error("Error assigning the owner of a repeater", "repeaterID", id, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
+		return
+	}
+	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
+		dmrHub.ReloadRepeater(c.Request.Context(), uint(id))
+	}
+	publishOwnerChanged(c, user.ID)
+	c.JSON(http.StatusOK, gin.H{messageKey: "Owner assigned"})
 }
 
 func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {

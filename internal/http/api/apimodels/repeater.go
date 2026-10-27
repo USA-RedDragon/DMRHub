@@ -27,6 +27,12 @@ type RepeaterPost struct {
 	SimplexRepeater bool   `json:"simplex_repeater"`
 }
 
+// RepeaterOwnerPost is the owner that an admin assigns to a repeater with
+// no owner.
+type RepeaterOwnerPost struct {
+	Owner uint `json:"owner" binding:"required"`
+}
+
 type RepeaterTalkgroupsPost struct {
 	TS1StaticTalkgroups []models.Talkgroup `json:"ts1_static_talkgroups"`
 	TS2StaticTalkgroups []models.Talkgroup `json:"ts2_static_talkgroups"`

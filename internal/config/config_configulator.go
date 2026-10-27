@@ -1984,7 +1984,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[38], false, "Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server")
 	fs.String(names[39], "", "Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled")
 	fs.Var(impl.NewInt(115200), names[40], "Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600")
-	fs.Var(impl.NewUint(0), names[41], "ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled")
+	fs.Var(impl.NewUint(0), names[41], "ID of the repeater that the modem is on the network. DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. A repeater that does not exist is made with no owner, and an admin assigns its owner. Required when the modem is enabled")
 	fs.Bool(names[42], false, "Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2")
 	fs.Var(impl.NewUint(1), names[43], "Color code of the modem, 0 to 15")
 	fs.Var(impl.NewUint(0), names[44], "Receive frequency in Hz. Required when the modem is enabled")

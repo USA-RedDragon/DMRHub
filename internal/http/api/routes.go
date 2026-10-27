@@ -116,6 +116,9 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Repeaters.GET("", middleware.RequireAdmin(), userSuspension, v1RepeatersControllers.GETRepeaters)
 	// Paginated
 	v1Repeaters.GET("/my", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.GETMyRepeaters)
+	// Paginated
+	v1Repeaters.GET("/unassigned", middleware.RequireAdmin(), userSuspension, v1RepeatersControllers.GETUnassignedRepeaters)
+	v1Repeaters.POST("/:id/owner", middleware.RequireAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterOwner)
 	v1Repeaters.POST("", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTRepeater)
 	v1Repeaters.POST("/:id/link/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterLink)
 	v1Repeaters.POST("/:id/unlink/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterUnlink)

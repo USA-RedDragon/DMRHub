@@ -103,7 +103,7 @@ dmr:
     # port: ""
     # Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600
     baud: 115200
-    # ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled
+    # ID of the repeater that the modem is on the network. DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. A repeater that does not exist is made with no owner, and an admin assigns its owner. Required when the modem is enabled
     # repeater-id: 0
     # Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2
     duplex: false

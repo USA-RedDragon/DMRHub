@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -63,7 +64,6 @@ var (
 	errNoDMR       = errors.New("modem firmware has no DMR")
 	errNak         = errors.New("modem refused the command")
 	errNoReply     = errors.New("no reply from the modem")
-	errNoRepeater  = errors.New("repeater of the modem does not exist")
 	errRepeaterID  = errors.New("repeater ID of the modem does not fit in 32 bits")
 	errModemSilent = errors.New("no status from the modem for 2 s")
 )
@@ -398,15 +398,23 @@ func (s *Server) next(l *link, want func(mmdvm.Frame) bool) (mmdvm.Frame, error)
 }
 
 // claimRecord makes the repeater of the modem a modem repeater with the
-// RF settings of the modem.
+// RF settings of the modem. A repeater that does not exist is made with
+// no owner, for an admin to assign.
 func (s *Server) claimRecord(v mmdvm.Version) error {
 	if s.db == nil {
 		return nil
 	}
 	var r models.Repeater
+	var created bool
 	err := s.db.First(&r, s.id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("%w: %d; create it first", errNoRepeater, s.id)
+		r = models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(s.id), Callsign: strings.ToUpper(s.m.CWID.Callsign)},
+			Type: models.RepeaterTypeModem}
+		if err := s.db.Create(&r).Error; err != nil {
+			return fmt.Errorf("create the repeater of the modem: %w", err)
+		}
+		slog.Warn("Created the repeater of the modem with no owner; an admin must assign its owner", "repeaterID", s.id)
+		created, err = true, nil
 	}
 	if err != nil {
 		return fmt.Errorf("load the repeater of the modem: %w", err)
@@ -427,11 +435,11 @@ func (s *Server) claimRecord(v mmdvm.Version) error {
 	if err := s.db.Model(&models.Repeater{}).Where("id = ?", s.id).UpdateColumns(cols).Error; err != nil {
 		return fmt.Errorf("save the repeater of the modem: %w", err)
 	}
-	if r.Type != models.RepeaterTypeModem {
+	if !created && r.Type != models.RepeaterTypeModem {
 		slog.Warn("The repeater is now the modem of this server", "repeaterID", s.id, "was", r.Type)
-		if s.hub != nil {
-			s.hub.ReloadRepeater(s.ctx, uint(s.id))
-		}
+	}
+	if (created || r.Type != models.RepeaterTypeModem) && s.hub != nil {
+		s.hub.ReloadRepeater(s.ctx, uint(s.id))
 	}
 	return nil
 }

@@ -76,7 +76,7 @@ func setupFanout(tb testing.TB, targets int) *fanout {
 		require.NoError(tb, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: fanoutTG}))
 		h.ActivateRepeater(context.Background(), id)
 	}
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(tb, h)
 	f := &fanout{h: h, db: database, handle: handle, queries: countQueries(tb, database), sourceID: sourceID, targets: targets}
 	f.burst(tb)
 	return f

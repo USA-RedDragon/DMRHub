@@ -46,21 +46,17 @@ func (d noticeDropper) Publish(topic string, message []byte) error {
 	return d.PubSub.Publish(topic, message) //nolint:wrapcheck
 }
 
-func reaches(h *hub.Hub, handle *hub.ServerHandle, tg, stream uint) bool {
+func reaches(t *testing.T, h *hub.Hub, handle *hub.ServerHandle, tg, stream uint) bool {
+	t.Helper()
 	pkt := makeVoicePacket(tg, stream, true, false)
 	pkt.Repeater = 999998
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	deadline := time.After(500 * time.Millisecond)
-	for {
-		select {
-		case rp := <-handle.Packets:
-			if rp.RepeaterID == 100002 && rp.Packet.Dst == tg {
-				return true
-			}
-		case <-deadline:
-			return false
+	for _, rp := range flush(t, h, handle, pkt, 100002) {
+		if rp.RepeaterID == 100002 && rp.Packet.Dst == tg {
+			return true
 		}
 	}
+	return false
 }
 
 func TestLostNoticeHealsAfterTheCacheExpires(t *testing.T) {
@@ -88,13 +84,23 @@ func TestLostNoticeHealsAfterTheCacheExpires(t *testing.T) {
 	handle := hubB.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer hubB.UnregisterServer(models.RepeaterTypeMMDVM)
 	hubB.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
-	require.True(t, reaches(hubA, handle, 1, 50001))
+	knowTalkgroups(t, hubA)
+	require.True(t, reaches(t, hubA, handle, 1, 50001))
 
 	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 2}}))
 	hubA.ReloadRepeater(context.Background(), 100002)
-	time.Sleep(11 * time.Second)
 
-	assert.False(t, reaches(hubA, handle, 1, 50002), "the removed talkgroup stops once the cache expires")
-	assert.True(t, reaches(hubA, handle, 2, 50003), "the added talkgroup reaches the repeater once the cache expires")
+	deadline := time.After(hub.RepeaterCacheTTL + failAfter)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for !hubB.Subscribes(100002, 2) || hubB.Subscribes(100002, 1) {
+		select {
+		case <-deadline:
+			t.Fatal("the talkgroups of the repeater did not change once the cache expired")
+		case <-tick.C:
+		}
+	}
+
+	assert.False(t, reaches(t, hubA, handle, 1, 50002), "the removed talkgroup stops once the cache expires")
+	assert.True(t, reaches(t, hubA, handle, 2, 50003), "the added talkgroup reaches the repeater once the cache expires")
 }

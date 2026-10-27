@@ -58,7 +58,6 @@ func privateHub(t *testing.T, pc config.PrivateCalls) (*hub.Hub, *hub.ServerHand
 	for _, id := range []uint{pcOwnHS, pcOtherHS, pcThirdHS} {
 		h.ActivateRepeater(context.Background(), id)
 	}
-	time.Sleep(100 * time.Millisecond)
 	return h, srv
 }
 
@@ -68,15 +67,19 @@ func privateVoice(src, dst, repeater, stream uint) models.Packet {
 	return p
 }
 
-func hear(h *hub.Hub, radio, repeater, stream uint) {
+// hear routes a data header of radio on repeater, and waits until the
+// record in the KV store of where the radio was heard has it.
+func hear(t *testing.T, h *hub.Hub, radio, repeater, stream uint) {
+	t.Helper()
+	require.Eventually(t, func() bool { return h.LookupsLoaded(nil, []uint{radio}) }, 30*time.Second, 10*time.Millisecond, "the hub did not load the owner of radio %d", radio)
 	h.RoutePacket(context.Background(), dataHeader(radio, 1, repeater, stream), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
+	require.Eventually(t, func() bool { return h.HeardLastOn(context.Background(), radio) == repeater }, 30*time.Second, 10*time.Millisecond, "the hub did not store that repeater %d heard radio %d", repeater, radio)
 }
 
 func TestHybridReachesAVisitorWhereverItWasHeard(t *testing.T) {
 	t.Parallel()
 	h, srv := privateHub(t, config.PrivateCalls{})
-	hear(h, pcVisitor, pcOtherHS, 1)
+	hear(t, h, pcVisitor, pcOtherHS, 1)
 
 	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, pcOtherHS, "a voice call to a radio with no account goes where it was heard")
@@ -87,7 +90,7 @@ func TestHybridReachesAVisitorWhereverItWasHeard(t *testing.T) {
 func TestMembersReachDropsAVisitor(t *testing.T) {
 	t.Parallel()
 	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}})
-	hear(h, pcVisitor, pcOtherHS, 1)
+	hear(t, h, pcVisitor, pcOtherHS, 1)
 
 	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 	expectNone(t, srv, "the members reach drops a call to a radio with no account")
@@ -96,8 +99,8 @@ func TestMembersReachDropsAVisitor(t *testing.T) {
 func TestHybridDoesNotFollowAnOwnedRadioToAnUntrustedHotspot(t *testing.T) {
 	t.Parallel()
 	h, srv := privateHub(t, config.PrivateCalls{})
-	hear(h, pcOwner, pcOwnHS, 1)
-	hear(h, pcOwner, pcOtherHS, 2)
+	hear(t, h, pcOwner, pcOwnHS, 1)
+	hear(t, h, pcOwner, pcOtherHS, 2)
 
 	h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, pcOwnHS, "a spoofed ID on another user's hotspot must not pull the calls of an owned radio")
@@ -106,8 +109,8 @@ func TestHybridDoesNotFollowAnOwnedRadioToAnUntrustedHotspot(t *testing.T) {
 func TestAnyoneFollowsAnOwnedRadioToAnyHotspot(t *testing.T) {
 	t.Parallel()
 	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
-	hear(h, pcOwner, pcOwnHS, 1)
-	hear(h, pcOwner, pcOtherHS, 2)
+	hear(t, h, pcOwner, pcOwnHS, 1)
+	hear(t, h, pcOwner, pcOtherHS, 2)
 
 	h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, pcOtherHS, "the anyone reach follows a radio to wherever it was last heard")
@@ -146,7 +149,7 @@ func TestUnknownTargetFloodsEveryOtherRepeater(t *testing.T) {
 func TestMaxAgeDropsAStaleSighting(t *testing.T) {
 	t.Parallel()
 	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{MaxAge: 500 * time.Millisecond}})
-	hear(h, pcVisitor, pcOtherHS, 1)
+	hear(t, h, pcVisitor, pcOtherHS, 1)
 
 	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, pcOtherHS, "a sighting within the max age")
@@ -160,15 +163,15 @@ func TestDataTakesTheVoiceSettingsUnlessItHasItsOwn(t *testing.T) {
 	t.Run("voice reach", func(t *testing.T) {
 		t.Parallel()
 		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
-		hear(h, pcOwner, pcOwnHS, 1)
-		hear(h, pcOwner, pcOtherHS, 2)
+		hear(t, h, pcOwner, pcOwnHS, 1)
+		hear(t, h, pcOwner, pcOtherHS, 2)
 		h.RoutePacket(context.Background(), dataHeader(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
 		expectAt(t, srv, pcOtherHS, "data takes the voice reach")
 	})
 	t.Run("own reach", func(t *testing.T) {
 		t.Parallel()
 		h, srv := privateHub(t, config.PrivateCalls{Data: config.PrivateData{Reach: config.PrivateReachMembers}})
-		hear(h, pcVisitor, pcOtherHS, 1)
+		hear(t, h, pcVisitor, pcOtherHS, 1)
 		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 		expectAt(t, srv, pcOtherHS, "voice keeps the hybrid reach")
 		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
@@ -182,7 +185,7 @@ func TestDataMaxAgeTakesTheVoiceMaxAgeOrNone(t *testing.T) {
 	t.Run("voice max age", func(t *testing.T) {
 		t.Parallel()
 		h, srv := privateHub(t, config.PrivateCalls{Voice: voice})
-		hear(h, pcVisitor, pcOtherHS, 1)
+		hear(t, h, pcVisitor, pcOtherHS, 1)
 		time.Sleep(time.Second)
 		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 		expectNone(t, srv, "data takes the voice max age")
@@ -190,7 +193,7 @@ func TestDataMaxAgeTakesTheVoiceMaxAgeOrNone(t *testing.T) {
 	t.Run("no limit", func(t *testing.T) {
 		t.Parallel()
 		h, srv := privateHub(t, config.PrivateCalls{Voice: voice, Data: config.PrivateData{MaxAge: -time.Second}})
-		hear(h, pcVisitor, pcOtherHS, 1)
+		hear(t, h, pcVisitor, pcOtherHS, 1)
 		time.Sleep(time.Second)
 		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
 		expectNone(t, srv, "voice keeps its max age")

@@ -91,15 +91,22 @@ func (h *Hub) SetSlotClock(now func() time.Time) {
 // members reach follows the radio userID to, as the KV store keeps it, or
 // 0.
 func (h *Hub) HeardAt(ctx context.Context, userID uint) uint {
-	v, err := h.kv.Get(ctx, lastHeardKey(userID))
-	if err != nil {
-		return 0
-	}
+	return h.heardRecord(ctx, userID).Vetted.Repeater
+}
+
+// HeardLastOn returns the last repeater that heard the radio, as the KV
+// store keeps it, or 0.
+func (h *Hub) HeardLastOn(ctx context.Context, radio uint) uint {
+	return h.heardRecord(ctx, radio).Any.Repeater
+}
+
+func (h *Hub) heardRecord(ctx context.Context, radio uint) lastHeard {
 	var rec lastHeard
-	if json.Unmarshal(v, &rec) != nil {
-		return 0
+	v, err := h.kv.Get(ctx, lastHeardKey(radio))
+	if err != nil || json.Unmarshal(v, &rec) != nil {
+		return lastHeard{}
 	}
-	return rec.Vetted.Repeater
+	return rec
 }
 
 // LookupsLoaded reports whether the hub holds the peers, whether each of

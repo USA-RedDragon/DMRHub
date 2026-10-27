@@ -67,7 +67,6 @@ func lastSeenHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hu
 	t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
 	h.ActivateRepeater(context.Background(), 100003)
 	h.ActivateRepeater(context.Background(), 100004)
-	time.Sleep(100 * time.Millisecond)
 	return h, database, ps, srv
 }
 
@@ -109,11 +108,8 @@ func TestPrivateTrafficFindsRadioHeardOnlyThroughData(t *testing.T) {
 func TestUntrustedSightingDoesNotMoveRadio(t *testing.T) {
 	t.Parallel()
 	h, _, srv := lastSeenHub(t)
-
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100004, 2), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
+	hear(t, h, 1000002, 100003, 1)
+	hear(t, h, 1000002, 100004, 2)
 
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 3), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100003, "a sighting on another user's hotspot must not move the radio")
@@ -124,11 +120,8 @@ func TestTrustedRepeaterMovesRadio(t *testing.T) {
 	h, database, srv := lastSeenHub(t)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
 	h.ReloadRepeater(context.Background(), 100004)
-
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100004, 2), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
+	hear(t, h, 1000002, 100003, 1)
+	hear(t, h, 1000002, 100004, 2)
 
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 3), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100004, "a sighting on a trusted repeater moves the radio")

@@ -74,7 +74,6 @@ func pluginHub(t *testing.T) (*hub.Hub, *fakePlugins, *hub.ServerHandle) {
 	require.NoError(t, database.First(&rpt, 100004).Error)
 	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: weatherTG}))
 	h.ReloadRepeater(context.Background(), 100004)
-	time.Sleep(100 * time.Millisecond)
 	f := newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 310009: weatherPlugin})
 	h.SetPlugins(f)
 	return h, f, srv
@@ -113,8 +112,7 @@ func TestAGroupCallToAPluginIDThatIsNoTalkgroupGoesOnlyToThePlugin(t *testing.T)
 func TestAPluginsPrivateCallReachesTheRadioWhereItIsHeard(t *testing.T) {
 	t.Parallel()
 	h, f, srv := pluginHub(t)
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
-	time.Sleep(200 * time.Millisecond)
+	hear(t, h, 1000002, 100003, 1)
 
 	reply := makeVoicePacket(1000002, 7004, false, true)
 	reply.Src, reply.Repeater = 9990, 0

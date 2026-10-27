@@ -103,7 +103,7 @@ type Repeater struct {
 	IP                    string         `json:"-" gorm:"-" msg:"ip"`
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
-	Password              string         `json:"-" msg:"-"`
+	Password              string         `json:"-" gorm:"<-:create" msg:"-"`
 	Type                  string         `json:"type" gorm:"default:'mmdvm'" msg:"-"`
 	Dialect               string         `json:"dialect" msg:"dialect"`
 	TS1StaticTalkgroups   []Talkgroup    `json:"ts1_static_talkgroups" gorm:"many2many:repeater_ts1_static_talkgroups;" msg:"-"`
@@ -192,6 +192,21 @@ func RepeaterIDExists(db *gorm.DB, id uint) (bool, error) {
 	var count int64
 	err := db.Model(&Repeater{}).Where("id = ?", id).Limit(1).Count(&count).Error
 	return count > 0, err
+}
+
+// SetRepeaterPassword replaces the password, or the IPSC auth key, of the
+// repeater id. A save of the whole repeater does not write the password, so
+// a stale copy cannot bring back the old one. It returns gorm.ErrRecordNotFound when there is no such
+// repeater.
+func SetRepeaterPassword(db *gorm.DB, id uint, password string) error {
+	res := db.Exec("UPDATE repeaters SET password = ? WHERE id = ? AND deleted_at IS NULL", password, id)
+	if res.Error != nil {
+		return fmt.Errorf("failed to save the password of repeater %d: %w", id, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func DeleteRepeater(db *gorm.DB, id uint) error {

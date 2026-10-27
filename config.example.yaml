@@ -227,8 +227,24 @@ dmr:
       max-age: "0s"
   # Source addresses that DMRHub refuses or alone accepts, before any other work on a packet
   ip-lists:
-    # Addresses of MMDVM hotspots and repeaters, browser radios over WebTransport and IPSC repeaters
-    repeaters:
+    # Addresses of MMDVM hotspots and repeaters
+    mmdvm:
+      # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
+      mode: "off"
+      # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses
+      # block: []
+      # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
+      # allow: []
+    # Addresses of browser radios over WebTransport
+    webtransport:
+      # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
+      mode: "off"
+      # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses
+      # block: []
+      # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
+      # allow: []
+    # Addresses of Motorola IPSC repeaters
+    ipsc:
       # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
       mode: "off"
       # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses
@@ -236,7 +252,7 @@ dmr:
       # Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts
       # allow: []
     # Addresses of OpenBridge peers
-    peers:
+    openbridge:
       # Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)
       mode: "off"
       # Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses

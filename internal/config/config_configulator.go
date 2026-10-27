@@ -184,8 +184,10 @@ type iPListShadow struct {
 }
 
 type iPListsShadow struct {
-	Repeaters *iPListShadow `json:"repeaters" toml:"repeaters" yaml:"repeaters"`
-	Peers     *iPListShadow `json:"peers"     toml:"peers"     yaml:"peers"`
+	MMDVM        *iPListShadow `json:"mmdvm"        toml:"mmdvm"        yaml:"mmdvm"`
+	WebTransport *iPListShadow `json:"webtransport" toml:"webtransport" yaml:"webtransport"`
+	IPSC         *iPListShadow `json:"ipsc"         toml:"ipsc"         yaml:"ipsc"`
+	OpenBridge   *iPListShadow `json:"openbridge"   toml:"openbridge"   yaml:"openbridge"`
 }
 
 type dMRShadow struct {
@@ -383,10 +385,14 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.private-calls.voice.max-age", configulator.LayerDefault, "default tag")
 	cfg.DMR.PrivateCalls.Data.MaxAge = time.Duration(int64(0))
 	set("dmr.private-calls.data.max-age", configulator.LayerDefault, "default tag")
-	cfg.DMR.IPLists.Repeaters.Mode = IPListMode("off")
-	set("dmr.ip-lists.repeaters.mode", configulator.LayerDefault, "default tag")
-	cfg.DMR.IPLists.Peers.Mode = IPListMode("off")
-	set("dmr.ip-lists.peers.mode", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.MMDVM.Mode = IPListMode("off")
+	set("dmr.ip-lists.mmdvm.mode", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.WebTransport.Mode = IPListMode("off")
+	set("dmr.ip-lists.webtransport.mode", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.IPSC.Mode = IPListMode("off")
+	set("dmr.ip-lists.ipsc.mode", configulator.LayerDefault, "default tag")
+	cfg.DMR.IPLists.OpenBridge.Mode = IPListMode("off")
+	set("dmr.ip-lists.openbridge.mode", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
 	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
@@ -874,32 +880,60 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			}
 		}
 		if s.DMR.IPLists != nil {
-			if s.DMR.IPLists.Repeaters != nil {
-				if s.DMR.IPLists.Repeaters.Mode != nil {
-					cfg.DMR.IPLists.Repeaters.Mode = IPListMode(*s.DMR.IPLists.Repeaters.Mode)
-					set("dmr.ip-lists.repeaters.mode", configulator.LayerFile, file)
+			if s.DMR.IPLists.MMDVM != nil {
+				if s.DMR.IPLists.MMDVM.Mode != nil {
+					cfg.DMR.IPLists.MMDVM.Mode = IPListMode(*s.DMR.IPLists.MMDVM.Mode)
+					set("dmr.ip-lists.mmdvm.mode", configulator.LayerFile, file)
 				}
-				if s.DMR.IPLists.Repeaters.Block != nil {
-					cfg.DMR.IPLists.Repeaters.Block = *s.DMR.IPLists.Repeaters.Block
-					set("dmr.ip-lists.repeaters.block", configulator.LayerFile, file)
+				if s.DMR.IPLists.MMDVM.Block != nil {
+					cfg.DMR.IPLists.MMDVM.Block = *s.DMR.IPLists.MMDVM.Block
+					set("dmr.ip-lists.mmdvm.block", configulator.LayerFile, file)
 				}
-				if s.DMR.IPLists.Repeaters.Allow != nil {
-					cfg.DMR.IPLists.Repeaters.Allow = *s.DMR.IPLists.Repeaters.Allow
-					set("dmr.ip-lists.repeaters.allow", configulator.LayerFile, file)
+				if s.DMR.IPLists.MMDVM.Allow != nil {
+					cfg.DMR.IPLists.MMDVM.Allow = *s.DMR.IPLists.MMDVM.Allow
+					set("dmr.ip-lists.mmdvm.allow", configulator.LayerFile, file)
 				}
 			}
-			if s.DMR.IPLists.Peers != nil {
-				if s.DMR.IPLists.Peers.Mode != nil {
-					cfg.DMR.IPLists.Peers.Mode = IPListMode(*s.DMR.IPLists.Peers.Mode)
-					set("dmr.ip-lists.peers.mode", configulator.LayerFile, file)
+			if s.DMR.IPLists.WebTransport != nil {
+				if s.DMR.IPLists.WebTransport.Mode != nil {
+					cfg.DMR.IPLists.WebTransport.Mode = IPListMode(*s.DMR.IPLists.WebTransport.Mode)
+					set("dmr.ip-lists.webtransport.mode", configulator.LayerFile, file)
 				}
-				if s.DMR.IPLists.Peers.Block != nil {
-					cfg.DMR.IPLists.Peers.Block = *s.DMR.IPLists.Peers.Block
-					set("dmr.ip-lists.peers.block", configulator.LayerFile, file)
+				if s.DMR.IPLists.WebTransport.Block != nil {
+					cfg.DMR.IPLists.WebTransport.Block = *s.DMR.IPLists.WebTransport.Block
+					set("dmr.ip-lists.webtransport.block", configulator.LayerFile, file)
 				}
-				if s.DMR.IPLists.Peers.Allow != nil {
-					cfg.DMR.IPLists.Peers.Allow = *s.DMR.IPLists.Peers.Allow
-					set("dmr.ip-lists.peers.allow", configulator.LayerFile, file)
+				if s.DMR.IPLists.WebTransport.Allow != nil {
+					cfg.DMR.IPLists.WebTransport.Allow = *s.DMR.IPLists.WebTransport.Allow
+					set("dmr.ip-lists.webtransport.allow", configulator.LayerFile, file)
+				}
+			}
+			if s.DMR.IPLists.IPSC != nil {
+				if s.DMR.IPLists.IPSC.Mode != nil {
+					cfg.DMR.IPLists.IPSC.Mode = IPListMode(*s.DMR.IPLists.IPSC.Mode)
+					set("dmr.ip-lists.ipsc.mode", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.IPSC.Block != nil {
+					cfg.DMR.IPLists.IPSC.Block = *s.DMR.IPLists.IPSC.Block
+					set("dmr.ip-lists.ipsc.block", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.IPSC.Allow != nil {
+					cfg.DMR.IPLists.IPSC.Allow = *s.DMR.IPLists.IPSC.Allow
+					set("dmr.ip-lists.ipsc.allow", configulator.LayerFile, file)
+				}
+			}
+			if s.DMR.IPLists.OpenBridge != nil {
+				if s.DMR.IPLists.OpenBridge.Mode != nil {
+					cfg.DMR.IPLists.OpenBridge.Mode = IPListMode(*s.DMR.IPLists.OpenBridge.Mode)
+					set("dmr.ip-lists.openbridge.mode", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.OpenBridge.Block != nil {
+					cfg.DMR.IPLists.OpenBridge.Block = *s.DMR.IPLists.OpenBridge.Block
+					set("dmr.ip-lists.openbridge.block", configulator.LayerFile, file)
+				}
+				if s.DMR.IPLists.OpenBridge.Allow != nil {
+					cfg.DMR.IPLists.OpenBridge.Allow = *s.DMR.IPLists.OpenBridge.Allow
+					set("dmr.ip-lists.openbridge.allow", configulator.LayerFile, file)
 				}
 			}
 		}
@@ -1830,33 +1864,61 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.PrivateCalls.Data.MaxAge = d
 		set("dmr.private-calls.data.max-age", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "mode"); ok {
-		cfg.DMR.IPLists.Repeaters.Mode = IPListMode(v)
-		set("dmr.ip-lists.repeaters.mode", configulator.LayerEnv, n)
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "mmdvm", "mode"); ok {
+		cfg.DMR.IPLists.MMDVM.Mode = IPListMode(v)
+		set("dmr.ip-lists.mmdvm.mode", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "block"); ok {
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "mmdvm", "block"); ok {
 		lst := impl.SplitList(v, ec.ArraySeparator)
-		cfg.DMR.IPLists.Repeaters.Block = lst
-		set("dmr.ip-lists.repeaters.block", configulator.LayerEnv, n)
+		cfg.DMR.IPLists.MMDVM.Block = lst
+		set("dmr.ip-lists.mmdvm.block", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "repeaters", "allow"); ok {
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "mmdvm", "allow"); ok {
 		lst := impl.SplitList(v, ec.ArraySeparator)
-		cfg.DMR.IPLists.Repeaters.Allow = lst
-		set("dmr.ip-lists.repeaters.allow", configulator.LayerEnv, n)
+		cfg.DMR.IPLists.MMDVM.Allow = lst
+		set("dmr.ip-lists.mmdvm.allow", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "mode"); ok {
-		cfg.DMR.IPLists.Peers.Mode = IPListMode(v)
-		set("dmr.ip-lists.peers.mode", configulator.LayerEnv, n)
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "webtransport", "mode"); ok {
+		cfg.DMR.IPLists.WebTransport.Mode = IPListMode(v)
+		set("dmr.ip-lists.webtransport.mode", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "block"); ok {
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "webtransport", "block"); ok {
 		lst := impl.SplitList(v, ec.ArraySeparator)
-		cfg.DMR.IPLists.Peers.Block = lst
-		set("dmr.ip-lists.peers.block", configulator.LayerEnv, n)
+		cfg.DMR.IPLists.WebTransport.Block = lst
+		set("dmr.ip-lists.webtransport.block", configulator.LayerEnv, n)
 	}
-	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "peers", "allow"); ok {
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "webtransport", "allow"); ok {
 		lst := impl.SplitList(v, ec.ArraySeparator)
-		cfg.DMR.IPLists.Peers.Allow = lst
-		set("dmr.ip-lists.peers.allow", configulator.LayerEnv, n)
+		cfg.DMR.IPLists.WebTransport.Allow = lst
+		set("dmr.ip-lists.webtransport.allow", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "ipsc", "mode"); ok {
+		cfg.DMR.IPLists.IPSC.Mode = IPListMode(v)
+		set("dmr.ip-lists.ipsc.mode", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "ipsc", "block"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.IPSC.Block = lst
+		set("dmr.ip-lists.ipsc.block", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "ipsc", "allow"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.IPSC.Allow = lst
+		set("dmr.ip-lists.ipsc.allow", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "openbridge", "mode"); ok {
+		cfg.DMR.IPLists.OpenBridge.Mode = IPListMode(v)
+		set("dmr.ip-lists.openbridge.mode", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "openbridge", "block"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.OpenBridge.Block = lst
+		set("dmr.ip-lists.openbridge.block", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "ip-lists", "openbridge", "allow"); ok {
+		lst := impl.SplitList(v, ec.ArraySeparator)
+		cfg.DMR.IPLists.OpenBridge.Allow = lst
+		set("dmr.ip-lists.openbridge.allow", configulator.LayerEnv, n)
 	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
@@ -2119,12 +2181,18 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "reach",
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "unknown",
 		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "max-age",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "mode",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "block",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "allow",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "mode",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "block",
-		"dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "allow",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "allow",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "allow",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "allow",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "mode",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "block",
+		"dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "allow",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -2258,27 +2326,33 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[93], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
 	fs.StringSlice(names[94], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
 	fs.StringSlice(names[95], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.Var(impl.NewInt(25), names[96], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[97], false, "Enable SMTP support for sending emails")
-	fs.String(names[98], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[99], "SMTP server port")
-	fs.String(names[100], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[101], "", "SMTP server username")
-	fs.String(names[102], "", "SMTP server password")
-	fs.String(names[103], "", "Email address to use as the sender")
-	fs.String(names[104], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[105], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[106], false, "Enable metrics collection and export")
-	fs.String(names[107], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[108], "Metrics server port")
-	fs.StringSlice(names[109], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[110], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[111], false, "Enable PProf profiling and debugging support")
-	fs.String(names[112], "[::]", "PProf server listen address")
-	fs.StringSlice(names[113], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[114], "PProf server port")
-	fs.String(names[115], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[116], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[96], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[97], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[98], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[99], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[100], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[101], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.Var(impl.NewInt(25), names[102], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[103], false, "Enable SMTP support for sending emails")
+	fs.String(names[104], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[105], "SMTP server port")
+	fs.String(names[106], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[107], "", "SMTP server username")
+	fs.String(names[108], "", "SMTP server password")
+	fs.String(names[109], "", "Email address to use as the sender")
+	fs.String(names[110], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[111], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[112], false, "Enable metrics collection and export")
+	fs.String(names[113], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[114], "Metrics server port")
+	fs.StringSlice(names[115], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[116], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[117], false, "Enable PProf profiling and debugging support")
+	fs.String(names[118], "[::]", "PProf server listen address")
+	fs.StringSlice(names[119], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[120], "PProf server port")
+	fs.String(names[121], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[122], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3363,77 +3437,149 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.DMR.PrivateCalls.Data.MaxAge = v
 		set("dmr.private-calls.data.max-age", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "mode"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "mode"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.repeaters.mode",
+				Path:   "dmr.ip-lists.mmdvm.mode",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Repeaters.Mode = IPListMode(v)
-		set("dmr.ip-lists.repeaters.mode", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.MMDVM.Mode = IPListMode(v)
+		set("dmr.ip-lists.mmdvm.mode", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "block"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "block"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.repeaters.block",
+				Path:   "dmr.ip-lists.mmdvm.block",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Repeaters.Block = v
-		set("dmr.ip-lists.repeaters.block", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.MMDVM.Block = v
+		set("dmr.ip-lists.mmdvm.block", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "repeaters" + o.Separator + "allow"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "mmdvm" + o.Separator + "allow"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.repeaters.allow",
+				Path:   "dmr.ip-lists.mmdvm.allow",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Repeaters.Allow = v
-		set("dmr.ip-lists.repeaters.allow", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.MMDVM.Allow = v
+		set("dmr.ip-lists.mmdvm.allow", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "mode"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "mode"; fs.Changed(n) {
 		v, err := fs.GetString(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.peers.mode",
+				Path:   "dmr.ip-lists.webtransport.mode",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Peers.Mode = IPListMode(v)
-		set("dmr.ip-lists.peers.mode", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.WebTransport.Mode = IPListMode(v)
+		set("dmr.ip-lists.webtransport.mode", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "block"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "block"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.peers.block",
+				Path:   "dmr.ip-lists.webtransport.block",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Peers.Block = v
-		set("dmr.ip-lists.peers.block", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.WebTransport.Block = v
+		set("dmr.ip-lists.webtransport.block", configulator.LayerCLI, "--"+n)
 	}
-	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "peers" + o.Separator + "allow"; fs.Changed(n) {
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "webtransport" + o.Separator + "allow"; fs.Changed(n) {
 		v, err := fs.GetStringSlice(n)
 		if err != nil {
 			return &configulator.ParseError{
 				Err:    err,
-				Path:   "dmr.ip-lists.peers.allow",
+				Path:   "dmr.ip-lists.webtransport.allow",
 				Source: "--" + n,
 			}
 		}
-		cfg.DMR.IPLists.Peers.Allow = v
-		set("dmr.ip-lists.peers.allow", configulator.LayerCLI, "--"+n)
+		cfg.DMR.IPLists.WebTransport.Allow = v
+		set("dmr.ip-lists.webtransport.allow", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "mode"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.ipsc.mode",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.IPSC.Mode = IPListMode(v)
+		set("dmr.ip-lists.ipsc.mode", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "block"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.ipsc.block",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.IPSC.Block = v
+		set("dmr.ip-lists.ipsc.block", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "ipsc" + o.Separator + "allow"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.ipsc.allow",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.IPSC.Allow = v
+		set("dmr.ip-lists.ipsc.allow", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "mode"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.openbridge.mode",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.OpenBridge.Mode = IPListMode(v)
+		set("dmr.ip-lists.openbridge.mode", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "block"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.openbridge.block",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.OpenBridge.Block = v
+		set("dmr.ip-lists.openbridge.block", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "allow"; fs.Changed(n) {
+		v, err := fs.GetStringSlice(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.ip-lists.openbridge.allow",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.IPLists.OpenBridge.Allow = v
+		set("dmr.ip-lists.openbridge.allow", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -6301,7 +6447,7 @@ func (s *iPListsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			return nil
 		}
 		switch key := tok.String(); key {
-		case "repeaters":
+		case "mmdvm":
 			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
@@ -6312,15 +6458,15 @@ func (s *iPListsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				if open.Kind() != jsontext.KindBeginObject {
-					return configJSONError(path+".repeaters", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+					return configJSONError(path+".mmdvm", open, fmt.Errorf("expected an object, got %v", open.Kind()))
 				}
 				var sub iPListShadow
-				if err := sub.decodeJSON(dec, path+".repeaters"); err != nil {
+				if err := sub.decodeJSON(dec, path+".mmdvm"); err != nil {
 					return err
 				}
-				s.Repeaters = &sub
+				s.MMDVM = &sub
 			}
-		case "peers":
+		case "webtransport":
 			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
 					return err
@@ -6331,13 +6477,51 @@ func (s *iPListsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				if open.Kind() != jsontext.KindBeginObject {
-					return configJSONError(path+".peers", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+					return configJSONError(path+".webtransport", open, fmt.Errorf("expected an object, got %v", open.Kind()))
 				}
 				var sub iPListShadow
-				if err := sub.decodeJSON(dec, path+".peers"); err != nil {
+				if err := sub.decodeJSON(dec, path+".webtransport"); err != nil {
 					return err
 				}
-				s.Peers = &sub
+				s.WebTransport = &sub
+			}
+		case "ipsc":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".ipsc", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub iPListShadow
+				if err := sub.decodeJSON(dec, path+".ipsc"); err != nil {
+					return err
+				}
+				s.IPSC = &sub
+			}
+		case "openbridge":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".openbridge", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub iPListShadow
+				if err := sub.decodeJSON(dec, path+".openbridge"); err != nil {
+					return err
+				}
+				s.OpenBridge = &sub
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -6896,12 +7080,18 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.private-calls.data.reach = %v\n", c.DMR.PrivateCalls.Data.Reach)
 	fmt.Fprintf(&b, "dmr.private-calls.data.unknown = %v\n", c.DMR.PrivateCalls.Data.Unknown)
 	fmt.Fprintf(&b, "dmr.private-calls.data.max-age = %v\n", c.DMR.PrivateCalls.Data.MaxAge)
-	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.mode = %v\n", c.DMR.IPLists.Repeaters.Mode)
-	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.block = %v\n", c.DMR.IPLists.Repeaters.Block)
-	fmt.Fprintf(&b, "dmr.ip-lists.repeaters.allow = %v\n", c.DMR.IPLists.Repeaters.Allow)
-	fmt.Fprintf(&b, "dmr.ip-lists.peers.mode = %v\n", c.DMR.IPLists.Peers.Mode)
-	fmt.Fprintf(&b, "dmr.ip-lists.peers.block = %v\n", c.DMR.IPLists.Peers.Block)
-	fmt.Fprintf(&b, "dmr.ip-lists.peers.allow = %v\n", c.DMR.IPLists.Peers.Allow)
+	fmt.Fprintf(&b, "dmr.ip-lists.mmdvm.mode = %v\n", c.DMR.IPLists.MMDVM.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.mmdvm.block = %v\n", c.DMR.IPLists.MMDVM.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.mmdvm.allow = %v\n", c.DMR.IPLists.MMDVM.Allow)
+	fmt.Fprintf(&b, "dmr.ip-lists.webtransport.mode = %v\n", c.DMR.IPLists.WebTransport.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.webtransport.block = %v\n", c.DMR.IPLists.WebTransport.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.webtransport.allow = %v\n", c.DMR.IPLists.WebTransport.Allow)
+	fmt.Fprintf(&b, "dmr.ip-lists.ipsc.mode = %v\n", c.DMR.IPLists.IPSC.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.ipsc.block = %v\n", c.DMR.IPLists.IPSC.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.ipsc.allow = %v\n", c.DMR.IPLists.IPSC.Allow)
+	fmt.Fprintf(&b, "dmr.ip-lists.openbridge.mode = %v\n", c.DMR.IPLists.OpenBridge.Mode)
+	fmt.Fprintf(&b, "dmr.ip-lists.openbridge.block = %v\n", c.DMR.IPLists.OpenBridge.Block)
+	fmt.Fprintf(&b, "dmr.ip-lists.openbridge.allow = %v\n", c.DMR.IPLists.OpenBridge.Allow)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

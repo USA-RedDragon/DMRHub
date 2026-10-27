@@ -594,7 +594,7 @@ func (s *Server) ipList() *ipfilter.List {
 	if s.hub == nil {
 		return nil
 	}
-	return s.hub.PeerIPs()
+	return s.hub.OpenBridgeIPs()
 }
 
 // allowsPeer reports whether the IP list of the peers accepts the address

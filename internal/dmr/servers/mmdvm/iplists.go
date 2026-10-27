@@ -35,11 +35,26 @@ func (s *Server) ipList() *ipfilter.List {
 	if s.hub == nil {
 		return nil
 	}
-	return s.hub.RepeaterIPs()
+	return s.hub.MMDVMIPs()
 }
 
-// allows reports whether the IP list of the repeaters accepts the source
-// address remote.
+func (s *Server) webTransportIPList() *ipfilter.List {
+	if s.hub == nil {
+		return nil
+	}
+	return s.hub.WebTransportIPs()
+}
+
+// listOf returns the IP list of the transport of ep.
+func (s *Server) listOf(ep endpoint) *ipfilter.List {
+	if ep.transport == webTransportName {
+		return s.webTransportIPList()
+	}
+	return s.ipList()
+}
+
+// allows reports whether the IP list of the MMDVM server accepts the
+// source address remote.
 func (s *Server) allows(remote net.Addr) bool {
 	l := s.ipList()
 	return !l.Active() || l.Allows(ipfilter.AddrOf(remote))
@@ -93,17 +108,16 @@ func (s *Server) sourceOf(ep endpoint) netip.Addr {
 }
 
 // endRefused ends, after a change of the IP lists, the sessions of the
-// addresses that the IP list of the repeaters now refuses with MSTCL, and
-// then closes the WebTransport sessions of those addresses.
+// addresses that the IP list of their transport now refuses with MSTCL,
+// and then closes the WebTransport sessions of those addresses.
 func (s *Server) endRefused(ctx context.Context) {
-	l := s.ipList()
-	if !l.Active() || s.stopped.Load() {
+	if s.stopped.Load() || (!s.ipList().Active() && !s.webTransportIPList().Active()) {
 		return
 	}
 	s.mu.Lock()
 	now := s.now()
 	for _, link := range s.links {
-		if l.Allows(s.sourceOf(link.ep)) {
+		if s.listOf(link.ep).Allows(s.sourceOf(link.ep)) {
 			continue
 		}
 		if link.m.State() != dmrdsession.StateIdle {
@@ -114,7 +128,7 @@ func (s *Server) endRefused(ctx context.Context) {
 		s.forget(link)
 	}
 	s.mu.Unlock()
-	if s.wt != nil {
+	if l := s.webTransportIPList(); s.wt != nil && l.Active() {
 		s.wt.endRefused(l)
 	}
 }

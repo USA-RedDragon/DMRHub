@@ -2,10 +2,14 @@
 
 The IP lists refuse the packets of some source addresses, or of every address but some. DMRHub checks the source address of each packet before any other work on it.
 
-There are two lists:
+There is a list for each protocol:
 
-- **Hotspots and repeaters** (`dmr.ip-lists.repeaters`): MMDVM hotspots and repeaters, browser radios over WebTransport, and IPSC repeaters.
-- **OpenBridge peers** (`dmr.ip-lists.peers`): other servers that link over OpenBridge.
+- **MMDVM** (`dmr.ip-lists.mmdvm`): MMDVM hotspots and repeaters over UDP.
+- **Browser radios** (`dmr.ip-lists.webtransport`): hotspots and radios in a web browser, over WebTransport.
+- **IPSC** (`dmr.ip-lists.ipsc`): Motorola IPSC repeaters.
+- **OpenBridge** (`dmr.ip-lists.openbridge`): other servers that link over OpenBridge.
+
+Each list applies only to its protocol.
 
 Each list has a mode:
 
@@ -38,24 +42,24 @@ A change in Setup goes into effect at once on every replica. Each replica ends t
 
 Each peer has its own **IP Address** on the **Peers** page. DMRHub sends the calls of the peer to that address, and logs a warning when a packet of the peer comes from another address. The IP address of a peer does not refuse packets: the HMAC of the peer password checks the packets.
 
-The list of the peers applies before the peer is known, to the source address of each packet, and to the **IP Address** of each peer that DMRHub sends to. To accept only the peers that you added, set the mode of the peers to `allow` and list the IP address of each peer.
+The OpenBridge list applies before the peer is known, to the source address of each packet, and to the **IP Address** of each peer that DMRHub sends to. To accept only the peers that you added, set the mode of the OpenBridge list to `allow` and list the IP address of each peer.
 
 ## Set the lists
 
-Set the lists on the **IP lists** area of the Setup page, or with the config API: `PUT /api/v1/config` with the whole config, as the Setup page sends it. The lists are under `dmr.ip-lists`. A save with an entry that does not parse fails with status 400 and the field of the list, such as `dmr.ip-lists.repeaters.block`.
+Set the lists on the **IP lists** area of the Setup page, or with the config API: `PUT /api/v1/config` with the whole config, as the Setup page sends it. The lists are under `dmr.ip-lists`. A save with an entry that does not parse fails with status 400 and the field of the list, such as `dmr.ip-lists.mmdvm.block`.
 
-You can also set the lists in the config file, in the environment, such as `DMR_IP_LISTS_REPEATERS_MODE=block`, or with flags. A list set there is locked, and Setup cannot change it. See [Configuration](configuration.md). For example:
+You can also set the lists in the config file, in the environment, such as `DMR_IP_LISTS_MMDVM_MODE=block`, or with flags. A list set there is locked, and Setup cannot change it. See [Configuration](configuration.md). For example:
 
 ```yaml
 dmr:
   ip-lists:
-    repeaters:
+    mmdvm:
       mode: block
       block:
         - 203.0.113.7
         - 198.51.100.0/24
         - 2001:db8:bad::/48
-    peers:
+    openbridge:
       mode: allow
       allow:
         - 192.0.2.10

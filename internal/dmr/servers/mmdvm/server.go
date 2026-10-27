@@ -351,7 +351,7 @@ func (s *Server) Start(ctx context.Context) error {
 		s.wt.onResume.Store(&resume)
 		moved := s.resendMoved
 		s.wt.onPathMoved.Store(&moved)
-		ipList := s.ipList
+		ipList := s.webTransportIPList
 		s.wt.ipList.Store(&ipList)
 		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)

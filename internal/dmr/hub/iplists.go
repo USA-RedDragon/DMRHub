@@ -29,9 +29,11 @@ import (
 const ipListsChangedTopic = "hub:iplists:changed"
 
 type ipLists struct {
-	src       config.IPLists
-	repeaters *ipfilter.List
-	peers     *ipfilter.List
+	src          config.IPLists
+	mmdvm        *ipfilter.List
+	webTransport *ipfilter.List
+	ipsc         *ipfilter.List
+	openBridge   *ipfilter.List
 }
 
 // SetIPLists makes l the IP lists that the servers check the source
@@ -43,25 +45,49 @@ func (h *Hub) SetIPLists(l config.IPLists) {
 		h.ipListsMu.Unlock()
 		return
 	}
-	h.ipLists.Store(&ipLists{src: l, repeaters: ipfilter.Compile(l.Repeaters), peers: ipfilter.Compile(l.Peers)})
+	h.ipLists.Store(&ipLists{
+		src:          l,
+		mmdvm:        ipfilter.Compile(l.MMDVM),
+		webTransport: ipfilter.Compile(l.WebTransport),
+		ipsc:         ipfilter.Compile(l.IPSC),
+		openBridge:   ipfilter.Compile(l.OpenBridge),
+	})
 	h.ipListsMu.Unlock()
 	h.watchers.call(ipListsChangedTopic, 0)
 }
 
-// RepeaterIPs returns the IP list of the MMDVM, WebTransport and IPSC
-// servers. Without SetIPLists it accepts every address.
-func (h *Hub) RepeaterIPs() *ipfilter.List {
+// MMDVMIPs returns the IP list of the MMDVM server over UDP. Without SetIPLists it
+// accepts every address.
+func (h *Hub) MMDVMIPs() *ipfilter.List {
 	if l := h.ipLists.Load(); l != nil {
-		return l.repeaters
+		return l.mmdvm
 	}
 	return nil
 }
 
-// PeerIPs returns the IP list of the OpenBridge server. Without
-// SetIPLists it accepts every address.
-func (h *Hub) PeerIPs() *ipfilter.List {
+// WebTransportIPs returns the IP list of the browser radios over WebTransport. Without SetIPLists it
+// accepts every address.
+func (h *Hub) WebTransportIPs() *ipfilter.List {
 	if l := h.ipLists.Load(); l != nil {
-		return l.peers
+		return l.webTransport
+	}
+	return nil
+}
+
+// IPSCIPs returns the IP list of the IPSC server. Without SetIPLists it
+// accepts every address.
+func (h *Hub) IPSCIPs() *ipfilter.List {
+	if l := h.ipLists.Load(); l != nil {
+		return l.ipsc
+	}
+	return nil
+}
+
+// OpenBridgeIPs returns the IP list of the OpenBridge server. Without SetIPLists it
+// accepts every address.
+func (h *Hub) OpenBridgeIPs() *ipfilter.List {
+	if l := h.ipLists.Load(); l != nil {
+		return l.openBridge
 	}
 	return nil
 }

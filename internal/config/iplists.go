@@ -27,10 +27,12 @@ import (
 )
 
 // IPLists holds the source addresses that DMRHub refuses or alone
-// accepts, apart for the repeaters and for the OpenBridge peers.
+// accepts, with a list for each protocol.
 type IPLists struct {
-	Repeaters IPList `json:"repeaters" name:"repeaters" description:"Addresses of MMDVM hotspots and repeaters, browser radios over WebTransport and IPSC repeaters"`
-	Peers     IPList `json:"peers" name:"peers" description:"Addresses of OpenBridge peers"`
+	MMDVM        IPList `json:"mmdvm" name:"mmdvm" description:"Addresses of MMDVM hotspots and repeaters"`
+	WebTransport IPList `json:"webtransport" name:"webtransport" description:"Addresses of browser radios over WebTransport"`
+	IPSC         IPList `json:"ipsc" name:"ipsc" description:"Addresses of Motorola IPSC repeaters"`
+	OpenBridge   IPList `json:"openbridge" name:"openbridge" description:"Addresses of OpenBridge peers"`
 }
 
 // IPList is a block list and an allow list of addresses, and which of
@@ -95,8 +97,10 @@ func (l IPLists) Validate() error {
 }
 
 func (l IPLists) ValidateWithFields() (errs []ValidationError) {
-	errs = append(errs, l.Repeaters.validate("dmr.ip-lists.repeaters")...)
-	return append(errs, l.Peers.validate("dmr.ip-lists.peers")...)
+	errs = append(errs, l.MMDVM.validate("dmr.ip-lists.mmdvm")...)
+	errs = append(errs, l.WebTransport.validate("dmr.ip-lists.webtransport")...)
+	errs = append(errs, l.IPSC.validate("dmr.ip-lists.ipsc")...)
+	return append(errs, l.OpenBridge.validate("dmr.ip-lists.openbridge")...)
 }
 
 func (l IPList) validate(field string) (errs []ValidationError) {

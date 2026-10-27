@@ -60,21 +60,25 @@ func TestParseIPListEntry(t *testing.T) {
 func TestIPListsValidate(t *testing.T) {
 	t.Parallel()
 	ok := config.IPLists{
-		Repeaters: config.IPList{Mode: config.IPListBlock, Block: []string{"203.0.113.0/24", "2001:db8::/32"}},
-		Peers:     config.IPList{Mode: config.IPListAllow, Allow: []string{"198.51.100.7"}},
+		MMDVM:        config.IPList{Mode: config.IPListBlock, Block: []string{"203.0.113.0/24", "2001:db8::/32"}},
+		WebTransport: config.IPList{Mode: config.IPListAllow, Allow: []string{"2001:db8::1"}},
+		IPSC:         config.IPList{Mode: config.IPListOff, Block: []string{"192.0.2.1"}},
+		OpenBridge:   config.IPList{Mode: config.IPListAllow, Allow: []string{"198.51.100.7"}},
 	}
 	require.Empty(t, ok.ValidateWithFields())
 	require.Empty(t, config.IPLists{}.ValidateWithFields())
 
 	bad := config.IPLists{
-		Repeaters: config.IPList{Mode: "deny", Allow: []string{"nope"}},
-		Peers:     config.IPList{Block: []string{"10.1.2.3/8"}},
+		MMDVM:        config.IPList{Mode: "deny", Allow: []string{"nope"}},
+		WebTransport: config.IPList{Allow: []string{"::1/129"}},
+		IPSC:         config.IPList{Mode: config.IPListBlock, Block: []string{"x"}},
+		OpenBridge:   config.IPList{Block: []string{"10.1.2.3/8"}},
 	}
 	errs := bad.ValidateWithFields()
 	fields := make([]string, 0, len(errs))
 	for _, e := range errs {
 		fields = append(fields, e.Field)
 	}
-	assert.Equal(t, []string{"dmr.ip-lists.repeaters.mode", "dmr.ip-lists.repeaters.allow", "dmr.ip-lists.peers.block"}, fields)
+	assert.Equal(t, []string{"dmr.ip-lists.mmdvm.mode", "dmr.ip-lists.mmdvm.allow", "dmr.ip-lists.webtransport.allow", "dmr.ip-lists.ipsc.block", "dmr.ip-lists.openbridge.block"}, fields)
 	require.ErrorIs(t, errs[0].Err, config.ErrInvalidIPListMode)
 }

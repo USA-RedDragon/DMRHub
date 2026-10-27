@@ -661,7 +661,7 @@ func (s *IPSCServer) ipList() *ipfilter.List {
 	if s.hub == nil {
 		return nil
 	}
-	return s.hub.RepeaterIPs()
+	return s.hub.IPSCIPs()
 }
 
 func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {

@@ -91,6 +91,10 @@ const DropReasonIPSCFullLC = "ipsc_full_lc"
 // from a repeater that is longer than the longest packet of the protocol.
 const DropReasonOversize = "oversize"
 
+// DropReasonIPList is the IngressDroppedBurstsTotal reason for a packet
+// from a source address that the IP list of its server refuses.
+const DropReasonIPList = "ip_list"
+
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
 	metricsInstance *Metrics  //nolint:gochecknoglobals

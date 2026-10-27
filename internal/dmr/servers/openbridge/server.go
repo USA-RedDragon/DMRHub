@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,7 +38,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
+	"github.com/USA-RedDragon/DMRHub/internal/ipfilter"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -94,6 +97,7 @@ type Server struct {
 	pubsub   pubsub.PubSub
 	hub      *hub.Hub
 	serverID uint32
+	refusals ipfilter.RefusalLog
 
 	hubHandle *hub.ServerHandle
 	ingress   *streamorder.Queue[ingressLane]
@@ -367,6 +371,11 @@ func (s *Server) Start(ctx context.Context) error {
 				slog.Error("Error reading from UDP Socket, swallowing error", "error", err)
 				continue
 			}
+			if a := ipfilter.AddrOf(remoteaddr); !s.ipList().Allows(a) {
+				metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonIPList)
+				s.refusals.Refused("openbridge", a)
+				continue
+			}
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
 			lane := laneOf(data)
@@ -447,7 +456,7 @@ func (s *Server) keepalive() {
 		now := time.Since(s.epoch)
 		for _, k := range table.all {
 			p := k.Peer
-			if !s.enhanced(p) || p.IP == "" || p.Port == 0 {
+			if !s.enhanced(p) || p.IP == "" || p.Port == 0 || !s.allowsPeer(p) {
 				continue
 			}
 			b, err := s.bridgeFor(p)
@@ -551,6 +560,9 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 		return
 	}
 	peer := known.Peer
+	if !s.allowsPeer(peer) {
+		return
+	}
 	// OpenBridge is always TS1
 	packet.Slot = false
 	packet.Repeater = peerID
@@ -576,6 +588,24 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 	if err != nil {
 		slog.Error("Error sending packet", "error", err)
 	}
+}
+
+func (s *Server) ipList() *ipfilter.List {
+	if s.hub == nil {
+		return nil
+	}
+	return s.hub.PeerIPs()
+}
+
+// allowsPeer reports whether the IP list of the peers accepts the address
+// that DMRHub sends to peer at.
+func (s *Server) allowsPeer(peer models.Peer) bool {
+	l := s.ipList()
+	if !l.Active() {
+		return true
+	}
+	a, _ := netip.ParseAddr(peer.IP)
+	return l.Allows(a)
 }
 
 // ingressLane is a peer and a destination. The packets of one are handled

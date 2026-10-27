@@ -410,6 +410,14 @@ func (p *WebTransportPeer) Downs() int {
 	return p.downs
 }
 
+// SessionClosed reports whether the current session of the peer is closed.
+func (p *WebTransportPeer) SessionClosed() bool {
+	p.mu.Lock()
+	sess := p.current
+	p.mu.Unlock()
+	return sess != nil && sess.Context().Err() != nil
+}
+
 // Ups returns how many times the login completed.
 func (p *WebTransportPeer) Ups() int {
 	p.mu.Lock()

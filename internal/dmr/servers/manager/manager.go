@@ -192,6 +192,7 @@ func (m *Manager) Start(ctx context.Context, cfg *config.Config) error {
 	defer m.mu.Unlock()
 	m.ctx = context.WithoutCancel(ctx)
 	if m.deps.Hub != nil {
+		m.deps.Hub.SetIPLists(cfg.DMR.IPLists)
 		m.deps.Hub.SetAMBEServers(ambeServers(cfg)) //nolint:contextcheck // the probes of the servers outlive Start; Hub.Stop ends them
 	}
 	for _, k := range kinds() {
@@ -292,6 +293,7 @@ func (m *Manager) Apply(next *config.Config) []ApplyError {
 		return nil
 	}
 	if m.deps.Hub != nil {
+		m.deps.Hub.SetIPLists(next.DMR.IPLists)
 		m.deps.Hub.SetAMBEServers(ambeServers(next)) //nolint:contextcheck // the probes of the servers outlive Apply; Hub.Stop ends them
 	}
 	var errs []ApplyError

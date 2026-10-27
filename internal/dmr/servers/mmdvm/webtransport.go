@@ -33,13 +33,16 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/ipfilter"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -88,6 +91,10 @@ type webTransport struct {
 	// origins are the normalized origins that may open a session, or nil
 	// for every origin.
 	origins map[string]bool
+	// ipList returns the IP list that a session must pass.
+	ipList atomic.Pointer[func() *ipfilter.List]
+	// refusals logs the sessions that the IP list refuses.
+	refusals ipfilter.RefusalLog
 }
 
 // controlWait is the longest time the listener waits to open or read a
@@ -203,6 +210,12 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	if a, ok := t.refusedIP(r.RemoteAddr); ok {
+		t.refusals.Refused("webtransport", a)
+		metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonIPList)
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	if !t.originAllowed(r) {
 		slog.Debug("WebTransport session from an origin that is not allowed", "remoteAddr", r.RemoteAddr, "origin", r.Header.Get("Origin"))
 		w.WriteHeader(http.StatusForbidden)
@@ -221,6 +234,46 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("WebTransport session opened", "session", addr, "remoteAddr", r.RemoteAddr)
 	go t.read(sess.Context(), addr, sess)    //nolint:contextcheck // the request context ends when this handler returns, the session lives on
 	go t.control(sess.Context(), addr, sess) //nolint:contextcheck // the request context ends when this handler returns, the session lives on
+}
+
+// refusedIP returns the IP of remote, host:port, and whether the IP list
+// refuses it.
+func (t *webTransport) refusedIP(remote string) (netip.Addr, bool) {
+	fn := t.ipList.Load()
+	if fn == nil {
+		return netip.Addr{}, false
+	}
+	l := (*fn)()
+	if !l.Active() {
+		return netip.Addr{}, false
+	}
+	var a netip.Addr
+	if ap, err := netip.ParseAddrPort(remote); err == nil {
+		a = ap.Addr().Unmap()
+	}
+	return a, !l.Allows(a)
+}
+
+// sourceOf returns the IP address of the connection of the session at
+// addr, or the invalid address when there is none.
+func (t *webTransport) sourceOf(addr net.Addr) netip.Addr {
+	sess, ok := t.sessions.Load(addr.String())
+	if !ok {
+		return netip.Addr{}
+	}
+	return ipfilter.AddrOf(sess.RemoteAddr())
+}
+
+// endRefused closes the sessions whose address l refuses.
+func (t *webTransport) endRefused(l *ipfilter.List) {
+	t.sessions.Range(func(key string, sess *webtransport.Session) bool {
+		if l.Allows(ipfilter.AddrOf(sess.RemoteAddr())) {
+			return true
+		}
+		slog.Info("Ending a WebTransport session whose address the IP list now refuses", "session", key, "remoteAddr", sess.RemoteAddr())
+		_ = sess.CloseWithError(0, "address refused")
+		return true
+	})
 }
 
 // originAllowed reports whether the page that opens the session of r may

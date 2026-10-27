@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
+	"github.com/USA-RedDragon/DMRHub/internal/ipfilter"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -82,6 +85,8 @@ type IPSCServer struct {
 	writingTimes bool
 	timesClosed  bool
 	timesWG      sync.WaitGroup
+
+	refusals ipfilter.RefusalLog
 
 	// heard is when the packet that the server handles came.
 	heard time.Time
@@ -365,6 +370,11 @@ func (s *IPSCServer) handler(ctx context.Context) {
 			slog.Warn("error reading from UDP", "error", err)
 			continue
 		}
+		if a := ipfilter.AddrOf(addr); !s.ipList().Allows(a) {
+			metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonIPList)
+			s.refusals.Refused("ipsc", a)
+			continue
+		}
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
@@ -446,6 +456,9 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 	for _, o := range out {
 		switch o.Kind {
 		case ipscsession.OutputSend:
+			if !s.ipList().Allows(netip.AddrFrom4(o.Addr.IP)) {
+				continue
+			}
 			if _, err := s.udp.WriteToUDP(o.Packet, toUDPAddr(o.Addr)); err != nil {
 				slog.Warn("error sending IPSC packet", "peer", toUDPAddr(o.Addr), "error", err)
 			}
@@ -610,6 +623,13 @@ func (s *IPSCServer) closeTimes() {
 	s.timesWG.Wait()
 }
 
+func (s *IPSCServer) ipList() *ipfilter.List {
+	if s.hub == nil {
+		return nil
+	}
+	return s.hub.RepeaterIPs()
+}
+
 func toUDPAddr(a ipscsession.Addr) *net.UDPAddr {
 	return &net.UDPAddr{IP: net.IPv4(a.IP[0], a.IP[1], a.IP[2], a.IP[3]), Port: int(a.Port)}
 }
@@ -724,6 +744,9 @@ func (s *IPSCServer) sendPacketToPeers(data []byte, only uint32) {
 		packet, err := s.m.SignFor(info.ID, append(make([]byte, 0, len(data)+ipscauth.TrailerLen), data...))
 		if err != nil {
 			slog.Warn("failed signing IPSC user packet", "peerID", info.ID, "error", err)
+			continue
+		}
+		if !s.ipList().Allows(netip.AddrFrom4(info.Addr.IP)) {
 			continue
 		}
 		dests = append(dests, destination{id: info.ID, to: toUDPAddr(info.Addr), packet: packet})

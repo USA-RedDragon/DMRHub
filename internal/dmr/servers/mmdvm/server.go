@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/ipfilter"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -71,6 +72,8 @@ type Server struct {
 	hubHandle    *hub.ServerHandle
 	stopClaims   func()
 	stopSecrets  func()
+	stopIPLists  func()
+	refusals     ipfilter.RefusalLog
 	sentMu       sync.Mutex
 	sent         map[uint][]*sentPacket
 	movingMu     sync.Mutex
@@ -222,6 +225,9 @@ func (s *Server) Stop(ctx context.Context) error {
 		if s.stopSecrets != nil {
 			s.stopSecrets()
 		}
+		if s.stopIPLists != nil {
+			s.stopIPLists()
+		}
 
 		// When other DMRHub instances are alive, skip sending MSTCL so
 		// repeaters seamlessly migrate to the surviving instance instead of
@@ -320,6 +326,7 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.dropMoved)
 	s.stopSecrets = s.hub.OnRepeaterSecretChange(func(id uint) { s.endSessions(ctx, id) })
+	s.stopIPLists = s.hub.OnIPListsChange(func() { s.endRefused(ctx) })
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 
@@ -344,6 +351,8 @@ func (s *Server) Start(ctx context.Context) error {
 		s.wt.onResume.Store(&resume)
 		moved := s.resendMoved
 		s.wt.onPathMoved.Store(&moved)
+		ipList := s.ipList
+		s.wt.ipList.Store(&ipList)
 		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)
 		s.wg.Add(1)
@@ -365,6 +374,10 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 				return
 			}
 			slog.Error("Error reading from MMDVM transport, swallowing error", "transport", name, "error", err)
+			continue
+		}
+		if name == udpTransport && !s.allows(remote) {
+			s.refuse(t, remote, buf[:length])
 			continue
 		}
 		slog.Debug("Read message from MMDVM transport", "transport", name, "remoteaddr", remote, "length", length)

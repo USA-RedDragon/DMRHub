@@ -198,6 +198,9 @@ type Hub struct {
 
 	plugins atomic.Pointer[Plugins]
 
+	ipListsMu sync.Mutex
+	ipLists   atomic.Pointer[ipLists]
+
 	transcoder   *transcode.Service
 	transcoders  inflight
 	codecStreams *xsync.Map[uint, *streamCodec]

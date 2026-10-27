@@ -30,20 +30,22 @@ vi.mock('@/services/API', () => ({
 
 import API from '@/services/API';
 import NewRepeaterPage from '@/views/repeaters/NewRepeaterPage.vue';
+import { takeSecret } from '@/lib/enroll';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock };
 
 async function mountPage(features: Record<string, unknown>) {
   mockAPI.get.mockResolvedValue({ data: features });
   const toast = { add: vi.fn() };
+  const router = { push: vi.fn() };
   const wrapper = mount(NewRepeaterPage, {
     global: {
       plugins: [createPinia()],
-      mocks: { $toast: toast, $router: { push: vi.fn() } },
+      mocks: { $toast: toast, $router: router },
     },
   });
   await flushPromises();
-  return { wrapper, toast };
+  return { wrapper, toast, router };
 }
 
 describe('NewRepeaterPage', () => {
@@ -59,36 +61,37 @@ describe('NewRepeaterPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows the configured MMDVM port in the DMRGateway snippet', async () => {
-    mockAPI.post.mockResolvedValue({ data: { password: 'secret' } });
-    const { wrapper } = await mountPage({ ipsc: false, mmdvm_port: 62040, ipsc_port: 50010 });
+  it('opens the connect page with the password of a new hotspot, once', async () => {
+    mockAPI.post.mockResolvedValue({ data: { password: 'Ab3dE6gH9jK2' } });
+    const { wrapper, router } = await mountPage({ ipsc: false, mmdvm_port: 62040, ipsc_port: 50010 });
     await wrapper.find('input#radioID').setValue('310000101');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(alert).toHaveBeenCalledTimes(1);
-    const text = alert.mock.calls[0]![0] as string;
-    expect(text).toContain('Port=62040\n');
-    expect(text).not.toContain('62031');
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters', { id: 310000101, type: 'mmdvm', simplex_repeater: false });
+    expect(router.push).toHaveBeenCalledWith('/repeaters/310000101/connect');
+    expect(alert).not.toHaveBeenCalled();
+    expect(takeSecret(310000101)).toBe('Ab3dE6gH9jK2');
+    expect(takeSecret(310000101)).toBeUndefined();
   });
 
-  it('shows the configured IPSC port with the auth key', async () => {
+  it('opens the connect page with the auth key of a new IPSC repeater', async () => {
     mockAPI.post.mockResolvedValue({ data: { password: 'abcd' } });
-    const { wrapper } = await mountPage({ ipsc: true, mmdvm_port: 62040, ipsc_port: 50010 });
+    const { wrapper, router } = await mountPage({ ipsc: true, mmdvm_port: 62040, ipsc_port: 50010 });
     await wrapper.find('select#repeaterType').setValue('ipsc');
     await wrapper.find('input#radioID').setValue('310001');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    const text = alert.mock.calls[0]![0] as string;
-    expect(text).toContain('Port: 50010\n');
-    expect(text).not.toContain('50000');
+    expect(router.push).toHaveBeenCalledWith('/repeaters/310001/connect');
+    expect(takeSecret(310001)).toBe('abcd');
   });
 
   it('says the repeater could not be created when the API refuses it', async () => {
     mockAPI.post.mockRejectedValue(new Error('network'));
-    const { wrapper, toast } = await mountPage({ ipsc: false, mmdvm_port: 62031, ipsc_port: 50000 });
+    const { wrapper, toast, router } = await mountPage({ ipsc: false, mmdvm_port: 62031, ipsc_port: 50000 });
     await wrapper.find('input#radioID').setValue('310000101');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ detail: 'Error creating repeater' }));
+    expect(router.push).not.toHaveBeenCalled();
   });
 });

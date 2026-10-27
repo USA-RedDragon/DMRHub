@@ -190,22 +190,19 @@ describe('Repeater CRUD', () => {
       statusCode: 200,
       body: { password: 'test-secret-password' },
     }).as('createRepeater');
-
-    // Stub window.alert
-    const alertStub = cy.stub();
-    cy.on('window:alert', alertStub);
+    cy.intercept('GET', '/api/v1/repeaters/311099', {
+      statusCode: 200,
+      body: { id: 311099, type: 'mmdvm', connected_time: '0001-01-01T00:00:00Z', last_ping_time: '0001-01-01T00:00:00Z' },
+    });
 
     cy.visit('/repeaters/new');
 
     cy.get('#radioID').type('311099');
     cy.get('button[type="submit"]').click();
 
-    cy.wait('@createRepeater').then(() => {
-      expect(alertStub).to.have.been.calledOnce;
-      // Alert should contain the password
-      const alertText = alertStub.firstCall.args[0];
-      expect(alertText).to.contain('test-secret-password');
-    });
+    cy.wait('@createRepeater');
+    cy.location('pathname').should('eq', '/repeaters/311099/connect');
+    cy.get('[data-test="secret"]').should('have.text', 'test-secret-password');
   });
 
   it('shows validation errors on empty new repeater form', () => {

@@ -67,6 +67,9 @@
                 class="inline-flex items-center rounded-md bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                 Simplex
               </span>
+              <ShadButton v-if="canConnect" as-child variant="outline" size="sm" data-test="connect">
+                <RouterLink :to="`/repeaters/${repeater.id}/connect`" class="no-underline">Connect</RouterLink>
+              </ShadButton>
             </div>
           </div>
         </CardHeader>
@@ -330,6 +333,7 @@ import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
+import { connectKind } from '@/lib/enroll';
 import { heardLine, type Codec, type Codec2Mode, type SlotCodec } from '@/lib/codec';
 import {
   cleanCalls,
@@ -491,6 +495,9 @@ export default {
     protocol(): string {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';
       return this.repeater.dialect === 'HBRP' ? 'HBRP' : 'MMDVM';
+    },
+    canConnect(): boolean {
+      return this.canEditCodec && !!this.repeater && connectKind(this.repeater.type || 'mmdvm', this.repeater.id) !== null;
     },
     canEditCodec(): boolean {
       const userStore = useUserStore();

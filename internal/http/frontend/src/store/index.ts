@@ -37,6 +37,7 @@ interface SettingsState {
   passwordResetEnabled: boolean;
   mmdvmPort: number;
   ipscPort: number;
+  serverAddress: string;
   loaded: boolean;
 }
 
@@ -63,6 +64,7 @@ export const useSettingsStore = defineStore('settings', {
     passwordResetEnabled: false,
     mmdvmPort: 62031,
     ipscPort: 50000,
+    serverAddress: '',
     loaded: false,
   }),
   getters: {},
@@ -77,6 +79,7 @@ export const useSettingsStore = defineStore('settings', {
         this.passwordResetEnabled = res.data?.password_reset ?? false;
         this.mmdvmPort = res.data?.mmdvm_port || 62031;
         this.ipscPort = res.data?.ipsc_port || 50000;
+        this.serverAddress = res.data?.server_address || '';
         this.loaded = true;
       } catch {
         // Config endpoint unavailable; leave defaults

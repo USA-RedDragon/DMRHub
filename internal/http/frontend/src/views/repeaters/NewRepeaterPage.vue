@@ -96,6 +96,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import { keepSecret } from '@/lib/enroll';
 import API from '@/services/API';
 import { useSettingsStore } from '@/store';
 
@@ -127,7 +128,6 @@ export default {
       repeaterType: 'mmdvm',
       simplexRepeater: false,
       submitted: false,
-      hostname: window.location.hostname,
     };
   },
   validations() {
@@ -175,33 +175,8 @@ export default {
               life: 3000,
             });
           } else {
-            const settingsStore = useSettingsStore();
-            if (this.repeaterType === 'mmdvm') {
-              window.alert(
-                'Repeater Created\n\n'
-                + 'You will need to use this DMRGateway configuration to connect to the network. '
-                + 'Save this now, as you will not be able to retrieve it again.\n\n'
-                + '[DMR Network 2]\n'
-                + 'Name=DMRHub\n'
-                + 'Enabled=1\n'
-                + `Address=${this.hostname}\n`
-                + `Port=${settingsStore.mmdvmPort}\n`
-                + `Password="${res.data.password}"\n`
-                + `Id=${this.radioID}\n`
-                + 'Location=1\n'
-                + 'Debug=0',
-              );
-            } else {
-              window.alert(
-                'Peer Created\n\n'
-                + 'Your Motorola IPSC repeater has been created. '
-                + 'Save this auth key now, as you will not be able to retrieve it again.\n\n'
-                + `Master IP: ${this.hostname}\n`
-                + `Port: ${settingsStore.ipscPort}\n`
-                + `Auth Key: ${res.data.password}`,
-              );
-            }
-            this.$router.push('/repeaters');
+            keepSecret(numericID, res.data.password);
+            this.$router.push(`/repeaters/${numericID}/connect`);
           }
         })
         .catch((err) => {

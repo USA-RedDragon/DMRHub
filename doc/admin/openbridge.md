@@ -47,7 +47,9 @@ A rule has a direction, a match and a range of IDs from `subject_id_min` to `sub
 - `"direction": true` is a receive rule, for calls from the peer. `"direction": false` is a transmit rule, for calls to the peer.
 - `"match": "destination"` checks the destination ID of the call: the talkgroup of a group call, the radio ID of a private call. `"match": "source"` checks the radio ID of the caller. With no match, a receive rule checks the destination and a transmit rule the source.
 
-A call passes the rules of a direction when one destination rule covers its destination and one source rule covers its caller. When a direction has rules of only one match, the other match does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls; add a destination rule for a range of radio IDs to also send private calls to those radios.
+A call passes the rules of a direction when one destination rule covers its destination and one source rule covers its caller. When a direction has rules of only one match, the other match does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls.
+
+To let private calls pass the destination rules, turn on the private call switch of a direction: `"ingress_private": true` for receive, `"egress_private": true` for transmit. Set them with `PATCH <siteurl>/api/v1/peers/<peer ID>`. A private call then needs only the source rules of that direction. The switches cover private data too, such as SMS. They are off by default.
 
 For example, to take the calls to talkgroups 1 to 999999 from peer 3000900, and to send it the calls to talkgroups 3100 and 31665:
 

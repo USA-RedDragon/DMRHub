@@ -160,19 +160,37 @@ type transcodingShadow struct {
 	AMBEServers *[]aMBEServerShadow `json:"ambe-servers" toml:"ambe-servers" yaml:"ambe-servers"`
 }
 
+type privateRouteShadow struct {
+	Reach   *string        `json:"reach"   toml:"reach"   yaml:"reach"`
+	Unknown *string        `json:"unknown" toml:"unknown" yaml:"unknown"`
+	MaxAge  *impl.Duration `json:"max-age" toml:"max-age" yaml:"max-age"`
+}
+
+type privateDataShadow struct {
+	Reach   *string        `json:"reach"   toml:"reach"   yaml:"reach"`
+	Unknown *string        `json:"unknown" toml:"unknown" yaml:"unknown"`
+	MaxAge  *impl.Duration `json:"max-age" toml:"max-age" yaml:"max-age"`
+}
+
+type privateCallsShadow struct {
+	Voice *privateRouteShadow `json:"voice" toml:"voice" yaml:"voice"`
+	Data  *privateDataShadow  `json:"data"  toml:"data"  yaml:"data"`
+}
+
 type dMRShadow struct {
-	MMDVM                    *mMDVMShadow       `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
-	OpenBridge               *openBridgeShadow  `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
-	IPSC                     *iPSCShadow        `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
-	Modem                    *modemShadow       `json:"modem"                       toml:"modem"                       yaml:"modem"`
-	DisableRadioIDValidation *bool              `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
-	RadioIDURL               *string            `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
-	RepeaterIDURL            *string            `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
-	Retention                *retentionShadow   `json:"retention"                   toml:"retention"                   yaml:"retention"`
-	Positions                *positionsShadow   `json:"positions"                   toml:"positions"                   yaml:"positions"`
-	Plugins                  *pluginsShadow     `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
-	Transcoding              *transcodingShadow `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
-	DrainTimeout             *int               `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
+	MMDVM                    *mMDVMShadow        `json:"mmdvm"                       toml:"mmdvm"                       yaml:"mmdvm"`
+	OpenBridge               *openBridgeShadow   `json:"openbridge"                  toml:"openbridge"                  yaml:"openbridge"`
+	IPSC                     *iPSCShadow         `json:"ipsc"                        toml:"ipsc"                        yaml:"ipsc"`
+	Modem                    *modemShadow        `json:"modem"                       toml:"modem"                       yaml:"modem"`
+	DisableRadioIDValidation *bool               `json:"disable-radio-id-validation" toml:"disable-radio-id-validation" yaml:"disable-radio-id-validation"`
+	RadioIDURL               *string             `json:"radio-id-url"                toml:"radio-id-url"                yaml:"radio-id-url"`
+	RepeaterIDURL            *string             `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
+	Retention                *retentionShadow    `json:"retention"                   toml:"retention"                   yaml:"retention"`
+	Positions                *positionsShadow    `json:"positions"                   toml:"positions"                   yaml:"positions"`
+	Plugins                  *pluginsShadow      `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
+	Transcoding              *transcodingShadow  `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
+	PrivateCalls             *privateCallsShadow `json:"private-calls"               toml:"private-calls"               yaml:"private-calls"`
+	DrainTimeout             *int                `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
 }
 
 type sMTPShadow struct {
@@ -344,6 +362,14 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.plugins.bind", configulator.LayerDefault, "default tag")
 	cfg.DMR.Plugins.Port = 3006
 	set("dmr.plugins.port", configulator.LayerDefault, "default tag")
+	cfg.DMR.PrivateCalls.Voice.Reach = PrivateReach("hybrid")
+	set("dmr.private-calls.voice.reach", configulator.LayerDefault, "default tag")
+	cfg.DMR.PrivateCalls.Voice.Unknown = PrivateUnknown("drop")
+	set("dmr.private-calls.voice.unknown", configulator.LayerDefault, "default tag")
+	cfg.DMR.PrivateCalls.Voice.MaxAge = time.Duration(int64(0))
+	set("dmr.private-calls.voice.max-age", configulator.LayerDefault, "default tag")
+	cfg.DMR.PrivateCalls.Data.MaxAge = time.Duration(int64(0))
+	set("dmr.private-calls.data.max-age", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
 	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
@@ -780,6 +806,50 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				}
 				cfg.DMR.Transcoding.AMBEServers = out
 				set("dmr.transcoding.ambe-servers", configulator.LayerFile, file)
+			}
+		}
+		if s.DMR.PrivateCalls != nil {
+			if s.DMR.PrivateCalls.Voice != nil {
+				if s.DMR.PrivateCalls.Voice.Reach != nil {
+					cfg.DMR.PrivateCalls.Voice.Reach = PrivateReach(*s.DMR.PrivateCalls.Voice.Reach)
+					set("dmr.private-calls.voice.reach", configulator.LayerFile, file)
+				}
+				if s.DMR.PrivateCalls.Voice.Unknown != nil {
+					cfg.DMR.PrivateCalls.Voice.Unknown = PrivateUnknown(*s.DMR.PrivateCalls.Voice.Unknown)
+					set("dmr.private-calls.voice.unknown", configulator.LayerFile, file)
+				}
+				if s.DMR.PrivateCalls.Voice.MaxAge != nil {
+					v, ok := s.DMR.PrivateCalls.Voice.MaxAge.Value()
+					if !ok {
+						return &configulator.OpaqueSpellingError{
+							Hint: "\"30s\"",
+							Path: "dmr.private-calls.voice.max-age",
+						}
+					}
+					cfg.DMR.PrivateCalls.Voice.MaxAge = v
+					set("dmr.private-calls.voice.max-age", configulator.LayerFile, file)
+				}
+			}
+			if s.DMR.PrivateCalls.Data != nil {
+				if s.DMR.PrivateCalls.Data.Reach != nil {
+					cfg.DMR.PrivateCalls.Data.Reach = PrivateReach(*s.DMR.PrivateCalls.Data.Reach)
+					set("dmr.private-calls.data.reach", configulator.LayerFile, file)
+				}
+				if s.DMR.PrivateCalls.Data.Unknown != nil {
+					cfg.DMR.PrivateCalls.Data.Unknown = PrivateUnknown(*s.DMR.PrivateCalls.Data.Unknown)
+					set("dmr.private-calls.data.unknown", configulator.LayerFile, file)
+				}
+				if s.DMR.PrivateCalls.Data.MaxAge != nil {
+					v, ok := s.DMR.PrivateCalls.Data.MaxAge.Value()
+					if !ok {
+						return &configulator.OpaqueSpellingError{
+							Hint: "\"30s\"",
+							Path: "dmr.private-calls.data.max-age",
+						}
+					}
+					cfg.DMR.PrivateCalls.Data.MaxAge = v
+					set("dmr.private-calls.data.max-age", configulator.LayerFile, file)
+				}
 			}
 		}
 		if s.DMR.DrainTimeout != nil {
@@ -1663,6 +1733,48 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Plugins.KeyFile = v
 		set("dmr.plugins.key-file", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "voice", "reach"); ok {
+		cfg.DMR.PrivateCalls.Voice.Reach = PrivateReach(v)
+		set("dmr.private-calls.voice.reach", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "voice", "unknown"); ok {
+		cfg.DMR.PrivateCalls.Voice.Unknown = PrivateUnknown(v)
+		set("dmr.private-calls.voice.unknown", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "voice", "max-age"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.voice.max-age",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.PrivateCalls.Voice.MaxAge = d
+		set("dmr.private-calls.voice.max-age", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "data", "reach"); ok {
+		cfg.DMR.PrivateCalls.Data.Reach = PrivateReach(v)
+		set("dmr.private-calls.data.reach", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "data", "unknown"); ok {
+		cfg.DMR.PrivateCalls.Data.Unknown = PrivateUnknown(v)
+		set("dmr.private-calls.data.unknown", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "private-calls", "data", "max-age"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.data.max-age",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.PrivateCalls.Data.MaxAge = d
+		set("dmr.private-calls.data.max-age", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -1917,6 +2029,12 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "plugins" + o.Separator + "port",
 		"dmr" + o.Separator + "plugins" + o.Separator + "cert-file",
 		"dmr" + o.Separator + "plugins" + o.Separator + "key-file",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "reach",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "unknown",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "max-age",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "reach",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "unknown",
+		"dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "max-age",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -2037,27 +2155,33 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(3006), names[80], "TCP port that plugins connect to")
 	fs.String(names[81], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
 	fs.String(names[82], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[83], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[84], false, "Enable SMTP support for sending emails")
-	fs.String(names[85], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[86], "SMTP server port")
-	fs.String(names[87], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[88], "", "SMTP server username")
-	fs.String(names[89], "", "SMTP server password")
-	fs.String(names[90], "", "Email address to use as the sender")
-	fs.String(names[91], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[92], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[93], false, "Enable metrics collection and export")
-	fs.String(names[94], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[95], "Metrics server port")
-	fs.StringSlice(names[96], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[97], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[98], false, "Enable PProf profiling and debugging support")
-	fs.String(names[99], "[::]", "PProf server listen address")
-	fs.StringSlice(names[100], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[101], "PProf server port")
-	fs.String(names[102], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[103], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[83], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
+	fs.String(names[84], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
+	fs.Duration(names[85], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
+	fs.String(names[86], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
+	fs.String(names[87], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
+	fs.Duration(names[88], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
+	fs.Var(impl.NewInt(25), names[89], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[90], false, "Enable SMTP support for sending emails")
+	fs.String(names[91], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[92], "SMTP server port")
+	fs.String(names[93], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[94], "", "SMTP server username")
+	fs.String(names[95], "", "SMTP server password")
+	fs.String(names[96], "", "Email address to use as the sender")
+	fs.String(names[97], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[98], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[99], false, "Enable metrics collection and export")
+	fs.String(names[100], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[101], "Metrics server port")
+	fs.StringSlice(names[102], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[103], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[104], false, "Enable PProf profiling and debugging support")
+	fs.String(names[105], "[::]", "PProf server listen address")
+	fs.StringSlice(names[106], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[107], "PProf server port")
+	fs.String(names[108], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[109], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3057,6 +3181,78 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Plugins.KeyFile = v
 		set("dmr.plugins.key-file", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "reach"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.voice.reach",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Voice.Reach = PrivateReach(v)
+		set("dmr.private-calls.voice.reach", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "unknown"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.voice.unknown",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Voice.Unknown = PrivateUnknown(v)
+		set("dmr.private-calls.voice.unknown", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "voice" + o.Separator + "max-age"; fs.Changed(n) {
+		v, err := fs.GetDuration(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.voice.max-age",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Voice.MaxAge = v
+		set("dmr.private-calls.voice.max-age", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "reach"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.data.reach",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Data.Reach = PrivateReach(v)
+		set("dmr.private-calls.data.reach", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "unknown"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.data.unknown",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Data.Unknown = PrivateUnknown(v)
+		set("dmr.private-calls.data.unknown", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "private-calls" + o.Separator + "data" + o.Separator + "max-age"; fs.Changed(n) {
+		v, err := fs.GetDuration(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.private-calls.data.max-age",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.PrivateCalls.Data.MaxAge = v
+		set("dmr.private-calls.data.max-age", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -4228,6 +4424,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				s.Transcoding = &sub
+			}
+		case "private-calls":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".private-calls", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub privateCallsShadow
+				if err := sub.decodeJSON(dec, path+".private-calls"); err != nil {
+					return err
+				}
+				s.PrivateCalls = &sub
 			}
 		case "drain-timeout":
 			v, err := dec.ReadToken()
@@ -5672,6 +5887,197 @@ func (s *aMBEServerShadow) decodeJSON(dec *jsontext.Decoder, path string) error 
 
 // decodeJSON decodes the members of an object whose opening brace has
 // been read. path is the object's dotted path.
+func (s *privateCallsShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "voice":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".voice", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub privateRouteShadow
+				if err := sub.decodeJSON(dec, path+".voice"); err != nil {
+					return err
+				}
+				s.Voice = &sub
+			}
+		case "data":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".data", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub privateDataShadow
+				if err := sub.decodeJSON(dec, path+".data"); err != nil {
+					return err
+				}
+				s.Data = &sub
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *privateRouteShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "reach":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Reach = &str
+			default:
+				return configJSONError(path+".reach", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "unknown":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Unknown = &str
+			default:
+				return configJSONError(path+".unknown", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "max-age":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				var slot impl.Duration
+				if err := slot.UnmarshalText([]byte(v.String())); err != nil {
+					return configJSONError(path+".max-age", v, err)
+				}
+				s.MaxAge = &slot
+			default:
+				return configJSONError(path+".max-age", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *privateDataShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "reach":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Reach = &str
+			default:
+				return configJSONError(path+".reach", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "unknown":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Unknown = &str
+			default:
+				return configJSONError(path+".unknown", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "max-age":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				var slot impl.Duration
+				if err := slot.UnmarshalText([]byte(v.String())); err != nil {
+					return configJSONError(path+".max-age", v, err)
+				}
+				s.MaxAge = &slot
+			default:
+				return configJSONError(path+".max-age", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
 func (s *sMTPShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	for {
 		tok, err := dec.ReadToken()
@@ -6113,6 +6519,12 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.plugins.cert-file = %v\n", c.DMR.Plugins.CertFile)
 	fmt.Fprintf(&b, "dmr.plugins.key-file = %v\n", c.DMR.Plugins.KeyFile)
 	fmt.Fprintf(&b, "dmr.transcoding.ambe-servers = %v\n", c.DMR.Transcoding.AMBEServers)
+	fmt.Fprintf(&b, "dmr.private-calls.voice.reach = %v\n", c.DMR.PrivateCalls.Voice.Reach)
+	fmt.Fprintf(&b, "dmr.private-calls.voice.unknown = %v\n", c.DMR.PrivateCalls.Voice.Unknown)
+	fmt.Fprintf(&b, "dmr.private-calls.voice.max-age = %v\n", c.DMR.PrivateCalls.Voice.MaxAge)
+	fmt.Fprintf(&b, "dmr.private-calls.data.reach = %v\n", c.DMR.PrivateCalls.Data.Reach)
+	fmt.Fprintf(&b, "dmr.private-calls.data.unknown = %v\n", c.DMR.PrivateCalls.Data.Unknown)
+	fmt.Fprintf(&b, "dmr.private-calls.data.max-age = %v\n", c.DMR.PrivateCalls.Data.MaxAge)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

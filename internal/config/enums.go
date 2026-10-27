@@ -80,3 +80,29 @@ const (
 	// RobotsTXTModeCustom allows a custom robots.txt file to be served.
 	RobotsTXTModeCustom RobotsTXTMode = "custom"
 )
+
+// PrivateReach is which radios private traffic reaches.
+type PrivateReach string
+
+const (
+	// PrivateReachHybrid reaches any radio heard on a repeater of the
+	// network, and a radio ID that a user owns only where that user owns
+	// the repeater or an admin trusts it.
+	PrivateReachHybrid PrivateReach = "hybrid"
+	// PrivateReachMembers reaches only the radio IDs that users own, on
+	// the repeaters of their owner or trusted ones.
+	PrivateReachMembers PrivateReach = "members"
+	// PrivateReachAnyone reaches any radio wherever it was last heard.
+	PrivateReachAnyone PrivateReach = "anyone"
+)
+
+// PrivateUnknown is what happens to private traffic to a radio that
+// DMRHub does not know where to find.
+type PrivateUnknown string
+
+const (
+	// PrivateUnknownDrop drops the traffic and logs it.
+	PrivateUnknownDrop PrivateUnknown = "drop"
+	// PrivateUnknownFlood sends the traffic to every repeater.
+	PrivateUnknownFlood PrivateUnknown = "flood"
+)

@@ -69,6 +69,7 @@ func setupPaths() []string {
 		"dmr.positions",
 		"dmr.plugins.in-process",
 		"dmr.transcoding",
+		"dmr.private-calls",
 		"dmr.drain-timeout",
 	}
 }

@@ -205,6 +205,24 @@ dmr:
     # ambe-servers:
     #   - address: ""
     #     calls: 0
+  # How DMRHub finds the radio that a private call, SMS or data message goes to
+  private-calls:
+    # Routing of private voice calls
+    voice:
+      # Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)
+      reach: "hybrid"
+      # What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)
+      unknown: "drop"
+      # Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit
+      max-age: "0s"
+    # Routing of private SMS, data and CSBK, such as radio checks and call alerts. A setting that is left empty takes the value of the voice setting
+    data:
+      # Radios that private SMS and data reach, as for voice. Empty takes the voice reach
+      # reach: ""
+      # What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting
+      # unknown: ""
+      # Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit
+      max-age: "0s"
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once
   drain-timeout: 25
 # SMTP configuration for sending emails

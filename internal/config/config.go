@@ -114,18 +114,75 @@ type RobotsTXT struct {
 
 // DMR holds the DMR server configuration.
 type DMR struct {
-	MMDVM                    MMDVM       `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
-	OpenBridge               OpenBridge  `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
-	IPSC                     IPSC        `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
-	Modem                    Modem       `json:"modem" name:"modem" description:"MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost"`
-	DisableRadioIDValidation bool        `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
-	RadioIDURL               string      `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
-	RepeaterIDURL            string      `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
-	Retention                Retention   `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
-	Positions                Positions   `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
-	Plugins                  Plugins     `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
-	Transcoding              Transcoding `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
-	DrainTimeout             int         `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
+	MMDVM                    MMDVM        `json:"mmdvm,omitempty" name:"mmdvm" description:"MMDVM server configuration for DMR"`
+	OpenBridge               OpenBridge   `json:"openbridge,omitempty" name:"openbridge" description:"OpenBridge server configuration for DMR"`
+	IPSC                     IPSC         `json:"ipsc,omitempty" name:"ipsc" description:"IPSC server configuration for Motorola DMR repeaters"`
+	Modem                    Modem        `json:"modem" name:"modem" description:"MMDVM modem board on a serial port that DMRHub drives as a hotspot or repeater of its own, without MMDVMHost"`
+	DisableRadioIDValidation bool         `json:"disable-radio-id-validation,omitempty" name:"disable-radio-id-validation" description:"Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID" default:"false"`
+	RadioIDURL               string       `json:"radio-id-url,omitempty" name:"radio-id-url" description:"URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/users.json"`
+	RepeaterIDURL            string       `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
+	Retention                Retention    `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+	Positions                Positions    `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
+	Plugins                  Plugins      `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
+	Transcoding              Transcoding  `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
+	PrivateCalls             PrivateCalls `json:"private-calls" yaml:"private-calls" name:"private-calls" description:"How DMRHub finds the radio that a private call, SMS or data message goes to"`
+	DrainTimeout             int          `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
+}
+
+// PrivateCalls holds how DMRHub finds the radio that private traffic goes
+// to: the private voice calls, and apart from them the SMS, data and CSBK,
+// such as radio checks.
+type PrivateCalls struct {
+	Voice PrivateRoute `json:"voice" name:"voice" description:"Routing of private voice calls"`
+	Data  PrivateData  `json:"data" name:"data" description:"Routing of private SMS, data and CSBK, such as radio checks and call alerts. A setting that is left empty takes the value of the voice setting"`
+}
+
+// PrivateRoute is how DMRHub routes one kind of private traffic.
+type PrivateRoute struct {
+	Reach   PrivateReach   `json:"reach" name:"reach" description:"Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)" default:"hybrid"`
+	Unknown PrivateUnknown `json:"unknown" name:"unknown" description:"What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)" default:"drop"`
+	MaxAge  time.Duration  `json:"max-age" yaml:"max-age" name:"max-age" description:"Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit" default:"0s"`
+}
+
+// PrivateData is how DMRHub routes private SMS, data and CSBK. Each empty
+// setting takes the value of the voice setting.
+type PrivateData struct {
+	Reach   PrivateReach   `json:"reach" name:"reach" description:"Radios that private SMS and data reach, as for voice. Empty takes the voice reach"`
+	Unknown PrivateUnknown `json:"unknown" name:"unknown" description:"What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting"`
+	MaxAge  time.Duration  `json:"max-age" yaml:"max-age" name:"max-age" description:"Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit" default:"0s"`
+}
+
+// Route returns how private voice calls are routed, with the defaults for
+// empty settings.
+func (p PrivateCalls) Route() PrivateRoute {
+	r := p.Voice
+	if r.Reach == "" {
+		r.Reach = PrivateReachHybrid
+	}
+	if r.Unknown == "" {
+		r.Unknown = PrivateUnknownDrop
+	}
+	return r
+}
+
+// DataRoute returns how private SMS, data and CSBK are routed: the data
+// settings, with the voice settings for the empty ones. Its MaxAge is 0
+// for no limit.
+func (p PrivateCalls) DataRoute() PrivateRoute {
+	r := p.Route()
+	if p.Data.Reach != "" {
+		r.Reach = p.Data.Reach
+	}
+	if p.Data.Unknown != "" {
+		r.Unknown = p.Data.Unknown
+	}
+	switch {
+	case p.Data.MaxAge < 0:
+		r.MaxAge = 0
+	case p.Data.MaxAge > 0:
+		r.MaxAge = p.Data.MaxAge
+	}
+	return r
 }
 
 // Transcoding holds the AMBE servers that convert calls between Codec2 and

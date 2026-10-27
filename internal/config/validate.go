@@ -52,6 +52,12 @@ const (
 	fieldRetentionMessages = "dmr.retention.messages"
 	fieldRetentionTransm   = "dmr.retention.transmissions"
 	fieldRetentionBursts   = "dmr.retention.bursts"
+
+	fieldPrivateVoiceReach   = "dmr.private-calls.voice.reach"
+	fieldPrivateVoiceUnknown = "dmr.private-calls.voice.unknown"
+	fieldPrivateVoiceMaxAge  = "dmr.private-calls.voice.max-age"
+	fieldPrivateDataReach    = "dmr.private-calls.data.reach"
+	fieldPrivateDataUnknown  = "dmr.private-calls.data.unknown"
 )
 
 // isValidURL checks that s is a parseable URL with both a scheme and host.
@@ -602,6 +608,43 @@ func (p Positions) ValidateWithFields() (errs []ValidationError) {
 
 var aprsCallsignRegex = regexp.MustCompile(`^[A-Z0-9]{1,6}(-[0-9]{1,2})?$`)
 
+var (
+	// ErrInvalidPrivateReach indicates a private call reach that is not hybrid, members or anyone.
+	ErrInvalidPrivateReach = errors.New("the reach must be one of hybrid, members or anyone")
+	// ErrInvalidPrivateUnknown indicates a private call unknown target setting that is not drop or flood.
+	ErrInvalidPrivateUnknown = errors.New("the unknown target setting must be drop or flood")
+	// ErrInvalidPrivateMaxAge indicates a negative voice max age.
+	ErrInvalidPrivateMaxAge = errors.New("the max age must be 0 for no limit or a positive time, such as 24h")
+)
+
+// Validate validates the private call configuration.
+func (p PrivateCalls) Validate() error {
+	return firstValidationError(p.ValidateWithFields())
+}
+
+func (p PrivateCalls) ValidateWithFields() (errs []ValidationError) {
+	reach := func(field string, r PrivateReach) {
+		if r == "" || r == PrivateReachHybrid || r == PrivateReachMembers || r == PrivateReachAnyone {
+			return
+		}
+		errs = append(errs, ValidationError{Field: field, Err: ErrInvalidPrivateReach})
+	}
+	unknown := func(field string, u PrivateUnknown) {
+		if u == "" || u == PrivateUnknownDrop || u == PrivateUnknownFlood {
+			return
+		}
+		errs = append(errs, ValidationError{Field: field, Err: ErrInvalidPrivateUnknown})
+	}
+	reach(fieldPrivateVoiceReach, p.Voice.Reach)
+	unknown(fieldPrivateVoiceUnknown, p.Voice.Unknown)
+	if p.Voice.MaxAge < 0 {
+		errs = append(errs, ValidationError{Field: fieldPrivateVoiceMaxAge, Err: ErrInvalidPrivateMaxAge})
+	}
+	reach(fieldPrivateDataReach, p.Data.Reach)
+	unknown(fieldPrivateDataUnknown, p.Data.Unknown)
+	return
+}
+
 // MaxRetentionDays is the longest retention period, in days.
 const MaxRetentionDays = 36500
 
@@ -653,6 +696,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	errs = append(errs, d.Positions.ValidateWithFields()...)
 	errs = append(errs, d.Plugins.ValidateWithFields()...)
 	errs = append(errs, d.Transcoding.ValidateWithFields()...)
+	errs = append(errs, d.PrivateCalls.ValidateWithFields()...)
 
 	if d.DrainTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})

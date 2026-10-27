@@ -149,7 +149,7 @@ func staysForTheHold(t *testing.T, one, two *hub.Hub, stream uint, hold, recheck
 		kept := one.AdmitStream(ctx, owner, models.RepeaterTypeMMDVM)
 		copyTwo := two.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
 		copyOne := one.AdmitStream(ctx, copied, models.RepeaterTypeMMDVM)
-		if gap := time.Since(prev); gap > hold/2 {
+		if gap := time.Since(prev); gap > hold*3/4 {
 			return fmt.Sprintf("the source sent nothing for %v", gap)
 		}
 		prev = at

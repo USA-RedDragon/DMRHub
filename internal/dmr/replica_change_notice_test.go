@@ -22,6 +22,7 @@ package dmr_test
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -60,6 +62,45 @@ func countPrivate(pkts []models.Packet, dst uint) int {
 		}
 	}
 	return n
+}
+
+// noticeMarker is the ID of no talkgroup, user, peer or repeater, that a
+// test announces after an edit on replica A: replica B reads the notices
+// of a kind in order, so once it took the notice of noticeMarker it took
+// the one of the edit.
+const noticeMarker = 9999
+
+// noticeTaker waits for replica B to take the notices of the edits on
+// replica A, of the kinds that watch reports.
+type noticeTaker struct {
+	ps    pubsub.PubSub
+	taken map[string]chan uint
+}
+
+func takeNotices(t *testing.T, ps pubsub.PubSub, watch map[string]func(func(uint)) func()) *noticeTaker {
+	t.Helper()
+	n := &noticeTaker{ps: ps, taken: map[string]chan uint{}}
+	for topic, on := range watch {
+		ch := make(chan uint, 16)
+		n.taken[topic] = ch
+		t.Cleanup(on(func(id uint) {
+			if id == noticeMarker {
+				ch <- id
+			}
+		}))
+	}
+	return n
+}
+
+// await announces noticeMarker on topic and waits until replica B took it.
+func (n *noticeTaker) await(t *testing.T, topic string) {
+	t.Helper()
+	require.NoError(t, n.ps.Publish(topic, []byte("notice-test:"+strconv.Itoa(noticeMarker))))
+	select {
+	case <-n.taken[topic]:
+	case <-time.After(handshakeWait):
+		require.Failf(t, "replica B did not take the notice", "topic %s", topic)
+	}
 }
 
 func adminRouter(t *testing.T, stack *testutils.IntegrationStack) (*gin.Engine, testutils.CookieJar) {
@@ -115,6 +156,12 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 		t.Cleanup(ic.Close)
 		require.NoError(t, ic.Connect(replicaB.IPSCAddr))
 		require.NoError(t, ic.WaitReady(handshakeWait))
+		notices := takeNotices(t, stack.PubSub, map[string]func(func(uint)) func(){
+			"hub:talkgroups:changed": replicaB.Hub.OnTalkgroupChange,
+			"hub:users:changed":      replicaB.Hub.OnUserChange,
+			"hub:peers:changed":      replicaB.Hub.OnPeerChange,
+			"hub:repeaters:changed":  replicaB.Hub.OnRepeaterChange,
+		})
 		time.Sleep(settleDuration)
 
 		func() {
@@ -122,7 +169,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			c2.Drain(300 * time.Millisecond)
 			resp, w := testutils.CreateTalkgroup(t, router, jar, apimodels.TalkgroupPost{ID: 5, Name: "TG5", Description: "new"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
-			time.Sleep(100 * time.Millisecond)
+			notices.await(t, "hub:talkgroups:changed")
 			sendGroupBursts(t, c2, 5, 9102, 2)
 			time.Sleep(300 * time.Millisecond)
 			c2.Drain(100 * time.Millisecond)
@@ -135,7 +182,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			c2.Drain(300 * time.Millisecond)
 			resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 1000004, Callsign: "N0CAL4", Username: "notice-user", Password: "password1234"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
-			time.Sleep(100 * time.Millisecond)
+			notices.await(t, "hub:users:changed")
 			require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000004, 1, 9202, false)))
 			time.Sleep(300 * time.Millisecond)
 			c2.Drain(100 * time.Millisecond)
@@ -150,7 +197,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			off := false
 			_, w := testutils.PatchPeer(t, router, 500002, jar, apimodels.PeerPatch{Egress: &off})
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-			time.Sleep(100 * time.Millisecond)
+			notices.await(t, "hub:peers:changed")
 			sendGroupBursts(t, c1, 1, 9302, 4)
 			assert.Empty(t, to.Drain(noticeWait), "a peer whose egress replica A turned off must get nothing from replica B")
 		}()
@@ -161,7 +208,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			require.Positive(t, countDst(c2.Drain(noticeWait), 1), "the IPSC call must route before the delete")
 			w := testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/repeaters/200001", nil)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-			time.Sleep(100 * time.Millisecond)
+			notices.await(t, "hub:repeaters:changed")
 			require.NoError(t, ic.SendGroupVoice(1000001, 1, false, 9402))
 			assert.Zero(t, countDst(c2.Drain(noticeWait), 1), "an IPSC repeater deleted on replica A must route nothing on replica B")
 		}()

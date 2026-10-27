@@ -103,6 +103,16 @@
           />{{ o.label }}
         </label>
       </div>
+      <ModemPortSelect
+        v-else-if="field.kind === 'port'"
+        :id="id"
+        :value="text"
+        :disabled="disabled"
+        :invalid="!!error"
+        :placeholder="placeholder"
+        :box-class="boxClass"
+        @update="set"
+      />
       <Textarea
         v-else-if="field.kind === 'list' || field.kind === 'textarea'"
         :id="id"
@@ -141,6 +151,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import SettingNote from '@/components/setup/SettingNote.vue';
+import ModemPortSelect from '@/components/setup/menu/ModemPortSelect.vue';
 import SourceChips from '@/components/setup/menu/SourceChips.vue';
 import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';

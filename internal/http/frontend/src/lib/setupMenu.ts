@@ -37,7 +37,8 @@ export type FieldKind =
   | 'seconds'
   | 'minutes'
   | 'mhz'
-  | 'mode';
+  | 'mode'
+  | 'port';
 
 export type Option = { value: string | number; label: string; description?: string };
 
@@ -67,6 +68,8 @@ export type CardDef = {
   rows: Row[];
   cards?: CardDef[];
   showCards?: (read: Read) => boolean;
+  pill?: 'modem';
+  custom?: 'modem-test';
 };
 
 export type IntroPart = string | { text: string; to: string };
@@ -432,6 +435,7 @@ export const TABS: TabDef[] = [
     cards: [
       {
         title: 'Modem',
+        pill: 'modem',
         rows: [
           { path: 'dmr.modem.enabled', label: 'Enabled', kind: 'bool', help: 'Turn this on in one server only, the one that the board is plugged into.' },
         ],
@@ -442,7 +446,7 @@ export const TABS: TabDef[] = [
             rows: [
               {
                 grid: [
-                  { path: 'dmr.modem.port', label: 'Serial port', kind: 'text', placeholder: '/dev/ttyAMA0', help: 'The serial device of the board.' },
+                  { path: 'dmr.modem.port', label: 'Serial port', kind: 'port', placeholder: '/dev/ttyAMA0' },
                   {
                     path: 'dmr.modem.baud', label: 'Port speed', kind: 'select', help: '115200 for almost every board.',
                     options: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600].map((b) => ({ value: b, label: String(b) })),
@@ -564,6 +568,7 @@ export const TABS: TabDef[] = [
               },
             ],
           },
+          { title: 'Test the modem', rows: [], custom: 'modem-test' },
         ],
       },
     ],

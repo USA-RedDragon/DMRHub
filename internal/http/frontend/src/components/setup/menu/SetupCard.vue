@@ -21,10 +21,12 @@
 
 <template>
   <Card v-if="hasContent" :class="nested ? 'mb-3.5 gap-3.5 bg-transparent py-4.5 shadow-none' : 'mb-5'" :data-test="`card-${card.title}`">
-    <CardHeader :class="nested ? 'px-4.5' : ''">
+    <CardHeader :class="[nested ? 'px-4.5' : '', card.pill ? 'flex flex-wrap items-center justify-between gap-2' : '']">
       <CardTitle>{{ card.title }}</CardTitle>
+      <ModemPill v-if="card.pill === 'modem' && read('dmr.modem.enabled') === true" />
     </CardHeader>
     <CardContent :class="nested ? 'px-4.5' : ''">
+      <ModemTest v-if="card.custom === 'modem-test'" :read="read" />
       <SetupRows :rows="card.rows" v-bind="shared" @set="forward" />
       <template v-if="showCards">
         <SetupCard
@@ -42,6 +44,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import ModemPill from '@/components/setup/menu/ModemPill.vue';
+import ModemTest from '@/components/setup/menu/ModemTest.vue';
 import SetupRows from '@/components/setup/menu/SetupRows.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { CardDef, FieldDef, Read, Row } from '@/lib/setupMenu';
@@ -82,7 +86,7 @@ const shown = (f: FieldDef) => (!props.only || props.only.includes(f.path)) && (
 
 const hasContent = computed(() => {
   const all = (c: CardDef): FieldDef[] => [...fieldsOf(c.rows), ...(c.cards ?? []).flatMap(all)];
-  return all(props.card).some(shown);
+  return props.card.custom !== undefined || all(props.card).some(shown);
 });
 
 const forward = (path: string, value: unknown) => emit('set', path, value);

@@ -226,15 +226,23 @@ func (c *claimSlowFor) Expire(ctx context.Context, key string, ttl time.Duration
 }
 
 // claimHungFor holds the KV calls for the stream claims of streams until
-// their context ends, as a KV store that does not answer does.
+// their context ends, as a KV store that does not answer does. Each held
+// call sends its stream on asked when asked is not nil.
 type claimHungFor struct {
 	kv.KV
 	streams []uint
+	asked   chan uint
 }
 
 func (c *claimHungFor) hung(ctx context.Context, key string) bool {
 	for _, s := range c.streams {
 		if strings.HasPrefix(key, "dmrhub:stream_claim:"+strconv.FormatUint(uint64(s), 10)+":") {
+			if c.asked != nil {
+				select {
+				case c.asked <- s:
+				default:
+				}
+			}
 			<-ctx.Done()
 			return true
 		}
@@ -330,15 +338,19 @@ func TestTheNextStreamWaitsForTheClaimOfTheLastOne(t *testing.T) {
 }
 
 // TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce starts three short
-// streams back to back on one repeater slot, whose claims the KV store
-// answers in 500 ms each. They must keep their order, and the last burst
-// must not wait for the checks one after another.
+// streams back to back on one repeater slot, whose claims the KV store does
+// not answer, and holds the wait of the hub for them. The checks of the
+// three claims must all be waiting at once, with no burst passed. When the
+// wait ends, the streams must pass in order.
 func TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce(t *testing.T) {
 	t.Parallel()
 	streams := []uint{74001, 74002, 74003}
+	asked := make(chan uint, 64)
 	h, arrivals := orderHub(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		return &claimSlowFor{KV: k, streams: streams}
+		return &claimHungFor{KV: k, streams: streams, asked: asked}
 	})
+	endWait := h.HoldStreamClaimWaits()
+	t.Cleanup(endWait)
 
 	sent := make([]models.Packet, 0, 2*len(streams))
 	for _, s := range streams {
@@ -347,29 +359,33 @@ func TestTheClaimsOfNewStreamsOfASourceAreCheckedAtOnce(t *testing.T) {
 		term.Seq = 1
 		sent = append(sent, p, term)
 	}
-	start := time.Now()
 	for _, p := range sent {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	}
 
 	var got []delivered
-	var last time.Duration
+	waiting := map[uint]bool{}
 	deadline := time.After(30 * time.Second)
-	for len(got) < len(sent) {
-		select {
-		case a := <-arrivals:
-			if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
-				continue
+	receive := func(done func() bool, what string) {
+		for !done() {
+			select {
+			case s := <-asked:
+				waiting[s] = true
+			case a := <-arrivals:
+				if a.server != "mmdvm" || a.rp.RepeaterID != 100002 {
+					continue
+				}
+				got = append(got, delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
+			case <-deadline:
+				t.Fatalf("%s: checks waiting %v, deliveries %v", what, waiting, got)
 			}
-			got = append(got, delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
-			last = a.at.Sub(start)
-		case <-deadline:
-			t.Fatalf("deliveries %v", got)
 		}
 	}
-	t.Logf("last burst at %v", last)
+	receive(func() bool { return len(waiting) == len(streams) }, "the checks of the claims ran one after another")
+	assert.Empty(t, got, "a burst passed before the claim of its stream was answered")
+	endWait()
+	receive(func() bool { return len(got) >= len(sent) }, "the streams did not pass when the wait for their claims ended")
 	assert.Equal(t, orderOf(sent), got)
-	assert.Less(t, last, hub.StreamClaimWait+100*time.Millisecond, "the checks of the claims ran one after another")
 }
 
 // TestASlowClaimOfAPeerDelaysNoOtherTalkgroupOfIt starts a call of a peer

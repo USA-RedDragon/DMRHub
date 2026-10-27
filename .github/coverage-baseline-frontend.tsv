@@ -7,7 +7,7 @@ src/components/ModeToggle.vue	13	10
 src/components/RelativeTimestamp.vue	7	3
 src/components/Repeater.vue	7	0
 src/components/RepeaterTable.vue	203	136
-src/components/Talkgroup.vue	5	5
+src/components/Talkgroup.vue	5	4
 src/components/TalkgroupTable.vue	165	100
 src/components/TransmissionType.vue	5	5
 src/components/TypeFilter.vue	7	5
@@ -95,7 +95,7 @@ src/lib/lastHeardColumns.ts	40	32
 src/lib/next.ts	3	2
 src/lib/password.ts	11	3
 src/lib/retention.ts	7	5
-src/lib/transmissions.ts	185	116
+src/lib/transmissions.ts	181	119
 src/lib/utils.ts	1	1
 src/main.ts	15	12
 src/plugins/confirmBridge.ts	27	20
@@ -107,7 +107,7 @@ src/services/net.ts	29	20
 src/services/password.ts	8	0
 src/services/repeater.ts	15	2
 src/services/settings.ts	16	0
-src/services/talkgroup.ts	15	11
+src/services/talkgroup.ts	15	8
 src/services/userdb.ts	15	11
 src/services/util.ts	7	6
 src/services/ws.ts	51	30

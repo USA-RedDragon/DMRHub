@@ -108,6 +108,7 @@ func GETNetworkFeatures(c *gin.Context) {
 		"ipsc_port":           config.DMR.IPSC.Port,
 		"openbridge_port":     config.DMR.OpenBridge.Port,
 		"server_address":      config.ServerAddress(),
+		"registration":        config.Registration.Mode(),
 		"radio_id_validation": checks.Drift(),
 		"radio_id_checks": gin.H{
 			"user_id":      checks.UserID,

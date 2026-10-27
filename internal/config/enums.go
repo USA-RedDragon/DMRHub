@@ -81,6 +81,18 @@ const (
 	RobotsTXTModeCustom RobotsTXTMode = "custom"
 )
 
+// Registration is who can register.
+type Registration string
+
+const (
+	// RegistrationOpen lets anyone register.
+	RegistrationOpen Registration = "open"
+	// RegistrationInvite lets only a person with an invite register.
+	RegistrationInvite Registration = "invite"
+	// RegistrationClosed lets nobody register.
+	RegistrationClosed Registration = "closed"
+)
+
 // PrivateReach is which radios private traffic reaches.
 type PrivateReach string
 

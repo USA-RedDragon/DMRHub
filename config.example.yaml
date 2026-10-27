@@ -341,5 +341,7 @@ pprof:
 # hibp-api-key: ""
 # Approve new users when they register, so they can log in at once without waiting for an admin
 auto-approve-users: false
+# Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode
+registration: "open"
 # Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes
 login-backoff: false

@@ -8,8 +8,6 @@ When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lis
 
 Then the new user waits for an admin, unless `auto-approve-users` is on. With `auto-approve-users` on, the new user can log in at once.
 
-When SMTP is on, DMRHub sends an email about each new user to each admin that has a confirmed email address. The email has a link to the approval page.
-
 To approve a user:
 
 1. Go to **Admin**, then **User Approvals** (`<siteurl>/admin/users/approval`).
@@ -19,6 +17,22 @@ To approve a user:
 The RadioID.net check shows that the DMR ID and the callsign go together. It does not show that the person who registered holds that callsign. Use your own judgment before you approve a user.
 
 <!-- screenshot: admin-user-approvals.png | /admin/users/approval with one user waiting (N0CALL, 3000001), the Approve button visible -->
+
+## Who can register
+
+`registration` sets who can register:
+
+- `open`: anyone. This is the default.
+- `invite`: only a person with an invite from an admin. A user who registers with an invite can log in at once.
+- `closed`: nobody. The register page refuses each registration.
+
+The first admin can register in any mode.
+
+### Invite a user
+
+When `registration` is `invite`, an admin makes an invite with `POST /api/v1/admin/invites`. The answer has the invite link (`<siteurl>/register#invite=<code>`) and its code. DMRHub shows the code only this one time. Send the link to the person. The link works once, for 7 days.
+
+`GET /api/v1/admin/invites` lists each invite, who made it, and who used it. `DELETE /api/v1/admin/invites/<id>` stops an unused invite.
 
 ## Edit a user
 

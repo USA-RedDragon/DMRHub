@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -59,7 +60,12 @@ const (
 	msgErrFindingUser   = "Error finding user"
 	msgCallsignMismatch = "Callsign does not match DMR ID"
 	msgInvalidJSON      = "JSON data is invalid"
+
+	msgRegistrationClosed = "Registration is closed"
+	msgBadInvite          = "This invite does not work. Ask an admin for a new one."
 )
+
+var errInviteGone = errors.New("the invite was used or expired")
 
 func GETUsers(c *gin.Context) {
 	db, ok := utils.GetPaginatedDB(c)
@@ -96,12 +102,38 @@ func POSTUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	user, ok := registration(c, db, config.DMR.Checks(), config.HIBPAPIKey, config.PasswordSalt)
+	mode := config.Registration.Mode()
+	if mode == configPkg.RegistrationClosed {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: msgRegistrationClosed})
+		return
+	}
+	invited := mode == configPkg.RegistrationInvite
+	user, invite, ok := registration(c, db, config.DMR.Checks(), invited, config.HIBPAPIKey, config.PasswordSalt)
 	if !ok {
 		return
 	}
-	user.Approved = config.AutoApprove
-	if err := db.Create(&user).Error; err != nil {
+	user.Approved = config.AutoApprove || invited
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return fmt.Errorf("could not create user %d: %w", user.ID, err)
+		}
+		if !invited {
+			return nil
+		}
+		used, err := models.UseInvite(tx, invite, user.ID, time.Now())
+		if err != nil {
+			return fmt.Errorf("could not use the invite of user %d: %w", user.ID, err)
+		}
+		if !used {
+			return errInviteGone
+		}
+		return nil
+	})
+	switch {
+	case errors.Is(err, errInviteGone):
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgBadInvite})
+		return
+	case err != nil:
 		slog.Error("Error creating user", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
 		return
@@ -109,7 +141,10 @@ func POSTUser(c *gin.Context) {
 	hubUserChanged(c, user.ID)
 	authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, user.Email)
 	body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, user.Callsign, user.ID)
-	if config.AutoApprove {
+	if invited {
+		body = fmt.Sprintf("A new user has registered with an invite.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, user.Callsign, user.ID)
+	}
+	if user.Approved {
 		c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
 	} else {
 		c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
@@ -134,7 +169,7 @@ func POSTFirstAdmin(c *gin.Context) {
 	if !ok {
 		return
 	}
-	user, ok := registration(c, db, config.DMR.Checks(), config.HIBPAPIKey, config.PasswordSalt)
+	user, _, ok := registration(c, db, config.DMR.Checks(), false, config.HIBPAPIKey, config.PasswordSalt)
 	if !ok {
 		return
 	}
@@ -153,51 +188,64 @@ func POSTFirstAdmin(c *gin.Context) {
 }
 
 // registration checks the registration in the request and returns the
-// user to create, with the password hashed. On a bad registration it
-// answers the request and returns false.
-func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, hibpKey, salt string) (models.User, bool) {
+// user to create, with the password hashed, and the code of its invite.
+// With invited, the registration needs an invite that works. On a bad
+// registration it answers the request and returns false.
+func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, invited bool, hibpKey, salt string) (models.User, string, bool) {
 	var json apimodels.UserRegistration
 	if err := c.ShouldBindJSON(&json); err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
-		return models.User{}, false
+		return models.User{}, "", false
+	}
+	if invited {
+		works, err := models.InviteWorks(db, json.Invite, time.Now())
+		if err != nil {
+			slog.Error("Error checking an invite", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error checking the invite"})
+			return models.User{}, "", false
+		}
+		if !works {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: msgBadInvite})
+			return models.User{}, "", false
+		}
 	}
 	if checks.UserID && !userdb.IsValidUserID(json.DMRId) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if checks.Callsign && !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgCallsignMismatch})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if isValid, errString := json.IsValidUsername(); !isValid {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: errString})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if json.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if utils.ShortPassword(json.Password) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: utils.MsgShortPassword})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	email := strings.TrimSpace(json.Email)
 	if !authctl.CheckEmail(c, email) {
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	taken, err := models.UsernameTaken(db, json.Username, 0)
 	if err != nil {
 		slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if taken {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if !checkUsernameAndCallsign(c, db, json.DMRId, json.Username, json.Callsign) {
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	exists, err := models.UserIDExists(db, json.DMRId)
 	if err == nil && !exists {
@@ -206,21 +254,21 @@ func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, h
 	if err != nil {
 		slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if exists {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is already registered"})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	if status, msg := utils.CheckPwnedPassword(c, hibpKey, json.Password); status != 0 {
 		c.JSON(status, gin.H{errorKey: msg})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	hashedPassword, err := utils.HashPassword(json.Password, salt)
 	if err != nil {
 		slog.Error("Error hashing password", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
-		return models.User{}, false
+		return models.User{}, "", false
 	}
 	return models.User{
 		Username: json.Username,
@@ -228,7 +276,7 @@ func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, h
 		Callsign: strings.ToUpper(json.Callsign),
 		ID:       json.DMRId,
 		Email:    email,
-	}, true
+	}, json.Invite, true
 }
 
 // checkUsernameAndCallsign refuses a username that is the callsign of a

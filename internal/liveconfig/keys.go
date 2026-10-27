@@ -50,6 +50,7 @@ func setupPaths() []string {
 		"network-name",
 		"auto-approve-users",
 		"login-backoff",
+		"registration",
 		"http.robots-txt",
 		"http.canonical-host",
 		"http.session-length",

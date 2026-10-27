@@ -32,20 +32,21 @@ import (
 //
 //go:generate go tool configulator -type Config
 type Config struct {
-	LogLevel     LogLevel `json:"log-level,omitempty" yaml:"log-level,omitempty" name:"log-level" description:"Logging level for the application. One of debug, info, warn, or error" default:"info"`
-	Redis        Redis    `json:"redis,omitempty" name:"redis" description:"Redis configuration for the application"`
-	Database     Database `json:"database,omitempty" name:"database" description:"Database configuration for the application"`
-	Secret       string   `json:"-" yaml:"secret" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters"`
-	PasswordSalt string   `json:"-" yaml:"password-salt" name:"password-salt" description:"Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret"`
-	HTTP         HTTP     `json:"http,omitempty" name:"http" description:"HTTP server configuration for the application"`
-	DMR          DMR      `json:"dmr,omitempty" name:"dmr" description:"DMR server configuration for the application"`
-	SMTP         SMTP     `json:"smtp,omitempty" name:"smtp" description:"SMTP configuration for sending emails"`
-	NetworkName  string   `json:"network-name,omitempty" yaml:"network-name" name:"network-name" description:"Name of the DMR network, shown in the web interface" default:"DMRHub"`
-	Metrics      Metrics  `json:"metrics,omitempty" name:"metrics" description:"Metrics configuration for the application"`
-	PProf        PProf    `json:"pprof,omitempty" name:"pprof" description:"PProf configuration for the application, used for profiling and debugging purposes"`
-	HIBPAPIKey   string   `json:"-" yaml:"hibp-api-key" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
-	AutoApprove  bool     `json:"auto-approve-users,omitempty" yaml:"auto-approve-users" name:"auto-approve-users" description:"Approve new users when they register, so they can log in at once without waiting for an admin"`
-	LoginBackoff bool     `json:"login-backoff" yaml:"login-backoff" name:"login-backoff" description:"Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes" default:"false"`
+	LogLevel     LogLevel     `json:"log-level,omitempty" yaml:"log-level,omitempty" name:"log-level" description:"Logging level for the application. One of debug, info, warn, or error" default:"info"`
+	Redis        Redis        `json:"redis,omitempty" name:"redis" description:"Redis configuration for the application"`
+	Database     Database     `json:"database,omitempty" name:"database" description:"Database configuration for the application"`
+	Secret       string       `json:"-" yaml:"secret" name:"secret" description:"Secret key for the application, used for signing and encryption of the user session. Required; use a random value of at least 15 characters"`
+	PasswordSalt string       `json:"-" yaml:"password-salt" name:"password-salt" description:"Salt used for hashing user passwords. Required; use a random value of at least 15 characters, different from secret"`
+	HTTP         HTTP         `json:"http,omitempty" name:"http" description:"HTTP server configuration for the application"`
+	DMR          DMR          `json:"dmr,omitempty" name:"dmr" description:"DMR server configuration for the application"`
+	SMTP         SMTP         `json:"smtp,omitempty" name:"smtp" description:"SMTP configuration for sending emails"`
+	NetworkName  string       `json:"network-name,omitempty" yaml:"network-name" name:"network-name" description:"Name of the DMR network, shown in the web interface" default:"DMRHub"`
+	Metrics      Metrics      `json:"metrics,omitempty" name:"metrics" description:"Metrics configuration for the application"`
+	PProf        PProf        `json:"pprof,omitempty" name:"pprof" description:"PProf configuration for the application, used for profiling and debugging purposes"`
+	HIBPAPIKey   string       `json:"-" yaml:"hibp-api-key" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
+	AutoApprove  bool         `json:"auto-approve-users,omitempty" yaml:"auto-approve-users" name:"auto-approve-users" description:"Approve new users when they register, so they can log in at once without waiting for an admin"`
+	Registration Registration `json:"registration" yaml:"registration" name:"registration" description:"Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode" default:"open"`
+	LoginBackoff bool         `json:"login-backoff" yaml:"login-backoff" name:"login-backoff" description:"Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes" default:"false"`
 }
 
 // GetDerivedSecret generates a derived secret key using PBKDF2 with the configured secret and password salt.

@@ -24,7 +24,22 @@ import (
 	"time"
 )
 
-const fieldSessionLength = "http.session-length"
+const (
+	fieldSessionLength = "http.session-length"
+	fieldRegistration  = "registration"
+)
+
+// ErrInvalidRegistration indicates a registration mode that is not open,
+// invite or closed.
+var ErrInvalidRegistration = errors.New("registration must be open, invite or closed")
+
+// Mode returns the registration mode, with open for empty.
+func (r Registration) Mode() Registration {
+	if r == "" {
+		return RegistrationOpen
+	}
+	return r
+}
 
 // MinSessionLength is the shortest session length.
 const MinSessionLength = time.Minute
@@ -47,6 +62,11 @@ func (h HTTP) Session() time.Duration {
 func (c Config) accountErrors() (errs []ValidationError) {
 	if c.HTTP.SessionLength != 0 && c.HTTP.SessionLength < MinSessionLength {
 		errs = append(errs, ValidationError{Field: fieldSessionLength, Err: ErrInvalidSessionLength})
+	}
+	switch c.Registration.Mode() {
+	case RegistrationOpen, RegistrationInvite, RegistrationClosed:
+	default:
+		errs = append(errs, ValidationError{Field: fieldRegistration, Err: ErrInvalidRegistration})
 	}
 	return errs
 }

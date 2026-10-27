@@ -32,6 +32,9 @@ type UserRegistration struct {
 	// Email is an optional email address, which stays unverified until
 	// its link is used.
 	Email string `json:"email"`
+	// Invite is the code of the invite of an admin, which registration
+	// needs while it is by invite only.
+	Invite string `json:"invite"`
 }
 
 func (r *UserRegistration) IsValidUsername() (bool, string) {

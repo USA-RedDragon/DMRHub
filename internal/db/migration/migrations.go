@@ -95,5 +95,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_peer_rule_match_migration_202610271400(db, cfg),
 		add_peer_private_calls_migration_202610271410(db, cfg),
 		add_login_failures_migration_202610272100(db, cfg),
+		add_invites_migration_202610272110(db, cfg),
 	}
 }

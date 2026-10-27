@@ -28,6 +28,7 @@ vi.mock('@/services/API', () => ({
 }));
 
 import API from '@/services/API';
+import { takePeerPassword } from '@/lib/peer';
 import NewOpenBridgePeerPage from '@/views/admin/NewOpenBridgePeerPage.vue';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock };
@@ -35,11 +36,13 @@ const mockAPI = API as unknown as { get: Mock; post: Mock };
 const OFF = 'Off: this peer gets every call as AMBE. Codec2 calls are converted before they go to it.';
 const ON = 'On: this peer gets every call in the codec it was sent in. Turn this on only when every network behind the peer can carry Codec2.';
 
+const push = vi.fn();
+
 async function mountPage() {
   mockAPI.get.mockResolvedValue({ data: { users: [{ id: 1000001, callsign: 'N0CALL' }] } });
   const wrapper = mount(NewOpenBridgePeerPage, {
     global: {
-      mocks: { $toast: { add: vi.fn() }, $router: { push: vi.fn() } },
+      mocks: { $toast: { add: vi.fn() }, $router: { push } },
     },
   });
   await flushPromises();
@@ -49,7 +52,6 @@ async function mountPage() {
 describe('NewOpenBridgePeerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -90,4 +92,20 @@ describe('NewOpenBridgePeerPage', () => {
       expect(mockAPI.post).toHaveBeenCalledWith('/peers', expect.objectContaining({ id: 311999, enhanced: false, codec2 }));
     });
   }
+
+  it('opens the page of the new peer with its password, and shows no alert', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    mockAPI.post.mockResolvedValue({ data: { message: 'Peer created', password: 'Ab3dE6gH9jK2.' } });
+    const wrapper = await mountPage();
+    await wrapper.find('select#owner').setValue('1000001');
+    await wrapper.find('#id').setValue('3000');
+    await wrapper.find('#ip').setValue('192.0.2.10');
+    await wrapper.find('#port').setValue('62081');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(alert).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith('/admin/peers/3000');
+    expect(takePeerPassword(3000)).toBe('Ab3dE6gH9jK2.');
+    expect(takePeerPassword(3000)).toBeUndefined();
+  });
 });

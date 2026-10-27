@@ -166,6 +166,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { keepPeerPassword } from '@/lib/peer';
 import API from '@/services/API';
 
 import { useVuelidate } from '@vuelidate/core';
@@ -277,13 +278,8 @@ export default {
               life: 3000,
             });
           } else {
-            window.alert(
-              'Peer Created\n\n'
-              + 'You will need to use this password configuration to connect to the network. '
-              + 'Save this now, as you will not be able to retrieve it again.\n\n'
-              + `Peer password: ${res.data.password}`,
-            );
-            this.$router.push('/admin/peers');
+            keepPeerPassword(numericID, res.data.password);
+            this.$router.push(`/admin/peers/${numericID}`);
           }
         })
         .catch((err) => {

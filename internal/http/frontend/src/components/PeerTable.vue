@@ -54,6 +54,7 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
+import { RouterLink } from 'vue-router';
 
 import API from '@/services/API';
 import { getWebsocketURI } from '@/services/util';
@@ -119,7 +120,10 @@ export default {
         {
           accessorKey: 'id',
           header: 'Peer ID',
-          cell: ({ row }: { row: { original: PeerRow } }) => `${row.original.id}`,
+          cell: ({ row }: { row: { original: PeerRow } }) => h(RouterLink, {
+            to: `/admin/peers/${row.original.id}`,
+            class: 'text-primary underline',
+          }, () => `${row.original.id}`),
         },
         {
           accessorKey: 'last_ping_time',

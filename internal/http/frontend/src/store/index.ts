@@ -37,6 +37,7 @@ interface SettingsState {
   passwordResetEnabled: boolean;
   mmdvmPort: number;
   ipscPort: number;
+  openBridgePort: number;
   serverAddress: string;
   loaded: boolean;
 }
@@ -64,6 +65,7 @@ export const useSettingsStore = defineStore('settings', {
     passwordResetEnabled: false,
     mmdvmPort: 62031,
     ipscPort: 50000,
+    openBridgePort: 62035,
     serverAddress: '',
     loaded: false,
   }),
@@ -79,6 +81,7 @@ export const useSettingsStore = defineStore('settings', {
         this.passwordResetEnabled = res.data?.password_reset ?? false;
         this.mmdvmPort = res.data?.mmdvm_port || 62031;
         this.ipscPort = res.data?.ipsc_port || 50000;
+        this.openBridgePort = res.data?.openbridge_port || 62035;
         this.serverAddress = res.data?.server_address || '';
         this.loaded = true;
       } catch {

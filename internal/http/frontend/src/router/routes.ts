@@ -243,6 +243,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/NewOpenBridgePeerPage.vue'),
     },
     {
+      path: '/admin/peers/:id',
+      name: 'AdminPeer',
+      component: () => import('@/views/admin/OpenBridgePeerPage.vue'),
+    },
+    {
       path: '/admin/users',
       name: 'AdminUsers',
       component: () => import('@/views/admin/UsersPage.vue'),

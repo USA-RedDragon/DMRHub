@@ -147,6 +147,13 @@ describe('PeerTable', () => {
     expect((box.element as HTMLInputElement).disabled).toBe(true);
   });
 
+  it('links each peer to its page', async () => {
+    const { wrapper } = await mountTable(true, false);
+    const link = wrapper.find('a[href="/admin/peers/500001"]');
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toBe('500001');
+  });
+
   it('explains the Codec2 column under the table', async () => {
     const { wrapper } = await mountTable(false, false);
     expect(wrapper.find('[data-test="codec2-hint"]').text()).toBe(

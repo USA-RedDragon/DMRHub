@@ -107,6 +107,8 @@ type Server struct {
 
 	quenched *xsync.Map[quench, time.Time]
 	versions *xsync.Map[uint, peerVersion]
+	pinged   *xsync.Map[uint, time.Time]
+	pings    chan peerPing
 
 	egressOut  chan outMessage
 	eventsOut  chan outMessage
@@ -307,6 +309,8 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		epoch:         time.Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
 		versions:      xsync.NewMap[uint, peerVersion](),
+		pinged:        xsync.NewMap[uint, time.Time](),
+		pings:         make(chan peerPing, pingQueueSize),
 		egressOut:     make(chan outMessage, outboxSize),
 		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
@@ -341,8 +345,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	egress := s.pubsub.Subscribe(egressTopic)
 	s.renewLease(ctx)
-	s.wg.Add(9)
+	s.wg.Add(10)
 	go s.consumeHubPackets()
+	go s.writePings()
 	go s.keepalive()
 	go s.runLease(context.WithoutCancel(ctx))
 	go s.consumeEgress(egress)
@@ -636,6 +641,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
 		return
 	}
+	s.notePing(peerID)
 
 	// Warn if the source IP doesn't match the configured peer IP
 	if peer.IP != "" && remoteAddr != nil && remoteAddr.IP.String() != peer.IP {
@@ -706,6 +712,7 @@ func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, dat
 		if err != nil || !b.verifiedControl(time.Since(s.epoch), data) {
 			continue
 		}
+		s.notePing(p.ID)
 		if control.Command == dmrd.CommandBCSQ {
 			slog.Debug("OpenBridge peer quenched a stream", "peerID", p.ID, "talkgroup", control.TalkGroup, "stream", control.Stream)
 			s.quenchStream(p.ID, uint(control.Stream))

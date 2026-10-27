@@ -148,8 +148,9 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 
 // awaitHandover holds the packets to the peer id, which moves here, until
 // the report of the replica that served it comes or handoverWait passes.
-// Call it before the claim of the peer.
-func (s *IPSCServer) awaitHandover(id uint32) {
+// since is when the packet of the peer that moved it here came. Call it
+// before the claim of the peer.
+func (s *IPSCServer) awaitHandover(id uint32, since time.Time) {
 	sub := s.hub.AwaitHandOver(models.RepeaterTypeIPSC, uint(id))
 	if sub == nil {
 		return
@@ -175,15 +176,18 @@ func (s *IPSCServer) awaitHandover(id uint32) {
 				report = &r
 			}
 		}
-		s.finishHandover(id, report)
+		s.finishHandover(id, since, report)
 	}()
 }
 
 // finishHandover makes the calls to the peer id go on from the state of
 // the report, and sends the peer the packets that the report holds and then
 // those held for it, in order and each once. Packets that come for the
-// peer meanwhile are held too and sent after them.
-func (s *IPSCServer) finishHandover(id uint32, report *handoverReport) {
+// peer meanwhile are held too and sent after them. The packets of the
+// report were due on the grid of the other replica before since, when the
+// peer moved, so they go out as late as they are, and the packets after
+// them keep their time.
+func (s *IPSCServer) finishHandover(id uint32, since time.Time, report *handoverReport) {
 	var batch []models.Packet
 	if report != nil {
 		for _, h := range report.Hangs {
@@ -208,14 +212,19 @@ func (s *IPSCServer) finishHandover(id uint32, report *handoverReport) {
 	if !ok {
 		return
 	}
+	due := since.Add(-time.Duration(len(batch)) * burstTime)
 	for {
 		for _, p := range batch {
 			if m.seen[keyOf(p)] {
 				continue
 			}
 			m.seen[keyOf(p)] = true
-			s.sendTo(id, p)
+			s.sendToDue(id, p, due)
+			if !due.IsZero() {
+				due = due.Add(burstTime)
+			}
 		}
+		due = time.Time{}
 		s.movingMu.Lock()
 		if len(m.held) == 0 {
 			m.done, m.grace = true, time.Now().Add(handedGrace)

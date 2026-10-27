@@ -55,7 +55,7 @@ func TestTheCallHangHoldComesFromTheConfig(t *testing.T) {
 			end := sent[2]
 			require.Equal(t, byte('V'), end.tag)
 
-			p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil)
+			p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 			got := log.next(t, time.Second)
 			assert.Equal(t, byte('d'), got.tag)
 			gap := got.at.Sub(end.at)

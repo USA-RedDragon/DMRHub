@@ -58,6 +58,9 @@ type queuedFrame struct {
 	// state is the state of the translator after the packet, on the last
 	// frame of the packet.
 	state *streamSnapshot
+	// due is when the frame was due on the grid of the replica that
+	// handed it over, or zero.
+	due time.Time
 }
 
 type queuedCall struct {
@@ -109,6 +112,13 @@ func (c *queuedCall) holdEnd(now time.Time, callHold, dataHold time.Duration) ti
 
 func later(a, b time.Time) time.Time {
 	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+func earlier(a, b time.Time) time.Time {
+	if b.Before(a) {
 		return b
 	}
 	return a
@@ -280,7 +290,11 @@ func newPacer(send func(slotKey, []byte), discard func(models.Packet)) *pacer {
 // packet, or at its last CSBK. A CSBK or data header of a new stream joins
 // the call before it when that call ends with the preamble that announces
 // it, so no hold and no bound on the waiting calls splits them.
-func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *streamSnapshot) {
+//
+// due, when set, is when the frame was due on the grid of the replica that
+// handed it over. On an idle slot the grid then starts at due, and the
+// frame goes as late as it is, so the frames after it keep their time.
+func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *streamSnapshot, due time.Time) {
 	b := decodeDataBurst(pkt)
 	var discarded []models.Packet
 	defer func() { p.report(discarded) }()
@@ -326,7 +340,7 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 		return
 	}
 	c.data = c.data || data
-	c.frames = append(c.frames, queuedFrame{frame: frame, pkt: pkt, state: state})
+	c.frames = append(c.frames, queuedFrame{frame: frame, pkt: pkt, state: state, due: due})
 	c.lastSeen = now
 	c.preamble = b != nil && isPreamble(b)
 	if b != nil {
@@ -579,7 +593,12 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 			continue
 		}
 		now := time.Now()
-		if !onGrid || now.Sub(next) > maxPacerLag {
+		switch {
+		case !frame.due.IsZero():
+			if !onGrid {
+				next = earlier(frame.due, now)
+			}
+		case !onGrid || now.Sub(next) > maxPacerLag:
 			next = now
 		}
 		onGrid = true

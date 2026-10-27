@@ -509,7 +509,7 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 				}
 				s.peerJobs.Do(id, func() {
 					if s.hub.OwnerLeaving(ctx, id) {
-						s.awaitHandover(peer)
+						s.awaitHandover(peer, since)
 					}
 					s.hub.ActivateRepeaterSince(ctx, id, since)
 				})
@@ -682,6 +682,12 @@ func (s *IPSCServer) consumeHubPackets() {
 // sendTo sends pkt to the IPSC peer whose ID is repeaterID. Each peer has
 // its own translator, so one stream sent to two peers keeps two states.
 func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
+	s.sendToDue(repeaterID, pkt, time.Time{})
+}
+
+// sendToDue is sendTo for a packet that was due at due on the grid of the
+// replica that handed it over.
+func (s *IPSCServer) sendToDue(repeaterID uint32, pkt models.Packet, due time.Time) {
 	k := slotKey{peer: repeaterID, slot: pkt.Slot}
 	t := s.egressTranslator(repeaterID)
 	frames := t.TranslateToIPSC(pkt)
@@ -698,7 +704,7 @@ func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
 		if i == len(frames)-1 {
 			last = state
 		}
-		s.pacer.enqueue(k, pkt.StreamID, frame, frameEndsCall(frame), pkt, last)
+		s.pacer.enqueue(k, pkt.StreamID, frame, frameEndsCall(frame), pkt, last, due)
 	}
 }
 

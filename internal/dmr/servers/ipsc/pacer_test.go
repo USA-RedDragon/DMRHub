@@ -61,7 +61,7 @@ func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 	k := slotKey{peer: 311860, slot: false}
 	start := time.Now()
 	for range 6 {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil)
+		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 	}
 	for range 6 {
 		<-log.got
@@ -82,12 +82,12 @@ func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 
 	busy := slotKey{peer: 311860, slot: false}
 	for range 20 {
-		p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil)
+		p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 	}
 	<-log.got
 	for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
 		start := time.Now()
-		p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil)
+		p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil, time.Time{})
 		for got := range log.got {
 			if got == k {
 				break
@@ -108,7 +108,7 @@ func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 	for range 20 {
 		time.Sleep(burstTime)
 		at := time.Now()
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil)
+		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 		<-log.got
 		last = at
 	}
@@ -140,7 +140,7 @@ func TestPacerKeepsTheGridAfterALateBurst(t *testing.T) {
 
 	k := slotKey{peer: 311860, slot: false}
 	for range n {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil)
+		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 	}
 	for range n {
 		<-got
@@ -169,7 +169,7 @@ func TestPacerQueuesEveryBurst(t *testing.T) {
 	k := slotKey{peer: 311860, slot: false}
 	const n = 5000
 	for range n {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil)
+		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 	}
 	require.Eventually(t, func() bool { return started.Load() == 1 }, time.Second, time.Millisecond)
 	assert.Equal(t, n-1, p.queued(), "bursts waiting behind the one being sent")
@@ -195,11 +195,11 @@ func TestPacerQueuesASecondCallBehindTheFirst(t *testing.T) {
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: false}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil)
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{}, nil)
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil)
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil)
-	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{}, nil)
+	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
+	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{}, nil, time.Time{})
+	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
+	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
+	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{}, nil, time.Time{})
 	for range 5 {
 		<-log.got
 	}
@@ -215,10 +215,10 @@ func TestPacerStartsTheNextCallAfterALostTerminator(t *testing.T) {
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: true}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil)
+	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
 	<-log.got
 	start := time.Now()
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil)
+	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
 	select {
 	case <-log.got:
 	case <-time.After(callHang + time.Second):
@@ -242,13 +242,13 @@ func TestPacerDiscardsACallThatWaitedTooLong(t *testing.T) {
 	p.now = func() time.Time { return time.Now().Add(time.Duration(offset.Load())) }
 
 	k := slotKey{peer: 311860, slot: false}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil)
+	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil, time.Time{})
 	<-log.got
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil)
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{StreamID: 2}, nil)
+	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
+	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{StreamID: 2}, nil, time.Time{})
 	offset.Store(int64(maxCallWait + time.Second))
-	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{StreamID: 1}, nil)
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil)
+	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{StreamID: 1}, nil, time.Time{})
+	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
 	<-log.got
 	select {
 	case <-log.got:

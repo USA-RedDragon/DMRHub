@@ -63,7 +63,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeer(t *testing.T) {
 				hearVoiceCall(p, k, true)
 				end := clock.now()
 				clock.advance(after)
-				p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, dt), nil)
+				p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, dt), nil, time.Time{})
 				log.none(t, "a data or CSBK call went out in the call hang of the peer")
 				clock.advance(callHangHold - after)
 				got := log.next(t, time.Second)
@@ -83,7 +83,7 @@ func TestPacerSendsDataAfterTheHangOfThePeer(t *testing.T) {
 	k := slotKey{peer: 311860, slot: false}
 	hearVoiceCall(p, k, true)
 	clock.advance(callHangHold)
-	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil)
+	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	assert.Equal(t, byte('d'), log.next(t, 200*time.Millisecond).tag)
 }
 
@@ -98,7 +98,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeerWithoutItsTerminator(t *testing
 	hearVoiceCall(p, k, false)
 	last := clock.now()
 	clock.advance(time.Second)
-	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil)
+	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in a voice call of the peer")
 	clock.advance(callHang)
 	log.none(t, "a data call went out in the call hang of the peer")
@@ -119,7 +119,7 @@ func TestPacerHoldsDataAfterADataCallFromThePeer(t *testing.T) {
 	}
 	end := clock.now()
 	clock.advance(500 * time.Millisecond)
-	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil)
+	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in the data hang of the peer")
 	clock.advance(dataHangHold - 500*time.Millisecond)
 	got := log.next(t, time.Second)
@@ -135,11 +135,11 @@ func TestPacerHangOfThePeerHoldsOnlyDataOnItsSlot(t *testing.T) {
 	p, _, log, _ := newHangPacer(t)
 	held := slotKey{peer: 311860, slot: false}
 	hearVoiceCall(p, held, true)
-	p.enqueue(held, 2, []byte{'v'}, false, voiceBurst(2), nil)
+	p.enqueue(held, 2, []byte{'v'}, false, voiceBurst(2), nil, time.Time{})
 	assert.Equal(t, held, log.next(t, 100*time.Millisecond).key)
 	for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
 		stream := uint(10 + i)
-		p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil)
+		p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil, time.Time{})
 		assert.Equal(t, k, log.next(t, 100*time.Millisecond).key)
 	}
 }
@@ -172,7 +172,7 @@ func TestServerHoldsDataAfterAnXPRVoiceCall(t *testing.T) {
 	}
 	u := decodeUserT(t, call[0])
 	k := slotKey{peer: u.ID, slot: u.Info.Slot() == enums.Slot2}
-	p.enqueue(k, 99, []byte{'d'}, false, dataSync(99, enums.DataTypeDataHeader), nil)
+	p.enqueue(k, 99, []byte{'d'}, false, dataSync(99, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "data went out in the call hang of the repeater")
 	clock.advance(callHangHold)
 	assert.Equal(t, byte('d'), log.next(t, time.Second).tag)
@@ -191,7 +191,7 @@ func TestPacerHoldsDataAfterADataCallFromThePeerWithoutItsLastBlock(t *testing.T
 		p.heard(k, smsPacketOf(1, raw))
 	}
 	last := clock.now()
-	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil)
+	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in a data call of the peer")
 	clock.advance(callHang)
 	log.none(t, "a data call went out in the data hang of the peer")

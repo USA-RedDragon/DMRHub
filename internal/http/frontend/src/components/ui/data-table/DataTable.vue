@@ -164,19 +164,20 @@ const visibleRows = computed(() => {
         <TableRow v-else-if="visibleRows.length === 0">
           <TableCell :colspan="columns.length" class="text-center">{{ emptyText }}</TableCell>
         </TableRow>
-        <TableRow
-          v-for="row in visibleRows"
-          :key="row.id"
-          :class="rowClickable ? 'cursor-pointer' : undefined"
-          :tabindex="rowClickable ? 0 : undefined"
-          :data-state="rowSelected && rowSelected(row.original) ? 'selected' : undefined"
-          @click="onRowClick($event, row.original)"
-          @keydown="onRowKeydown($event, row.original)"
-        >
-          <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-            <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-          </TableCell>
-        </TableRow>
+        <template v-for="row in visibleRows" :key="row.id">
+          <TableRow
+            :class="rowClickable ? 'cursor-pointer' : undefined"
+            :tabindex="rowClickable ? 0 : undefined"
+            :data-state="rowSelected && rowSelected(row.original) ? 'selected' : undefined"
+            @click="onRowClick($event, row.original)"
+            @keydown="onRowKeydown($event, row.original)"
+          >
+            <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+            </TableCell>
+          </TableRow>
+          <slot name="after-row" :row="row.original" :colspan="columns.length" />
+        </template>
       </TableBody>
     </Table>
 

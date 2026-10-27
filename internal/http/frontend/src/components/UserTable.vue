@@ -32,7 +32,24 @@
     :page-count="totalPages"
     @update:page-index="handlePageIndexUpdate"
     @update:page-size="handlePageSizeUpdate"
-  />
+  >
+    <template #after-row="{ row, colspan }">
+      <TableRow v-if="(row as UserRow).radioIDCallsign !== undefined" class="bg-warn-bg text-warn-fg hover:bg-warn-bg" data-test="user-radioid-prompt">
+        <TableCell :colspan="colspan" class="whitespace-normal">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span v-if="(row as UserRow).radioIDCallsign">RadioID lists {{ (row as UserRow).id }} as <b>{{ (row as UserRow).radioIDCallsign }}</b>.</span>
+            <span v-else>RadioID does not list {{ (row as UserRow).id }}.</span>
+            <span class="flex gap-2">
+              <ShadButton variant="outline" size="sm" type="button" @click="cancelEditingUser(row as UserRow)">Cancel</ShadButton>
+              <ShadButton size="sm" type="button" data-test="user-radioid-override" @click="finishEditingUser(row as UserRow, true)">
+                Save {{ (row as UserRow).callsign.toUpperCase() }} anyway
+              </ShadButton>
+            </span>
+          </div>
+        </TableCell>
+      </TableRow>
+    </template>
+  </DataTable>
   <ResetPasswordDialog
     v-if="resetting"
     v-model:open="resetOpen"
@@ -46,6 +63,8 @@ import type { ColumnDef } from '@tanstack/vue-table';
 import { h, type RendererElement } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
+import { Button as ShadButton } from '@/components/ui/button';
+import { TableCell, TableRow } from '@/components/ui/table';
 
 import { format, formatDistanceToNowStrict } from 'date-fns';
 
@@ -56,6 +75,7 @@ import API from '@/services/API';
 import { buttonVariants } from '@/components/ui/button';
 import RelativeTimestamp from './RelativeTimestamp.vue';
 import ResetPasswordDialog from './users/ResetPasswordDialog.vue';
+import { radioIDMismatch } from '@/services/radioid';
 
 type UserRow = {
   id: number;
@@ -67,6 +87,7 @@ type UserRow = {
   repeaters: number;
   created_at: string | Date;
   editing: boolean;
+  radioIDCallsign?: string;
 };
 
 export default {
@@ -77,6 +98,9 @@ export default {
   components: {
     DataTable,
     ResetPasswordDialog,
+    ShadButton,
+    TableCell,
+    TableRow,
   },
   data: function() {
     return {
@@ -290,13 +314,14 @@ export default {
         }
       }
     },
-    finishEditingUser(user: UserRow) {
-      // Send PATCH
-      API.patch(`/users/${user.id}`, {
-        callsign: user.callsign,
-        username: user.username,
-      })
+    finishEditingUser(user: UserRow, override = false) {
+      const patch: Record<string, unknown> = { callsign: user.callsign, username: user.username };
+      if (override) {
+        patch.override_radio_id = true;
+      }
+      API.patch(`/users/${user.id}`, patch)
         .then(() => {
+          user.radioIDCallsign = undefined;
           for (let i = 0; i < this.users.length; i++) {
             const u = this.users[i];
             if (u && u.id === user.id) {
@@ -313,6 +338,11 @@ export default {
           this.fetchData();
         })
         .catch((err) => {
+          const listed = radioIDMismatch(err);
+          if (listed !== null && !override) {
+            user.radioIDCallsign = listed;
+            return;
+          }
           console.error(err);
           this.$toast.add({
             severity: 'error',
@@ -324,6 +354,7 @@ export default {
     },
     cancelEditingUser(user: UserRow) {
       user.editing = false;
+      user.radioIDCallsign = undefined;
       this.fetchData(this.page, this.rows);
     },
     deleteUser(user: UserRow) {
@@ -383,6 +414,9 @@ export default {
                 onClick,
               }, label);
             };
+            if (user.radioIDCallsign !== undefined) {
+              return null;
+            }
             return h('div', { class: 'flex gap-2' }, [
               !user.editing
                 ? actionButton('Edit', () => this.editUser(user.id))

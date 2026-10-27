@@ -35,7 +35,9 @@ On the **Modem** tab:
 - The pill in the header of the **Modem** card shows the live state of the modem, from the replica that drives it.
 - **Test the modem** opens the serial port with the settings on the form, asks the board for its firmware, and sends it the frequencies and the settings. It saves nothing. It shows the firmware, the protocol, the modes of the board, and whether the board took the frequencies and the settings. While the modem runs on that port, the test does not open the port and shows the live state instead.
 
-If the board does not answer, check the port and its speed, and that no other program, such as MMDVMHost, uses the port. The test runs on the replica that answers the page; the list of ports is also of that replica.
+If the board does not answer, check the port and its speed, and that no other program, such as MMDVMHost, uses the port.
+
+With more than one replica, the list shows the ports of each replica, under the name of the replica. The test runs on the replica of the port that you choose. For a path that you type, choose its replica next to the path. If that replica does not answer in time, the test says so.
 
 ## Limits
 

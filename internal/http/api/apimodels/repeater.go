@@ -19,7 +19,11 @@
 
 package apimodels
 
-import "github.com/USA-RedDragon/DMRHub/internal/db/models"
+import (
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+)
 
 type RepeaterPost struct {
 	RadioID         uint   `json:"id" binding:"required"`
@@ -50,4 +54,12 @@ type RepeaterPatch struct {
 	// "codec2" or "ambe".
 	TS1Codec *string `json:"ts1_codec"`
 	TS2Codec *string `json:"ts2_codec"`
+}
+
+// RepeaterRotatePasswordResponse is the answer to a rotation of the password
+// of a repeater: the new password, or the new auth key of an IPSC
+// repeater, and when the old one stopped working.
+type RepeaterRotatePasswordResponse struct {
+	Password  string    `json:"password"`
+	RotatedAt time.Time `json:"rotated_at"`
 }

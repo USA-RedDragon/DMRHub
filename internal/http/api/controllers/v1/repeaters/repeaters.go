@@ -29,6 +29,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -54,6 +55,7 @@ const (
 	msgErrGettingRepeaters = "Error getting repeaters"
 	keyRepeaters           = "repeaters"
 	keyTotal               = "total"
+	msgNoRepeater          = "Repeater does not exist"
 )
 
 const (
@@ -413,24 +415,11 @@ func POSTRepeater(c *gin.Context) {
 		repeater.Owner = user
 		repeater.OwnerID = user.ID
 
-		switch json.Type {
-		case models.RepeaterTypeIPSC:
-			// Generate a random hex auth key (20 bytes = 40 hex chars) for IPSC HMAC-SHA1
-			const ipscKeyLen = 40
-			repeater.Password, err = utils.RandomHexString(ipscKeyLen)
-			if err != nil {
-				slog.Error("Failed to generate an IPSC auth key", "error", err)
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate an IPSC auth key"})
-				return
-			}
-
-		case models.RepeaterTypeMMDVM:
-			repeater.Password, err = utils.NewRepeaterPassword()
-			if err != nil {
-				slog.Error("Failed to generate a repeater password", "error", err)
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate a repeater password"})
-				return
-			}
+		repeater.Password, err = newSecret(json.Type)
+		if err != nil {
+			slog.Error("Failed to generate a repeater password", "type", json.Type, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Failed to generate a repeater password"})
+			return
 		}
 
 		switch {
@@ -524,6 +513,87 @@ func POSTRepeater(c *gin.Context) {
 		publishOwnerChanged(c, repeater.OwnerID)
 		c.JSON(http.StatusOK, gin.H{messageKey: "Repeater created", "password": repeater.Password})
 	}
+}
+
+var errNoSecret = errors.New("this type of repeater has no password")
+
+// newSecret returns a new random password for a repeater of type kind: 40
+// hex digits, the 20-octet HMAC-SHA1 key, for IPSC, and 12 letters and
+// digits for MMDVM.
+func newSecret(kind string) (string, error) {
+	switch kind {
+	case models.RepeaterTypeIPSC:
+		const ipscKeyLen = 40
+		key, err := utils.RandomHexString(ipscKeyLen)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate an IPSC auth key: %w", err)
+		}
+		return key, nil
+	case models.RepeaterTypeMMDVM:
+		password, err := utils.NewRepeaterPassword()
+		if err != nil {
+			return "", fmt.Errorf("failed to generate a repeater password: %w", err)
+		}
+		return password, nil
+	}
+	return "", errNoSecret
+}
+
+// POSTRepeaterRotatePassword gives the repeater a new random password, or a
+// new auth key for IPSC, in place of the old one, which stops working at
+// once: every replica ends the sessions that logged in with it. The
+// response holds the new secret, which DMRHub does not show again. Only a
+// signed-in owner or admin may rotate it, not an app with a token.
+func POSTRepeaterRotatePassword(c *gin.Context) {
+	if utils.ViaToken(c) {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: "Sign in to rotate the password of a repeater"})
+		return
+	}
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	repeaterID, err := validateRepeaterID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
+		return
+	}
+	var repeater models.Repeater
+	if err := db.Select("id", "type").First(&repeater, repeaterID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{errorKey: msgNoRepeater})
+			return
+		}
+		slog.Error(msgErrGettingRepeater, "function", "POSTRepeaterRotatePassword", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	secret, err := newSecret(repeater.Type)
+	if errors.Is(err, errNoSecret) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "This repeater has no password"})
+		return
+	}
+	if err != nil {
+		slog.Error("Failed to generate a repeater password", "repeaterID", repeaterID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	switch err := models.SetRepeaterPassword(db, repeaterID, secret); {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgNoRepeater})
+		return
+	case err != nil:
+		slog.Error(msgErrSavingRepeater, "function", "POSTRepeaterRotatePassword", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingRepeater})
+		return
+	}
+	rotatedAt := time.Now()
+	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
+		dmrHub.ReloadRepeater(c.Request.Context(), repeaterID)
+		dmrHub.RepeaterSecretChanged(repeaterID)
+	}
+	slog.Info("Repeater password rotated", "repeaterID", repeaterID, "by", sessions.Default(c).Get("user_id"))
+	c.JSON(http.StatusOK, apimodels.RepeaterRotatePasswordResponse{Password: secret, RotatedAt: rotatedAt})
 }
 
 func POSTRepeaterLink(c *gin.Context) {
@@ -996,7 +1066,7 @@ func POSTRepeaterOwner(c *gin.Context) {
 	}
 	switch err := models.AssignRepeaterOwner(db, uint(id), user.ID); {
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		c.JSON(http.StatusNotFound, gin.H{errorKey: "Repeater does not exist"})
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgNoRepeater})
 		return
 	case errors.Is(err, models.ErrRepeaterHasOwner):
 		c.JSON(http.StatusConflict, gin.H{errorKey: "Repeater already has an owner"})

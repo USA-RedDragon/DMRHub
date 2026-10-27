@@ -1,6 +1,6 @@
 # Building from Source
 
-This page tells how to build DMRHub and its plugins from source, and how to run the tests. To install a release instead, see the [Deployment Guide](Deployment-Guide.md).
+This page tells how to build DMRHub and its plugins from source, and how to run the tests. To install a release instead, see [Install DMRHub](admin/install.md).
 
 ## Prerequisites
 
@@ -92,7 +92,7 @@ The race tests in CI need cgo, so they use the Codec2 tag:
 go test -tags codec2wasm -timeout 30m -race ./...
 ```
 
-`make stress` runs the stress battery in `hack/stress.sh`. The top of that script lists its settings. See [Stress results](stress-results.md) for the results.
+`make stress` runs the stress battery in `hack/stress.sh`. The top of that script lists its settings. See [Stress results](admin/stress-results.md) for the results.
 
 ## Change the plugin protocol
 

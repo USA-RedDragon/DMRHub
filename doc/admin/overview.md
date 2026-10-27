@@ -2,7 +2,7 @@
 
 This section is for the admins of a DMRHub network, and for the person who runs the server. In these pages, `<siteurl>` is the web address of your DMRHub server.
 
-To install DMRHub, see [Install DMRHub](install.md). For the walkthrough from the install to the first call, see [Set up a DMRHub server](../setup.md).
+To install DMRHub, see [Install DMRHub](install.md).
 
 ## Admins and the super admin
 

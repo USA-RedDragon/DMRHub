@@ -1,6 +1,6 @@
 # Install DMRHub
 
-This page lists the ways to install and run DMRHub, and the ports that it uses. For a step-by-step walkthrough from the install to the first call, see [Set up a DMRHub server](../setup.md).
+This page lists the ways to install and run DMRHub, and the ports that it uses. For a ham who wants to use a DMRHub network, see [Get started](../getting-started.md).
 
 ## What you need
 

@@ -52,7 +52,7 @@ DMRHub is a static Go binary, so it needs no external libraries at run time. It 
 - **PostgreSQL** (16): a dedicated database server.
 - **MySQL** (8.4) and **MariaDB** (12.3).
 
-See [Supported Databases](Configuration.md#supported-databases) and the MySQL settings in the [Configuration Guide](Configuration.md#mysql-and-mariadb).
+See [Supported Databases](admin/configuration.md#supported-databases) and the MySQL settings in [Configuration](admin/configuration.md#mysql-and-mariadb).
 
 ### Is Redis required?
 
@@ -60,4 +60,4 @@ No. Redis is optional and off by default. Without it, DMRHub uses an in-memory p
 
 ### How does the first setup work?
 
-When DMRHub starts and the configuration is not valid, no admin exists yet, or the database cannot be reached, it starts a setup wizard in your web browser. The wizard fixes the database settings if needed, saves the other settings in the database and makes the first admin user. DMRHub makes its own secret and password salt when you set none. See the [Configuration guide](Configuration.md).
+When DMRHub starts and the configuration is not valid, no admin exists yet, or the database cannot be reached, it starts a setup wizard in your web browser. The wizard fixes the database settings if needed, saves the other settings in the database and makes the first admin user. DMRHub makes its own secret and password salt when you set none. See [Configuration](admin/configuration.md).

@@ -46,7 +46,7 @@
             <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/User-Guide.md" target="_blank">DMRHub User's Guide</a>
           </li>
           <li>
-            <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/Admin-Guide.md" target="_blank">
+            <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/overview.md" target="_blank">
               DMRHub Admin's Guide</a>
           </li>
         </ul>

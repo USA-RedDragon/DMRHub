@@ -34,4 +34,10 @@ describe('MainPage', () => {
     expect(text).toContain('Talkgroup 4000 unlinks');
     expect(text).not.toContain('DMRHub implements a Parrot');
   });
+
+  it('links the admin guide where it is in the repository', () => {
+    const hrefs = mount(MainPage).findAll('a').map((a) => a.attributes('href'));
+    expect(hrefs).toContain('https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/overview.md');
+    expect(hrefs.filter((h) => h?.includes('Admin-Guide.md'))).toEqual([]);
+  });
 });

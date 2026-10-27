@@ -492,6 +492,33 @@ func TestARegisteringRadioThatIsHeardGetsOneRequest(t *testing.T) {
 	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
 }
 
+// TestARadioThatIsHeardBeforeItsRegistrationIsAskedAgainLater hears a
+// tracked radio just before its registration comes, as when the notice
+// that the hub heard it comes ahead of its data on another path. The
+// Locator must not take the radio for silent then and spend the one ask
+// that it has for a silent radio, so that it still asks the radio again
+// once its request goes silent and it is heard.
+func TestARadioThatIsHeardBeforeItsRegistrationIsAskedAgainLater(t *testing.T) {
+	t.Parallel()
+	l, o := newLocator(t)
+	track(l, 1)
+	time.Sleep(1500 * time.Millisecond)
+	l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3})
+	time.Sleep(100 * time.Millisecond)
+	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+	got := waitAnswers(t, o, 2)
+	require.NotNil(t, got[0].ars, "the ack comes first")
+	n := len(got)
+	stop := make(chan struct{})
+	defer close(stop)
+	go heardOften(l, stop)
+	require.Eventually(t, func() bool { return len(answers(t, o.sent())) >= n+2 }, 10*time.Second, 50*time.Millisecond,
+		"the silent radio that is heard is not asked again")
+	got = answers(t, o.sent())
+	assert.Equal(t, lrrp.DocumentStopRequest, got[n].lrrp.Document, "the silent request is stopped")
+	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[n+1].lrrp.Document)
+}
+
 func TestARadioIsAskedFromTheIDItRegisteredWith(t *testing.T) {
 	t.Parallel()
 	l, o := newLocator(t)

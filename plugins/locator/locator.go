@@ -60,6 +60,11 @@ const (
 	// alone, so that it does not ask a radio whose registration is still
 	// coming in.
 	settle = 5 * time.Second
+	// heardGrace is how long after it first hears a radio with no open
+	// request the Locator waits before it asks it. The notice that the hub
+	// heard a radio and the data that the radio sent come on two paths,
+	// so the data, such as a registration, can come after the notice.
+	heardGrace = time.Second
 	// stopAgain is how long the Locator waits before it asks a radio that
 	// is not tracked to stop reporting again.
 	stopAgain = 10 * time.Minute
@@ -94,9 +99,12 @@ type radio struct {
 	tracked  bool
 	interval time.Duration
 	heard    time.Time
-	slot     uint32
-	cc       enums.ColorCode
-	req      *request
+	// firstHeard is when the Locator heard the radio after it had not
+	// heard it for heardExpiry.
+	firstHeard time.Time
+	slot       uint32
+	cc         enums.ColorCode
+	req        *request
 	// service is the ID the radio last sent data to.
 	service uint32
 	lastPos time.Time
@@ -288,6 +296,9 @@ func (l *Locator) Heard(h *pluginv1.Heard) {
 	l.mu.Lock()
 	defer l.unlock()
 	r := l.radio(h.GetRadio())
+	if now := time.Now(); r.heard.IsZero() || now.Sub(r.heard) > heardExpiry {
+		r.firstHeard = now
+	}
 	r.heard, r.slot, r.cc = time.Now(), h.GetSlot(), enums.ColorCode(h.GetColorCode()&0xF) //nolint:gosec // masked to 4 bits
 }
 
@@ -561,7 +572,7 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 // sent data to, else from the Locator's first ID.
 func (l *Locator) askHeard() {
 	for id, r := range l.radios {
-		if !r.tracked || r.retried || r.heard.IsZero() || time.Since(r.heard) > heardExpiry || (r.req == nil && l.busy(id)) {
+		if !r.tracked || r.retried || r.heard.IsZero() || time.Since(r.heard) > heardExpiry || (r.req == nil && (l.busy(id) || time.Since(r.firstHeard) < heardGrace)) {
 			continue
 		}
 		if r.req != nil {
@@ -738,7 +749,7 @@ func (l *Locator) askAt() (time.Time, bool) {
 		}
 		t := now
 		if r.req == nil {
-			t = later(t, l.settled(id))
+			t = later(later(t, l.settled(id)), r.firstHeard.Add(heardGrace))
 		} else {
 			interval := min(max(r.req.interval, time.Second), maxInterval)
 			if !r.heard.After(r.req.sentAt.Add(interval)) {

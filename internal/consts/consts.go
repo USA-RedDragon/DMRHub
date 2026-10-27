@@ -28,5 +28,10 @@ const MaxIdleTime = 10 * time.Minute
 // also returns at the deadline of its context, when that is sooner.
 const RedisTimeout = time.Second
 
+// RedisCallTimeout bounds a whole call to the Redis key-value store, its
+// retries included. A call also returns at the deadline of its context, when
+// that is sooner.
+const RedisCallTimeout = time.Second
+
 // RedisDialTimeout bounds a new connection to Redis.
 const RedisDialTimeout = 2 * time.Second

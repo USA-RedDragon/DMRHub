@@ -35,8 +35,8 @@ import (
 
 // TestRedisCallsAreBoundedWhenRedisHangs pauses the Redis container, so
 // that it takes connections and never answers. A call must return by the
-// deadline of its context, and a call without one within the timeouts of
-// the client.
+// deadline of its context, and a call without one within the call timeout,
+// even when the pool has enough ready connections for every retry.
 func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -47,6 +47,7 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	require.NoError(t, store.Set(t.Context(), "hang", []byte{1}))
+	require.NoError(t, kv.FillRedisPool(t.Context(), store))
 
 	docker := func(args ...string) {
 		out, err := exec.Command("docker", args...).CombinedOutput() //nolint:gosec,noctx

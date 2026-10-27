@@ -45,6 +45,7 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 		WriteTimeout:          consts.RedisTimeout,
 		ContextTimeoutEnabled: true,
 	})
+	client.AddHook(callTimeoutHook{timeout: consts.RedisCallTimeout})
 
 	if _, err := client.Ping(ctx).Result(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
@@ -60,6 +61,31 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 	}
 
 	return &redisKV{client: client}, nil
+}
+
+// callTimeoutHook gives each call a deadline that its retries share. go-redis
+// retries a read that timed out, so ReadTimeout alone lets a call to a hung
+// Redis run for MaxRetries+1 read timeouts.
+type callTimeoutHook struct {
+	timeout time.Duration
+}
+
+func (callTimeoutHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h callTimeoutHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		ctx, cancel := context.WithTimeout(ctx, h.timeout)
+		defer cancel()
+		return next(ctx, cmd)
+	}
+}
+
+func (h callTimeoutHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		ctx, cancel := context.WithTimeout(ctx, h.timeout)
+		defer cancel()
+		return next(ctx, cmds)
+	}
 }
 
 type redisKV struct {

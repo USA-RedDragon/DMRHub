@@ -39,6 +39,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const maxInfoAllocs = 400
+
 type webTransportInfo struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
@@ -49,7 +51,7 @@ type webTransportInfo struct {
 	} `json:"certificate_hashes"`
 }
 
-func getWebTransportInfo(t *testing.T, enabled bool) (webTransportInfo, *httptest.ResponseRecorder, *config.Config) {
+func webTransportRouter(t *testing.T, enabled bool) (http.Handler, *config.Config) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -68,15 +70,37 @@ func getWebTransportInfo(t *testing.T, enabled bool) (webTransportInfo, *httptes
 	require.NoError(t, err)
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	r := internalhttp.CreateRouter(context.Background(), &cfg, nil, database, ps, ready, nil, "test", "test")
+	return internalhttp.CreateRouter(context.Background(), &cfg, nil, database, ps, ready, nil, "test", "test"), &cfg
+}
+
+func askWebTransportInfo(t *testing.T, r http.Handler) *httptest.ResponseRecorder {
+	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/network/webtransport", nil)
 	require.NoError(t, err)
 	req.Header.Set("Origin", "https://radio.example")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
+	return w
+}
+
+func getWebTransportInfo(t *testing.T, enabled bool) (webTransportInfo, *httptest.ResponseRecorder, *config.Config) {
+	t.Helper()
+	r, cfg := webTransportRouter(t, enabled)
+	w := askWebTransportInfo(t, r)
 	var info webTransportInfo
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &info), w.Body.String())
-	return info, w, &cfg
+	return info, w, cfg
+}
+
+// TestWebTransportInfoMakesNoCertificatePerRequest asks for the endpoint
+// many times. The route is public, so it must reuse the certificates that
+// it made, and not make and sign them again for each request.
+func TestWebTransportInfoMakesNoCertificatePerRequest(t *testing.T) { //nolint:paralleltest // AllocsPerRun counts the allocations of every test that runs
+	r, _ := webTransportRouter(t, true)
+	require.Equal(t, http.StatusOK, askWebTransportInfo(t, r).Code)
+	allocs := testing.AllocsPerRun(20, func() { askWebTransportInfo(t, r) })
+	t.Logf("%.0f allocations a request", allocs)
+	assert.Less(t, allocs, float64(maxInfoAllocs), "each request makes the certificates again")
 }
 
 func TestWebTransportInfoNamesTheListenerAndItsCertificates(t *testing.T) {

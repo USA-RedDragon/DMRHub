@@ -83,12 +83,35 @@ type owned struct {
 // It reads the files once, so that a listener with files that are not a
 // key pair does not start.
 func New(secret []byte, certFile, keyFile string) (*Source, error) {
-	s := &Source{secret: secret, certFile: certFile, keyFile: keyFile, own: map[int64]owned{}, now: time.Now}
+	s := &Source{secret: append([]byte(nil), secret...), certFile: certFile, keyFile: keyFile, own: map[int64]owned{}, now: time.Now}
 	if s.Files() {
 		if _, err := s.reload(); err != nil {
 			return nil, err
 		}
 	}
+	return s, nil
+}
+
+var (
+	sharedMu sync.Mutex //nolint:gochecknoglobals // guards shared
+	shared   *Source    //nolint:gochecknoglobals // the Source that Shared returns
+)
+
+// Shared returns the Source for secret and the certificate and key files,
+// as New does, but returns the same Source again while they stay the same,
+// so that the listener and the public route that publishes its hashes make
+// each certificate of their own once.
+func Shared(secret []byte, certFile, keyFile string) (*Source, error) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if s := shared; s != nil && hmac.Equal(s.secret, secret) && s.certFile == certFile && s.keyFile == keyFile {
+		return s, nil
+	}
+	s, err := New(secret, certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	shared = s
 	return s, nil
 }
 

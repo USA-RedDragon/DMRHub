@@ -63,7 +63,7 @@ func GETNetworkWebTransport(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"enabled": false})
 		return
 	}
-	certs, err := wtcert.New(config.GetDerivedSecret(), wt.CertFile, wt.KeyFile)
+	certs, err := wtcert.Shared(config.GetDerivedSecret(), wt.CertFile, wt.KeyFile)
 	var hashes [][sha256.Size]byte
 	if err == nil {
 		hashes, err = certs.Hashes()

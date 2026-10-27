@@ -143,7 +143,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 
 	var wt *webTransport
 	if c := config.DMR.MMDVM.WebTransport; c.Enabled {
-		certs, err := wtcert.New(config.GetDerivedSecret(), c.CertFile, c.KeyFile)
+		certs, err := wtcert.Shared(config.GetDerivedSecret(), c.CertFile, c.KeyFile)
 		if err != nil {
 			_ = server.Close()
 			return Server{}, fmt.Errorf("WebTransport certificate: %w", err)

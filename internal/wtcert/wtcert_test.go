@@ -134,3 +134,20 @@ func TestFilesThatAreNotAPairDoNotStart(t *testing.T) {
 	_, err := New(nil, filepath.Join(dir, "missing.crt"), filepath.Join(dir, "missing.key"))
 	assert.Error(t, err)
 }
+
+func TestSharedReusesTheSource(t *testing.T) {
+	t.Parallel()
+	a, err := Shared([]byte("shared secret one"), "", "")
+	require.NoError(t, err)
+	b, err := Shared([]byte("shared secret one"), "", "")
+	require.NoError(t, err)
+	assert.Same(t, a, b, "the same settings get the same Source")
+	c, err := Shared([]byte("shared secret two"), "", "")
+	require.NoError(t, err)
+	assert.NotSame(t, a, c, "another secret gets its own Source")
+	ha, err := a.Hashes()
+	require.NoError(t, err)
+	hc, err := c.Hashes()
+	require.NoError(t, err)
+	assert.NotEqual(t, ha, hc)
+}

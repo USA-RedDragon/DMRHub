@@ -23,7 +23,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -55,10 +54,10 @@ func TestRoutePacketUnlink(t *testing.T) {
 	h.RoutePacket(context.Background(), unlinkPkt, models.RepeaterTypeMMDVM)
 
 	// Verify the dynamic talkgroup was cleared
-	assert.Eventually(t, func() bool {
-		rpt, err := models.FindRepeaterByID(database, 100001)
-		return err == nil && rpt.TS1DynamicTalkgroupID == nil
-	}, 2*time.Second, 10*time.Millisecond, "expected TS1 dynamic talkgroup to be unlinked")
+	settle(t, h, unlinkPkt, models.RepeaterTypeMMDVM)
+	rpt, err := models.FindRepeaterByID(database, 100001)
+	require.NoError(t, err)
+	assert.Nil(t, rpt.TS1DynamicTalkgroupID, "expected TS1 dynamic talkgroup to be unlinked")
 }
 
 func TestRoutePacketDynamicTalkgroupLinking(t *testing.T) {
@@ -77,9 +76,7 @@ func TestRoutePacketDynamicTalkgroupLinking(t *testing.T) {
 	// Group voice call to TG 2 on TS1 (Slot=false) should dynamically link it
 	pkt := makeVoicePacket(2, 99999, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-
-	// small delay for DB write
-	time.Sleep(200 * time.Millisecond)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
@@ -103,8 +100,7 @@ func TestRoutePacketDynamicTalkgroupLinkingTS2(t *testing.T) {
 	// Group voice call to TG 3 on TS2 (Slot=true)
 	pkt := makeVoicePacket(3, 99998, true, true)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-
-	time.Sleep(200 * time.Millisecond)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
@@ -134,10 +130,10 @@ func TestRoutePacketUnlinkTS2(t *testing.T) {
 	unlinkPkt := makeVoicePacket(4000, 88887, true, true)
 	h.RoutePacket(context.Background(), unlinkPkt, models.RepeaterTypeMMDVM)
 
-	assert.Eventually(t, func() bool {
-		rpt, err := models.FindRepeaterByID(database, 100001)
-		return err == nil && rpt.TS2DynamicTalkgroupID == nil
-	}, 2*time.Second, 10*time.Millisecond, "expected TS2 dynamic talkgroup to be unlinked")
+	settle(t, h, unlinkPkt, models.RepeaterTypeMMDVM)
+	rpt, err := models.FindRepeaterByID(database, 100001)
+	require.NoError(t, err)
+	assert.Nil(t, rpt.TS2DynamicTalkgroupID, "expected TS2 dynamic talkgroup to be unlinked")
 }
 
 func TestRoutePacketDynamicTalkgroupLinkingNonexistentTalkgroup(t *testing.T) {
@@ -156,8 +152,7 @@ func TestRoutePacketDynamicTalkgroupLinkingNonexistentTalkgroup(t *testing.T) {
 	// Group voice call to nonexistent TG 999 — should not panic or link
 	pkt := makeVoicePacket(999, 77777, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-
-	time.Sleep(200 * time.Millisecond)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
@@ -209,7 +204,7 @@ func TestDataDoesNotLinkTalkgroup(t *testing.T) {
 		pkt.DTypeOrVSeq = dt
 		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	}
-	time.Sleep(200 * time.Millisecond)
+	settle(t, h, makeVoicePacket(2, 0, true, false), models.RepeaterTypeMMDVM)
 
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)
@@ -263,7 +258,7 @@ func TestRoutePacketFromAPeerLinksNoTalkgroup(t *testing.T) {
 	pkt := makeVoicePacket(2, 99998, true, false)
 	pkt.Repeater = 100001
 	h.RoutePacket(context.Background(), pkt, "peer-srv")
-	time.Sleep(200 * time.Millisecond)
+	settle(t, h, pkt, "peer-srv")
 
 	rpt, err := models.FindRepeaterByID(database, 100001)
 	require.NoError(t, err)

@@ -63,7 +63,7 @@ type IPSCServer struct {
 	keys    *lookup.Cache[uint32, peerAuthKey]
 	unwatch func()
 
-	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr)
+	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr, at time.Time)
 	bursts       []burst
 
 	egressMu sync.Mutex
@@ -101,6 +101,7 @@ type burst struct {
 	op   byte
 	data []byte
 	addr *net.UDPAddr
+	at   time.Time
 }
 
 // peerState is what DMRHub keeps for a registered peer.
@@ -227,9 +228,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
 
-	s.SetBurstHandler(func(packetType byte, data []byte, _ *net.UDPAddr) {
-		s.fromPeer(ctx, packetType, data)
-	})
+	s.SetBurstHandler(s.peerBursts(ctx))
 
 	s.wg.Add(3)
 	go s.handler(ctx)
@@ -400,6 +399,9 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 	}
 	bursts := s.takeBursts()
 	s.mu.Unlock()
+	for i := range bursts {
+		bursts[i].at = heard
+	}
 	s.runBursts(bursts)
 	if ignored {
 		return ErrPacketIgnored
@@ -465,7 +467,11 @@ func (s *IPSCServer) takeBursts() []burst {
 
 func (s *IPSCServer) runBursts(bursts []burst) {
 	for _, b := range bursts {
-		s.burstHandler(b.op, b.data, b.addr)
+		at := b.at
+		if at.IsZero() {
+			at = time.Now()
+		}
+		s.burstHandler(b.op, b.data, b.addr, at)
 	}
 }
 
@@ -477,20 +483,31 @@ func isUserPacket(op ipscwire.Opcode) bool {
 	return false
 }
 
+// peerBursts returns the burst handler that routes the bursts of the peers
+// with ctx.
+func (s *IPSCServer) peerBursts(ctx context.Context) func(byte, []byte, *net.UDPAddr, time.Time) {
+	return func(packetType byte, data []byte, _ *net.UDPAddr, at time.Time) {
+		s.fromPeer(ctx, packetType, data, at)
+	}
+}
+
 // fromPeer routes the user packet data of the type packetType, which a
-// peer sent, and starts the call hang that its calls give the peer.
-func (s *IPSCServer) fromPeer(ctx context.Context, packetType byte, data []byte) {
+// peer sent and which came at at, and starts the call hang that its calls
+// give the peer.
+func (s *IPSCServer) fromPeer(ctx context.Context, packetType byte, data []byte, at time.Time) {
 	for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
 		if s.pacer != nil && pkt.Repeater <= math.MaxUint32 {
 			s.pacer.heard(slotKey{peer: uint32(pkt.Repeater), slot: pkt.Slot}, pkt)
 		}
 		if s.hub != nil {
-			s.hub.RoutePacket(ctx, pkt, models.RepeaterTypeIPSC)
+			s.hub.RoutePacketAt(ctx, pkt, models.RepeaterTypeIPSC, at)
 		}
 	}
 }
 
-func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, addr *net.UDPAddr)) {
+// SetBurstHandler sets the handler of the user packets of the peers. at is
+// when the packet came.
+func (s *IPSCServer) SetBurstHandler(handler func(packetType byte, data []byte, addr *net.UDPAddr, at time.Time)) {
 	s.burstHandler = handler
 }
 

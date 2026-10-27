@@ -225,18 +225,30 @@ func (c *CallTracker) Dropped() uint64 {
 	return c.dropped.Load()
 }
 
-// Track queues the packet p, which the server named server got, to be
+// Track queues the packet p, which the server named server got now, to be
 // recorded. peer reports a server of network peers, such as OpenBridge,
 // whose Repeater field is a peer ID and which carries many streams on one
 // slot. Track never blocks: when the queue of the worker is full, the
 // packet is not recorded and Dropped counts it. It returns the ID of the
 // burst, for p.TrackID, or zero when it is stopped.
-func (c *CallTracker) Track(_ context.Context, p models.Packet, server string, peer bool) uint64 {
+func (c *CallTracker) Track(ctx context.Context, p models.Packet, server string, peer bool) uint64 {
+	return c.TrackAt(ctx, p, server, peer, time.Now())
+}
+
+// TrackAt is Track for a packet that the server got at at, such as the
+// time the kernel got it. The tracker times the transmission from at, so
+// a packet that waited in the socket, or that the hub held while it
+// checked the claim of the stream, keeps its place in the call. A time
+// after now counts as now.
+func (c *CallTracker) TrackAt(_ context.Context, p models.Packet, server string, peer bool, at time.Time) uint64 {
 	if c.stopped.Load() {
 		return 0
 	}
-	key := chanKey{server: server, repeater: p.Repeater, slot: p.Slot}
 	now := time.Now()
+	if d := now.Sub(at); d > 0 {
+		now = now.Add(-d)
+	}
+	key := chanKey{server: server, repeater: p.Repeater, slot: p.Slot}
 	if peer {
 		key.stream = c.peerStream(key, &p, now)
 	}

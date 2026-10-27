@@ -282,7 +282,7 @@ func TestAutoRegisterOnDataFromUnregisteredPeer(t *testing.T) {
 	s, srv := newTestServerWithUDP(t)
 	client, addr := dialServer(t, srv)
 	got := make(chan []byte, 1)
-	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr) { got <- data })
+	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr, _ time.Time) { got <- data })
 	if err := s.handlePacket(context.Background(), signTestPacket(t, voicePacket(3191868)), addr); err != nil {
 		t.Fatalf("voice: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestAutoRegisterKeylessPeerOnData(t *testing.T) {
 	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
 	client, addr := dialServer(t, srv)
 	got := make(chan []byte, 1)
-	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr) { got <- data })
+	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr, _ time.Time) { got <- data })
 	if err := s.handlePacket(context.Background(), voicePacket(3191868), addr); err != nil {
 		t.Fatalf("voice: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestHandlerLoop(t *testing.T) {
 	t.Parallel()
 	s, srv := newTestServerWithUDP(t)
 	var calls atomic.Int32
-	s.SetBurstHandler(func(byte, []byte, *net.UDPAddr) { calls.Add(1) })
+	s.SetBurstHandler(func(byte, []byte, *net.UDPAddr, time.Time) { calls.Add(1) })
 	s.wg.Add(1)
 	go s.handler(context.Background())
 	client, _ := dialServer(t, srv)
@@ -495,7 +495,7 @@ func TestHandlerLoopKeepsBurstOrder(t *testing.T) {
 	s, srv := newTestServerWithUDP(t)
 	const count = 60
 	got := make(chan byte, count)
-	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr) { got <- data[53] })
+	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr, _ time.Time) { got <- data[53] })
 	s.wg.Add(1)
 	go s.handler(context.Background())
 	t.Cleanup(func() { _ = s.Stop(context.Background()) })

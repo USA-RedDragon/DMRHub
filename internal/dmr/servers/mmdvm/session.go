@@ -391,7 +391,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 		case dmrdsession.OutputOptions:
 			s.options(ctx, l, o)
 		case dmrdsession.OutputData:
-			s.data(ctx, o)
+			s.data(ctx, o, l.heard)
 		case dmrdsession.OutputMessage:
 			slog.Debug("Repeater message", "repeaterID", o.ID, "command", o.Command)
 		case dmrdsession.OutputPong:
@@ -700,7 +700,7 @@ func (s *Server) kvOwned(ctx context.Context, o dmrdsession.Output, downAt time.
 	return o.Reason != dmrdsession.ReasonTimeout || time.Since(repeater.LastPing) >= dmrdsession.TimeoutDefault
 }
 
-func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
+func (s *Server) data(ctx context.Context, o dmrdsession.Output, at time.Time) {
 	switch o.Command { //nolint:exhaustive
 	case dmrd.CommandDMRD:
 		d, err := dmrd.DecodeData(o.Packet)
@@ -714,7 +714,7 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output) {
 		}
 		slog.Debug("DMRD packet received", "packet", packet.String())
 		if s.hub != nil {
-			s.hub.RoutePacket(ctx, packet, models.RepeaterTypeMMDVM)
+			s.hub.RoutePacketAt(ctx, packet, models.RepeaterTypeMMDVM, at)
 		}
 	case dmrd.CommandDMRA:
 		alias, err := dmrd.DecodeTalkerAlias(o.Packet)

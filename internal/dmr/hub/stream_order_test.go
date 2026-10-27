@@ -459,3 +459,43 @@ func TestARepeaterGetsTheCallsOfASourceInOrderAcrossTopics(t *testing.T) {
 	got := receiveOrder(t, arrivals, streams, len(sent), "mmdvm:100002")
 	assert.Equal(t, orderOf(sent), got["mmdvm:100002"])
 }
+
+// TestASlowClaimKeepsTheTimesOfTheCall sends a call of 180 ms whose claim
+// the KV store answers in 500 ms, so the hub holds all of its bursts for
+// StreamClaimWait. The call tracker must time the call from when the
+// bursts came, not from when the hub let them in: it must keep the call,
+// and not drop it as a key-up of no length.
+func TestASlowClaimKeepsTheTimesOfTheCall(t *testing.T) {
+	t.Parallel()
+	const stream = uint(75001)
+	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+		return &claimSlowFor{KV: k, streams: []uint{stream}}
+	})
+	seedUser(t, database, testSrcID, "CALLER")
+	seedRepeater(t, database, testRepeaterID, testSrcID)
+	seedTalkgroup(t, database, 1, "TG1")
+	h.ActivateRepeater(context.Background(), testRepeaterID)
+
+	sent := make([]models.Packet, 0, 4)
+	for i := range 3 {
+		p := makeVoicePacket(1, stream, true, false)
+		p.Seq = uint(i)
+		sent = append(sent, p)
+	}
+	term := makeVoiceTermPacket(1, stream, true, false)
+	term.Seq = 3
+	sent = append(sent, term)
+	for i, p := range sent {
+		if i > 0 {
+			time.Sleep(burstPeriod)
+		}
+		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+	}
+
+	var calls []models.Call
+	require.Eventually(t, func() bool {
+		calls = nil
+		return database.Unscoped().Where("stream_id = ?", stream).Find(&calls).Error == nil && len(calls) == 1 && !calls[0].Active
+	}, 10*time.Second, 10*time.Millisecond, "the call tracker did not keep and end the call")
+	assert.GreaterOrEqual(t, calls[0].Duration, time.Duration(len(sent)-1)*burstPeriod, "the call must last from its first burst to its terminator")
+}

@@ -34,13 +34,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// trackCall queues the packet for the call tracker, which records every
-// kind of transmission, and sets its TrackID.
-func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName string) {
+// trackCall queues the packet, which came at, for the call tracker, which
+// records every kind of transmission, and sets its TrackID.
+func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName string, at time.Time) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.TrackCall")
 	defer span.End()
 
-	packet.TrackID = h.callTracker.Track(ctx, *packet, sourceName, h.getServerRole(sourceName) == RolePeer)
+	packet.TrackID = h.callTracker.TrackAt(ctx, *packet, sourceName, h.getServerRole(sourceName) == RolePeer, at)
 }
 
 // RoutePacket is the central routing method for all incoming DMR packets.
@@ -54,7 +54,15 @@ func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName s
 // that another source is already sending is dropped (see admitStream). The
 // call tracker gets the packet before the worker, in the order it came.
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
-	h.RouteStream(ctx, packet, sourceName, nil)
+	h.RouteStreamAt(ctx, packet, sourceName, time.Now(), nil)
+}
+
+// RoutePacketAt is RoutePacket for a packet that came at at, such as the
+// time the kernel got it. The call tracker times the transmission from at,
+// so a packet that waited in the socket or in the server keeps its place
+// in the call.
+func (h *Hub) RoutePacketAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time) {
+	h.RouteStreamAt(ctx, packet, sourceName, at, nil)
 }
 
 // RouteStream is RoutePacket that first calls admitted, when it is not nil,
@@ -64,6 +72,12 @@ func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName 
 // calls admitted for them later on another goroutine, in the order they
 // came.
 func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName string, admitted func(bool)) {
+	h.RouteStreamAt(ctx, packet, sourceName, time.Now(), admitted)
+}
+
+// RouteStreamAt is RouteStream for a packet that came at at, as
+// RoutePacketAt is.
+func (h *Hub) RouteStreamAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time, admitted func(bool)) {
 	if !h.AdmitSlotRate(packet, sourceName) {
 		return
 	}
@@ -74,7 +88,7 @@ func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName 
 		if !ok {
 			return
 		}
-		h.trackCall(ctx, &packet, sourceName)
+		h.trackCall(ctx, &packet, sourceName, at)
 		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
 			slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
 		}

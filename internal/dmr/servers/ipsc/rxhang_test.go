@@ -168,7 +168,7 @@ func TestServerHoldsDataAfterAnXPRVoiceCall(t *testing.T) {
 	s := &IPSCServer{pacer: p, localID: 1, translator: NewIPSCTranslator(1)}
 	call := readXPRCapture(t, "voicecall")
 	for _, raw := range call {
-		s.fromPeer(t.Context(), raw[0], raw)
+		s.fromPeer(t.Context(), raw[0], raw, time.Now())
 	}
 	u := decodeUserT(t, call[0])
 	k := slotKey{peer: u.ID, slot: u.Info.Slot() == enums.Slot2}

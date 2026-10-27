@@ -72,12 +72,12 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 		a := dmrd.TalkerAlias{Repeater: uint32(repeaterID), Source: uint32(radio), Type: uint8(i), Data: lcs[i].RawPayload, Size: 19}
 		p, err := a.AppendBinary(nil)
 		require.NoError(t, err)
-		s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRA, ID: uint32(repeaterID), Packet: p})
+		s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRA, ID: uint32(repeaterID), Packet: p}, time.Now())
 	}
 	pos := dmrd.Position{Repeater: uint32(repeaterID), Source: uint32(radio), Size: 14}
 	p, err := pos.AppendBinary(nil)
 	require.NoError(t, err)
-	s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRG, ID: uint32(repeaterID), Packet: p})
+	s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRG, ID: uint32(repeaterID), Packet: p}, time.Now())
 
 	var calls []models.Call
 	require.Eventually(t, func() bool {

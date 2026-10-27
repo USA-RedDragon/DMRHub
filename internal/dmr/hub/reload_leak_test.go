@@ -65,7 +65,7 @@ func TestReloadedRepeaterGetsEachBurstOnce(t *testing.T) {
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	got := 0
 	for _, rp := range append([]hub.RoutedPacket{receive(t, handle)}, flush(t, h, handle, pkt, 100002)...) {
-		if rp.RepeaterID == 100002 && rp.Packet.Dst == 1 {
+		if rp.RepeaterID == 100002 && rp.Packet.StreamID == pkt.StreamID {
 			got++
 		}
 	}

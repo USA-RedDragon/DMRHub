@@ -252,19 +252,7 @@ func (h *Hub) resyncRepeater(id uint) bool {
 		slog.Error("Failed to find repeater to resync", "repeaterID", id, "error", err)
 		return false
 	}
-	want := map[uint]bool{id: true, floodSubKey: true}
-	for _, tg := range rpt.TS1StaticTalkgroups {
-		want[tg.ID] = true
-	}
-	for _, tg := range rpt.TS2StaticTalkgroups {
-		want[tg.ID] = true
-	}
-	if rpt.TS1DynamicTalkgroupID != nil {
-		want[*rpt.TS1DynamicTalkgroupID] = true
-	}
-	if rpt.TS2DynamicTalkgroupID != nil {
-		want[*rpt.TS2DynamicTalkgroupID] = true
-	}
+	want := wantedSubscriptions(&rpt)
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(id)
 	if !ok {
 		return false

@@ -22,6 +22,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -33,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 // subscriptionManager tracks repeater-to-talkgroup subscriptions and manages
@@ -243,6 +245,82 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, feed.subscribeTG(*p.TS2DynamicTalkgroupID))
 		}
 	}
+}
+
+// resubscribeLocked makes the subscriptions of the active repeater match
+// the database. It keeps the feed of the repeater and the subscriptions
+// that the repeater still wants, so a burst published while it runs is
+// delivered once. A repeater that is no longer in the database keeps no
+// subscription; when the database fails, the subscriptions stay as they
+// were. Caller MUST hold h.subscriptionMgr.mu.
+func (h *Hub) resubscribeLocked(ctx context.Context, repeaterID uint) {
+	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.ResubscribeRepeater")
+	defer span.End()
+
+	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
+	if !ok {
+		return
+	}
+	want := map[uint]bool{}
+	p, err := models.FindRepeaterByID(h.db, repeaterID)
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+	case err != nil:
+		slog.Error("Failed to find repeater to reload, keeping its subscriptions", "repeaterID", repeaterID, "error", err)
+		return
+	default:
+		want = wantedSubscriptions(&p)
+	}
+
+	var stale []uint
+	radioSubs.Range(func(key uint, _ *subscription) bool {
+		if !want[key] {
+			stale = append(stale, key)
+		}
+		return true
+	})
+	for _, key := range stale {
+		if sub, ok := radioSubs.LoadAndDelete(key); ok {
+			sub.stop()
+		}
+	}
+	if len(want) == 0 {
+		return
+	}
+	feed := h.subscriptionMgr.feedOf(repeaterID)
+	for key := range want {
+		if _, ok := radioSubs.Load(key); ok {
+			continue
+		}
+		switch key {
+		case repeaterID:
+			radioSubs.Store(key, feed.subscribe(repeaterID))
+		case floodSubKey:
+			radioSubs.Store(key, feed.subscribeFlood())
+		default:
+			radioSubs.Store(key, feed.subscribeTG(key))
+		}
+	}
+}
+
+// wantedSubscriptions returns the keys of the subscriptions that the
+// repeater p wants: its private calls, the private flood, and its static
+// and dynamic talkgroups.
+func wantedSubscriptions(p *models.Repeater) map[uint]bool {
+	want := map[uint]bool{p.ID: true, floodSubKey: true}
+	for _, tg := range p.TS1StaticTalkgroups {
+		want[tg.ID] = true
+	}
+	for _, tg := range p.TS2StaticTalkgroups {
+		want[tg.ID] = true
+	}
+	if p.TS1DynamicTalkgroupID != nil {
+		want[*p.TS1DynamicTalkgroupID] = true
+	}
+	if p.TS2DynamicTalkgroupID != nil {
+		want[*p.TS2DynamicTalkgroupID] = true
+	}
+	return want
 }
 
 // deactivateRepeater force-cancels all subscriptions for a specific repeater.

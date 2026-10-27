@@ -557,6 +557,5 @@ func (h *Hub) reloadLocal(ctx context.Context, repeaterID uint) {
 		return
 	}
 
-	h.deactivateRepeaterLocked(repeaterID)
-	h.activateRepeaterLocked(ctx, repeaterID)
+	h.resubscribeLocked(ctx, repeaterID)
 }

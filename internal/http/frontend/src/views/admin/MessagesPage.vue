@@ -47,11 +47,11 @@
           >
             <div class="flex min-w-0 flex-col gap-1">
               <label for="f-src" class="text-sm">From ID</label>
-              <ShadInput id="f-src" v-model="filters.src" inputmode="numeric" placeholder="3191868" />
+              <ShadInput id="f-src" v-model="filters.src" inputmode="numeric" placeholder="3000001" />
             </div>
             <div class="flex min-w-0 flex-col gap-1">
               <label for="f-dst" class="text-sm">To ID or talkgroup</label>
-              <ShadInput id="f-dst" v-model="filters.dst" inputmode="numeric" placeholder="3140598 or 3100" />
+              <ShadInput id="f-dst" v-model="filters.dst" inputmode="numeric" placeholder="3000002 or 3100" />
             </div>
             <div class="flex min-w-0 flex-col gap-1">
               <label for="f-format" class="text-sm">Format</label>

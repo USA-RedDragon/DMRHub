@@ -30,7 +30,7 @@ import (
 // WSCallUndeliverable is a repeater that a call was not sent to, and why.
 type WSCallUndeliverable struct {
 	// Sentence is the sentence that the hub stored, such as "IPSC
-	// repeater 314926 was busy on that slot.".
+	// repeater 300001 was busy on that slot.".
 	Sentence string `json:"sentence"`
 	// Target is the target server, such as "ipsc", or "".
 	Target string `json:"target"`

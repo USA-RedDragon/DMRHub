@@ -117,6 +117,13 @@ describe('Admin MessagesPage', () => {
     expect(wrapper.find('[data-test="admin-search"]').exists()).toBe(false);
   });
 
+  it('shows example IDs that belong to no one', async () => {
+    serve({ total: 0, messages: [] });
+    const wrapper = await mountPage();
+    expect(wrapper.find('#f-src').attributes('placeholder')).toBe('3000001');
+    expect(wrapper.find('#f-dst').attributes('placeholder')).toBe('3000002 or 3100');
+  });
+
   it('lists every stored message with no 250 cap', async () => {
     serve({ total: 1234, messages: [msg(1), msg(2)] });
     const wrapper = await mountPage();

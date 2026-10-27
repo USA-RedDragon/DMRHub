@@ -103,6 +103,7 @@ type Repeater struct {
 	IP                    string         `json:"-" gorm:"-" msg:"ip"`
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`
+	SecretCheck           []byte         `json:"-" gorm:"-" msg:"secret_check"`
 	Password              string         `json:"-" gorm:"<-:create" msg:"-"`
 	Type                  string         `json:"type" gorm:"default:'mmdvm'" msg:"-"`
 	Dialect               string         `json:"dialect" msg:"dialect"`

@@ -21,7 +21,9 @@ package mmdvm
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -122,6 +124,12 @@ func storedDialect(repeater models.Repeater) dmrd.Dialect {
 type kvRecord struct {
 	repeater models.Repeater
 	moved    bool
+	// current is set when the record came from a login with the password
+	// that the repeater has now.
+	current bool
+	// rekeys is the count of password changes of the repeater before the
+	// record was read.
+	rekeys uint64
 }
 
 // recordFunc returns the KV record of the repeater id, as looked up before
@@ -186,7 +194,7 @@ func (s *Server) recordNeeded(l *link, data []byte) (uint32, bool) {
 // the record after the record jobs of the repeater that are queued, so
 // that a session that ended here never resumes from the record that its
 // end deletes.
-func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32, data []byte) {
+func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32, data []byte, rekeys uint64) {
 	defer s.lookups.Done()
 	var repeater models.Repeater
 	err := errRecordsBusy
@@ -196,9 +204,10 @@ func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id ui
 			repeater, err = own, nil
 		}
 	}
-	rec := kvRecord{repeater: repeater}
-	if err == nil {
-		rec.moved = s.moved(ctx, remote, data, repeater, id)
+	rec := kvRecord{repeater: repeater, rekeys: rekeys}
+	if err == nil && repeater.Connection == models.RepeaterStateConnected {
+		rec.current = s.loggedInWithCurrentSecret(uint(id), repeater)
+		rec.moved = rec.current && s.moved(ctx, remote, data, repeater, id)
 	}
 	if rec.moved {
 		s.awaitHandover(ctx, uint(id))
@@ -315,7 +324,7 @@ func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte, a
 		}
 		s.resolving[key] = []heldPacket{{data: data, at: at}}
 		s.lookups.Add(1)
-		go s.resolve(ctx, remote, key, id, data)
+		go s.resolve(ctx, remote, key, id, data, s.rekeys[id])
 		return
 	}
 	s.handleLocked(ctx, remote, data, at, noRecord)
@@ -622,6 +631,12 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 	repeater.LastPing = now
 	repeater.Connection = models.RepeaterStateConnected
 	repeater.Dialect = d.String()
+	check, err := secretCheck(repeater.Password)
+	if err != nil {
+		slog.Error("Error making the secret check of a session", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	repeater.SecretCheck = check
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
@@ -860,7 +875,8 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 	}
 	rec, found := record(id)
 	repeater := rec.repeater
-	if !found || repeater.Connection != models.RepeaterStateConnected || storedDialect(repeater) != l.dialect {
+	if !found || !rec.current || rec.rekeys != s.rekeys[id] ||
+		repeater.Connection != models.RepeaterStateConnected || storedDialect(repeater) != l.dialect {
 		return
 	}
 	moved := !l.ep.matchesKV(repeater.IP, repeater.Port)
@@ -956,6 +972,35 @@ func (s *Server) dropMoved(id uint, since time.Time) {
 	s.forget(l)
 }
 
+// endSessions ends every session of the repeater id here with MSTCL, as
+// after a change of its password, so that it must log in again with the
+// new one. It also ends a login that is still going on, which may have
+// read the old password.
+func (s *Server) endSessions(ctx context.Context, id uint) {
+	if id > math.MaxUint32 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rekeys == nil {
+		s.rekeys = map[uint32]uint64{}
+	}
+	s.rekeys[uint32(id)]++
+	if s.stopped.Load() {
+		return
+	}
+	now := s.now()
+	for _, l := range s.links {
+		if l.m.ID() != uint32(id) || l.m.State() == dmrdsession.StateIdle {
+			continue
+		}
+		slog.Info("Ending the session of a repeater whose password changed", "repeaterID", id, "remoteAddr", l.ep.String())
+		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+		s.run(ctx, now, l, l.m.Close(now, buf[:0]))
+		s.forget(l)
+	}
+}
+
 // mayResumeForEgress reports whether resumeForEgress may try the repeater
 // id now.
 func (s *Server) mayResumeForEgress(id uint) bool {
@@ -975,13 +1020,17 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 	if id > math.MaxUint32 || !s.mayResumeForEgress(id) {
 		return endpoint{}, false
 	}
+	s.mu.Lock()
+	rekeys := s.rekeys[uint32(id)]
+	s.mu.Unlock()
 	repeater, err := s.kvClient.GetRepeater(ctx, id)
 	if kvDown(err) {
 		if own, ok := s.ownRecord(id); ok {
 			repeater, err = own, nil
 		}
 	}
-	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port == 0 || (s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) {
+	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port == 0 ||
+		(s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) || !s.loggedInWithCurrentSecret(id, repeater) {
 		s.egressMiss.Store(id, time.Now())
 		return endpoint{}, false
 	}
@@ -992,7 +1041,7 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 		return a, true
 	}
 	l, err := s.linkAt(ep, storedDialect(repeater))
-	if err != nil || l.m.State() != dmrdsession.StateIdle || l.dialect != storedDialect(repeater) {
+	if err != nil || l.m.State() != dmrdsession.StateIdle || l.dialect != storedDialect(repeater) || rekeys != s.rekeys[uint32(id)] {
 		s.egressMiss.Store(id, time.Now())
 		return endpoint{}, false
 	}
@@ -1044,4 +1093,40 @@ func (s *Server) ownRecord(id uint) (models.Repeater, bool) {
 		return models.Repeater{}, false
 	}
 	return rec, ok
+}
+
+// secretSaltSize is the size of the random salt of a secret check.
+const secretSaltSize = 16
+
+// secretCheck returns a check of password for the KV record of a session
+// that logged in with it: a random salt and the HMAC-SHA256 of password
+// under it, no more than the RPTK of the login shows.
+func secretCheck(password string) ([]byte, error) {
+	salt := make([]byte, secretSaltSize, secretSaltSize+sha256.Size)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, fmt.Errorf("failed to read random salt: %w", err)
+	}
+	mac := hmac.New(sha256.New, salt)
+	_, _ = mac.Write([]byte(password))
+	return mac.Sum(salt), nil
+}
+
+// loggedInWithCurrentSecret reports whether the KV record rec of the
+// repeater id came from a login with the password that the repeater has
+// now, so that a session that logged in with an old one never resumes. A
+// record without a check, from an older DMRHub, is taken as current.
+func (s *Server) loggedInWithCurrentSecret(id uint, rec models.Repeater) bool {
+	if len(rec.SecretCheck) == 0 {
+		return true
+	}
+	if s.DB == nil || len(rec.SecretCheck) != secretSaltSize+sha256.Size {
+		return false
+	}
+	password, err := s.password(id)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, rec.SecretCheck[:secretSaltSize])
+	_, _ = mac.Write([]byte(password))
+	return hmac.Equal(mac.Sum(nil), rec.SecretCheck[secretSaltSize:])
 }

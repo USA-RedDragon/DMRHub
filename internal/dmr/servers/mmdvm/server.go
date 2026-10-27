@@ -70,6 +70,7 @@ type Server struct {
 	outgoingChan chan outgoing
 	hubHandle    *hub.ServerHandle
 	stopClaims   func()
+	stopSecrets  func()
 	sentMu       sync.Mutex
 	sent         map[uint][]*sentPacket
 	movingMu     sync.Mutex
@@ -95,6 +96,9 @@ type Server struct {
 	mu    sync.Mutex
 	links map[string]*link
 	byID  map[uint32]*link
+	// rekeys counts the changes of the password of each repeater, so that
+	// a resume that read the record before one never takes the session.
+	rekeys map[uint32]uint64
 	// resolving holds the packets from each address that wait for the KV
 	// record of their repeater.
 	resolving map[string][]heldPacket
@@ -215,6 +219,9 @@ func (s *Server) Stop(ctx context.Context) error {
 		if s.stopClaims != nil {
 			s.stopClaims()
 		}
+		if s.stopSecrets != nil {
+			s.stopSecrets()
+		}
 
 		// When other DMRHub instances are alive, skip sending MSTCL so
 		// repeaters seamlessly migrate to the surviving instance instead of
@@ -312,6 +319,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Role: hub.RoleRepeater,
 	})
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.dropMoved)
+	s.stopSecrets = s.hub.OnRepeaterSecretChange(func(id uint) { s.endSessions(ctx, id) })
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())
 

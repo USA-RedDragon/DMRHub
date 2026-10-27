@@ -31,6 +31,7 @@ const (
 	talkgroupChangedTopic = "hub:talkgroups:changed"
 	userChangedTopic      = "hub:users:changed"
 	peerChangedTopic      = "hub:peers:changed"
+	repeaterRekeyTopic    = "hub:repeaters:rekey"
 )
 
 type watchers struct {
@@ -86,6 +87,19 @@ func (h *Hub) OnRepeaterChange(fn func(repeaterID uint)) (stop func()) {
 	return h.watchers.add(repeaterChangedTopic, fn)
 }
 
+// OnRepeaterSecretChange calls fn with the ID of a repeater after
+// RepeaterSecretChanged on any replica. The returned func stops the calls.
+func (h *Hub) OnRepeaterSecretChange(fn func(repeaterID uint)) (stop func()) {
+	return h.watchers.add(repeaterRekeyTopic, fn)
+}
+
+// RepeaterSecretChanged tells every replica that the password or auth key
+// of the repeater id changed, so that its servers end the sessions that
+// logged in with the old one. Call it after the new secret is saved.
+func (h *Hub) RepeaterSecretChanged(id uint) {
+	h.announce(repeaterRekeyTopic, id)
+}
+
 // TalkgroupChanged makes every replica read the talkgroup id again. Call it
 // after the talkgroup is made, changed or deleted.
 func (h *Hub) TalkgroupChanged(id uint) {
@@ -126,6 +140,8 @@ func (h *Hub) applyChange(topic string, id uint) {
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})
 		h.watchers.call(peerChangedTopic, id)
+	case repeaterRekeyTopic:
+		h.watchers.call(repeaterRekeyTopic, id)
 	}
 }
 

@@ -186,7 +186,7 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	}
 	ep := endpoint{transport: webTransportName, addr: addr}
 	s.mu.Lock()
-	stopping, idle := s.stopped.Load(), s.idleAt(ep)
+	stopping, idle, rekeys := s.stopped.Load(), s.idleAt(ep), s.rekeys[id]
 	s.mu.Unlock()
 	if stopping {
 		return wtResume{Reason: "stopping"}
@@ -199,6 +199,9 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port != 0 ||
 		!strings.HasPrefix(repeater.IP, webTransportName+"/") {
 		return wtResume{Reason: "no session"}
+	}
+	if !s.loggedInWithCurrentSecret(uint(id), repeater) {
+		return wtResume{Reason: "the password changed"}
 	}
 	if s.hub == nil || (!s.hub.OwnsRepeater(ctx, uint(id)) && !s.hub.TakeOver(ctx, uint(id))) {
 		return wtResume{Reason: "the session is not handed over"}
@@ -215,6 +218,9 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	}
 	if s.stopped.Load() {
 		return refuse("stopping")
+	}
+	if rekeys != s.rekeys[id] {
+		return refuse("the password changed")
 	}
 	l, err := s.linkAt(ep, dmrd.DialectMMDVM)
 	if err != nil || l.m.State() != dmrdsession.StateIdle {

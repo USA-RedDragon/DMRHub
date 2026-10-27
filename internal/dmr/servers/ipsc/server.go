@@ -62,6 +62,8 @@ type IPSCServer struct {
 	keyFor  func(peerID uint32) (key [20]byte, useAuth bool, err error)
 	keys    *lookup.Cache[uint32, peerAuthKey]
 	unwatch func()
+	// unwatchKeys stops the calls of rekey.
+	unwatchKeys func()
 
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr, at time.Time)
 	bursts       []burst
@@ -226,6 +228,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 		Role: hub.RoleRepeater,
 	})
 	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
+	s.unwatchKeys = s.hub.OnRepeaterSecretChange(s.rekey)
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
 
 	s.SetBurstHandler(s.peerBursts(ctx))
@@ -262,6 +265,9 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		if s.unwatch != nil {
 			s.unwatch()
 		}
+		if s.unwatchKeys != nil {
+			s.unwatchKeys()
+		}
 		if s.stopClaims != nil {
 			s.stopClaims()
 		}
@@ -281,6 +287,34 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 	s.peerJobs.Wait()
 	s.closeTimes()
 	return nil
+}
+
+// rekey makes the registered peer id use its auth key from the database at
+// once, after the key changed, so that neither side takes a packet signed
+// with the old key. The peer stays registered until it times out or
+// registers again with the new key.
+func (s *IPSCServer) rekey(id uint) {
+	if id > math.MaxUint32 || s.m == nil {
+		return
+	}
+	peer := uint32(id)
+	s.keys.Reload(peer)
+	key, useAuth, err := s.keyFor(peer)
+	if err != nil || !useAuth {
+		slog.Error("Cannot load the new auth key of an IPSC peer", "peerID", peer, "error", err)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped.Load() {
+		return
+	}
+	info, ok := s.m.Peer(peer)
+	if !ok {
+		return
+	}
+	slog.Info("IPSC peer takes its new auth key", "peerID", peer)
+	s.apply(context.Background(), s.m.Adopt(s.now(), info.Addr, peer, &key, s.out[:0]))
 }
 
 func (s *IPSCServer) closeSessions(ctx context.Context) {

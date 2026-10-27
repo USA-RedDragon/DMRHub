@@ -125,7 +125,7 @@ func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 	h.SetStreamClaimTiming(hub.StreamClaimHold, 150*time.Millisecond)
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	loadLookups(t, h, []uint{1}, nil)
 
 	burst := func(stream uint, slot bool, src uint, seq int) models.Packet {
 		p := makeVoicePacket(1, stream, true, slot)

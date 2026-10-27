@@ -109,6 +109,13 @@ func (h *Hub) heardRecord(ctx context.Context, radio uint) lastHeard {
 	return rec
 }
 
+// HeardHere returns the repeater where this hub heard the radio in the
+// last seconds, which the record in the KV store may not hold yet, or 0.
+func (h *Hub) HeardHere(radio uint) uint {
+	heard, _ := h.heardOn.Load(radio)
+	return heard.repeater
+}
+
 // LookupsLoaded reports whether the hub holds the peers, whether each of
 // talkgroups exists and the owner of each of radios, so that no burst
 // waits on the database for them. It starts the loads that are missing,

@@ -40,6 +40,8 @@ Debug=0
 
 > **Important:** Copy the password now. DMRHub shows it only once. If you lose it, delete the hotspot on the Repeaters page and enroll it again.
 
+An older password can have a `#` or a `%`, which some hotspot software does not read correctly. If your password has one, click **Rotate password** on the page of the hotspot.
+
 The address is the host name of the DMRHub web site, and the port is the MMDVM port of the network (62031 by default). If your admin runs the MMDVM server on another address, use the address your admin gives you.
 
 ## Connect a Pi-Star hotspot

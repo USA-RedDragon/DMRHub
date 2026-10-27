@@ -27,6 +27,8 @@ A repeater that runs MMDVMHost, with or without DMRGateway, connects like a hots
 4. Copy the DMRGateway configuration that DMRHub shows. It has the password, and DMRHub shows it only once.
 5. Put the address, port, ID and password in MMDVMHost or DMRGateway. See [Connect a hotspot](connect-hotspot.md#connect-with-dmrgateway).
 
+An older password can have a `#` or a `%`, which some repeater software does not read correctly. If your password has one, click **Rotate password** on the page of the repeater.
+
 ### Repeaters that use the published Homebrew specification
 
 Some repeater software follows the published Homebrew repeater specification instead of the MMDVM network protocol. The two protocols have different login and keepalive messages. Enroll such a repeater as **MMDVM** and use the same address, port and password. DMRHub detects the protocol at login, and the **Protocol** field on the page of the repeater shows which one it used.

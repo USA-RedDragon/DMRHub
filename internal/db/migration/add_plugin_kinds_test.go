@@ -57,10 +57,12 @@ func TestAddPluginKindsKeepsThePluginsExternal(t *testing.T) {
 
 			m := database.Migrator()
 			require.NoError(t, m.DropTable(&models.PluginHost{}, &models.PluginModule{}))
+			require.NoError(t, m.DropIndex(&models.Plugin{}, "idx_plugins_builtin_name"))
+			require.NoError(t, database.Exec("CREATE UNIQUE INDEX idx_plugins_name ON plugins (name)").Error)
 			for _, c := range []string{"Kind", "Builtin", "Version", "Author", "Description", "ModuleHash"} {
 				require.NoError(t, m.DropColumn(&models.Plugin{}, c))
 			}
-			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610251100").Error)
+			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id IN ?", []string{"202610251100", "202610261300"}).Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO plugins (name, token_hash, token_created_at, enabled, session) VALUES (?, ?, ?, ?, ?)",
 				"Weather", []byte("0123456789abcdef0123456789abcdef"), time.Now().UTC(), true, "",

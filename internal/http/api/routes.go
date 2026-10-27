@@ -181,6 +181,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 		v1Peers.GET("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeer)
 		v1Peers.PATCH("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.PATCHPeer)
 		v1Peers.DELETE("/:id", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeer)
+		v1Peers.POST("/:id/rotate-password", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRotatePassword)
 		v1Peers.GET("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.GETPeerRules)
 		v1Peers.POST("/:id/rules", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.POSTPeerRule)
 		v1Peers.DELETE("/:id/rules/:ruleId", middleware.RequirePeerOwnerOrAdmin(), v1PeersControllers.DELETEPeerRule)

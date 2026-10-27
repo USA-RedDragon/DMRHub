@@ -19,6 +19,8 @@
 
 package apimodels
 
+import "time"
+
 type PeerPost struct {
 	ID       uint   `json:"id" binding:"required"`
 	OwnerID  uint   `json:"owner" binding:"required"`
@@ -37,6 +39,14 @@ type PeerPatch struct {
 	Egress   *bool   `json:"egress"`
 	Enhanced *bool   `json:"enhanced"`
 	Codec2   *bool   `json:"codec2"`
+}
+
+// PeerRotatePasswordResponse is the answer to a rotation of the password
+// of an OpenBridge peer: the new password, and when the old one stopped
+// working.
+type PeerRotatePasswordResponse struct {
+	Password  string    `json:"password"`
+	RotatedAt time.Time `json:"rotated_at"`
 }
 
 type PeerRulePost struct {

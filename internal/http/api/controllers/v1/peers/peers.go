@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -365,6 +366,47 @@ func POSTPeer(c *gin.Context) {
 			}
 		}
 	}
+}
+
+// POSTPeerRotatePassword gives the peer a new random password in place of
+// the old one, which stops working at once: the OpenBridge server of every
+// replica takes only the new one from then on. The response holds the new
+// password, which DMRHub does not show again. Only a signed-in owner or
+// admin may rotate it, not an app with a token.
+func POSTPeerRotatePassword(c *gin.Context) {
+	if utils.ViaToken(c) {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: "Sign in to rotate the password of a peer"})
+		return
+	}
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	idUint64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidPeerID})
+		return
+	}
+	peerID := uint(idUint64)
+	password, err := utils.NewPeerPassword()
+	if err != nil {
+		slog.Error("Failed to generate a peer password", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	switch err := models.SetPeerPassword(db, peerID, password); {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		c.JSON(http.StatusNotFound, gin.H{errorKey: msgPeerNotFound})
+		return
+	case err != nil:
+		slog.Error("Error saving the peer password", "peerID", peerID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return
+	}
+	rotatedAt := time.Now()
+	peerChanged(c, peerID)
+	slog.Info("Peer password rotated", "peerID", peerID, "by", sessions.Default(c).Get("user_id"))
+	c.JSON(http.StatusOK, apimodels.PeerRotatePasswordResponse{Password: password, RotatedAt: rotatedAt})
 }
 
 func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {

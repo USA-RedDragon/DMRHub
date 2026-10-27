@@ -42,6 +42,7 @@ func Migrate(db *gorm.DB, cfg *config.Config) error {
 func MigrateSchema(db *gorm.DB, cfg *config.Config) error {
 	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		case_insensitive_usernames_migration_202610270200(db, cfg),
+		username_callsign_clashes_migration_202610271200(db, cfg),
 	})
 	if err := m.Migrate(); err != nil {
 		return fmt.Errorf("could not migrate: %w", err)

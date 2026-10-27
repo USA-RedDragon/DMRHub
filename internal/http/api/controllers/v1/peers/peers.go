@@ -325,11 +325,7 @@ func POSTPeer(c *gin.Context) {
 
 		peer.ID = json.ID
 
-		// Generate a random password of 12 characters
-		const randLen = 12
-		const randNum = 1
-		const randSpecial = 2
-		peer.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
+		peer.Password, err = utils.NewPeerPassword()
 		if err != nil {
 			slog.Error("Failed to generate a peer password", "function", "POSTPeer", "error", err)
 			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate a peer password"})

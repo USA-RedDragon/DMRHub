@@ -425,11 +425,7 @@ func POSTRepeater(c *gin.Context) {
 			}
 
 		case models.RepeaterTypeMMDVM:
-			// Generate a random password
-			const randLen = 12
-			const randNum = 4
-			const randSpecial = 0
-			repeater.Password, err = utils.RandomPassword(randLen, randNum, randSpecial)
+			repeater.Password, err = utils.NewRepeaterPassword()
 			if err != nil {
 				slog.Error("Failed to generate a repeater password", "error", err)
 				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Failed to generate a repeater password"})

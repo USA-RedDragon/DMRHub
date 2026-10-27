@@ -162,7 +162,7 @@ func TestRandomPasswordContainsNumbers(t *testing.T) {
 
 func TestRandomPasswordContainsSpecial(t *testing.T) {
 	t.Parallel()
-	specialChars := "!@#$%^&*-_"
+	specialChars := "-_."
 	for i := 0; i < 10; i++ {
 		pw, err := utils.RandomPassword(30, 0, 5)
 		if err != nil {
@@ -201,7 +201,7 @@ func TestRandomPasswordGuaranteesMinCounts(t *testing.T) {
 	// random indices that could collide, so the resulting password sometimes
 	// had fewer numbers or specials than requested.
 	t.Parallel()
-	specialChars := "!@#$%^&*-_"
+	specialChars := "-_."
 	numberChars := "2356789"
 	const iterations = 200
 	const length = 20

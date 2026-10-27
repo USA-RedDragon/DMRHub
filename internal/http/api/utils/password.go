@@ -183,7 +183,23 @@ func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {
 
 const allowedChars = "bcdefghjkmnopqrstuvwxyzBCDEFGHJKMNPQRSTUVWXYZ"
 const allowedNumbers = "2356789"
-const allowedSpecial = "!@#$%^&*-_"
+const allowedSpecial = "-_."
+
+const (
+	peerPasswordLen     = 13
+	repeaterPasswordLen = 12
+)
+
+// NewPeerPassword returns a password for an OpenBridge peer. The other server
+// keeps it in its configuration, such as the PASSPHRASE of FreeDMR or HBlink3.
+func NewPeerPassword() (string, error) {
+	return RandomPassword(peerPasswordLen, 1, 2)
+}
+
+// NewRepeaterPassword returns a password for an MMDVM repeater or hotspot.
+func NewRepeaterPassword() (string, error) {
+	return RandomPassword(repeaterPasswordLen, 4, 0)
+}
 
 func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	if minNumbers+minSpecial > length {

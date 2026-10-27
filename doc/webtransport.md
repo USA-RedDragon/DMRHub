@@ -11,6 +11,7 @@ Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHu
 - Each WebTransport session is one MMDVM peer: one hotspot, with one repeater ID. To connect two hotspots, open two sessions.
 - Each WebTransport datagram is one packet of the MMDVM network protocol, the same octets that an MMDVM hotspot sends in one UDP packet. There is no other framing.
 - The login, the pings and the DMRD packets are the same as on the UDP port. The DMRHub code that handles them is the same code.
+- DMRHub also accepts the HBRP dialect in the datagrams, as it does on the UDP port. HBRP is a different protocol from the MMDVM network protocol. This page covers only the MMDVM network protocol, which dmr-web speaks.
 - Streams of the session carry a small number of JSON control messages. They exist only for the move to another replica when a replica of DMRHub stops. See [Control streams](#control-streams).
 
 ## Turn it on

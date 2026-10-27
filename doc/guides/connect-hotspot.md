@@ -24,81 +24,42 @@ The ID must start with the DMR ID of your account, unless the admin turned off t
 
 <!-- screenshot: new-repeater.png | the New Repeater form at /repeaters/new with DMR Radio ID 300000101 -->
 
-DMRHub then shows a DMRGateway configuration, like this one:
+DMRHub then opens the connect page of the hotspot. It shows:
 
-```ini
-[DMR Network 2]
-Name=DMRHub
-Enabled=1
-Address=dmrhub.example.org
-Port=62031
-Password="kG7tZ2pQ9wX4mN8v"
-Id=300000101
-Location=1
-Debug=0
-```
+- **Connection details**: the server address, the port, the hotspot ID and the password, each with a **Copy** button. The port is the MMDVM port of the network (62031 by default). The server address is the address that your admin set for hotspots, or else the host name of the DMRHub web site.
+- A status at the top: **Waiting for the first login** until the hotspot logs in, then **Connected now** with the time of the last ping. The page updates it while you wait.
+- **Set up your software**: one tab for each program, with the values of your hotspot already filled in. The tabs are Pi-Star, WPSD, MMDVMHost, DMRGateway, DroidStar, HBlink3 and Other. A **Tested** mark shows the version that the steps were tested with.
 
-> **Important:** Copy the password now. DMRHub shows it only once. If you lose it, delete the hotspot on the Repeaters page and enroll it again.
+<!-- screenshot: connect-hotspot.png | the connect page at /repeaters/300000101/connect right after enroll -->
 
-An older password can have a `#` or a `%`, which some hotspot software does not read correctly. If your password has one, click **Rotate password** on the page of the hotspot.
+> **Important:** Copy the password now. DMRHub shows it only once. If you lose it, click **Rotate password** on the page of the hotspot. See [Rotate the password](#rotate-the-password).
 
-The address is the host name of the DMRHub web site, and the port is the MMDVM port of the network (62031 by default). If your admin runs the MMDVM server on another address, use the address your admin gives you.
+An older password can have a `#` or a `%`, which some hotspot software does not read correctly. If your password has one, rotate it. See [Rotate the password](#rotate-the-password).
 
-## Connect a Pi-Star hotspot
+To open the connect page later, open the page of the hotspot and click **Connect**. The password is then hidden, and the steps show `<hotspot password>` in its place.
 
-Pi-Star lists the DMR masters that it can connect to in a host file. To add DMRHub, you add your own line to that file. These steps come from the Pi-Star dashboard source; screens can differ between Pi-Star versions.
+## Set up your software
 
-1. In the Pi-Star dashboard, open **Expert**, then **SSH Access**, and log in.
-2. Make the file system writable:
+Pick the tab of the program that runs your hotspot and follow its steps:
 
-   ```sh
-   rpi-rw
-   ```
+- **Pi-Star**: add a DMRHub line to the host list, set the DMR fields, and put the password in MMDVMHost. Pi-Star does not take the password from the host list.
+- **WPSD**: add DMRHub as the custom DMR network.
+- **MMDVMHost**: current builds connect through DMRGateway. The tab also has the direct settings for older builds.
+- **DMRGateway**: pick a network number that is free in your file, and copy the section into `DMRGateway.ini`. The section has `PassAllTG` and `PassAllPC` lines, so that all group and private calls on both timeslots go to DMRHub. When DMRHub shares DMRGateway with other networks, write rewrite rules (`TGRewrite`, `PCRewrite`) in their place. See the DMRGateway documentation for the rule format.
+- **DroidStar**: add DMRHub on the **Hosts** tab of the Android app and set the DMR fields.
+- **HBlink3**: add a `PEER` system to `hblink.cfg`.
+- **Other**: any software that speaks the MMDVM network protocol works with the server address, port, ID and password.
 
-3. Add a line for DMRHub to `/root/DMR_Hosts.txt`. Pi-Star adds this file to its host list each time it updates the host files. The columns are a name with no spaces, `0000`, the address, the password and the port:
+## Rotate the password
 
-   ```text
-   DMRHub_Local	0000	dmrhub.example.org	kG7tZ2pQ9wX4mN8v	62031
-   ```
+If you lose the password, or think that someone else has it, make a new one:
 
-4. Update the host files, so that the new line is in the list:
+1. Open the page of the hotspot and click **Connect**.
+2. Click **Rotate password**, then click **Rotate password** again in the dialog to confirm. **Cancel** or Escape closes the dialog without a change.
+3. Copy the new password. DMRHub shows it once.
+4. Put the new password in the software of the hotspot.
 
-   ```sh
-   sudo HostFilesUpdate.sh
-   ```
-
-5. Open **Configuration**. In **General Configuration**, set **CCS7/DMR ID** to your DMR ID. In **DMR Configuration**, set **DMR Master** to `DMRHub_Local`, then click **Apply Changes**. The hotspot logs in with its ID, so the ID that you enrolled on DMRHub must match it: your 7-digit DMR ID, or your DMR ID with the two ESSID digits if you set an ESSID.
-6. Pi-Star keeps a password that MMDVMHost already has. Open **Expert**, then **MMDVMHost** under **Quick Edit**, and check that **Password** in the **DMR Network** section is the DMRHub password. Change it and apply if it is not.
-
-<!-- screenshot: pistar-dmr-master.png | the Pi-Star Configuration page with DMR Master set to DMRHub_Local -->
-
-When the hotspot connects, the **Last Connected** and **Last Ping** columns on the Repeaters page show a time.
-
-## Connect with DMRGateway
-
-If you run DMRGateway yourself, add the section that DMRHub showed to `DMRGateway.ini`. Use a network number that is free in your file.
-
-DMRGateway sends traffic to a network only when a rewrite or pass rule of that network matches. When DMRHub is the only network, add these lines to its section, so that all group and private calls on both timeslots go to DMRHub:
-
-```ini
-PassAllTG=1
-PassAllTG=2
-PassAllPC=1
-PassAllPC=2
-```
-
-When DMRHub shares DMRGateway with other networks, write rewrite rules (`TGRewrite`, `PCRewrite`) that send only the talkgroups you want to DMRHub. See the DMRGateway documentation for the rule format.
-
-## Other hotspot software
-
-Any software that speaks the MMDVM network protocol works. Give it these values:
-
-| Setting | Value |
-| --- | --- |
-| Address | The host name of `<siteurl>`, or the address your admin gives you |
-| Port | The port that DMRHub showed (62031 by default) |
-| ID | The hotspot ID that you enrolled |
-| Password | The password that DMRHub showed once |
+The old password stops working at once, and DMRHub drops the connection of the hotspot. The hotspot stays disconnected until it logs in with the new password. Only the owner of the hotspot or an admin can rotate the password.
 
 ## Check the connection
 

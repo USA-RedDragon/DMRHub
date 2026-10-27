@@ -24,10 +24,12 @@ A repeater that runs MMDVMHost, with or without DMRGateway, connects like a hots
 1. Go to **Repeaters** and click **Enroll New Repeater**.
 2. Set **Repeater Type** to **MMDVM**, if the page shows the field.
 3. Enter the repeater ID in **DMR Radio ID** and click **Save**.
-4. Copy the DMRGateway configuration that DMRHub shows. It has the password, and DMRHub shows it only once.
-5. Put the address, port, ID and password in MMDVMHost or DMRGateway. See [Connect a hotspot](connect-hotspot.md#connect-with-dmrgateway).
+4. DMRHub opens the connect page of the repeater. Copy the password now. DMRHub shows it only once.
+5. Pick the tab of your software on the connect page and follow its steps. The values of the repeater are already filled in. See [Connect a hotspot](connect-hotspot.md#set-up-your-software).
 
-An older password can have a `#` or a `%`, which some repeater software does not read correctly. If your password has one, click **Rotate password** on the page of the repeater.
+If you lose the password, open the page of the repeater, click **Connect**, then click **Rotate password**. See [Rotate the password](connect-hotspot.md#rotate-the-password).
+
+An older password can have a `#` or a `%`, which some repeater software does not read correctly. If your password has one, rotate it the same way.
 
 ### Repeaters that use the published Homebrew specification
 
@@ -42,11 +44,15 @@ DMRHub accepts Motorola repeaters (for example the SLR 5500 or XPR 8400) over IP
 1. Go to **Repeaters** and click **Enroll New Repeater**.
 2. Set **Repeater Type** to **Motorola IPSC**.
 3. Enter the repeater ID and click **Save**.
-4. Copy the values that DMRHub shows. DMRHub shows the auth key only once.
-5. In the CPS of the repeater, set up an IPSC network link with:
-   - **Master IP**: the address of DMRHub.
-   - **Master port**: the port that DMRHub showed (50000 by default).
-   - **Authentication key**: the 40-digit hex key that DMRHub showed.
+4. DMRHub opens the connect page of the repeater. Copy the auth key now. DMRHub shows it only once.
+5. In the CPS of the repeater, set up an IPSC network link with the values on the **Motorola CPS** tab of the connect page:
+   - **Radio ID**: the repeater ID.
+   - **Link Type**: Peer.
+   - **Master IP**: the server address on the connect page.
+   - **Master UDP Port**: the port on the connect page (50000 by default).
+   - **Authentication Key**: the 40-digit hex key.
+
+If you lose the auth key, open the page of the repeater, click **Connect**, then click **Rotate auth key** and confirm. The old key stops working at once, and the repeater cannot link until you put the new key in the CPS and write the codeplug.
 
 For CPS details, see the [BrandMeister IPSC wiki](https://wiki.brandmeister.network/index.php/IPSC).
 

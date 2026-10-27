@@ -11,7 +11,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 
 ## Hotspots and repeaters
 
-- [Connect a hotspot](guides/connect-hotspot.md), with Pi-Star and DMRGateway steps
+- [Connect a hotspot](guides/connect-hotspot.md): the connect page, the steps for each program, and password rotation
 - [Link a repeater](guides/link-repeater.md), MMDVM or Motorola IPSC
 - [Use Codec2 radios](guides/voice-codec.md)
 

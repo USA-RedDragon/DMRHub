@@ -30,7 +30,7 @@ DMRHub sends a private call to the hotspot or repeater where it last heard the o
 
 ### I lost the password of my hotspot. Can I see it again?
 
-No. DMRHub shows it only once. Delete the hotspot on the Repeaters page and enroll it again.
+No. DMRHub shows it only once. Open the page of the hotspot, click **Connect**, then click **Rotate password**. DMRHub makes a new password and shows it once. The old one stops working at once. See [Rotate the password](guides/connect-hotspot.md#rotate-the-password).
 
 ### Who can see my text messages and positions?
 

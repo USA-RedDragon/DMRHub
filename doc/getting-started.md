@@ -38,13 +38,13 @@ See [Create an account](guides/create-account.md) for the details and the error 
 
 1. Log in, then go to **Repeaters** and click **Enroll New Repeater**.
 2. Enter your DMR ID, or your DMR ID with two more digits (for example 300000101 for a second hotspot), and click **Save**.
-3. Copy the configuration that DMRHub shows. It has the password of the hotspot, and DMRHub shows it only once.
+3. DMRHub opens the connect page of the hotspot. Copy the password now. DMRHub shows it only once. If you lose it, click **Rotate password** on the page of the hotspot.
 
 ## Step 3: Point the hotspot at DMRHub
 
-Put the address, port, ID and password from step 2 in your hotspot. Then make a test call to the parrot on talkgroup 9990, if your network has one, to check that it works.
+Pick the tab of your software on the connect page and follow its steps. The values of your hotspot are already filled in. Then make a test call to the parrot on talkgroup 9990, if your network has one, to check that it works.
 
-See [Connect a hotspot](guides/connect-hotspot.md) for Pi-Star and DMRGateway steps, and [Test with the parrot](guides/parrot.md).
+See [Connect a hotspot](guides/connect-hotspot.md) for the details, and [Test with the parrot](guides/parrot.md).
 
 ## Next steps
 

@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
@@ -53,7 +53,7 @@ const activeNet = {
   id: 7, talkgroup_id: 3100, active: true, description: '', check_in_count: 0,
   started_by_user: { id: 3100002, callsign: 'N0NCO' }, start_time: '2026-10-26T00:00:00Z',
 };
-const scheduled = { id: 9, name: 'Weekly', day_of_week: 3, time_of_day: '19:00', enabled: true };
+const scheduled = { id: 9, name: 'Weekly', day_of_week: 3, time_of_day: '19:00', timezone: 'America/Chicago', enabled: true };
 
 async function page(user: { loggedIn: boolean; id?: number; admin?: boolean }, active: boolean) {
   const pinia = createPinia();
@@ -72,9 +72,12 @@ async function page(user: { loggedIn: boolean; id?: number; admin?: boolean }, a
   });
   await flushPromises();
   const buttons = wrapper.findAll('button').map((b) => b.text());
+  lastText = wrapper.text();
   wrapper.unmount();
   return buttons;
 }
+
+let lastText = '';
 
 describe('TalkgroupDetailsPage net controls', () => {
   beforeEach(() => {
@@ -109,6 +112,19 @@ describe('TalkgroupDetailsPage net controls', () => {
       expect(await page(user, true)).toContain('Stop Net');
     });
   }
+});
+
+describe('TalkgroupDetailsPage scheduled nets', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows the time of a scheduled net in its own time zone', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-27T12:00:00Z'));
+    await page({ loggedIn: false }, false);
+    expect(lastText).toContain('Wed at 14:00 America/Chicago');
+  });
 });
 
 describe('TalkgroupDetailsPage live calls', () => {

@@ -90,7 +90,7 @@
               </span>
             </div>
             <div class="mt-1 text-xs text-muted-foreground">
-              {{ dayNames[sn.day_of_week] }} at {{ sn.time_of_day }} {{ sn.timezone }}
+              {{ netSchedule(sn.day_of_week, sn.time_of_day, sn.timezone) }}
             </div>
           </CardContent>
         </Card>
@@ -137,8 +137,8 @@ import { getNets, getScheduledNets, type Net, type ScheduledNet } from '@/servic
 import { getWebsocketURI } from '@/services/util';
 import { formatDistanceToNow, isPast } from 'date-fns';
 import ws from '@/services/ws';
+import { netSchedule } from '@/lib/timeConversion';
 
-const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default {
   components: {
@@ -173,7 +173,6 @@ export default {
       page: 1,
       rows: 30,
       socket: null as { close(): void } | null,
-      dayNames,
     };
   },
   computed: {
@@ -234,6 +233,7 @@ export default {
     },
   },
   methods: {
+    netSchedule,
     fetchNets(page = 1, limit = 30) {
       this.loading = true;
       getNets({ page, limit })

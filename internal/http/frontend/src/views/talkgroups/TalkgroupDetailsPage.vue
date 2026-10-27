@@ -201,7 +201,7 @@
               <li v-for="sn in scheduledNets" :key="sn.id" class="text-sm flex items-center justify-between">
                 <span>
                   <strong>{{ sn.name }}</strong> —
-                  {{ dayNames[sn.day_of_week] }} {{ sn.time_of_day }} UTC
+                  {{ netSchedule(sn.day_of_week, sn.time_of_day, sn.timezone) }}
                   <span v-if="sn.duration_minutes">({{ sn.duration_minutes }}m)</span>
                   <span v-if="!sn.enabled" class="text-muted-foreground"> (disabled)</span>
                 </span>
@@ -273,6 +273,7 @@ import {
   type ScheduledNet,
 } from '@/services/net';
 import { getWebsocketURI } from '@/services/util';
+import { netSchedule } from '@/lib/timeConversion';
 import ws from '@/services/ws';
 import { useUserStore } from '@/store';
 
@@ -354,7 +355,6 @@ export default {
       showStartNet: false,
       netDescription: '',
       netDuration: '' as string | number,
-      dayNames: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     };
   },
   watch: {
@@ -394,6 +394,7 @@ export default {
     },
   },
   methods: {
+    netSchedule,
     fetchTalkgroup() {
       this.loading = true;
       API.get(`/talkgroups/${this.talkgroupID}`)

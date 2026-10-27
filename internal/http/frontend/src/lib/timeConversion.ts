@@ -73,3 +73,41 @@ export function utcToLocal(
   const localMM = String(target.getMinutes()).padStart(2, '0');
   return { dayOfWeek: localDay, timeOfDay: `${localHH}:${localMM}` };
 }
+
+function knownZone(timeZone: string): string {
+  if (!timeZone) return 'UTC';
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone });
+    return timeZone;
+  } catch {
+    return 'UTC';
+  }
+}
+
+function weekdayAndTime(at: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('weekday')} at ${part('hour')}:${part('minute')}`;
+}
+
+/**
+ * Label a scheduled net, whose day and time are in UTC, with the day and
+ * time of its next run in the time zone of the net, such as
+ * "Tue at 19:00 America/Chicago". A net with no time zone or an unknown
+ * one shows UTC.
+ */
+export function netSchedule(utcDay: number, utcTime: string, timeZone: string, now: Date = new Date()): string {
+  const parts = utcTime.split(':').map(Number);
+  const day = 24 * 60 * 60 * 1000;
+  let at = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), parts[0] ?? 0, parts[1] ?? 0);
+  at += ((utcDay - new Date(at).getUTCDay() + 7) % 7) * day;
+  if (at < now.getTime()) at += 7 * day;
+  const zone = knownZone(timeZone);
+  return `${weekdayAndTime(new Date(at), zone)} ${zone}`;
+}

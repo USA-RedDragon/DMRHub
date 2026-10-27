@@ -61,6 +61,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import { netSchedule } from '@/lib/timeConversion';
 import {
   getNets,
   getScheduledNets,
@@ -71,7 +72,6 @@ import {
   type ScheduledNet,
 } from '@/services/net';
 
-const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default {
   components: {
@@ -181,7 +181,7 @@ export default {
           header: 'Schedule',
           cell: ({ row }: { row: { original: ScheduledNet } }) => {
             const sn = row.original;
-            return `${dayNames[sn.day_of_week]} ${sn.time_of_day} ${sn.timezone}`;
+            return netSchedule(sn.day_of_week, sn.time_of_day, sn.timezone);
           },
         },
         {

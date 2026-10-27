@@ -1,0 +1,39 @@
+# Positions and APRS-IS
+
+The location server is a plugin that comes with DMRHub (see [The built-in plugins](../plugins.md#the-built-in-plugins)). For what users see and set, see the [Positions reference](../positions.md).
+
+## What the hub stores
+
+DMRHub stores positions only for the radios whose owners turn on position tracking, and only from that time. It stores at most one position of a radio each 30 seconds: the latitude and longitude, the accuracy, speed, heading and altitude when the radio sends them, the time of the fix and of its arrival, the repeater and timeslot, and the location service ID. When the owner turns tracking off, DMRHub deletes the positions of the radio.
+
+Admins see the same positions as everyone else: their own radios, and the radios of the users who share with them. Apps never get admin rights.
+
+## Limits
+
+Go to **Admin**, then **Setup**, and find the **Positions** card in **DMR Settings**.
+
+| Setting | What it does | Configuration key |
+| ------- | ------------ | ----------------- |
+| **Shortest report interval** | Owners can pick 5, 10, 15, 30 or 60 minutes, but not less than this. The default is 5. | `dmr.positions.min-interval` |
+| **Longest time to keep positions** | Owners can keep positions for 24 hours, 7 days, 30 days or this many days, from 1 to 365. The default is 30. | `dmr.positions.max-retention` |
+
+Each hour, DMRHub deletes the positions older than the time that the owner picked, and never keeps them longer than the longest time.
+
+## APRS-IS
+
+DMRHub logs in to APRS-IS once, and sends the positions of the radios whose owners turn it on, each under the callsign of its owner. Set the login on the same card:
+
+| Setting | What it is | Configuration key |
+| ------- | ---------- | ----------------- |
+| **Callsign** | The callsign and SSID that the hub logs in as, such as `N0CALL-10`. Empty sends nothing. | `dmr.positions.aprs-is.callsign` |
+| **Server** | The APRS-IS server, as host and port. The default is `rotate.aprs2.net:14580`. | `dmr.positions.aprs-is.server` |
+
+DMRHub calculates the APRS-IS passcode from the callsign, so there is nothing to register. Use a callsign that you hold a license for. When DMRHub runs as several replicas, only one of them logs in at a time.
+
+Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.
+
+<!-- screenshot: admin-setup-positions.png | /admin/setup, the Positions card with interval 5, longest time 30 days, APRS-IS callsign N0CALL-10 and the default server -->
+
+## The map
+
+The Positions page loads its map from `https://tiles.squallar.app`, without cookies, and keeps the map data that it read in the cache of the browser. If you add a Content-Security-Policy, allow `connect-src https://tiles.squallar.app`, `worker-src 'self' blob:`, `img-src 'self' data: blob:` and `style-src 'unsafe-inline'`.

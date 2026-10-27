@@ -36,12 +36,14 @@ vi.mock('@/services/net', () => ({
 }));
 
 import API from '@/services/API';
+import ws from '@/services/ws';
 import * as net from '@/services/net';
 import TalkgroupDetailsPage from '@/views/talkgroups/TalkgroupDetailsPage.vue';
 import { useUserStore } from '@/store';
 
 const mockAPI = API as unknown as { get: Mock };
 const mockNet = net as unknown as Record<string, Mock>;
+const mockWS = ws as unknown as { connect: Mock };
 
 const talkgroup = {
   id: 3100, name: 'USA', description: '', created_at: '2026-10-01T00:00:00Z',
@@ -107,4 +109,49 @@ describe('TalkgroupDetailsPage net controls', () => {
       expect(await page(user, true)).toContain('Stop Net');
     });
   }
+});
+
+describe('TalkgroupDetailsPage live calls', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const callPaths = () => mockWS.connect.mock.calls
+    .map((c) => new URL(c[0] as string).pathname)
+    .filter((p) => !p.startsWith('/ws/nets'));
+
+  it('uses the public websocket for a visitor', async () => {
+    await page({ loggedIn: false }, false);
+    expect(callPaths()).toEqual(['/ws/lastheard']);
+  });
+
+  it('uses the calls websocket for a logged-in user', async () => {
+    await page({ loggedIn: true, id: 3000001 }, false);
+    expect(callPaths()).toEqual(['/ws/calls']);
+  });
+
+  it('moves to the calls websocket when the visitor logs in', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const user = useUserStore();
+    Object.assign(user, { id: 0, admin: false, loggedIn: false });
+    mockAPI.get.mockImplementation((url: string) =>
+      Promise.resolve({ data: url.startsWith('/lastheard') ? { calls: [], total: 0 } : talkgroup }));
+    mockNet.getNets!.mockResolvedValue({ data: { nets: [], total: 0 } });
+    mockNet.getScheduledNets!.mockResolvedValue({ data: { scheduled_nets: [], total: 0 } });
+    const wrapper = mount(TalkgroupDetailsPage, {
+      global: {
+        plugins: [pinia],
+        mocks: { $route: { params: { id: '3100' } }, $toast: { add: vi.fn() } },
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+    });
+    await flushPromises();
+    user.loggedIn = true;
+    await flushPromises();
+    expect(callPaths()).toEqual(['/ws/lastheard', '/ws/calls']);
+    const first = mockWS.connect.mock.calls.findIndex((c) => new URL(c[0] as string).pathname === '/ws/lastheard');
+    expect(mockWS.connect.mock.results[first]!.value.close).toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

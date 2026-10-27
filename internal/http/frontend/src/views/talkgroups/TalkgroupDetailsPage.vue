@@ -316,7 +316,7 @@ export default {
       this.fetchLastheard();
       this.fetchActiveNet();
       this.fetchScheduledNets();
-      this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
+      this.connectSocket();
       this.netSocket = ws.connect(getWebsocketURI() + '/nets', this.onNetWebsocketMessage);
       this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
     }
@@ -358,6 +358,11 @@ export default {
     };
   },
   watch: {
+    loggedIn() {
+      if (this.talkgroupID) {
+        this.connectSocket();
+      }
+    },
     filter: {
       deep: true,
       handler() {
@@ -367,6 +372,9 @@ export default {
     },
   },
   computed: {
+    loggedIn(): boolean {
+      return useUserStore().loggedIn;
+    },
     canRunNets(): boolean {
       const user = useUserStore();
       if (!user.loggedIn) return false;
@@ -432,6 +440,13 @@ export default {
       this.rows = pageSize;
       this.page = 1;
       this.fetchLastheard(this.page, this.rows);
+    },
+    connectSocket() {
+      if (this.socket) {
+        this.socket.close();
+      }
+      const path = this.loggedIn ? '/calls' : '/lastheard';
+      this.socket = ws.connect(getWebsocketURI() + path, this.onWebsocketMessage);
     },
     onWebsocketMessage(event: MessageEvent) {
       const call = JSON.parse(event.data);

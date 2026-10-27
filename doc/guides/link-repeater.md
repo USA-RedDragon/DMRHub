@@ -43,7 +43,7 @@ DMRHub accepts Motorola repeaters (for example the SLR 5500 or XPR 8400) over IP
 4. Copy the values that DMRHub shows. DMRHub shows the auth key only once.
 5. In the CPS of the repeater, set up an IPSC network link with:
    - **Master IP**: the address of DMRHub.
-   - **Master port**: 50000, unless your admin gives you another port.
+   - **Master port**: the port that DMRHub showed (50000 by default).
    - **Authentication key**: the 40-digit hex key that DMRHub showed.
 
 For CPS details, see the [BrandMeister IPSC wiki](https://wiki.brandmeister.network/index.php/IPSC).

@@ -8,7 +8,7 @@ The **Last Heard** page (`<siteurl>/lastheard`) lists the recent transmissions o
 
 - When the page loads, it lists the latest group transmissions to talkgroups, newest first. Anyone can see them.
 - Visitors who are not logged in see no text messages.
-- When you are logged in, new transmissions appear while the page is open: your own, private ones to you or to your hotspots, and the talkgroups that your hotspots carry. Logged-in users also see the **Repeater** column.
+- New transmissions appear while the page is open. Visitors see new group transmissions to talkgroups. When you are logged in, you see your own transmissions, private ones to you or to your hotspots, and the talkgroups that your hotspots carry. Logged-in users also see the **Repeater** column.
 
 Use **Type** to pick which kinds of transmission to show: **Voice**, **Data**, **SMS**, **GPS**, **Talker Alias**, **CSBK**, **Control** and **Unknown**. By default the list shows every kind but **Unknown**. **All** turns on every kind and **Show idle and USBD rows**.
 

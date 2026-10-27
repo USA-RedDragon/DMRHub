@@ -55,6 +55,8 @@ const (
 	// csbkStreamHold is how long CSBKs between the same addresses share a
 	// stream, as a Pre_CSBK train does.
 	csbkStreamHold = time.Second
+	// maxRSSIOctet is the largest RSSI of a DMRD packet.
+	maxRSSIOctet = 255
 )
 
 // sink is where the radio sends its frames and the packets for the hub.
@@ -70,6 +72,7 @@ type slotState struct {
 	rf      bool
 	stream  uint32
 	seq     uint8
+	rssi    int
 
 	csbkTarget, csbkSource uint32
 	csbkStream             uint32
@@ -90,6 +93,7 @@ type radio struct {
 	m          *config.Modem
 	repeater   uint32
 	protocol   uint8
+	rssi       rssiMap
 	rep        *bs.Repeater
 	outs       []bs.Output
 	out        sink
@@ -101,12 +105,12 @@ type radio struct {
 	nextStatus time.Duration
 }
 
-func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now time.Duration) (*radio, error) {
+func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now time.Duration, rssi rssiMap) (*radio, error) {
 	rep, err := bs.New(&bs.Config{Mode: bs.ModeRF, ColorCode: colorCode(m), Lead: txLead})
 	if err != nil {
 		return nil, fmt.Errorf("make the repeater: %w", err)
 	}
-	return &radio{m: m, repeater: repeater, protocol: protocol, rep: rep, outs: make([]bs.Output, 0, bs.MaxOutputs),
+	return &radio{m: m, repeater: repeater, protocol: protocol, rssi: rssi, rep: rep, outs: make([]bs.Output, 0, bs.MaxOutputs),
 		out: out, lastStatus: now, nextStatus: now}, nil
 }
 
@@ -195,6 +199,12 @@ func (r *radio) dmr(now time.Duration, f mmdvm.Frame) {
 	if d.Lost {
 		r.apply(now, r.rep.Lost(now, d.Slot, rf, r.outs[:0]))
 		return
+	}
+	if i, ok := slotIndex(d.Slot); ok {
+		r.slots[i].rssi = -1
+		if d.HasRSSI {
+			r.slots[i].rssi = r.rssi.packetRSSI(d.RSSI)
+		}
 	}
 	r.apply(now, r.rep.Inbound(now, &d.Burst, d.Hint(), rf, r.outs[:0]))
 }
@@ -364,7 +374,11 @@ func (r *radio) toNetwork(now time.Duration, s *slotState, o *bs.Output) {
 		return
 	}
 	s.seq++
-	r.out.route(models.PacketFromData(&d, false))
+	p := models.PacketFromData(&d, false)
+	if s.rssi > 0 {
+		p.RSSI = s.rssi
+	}
+	r.out.route(p)
 }
 
 // flush sends the queued bursts that the modem has room for, as MMDVMHost

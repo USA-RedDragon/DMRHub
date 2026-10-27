@@ -86,27 +86,28 @@ type iPSCShadow struct {
 }
 
 type modemShadow struct {
-	Enabled     *bool    `json:"enabled"      toml:"enabled"      yaml:"enabled"`
-	Port        *string  `json:"port"         toml:"port"         yaml:"port"`
-	Baud        *int     `json:"baud"         toml:"baud"         yaml:"baud"`
-	RepeaterID  *uint    `json:"repeater-id"  toml:"repeater-id"  yaml:"repeater-id"`
-	Duplex      *bool    `json:"duplex"       toml:"duplex"       yaml:"duplex"`
-	ColorCode   *uint    `json:"color-code"   toml:"color-code"   yaml:"color-code"`
-	RXFrequency *uint    `json:"rx-frequency" toml:"rx-frequency" yaml:"rx-frequency"`
-	TXFrequency *uint    `json:"tx-frequency" toml:"tx-frequency" yaml:"tx-frequency"`
-	RXOffset    *int     `json:"rx-offset"    toml:"rx-offset"    yaml:"rx-offset"`
-	TXOffset    *int     `json:"tx-offset"    toml:"tx-offset"    yaml:"tx-offset"`
-	RFLevel     *float64 `json:"rf-level"     toml:"rf-level"     yaml:"rf-level"`
-	RXLevel     *float64 `json:"rx-level"     toml:"rx-level"     yaml:"rx-level"`
-	TXLevel     *float64 `json:"tx-level"     toml:"tx-level"     yaml:"tx-level"`
-	RXDCOffset  *int     `json:"rx-dc-offset" toml:"rx-dc-offset" yaml:"rx-dc-offset"`
-	TXDCOffset  *int     `json:"tx-dc-offset" toml:"tx-dc-offset" yaml:"tx-dc-offset"`
-	RXInvert    *bool    `json:"rx-invert"    toml:"rx-invert"    yaml:"rx-invert"`
-	TXInvert    *bool    `json:"tx-invert"    toml:"tx-invert"    yaml:"tx-invert"`
-	PTTInvert   *bool    `json:"ptt-invert"   toml:"ptt-invert"   yaml:"ptt-invert"`
-	TXDelay     *int     `json:"tx-delay"     toml:"tx-delay"     yaml:"tx-delay"`
-	DMRDelay    *int     `json:"dmr-delay"    toml:"dmr-delay"    yaml:"dmr-delay"`
-	Debug       *bool    `json:"debug"        toml:"debug"        yaml:"debug"`
+	Enabled         *bool    `json:"enabled"           toml:"enabled"           yaml:"enabled"`
+	Port            *string  `json:"port"              toml:"port"              yaml:"port"`
+	Baud            *int     `json:"baud"              toml:"baud"              yaml:"baud"`
+	RepeaterID      *uint    `json:"repeater-id"       toml:"repeater-id"       yaml:"repeater-id"`
+	Duplex          *bool    `json:"duplex"            toml:"duplex"            yaml:"duplex"`
+	ColorCode       *uint    `json:"color-code"        toml:"color-code"        yaml:"color-code"`
+	RXFrequency     *uint    `json:"rx-frequency"      toml:"rx-frequency"      yaml:"rx-frequency"`
+	TXFrequency     *uint    `json:"tx-frequency"      toml:"tx-frequency"      yaml:"tx-frequency"`
+	RXOffset        *int     `json:"rx-offset"         toml:"rx-offset"         yaml:"rx-offset"`
+	TXOffset        *int     `json:"tx-offset"         toml:"tx-offset"         yaml:"tx-offset"`
+	RFLevel         *float64 `json:"rf-level"          toml:"rf-level"          yaml:"rf-level"`
+	RXLevel         *float64 `json:"rx-level"          toml:"rx-level"          yaml:"rx-level"`
+	TXLevel         *float64 `json:"tx-level"          toml:"tx-level"          yaml:"tx-level"`
+	RXDCOffset      *int     `json:"rx-dc-offset"      toml:"rx-dc-offset"      yaml:"rx-dc-offset"`
+	TXDCOffset      *int     `json:"tx-dc-offset"      toml:"tx-dc-offset"      yaml:"tx-dc-offset"`
+	RXInvert        *bool    `json:"rx-invert"         toml:"rx-invert"         yaml:"rx-invert"`
+	TXInvert        *bool    `json:"tx-invert"         toml:"tx-invert"         yaml:"tx-invert"`
+	PTTInvert       *bool    `json:"ptt-invert"        toml:"ptt-invert"        yaml:"ptt-invert"`
+	TXDelay         *int     `json:"tx-delay"          toml:"tx-delay"          yaml:"tx-delay"`
+	DMRDelay        *int     `json:"dmr-delay"         toml:"dmr-delay"         yaml:"dmr-delay"`
+	Debug           *bool    `json:"debug"             toml:"debug"             yaml:"debug"`
+	RSSIMappingFile *string  `json:"rssi-mapping-file" toml:"rssi-mapping-file" yaml:"rssi-mapping-file"`
 }
 
 type retentionShadow struct {
@@ -626,6 +627,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.Modem.Debug != nil {
 				cfg.DMR.Modem.Debug = *s.DMR.Modem.Debug
 				set("dmr.modem.debug", configulator.LayerFile, file)
+			}
+			if s.DMR.Modem.RSSIMappingFile != nil {
+				cfg.DMR.Modem.RSSIMappingFile = *s.DMR.Modem.RSSIMappingFile
+				set("dmr.modem.rssi-mapping-file", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.DisableRadioIDValidation != nil {
@@ -1378,6 +1383,10 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Modem.Debug = p
 		set("dmr.modem.debug", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "modem", "rssi-mapping-file"); ok {
+		cfg.DMR.Modem.RSSIMappingFile = v
+		set("dmr.modem.rssi-mapping-file", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "disable-radio-id-validation"); ok {
 		p, err := strconv.ParseBool(v)
 		if err != nil {
@@ -1753,6 +1762,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "modem" + o.Separator + "tx-delay",
 		"dmr" + o.Separator + "modem" + o.Separator + "dmr-delay",
 		"dmr" + o.Separator + "modem" + o.Separator + "debug",
+		"dmr" + o.Separator + "modem" + o.Separator + "rssi-mapping-file",
 		"dmr" + o.Separator + "disable-radio-id-validation",
 		"dmr" + o.Separator + "radio-id-url",
 		"dmr" + o.Separator + "repeater-id-url",
@@ -1865,43 +1875,44 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(100), names[56], "Time in milliseconds, 0 to 500, that the transmitter is on before the first burst")
 	fs.Var(impl.NewInt(0), names[57], "Delay of the duplex receiver in symbols, 0 to 255")
 	fs.Bool(names[58], false, "Ask the modem for its debug messages and log them")
-	fs.Bool(names[59], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
-	fs.String(names[60], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.String(names[61], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
-	fs.Var(impl.NewInt(0), names[62], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[63], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
-	fs.Var(impl.NewInt(0), names[64], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[65], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[66], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[67], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[68], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[69], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[70], false, "Accept plugins that run as their own programs")
-	fs.String(names[71], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[72], "TCP port that plugins connect to")
-	fs.String(names[73], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[74], "", "TLS key file of the certificate file")
-	fs.Var(impl.NewInt(25), names[75], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[76], false, "Enable SMTP support for sending emails")
-	fs.String(names[77], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[78], "SMTP server port")
-	fs.String(names[79], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[80], "", "SMTP server username")
-	fs.String(names[81], "", "SMTP server password")
-	fs.String(names[82], "", "Email address to use as the sender")
-	fs.String(names[83], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[84], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[85], false, "Enable metrics collection and export")
-	fs.String(names[86], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[87], "Metrics server port")
-	fs.StringSlice(names[88], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[89], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[90], false, "Enable PProf profiling and debugging support")
-	fs.String(names[91], "[::]", "PProf server listen address")
-	fs.StringSlice(names[92], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[93], "PProf server port")
-	fs.String(names[94], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[95], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[59], "", "Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known")
+	fs.Bool(names[60], false, "Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID")
+	fs.String(names[61], "https://www.radioid.net/static/users.json", "URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.String(names[62], "https://www.radioid.net/static/rptrs.json", "URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net.")
+	fs.Var(impl.NewInt(0), names[63], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[64], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
+	fs.Var(impl.NewInt(0), names[65], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
+	fs.Var(impl.NewInt(5), names[66], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[67], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[68], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[69], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[70], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[71], false, "Accept plugins that run as their own programs")
+	fs.String(names[72], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[73], "TCP port that plugins connect to")
+	fs.String(names[74], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[75], "", "TLS key file of the certificate file")
+	fs.Var(impl.NewInt(25), names[76], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[77], false, "Enable SMTP support for sending emails")
+	fs.String(names[78], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[79], "SMTP server port")
+	fs.String(names[80], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[81], "", "SMTP server username")
+	fs.String(names[82], "", "SMTP server password")
+	fs.String(names[83], "", "Email address to use as the sender")
+	fs.String(names[84], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[85], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[86], false, "Enable metrics collection and export")
+	fs.String(names[87], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[88], "Metrics server port")
+	fs.StringSlice(names[89], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[90], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[91], false, "Enable PProf profiling and debugging support")
+	fs.String(names[92], "[::]", "PProf server listen address")
+	fs.StringSlice(names[93], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[94], "PProf server port")
+	fs.String(names[95], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[96], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -2613,6 +2624,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Modem.Debug = v
 		set("dmr.modem.debug", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "modem" + o.Separator + "rssi-mapping-file"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.modem.rssi-mapping-file",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Modem.RSSIMappingFile = v
+		set("dmr.modem.rssi-mapping-file", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "disable-radio-id-validation"; fs.Changed(n) {
 		v, err := fs.GetBool(n)
@@ -4746,6 +4769,19 @@ func (s *modemShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".debug", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
+		case "rssi-mapping-file":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.RSSIMappingFile = &str
+			default:
+				return configJSONError(path+".rssi-mapping-file", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -5610,6 +5646,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.modem.tx-delay = %v\n", c.DMR.Modem.TXDelay)
 	fmt.Fprintf(&b, "dmr.modem.dmr-delay = %v\n", c.DMR.Modem.DMRDelay)
 	fmt.Fprintf(&b, "dmr.modem.debug = %v\n", c.DMR.Modem.Debug)
+	fmt.Fprintf(&b, "dmr.modem.rssi-mapping-file = %v\n", c.DMR.Modem.RSSIMappingFile)
 	fmt.Fprintf(&b, "dmr.disable-radio-id-validation = %v\n", c.DMR.DisableRadioIDValidation)
 	fmt.Fprintf(&b, "dmr.radio-id-url = %v\n", c.DMR.RadioIDURL)
 	fmt.Fprintf(&b, "dmr.repeater-id-url = %v\n", c.DMR.RepeaterIDURL)

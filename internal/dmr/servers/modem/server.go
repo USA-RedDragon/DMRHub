@@ -99,6 +99,7 @@ type Server struct {
 	version string
 	opts    Options
 	epoch   time.Time
+	rssi    rssiMap
 
 	ctx        context.Context //nolint:containedctx // the server outlives Start, as the other servers do
 	handle     *hub.ServerHandle
@@ -144,6 +145,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return errRepeaterID
 	}
 	s.ctx = context.WithoutCancel(ctx)
+	s.loadRSSI()
 	if s.hub != nil {
 		s.handle = s.hub.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeModem, Role: hub.RoleRepeater})
 		s.stopClaims = s.hub.OnClaimedElsewhere(func(id uint, _ time.Time) {
@@ -175,6 +177,22 @@ func (s *Server) Stop(context.Context) error {
 		s.jobs.Wait()
 	})
 	return nil
+}
+
+// loadRSSI reads the RSSI mapping file of the modem. Without one, or when
+// it does not load, the RSSI of modem calls is not known.
+func (s *Server) loadRSSI() {
+	path := s.m.RSSIMappingFile
+	if path == "" {
+		return
+	}
+	m, err := loadRSSIMap(path)
+	if err != nil {
+		slog.Warn("Could not load the RSSI mapping file of the modem; the RSSI of modem calls is not known", "file", path, "error", err)
+		return
+	}
+	s.rssi = m
+	slog.Info("Loaded the RSSI mapping of the modem", "file", path, "points", m.points())
 }
 
 func (s *Server) now() time.Duration {
@@ -433,7 +451,7 @@ func (k linkSink) route(p models.Packet) {
 // serve runs the link l until it fails or the server stops.
 func (s *Server) serve(l *link, v mmdvm.Version) error {
 	start := s.now()
-	r, err := newRadio(&s.m, s.id, v.Protocol, linkSink{l: l, s: s}, start)
+	r, err := newRadio(&s.m, s.id, v.Protocol, linkSink{l: l, s: s}, start, s.rssi)
 	if err != nil {
 		l.close()
 		return err

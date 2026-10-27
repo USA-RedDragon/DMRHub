@@ -55,9 +55,14 @@ type bench struct {
 
 func newBench(t *testing.T, duplex bool, protocol uint8) *bench {
 	t.Helper()
+	return newBenchRSSI(t, duplex, protocol, rssiMap{})
+}
+
+func newBenchRSSI(t *testing.T, duplex bool, protocol uint8, rssi rssiMap) *bench {
+	t.Helper()
 	b := &bench{t: t, m: mmdvmhostModem(), now: time.Second}
 	b.m.Duplex, b.m.ColorCode = duplex, 1
-	r, err := newRadio(&b.m, benchRepeater, protocol, b, b.now)
+	r, err := newRadio(&b.m, benchRepeater, protocol, b, b.now, rssi)
 	if err != nil {
 		t.Fatal(err)
 	}

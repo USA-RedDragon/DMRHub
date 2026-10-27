@@ -139,6 +139,8 @@ dmr:
     dmr-delay: 0
     # Ask the modem for its debug messages and log them
     debug: false
+    # Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known
+    # rssi-mapping-file: ""
   # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
   disable-radio-id-validation: false
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.

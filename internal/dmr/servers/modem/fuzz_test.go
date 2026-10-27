@@ -72,7 +72,7 @@ func FuzzModemInput(f *testing.F) {
 		}
 		var out nopSink
 		now := time.Second
-		r, err := newRadio(&m, 311860, protocol, &out, now)
+		r, err := newRadio(&m, 311860, protocol, &out, now, rssiMap{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -265,12 +266,25 @@ func (p *Repeater) UpdateFrom(repeater Repeater) {
 	p.City = repeater.City
 	p.State = repeater.State
 	p.Country = repeater.Country
-	p.Location = fmt.Sprintf("%s, %s, %s", repeater.City, repeater.State, repeater.Country)
+	p.Location = repeater.Location
+	if parts := nonEmpty(repeater.City, repeater.State, repeater.Country); len(parts) > 0 {
+		p.Location = strings.Join(parts, ", ")
+	}
 	p.Description = repeater.Description
 	p.Slots = repeater.Slots
 	p.URL = repeater.URL
 	p.SoftwareID = repeater.SoftwareID
 	p.PackageID = repeater.PackageID
+}
+
+func nonEmpty(values ...string) []string {
+	out := values[:0:0]
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (p *Repeater) WantRX(packet Packet) (bool, bool) {

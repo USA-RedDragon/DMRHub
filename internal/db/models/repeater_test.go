@@ -218,3 +218,24 @@ func BenchmarkRepeaterUnmarshalMsg(b *testing.B) {
 		_, _ = dec.UnmarshalMsg(encoded)
 	}
 }
+
+func TestUpdateFromLocation(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		from models.Repeater
+		want string
+	}{
+		{"no data", models.Repeater{}, ""},
+		{"the RPTC location", models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{Location: "Dallas, TX"}}, "Dallas, TX"},
+		{"the repeater database", models.Repeater{City: "Dallas", State: "Texas", Country: "United States", RepeaterConfiguration: models.RepeaterConfiguration{Location: "home"}}, "Dallas, Texas, United States"},
+		{"part of the repeater database", models.Repeater{City: "Dallas", Country: "United States"}, "Dallas, United States"},
+	}
+	for _, tc := range cases {
+		var p models.Repeater
+		p.UpdateFrom(tc.from)
+		if p.Location != tc.want {
+			t.Errorf("%s: Location = %q, want %q", tc.name, p.Location, tc.want)
+		}
+	}
+}

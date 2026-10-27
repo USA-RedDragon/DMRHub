@@ -123,3 +123,45 @@ func TestAPausedRedisLosesNoSighting(t *testing.T) {
 	assert.Eventually(t, func() bool { return len(missing()) == 0 }, 15*time.Second, 100*time.Millisecond, "where some radios were heard is not stored")
 	t.Logf("%d of %d records missing after %d paused KV calls", len(missing()), radios, paused.calls.Load())
 }
+
+// TestAPausedRedisHoldsNoCodecChange announces the change of the codec of
+// a repeater while each publish waits a second and fails, as a paused
+// Redis makes it, and then while each publish fails at once without
+// reaching Redis, as a stopped Redis makes it. The announcement must not
+// wait on Redis, since the worker that records the codecs heard on the
+// timeslots makes it, and the other replicas must get each one once
+// Redis is back.
+func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
+	t.Parallel()
+	stalled := &stalledPubSub{stalls: func(topic string) bool { return topic == "hub:repeaters:codec" }}
+	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
+		stalled.PubSub = ps
+		return stalled
+	}, func(k kv.KV) kv.KV { return k })
+	seedUser(t, database, 1000001, "OWNER")
+	seedRepeater(t, database, 100003, 1000001)
+	sub := ps.Subscribe("hub:repeaters:codec")
+	t.Cleanup(func() { _ = sub.Close() })
+
+	for _, mode := range []stallMode{stallTimeout, stallNotSent} {
+		stalled.stall(mode)
+		start := time.Now()
+		h.CodecChanged(100003)
+		waited := time.Since(start)
+		t.Logf("announcing a codec change waited %v in stall mode %d", waited, mode)
+		assert.Less(t, waited, stalledRedisCall/4, "the announcement waited on pubsub")
+		time.Sleep(200 * time.Millisecond)
+		stalled.resume()
+		select {
+		case msg := <-sub.Channel():
+			assert.True(t, strings.HasSuffix(string(msg), ":100003"), "the announcement names the repeater: %s", msg)
+		case <-time.After(5 * time.Second):
+			assert.Fail(t, "the other replicas did not get the announcement", "stall mode %d", mode)
+		}
+		select {
+		case msg := <-sub.Channel():
+			assert.Fail(t, "the other replicas got the announcement twice", "%s", msg)
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+}

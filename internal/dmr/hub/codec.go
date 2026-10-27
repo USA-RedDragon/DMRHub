@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -241,7 +242,8 @@ func (h *Hub) recordHeard(n heardNote) {
 
 // CodecChanged drops what every replica knows of the codecs of the
 // repeater id. Call it after a change of the codec of one of its
-// timeslots.
+// timeslots. The other replicas hear of it through the outbox, so that it
+// never waits on Redis.
 func (h *Hub) CodecChanged(id uint) {
 	h.reloadRepeater(id)
 	h.loadCodec2Repeaters()
@@ -249,9 +251,7 @@ func (h *Hub) CodecChanged(id uint) {
 		return
 	}
 	msg := h.origin + ":" + strconv.FormatUint(uint64(id), 10)
-	if err := h.pubsub.Publish(codecChangedTopic, []byte(msg)); err != nil {
-		slog.Error("Failed to announce a codec change", "repeaterID", id, "error", err)
-	}
+	h.later.Add(laterKey{what: codecChangedTopic}, outbox.Job{Topic: codecChangedTopic, Data: []byte(msg)})
 }
 
 func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {

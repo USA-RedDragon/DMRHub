@@ -73,6 +73,9 @@ const (
 	// maxCWIDMinutes is the longest time between CW IDs that the radio
 	// takes, the largest that the config validates.
 	maxCWIDMinutes = 1440
+	// maxBeaconSeconds is the longest beacon interval or duration that the
+	// radio takes, the largest that the config validates.
+	maxBeaconSeconds = 86400
 )
 
 // sink is where the radio sends its frames and the packets for the hub.
@@ -125,6 +128,9 @@ type radio struct {
 	modemTX    bool
 	cwOn       bool
 	cwAt       time.Duration
+	beaconOn   bool
+	beaconAt   time.Duration
+	beaconEnd  time.Duration
 }
 
 func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now time.Duration, rssi rssiMap) (*radio, error) {
@@ -135,7 +141,41 @@ func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now ti
 	r := &radio{m: m, repeater: repeater, protocol: protocol, rssi: rssi, rep: rep, outs: make([]bs.Output, 0, bs.MaxOutputs),
 		out: out, lastStatus: now, nextStatus: now}
 	r.idleCWID(now)
+	r.beaconAt = now + r.beaconInterval()
 	return r, nil
+}
+
+func (r *radio) beacons() bool { return r.m.Beacons.Enabled && r.m.Duplex }
+
+func (r *radio) beaconInterval() time.Duration {
+	return time.Duration(min(r.m.Beacons.Interval, maxBeaconSeconds)) * time.Second //nolint:gosec // clamped to a day
+}
+
+// beacon keys the transmitter up for the beacon duration at each beacon
+// interval while the channel is idle, as the timed DMR beacons of
+// MMDVMHost. A beacon that is due while the channel is busy goes out when
+// it is idle. A call that comes during a beacon keeps the transmitter.
+func (r *radio) beacon(now time.Duration) {
+	if !r.beacons() {
+		return
+	}
+	if r.beaconOn && now >= r.beaconEnd {
+		r.beaconOn = false
+		r.stop()
+		r.idleCWID(now)
+	}
+	if r.beaconOn || now < r.beaconAt {
+		return
+	}
+	if r.keyed || r.modemTX {
+		r.beaconAt = r.nextStatus
+		return
+	}
+	r.send(mmdvm.CommandSetMode, &mmdvm.SetMode{Mode: mmdvm.ModeDMR})
+	r.send(mmdvm.CommandDMRStart, &mmdvm.DMRStart{TX: true})
+	r.beaconOn, r.cwOn = true, false
+	r.beaconEnd = now + time.Duration(min(r.m.Beacons.Duration, maxBeaconSeconds))*time.Second //nolint:gosec // clamped to a day
+	r.beaconAt = now + r.beaconInterval()
 }
 
 // cwIDTime is the time between CW IDs.
@@ -159,7 +199,7 @@ func (r *radio) cwID(now time.Duration) {
 	if !r.cwOn || now < r.cwAt {
 		return
 	}
-	if r.keyed || r.modemTX {
+	if r.keyed || r.beaconOn || r.modemTX {
 		r.cwAt = r.nextStatus
 		return
 	}
@@ -324,6 +364,7 @@ func (r *radio) tick(now time.Duration) {
 		r.send(mmdvm.CommandGetStatus, nil)
 		r.nextStatus = now + statusInterval
 	}
+	r.beacon(now)
 	r.cwID(now)
 	r.flush()
 }
@@ -336,6 +377,12 @@ func (r *radio) deadline() time.Duration {
 	}
 	if r.cwOn {
 		next = min(next, r.cwAt)
+	}
+	switch {
+	case r.beaconOn:
+		next = min(next, r.beaconEnd)
+	case r.beacons():
+		next = min(next, r.beaconAt)
 	}
 	return next
 }
@@ -379,6 +426,10 @@ func (r *radio) key(now time.Duration, on bool) {
 	r.keyed = on
 	if on {
 		r.cwOn = false
+		if r.beaconOn {
+			r.beaconOn = false
+			return
+		}
 		r.send(mmdvm.CommandSetMode, &mmdvm.SetMode{Mode: mmdvm.ModeDMR})
 		if r.m.Duplex {
 			r.send(mmdvm.CommandDMRStart, &mmdvm.DMRStart{TX: true})

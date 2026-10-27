@@ -241,29 +241,40 @@ const MaxCallHangHold = 10 * time.Second
 // Modem holds the MMDVM modem board that DMRHub drives over a serial port
 // as one of its repeaters.
 type Modem struct {
-	Enabled         bool      `json:"enabled" name:"enabled" description:"Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server" default:"false"`
-	Port            string    `json:"port" name:"port" description:"Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled"`
-	Baud            int       `json:"baud" name:"baud" description:"Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600" default:"115200"`
-	RepeaterID      uint      `json:"repeater-id" yaml:"repeater-id" name:"repeater-id" description:"ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled"`
-	Duplex          bool      `json:"duplex" name:"duplex" description:"Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2" default:"false"`
-	ColorCode       uint      `json:"color-code" yaml:"color-code" name:"color-code" description:"Color code of the modem, 0 to 15" default:"1"`
-	RXFrequency     uint      `json:"rx-frequency" yaml:"rx-frequency" name:"rx-frequency" description:"Receive frequency in Hz. Required when the modem is enabled"`
-	TXFrequency     uint      `json:"tx-frequency" yaml:"tx-frequency" name:"tx-frequency" description:"Transmit frequency in Hz. Required when the modem is enabled"`
-	RXOffset        int       `json:"rx-offset" yaml:"rx-offset" name:"rx-offset" description:"Correction in Hz added to the receive frequency, for the frequency error of the board" default:"0"`
-	TXOffset        int       `json:"tx-offset" yaml:"tx-offset" name:"tx-offset" description:"Correction in Hz added to the transmit frequency, for the frequency error of the board" default:"0"`
-	RFLevel         float64   `json:"rf-level" yaml:"rf-level" name:"rf-level" description:"Transmit power in percent, on boards that set it, such as MMDVM_HS hats" default:"100"`
-	RXLevel         float64   `json:"rx-level" yaml:"rx-level" name:"rx-level" description:"Receive audio level in percent" default:"50"`
-	TXLevel         float64   `json:"tx-level" yaml:"tx-level" name:"tx-level" description:"Transmit deviation level in percent" default:"50"`
-	RXDCOffset      int       `json:"rx-dc-offset" yaml:"rx-dc-offset" name:"rx-dc-offset" description:"Receive DC offset, -128 to 127" default:"0"`
-	TXDCOffset      int       `json:"tx-dc-offset" yaml:"tx-dc-offset" name:"tx-dc-offset" description:"Transmit DC offset, -128 to 127" default:"0"`
-	RXInvert        bool      `json:"rx-invert" yaml:"rx-invert" name:"rx-invert" description:"Invert the receive audio" default:"false"`
-	TXInvert        bool      `json:"tx-invert" yaml:"tx-invert" name:"tx-invert" description:"Invert the transmit audio, which most boards need" default:"true"`
-	PTTInvert       bool      `json:"ptt-invert" yaml:"ptt-invert" name:"ptt-invert" description:"Invert the PTT output" default:"false"`
-	TXDelay         int       `json:"tx-delay" yaml:"tx-delay" name:"tx-delay" description:"Time in milliseconds, 0 to 500, that the transmitter is on before the first burst" default:"100"`
-	DMRDelay        int       `json:"dmr-delay" yaml:"dmr-delay" name:"dmr-delay" description:"Delay of the duplex receiver in symbols, 0 to 255" default:"0"`
-	Debug           bool      `json:"debug" name:"debug" description:"Ask the modem for its debug messages and log them" default:"false"`
-	RSSIMappingFile string    `json:"rssi-mapping-file" yaml:"rssi-mapping-file" name:"rssi-mapping-file" description:"Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known"`
-	CWID            ModemCWID `json:"cw-id" yaml:"cw-id" name:"cw-id" description:"Morse station ID that the modem sends while the channel is idle"`
+	Enabled         bool         `json:"enabled" name:"enabled" description:"Drive an MMDVM modem board (MMDVM_HS hat, MMDVM repeater board, DVMega) on a serial port as a hotspot or repeater of this server" default:"false"`
+	Port            string       `json:"port" name:"port" description:"Serial device of the modem, such as /dev/ttyAMA0 or /dev/ttyACM0. Required when the modem is enabled"`
+	Baud            int          `json:"baud" name:"baud" description:"Speed of the serial port in baud: 9600, 19200, 38400, 57600, 115200, 230400, 460800 or 921600" default:"115200"`
+	RepeaterID      uint         `json:"repeater-id" yaml:"repeater-id" name:"repeater-id" description:"ID of the repeater that the modem is on the network. Create the repeater first; DMRHub makes it a modem repeater when the modem connects, and refuses network logins with its ID. Required when the modem is enabled"`
+	Duplex          bool         `json:"duplex" name:"duplex" description:"Run the modem as a duplex repeater with two timeslots. Off runs it as a simplex hotspot, whose one channel is timeslot 2" default:"false"`
+	ColorCode       uint         `json:"color-code" yaml:"color-code" name:"color-code" description:"Color code of the modem, 0 to 15" default:"1"`
+	RXFrequency     uint         `json:"rx-frequency" yaml:"rx-frequency" name:"rx-frequency" description:"Receive frequency in Hz. Required when the modem is enabled"`
+	TXFrequency     uint         `json:"tx-frequency" yaml:"tx-frequency" name:"tx-frequency" description:"Transmit frequency in Hz. Required when the modem is enabled"`
+	RXOffset        int          `json:"rx-offset" yaml:"rx-offset" name:"rx-offset" description:"Correction in Hz added to the receive frequency, for the frequency error of the board" default:"0"`
+	TXOffset        int          `json:"tx-offset" yaml:"tx-offset" name:"tx-offset" description:"Correction in Hz added to the transmit frequency, for the frequency error of the board" default:"0"`
+	RFLevel         float64      `json:"rf-level" yaml:"rf-level" name:"rf-level" description:"Transmit power in percent, on boards that set it, such as MMDVM_HS hats" default:"100"`
+	RXLevel         float64      `json:"rx-level" yaml:"rx-level" name:"rx-level" description:"Receive audio level in percent" default:"50"`
+	TXLevel         float64      `json:"tx-level" yaml:"tx-level" name:"tx-level" description:"Transmit deviation level in percent" default:"50"`
+	RXDCOffset      int          `json:"rx-dc-offset" yaml:"rx-dc-offset" name:"rx-dc-offset" description:"Receive DC offset, -128 to 127" default:"0"`
+	TXDCOffset      int          `json:"tx-dc-offset" yaml:"tx-dc-offset" name:"tx-dc-offset" description:"Transmit DC offset, -128 to 127" default:"0"`
+	RXInvert        bool         `json:"rx-invert" yaml:"rx-invert" name:"rx-invert" description:"Invert the receive audio" default:"false"`
+	TXInvert        bool         `json:"tx-invert" yaml:"tx-invert" name:"tx-invert" description:"Invert the transmit audio, which most boards need" default:"true"`
+	PTTInvert       bool         `json:"ptt-invert" yaml:"ptt-invert" name:"ptt-invert" description:"Invert the PTT output" default:"false"`
+	TXDelay         int          `json:"tx-delay" yaml:"tx-delay" name:"tx-delay" description:"Time in milliseconds, 0 to 500, that the transmitter is on before the first burst" default:"100"`
+	DMRDelay        int          `json:"dmr-delay" yaml:"dmr-delay" name:"dmr-delay" description:"Delay of the duplex receiver in symbols, 0 to 255" default:"0"`
+	Debug           bool         `json:"debug" name:"debug" description:"Ask the modem for its debug messages and log them" default:"false"`
+	RSSIMappingFile string       `json:"rssi-mapping-file" yaml:"rssi-mapping-file" name:"rssi-mapping-file" description:"Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known"`
+	CWID            ModemCWID    `json:"cw-id" yaml:"cw-id" name:"cw-id" description:"Morse station ID that the modem sends while the channel is idle"`
+	Beacons         ModemBeacons `json:"beacons" name:"beacons" description:"Roaming beacons of a duplex modem, as MMDVMHost sends them"`
+}
+
+// ModemBeacons are the timed roaming beacons of a duplex modem, as the DMR
+// beacons of MMDVMHost: the transmitter keys up for a time at each
+// interval while the channel is idle, so that radios can find the
+// repeater.
+type ModemBeacons struct {
+	Enabled  bool `json:"enabled" name:"enabled" description:"Key up the transmitter of a duplex modem at each interval while the channel is idle" default:"false"`
+	Interval uint `json:"interval" name:"interval" description:"Seconds between beacons, 1 to 86400" default:"60"`
+	Duration uint `json:"duration" name:"duration" description:"Seconds that each beacon keys up, at least 1 and less than the interval" default:"3"`
 }
 
 // ModemCWID is the morse station ID of the modem, as the CW Id section of

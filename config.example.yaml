@@ -149,6 +149,14 @@ dmr:
       time: 10
       # Callsign to send in morse: letters, digits, spaces and / ? , - = . Required when the station ID is on
       # callsign: ""
+    # Roaming beacons of a duplex modem, as MMDVMHost sends them
+    beacons:
+      # Key up the transmitter of a duplex modem at each interval while the channel is idle
+      enabled: false
+      # Seconds between beacons, 1 to 86400
+      interval: 60
+      # Seconds that each beacon keys up, at least 1 and less than the interval
+      duration: 3
   # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
   disable-radio-id-validation: false
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.

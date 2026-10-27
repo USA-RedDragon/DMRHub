@@ -43,7 +43,8 @@ func TestModemDefaults(t *testing.T) {
 	m := d.Modem
 	if m.Enabled || m.Duplex || m.Baud != 115200 || m.ColorCode != 1 || m.RFLevel != 100 || m.RXLevel != 50 ||
 		m.TXLevel != 50 || !m.TXInvert || m.RXInvert || m.PTTInvert || m.TXDelay != 100 || m.DMRDelay != 0 ||
-		m.CWID.Enabled || m.CWID.Time != 10 || m.CWID.Callsign != "" {
+		m.CWID.Enabled || m.CWID.Time != 10 || m.CWID.Callsign != "" || m.Beacons.Enabled || m.Beacons.Interval != 60 ||
+		m.Beacons.Duration != 3 {
 		t.Fatalf("defaults: %+v", m)
 	}
 	if err := d.Validate(); err != nil {
@@ -87,6 +88,11 @@ func TestModemValidation(t *testing.T) {
 		{"cw id callsign too long", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, strings.Repeat("K", 201) }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
 		{"cw id time 0", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 0 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
 		{"cw id time above a day", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 1441 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
+		{"beacons on a simplex modem", func(m *config.Modem) { m.Beacons.Enabled = true }, "dmr.modem.beacons.enabled", config.ErrInvalidModemBeaconsSimplex},
+		{"beacon interval 0", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Interval = true, true, 0 }, "dmr.modem.beacons.interval", config.ErrInvalidModemBeaconInterval},
+		{"beacon interval above a day", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Interval = true, true, 86401 }, "dmr.modem.beacons.interval", config.ErrInvalidModemBeaconInterval},
+		{"beacon duration 0", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Duration = true, true, 0 }, "dmr.modem.beacons.duration", config.ErrInvalidModemBeaconDuration},
+		{"beacon as long as its interval", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Duration = true, true, 60 }, "dmr.modem.beacons.duration", config.ErrInvalidModemBeaconDuration},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

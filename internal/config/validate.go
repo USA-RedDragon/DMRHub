@@ -161,6 +161,12 @@ var (
 	ErrInvalidModemCWIDCallsign = errors.New(`the CW ID callsign is required: at most 200 letters, digits, spaces and the symbols "/?,-=."`)
 	// ErrInvalidModemCWIDTime indicates that the time between CW IDs of the modem is not 1 to 1440 minutes.
 	ErrInvalidModemCWIDTime = errors.New("the time between CW IDs must be 1 to 1440 minutes")
+	// ErrInvalidModemBeaconsSimplex indicates beacons on a simplex modem, which keys no transmitter for them.
+	ErrInvalidModemBeaconsSimplex = errors.New("beacons need a duplex modem")
+	// ErrInvalidModemBeaconInterval indicates that the time between beacons is not 1 to 86400 seconds.
+	ErrInvalidModemBeaconInterval = errors.New("the time between beacons must be 1 to 86400 seconds")
+	// ErrInvalidModemBeaconDuration indicates a beacon of no time or of its whole interval.
+	ErrInvalidModemBeaconDuration = errors.New("a beacon must last at least 1 second and less than the time between beacons")
 	// ErrInvalidIPSCBindAddress indicates that the provided IPSC server bind address is not valid.
 	ErrInvalidIPSCBindAddress = errors.New("invalid IPSC server bind address provided")
 	// ErrInvalidIPSCPort indicates that the provided IPSC server port is not valid.
@@ -432,6 +438,7 @@ const (
 	maxModemUint32   = 1<<32 - 1
 	maxModemCWID     = 200
 	maxModemCWIDTime = 1440
+	maxModemBeacon   = 86400
 )
 
 func (m Modem) Validate() error {
@@ -491,6 +498,16 @@ func (m Modem) ValidateWithFields() (errs []ValidationError) {
 		}
 		if m.CWID.Time == 0 || m.CWID.Time > maxModemCWIDTime {
 			add("cw-id.time", ErrInvalidModemCWIDTime)
+		}
+	}
+	if b := m.Beacons; b.Enabled {
+		switch {
+		case !m.Duplex:
+			add("beacons.enabled", ErrInvalidModemBeaconsSimplex)
+		case b.Interval == 0 || b.Interval > maxModemBeacon:
+			add("beacons.interval", ErrInvalidModemBeaconInterval)
+		case b.Duration == 0 || b.Duration >= b.Interval:
+			add("beacons.duration", ErrInvalidModemBeaconDuration)
 		}
 	}
 	return

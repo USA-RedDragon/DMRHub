@@ -27,6 +27,16 @@ Set the modem on the **Modem** tab of the Setup page (`<siteurl>/admin/setup#mod
 
 The other keys set the levels, the offsets, the inversions and the delays of the board, as in MMDVMHost. The defaults suit most MMDVM_HS hats. If the board has a frequency error, set `rx-offset` and `tx-offset` in Hz.
 
+## Test the modem
+
+On the **Modem** tab:
+
+- **Serial port** lists the serial ports that the server finds: the names in `/dev/serial/by-id` first, which stay the same after a reboot, then the `ttyACM`, `ttyUSB`, `ttyAMA` and `ttyS` devices. Choose **Another path** to type a path that is not listed.
+- The pill in the header of the **Modem** card shows the live state of the modem, from the replica that drives it.
+- **Test the modem** opens the serial port with the settings on the form, asks the board for its firmware, and sends it the frequencies and the settings. It saves nothing. It shows the firmware, the protocol, the modes of the board, and whether the board took the frequencies and the settings. While the modem runs on that port, the test does not open the port and shows the live state instead.
+
+If the board does not answer, check the port and its speed, and that no other program, such as MMDVMHost, uses the port. The test runs on the replica that answers the page; the list of ports is also of that replica.
+
 ## Limits
 
 - Turn the modem on in one replica only. If two replicas try to drive the same repeater ID, the second one logs `Another replica claimed the repeater of the modem; turn the modem on in one replica only`.

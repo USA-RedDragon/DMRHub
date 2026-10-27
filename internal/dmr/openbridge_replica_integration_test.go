@@ -152,13 +152,13 @@ func TestOpenBridgeQuenchAcrossReplicas(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		r := startReplicaOB(t, stack)
-		_, _, otherAddr := r.leader(t)
+		leader, _, otherAddr := r.leader(t)
 
 		require.NoError(t, r.on1.SendDMRD(makeGroupVoicePacket(1000001, 1, 9801, false)))
 		require.Len(t, dataOf(r.peer.DrainBridges(drainWait), 9801), 1, "the peer gets the stream before the quench")
 
 		require.NoError(t, r.peer.SendControlTo(otherAddr, dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 9801}))
-		time.Sleep(200 * time.Millisecond)
+		require.Eventually(t, func() bool { return leader.IsQuenched(500002, 9801) }, handshakeWait, 10*time.Millisecond, "the holder of the lease did not get the quench")
 		for _, c := range []*testutils.MMDVMClient{r.on1, r.on2} {
 			require.NoError(t, c.SendDMRD(makeGroupVoicePacket(1000001, 1, 9801, false)))
 		}

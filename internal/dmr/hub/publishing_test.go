@@ -150,6 +150,7 @@ func TestPeerPublishRespectsContextCancellation(t *testing.T) {
 	// Egress rule: direction=false (egress), covers source ID 1000001
 	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
 	require.NoError(t, database.Create(&rule).Error)
+	h.PeerChanged(peer.ID)
 
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
@@ -187,6 +188,7 @@ func TestPeerEgressKeepsStreamOrder(t *testing.T) {
 	require.NoError(t, database.Create(&peer).Error)
 	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
 	require.NoError(t, database.Create(&rule).Error)
+	h.PeerChanged(peer.ID)
 
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)

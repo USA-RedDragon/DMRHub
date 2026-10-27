@@ -80,6 +80,7 @@ func newTCNet(t *testing.T, stack *testutils.IntegrationStack) *tcNet {
 	n.ob = c2OBPeer(t, stack, tcOB, false)
 	n.obCodec2 = c2OBPeer(t, stack, tcOBCodec2, false)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", tcOBCodec2).Update("codec2", true).Error)
+	stack.Hub.PeerChanged(tcOBCodec2)
 	time.Sleep(settleDuration)
 	n.drain(500 * time.Millisecond)
 	return n

@@ -274,6 +274,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.heard = make(chan heardNote, heardQueue)
 	if db != nil {
 		h.loadTalkgroups()
+		h.loadPeers()
 	}
 	go h.runHeard()
 	go h.runSightings()

@@ -86,6 +86,7 @@ func orderHub(t *testing.T, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(
 	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}, &models.Talkgroup{ID: 2}))
 	require.NoError(t, database.Create(&models.Peer{ID: orderPeerID, OwnerID: testSrcID, Egress: true}).Error)
 	require.NoError(t, database.Create(&models.PeerRule{PeerID: orderPeerID, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
+	h.PeerChanged(orderPeerID)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
 		"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),

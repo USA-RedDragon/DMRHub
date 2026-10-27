@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,12 +60,9 @@ func seedListener(t *testing.T, database *gorm.DB, tg uint) {
 	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: tg}}))
 }
 
-func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *testing.T) {
-	t.Parallel()
-	_, database, ps := makeTestHubWithPubSub(t)
-	slow := slowTalkgroupQueries(t, database)
-	seedListener(t, database, 7)
-
+// startHub starts a hub on database and ps, as a restart of the hub does.
+func startHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub) *hub.Hub {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
@@ -77,6 +75,16 @@ func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *test
 		_ = kvStore.Close()
 	})
 	h.LiftSlotRate(true)
+	return h
+}
+
+func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *testing.T) {
+	t.Parallel()
+	_, database, ps := makeTestHubWithPubSub(t)
+	slow := slowTalkgroupQueries(t, database)
+	seedListener(t, database, 7)
+
+	h := startHub(t, database, ps)
 	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 	h.ActivateRepeater(context.Background(), 100002)

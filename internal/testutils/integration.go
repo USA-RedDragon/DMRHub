@@ -414,7 +414,8 @@ func (s *IntegrationStack) AssignTS2StaticTG(t *testing.T, repeaterID, tgID uint
 	require.NoError(t, s.DB.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
 }
 
-// SeedPeer creates an OpenBridge peer in the DB.
+// SeedPeer creates an OpenBridge peer in the DB and tells the hub, as the
+// API does.
 func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, password string, ip string, port int, ingress bool, egress bool) {
 	t.Helper()
 	err := s.DB.Create(&models.Peer{
@@ -427,9 +428,11 @@ func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, passwor
 		Egress:   egress,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.PeerChanged(id)
 }
 
-// SeedPeerRule creates a peer rule in the DB.
+// SeedPeerRule creates a peer rule in the DB and tells the hub, as the API
+// does.
 func (s *IntegrationStack) SeedPeerRule(t *testing.T, peerID uint, direction bool, subjectIDMin uint, subjectIDMax uint) {
 	t.Helper()
 	err := s.DB.Create(&models.PeerRule{
@@ -439,4 +442,5 @@ func (s *IntegrationStack) SeedPeerRule(t *testing.T, peerID uint, direction boo
 		SubjectIDMax: subjectIDMax,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.PeerChanged(peerID)
 }

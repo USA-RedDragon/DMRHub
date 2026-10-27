@@ -104,7 +104,7 @@ func (s *stalledPubSub) resume() {
 	}
 }
 
-func seedStalledRedisHub(t *testing.T, database *gorm.DB) {
+func seedStalledRedisHub(t *testing.T, h *hub.Hub, database *gorm.DB) {
 	t.Helper()
 	seedUser(t, database, testSrcID, "CALLER")
 	seedUser(t, database, 1000002, "TARGET")
@@ -118,6 +118,7 @@ func seedStalledRedisHub(t *testing.T, database *gorm.DB) {
 	require.NoError(t, database.Model(&rpt2).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 2}))
 	require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: testSrcID, Egress: true}).Error)
 	require.NoError(t, database.Create(&models.PeerRule{PeerID: 3100100, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
+	h.PeerChanged(3100100)
 	require.NoError(t, database.Create(&models.Call{UserID: new(uint(1000002)), RepeaterID: new(uint(100002)), IngressID: 100002, CreatedAt: time.Now()}).Error)
 }
 
@@ -130,7 +131,7 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 	}, func(k kv.KV) kv.KV { return k })
 	t.Cleanup(stalled.resume)
 	t.Cleanup(h.HoldLookupWaits())
-	seedStalledRedisHub(t, database)
+	seedStalledRedisHub(t, h, database)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
 		"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),
@@ -290,7 +291,7 @@ func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 	})
 	t.Cleanup(func() { close(slow.hang) })
 	t.Cleanup(h.HoldLookupWaits())
-	seedStalledRedisHub(t, database)
+	seedStalledRedisHub(t, h, database)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
 	})
@@ -335,7 +336,7 @@ func (s *stalledPlugins) Deliver(uint, models.Packet) error {
 func TestAStalledPluginDeliveryHoldsNoBurst(t *testing.T) {
 	t.Parallel()
 	h, database := makeTestHub(t)
-	seedStalledRedisHub(t, database)
+	seedStalledRedisHub(t, h, database)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
 		"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),
@@ -419,7 +420,7 @@ func TestTheOutboxHoldsALongOutage(t *testing.T) { //nolint:paralleltest
 		blocked.PubSub = ps
 		return blocked
 	}, func(k kv.KV) kv.KV { return k })
-	seedStalledRedisHub(t, database)
+	seedStalledRedisHub(t, h, database)
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
 	time.Sleep(100 * time.Millisecond)

@@ -69,6 +69,10 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 	require.NoError(t, database.Create(&owner).Error)
 	require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: owner.ID, Password: "x", IP: "127.0.0.1", Port: farAddr.Port, Enhanced: true}).Error)
 
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	t.Cleanup(ct.Stop)
+	h := hub.NewHub(database, kvStore, ps, ct)
+
 	var reads atomic.Int64
 	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_peers", func(tx *gorm.DB) {
 		if tx.Statement.Table == "peers" {
@@ -76,9 +80,7 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 		}
 	}))
 
-	ct := calltracker.NewCallTracker(database, ps, kvStore)
-	t.Cleanup(ct.Stop)
-	server, err := openbridge.MakeServer(&cfg, hub.NewHub(database, kvStore, ps, ct), database, ps, nil)
+	server, err := openbridge.MakeServer(&cfg, h, database, ps, nil)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

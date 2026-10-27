@@ -1,6 +1,6 @@
 # Back up and restore
 
-A backup of DMRHub has two parts: the database, and the configuration. Back up both, and keep the backups private. They hold the passwords of the hotspots and the repeaters, the password hashes of the users, and the `secret` and the `password-salt`.
+A backup of DMRHub has two parts: the database, and the configuration of the deployment (the configuration file or the environment variables). Back up both, and keep the backups private. They hold the passwords of the hotspots and the repeaters, the password hashes of the users, and the `secret` and the `password-salt`. The database holds the Setup settings, and the `secret` and the `password-salt` when DMRHub made them.
 
 Without the same `password-salt`, no user can log in, because DMRHub uses it to hash the passwords. Without the same `secret` and `password-salt`, the sessions and the app tokens stop working.
 
@@ -16,7 +16,7 @@ docker run --rm -v dmrhub-data:/data alpine tar -C /data -cf - . | zstd -o dmrhu
 docker start dmrhub
 ```
 
-The backup has `DMRHub.db`, `DMRHub.db-wal` and `DMRHub.db-shm`, and the configuration in `DMRHub/config.yaml`. Keep the three database files together: the `-wal` file can hold the newest changes.
+The backup has `DMRHub.db`, `DMRHub.db-wal` and `DMRHub.db-shm`. Keep the three database files together: the `-wal` file can hold the newest changes.
 
 To restore a backup, stop DMRHub, empty the volume, unpack the backup into it, and start DMRHub:
 

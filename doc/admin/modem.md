@@ -6,7 +6,7 @@ The Setup page does not have the modem settings. Set them in the configuration f
 
 ## Set up the modem
 
-1. Enroll the repeater first, with the ID that the modem will use. Go to **Repeaters**, click **Enroll New Repeater**, and enter the ID. When the modem connects, DMRHub makes this repeater a modem repeater. After that, DMRHub refuses network logins with this ID.
+1. Pick the ID that the modem will use. You can enroll the repeater first: go to **Repeaters**, click **Enroll New Repeater**, and enter the ID. When no repeater has the ID, DMRHub makes one with no owner when the modem connects, and an admin assigns its owner. When the modem connects, DMRHub makes this repeater a modem repeater. After that, DMRHub refuses network logins with this ID.
 2. Give DMRHub access to the serial device. On most Linux systems the device belongs to the `dialout` or `uucp` group: add the user that runs DMRHub to that group. In Docker, add `--device /dev/ttyAMA0` (or your device) and `--group-add` with the group ID of the device.
 3. Add the modem settings. For example, for a simplex hotspot on 438.800 MHz:
 

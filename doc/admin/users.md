@@ -8,7 +8,7 @@ When a ham registers at `<siteurl>/register`, DMRHub checks that RadioID.net lis
 
 Then the new user waits for an admin, unless `auto-approve-users` is on. With `auto-approve-users` on, the new user can log in at once.
 
-When SMTP is on, DMRHub sends an email about each new user to each admin that has an email address. The email has a link to the approval page.
+When SMTP is on, DMRHub sends an email about each new user to each admin that has a confirmed email address. The email has a link to the approval page.
 
 To approve a user:
 
@@ -38,7 +38,7 @@ On the **Users** page, turn on the **Suspend?** box of the user. A suspended use
 
 DMRHub logs the user out everywhere. When the user logs in with the temporary password, DMRHub asks them to choose their own password before they can use the other pages. You cannot reset your own password here.
 
-When SMTP is on, users can also reset their own password with **Forgot your password?** on the login page. DMRHub sends the link only to the email address of the account, and the link works for 1 hour.
+When SMTP is on, users can also reset their own password with **Forgot your password?** on the login page. DMRHub sends the link only to the email address of the account, and only when the user confirmed that address. The link works once, for 1 hour. Users set and confirm their address in the **Email** card on **Settings**.
 
 <!-- screenshot: admin-reset-password.png | /admin/users after clicking Reset password: the "Reset the password of N0CALL" dialog with a temporary password -->
 

@@ -245,7 +245,7 @@ func (d Database) ValidateWithFields() (errs []ValidationError) {
 
 	if d.Database == "" {
 		errs = append(errs, ValidationError{
-			Field: "database.name",
+			Field: "database.database",
 			Err:   ErrInvalidDatabaseName,
 		})
 	}

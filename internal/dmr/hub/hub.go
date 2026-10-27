@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
@@ -143,7 +144,7 @@ type Hub struct {
 	peerEgress *streamorder.Queue[sourceSlot]
 	routing    *streamorder.Queue[sourceSlot]
 	links      *streamorder.Queue[uint]
-	outbox     *outbox
+	outbox     *outbox.Outbox[sourceSlot]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
 	userIDs      *lookup.Cache[uint, bool]
@@ -214,7 +215,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.peerEgress = streamorder.New[sourceSlot](peerEgressQueueSize, h.done)
 	h.routing = streamorder.New[sourceSlot](routingQueueSize, h.done)
 	h.links = streamorder.New[uint](routingQueueSize, h.done)
-	h.outbox = newOutbox(ps, h.done)
+	h.outbox = outbox.New(ps, h.done, "the bursts of a source slot", func(k sourceSlot) []any {
+		return []any{"server", k.server, "repeater", k.repeater, "slot", k.slot}
+	})
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
@@ -385,7 +388,7 @@ func (h *Hub) StartDraining() {
 // needed for every active call to finish.
 func (h *Hub) WaitForCalls() {
 	h.calls.Wait()
-	h.outbox.pending.Wait()
+	h.outbox.Wait()
 	slog.Info("All in-flight calls completed")
 }
 

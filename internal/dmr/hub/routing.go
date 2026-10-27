@@ -28,6 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"go.opentelemetry.io/otel"
@@ -191,9 +192,9 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	}
 	if from, isPlugin := plugins.PluginOfSource(sourceName); !isPlugin || from != owner {
 		pl := *p
-		h.outbox.add(h.sourceSlotOf(packet, sourceName), outboxJob{
-			topic: plugins.InTopic(owner),
-			send:  func() error { return pl.Deliver(owner, packet) },
+		h.outbox.Add(h.sourceSlotOf(packet, sourceName), outbox.Job{
+			Topic: plugins.InTopic(owner),
+			Send:  func() error { return pl.Deliver(owner, packet) },
 		})
 	}
 	if !packet.GroupCall {

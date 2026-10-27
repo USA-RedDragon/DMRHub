@@ -28,6 +28,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/rules"
 )
 
@@ -49,7 +50,7 @@ func (h *Hub) marshalAndPublish(key sourceSlot, packet models.Packet, topic stri
 		slog.Error("Error marshaling a burst to publish", "topic", topic, "error", err)
 		return
 	}
-	h.outbox.add(key, outboxJob{topic: topic, data: packedBytes})
+	h.outbox.Add(key, outbox.Job{Topic: topic, Data: packedBytes})
 }
 
 // publishForPeers queues a packet from sourceName for egress to all peer

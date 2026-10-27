@@ -40,17 +40,17 @@ type Metrics struct {
 	// not route, by reason.
 	IngressDroppedBurstsTotal *prometheus.CounterVec
 
-	// OutboxBursts is the number of routed bursts that wait in the
-	// outboxes of the source slots for pubsub to take them.
+	// OutboxBursts is the number of routed bursts, and of the other
+	// messages and writes that the hub makes in the background, that wait
+	// in the outboxes for Redis to take them.
 	OutboxBursts prometheus.Gauge
 
-	// PublishRetriesTotal counts the publishes of routed bursts that did
-	// not reach pubsub and that the hub sent again.
+	// PublishRetriesTotal counts the jobs of the outboxes that did not
+	// reach Redis and that the hub ran again.
 	PublishRetriesTotal prometheus.Counter
 
-	// PublishUnconfirmedTotal counts the routed bursts whose publish
-	// failed after it may have reached pubsub, which may still deliver
-	// them.
+	// PublishUnconfirmedTotal counts the jobs of the outboxes that failed
+	// after they may have reached Redis, which may still run them.
 	PublishUnconfirmedTotal prometheus.Counter
 
 	// TrackerDroppedTotal counts packets that the call tracker dropped.
@@ -130,15 +130,15 @@ func NewMetrics() *Metrics {
 			}, []string{labelReason}),
 			OutboxBursts: prometheus.NewGauge(prometheus.GaugeOpts{
 				Name: "dmr_outbox_bursts",
-				Help: "The number of routed bursts that wait in the outboxes of the source slots for pubsub to take them",
+				Help: "The number of routed bursts and other jobs that wait in the outboxes for Redis to take them",
 			}),
 			PublishRetriesTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "dmr_publish_retries_total",
-				Help: "The total number of publishes of routed bursts that did not reach pubsub and were sent again",
+				Help: "The total number of jobs of the outboxes that did not reach Redis and ran again",
 			}),
 			PublishUnconfirmedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "dmr_publish_unconfirmed_bursts_total",
-				Help: "The total number of routed bursts whose publish failed after it may have reached pubsub, which may still deliver them",
+				Help: "The total number of jobs of the outboxes that failed after they may have reached Redis, which may still run them",
 			}),
 			TrackerDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "call_tracker_dropped_packets_total",

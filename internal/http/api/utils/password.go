@@ -50,7 +50,6 @@ type argon2Params struct {
 	parallelism uint8
 	saltLength  uint32
 	keyLength   uint32
-	salt        []byte
 }
 
 var (
@@ -83,48 +82,42 @@ func idKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uin
 	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
 }
 
+var randRead = rand.Read //nolint:gochecknoglobals
+
+const (
+	dummyInput = "__dummy_timing_protection__"
+	dummySalt  = "__dummy__"
+)
+
 var (
 	dummyHash     string    //nolint:gochecknoglobals
 	dummyHashOnce sync.Once //nolint:gochecknoglobals
 )
 
-// DummyHash returns a valid argon2id hash generated with the exact same code
-// path and parameters as real password hashes. Using HashPassword (rather than
-// a hand-crafted format string) guarantees identical salt length, key length,
-// and encoding, which eliminates subtle timing differences in VerifyPassword
-// that could leak whether a user account exists.
+// DummyHash returns a valid argon2id hash made by the same code and with the
+// same parameters as real password hashes, so VerifyPassword takes the same
+// time on it and does not leak whether a user account exists. It uses a fixed
+// salt, so it needs no random source and cannot fail.
 func DummyHash() string {
 	dummyHashOnce.Do(func() {
-		var err error
-		dummyHash, err = HashPassword("__dummy_timing_protection__", "__dummy__")
-		if err != nil {
-			panic("failed to generate dummy hash for timing protection: " + err.Error())
-		}
+		dummyHash = encodeHash(dummyInput+dummySalt, make([]byte, saltLength))
 	})
 	return dummyHash
 }
 
 func HashPassword(password string, salt string) (string, error) {
-	var params = argon2Params{
-		memory:      memory,
-		iterations:  iterations,
-		parallelism: parallelism,
-		saltLength:  saltLength,
-		keyLength:   keyLength,
-		salt:        make([]byte, saltLength),
-	}
-	// Fill the salt with cryptographically secure random bytes.
-	_, err := rand.Read(params.salt)
-	if err != nil {
+	argonSalt := make([]byte, saltLength)
+	if _, err := randRead(argonSalt); err != nil {
 		return "", fmt.Errorf("failed to generate random salt: %w", err)
 	}
+	return encodeHash(password+salt, argonSalt), nil
+}
 
-	bytes := idKey([]byte(password+salt), params.salt, params.iterations, params.memory, params.parallelism, params.keyLength)
-	b64Salt := base64.RawStdEncoding.EncodeToString(params.salt)
-	b64Hash := base64.RawStdEncoding.EncodeToString(bytes)
-
-	// Return a string using the standard encoded hash representation.
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, params.memory, params.iterations, params.parallelism, b64Salt, b64Hash), nil
+func encodeHash(password string, salt []byte) string {
+	key := idKey([]byte(password), salt, iterations, memory, parallelism, keyLength)
+	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
+	b64Hash := base64.RawStdEncoding.EncodeToString(key)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, memory, iterations, parallelism, b64Salt, b64Hash)
 }
 
 func VerifyPassword(password, compareHash string, pwsalt string) (bool, error) {

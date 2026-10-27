@@ -814,7 +814,7 @@ func (c *CallTracker) publishNetCheckIn(idx int, call *models.Call) {
 }
 
 func (c *CallTracker) resolve(call *models.Call, peer bool) {
-	if user, err := models.FindUserByID(c.db, call.SourceID); err == nil {
+	if user, err := models.FindUserWithoutRepeaters(c.db, call.SourceID); err == nil {
 		call.UserID, call.User = &user.ID, user
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("CallTracker: error finding source user", "userID", call.SourceID, "error", err)
@@ -832,7 +832,7 @@ func (c *CallTracker) resolve(call *models.Call, peer bool) {
 			call.IsToTalkgroup, call.ToTalkgroupID, call.ToTalkgroup = true, &tg.ID, tg
 			return
 		}
-	} else if user, err := models.FindUserByID(c.db, dst); err == nil {
+	} else if user, err := models.FindUserWithoutRepeaters(c.db, dst); err == nil {
 		call.IsToUser, call.ToUserID, call.ToUser = true, &user.ID, user
 		return
 	}

@@ -81,6 +81,13 @@ func FindUserByID(db *gorm.DB, id uint) (User, error) {
 	return user, err
 }
 
+// FindUserWithoutRepeaters returns the user id without its repeaters.
+func FindUserWithoutRepeaters(db *gorm.DB, id uint) (User, error) {
+	var user User
+	err := db.First(&user, id).Error
+	return user, err
+}
+
 // FindUserWithRepeaterTalkgroups returns the user with its repeaters and
 // their static talkgroups, which a repeater needs to tell which calls it
 // receives.

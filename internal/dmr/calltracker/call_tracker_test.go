@@ -1246,3 +1246,37 @@ func TestVoiceRowRecordsTheFIDOfItsLC(t *testing.T) {
 	require.NotNil(t, c.FID, "the voice row records the FID of its LC")
 	assert.Equal(t, uint8(enums.FIDMotorola), *c.FID)
 }
+
+func TestCallUpdatesLeaveOutRepeatersOfUsers(t *testing.T) {
+	t.Parallel()
+	ct, _, ps := newTracker(t)
+	sub := ps.Subscribe("calls")
+	defer func() { _ = sub.Close() }()
+
+	newSender(t, ct, userA, tgID, true, 7030).voiceCall(1, true)
+	newSender(t, ct, userB, userA, false, 7031).voiceCall(1, true)
+
+	seen := map[uint]bool{}
+	for len(seen) < 2 {
+		select {
+		case msg := <-sub.Channel():
+			var c struct {
+				SourceID uint `json:"source_id"`
+				User     struct {
+					ID        uint              `json:"id"`
+					Repeaters []json.RawMessage `json:"repeaters"`
+				} `json:"user"`
+				ToUser struct {
+					Repeaters []json.RawMessage `json:"repeaters"`
+				} `json:"to_user"`
+			}
+			require.NoError(t, json.Unmarshal(msg, &c))
+			require.NotZero(t, c.User.ID, "an update must still name the user")
+			assert.Empty(t, c.User.Repeaters, "an update of a call from %d carries the repeaters of its user", c.SourceID)
+			assert.Empty(t, c.ToUser.Repeaters, "an update of a call from %d carries the repeaters of the user it calls", c.SourceID)
+			seen[c.SourceID] = true
+		case <-time.After(5 * time.Second):
+			t.Fatalf("got updates of %d of 2 calls", len(seen))
+		}
+	}
+}

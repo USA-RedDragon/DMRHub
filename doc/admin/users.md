@@ -26,9 +26,21 @@ The RadioID.net check shows that the DMR ID and the callsign go together. It doe
 2. Click **Edit** in the row of the user.
 3. Change the **Callsign** or the **Username**, then click **Save Changes**. Click **Cancel** to keep the old values.
 
-DMRHub refuses a new callsign that RadioID.net does not list for the DMR ID of the user, unless `dmr.disable-radio-id-validation` is on. It also refuses a callsign that another user has.
+DMRHub checks a new callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. When RadioID.net lists another callsign for the DMR ID, DMRHub shows that callsign. Click **Save <callsign> anyway** to keep yours. The RadioID drift check then skips the user. DMRHub refuses a callsign that another user has.
+
+Users can change their own username and callsign in the **Account** card on **Settings**. A user can only set the callsign that RadioID.net lists for their DMR ID.
 
 Usernames are the same in any case, so a user can log in as `alice` or `Alice`, and two users cannot have usernames that differ only by case. A user can log in with their callsign in any case too. A username cannot be the callsign of another user, in any case, and a callsign cannot be the username of another user, because a login by a username comes before a login by a callsign. A user can have their own callsign as their username.
+
+## Fix RadioID drift
+
+A callsign can change on RadioID.net after a user registers. Each night at 01:00 (server time), DMRHub compares the DMR ID and the added radio IDs of each user with RadioID.net. Go to **Admin**, then **RadioID Drift** (`<siteurl>/admin/users/radio-id-drift`) to see the radio IDs that no longer match. This page shows only when radio ID validation is on.
+
+- Click **Fix** to give the user the callsign that RadioID.net lists. If the user confirmed an email address, you can also send them an email about the change.
+- **Not listed** means that RadioID.net no longer has the radio ID.
+- A row has no **Fix** when RadioID.net does not have the radio ID, or lists an added radio ID under another callsign than the DMR ID of the user. Click **Edit user** to change the user.
+
+When SMTP is on, DMRHub sends one email to a user with a confirmed address when the check first finds one of their radio IDs. If more than 5 radio IDs and more than 5% of the checked radio IDs drift in one check, DMRHub sends no emails and logs a warning, because a bad RadioID.net download is more likely than a real change.
 
 ## Suspend a user
 

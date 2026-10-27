@@ -1,39 +1,25 @@
 # DMRHub
 
-[![Release](https://github.com/USA-RedDragon/DMRHub/actions/workflows/release.yaml/badge.svg)](https://github.com/USA-RedDragon/DMRHub/actions/workflows/release.yaml) [![go.mod version](https://img.shields.io/github/go-mod/go-version/USA-RedDragon/DMRHub.svg)](https://github.com/USA-RedDragon/DMRHub) [![License](https://badgen.net/github/license/USA-RedDragon/DMRHub)](https://github.com/USA-RedDragon/DMRHub/blob/master/LICENSE) [![Release](https://img.shields.io/github/release/USA-RedDragon/DMRHub.svg)](https://GitHub.com/USA-RedDragon/DMRHub/releases/) [![Downloads](https://img.shields.io/github/downloads/USA-RedDragon/DMRHub/total.svg)](https://GitHub.com/USA-RedDragon/DMRHub/releases/) [![GitHub contributors](https://badgen.net/github/contributors/USA-RedDragon/DMRHub)](https://GitHub.com/USA-RedDragon/DMRHub/graphs/contributors/) [![coverage](https://raw.githubusercontent.com/USA-RedDragon/DMRHub/main/.github/badges/coverage.svg)](https://github.com/USA-RedDragon/DMRHub/actions)
+[![Release](https://github.com/USA-RedDragon/DMRHub/actions/workflows/release.yaml/badge.svg)](https://github.com/USA-RedDragon/DMRHub/actions/workflows/release.yaml) [![go.mod version](https://img.shields.io/github/go-mod/go-version/USA-RedDragon/DMRHub.svg)](https://github.com/USA-RedDragon/DMRHub) [![License](https://badgen.net/github/license/USA-RedDragon/DMRHub)](https://github.com/USA-RedDragon/DMRHub/blob/main/LICENSE) [![Release](https://img.shields.io/github/release/USA-RedDragon/DMRHub.svg)](https://GitHub.com/USA-RedDragon/DMRHub/releases/) [![Downloads](https://img.shields.io/github/downloads/USA-RedDragon/DMRHub/total.svg)](https://GitHub.com/USA-RedDragon/DMRHub/releases/) [![GitHub contributors](https://badgen.net/github/contributors/USA-RedDragon/DMRHub)](https://GitHub.com/USA-RedDragon/DMRHub/graphs/contributors/) [![coverage](https://raw.githubusercontent.com/USA-RedDragon/DMRHub/main/.github/badges/coverage.svg)](https://github.com/USA-RedDragon/DMRHub/actions)
 
-Run a DMR network (like TGIF or BrandMeister) server with a single binary compatible with MMDVM. Includes private and group calls, and plugins such as a Parrot. Perfect for quick deployments in emergency situations. Intended for use with AREDN. 4000 Unlink is implemented, and the 9990 Parrot and the location server come as [plugins](doc/plugins.md)
+DMRHub runs a DMR network server, like TGIF or BrandMeister, in a single binary. Hotspots and repeaters connect to it with the MMDVM network protocol or IPSC, and other networks link to it with OpenBridge. It has group and private calls, static and dynamic talkgroups, 4000 to unlink, text messages, positions, and plugins such as the 9990 parrot. It is quick to deploy, for example in an emergency, and it is made for use with AREDN.
 
-## Quick links
+![Last Heard](doc/Screenshots/lastheard.png)
 
-- [FAQ](doc/FAQ.md)
-- [Deployment Guide](doc/Deployment-Guide.md)
-- [Configuration](doc/Configuration.md)
-- [Admin's Guide](doc/Admin-Guide.md)
-- [User's Guide](doc/User-Guide.md)
-- [Messages and SMS Storage](doc/messages.md)
-- [Positions](doc/positions.md)
-- [Plugins](doc/plugins.md)
-- [OAuth Apps](doc/oauth-apps.md)
-- [MMDVM over WebTransport](doc/webtransport.md)
-- [Building from Source](doc/Building.md)
+## Documentation
 
-## Live Server
+| Section     | For                                    | Start here                                                                                                                       |
+| ----------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Get started | Hams who are new to DMRHub             | [User's Guide](doc/User-Guide.md): make an account and connect your first hotspot.                                               |
+| Guides      | Hams with a radio or a hotspot         | [User's Guide](doc/User-Guide.md): one task at a time, such as talkgroups, the parrot, private calls and text messages.          |
+| Admin       | People who run a DMRHub server         | [Deployment Guide](doc/Deployment-Guide.md), [Admin's Guide](doc/Admin-Guide.md), [Configuration](doc/Configuration.md), [Stress results](doc/stress-results.md) |
+| Reference   | Facts to look up                       | [Messages and SMS Storage](doc/messages.md), [Positions](doc/positions.md), [FAQ](doc/FAQ.md)                                    |
+| Developers  | People who write plugins, apps or code | [Plugins](doc/plugins.md), [OAuth Apps](doc/oauth-apps.md), [MMDVM over WebTransport](doc/webtransport.md), [Building from Source](doc/Building.md) |
 
-<https://dmrhub.net> is running the "canonical" version of DMRHub. Feel free to request an account!
+## Live server
 
-## Screenshots
+<https://dmrhub.net> runs the canonical version of DMRHub. You can ask for an account there.
 
-![Lastheard](/doc/Screenshots/lastheard.png)
+## License
 
-<details>
-  <summary>More? Click to expand</summary>
-
-![Configuration Page](doc/Screenshots/setup.png)
-
-![Repeaters](doc/Screenshots/repeaters.png)
-
-![Easy Repeater Enrollment](doc/Screenshots/repeaters-easy.png)
-
-![Talkgroup Management](doc/Screenshots/talkgroup-management.png)
-</details>
+DMRHub is under the [AGPL-3.0 or later](LICENSE). The plugin SDK (`sdk/`) and the plugin protocol (`proto/`) are under the MIT license.

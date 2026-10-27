@@ -70,7 +70,7 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 			portStr = fmt.Sprintf(":%d", config.Database.Port)
 		}
 		extraParamsStr := ""
-		for _, param := range mysqlParameters(config.Database.ExtraParameters) {
+		for _, param := range mysqlParameters(serverParameters(config.Database.ExtraParameters)) {
 			extraParamsStr += "&" + param
 		}
 		dsn := fmt.Sprintf("%stcp(%s%s)/%s?charset=utf8mb4&parseTime=True&loc=Local%s",
@@ -91,16 +91,20 @@ func getDialect(config *configPkg.Config) gorm.Dialector {
 		if config.Database.Password != "" {
 			dsn += " password=" + config.Database.Password
 		}
-		if len(config.Database.ExtraParameters) > 0 {
-			for _, param := range config.Database.ExtraParameters {
-				dsn += " " + param
-			}
+		for _, param := range serverParameters(config.Database.ExtraParameters) {
+			dsn += " " + param
 		}
 		dialector = postgres.New(postgres.Config{
 			DSN: dsn,
 		})
 	}
 	return dialector
+}
+
+func serverParameters(params []string) []string {
+	return slices.DeleteFunc(slices.Clone(params), func(p string) bool {
+		return strings.HasPrefix(p, "_pragma=")
+	})
 }
 
 // sqliteSynchronous is the synchronous pragma of a SQLite file. In WAL

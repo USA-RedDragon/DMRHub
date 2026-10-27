@@ -20,10 +20,15 @@
 package wasm_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -87,21 +92,138 @@ func eachCompiler(t *testing.T, test func(t *testing.T, compiler string)) {
 	}
 }
 
-// buildGuests builds every test plugin with each compiler.
+// buildGuests builds every test plugin with each compiler, a few at a time.
+// It keeps each module in the user cache under a hash of the compiler and
+// of every file of the packages that the plugin is made of, so that a test
+// run builds again only what changed.
 func buildGuests() {
 	guests.dir, guests.err = os.MkdirTemp("", "dmrhub-wasm-guests-")
 	if guests.err != nil {
 		return
 	}
+	cache := ""
+	if dir, err := os.UserCacheDir(); err == nil {
+		cache = filepath.Join(dir, "dmrhub-test-guests")
+	}
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
 	for _, c := range compilers {
 		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic"} {
-			cmd := buildCommand(c, filepath.Join(guests.dir, c+"-"+g+".wasm"), "./testdata/"+g)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				guests.err = fmt.Errorf("could not build %s with %s: %w\n%s", g, c, err, out)
-				return
-			}
+			wg.Go(func() {
+				slots <- struct{}{}
+				defer func() { <-slots }()
+				if err := buildGuest(cache, c, g); err != nil {
+					mu.Lock()
+					errs = append(errs, err)
+					mu.Unlock()
+				}
+			})
 		}
 	}
+	wg.Wait()
+	guests.err = errors.Join(errs...)
+}
+
+func buildGuest(cache, compiler, name string) error {
+	out := filepath.Join(guests.dir, compiler+"-"+name+".wasm")
+	dir := "./testdata/" + name
+	key, err := guestKey(compiler, dir)
+	if err != nil || cache == "" {
+		return build(compiler, out, dir, name)
+	}
+	cached := filepath.Join(cache, key+".wasm")
+	if b, err := os.ReadFile(cached); err == nil {
+		if err := os.WriteFile(out, b, 0o600); err != nil {
+			return fmt.Errorf("could not write %s: %w", out, err)
+		}
+		return nil
+	}
+	if err := build(compiler, out, dir, name); err != nil {
+		return err
+	}
+	keep(cache, cached, out)
+	return nil
+}
+
+// keep copies the module at out to cached, when it can, for later runs.
+func keep(cache, cached, out string) {
+	b, err := os.ReadFile(out)
+	if err != nil || os.MkdirAll(cache, 0o700) != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(cache, filepath.Base(cached)+"-*")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.Write(b)
+	if cerr := tmp.Close(); werr == nil && cerr == nil {
+		_ = os.Rename(tmp.Name(), cached)
+	}
+	_ = os.Remove(tmp.Name())
+}
+
+func build(compiler, out, dir, name string) error {
+	cmd := buildCommand(compiler, out, dir)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("could not build %s with %s: %w\n%s", name, compiler, err, b)
+	}
+	return nil
+}
+
+// guestKey hashes what the module of the test plugin in dir is built from:
+// the version of the compiler, the build flags, go.mod, and every file of every
+// package outside the standard library that the plugin imports.
+func guestKey(compiler, dir string) (string, error) {
+	h := sha256.New()
+	tool := compiler
+	if compiler == "tinygo" {
+		tool = buildCommand(compiler, "", dir).Path
+	}
+	for _, args := range [][]string{{"go", "version"}, {tool, "version"}} {
+		v, err := exec.Command(args[0], args[1:]...).Output() //nolint:noctx,gosec // a version for the tests
+		if err != nil {
+			return "", fmt.Errorf("could not get the version of %s: %w", args[0], err)
+		}
+		_, _ = fmt.Fprintf(h, "%s\x00", v)
+	}
+	_, _ = fmt.Fprintf(h, "%s\x00%s\x00", compiler, os.Getenv("GOFLAGS"))
+	gomod, err := exec.Command("go", "env", "GOMOD").Output() //nolint:noctx // a path for the tests
+	if err != nil {
+		return "", fmt.Errorf("could not find go.mod: %w", err)
+	}
+	mod, err := os.ReadFile(strings.TrimSpace(string(gomod)))
+	if err != nil {
+		return "", fmt.Errorf("could not read go.mod: %w", err)
+	}
+	h.Write(mod)
+	list := exec.Command("go", "list", "-deps", "-f", "{{if not .Standard}}{{.Dir}}{{end}}", dir) //nolint:noctx // a listing for the tests
+	list.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+	dirs, err := list.Output()
+	if err != nil {
+		return "", fmt.Errorf("could not list the packages of %s: %w", dir, err)
+	}
+	for _, d := range strings.Fields(string(dirs)) {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			return "", fmt.Errorf("could not read %s: %w", d, err)
+		}
+		for _, e := range entries {
+			if !e.Type().IsRegular() {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(d, e.Name()))
+			if err != nil {
+				return "", fmt.Errorf("could not read %s: %w", e.Name(), err)
+			}
+			_, _ = fmt.Fprintf(h, "%s\x00%s\x00%d\x00", d, e.Name(), len(b))
+			h.Write(b)
+		}
+	}
+	return compiler + "-" + filepath.Base(dir) + "-" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // TestMain builds the test plugins before any test starts, so that no

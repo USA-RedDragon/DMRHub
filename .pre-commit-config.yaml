@@ -5,6 +5,6 @@ repos:
       - id: configulator-generate
         args: [-dir, internal/config, -type, Config]
       - id: configulator-markdown
-        args: [-dir, internal/config, -type, Config, -markdown-file, doc/Configuration.md]
+        args: [-dir, internal/config, -type, Config, -markdown-file, doc/admin/configuration.md]
       - id: configulator-sample
         args: [-dir, internal/config, -type, Config, -sample-file, config.example.yaml]

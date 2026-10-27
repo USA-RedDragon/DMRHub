@@ -688,7 +688,10 @@ func PATCHUser(c *gin.Context) {
 			}
 			if override != nil {
 				if err := models.SetCallsignOverride(tx, user.ID, *override); err != nil {
-					return err
+					return fmt.Errorf("could not save user %d: %w", user.ID, err)
+				}
+				if err := models.DeleteRadioIDDrift(tx, user.ID); err != nil {
+					return fmt.Errorf("could not save user %d: %w", user.ID, err)
 				}
 			}
 			if json.Email != nil && email != user.Email {

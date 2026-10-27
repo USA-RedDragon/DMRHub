@@ -259,7 +259,7 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		if err := tx.Where("grant_id IN (?)", grants).Delete(&OAuthRefreshToken{}).Error; err != nil {
 			return fmt.Errorf("could not delete the refresh tokens: %w", err)
 		}
-		for _, model := range []any{&PositionSetting{}, &OAuthGrant{}, &OAuthCode{}, &PasswordReset{}, &Session{}} {
+		for _, model := range []any{&PositionSetting{}, &OAuthGrant{}, &OAuthCode{}, &PasswordReset{}, &Session{}, &RadioIDDrift{}} {
 			if err := tx.Where("user_id = ?", id).Delete(model).Error; err != nil {
 				return fmt.Errorf("could not delete the %T rows: %w", model, err)
 			}

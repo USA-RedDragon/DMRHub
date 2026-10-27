@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -85,9 +86,13 @@ func TestPATCHUserCallsign(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "OLDCALL", stored().Callsign)
 
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{UserID: user.DMRId, RadioIDCallsign: "KI5VMF"}}, time.Now()))
 			resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "ki5vmf"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			assert.Equal(t, "KI5VMF", stored().Callsign)
+			_, drifted, err := models.FindRadioIDDrift(database, user.DMRId)
+			require.NoError(t, err)
+			assert.False(t, drifted, "a new callsign ends the drift")
 
 			_, w = testutils.PatchUser(t, router, user.DMRId, adminJar, apimodels.UserPatch{Callsign: "N0CALL"})
 			assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -163,4 +168,23 @@ func TestPATCHUserUsernameIsChecked(t *testing.T) {
 	}
 	resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Username: "new.name_1"})
 	assert.Equal(t, http.StatusOK, w.Code, resp.Error)
+}
+
+func TestDeleteUserRemovesItsRadioIDDrift(t *testing.T) {
+	t.Parallel()
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			_, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Migrated().Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+			database := tdb.DB()
+			require.NoError(t, database.Create(&models.User{ID: 3140001, Callsign: "W1AW", Username: "other", Approved: true}).Error)
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{UserID: 3140001, RadioIDCallsign: "N0NEW"}}, time.Now()))
+			require.NoError(t, models.DeleteUser(database, 3140001))
+			_, drifted, err := models.FindRadioIDDrift(database, 3140001)
+			require.NoError(t, err)
+			assert.False(t, drifted)
+		})
+	}
 }

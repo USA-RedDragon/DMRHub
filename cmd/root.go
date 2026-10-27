@@ -53,6 +53,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/positions"
 	"github.com/USA-RedDragon/DMRHub/internal/pprof"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/radioiddrift"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/retention"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -384,6 +385,7 @@ type serverManager struct {
 	callTracker  *calltracker.CallTracker
 	messageStore *messages.Store
 	purger       *retention.Purger
+	drift        *radioiddrift.Checker
 	aprs         *positions.Gateway
 	plugins      *plugins.Server
 	inside       *inside.Manager
@@ -488,6 +490,9 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	if sm.purger != nil {
 		sm.purger.Stop()
 	}
+	if sm.drift != nil {
+		sm.drift.Stop()
+	}
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
 		if err := sm.pubsub.Close(); err != nil {
@@ -551,6 +556,8 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 
 	sm.purger = retention.NewPurger(current, database, kvStore)
 	sm.purger.Start(ctx)
+	sm.drift = radioiddrift.NewChecker(current, database, kvStore)
+	sm.drift.Start(ctx)
 	sm.aprs = positions.NewGateway(database, current, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
 	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) },

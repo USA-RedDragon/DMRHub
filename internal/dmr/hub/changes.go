@@ -100,6 +100,20 @@ func (h *Hub) RepeaterSecretChanged(id uint) {
 	h.announce(repeaterRekeyTopic, id)
 }
 
+// OnTalkgroupChange calls fn with the ID of a talkgroup after this replica
+// reads it again for a TalkgroupChanged on any replica. The returned func
+// stops the calls.
+func (h *Hub) OnTalkgroupChange(fn func(talkgroupID uint)) (stop func()) {
+	return h.watchers.add(talkgroupChangedTopic, fn)
+}
+
+// OnUserChange calls fn with the ID of a user after this replica reads it
+// again for a UserChanged on any replica. The returned func stops the
+// calls.
+func (h *Hub) OnUserChange(fn func(userID uint)) (stop func()) {
+	return h.watchers.add(userChangedTopic, fn)
+}
+
 // TalkgroupChanged makes every replica read the talkgroup id again. Call it
 // after the talkgroup is made, changed or deleted.
 func (h *Hub) TalkgroupChanged(id uint) {
@@ -134,9 +148,11 @@ func (h *Hub) applyChange(topic string, id uint) {
 	switch topic {
 	case talkgroupChangedTopic:
 		h.noteTalkgroup(id)
+		h.watchers.call(talkgroupChangedTopic, id)
 	case userChangedTopic:
 		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)
+		h.watchers.call(userChangedTopic, id)
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})
 		h.watchers.call(peerChangedTopic, id)

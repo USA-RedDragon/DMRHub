@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/stretchr/testify/assert"
 )
 
 func waitForCalls(h interface{ WaitForCalls() }) <-chan struct{} {
@@ -43,17 +45,15 @@ func TestWaitForCallsWaitsForDataStreams(t *testing.T) {
 	seedRepeater(t, database, 100001, 1000001)
 	seedTalkgroup(t, database, 1, "TG1")
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1, 100001, 4242), models.RepeaterTypeMMDVM)
-	time.Sleep(100 * time.Millisecond)
+	pkt := dataHeader(1000001, 1, 100001, 4242)
+	routed := time.Now()
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 	done := waitForCalls(h)
 	select {
 	case <-done:
-		t.Fatal("shutdown did not wait for a data call in progress")
-	case <-time.After(500 * time.Millisecond):
-	}
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
+		assert.GreaterOrEqual(t, time.Since(routed), hub.StreamIdle, "shutdown did not wait for a data call in progress")
+	case <-time.After(failAfter):
 		t.Fatal("shutdown waited for a data call that had ended")
 	}
 }
@@ -65,11 +65,12 @@ func TestWaitForCallsEndsVoiceWithoutTerminator(t *testing.T) {
 	seedRepeater(t, database, 100001, 1000001)
 	seedTalkgroup(t, database, 1, "TG1")
 
-	h.RoutePacket(context.Background(), makeVoicePacket(1, 4343, true, false), models.RepeaterTypeMMDVM)
-	time.Sleep(100 * time.Millisecond)
+	pkt := makeVoicePacket(1, 4343, true, false)
+	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+	settle(t, h, pkt, models.RepeaterTypeMMDVM)
 	select {
 	case <-waitForCalls(h):
-	case <-time.After(5 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("shutdown waited for ever on a voice call that lost its terminator")
 	}
 }

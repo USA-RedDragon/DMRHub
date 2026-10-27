@@ -149,10 +149,28 @@ func noticeTime(token string) time.Time {
 // spendToken reports whether token was not used before, and marks it used
 // for as long as it is good, so that a token moves a session once.
 func (s *Server) spendToken(ctx context.Context, token string) bool {
-	sum := sha256.Sum256([]byte(token))
-	key := spentResumePrefix + base64.RawURLEncoding.EncodeToString(sum[:])
-	fresh, err := s.kv.SetNX(ctx, key, "1", resumeTTL)
+	fresh, err := s.kv.SetNX(ctx, spentKey(token), "1", resumeTTL)
 	return err == nil && fresh
+}
+
+// refundToken makes token good again after a resume that spent it but
+// moved no session, so that the browser can try it on another session.
+func (s *Server) refundToken(ctx context.Context, token string) {
+	if err := s.kv.Delete(ctx, spentKey(token)); err != nil {
+		slog.Warn("Error making a resume token good again", "error", err)
+	}
+}
+
+func spentKey(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return spentResumePrefix + base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// idleAt reports whether the WebTransport session ep has no MMDVM session
+// that is not idle. The caller holds s.mu.
+func (s *Server) idleAt(ep endpoint) bool {
+	l, ok := s.links[ep.String()]
+	return !ok || l.m.State() == dmrdsession.StateIdle
 }
 
 // resumeWebTransport takes over, at the WebTransport session addr, the
@@ -165,6 +183,16 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	id, ok := s.checkResumeToken(token, now)
 	if !ok {
 		return wtResume{Reason: "bad token"}
+	}
+	ep := endpoint{transport: webTransportName, addr: addr}
+	s.mu.Lock()
+	stopping, idle := s.stopped.Load(), s.idleAt(ep)
+	s.mu.Unlock()
+	if stopping {
+		return wtResume{Reason: "stopping"}
+	}
+	if !idle {
+		return wtResume{Reason: "busy"}
 	}
 	ctx := context.Background()
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
@@ -181,19 +209,22 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	s.awaitHandover(ctx, uint(id))
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.stopped.Load() {
-		return wtResume{Reason: "stopping"}
+	refuse := func(reason string) wtResume {
+		s.refundToken(ctx, token)
+		return wtResume{Reason: reason}
 	}
-	ep := endpoint{transport: webTransportName, addr: addr}
+	if s.stopped.Load() {
+		return refuse("stopping")
+	}
 	l, err := s.linkAt(ep, dmrd.DialectMMDVM)
 	if err != nil || l.m.State() != dmrdsession.StateIdle {
-		return wtResume{Reason: "busy"}
+		return refuse("busy")
 	}
 	l.heard = noticeTime(token)
 	s.resumeLink(ctx, s.now(), l, id)
 	if s.byID[id] != l {
 		s.forget(l)
-		return wtResume{Reason: "not resumed"}
+		return refuse("not resumed")
 	}
 	repeater.IP, repeater.Port = ep.kvAddr()
 	s.records.Do(uint(id), func() { s.kvClient.StoreRepeater(ctx, uint(id), repeater) })

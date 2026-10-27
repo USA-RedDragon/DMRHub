@@ -24,7 +24,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResumeTokens(t *testing.T) {
@@ -57,4 +60,51 @@ func TestResumeTokens(t *testing.T) {
 	ctx := context.Background()
 	assert.True(t, s.spendToken(ctx, token), "a token is spent once")
 	assert.False(t, s.spendToken(ctx, token), "a spent token moves no session again")
+}
+
+func wtLogin(t *testing.T, s *Server, addr wtAddr, id uint32) {
+	t.Helper()
+	ep := endpoint{transport: webTransportName, addr: addr}
+	handle := func(p []byte) {
+		s.handleFrom(context.Background(), ep, p, time.Now())
+		s.lookups.Wait()
+		s.records.Wait()
+	}
+	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	handle(rptl)
+	tok, err := dmrdauth.Token(dmrd.DialectMMDVM, testSalt, []byte("s3cret"))
+	require.NoError(t, err)
+	rptk, err := (&dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: tok}).AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	handle(rptk)
+	handle(rptc(t, dmrd.DialectMMDVM, id))
+	_, ok := s.connected.Load(uint(id))
+	require.True(t, ok, "the hotspot %d should be logged in", id)
+}
+
+// TestResumeTokenSurvivesABusySession asks a session that already carries
+// a login to resume another one, then asks a fresh session with the same
+// token. The refusal of the busy session moved nothing, so it must not
+// spend the token; the token still moves the session only once.
+func TestResumeTokenSurvivesABusySession(t *testing.T) {
+	t.Parallel()
+	s, _ := webTransportServer(t)
+	s.mu.Lock()
+	s.newSalt = func() (uint32, error) { return testSalt, nil }
+	s.mu.Unlock()
+	wtLogin(t, s, wtAddr("old"), 311860)
+	wtLogin(t, s, wtAddr("busy"), 311861)
+
+	token := s.resumeToken(311860, time.Now())
+	r := s.resumeWebTransport(wtAddr("busy"), token)
+	assert.False(t, r.Resumed)
+	assert.Equal(t, "busy", r.Reason)
+
+	r = s.resumeWebTransport(wtAddr("new"), token)
+	assert.True(t, r.Resumed, "a refusal that moved nothing must leave the token good, got %q", r.Reason)
+
+	r = s.resumeWebTransport(wtAddr("third"), token)
+	assert.False(t, r.Resumed)
+	assert.Equal(t, "the token was used", r.Reason)
 }

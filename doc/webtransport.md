@@ -272,6 +272,8 @@ or, when it does not take the session over:
 | `busy`                            | This WebTransport session already has an MMDVM session                                                  |
 | `not resumed`                     | The takeover did not complete                                                                           |
 
+A token moves a session only once. A refusal does not spend the token, so the client can try it again on another session until it expires.
+
 DMRHub stops reading after the first newline or after 1024 octets, and closes the stream after its answer. It gives up on a stream that sends nothing for 5 seconds.
 
 ### Drain notice

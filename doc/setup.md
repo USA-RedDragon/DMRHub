@@ -142,7 +142,7 @@ The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. DMRHub keeps its da
 
 ## Step 2: Finish the setup wizard
 
-The setup wizard has no password. Anyone who opens it can change the settings, and the first visitor to make the admin account becomes the super admin. Do this step before you open port 3005 to the internet, or open the port only to you until you finish.
+The setup wizard has no password. Anyone who opens it can change the settings, and the first visitor to make the admin account becomes the super admin. Do this step before you open port 3005 to the internet, or open the port only to you until you finish. On a DMRHub that has an admin, or that saved a database setting before, the wizard changes no setting and tells you to fix the config and restart DMRHub (see [First start and the setup wizard](admin/install.md#first-start-and-the-setup-wizard)).
 
 1. Open `http://<server>:3005/setup` in a web browser. Use the address of the server for `<server>`, or `localhost` on the server itself. You do not need anything from the log.
 2. In **General Settings**, enter a **Network Name**. Leave **Secret** and **Password Salt** blank: DMRHub made random values for them at the first start and keeps them in the database, so both show `Stored. Leave blank to keep the existing value.`

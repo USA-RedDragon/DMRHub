@@ -141,6 +141,14 @@ dmr:
     debug: false
     # Path to an RSSI.dat file in the MMDVMHost format, which maps the raw RSSI of the board to dBm. Without it the RSSI of modem calls is not known
     # rssi-mapping-file: ""
+    # Morse station ID that the modem sends while the channel is idle
+    cw-id:
+      # Send a morse station ID while the channel is idle
+      enabled: false
+      # Minutes between station IDs, 1 to 1440. The first goes out a quarter of this time after the modem connects or the channel goes idle
+      time: 10
+      # Callsign to send in morse: letters, digits, spaces and / ? , - = . Required when the station ID is on
+      # callsign: ""
   # Disable validation of radio IDs in DMR packets, allowing any 7- to 9-digit number to be used as a radio ID
   disable-radio-id-validation: false
   # URL to fetch radio ID information for validation and display purposes. Expected JSON format is the same as RadioID.net.

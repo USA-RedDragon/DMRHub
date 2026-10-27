@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -63,6 +64,15 @@ const (
 	positionSize    = 18
 	// flcoMask is the FLCO of the first octet of an LC.
 	flcoMask = 0x3F
+	// cwIDQuarter divides the CW ID time for the first CW ID after start
+	// and after the channel goes idle, as in MMDVMHost.
+	cwIDQuarter = 4
+	// maxCWID is the longest callsign of a SEND_CWID frame, as in
+	// MMDVMHost.
+	maxCWID = 200
+	// maxCWIDMinutes is the longest time between CW IDs that the radio
+	// takes, the largest that the config validates.
+	maxCWIDMinutes = 1440
 )
 
 // sink is where the radio sends its frames and the packets for the hub.
@@ -112,6 +122,9 @@ type radio struct {
 	slcSent    bool
 	lastStatus time.Duration
 	nextStatus time.Duration
+	modemTX    bool
+	cwOn       bool
+	cwAt       time.Duration
 }
 
 func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now time.Duration, rssi rssiMap) (*radio, error) {
@@ -119,8 +132,40 @@ func newRadio(m *config.Modem, repeater uint32, protocol uint8, out sink, now ti
 	if err != nil {
 		return nil, fmt.Errorf("make the repeater: %w", err)
 	}
-	return &radio{m: m, repeater: repeater, protocol: protocol, rssi: rssi, rep: rep, outs: make([]bs.Output, 0, bs.MaxOutputs),
-		out: out, lastStatus: now, nextStatus: now}, nil
+	r := &radio{m: m, repeater: repeater, protocol: protocol, rssi: rssi, rep: rep, outs: make([]bs.Output, 0, bs.MaxOutputs),
+		out: out, lastStatus: now, nextStatus: now}
+	r.idleCWID(now)
+	return r, nil
+}
+
+// cwIDTime is the time between CW IDs.
+func (r *radio) cwIDTime() time.Duration {
+	return time.Duration(min(r.m.CWID.Time, maxCWIDMinutes)) * time.Minute //nolint:gosec // clamped to a day
+}
+
+// idleCWID starts the CW ID timer with a quarter of its time, as
+// MMDVMHost does at start and when the modem goes idle.
+func (r *radio) idleCWID(now time.Duration) {
+	if !r.m.CWID.Enabled {
+		return
+	}
+	r.cwOn, r.cwAt = true, now+r.cwIDTime()/cwIDQuarter
+}
+
+// cwID sends the CW ID when it is due and the channel is idle: the radio
+// keys nothing and the modem does not transmit, as MMDVMHost waits for.
+// Otherwise it tries again at the next status.
+func (r *radio) cwID(now time.Duration) {
+	if !r.cwOn || now < r.cwAt {
+		return
+	}
+	if r.keyed || r.modemTX {
+		r.cwAt = r.nextStatus
+		return
+	}
+	call := strings.ToUpper(r.m.CWID.Callsign)
+	r.send(mmdvm.CommandSendCWID, rawPayload(call[:min(len(call), maxCWID)]))
+	r.cwAt = now + r.cwIDTime()
 }
 
 func slotIndex(s enums.Slot) (int, bool) {
@@ -176,6 +221,7 @@ func (r *radio) status(now time.Duration, p []byte) {
 			return
 		}
 		space1, space2, adc, dac, rxo, txo = s.DMRSpace1, s.DMRSpace2, s.ADCOverflow, s.DACOverflow, s.RXOverflow, s.TXOverflow
+		r.modemTX = s.TX
 	} else {
 		s, err := mmdvm.DecodeStatusV2(p)
 		if err != nil {
@@ -183,6 +229,7 @@ func (r *radio) status(now time.Duration, p []byte) {
 			return
 		}
 		space1, space2, adc, dac, rxo, txo = s.DMRSpace1, s.DMRSpace2, s.ADCOverflow, s.DACOverflow, s.RXOverflow, s.TXOverflow
+		r.modemTX = s.TX
 	}
 	r.slots[0].space, r.slots[1].space = int(space1), int(space2)
 	for _, o := range []struct {
@@ -277,6 +324,7 @@ func (r *radio) tick(now time.Duration) {
 		r.send(mmdvm.CommandGetStatus, nil)
 		r.nextStatus = now + statusInterval
 	}
+	r.cwID(now)
 	r.flush()
 }
 
@@ -285,6 +333,9 @@ func (r *radio) deadline() time.Duration {
 	next := min(r.nextStatus, r.lastStatus+silenceLimit)
 	if at, ok := r.rep.Deadline(); ok {
 		next = min(next, at)
+	}
+	if r.cwOn {
+		next = min(next, r.cwAt)
 	}
 	return next
 }
@@ -308,9 +359,9 @@ func (r *radio) apply(now time.Duration, outs []bs.Output) {
 		o := &outs[i]
 		switch o.Kind {
 		case bs.OutputKey:
-			r.key(true)
+			r.key(now, true)
 		case bs.OutputDekey:
-			r.key(false)
+			r.key(now, false)
 		case bs.OutputBurst:
 			r.burst(now, o)
 		case bs.OutputCallStart:
@@ -324,9 +375,10 @@ func (r *radio) apply(now time.Duration, outs []bs.Output) {
 	r.shortLC()
 }
 
-func (r *radio) key(on bool) {
+func (r *radio) key(now time.Duration, on bool) {
 	r.keyed = on
 	if on {
+		r.cwOn = false
 		r.send(mmdvm.CommandSetMode, &mmdvm.SetMode{Mode: mmdvm.ModeDMR})
 		if r.m.Duplex {
 			r.send(mmdvm.CommandDMRStart, &mmdvm.DMRStart{TX: true})
@@ -337,6 +389,7 @@ func (r *radio) key(on bool) {
 		r.slots[i].head, r.slots[i].count = 0, 0
 	}
 	r.stop()
+	r.idleCWID(now)
 }
 
 func (r *radio) callStart(o *bs.Output) {

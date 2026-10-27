@@ -21,6 +21,7 @@ package config_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -41,7 +42,8 @@ func TestModemDefaults(t *testing.T) {
 	d := modemDefaults(t)
 	m := d.Modem
 	if m.Enabled || m.Duplex || m.Baud != 115200 || m.ColorCode != 1 || m.RFLevel != 100 || m.RXLevel != 50 ||
-		m.TXLevel != 50 || !m.TXInvert || m.RXInvert || m.PTTInvert || m.TXDelay != 100 || m.DMRDelay != 0 {
+		m.TXLevel != 50 || !m.TXInvert || m.RXInvert || m.PTTInvert || m.TXDelay != 100 || m.DMRDelay != 0 ||
+		m.CWID.Enabled || m.CWID.Time != 10 || m.CWID.Callsign != "" {
 		t.Fatalf("defaults: %+v", m)
 	}
 	if err := d.Validate(); err != nil {
@@ -80,6 +82,11 @@ func TestModemValidation(t *testing.T) {
 		{"tx dc offset", func(m *config.Modem) { m.TXDCOffset = -129 }, "dmr.modem.tx-dc-offset", config.ErrInvalidModemDCOffset},
 		{"tx delay", func(m *config.Modem) { m.TXDelay = 510 }, "dmr.modem.tx-delay", config.ErrInvalidModemTXDelay},
 		{"dmr delay", func(m *config.Modem) { m.DMRDelay = 256 }, "dmr.modem.dmr-delay", config.ErrInvalidModemDMRDelay},
+		{"cw id without a callsign", func(m *config.Modem) { m.CWID.Enabled = true }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
+		{"cw id callsign with a symbol morse lacks", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, "KI5VMF!" }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
+		{"cw id callsign too long", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, strings.Repeat("K", 201) }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
+		{"cw id time 0", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 0 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
+		{"cw id time above a day", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 1441 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

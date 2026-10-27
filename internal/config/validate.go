@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -156,6 +157,10 @@ var (
 	ErrInvalidModemTXDelay = errors.New("the modem TX delay must be 0 to 500 milliseconds")
 	// ErrInvalidModemDMRDelay indicates that the modem DMR delay is not 0 to 255 symbols.
 	ErrInvalidModemDMRDelay = errors.New("the modem DMR delay must be 0 to 255 symbols")
+	// ErrInvalidModemCWIDCallsign indicates that the CW ID of the modem is on without a callsign that morse can send.
+	ErrInvalidModemCWIDCallsign = errors.New(`the CW ID callsign is required: at most 200 letters, digits, spaces and the symbols "/?,-=."`)
+	// ErrInvalidModemCWIDTime indicates that the time between CW IDs of the modem is not 1 to 1440 minutes.
+	ErrInvalidModemCWIDTime = errors.New("the time between CW IDs must be 1 to 1440 minutes")
 	// ErrInvalidIPSCBindAddress indicates that the provided IPSC server bind address is not valid.
 	ErrInvalidIPSCBindAddress = errors.New("invalid IPSC server bind address provided")
 	// ErrInvalidIPSCPort indicates that the provided IPSC server port is not valid.
@@ -425,6 +430,8 @@ const (
 	maxModemDCOffset = 127
 	maxModemColor    = 15
 	maxModemUint32   = 1<<32 - 1
+	maxModemCWID     = 200
+	maxModemCWIDTime = 1440
 )
 
 func (m Modem) Validate() error {
@@ -478,7 +485,29 @@ func (m Modem) ValidateWithFields() (errs []ValidationError) {
 	if m.DMRDelay < 0 || m.DMRDelay > maxModemDMRDelay {
 		add("dmr-delay", ErrInvalidModemDMRDelay)
 	}
+	if m.CWID.Enabled {
+		if !cwIDCallsign(m.CWID.Callsign) {
+			add("cw-id.callsign", ErrInvalidModemCWIDCallsign)
+		}
+		if m.CWID.Time == 0 || m.CWID.Time > maxModemCWIDTime {
+			add("cw-id.time", ErrInvalidModemCWIDTime)
+		}
+	}
 	return
+}
+
+// cwIDCallsign reports whether the modem firmware has a morse symbol for
+// each character of s, in upper case, and s fits in a SEND_CWID frame.
+func cwIDCallsign(s string) bool {
+	if strings.TrimSpace(s) == "" || len(s) > maxModemCWID {
+		return false
+	}
+	for _, c := range strings.ToUpper(s) {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') && !strings.ContainsRune(" /?,-=.", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // modemFrequency reports whether f Hz with the offset off is above 0 and

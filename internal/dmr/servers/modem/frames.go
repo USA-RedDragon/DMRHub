@@ -42,6 +42,13 @@ type appender interface {
 	AppendBinary(dst []byte) ([]byte, error)
 }
 
+// rawPayload is a payload of text, such as the callsign of SEND_CWID.
+type rawPayload string
+
+func (p rawPayload) AppendBinary(dst []byte) ([]byte, error) {
+	return append(dst, p...), nil
+}
+
 // frame returns the frame of command c with the payload of msg, or with
 // no payload for a nil msg.
 func frame(c mmdvm.Command, msg appender) ([]byte, error) {

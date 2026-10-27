@@ -54,6 +54,7 @@ type bench struct {
 	positions  []dmrd.Position
 	wantStatus bool
 	silent     bool
+	tx         bool
 }
 
 func newBench(t *testing.T, duplex bool, protocol uint8) *bench {
@@ -63,8 +64,18 @@ func newBench(t *testing.T, duplex bool, protocol uint8) *bench {
 
 func newBenchRSSI(t *testing.T, duplex bool, protocol uint8, rssi rssiMap) *bench {
 	t.Helper()
+	return newBenchWith(t, duplex, protocol, rssi, nil)
+}
+
+// newBenchWith is newBench with the RSSI map rssi, after edit changes the
+// modem settings.
+func newBenchWith(t *testing.T, duplex bool, protocol uint8, rssi rssiMap, edit func(m *config.Modem)) *bench {
+	t.Helper()
 	b := &bench{t: t, m: mmdvmhostModem(), now: time.Second}
 	b.m.Duplex, b.m.ColorCode = duplex, 1
+	if edit != nil {
+		edit(&b.m)
+	}
 	r, err := newRadio(&b.m, benchRepeater, protocol, b, b.now, rssi)
 	if err != nil {
 		t.Fatal(err)
@@ -95,10 +106,10 @@ func (b *bench) status() {
 	var p []byte
 	var err error
 	if b.r.protocol == 1 {
-		s := mmdvm.StatusV1{DMR: true, DMRSpace1: 10, DMRSpace2: 10}
+		s := mmdvm.StatusV1{DMR: true, TX: b.tx, DMRSpace1: 10, DMRSpace2: 10}
 		p, err = s.AppendBinary(nil)
 	} else {
-		s := mmdvm.StatusV2{DMRSpace1: 10, DMRSpace2: 10}
+		s := mmdvm.StatusV2{TX: b.tx, DMRSpace1: 10, DMRSpace2: 10}
 		p, err = s.AppendBinary(nil)
 	}
 	if err != nil {

@@ -93,7 +93,7 @@ func TestPATCHUserCallsign(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "OLDCALL", stored().Callsign)
 
-			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{UserID: user.DMRId, RadioIDCallsign: "KI5VMF"}}, time.Now()))
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "KI5VMF"}}, time.Now()))
 			resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "ki5vmf"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			assert.Equal(t, "KI5VMF", stored().Callsign)
@@ -187,7 +187,7 @@ func TestDeleteUserRemovesItsRadioIDDrift(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 			require.NoError(t, database.Create(&models.User{ID: 3140001, Callsign: "W1AW", Username: "other", Approved: true}).Error)
-			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{UserID: 3140001, RadioIDCallsign: "N0NEW"}}, time.Now()))
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3140001, UserID: 3140001, RadioIDCallsign: "N0NEW"}}, time.Now()))
 			require.NoError(t, models.DeleteUser(database, 3140001))
 			_, drifted, err := models.FindRadioIDDrift(database, 3140001)
 			require.NoError(t, err)
@@ -259,8 +259,8 @@ func TestRadioIDDriftListAndFix(t *testing.T) {
 			require.NoError(t, database.Exec("UPDATE users SET callsign = ?, email = ?, email_verified = ? WHERE id = ?", "OLDCALL", "ki5vmf@example.com", true, user.DMRId).Error)
 			require.NoError(t, database.Create(&models.User{ID: unknownDMRID, Callsign: "N0GONE", Username: "gone", Approved: true}).Error)
 			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{
-				{UserID: user.DMRId, RadioIDCallsign: "KI5VMF"},
-				{UserID: unknownDMRID},
+				{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "KI5VMF"},
+				{RadioID: unknownDMRID, UserID: unknownDMRID},
 			}, time.Now()))
 
 			w := driftRequest(t, router, userJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
@@ -276,11 +276,11 @@ func TestRadioIDDriftListAndFix(t *testing.T) {
 			require.Len(t, list.Drifts, 2)
 			byID := map[uint]apimodels.RadioIDDrift{}
 			for _, d := range list.Drifts {
-				byID[d.UserID] = d
+				byID[d.RadioID] = d
 			}
-			assert.Equal(t, apimodels.RadioIDDrift{UserID: user.DMRId, Username: "testuser", Callsign: "OLDCALL", RadioIDCallsign: "KI5VMF", CanNotify: true},
+			assert.Equal(t, apimodels.RadioIDDrift{RadioID: user.DMRId, UserID: user.DMRId, Username: "testuser", Callsign: "OLDCALL", RadioIDCallsign: "KI5VMF", CanFix: true, CanNotify: true},
 				withoutTimes(byID[user.DMRId]))
-			assert.Equal(t, apimodels.RadioIDDrift{UserID: unknownDMRID, Username: "gone", Callsign: "N0GONE"}, withoutTimes(byID[unknownDMRID]))
+			assert.Equal(t, apimodels.RadioIDDrift{RadioID: unknownDMRID, UserID: unknownDMRID, Username: "gone", Callsign: "N0GONE"}, withoutTimes(byID[unknownDMRID]))
 
 			w = driftRequest(t, router, adminJar, http.MethodPost, fmt.Sprintf("/api/v1/admin/radio-id-drift/%d/fix", unknownDMRID), "")
 			assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -352,4 +352,80 @@ func withoutTimes(d apimodels.RadioIDDrift) apimodels.RadioIDDrift {
 	d.FoundAt = time.Time{}
 	d.CheckedAt = time.Time{}
 	return d
+}
+
+func twoRadioIDsOfOneCallsign(t *testing.T) (callsign string, first, second, other uint) {
+	t.Helper()
+	seen := map[string]uint{}
+	for id := uint(3100000); id < 3200000; id++ {
+		u, ok := userdb.Get(id)
+		if !ok || u.ID != id || u.Callsign == "" {
+			continue
+		}
+		c := strings.ToUpper(u.Callsign)
+		if prev, ok := seen[c]; ok && first == 0 {
+			callsign, first, second = c, prev, id
+		} else if first != 0 && c != callsign {
+			return callsign, first, second, id
+		}
+		seen[c] = id
+	}
+	require.FailNow(t, "the test needs a callsign that RadioID lists with two DMR IDs")
+	return "", 0, 0, 0
+}
+
+func TestRadioIDDriftFixOfAnAddedRadioID(t *testing.T) {
+	t.Parallel()
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { be.Migrated().Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+			database := tdb.DB()
+			_, _, adminJar := testutils.LoginAdmin(t, router)
+
+			callsign, main, same, other := twoRadioIDsOfOneCallsign(t)
+			require.NoError(t, database.Create(&models.User{ID: main, Callsign: "OLDCALL", Username: "testuser", Approved: true}).Error)
+			for _, rid := range []uint{same, other} {
+				require.NoError(t, database.Create(&models.UserRadioID{UserID: main, RadioID: rid, VerifiedAt: time.Now()}).Error)
+			}
+			otherCall, _ := userdb.Get(other)
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{
+				{RadioID: main, UserID: main, RadioIDCallsign: callsign},
+				{RadioID: same, UserID: main, RadioIDCallsign: callsign},
+				{RadioID: other, UserID: main, RadioIDCallsign: strings.ToUpper(otherCall.Callsign)},
+			}, time.Now()))
+
+			w := driftRequest(t, router, adminJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			var list apimodels.RadioIDDriftList
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+			canFix := map[uint]bool{}
+			for _, d := range list.Drifts {
+				canFix[d.RadioID] = d.CanFix
+			}
+			assert.Equal(t, map[uint]bool{main: true, same: true, other: false}, canFix)
+
+			w = driftRequest(t, router, adminJar, http.MethodPost, fmt.Sprintf("/api/v1/admin/radio-id-drift/%d/fix", other), "")
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+
+			w = driftRequest(t, router, adminJar, http.MethodPost, fmt.Sprintf("/api/v1/admin/radio-id-drift/%d/fix", same), "")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			u, err := models.FindUserWithoutRepeaters(database, main)
+			require.NoError(t, err)
+			assert.Equal(t, callsign, u.Callsign)
+			for rid, want := range map[uint]bool{main: false, same: false, other: true} {
+				_, drifted, err := models.FindRadioIDDrift(database, rid)
+				require.NoError(t, err)
+				assert.Equal(t, want, drifted, "radio ID %d", rid)
+			}
+
+			w = driftRequest(t, router, adminJar, http.MethodDelete, fmt.Sprintf("/api/v1/users/%d/radio-ids/%d", main, other), "")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			_, drifted, err := models.FindRadioIDDrift(database, other)
+			require.NoError(t, err)
+			assert.False(t, drifted, "a removed radio ID leaves the list")
+		})
+	}
 }

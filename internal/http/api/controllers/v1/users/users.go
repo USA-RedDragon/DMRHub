@@ -690,8 +690,8 @@ func PATCHUser(c *gin.Context) {
 				if err := models.SetCallsignOverride(tx, user.ID, *override); err != nil {
 					return fmt.Errorf("could not save user %d: %w", user.ID, err)
 				}
-				if err := models.DeleteRadioIDDrift(tx, user.ID); err != nil {
-					return fmt.Errorf("could not save user %d: %w", user.ID, err)
+				if err := endDrifts(tx, user, *override); err != nil {
+					return err
 				}
 			}
 			if json.Email != nil && email != user.Email {
@@ -722,6 +722,22 @@ func PATCHUser(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
+}
+
+// endDrifts takes the radio IDs of user that no longer drift off the
+// RadioID drift list: all of them when an admin chose the callsign, else
+// those that RadioID lists under the callsign.
+func endDrifts(db *gorm.DB, user models.User, override bool) error {
+	var err error
+	if override {
+		err = models.DeleteUserRadioIDDrifts(db, user.ID)
+	} else {
+		err = models.ResolveRadioIDDrifts(db, user.ID, user.Callsign)
+	}
+	if err != nil {
+		return fmt.Errorf("could not save user %d: %w", user.ID, err)
+	}
+	return nil
 }
 
 // patchNames applies the new callsign and username of json to user. It

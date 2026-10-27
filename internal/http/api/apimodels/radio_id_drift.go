@@ -21,18 +21,22 @@ package apimodels
 
 import "time"
 
-// RadioIDDrift is a user whose callsign RadioID does not give their DMR
-// ID.
+// RadioIDDrift is a radio ID of a user, their account ID or one they
+// added, that RadioID does not list under the callsign of the user.
 type RadioIDDrift struct {
+	RadioID  uint   `json:"radio_id"`
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
 	// Callsign is the callsign of the user on DMRHub.
 	Callsign string `json:"callsign"`
-	// RadioIDCallsign is the callsign that RadioID gives the DMR ID, or
-	// empty when RadioID does not have the DMR ID, so no fix applies.
-	RadioIDCallsign string    `json:"radio_id_callsign"`
-	FoundAt         time.Time `json:"found_at"`
-	CheckedAt       time.Time `json:"checked_at"`
+	// RadioIDCallsign is the callsign that RadioID lists for the radio
+	// ID, or empty when RadioID does not have the radio ID.
+	RadioIDCallsign string `json:"radio_id_callsign"`
+	// CanFix reports that a fix applies: RadioID lists the account ID of
+	// the user, and this radio ID, under one new callsign.
+	CanFix    bool      `json:"can_fix"`
+	FoundAt   time.Time `json:"found_at"`
+	CheckedAt time.Time `json:"checked_at"`
 	// CanNotify reports that a fix can email the user: email is on and
 	// the user verified an address.
 	CanNotify bool `json:"can_notify"`
@@ -44,8 +48,8 @@ type RadioIDDriftList struct {
 	Drifts []RadioIDDrift `json:"drifts"`
 }
 
-// RadioIDDriftFix asks to give a user the callsign that RadioID gives
-// their DMR ID.
+// RadioIDDriftFix asks to give the user of a radio ID the callsign that
+// RadioID lists for their account ID.
 type RadioIDDriftFix struct {
 	// Notify asks to email the user about the new callsign.
 	Notify bool `json:"notify"`

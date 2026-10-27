@@ -215,7 +215,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Admin.POST("/plugins/:id/module", v1PluginsControllers.POSTPluginModule)
 	v1Admin.GET("/messages/:id", v1MessagesControllers.GETAdminMessage)
 	v1Admin.GET("/radio-id-drift", v1UsersControllers.GETRadioIDDrifts)
-	v1Admin.POST("/radio-id-drift/:id/fix", v1UsersControllers.POSTRadioIDDriftFix)
+	v1Admin.POST("/radio-id-drift/:radio_id/fix", v1UsersControllers.POSTRadioIDDriftFix)
 
 	v1Lastheard := group.Group("/lastheard")
 	// Returns the lastheard data for the server, adds personal data if logged in

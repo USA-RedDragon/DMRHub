@@ -273,13 +273,24 @@ func deleteRadioID(c *gin.Context, db *gorm.DB, user *models.User) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "You cannot remove your account ID"})
 		return
 	}
-	res := db.Where("user_id = ? AND radio_id = ?", user.ID, uint(id)).Delete(&models.UserRadioID{})
-	if res.Error != nil {
-		slog.Error("Error removing a radio ID", "error", res.Error)
+	var removed int64
+	err = db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("user_id = ? AND radio_id = ?", user.ID, uint(id)).Delete(&models.UserRadioID{})
+		if res.Error != nil {
+			return fmt.Errorf("could not remove radio ID %d: %w", id, res.Error)
+		}
+		removed = res.RowsAffected
+		if removed == 0 {
+			return nil
+		}
+		return models.DeleteRadioIDDrift(tx, uint(id))
+	})
+	if err != nil {
+		slog.Error("Error removing a radio ID", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
 		return
 	}
-	if res.RowsAffected == 0 {
+	if removed == 0 {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: "Radio ID not found"})
 		return
 	}

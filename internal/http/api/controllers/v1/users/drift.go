@@ -20,7 +20,6 @@
 package users
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -68,22 +67,37 @@ func GETRadioIDDrifts(c *gin.Context) {
 	}
 	out := apimodels.RadioIDDriftList{Total: total, Drifts: make([]apimodels.RadioIDDrift, 0, len(rows))}
 	for _, r := range rows {
+		listed := listedCallsign(r.UserID)
 		out.Drifts = append(out.Drifts, apimodels.RadioIDDrift{
+			RadioID:         r.RadioID,
 			UserID:          r.UserID,
 			Username:        r.Username,
 			Callsign:        r.Callsign,
 			RadioIDCallsign: r.RadioIDCallsign,
 			FoundAt:         r.FoundAt,
 			CheckedAt:       r.CheckedAt,
+			CanFix:          r.RadioIDCallsign != "" && listed != "" && strings.EqualFold(r.RadioIDCallsign, listed) && !strings.EqualFold(listed, r.Callsign),
 			CanNotify:       config.SMTP.Enabled && r.EmailVerified && r.Email != "",
 		})
 	}
 	c.JSON(http.StatusOK, out)
 }
 
-// POSTRadioIDDriftFix gives the user :id the callsign that RadioID gives
-// their DMR ID now, for an admin, and takes the user off the RadioID drift
-// list. With notify, it emails the user when it can.
+// listedCallsign returns the callsign that RadioID lists for id, in upper
+// case, or empty when RadioID does not have id.
+func listedCallsign(id uint) string {
+	entry, found := userdb.Get(id)
+	if !found || entry.ID != id {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(entry.Callsign))
+}
+
+// POSTRadioIDDriftFix gives the user of the radio ID :radio_id the
+// callsign that RadioID lists for their account ID now, for an admin. For
+// an added radio ID, RadioID must list it under that callsign too. It
+// takes the radio IDs of the user that RadioID lists under the callsign
+// off the RadioID drift list. With notify, it emails the user when it can.
 func POSTRadioIDDriftFix(c *gin.Context) {
 	db, ok := utils.GetDB(c)
 	if !ok {
@@ -93,12 +107,12 @@ func POSTRadioIDDriftFix(c *gin.Context) {
 	if !ok {
 		return
 	}
-	idInt, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	ridInt, err := strconv.ParseUint(c.Param("radio_id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidUserID})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid radio ID"})
 		return
 	}
-	id := uint(idInt)
+	rid := uint(ridInt)
 	var json apimodels.RadioIDDriftFix
 	if c.Request.ContentLength != 0 {
 		if err := c.ShouldBindJSON(&json); err != nil {
@@ -110,22 +124,31 @@ func POSTRadioIDDriftFix(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Radio ID validation is off"})
 		return
 	}
-	user, err := models.FindUserWithoutRepeaters(db, id)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{errorKey: msgUserNotFound})
-		return
-	}
+	id, owned, err := models.RadioIDOwner(db, rid)
 	if err != nil {
 		slog.Error(msgErrFindingUser, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 		return
 	}
-	entry, found := userdb.Get(id)
-	if !found || entry.ID != id || strings.TrimSpace(entry.Callsign) == "" {
+	if !owned {
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "No user has this radio ID"})
+		return
+	}
+	user, err := models.FindUserWithoutRepeaters(db, id)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return
+	}
+	callsign := listedCallsign(id)
+	if callsign == "" {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "RadioID does not have this DMR ID"})
 		return
 	}
-	callsign := strings.ToUpper(strings.TrimSpace(entry.Callsign))
+	if rid != id && listedCallsign(rid) != callsign {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "RadioID lists this radio ID under another callsign than the DMR ID of the user"})
+		return
+	}
 	if callsign != user.Callsign {
 		taken, err := models.UsernameIsCallsign(db, callsign, id)
 		if err != nil {
@@ -151,6 +174,9 @@ func POSTRadioIDDriftFix(c *gin.Context) {
 			return fmt.Errorf("could not fix user %d: %w", id, err)
 		}
 		if err := models.DeleteRadioIDDrift(tx, id); err != nil {
+			return fmt.Errorf("could not fix user %d: %w", id, err)
+		}
+		if err := models.ResolveRadioIDDrifts(tx, id, callsign); err != nil {
 			return fmt.Errorf("could not fix user %d: %w", id, err)
 		}
 		return nil

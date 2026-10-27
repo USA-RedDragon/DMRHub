@@ -23,6 +23,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,17 +39,51 @@ import (
 const slowRedisCall = 500 * time.Millisecond
 
 // slowRedis makes the KV calls on the keys with prefix and the publishes
-// to topics take slowRedisCall each, ignoring their contexts, as a hung
-// Redis does.
+// to topics take slowRedisCall each while on, or wait for release while
+// held, ignoring their contexts, as a hung Redis does.
 type slowRedis struct {
 	on     atomic.Bool
 	prefix string
 	topics []string
+	mu     sync.Mutex
+	gate   chan struct{}
+	held   atomic.Int64
 }
 
 func (s *slowRedis) wait(slow bool) {
-	if slow && s.on.Load() {
+	if !slow {
+		return
+	}
+	s.mu.Lock()
+	gate := s.gate
+	s.mu.Unlock()
+	if gate != nil {
+		s.held.Add(1)
+		<-gate
+		s.held.Add(-1)
+		return
+	}
+	if s.on.Load() {
 		time.Sleep(slowRedisCall)
+	}
+}
+
+// hold makes the slow calls from now on wait for release.
+func (s *slowRedis) hold() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gate == nil {
+		s.gate = make(chan struct{})
+	}
+}
+
+// release lets the held calls go, and holds no more.
+func (s *slowRedis) release() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gate != nil {
+		close(s.gate)
+		s.gate = nil
 	}
 }
 
@@ -100,16 +135,18 @@ func forAllSlowRedisBackends(t *testing.T, prefix string, topics []string, f fun
 			slow := &slowRedis{prefix: prefix, topics: topics}
 			be.WrapKV = func(k kv.KV) kv.KV { return slowRedisKV{KV: k, s: slow} }
 			be.WrapPubSub = func(p pubsub.PubSub) pubsub.PubSub { return slowRedisPubSub{PubSub: p, s: slow} }
-			f(t, testutils.SetupIntegrationStack(t, be), slow)
+			stack := testutils.SetupIntegrationStack(t, be)
+			t.Cleanup(slow.release)
+			f(t, stack, slow)
 		})
 	}
 }
 
 // TestOpenBridgeSlowRedisHoldsNoBurst sends calls from an OpenBridge peer
-// and from a local repeater, and a BCSQ, while Redis takes 500 ms for the
-// source quenches and the peer events. Each burst must reach the other
-// peer and the repeater in less than half of that, and a BCSQ right
-// after another must stop its stream at once.
+// and from a local repeater, and a BCSQ, while Redis holds the source
+// quenches and the peer events. Every burst must reach the other peer and
+// the repeater while Redis holds a peer event of the call, and a BCSQ
+// right after another must stop its stream at once.
 func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 	t.Parallel()
 	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
@@ -163,15 +200,11 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 		worstDelays(t, 8102, send(false), to.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
-		slow.on.Store(true)
-		defer slow.on.Store(false)
-		fromPeer := worstDelays(t, 8103, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
-		fromRepeater := worstDelays(t, 8104, send(false), to.ReceivedPackets())
-		t.Logf("worst delay with %v per Redis call: peer to peer %v, peer to repeater %v, repeater to peer %v",
-			slowRedisCall, fromPeer[0], fromPeer[1], fromRepeater[0])
-		assert.Less(t, fromPeer[0], slowRedisCall/2, "a burst from a peer to a peer waited on Redis")
-		assert.Less(t, fromPeer[1], slowRedisCall/2, "a burst from a peer to a repeater waited on Redis")
-		assert.Less(t, fromRepeater[0], slowRedisCall/2, "a burst from a repeater to a peer waited on Redis")
+		slow.hold()
+		worstDelays(t, 8103, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
+		worstDelays(t, 8104, send(false), to.ReceivedPackets())
+		assert.Positive(t, slow.held.Load(), "the calls sent no peer event for Redis to hold")
+		t.Logf("the calls passed while Redis held %d calls", slow.held.Load())
 
 		require.NoError(t, to.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 8105}))
 		require.NoError(t, to.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 8106}))
@@ -189,8 +222,8 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 
 // TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica sends a call from
 // an OpenBridge peer to the replica that does not hold the egress lease,
-// while its hand-offs to the holder take 500 ms each. The bursts must
-// reach the local repeater in less than half of that.
+// while Redis holds its hand-offs to the holder. The bursts must reach the
+// repeaters on both replicas while Redis holds a hand-off of the call.
 func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 	t.Parallel()
 	forAllSlowRedisBackends(t, "dmrhub:openbridge:quench:", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
@@ -221,11 +254,9 @@ func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 		worstDelays(t, 8201, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
-		slow.on.Store(true)
-		defer slow.on.Store(false)
-		worst := worstDelays(t, 8202, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
-		t.Logf("worst delay with %v per hand-off: to the repeater on the first replica %v, on the second %v", slowRedisCall, worst[0], worst[1])
-		assert.Less(t, worst[0], slowRedisCall/2, "a burst waited on a hand-off of egress")
-		assert.Less(t, worst[1], slowRedisCall/2, "a burst waited on a hand-off of egress")
+		slow.hold()
+		worstDelays(t, 8202, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
+		assert.Positive(t, slow.held.Load(), "the call sent no hand-off for Redis to hold")
+		t.Logf("the call passed while Redis held %d calls", slow.held.Load())
 	})
 }

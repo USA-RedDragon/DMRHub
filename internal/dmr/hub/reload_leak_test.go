@@ -22,7 +22,6 @@ package hub_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -44,7 +43,9 @@ func TestReloadedRepeaterGetsEachBurstOnce(t *testing.T) {
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 	h.ActivateRepeater(context.Background(), 100002)
 	h.ReloadRepeater(context.Background(), 100002)
+	knowTalkgroups(t, h)
 
+	h.ForgetCachedRepeater(100002)
 	gate.armed.Store(true)
 	held := makeVoicePacket(1, 60001, true, false)
 	held.Repeater = 999998
@@ -53,9 +54,8 @@ func TestReloadedRepeaterGetsEachBurstOnce(t *testing.T) {
 	gate.armed.Store(false)
 	h.ReloadRepeater(context.Background(), 100002)
 	gate.release()
-	time.Sleep(100 * time.Millisecond)
+	gate.waitPassed(t, 1)
 	h.ReloadRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
 	for len(handle.Packets) > 0 {
 		<-handle.Packets
 	}
@@ -64,15 +64,9 @@ func TestReloadedRepeaterGetsEachBurstOnce(t *testing.T) {
 	pkt.Repeater = 999998
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	got := 0
-	deadline := time.After(500 * time.Millisecond)
-	for done := false; !done; {
-		select {
-		case rp := <-handle.Packets:
-			if rp.RepeaterID == 100002 && rp.Packet.Dst == 1 {
-				got++
-			}
-		case <-deadline:
-			done = true
+	for _, rp := range append([]hub.RoutedPacket{receive(t, handle)}, flush(t, h, handle, pkt, 100002)...) {
+		if rp.RepeaterID == 100002 && rp.Packet.Dst == 1 {
+			got++
 		}
 	}
 	assert.Equal(t, 1, got, "a reload must not leave an old subscription delivering")

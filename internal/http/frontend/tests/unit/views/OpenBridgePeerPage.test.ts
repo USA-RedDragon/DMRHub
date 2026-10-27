@@ -35,6 +35,8 @@ import OpenBridgePeerPage from '@/views/admin/OpenBridgePeerPage.vue';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock; patch: Mock; delete: Mock };
 
+let lastPing = '0001-01-01T00:00:00Z';
+
 const peer = (enhanced: boolean) => ({
   id: 3000,
   ip: '192.0.2.10',
@@ -43,7 +45,7 @@ const peer = (enhanced: boolean) => ({
   egress: true,
   enhanced,
   codec2: false,
-  last_ping_time: '0001-01-01T00:00:00Z',
+  last_ping_time: lastPing,
   owner: { id: 3000001, callsign: 'N0CALL' },
 });
 
@@ -81,6 +83,7 @@ describe('OpenBridgePeerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
+    lastPing = '0001-01-01T00:00:00Z';
     setActivePinia(createPinia());
   });
 
@@ -228,5 +231,24 @@ describe('OpenBridgePeerPage', () => {
       'https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/openbridge.md#add-the-rules-of-a-peer',
     );
     w.unmount();
+  });
+
+  it('shows when the peer last pinged', async () => {
+    const never = await mountPage(false);
+    expect(never.find('[data-test="ping"]').text()).toBe('Last ping: never');
+    expect(never.find('[data-test="ping"] .bg-success').exists()).toBe(false);
+    never.unmount();
+
+    lastPing = new Date(Date.now() - 12_000).toISOString();
+    const recent = await mountPage(false);
+    expect(recent.find('[data-test="ping"]').text()).toBe('Last ping 12 seconds ago');
+    expect(recent.find('[data-test="ping"] .bg-success').exists()).toBe(true);
+    recent.unmount();
+
+    lastPing = new Date(Date.now() - 10 * 60_000).toISOString();
+    const old = await mountPage(false);
+    expect(old.find('[data-test="ping"]').text()).toBe('Last ping 10 minutes ago');
+    expect(old.find('[data-test="ping"] .bg-success').exists()).toBe(false);
+    old.unmount();
   });
 });

@@ -33,10 +33,22 @@
           <template v-if="isAdmin">Admin / </template><RouterLink :to="listPath">Peers</RouterLink> /
           <span>{{ peer.id }}</span>
         </div>
-        <h1 class="mb-1.5 text-[26px] leading-tight font-bold" data-test="title">{{ title }}</h1>
-        <p v-if="peer.owner?.id" class="text-muted-foreground" data-test="lead">
-          Owner {{ peer.owner.callsign }} ({{ peer.owner.id }}).
-        </p>
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0 flex-[1_1_20rem]">
+            <h1 class="mb-1.5 text-[26px] leading-tight font-bold" data-test="title">{{ title }}</h1>
+            <p v-if="peer.owner?.id" class="text-muted-foreground" data-test="lead">
+              Owner {{ peer.owner.callsign }} ({{ peer.owner.id }}).
+            </p>
+          </div>
+          <span
+            class="mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 text-xs leading-[22px] font-medium whitespace-nowrap"
+            :class="pingRecent ? 'border-success/55' : ''"
+            data-test="ping"
+          >
+            <span class="size-[7px] shrink-0 rounded-full" :class="pingRecent ? 'bg-success' : 'bg-muted-foreground'" />
+            <span>{{ pingText }}</span>
+          </span>
+        </div>
       </div>
 
       <Card class="gap-5">
@@ -247,10 +259,12 @@ import {
 import API from '@/services/API';
 import { errorText } from '@/services/settings';
 import { useSettingsStore, useUserStore } from '@/store';
+import { formatDistanceStrict } from 'date-fns';
 import { RouterLink } from 'vue-router';
 
 type PeerData = {
   id: number;
+  last_ping_time?: string;
   ip: string;
   port: number;
   ingress: boolean;
@@ -258,6 +272,18 @@ type PeerData = {
   enhanced: boolean;
   codec2: boolean;
   owner?: { id: number; callsign: string };
+};
+
+/** PING_RECENT_MS is how long after its last ping a peer counts as sending; DMRHub records the ping of a sending peer every 30 s. */
+const PING_RECENT_MS = 75_000;
+
+/** POLL_MS is how often the page reads the last ping of the peer again. */
+const POLL_MS = 5_000;
+
+const timeOf = (s: string | undefined): number => {
+  if (!s) return 0;
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) || new Date(s).getFullYear() <= 1 ? 0 : t;
 };
 
 export default {
@@ -300,6 +326,9 @@ export default {
       tab: '' as PeerTab | '',
       tabInfo: PEER_TABS,
       rulesDoc: RULES_DOC,
+      now: Date.now(),
+      poll: null as ReturnType<typeof setInterval> | null,
+      clock: null as ReturnType<typeof setInterval> | null,
     };
   },
   mounted() {
@@ -311,6 +340,14 @@ export default {
     }
     useSettingsStore().fetchConfig();
     this.fetchPeer();
+    this.poll = setInterval(() => this.fetchPing(), POLL_MS);
+    this.clock = setInterval(() => {
+      this.now = Date.now();
+    }, 1000);
+  },
+  unmounted() {
+    if (this.poll !== null) clearInterval(this.poll);
+    if (this.clock !== null) clearInterval(this.clock);
   },
   computed: {
     isAdmin(): boolean {
@@ -353,6 +390,16 @@ export default {
         peerPort: this.form.port,
       };
     },
+    lastPing(): number {
+      return timeOf(this.peer?.last_ping_time);
+    },
+    pingRecent(): boolean {
+      return this.lastPing > 0 && this.now - this.lastPing < PING_RECENT_MS;
+    },
+    pingText(): string {
+      if (!this.lastPing) return 'Last ping: never';
+      return `Last ping ${formatDistanceStrict(this.lastPing, Math.max(this.now, this.lastPing))} ago`;
+    },
     title(): string {
       return this.firstVisit && !this.rotatedAt ? `Peer ${this.peer?.id} is added` : `Peer ${this.peer?.id}`;
     },
@@ -384,6 +431,13 @@ export default {
           console.error(err);
           this.error = errorText(err, 'Could not load the peer.');
         });
+    },
+    fetchPing() {
+      API.get(`/peers/${this.peerID}`)
+        .then((res) => {
+          if (this.peer) this.peer.last_ping_time = res.data.last_ping_time;
+        })
+        .catch((err) => console.error(err));
     },
     save() {
       const port = Number(this.form.port);

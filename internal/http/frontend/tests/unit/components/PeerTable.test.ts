@@ -147,6 +147,22 @@ describe('PeerTable', () => {
     expect((box.element as HTMLInputElement).disabled).toBe(true);
   });
 
+  it('shows the last ping of a peer', async () => {
+    mockAPI.get.mockResolvedValue({
+      data: { total: 1, peers: [{ ...peer(false), last_ping_time: new Date(Date.now() - 20_000).toISOString() }] },
+    });
+    const wrapper = mount(PeerTable, {
+      props: { admin: true },
+      global: {
+        mocks: { $toast: { add: vi.fn() }, $confirm: { require: vi.fn() } },
+        stubs: { RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.find('tbody').text()).toContain('20 seconds ago');
+    expect(wrapper.find('tbody').text()).not.toContain('Never');
+  });
+
   it('links each peer to its page', async () => {
     const { wrapper } = await mountTable(true, false);
     const link = wrapper.find('a[href="/admin/peers/500001"]');

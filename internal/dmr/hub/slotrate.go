@@ -59,7 +59,7 @@ func (h *Hub) AdmitSlotRate(packet models.Packet, sourceName string) bool {
 	if h.slotRateOff.Load() || h.getServerRole(sourceName) == RolePeer {
 		return true
 	}
-	now := time.Now()
+	now := h.slotNow()
 	key := slotKey{server: sourceName, repeater: packet.Repeater, slot: packet.Slot}
 	admitted, warn := true, false
 	h.slotBuckets.Compute(key, func(b slotBucket, loaded bool) (slotBucket, xsync.ComputeOp) {
@@ -102,7 +102,14 @@ func (h *Hub) SlotOverRate(sourceName string, repeater uint, slot bool) bool {
 	if !ok {
 		return false
 	}
-	return b.tokens+time.Since(b.at).Seconds()*slotRate < 1
+	return b.tokens+h.slotNow().Sub(b.at).Seconds()*slotRate < 1
+}
+
+func (h *Hub) slotNow() time.Time {
+	if now := h.slotClock.Load(); now != nil {
+		return (*now)()
+	}
+	return time.Now()
 }
 
 func (h *Hub) pruneSlotBuckets(now time.Time) {

@@ -142,6 +142,8 @@ func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {
 	t.Parallel()
 	h, _ := makeTestHub(t)
 	h.LiftSlotRate(false)
+	now := time.Now()
+	h.SetSlotClock(func() time.Time { return now })
 	h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
 	admitted := func(server string, repeater uint, slot bool, n int) int {
 		got := 0
@@ -155,14 +157,12 @@ func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {
 		return got
 	}
 
-	got := admitted(models.RepeaterTypeMMDVM, 100001, false, 200)
-	assert.GreaterOrEqual(t, got, 50, "a slot may send in bursts")
-	assert.LessOrEqual(t, got, 55, "200 bursts at once are far more than one slot can carry")
+	assert.Equal(t, 50, admitted(models.RepeaterTypeMMDVM, 100001, false, 200), "a slot may send 50 bursts at once, and no more")
 	assert.Equal(t, 50, admitted(models.RepeaterTypeMMDVM, 100001, true, 50), "the other slot has its own allowance")
 	assert.Equal(t, 50, admitted(models.RepeaterTypeIPSC, 100001, false, 50), "the same ID on another server is another slot")
 	assert.Equal(t, 2000, admitted("openbridge", 300001, false, 2000), "a peer carries many streams in bulk")
-	time.Sleep(time.Second)
-	assert.GreaterOrEqual(t, admitted(models.RepeaterTypeMMDVM, 100001, false, 40), 40, "the slot refills")
+	now = now.Add(time.Second / 2)
+	assert.Equal(t, 25, admitted(models.RepeaterTypeMMDVM, 100001, false, 40), "the slot refills at 50 bursts a second")
 }
 
 func TestSlotOverRateOnlyLooks(t *testing.T) {

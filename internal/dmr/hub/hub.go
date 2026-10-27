@@ -187,6 +187,7 @@ type Hub struct {
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
 	slotRateOff       atomic.Bool
+	slotClock         atomic.Pointer[func() time.Time]
 	loopLogged        *xsync.Map[uint, time.Time]
 	privateDropLogged *xsync.Map[uint, time.Time]
 	cfg               atomic.Pointer[config.Source]

@@ -52,6 +52,7 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 - [Motorola IPSC repeaters](ipsc.md)
 - [MMDVM modem on a serial port](modem.md)
 - [Transcoding between Codec2 and AMBE](transcoding.md)
+- [Private call routing](private-calls.md)
 - [Messages and retention](messages.md)
 - [Positions and APRS-IS](positions.md)
 - [Replicas and scaling](replicas.md)

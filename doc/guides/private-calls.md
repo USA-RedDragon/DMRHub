@@ -4,12 +4,16 @@ A private call goes to one radio, not to a talkgroup. On DMRHub you can make a p
 
 ## How DMRHub finds the other radio
 
-DMRHub sends a private call to a radio ID that a user on the network owns: the DMR ID of an account, or a radio ID that a user added on the Settings page. It sends the call to the hotspot or repeater where that radio was last heard in the last 15 minutes. That hotspot or repeater must belong to the owner of the radio, or an admin must trust it. DMRHub drops the call when:
+DMRHub sends a private call to the hotspot or repeater where it last heard the other radio. The other radio must have transmitted on a hotspot or repeater of this network at least once. With the default settings:
 
-- no user on this network owns the ID, or
-- DMRHub did not hear that radio in the last 15 minutes on a hotspot or repeater of its owner.
+- The other radio needs no account on the network.
+- A radio ID that a user owns, the DMR ID of an account or a radio ID that a user added on the Settings page, counts only on a hotspot or repeater of that user, or on one that an admin trusts. A hotspot of someone else that sends your ID cannot pull your calls.
+- There is no time limit. DMRHub remembers where it last heard each radio.
+- DMRHub drops the call when it never heard the other radio.
 
-So the other ham must have transmitted recently, for example with a key-up, a call or an ARS registration from the radio. A radio that registers with ARS when it turns on is easier to reach.
+Your admin can change these rules: allow only radios of users, follow every radio wherever it was heard, set a time limit, or send calls to a radio that DMRHub does not know to every hotspot and repeater. Text messages can have their own rules. See [Private call routing](../admin/private-calls.md).
+
+A key-up, a call or an ARS registration from the radio tells DMRHub where it is. A radio that registers with ARS when it turns on is easier to reach.
 
 A private call to the 6-digit ID of a repeater on the network goes to that repeater. DMRHub treats a 7-digit ID as a radio, even when a hotspot uses it as its ID.
 

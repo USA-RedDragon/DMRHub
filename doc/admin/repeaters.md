@@ -16,6 +16,6 @@ To delete a repeater, click **Edit**, then **Delete**, then click **OK** in the 
 
 ## Trusted repeaters
 
-DMRHub sends a private call or a text message to the repeater where the radio of the user was last heard. It does this only when the user owns that repeater, or when an admin marked the repeater as trusted. Otherwise the private traffic does not follow the radio to that repeater.
+DMRHub sends a private call or a text message to the repeater where the radio was last heard. For a radio ID that a user owns, it does this only when the user owns that repeater, or when an admin marked the repeater as trusted. Otherwise the private traffic does not follow the radio to that repeater. The `anyone` reach turns this check off. See [Private call routing](private-calls.md).
 
 Mark a repeater as trusted when it is a shared repeater of the network that users who do not own it use, for example a club repeater. To do this, click **Edit**, turn on the **Trusted** box, and click **Save**. Only an admin can change this box.

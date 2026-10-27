@@ -1,12 +1,10 @@
-# Positions
+# Positions reference
 
-DMRHub can be the location server of your radios. When position tracking is on for a radio, DMRHub asks the radio for its position, keeps the reports it sends, and shows them on a map. It can also send the positions to APRS-IS.
+This page lists the facts about position tracking on DMRHub. For the steps to set it up, see [Share the position of your radio](guides/positions.md).
 
-Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHub instance.
+## Location server IDs
 
-## Set up the radio
-
-The location server answers on the IDs your admin gave it, usually 5050 to 5059. Program your radio to send its registrations (ARS) and its location reports to one of these IDs. All ten work the same way. The ID only picks the symbol that APRS-IS shows when you do not pick one yourself:
+The location server is a plugin. It answers on the IDs that your admin gives it, usually 5050 to 5059. All ten IDs work the same way. The ID only picks the symbol that APRS-IS shows when you leave **Symbol** at **As the radio reports it**:
 
 | ID   | Symbol  | ID   | Symbol  |
 | ---- | ------- | ---- | ------- |
@@ -18,53 +16,64 @@ The location server answers on the IDs your admin gave it, usually 5050 to 5059.
 
 The location server reads LRRP, NMEA and Hytera (HDAP) location reports, and answers the confirmed ones.
 
-## Turn on position tracking
+## Which radios you can track
 
-Position tracking is off for every radio by default. To turn it on:
+The **Radios** list on the Positions page has your account ID and the radio IDs that you added on the Settings page. Only the owner of a radio ID can change its tracking.
 
-1. Log in.
-2. Go to `<siteurl>/positions` (**Positions** in the navigation bar).
-3. Click **Settings** next to the radio ID.
-4. Turn on **Position tracking**, pick how often the radio reports and how long to keep its positions, then click **Save**.
+## When the radio reports
 
-The next time the radio registers, or is heard, the location server asks it to report at that interval. It asks again when the radio registers again, and once more when the radio is heard but has not reported for three intervals. When you turn tracking off or change the interval, it tells the radio.
+- Position tracking is off for each radio until its owner turns it on.
+- When tracking is on, the location server asks the radio to report at the interval you picked. It asks when the radio registers, and again when the radio is heard but has not reported for three intervals.
+- When you change the interval, or turn tracking off, the location server tells the radio.
 
-DMRHub stores at most one position of a radio each 30 seconds, and only positions that arrived after you turned tracking on. The hub sets the shortest interval and the longest time that you can pick.
+## Intervals and retention
 
-When you turn tracking off, DMRHub tells the radio to stop reporting and deletes the positions it kept for that radio.
+| Setting | Choices |
+| --- | --- |
+| Report every | 5, 10, 15, 30 and 60 minutes, starting at the shortest interval that the admin allows (5 minutes by default). |
+| Keep positions for | 1 day, 7 days and 30 days, each when it is not longer than the longest time that the admin allows, and that longest time (30 days by default, at most 365 days). |
 
-Your account ID and the radio IDs you added on the Settings page are listed. See [Radio IDs](messages.md#radio-ids).
+## What DMRHub stores
 
-## The Positions page
+- At most one position of a radio each 30 seconds.
+- Only positions that arrived after you turned tracking on.
+- Each position for the retention time that you picked. Then DMRHub deletes it.
+- When you turn tracking off, DMRHub deletes all positions of that radio.
 
-The map shows where each radio last reported from and its track. Pick **24 hours**, **7 days** or **30 days** to see a longer track. New positions appear while the page is open. Click a radio, on the map or in the list, to see its last position, its accuracy, and the repeater and timeslot it came through.
+## Who sees a position
 
-On the settings page of a radio, **Download the track** saves its positions as GPX, GeoJSON or CSV.
+| Viewer | Sees |
+| --- | --- |
+| You | The radios that you track. |
+| Other logged-in users | Your radios, when you turn on **Share my positions**. |
+| Admins | The same as any other user. |
+| Visitors who are not logged in | Nothing. |
+| Anyone on APRS-IS | The positions of a radio with **Send to APRS-IS** on. |
 
-## Sharing
-
-Only you see the positions of your radios. Turn on **Share my positions** on the Positions page to see the radios of the other users who share theirs. They then see yours. Admins see the same as everyone else.
+You see the shared radios of other users whether or not you share your own.
 
 ## APRS-IS
 
-When the hub has an APRS-IS login, you can send the positions of a tracked radio to APRS-IS, where sites such as aprs.fi show them. APRS-IS shows positions to anyone.
+| Setting | Meaning |
+| --- | --- |
+| SSID | Added to your callsign, for example `-9` for a mobile or `-7` for a handheld. Pick none to send your callsign alone. |
+| Symbol | The symbol on the map. **As the radio reports it** uses the symbol of the location server ID. |
+| Comment | Up to 43 characters, shown with the position. DMRHub shortens it when the speed or altitude takes up room. |
 
-On the settings page of the radio, turn on **Send to APRS-IS**, then pick:
+DMRHub sends a position under your callsign, through the hotspot or repeater that heard it. It sends at most one position of a radio each minute, and sends a position again only when the radio moved more than its accuracy. It does not send positions that are older than two minutes, that have no fix, or that are not on Earth. Your callsign must be a licensed amateur callsign. The network must have an APRS-IS login.
 
-- **SSID**: added to your callsign, for example `-9` for a mobile or `-7` for a handheld. Pick none to send your callsign alone.
-- **Symbol**: the symbol on the map. **As the radio reports it** uses the symbol of the location service ID in the table above.
-- **Comment**: up to 43 characters, shown with the position. DMRHub shortens it when the speed or altitude takes up room.
+## Track downloads
 
-DMRHub sends a position under your callsign, through the repeater or hotspot that heard it. It sends at most one position of a radio each minute, and does not send a position again when the radio has not moved more than its accuracy. It does not send positions that are older than two minutes, that have no fix, or that are not on Earth. Your callsign must be a licensed amateur callsign.
+**Download the track** on the settings page of a radio saves its positions as GPX, GeoJSON or CSV.
 
 ## For apps
 
 An app that you allow with the `positions:read` scope can read the positions that you see:
 
-| Request                                         | Answer                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `GET /api/v1/positions?hours=24`                | The newest position of each radio you see. `hours` is 24, 168 or 720.  |
-| `GET /api/v1/positions/:id?hours=24`            | The newest position and the track of one radio.                        |
-| `GET /api/v1/positions/:id/track?format=gpx`    | The track of your own radio as `gpx`, `geojson` or `csv`, between the RFC 3339 times `from` and `to`. |
+| Request | Answer |
+| --- | --- |
+| `GET /api/v1/positions?hours=24` | The newest position of each radio you see. `hours` is 24, 168 or 720. |
+| `GET /api/v1/positions/:id?hours=24` | The newest position and the track of one radio. |
+| `GET /api/v1/positions/:id/track?format=gpx` | The track of your own radio as `gpx`, `geojson` or `csv`, between the RFC 3339 times `from` and `to`. |
 
 The websocket `/ws/messages` sends each new position as `{"kind":"position","position":{...}}`. An app with `positions:read` gets only positions on it, and an app with `messages:read` gets only messages.

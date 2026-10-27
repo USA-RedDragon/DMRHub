@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	authctl "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
@@ -121,6 +122,11 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 
+		email := strings.TrimSpace(json.Email)
+		if !authctl.CheckEmail(c, email) {
+			return
+		}
+
 		// Check if the username is already taken
 		var user models.User
 		err := db.Find(&user, "username = ?", json.Username).Error
@@ -173,6 +179,7 @@ func POSTUser(c *gin.Context) {
 			ID:       json.DMRId,
 			Approved: config.AutoApprove,
 			Admin:    false,
+			Email:    email,
 		}
 		err = db.Create(&user).Error
 		if err != nil {
@@ -181,6 +188,7 @@ func POSTUser(c *gin.Context) {
 			return
 		}
 		publishUserChanged(c, user.ID)
+		authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, email)
 		body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
 		if config.AutoApprove {
 			c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
@@ -462,7 +470,7 @@ func GETUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgUserNotFound})
 		return
 	}
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, userWithEmail{User: user, Email: user.Email, EmailVerified: user.EmailVerified})
 }
 
 func GETUserAdmins(c *gin.Context) {
@@ -577,6 +585,13 @@ func PATCHUser(c *gin.Context) {
 		if !ok {
 			return
 		}
+		var email string
+		if json.Email != nil {
+			email = strings.TrimSpace(*json.Email)
+			if !authctl.CheckEmail(c, email) {
+				return
+			}
+		}
 
 		if json.Callsign != "" {
 			// Check DMR ID is in the database
@@ -622,6 +637,11 @@ func PATCHUser(c *gin.Context) {
 			if err := tx.Save(&user).Error; err != nil {
 				return fmt.Errorf("could not save user %d: %w", user.ID, err)
 			}
+			if json.Email != nil && email != user.Email {
+				if err := models.SetEmail(tx, user.ID, email); err != nil {
+					return fmt.Errorf("could not set the email of user %d: %w", user.ID, err)
+				}
+			}
 			if hashedPassword == "" {
 				return nil
 			}
@@ -639,6 +659,9 @@ func PATCHUser(c *gin.Context) {
 		if json.Password != "" && !endOtherSessions(c, user.ID) {
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Password changed, but the other sessions could not be ended"})
 			return
+		}
+		if json.Email != nil && email != user.Email {
+			authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, email)
 		}
 		c.JSON(http.StatusOK, gin.H{messageKey: "User updated"})
 	}
@@ -832,8 +855,12 @@ func GETUserSelf(c *gin.Context) {
 		return
 	}
 	self := userSelf{User: user, SMSStorage: user.SMSStorageEnabled, PositionTracking: tracking}
-	if g, viaToken := utils.Grant(c); !viaToken || g.Allows(oauth.ScopeHotspotsRead) || g.Allows(oauth.ScopeHotspotsTalkgroups) {
+	g, viaToken := utils.Grant(c)
+	if !viaToken || g.Allows(oauth.ScopeHotspotsRead) || g.Allows(oauth.ScopeHotspotsTalkgroups) {
 		self.Repeaters = &user.Repeaters
+	}
+	if !viaToken {
+		self.Email, self.EmailVerified = &user.Email, &user.EmailVerified
 	}
 	c.JSON(http.StatusOK, self)
 }
@@ -846,6 +873,16 @@ type userSelf struct {
 	Repeaters        *[]models.Repeater `json:"repeaters,omitempty"`
 	SMSStorage       bool               `json:"sms_storage"`
 	PositionTracking bool               `json:"position_tracking"`
+	// Email and EmailVerified are left out for an app.
+	Email         *string `json:"email,omitempty"`
+	EmailVerified *bool   `json:"email_verified,omitempty"`
+}
+
+// userWithEmail is a user with the email address, for the user and admins.
+type userWithEmail struct {
+	models.User
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
 }
 
 func publishUserChanged(c *gin.Context, userID uint) {

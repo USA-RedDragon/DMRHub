@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -280,7 +281,7 @@ func TestAdminEmailsShowTheirLineBreaks(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
-	require.NoError(t, tdb.DB().Model(&models.User{}).Where("username = ?", "Admin").Update("email", "admin@example.com").Error)
+	require.NoError(t, tdb.DB().Exec("UPDATE users SET email = ?, email_verified = ? WHERE username = ?", "admin@example.com", true, "Admin").Error)
 
 	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "newuser", Password: "a-fine-password"})
 	require.Equal(t, http.StatusOK, w.Code, resp.Error)
@@ -289,4 +290,25 @@ func TestAdminEmailsShowTheirLineBreaks(t *testing.T) {
 	assert.Contains(t, mail, "\r\n\r\nA new user has registered.\r\n\r\nUsername: newuser\r\nCallsign: KI5VMF\r\nDMR ID: 3191868\r\n\r\nTo approve them, open https://hub.example.com/admin/users/approval\r\n")
 	assert.NotContains(t, mail, "&lt;")
 	assert.NotContains(t, mail, "<br>")
+}
+
+func TestAdminEmailsGoOnlyToAVerifiedAddress(t *testing.T) {
+	t.Parallel()
+	var mails <-chan string
+	router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) {
+		mails = testutils.StartSMTPSink(t, c)
+		c.HTTP.CanonicalHost = "https://hub.example.com/"
+		c.NetworkName = "Test Hub"
+	})
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	require.NoError(t, tdb.DB().Exec("UPDATE users SET email = ?, email_verified = ? WHERE username = ?", "admin@example.com", false, "Admin").Error)
+
+	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "newuser", Password: "a-fine-password"})
+	require.Equal(t, http.StatusOK, w.Code, resp.Error)
+	select {
+	case mail := <-mails:
+		t.Fatalf("an unverified admin address got a mail: %q", mail)
+	case <-time.After(time.Second):
+	}
 }

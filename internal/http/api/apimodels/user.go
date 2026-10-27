@@ -29,6 +29,9 @@ type UserRegistration struct {
 	Callsign string `json:"callsign" binding:"required"`
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	// Email is an optional email address, which stays unverified until
+	// its link is used.
+	Email string `json:"email"`
 }
 
 func (r *UserRegistration) IsValidUsername() (bool, string) {
@@ -52,4 +55,7 @@ type UserPatch struct {
 	// password has now. An admin who sets the password of another user
 	// leaves it empty.
 	CurrentPassword string `json:"current_password"`
+	// Email, when set, is the new email address, which stays unverified
+	// until its link is used. An empty one removes the address.
+	Email *string `json:"email"`
 }

@@ -101,6 +101,16 @@
           </small>
         </span>
         <br />
+        <template v-if="emailMode === 'ask'">
+          <label class="field-label" for="email">Email (optional)</label>
+          <ShadInput id="email" type="email" autocomplete="email" v-model="email" />
+          <small class="field-help">DMRHub sends a link to confirm it. Password reset links go only to a confirmed address.</small>
+          <br />
+        </template>
+        <p v-else-if="emailMode === 'off'" class="text-sm text-muted-foreground" data-test="no-email">
+          This network cannot send email. To reset a forgotten password, ask an admin.
+        </p>
+        <br v-if="emailMode === 'off'" />
         <label class="field-label" for="password">Password</label>
         <ShadInput
           id="password"
@@ -193,6 +203,10 @@ export default {
       type: String,
       default: 'Register User',
     },
+    'emailMode': {
+      type: String,
+      default: '',
+    },
   },
   emits: ['register'],
   data: function() {
@@ -200,6 +214,7 @@ export default {
       dmr_id: '',
       username: '',
       callsign: '',
+      email: '',
       password: '',
       confirmPassword: '',
       submitted: false,
@@ -252,11 +267,13 @@ export default {
         });
         return;
       }
+      const email = this.emailMode === 'ask' ? this.email.trim() : '';
       this.$emit('register', {
         id: numericID,
         callsign: this.callsign.trim(),
         username: this.username.trim(),
         password: this.password.trim(),
+        ...(email ? { email } : {}),
       });
     },
   },

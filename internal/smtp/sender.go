@@ -40,8 +40,8 @@ var (
 	ErrHeaderLineBreak   = errors.New("an email header has a line break")
 )
 
-// SendToAdmins sends body as plain text to every admin with an email
-// address. Lines of body end with a newline.
+// SendToAdmins sends body as plain text to every admin with a verified
+// email address. Lines of body end with a newline.
 func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) error {
 	if !config.SMTP.Enabled {
 		return nil
@@ -53,7 +53,7 @@ func SendToAdmins(config *configPkg.Config, db *gorm.DB, subject, body string) e
 		return fmt.Errorf("failed to fetch admin users: %w", err)
 	}
 	for _, user := range users {
-		if user.Email == "" {
+		if user.Email == "" || !user.EmailVerified {
 			continue
 		}
 		errGroup.Go(func() error {

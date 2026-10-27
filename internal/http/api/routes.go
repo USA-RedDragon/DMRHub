@@ -97,6 +97,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Auth.POST("/login", v1AuthControllers.POSTLogin)
 	v1Auth.POST("/logout", v1AuthControllers.POSTLogout)
 	v1Auth.POST("/forgot-password", v1AuthControllers.POSTForgotPassword(resetLimits))
+	v1Auth.POST("/verify-email", v1AuthControllers.POSTVerifyEmail)
 	v1Auth.POST("/reset-password/check", v1AuthControllers.POSTResetPasswordCheck)
 	v1Auth.POST("/reset-password", v1AuthControllers.POSTResetPassword)
 
@@ -140,6 +141,7 @@ func v1(config *configPkg.Config, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.GET("/me", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSelf)
 	v1Users.GET("/me/settings", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserSettings)
 	v1Users.PUT("/me/settings/sms-storage", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserSMSStorage)
+	v1Users.PUT("/me/email", middleware.RequireLogin(), userSuspension, v1AuthControllers.PUTMyEmail(resetLimits))
 	v1Users.PUT("/me/settings/share-positions", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserSharePositions)
 	v1Users.GET("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyRadioIDs)
 	v1Users.POST("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.POSTMyRadioID)

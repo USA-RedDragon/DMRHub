@@ -21,7 +21,7 @@ import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vu
 import { routes, setupwizardRoutes } from './routes';
 import { useUserStore } from '@/store';
 
-const passwordPages = ['/settings', '/login', '/forgot-password', '/reset-password'];
+const passwordPages = ['/settings', '/login', '/forgot-password', '/reset-password', '/verify-email'];
 
 /**
  * Sends a user whose password an admin set to Settings, until they choose

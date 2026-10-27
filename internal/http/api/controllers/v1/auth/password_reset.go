@@ -124,7 +124,7 @@ func sendReset(c *gin.Context, db *gorm.DB, limits *ResetLimits, name string, no
 		slog.Error("Could not find the user of a password reset", "error", err)
 		return
 	}
-	if !found || user.Email == "" {
+	if !found || user.Email == "" || !user.EmailVerified {
 		return
 	}
 	if limits.account.Limit("password-reset:user:"+strconv.FormatUint(uint64(user.ID), 10), c).RateLimited {
@@ -198,7 +198,7 @@ func POSTResetPasswordCheck(c *gin.Context) {
 	user, found, err := models.PasswordResetUser(db, json.Token, time.Now())
 	if err != nil {
 		slog.Error("Could not check a password reset", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !found {
@@ -250,7 +250,7 @@ func POSTResetPassword(c *gin.Context) {
 	id, done, err := models.ResetPassword(db, json.Token, hash, now)
 	if err != nil {
 		slog.Error("Could not reset a password", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
 		return
 	}
 	if !done {

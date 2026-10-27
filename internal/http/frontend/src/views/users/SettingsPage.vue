@@ -141,6 +141,8 @@
         </CardContent>
       </Card>
 
+      <EmailCard v-if="!mustChange" :current="email" :verified="emailVerified" />
+
       <AppsCard v-if="!mustChange" />
     </template>
 
@@ -165,6 +167,7 @@ import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppsCard from '@/components/users/AppsCard.vue';
+import EmailCard from '@/components/users/EmailCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
 import { badgeClass } from '@/lib/badge';
 import {
@@ -189,6 +192,8 @@ const privacyText =
 const state = ref<'loading' | 'anon' | 'ready' | 'error'>('loading');
 const userID = ref(0);
 const mustChange = ref(false);
+const email = ref('');
+const emailVerified = ref(false);
 const userStore = useUserStore();
 const smsStorage = ref(false);
 const confirmOff = ref(false);
@@ -207,6 +212,8 @@ const load = async () => {
     const me = await getMe();
     userID.value = me.id;
     mustChange.value = me.must_change_password === true;
+    email.value = me.email ?? '';
+    emailVerified.value = me.email_verified === true;
     userStore.mustChangePassword = mustChange.value;
     if (mustChange.value) {
       state.value = 'ready';

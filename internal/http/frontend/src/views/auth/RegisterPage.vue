@@ -22,6 +22,7 @@
 <template>
   <div>
     <UserRegistrationCard
+      :email-mode="settingsStore.passwordResetEnabled ? 'ask' : 'off'"
       @register="handleRegister"
     />
   </div>
@@ -30,6 +31,7 @@
 <script lang="ts">
 import UserRegistrationCard from '@/components/UserRegistrationCard.vue';
 import API from '@/services/API';
+import { useSettingsStore } from '@/store';
 
 export default {
   components: {
@@ -38,10 +40,13 @@ export default {
   head: {
     title: 'Register',
   },
-  created() {},
+  created() {
+    void this.settingsStore.fetchConfig();
+  },
   mounted() {},
   data: function() {
     return {
+      settingsStore: useSettingsStore(),
     };
   },
   methods: {

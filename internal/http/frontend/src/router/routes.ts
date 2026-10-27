@@ -89,6 +89,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/auth/ResetPasswordPage.vue'),
     },
     {
+      path: '/verify-email',
+      name: 'VerifyEmail',
+      component: () => import('@/views/auth/VerifyEmailPage.vue'),
+    },
+    {
       path: '/register',
       name: 'Register',
       sitemap: {

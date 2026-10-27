@@ -98,7 +98,7 @@ func resetRouter(t *testing.T, smtpOn bool) (*gin.Engine, *gorm.DB, *fakeMailer)
 	t.Cleanup(tdb.CloseDB)
 	db := tdb.DB()
 	testutils.SeedAccount(t, db, 1000001, "N0CALL", "jdoe")
-	require.NoError(t, db.Model(&models.User{}).Where("id = ?", 1000001).Update("email", resetUserMail).Error)
+	require.NoError(t, db.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", resetUserMail, true, 1000001).Error)
 	testutils.SeedAccount(t, db, 1000002, "N1CALL", "nomail")
 	return router, db, mailer
 }

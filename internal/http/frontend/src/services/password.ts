@@ -27,6 +27,8 @@ export type Me = {
   superAdmin: boolean;
   created_at: string;
   must_change_password?: boolean;
+  email?: string;
+  email_verified?: boolean;
 };
 
 export async function getMe(): Promise<Me> {
@@ -53,4 +55,14 @@ export async function resetPassword(token: string, password: string): Promise<vo
 
 export async function setUserPassword(id: number, password: string): Promise<void> {
   await API.patch(`/users/${id}`, { password });
+}
+
+export async function setEmail(email: string): Promise<string> {
+  const res = await API.put('/users/me/email', { email });
+  return res.data.message;
+}
+
+export async function verifyEmail(token: string): Promise<string> {
+  const res = await API.post('/auth/verify-email', { token });
+  return res.data.message;
 }

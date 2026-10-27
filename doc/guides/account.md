@@ -1,8 +1,8 @@
 # Manage your account
 
-Go to **Settings** (`<siteurl>/settings`) to change your password, turn SMS Storage on or off, add your other radio IDs, and remove apps.
+Go to **Settings** (`<siteurl>/settings`) to change your password, set your email address, turn SMS Storage on or off, add your other radio IDs, and remove apps.
 
-<!-- screenshot: settings.png | the Settings page at /settings, logged in, with the Password, SMS Storage, Radio IDs and Apps cards -->
+<!-- screenshot: settings.png | the Settings page at /settings, logged in, with the Password, SMS Storage, Radio IDs, Email and Apps cards -->
 
 ## Change your password
 
@@ -13,6 +13,19 @@ Go to **Settings** (`<siteurl>/settings`) to change your password, turn SMS Stor
 DMRHub logs out your other sessions.
 
 If an admin set a temporary password for you, DMRHub shows only the Password card until you choose your own password. Until then, the other pages send you back to Settings.
+
+## Email
+
+DMRHub sends password reset links only to a confirmed email address.
+
+1. In the **Email** card, type your address in **Email address** and click **Save**. To remove the address, clear the field and click **Save**.
+2. DMRHub sends a link to the address. Open it to confirm the address. The link works once, for 24 hours. The card shows **Not confirmed** until you open it, and **Confirmed** after.
+
+When you change the address, the new one is not confirmed until you open its link. A link sent to an older address no longer works.
+
+<!-- screenshot: settings-email.png | the Email card on /settings with n0call@example.com, Not confirmed -->
+
+If the network cannot send email, the card says so instead. Then only an admin can reset your password.
 
 ## SMS Storage and radio IDs
 

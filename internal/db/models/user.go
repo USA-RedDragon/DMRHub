@@ -33,13 +33,18 @@ type User struct {
 	Username string `json:"username" gorm:"index:,unique" binding:"required"`
 	// Password is the hash of the password. Only SetPassword changes it,
 	// so a Save of a stale User cannot undo a new password.
-	Password   string     `json:"-" gorm:"<-:create"`
-	Admin      bool       `json:"admin"`
-	SuperAdmin bool       `json:"superAdmin"`
-	Email      string     `json:"email"`
-	Approved   bool       `json:"approved" binding:"required"`
-	Suspended  bool       `json:"suspended"`
-	Repeaters  []Repeater `json:"repeaters" gorm:"foreignKey:OwnerID"`
+	Password   string `json:"-" gorm:"<-:create"`
+	Admin      bool   `json:"admin"`
+	SuperAdmin bool   `json:"superAdmin"`
+	// Email is the email address of the user. Only SetEmail changes it
+	// after the user is made, and it is not shown in lists of users.
+	Email string `json:"-" gorm:"<-:create"`
+	// EmailVerified reports that the user used the link sent to Email.
+	// Only SetEmail and VerifyEmail write it.
+	EmailVerified bool       `json:"-" gorm:"<-:create;not null;default:false"`
+	Approved      bool       `json:"approved" binding:"required"`
+	Suspended     bool       `json:"suspended"`
+	Repeaters     []Repeater `json:"repeaters" gorm:"foreignKey:OwnerID"`
 	// SMSStorageEnabled reports that the user chose to see the stored
 	// messages of the radio IDs that they own. Only SetSMSStorage writes
 	// it, so a Save of a stale User cannot undo a change.

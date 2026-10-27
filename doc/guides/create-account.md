@@ -14,8 +14,10 @@ You need an account to enroll a hotspot, pick talkgroups, read your text message
    - **DMR ID**: your 7-digit DMR ID, for example 3100001.
    - **Username**: the name you log in with.
    - **Callsign**: your callsign, for example N0CALL.
+   - **Email (optional)**: an email address for password reset links. The form shows this field only when the network can send email. When it cannot, the form says so, and only an admin can reset your password.
    - **Password** and **Confirm Password**.
 3. Click **Create User**.
+4. If you gave an email address, open the link in the email that DMRHub sends to it. The link works once, for 24 hours. Until you open it, the address is not confirmed, and DMRHub sends no password reset link to it.
 
 <!-- screenshot: register.png | the registration form at /register, filled in with N0CALL and 3100001 -->
 
@@ -32,6 +34,7 @@ The message that comes up tells you what happens next:
 | Callsign does not match DMR ID | RadioID.net lists the DMR ID under another callsign. |
 | Username is already taken | Pick another username. |
 | DMR ID is already registered | The DMR ID belongs to another account on this network. Ask an admin. |
+| Enter an email address, such as n0call@example.com | The email address is not valid. Leave the field empty, or fix the address. |
 | Password has been reported in a data breach. Please use another one | The network checks passwords against [Have I Been Pwned](https://haveibeenpwned.com/), and your password is on its list. Pick another password. |
 
 DMRHub stores only a salted Argon2id hash of your password, never the password itself.
@@ -46,7 +49,12 @@ If an admin set a temporary password for you, DMRHub opens **Settings** and asks
 
 ## Forgot your password
 
-The login page shows **Forgot your password?** only when the network can send email. DMRHub sends the reset link to the email address of your account. DMRHub has no page where you can add an email address to your account, so if no email comes, ask an admin to set a temporary password for you.
+The login page shows **Forgot your password?** only when the network can send email.
+
+1. Click **Forgot your password?** and enter your username or callsign.
+2. DMRHub sends a reset link to the email address of your account, but only when you confirmed that address. The link works once, for 1 hour.
+
+To add or confirm an email address, see [Manage your account](account.md#email). If your account has no confirmed email address, or the network cannot send email, ask an admin to set a temporary password for you.
 
 ## Next
 

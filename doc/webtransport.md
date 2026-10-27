@@ -316,7 +316,7 @@ A load balancer can also move the QUIC connection of a session to another path w
 
 | Limit                                  | Value                                                                    |
 | -------------------------------------- | ------------------------------------------------------------------------ |
-| Packet in one datagram                 | 512 octets at most. DMRHub reads only the first 512 octets of a datagram |
+| Packet in one datagram                 | 512 octets at most. DMRHub drops a longer datagram, as it drops a longer UDP packet |
 | Control message                        | 1024 octets, with its newline                                            |
 | Wait for a control stream              | 5 seconds to open, read or write a control stream                        |
 | Drain notices                          | Sent within 2 seconds                                                    |

@@ -87,6 +87,10 @@ const DropReasonIPSCBurst = "ipsc_burst"
 // header or terminator from an IPSC peer whose Full LC cannot be sealed.
 const DropReasonIPSCFullLC = "ipsc_full_lc"
 
+// DropReasonOversize is the IngressDroppedBurstsTotal reason for a packet
+// from a repeater that is longer than the longest packet of the protocol.
+const DropReasonOversize = "oversize"
+
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
 	metricsInstance *Metrics  //nolint:gochecknoglobals

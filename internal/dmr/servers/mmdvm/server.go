@@ -123,6 +123,11 @@ var (
 
 const bufferSize = 4 << 20
 
+// readBufferSize is one octet longer than the longest packet that the
+// sessions take, so that a read of a longer packet, which the socket or the
+// transport cuts to the buffer, shows that it was longer.
+const readBufferSize = dmrdsession.MaxPacket + 1
+
 // MakeServer creates a new DMR server.
 func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, version, commit string) (Server, error) {
 	server, socketAddr, err := servers.ListenUDP(config.DMR.MMDVM.Bind, config.DMR.MMDVM.Port)
@@ -156,7 +161,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 
 	return Server{
 		wt:            wt,
-		Buffer:        make([]byte, dmrdsession.MaxPacket),
+		Buffer:        make([]byte, readBufferSize),
 		config:        config,
 		SocketAddress: socketAddr,
 		Server:        server,
@@ -331,7 +336,7 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.Info("MMDVM WebTransport listening", "address", s.wt.Addr().String(), "path", wtcert.Path)
 		s.transports.Store(webTransportName, s.wt)
 		s.wg.Add(1)
-		go s.serve(webTransportName, s.wt, make([]byte, dmrdsession.MaxPacket))
+		go s.serve(webTransportName, s.wt, make([]byte, readBufferSize))
 	}
 
 	return nil
@@ -352,6 +357,11 @@ func (s *Server) serve(name string, t transport, buf []byte) {
 			continue
 		}
 		slog.Debug("Read message from MMDVM transport", "transport", name, "remoteaddr", remote, "length", length)
+		if length > dmrdsession.MaxPacket {
+			slog.Debug("Dropping a packet longer than the sessions take", "transport", name, "remoteaddr", remote, "length", length)
+			metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonOversize)
+			continue
+		}
 		if s.discard(buf[:length]) {
 			continue
 		}

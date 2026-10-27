@@ -57,12 +57,20 @@ const (
 	csbkStreamHold = time.Second
 	// maxRSSIOctet is the largest RSSI of a DMRD packet.
 	maxRSSIOctet = 255
+	// talkerAliasSize and positionSize are the lengths of the DMRA and
+	// DMRG packets with a repeater ID, as DMRGateway sends them.
+	talkerAliasSize = 19
+	positionSize    = 18
+	// flcoMask is the FLCO of the first octet of an LC.
+	flcoMask = 0x3F
 )
 
 // sink is where the radio sends its frames and the packets for the hub.
 type sink interface {
 	write(frame []byte)
 	route(packet models.Packet)
+	alias(a dmrd.TalkerAlias)
+	position(p dmrd.Position)
 }
 
 type slotState struct {
@@ -73,6 +81,7 @@ type slotState struct {
 	stream  uint32
 	seq     uint8
 	rssi    int
+	emb     layer2.EmbeddedLCAssembler
 
 	csbkTarget, csbkSource uint32
 	csbkStream             uint32
@@ -207,6 +216,41 @@ func (r *radio) dmr(now time.Duration, f mmdvm.Frame) {
 		}
 	}
 	r.apply(now, r.rep.Inbound(now, &d.Burst, d.Hint(), rf, r.outs[:0]))
+	r.embedded(&d)
+}
+
+// embedded collects the embedded LC of RF voice bursts B to E, and sends
+// a talker alias block or GPS position in it to the hub for the source of
+// the RF call on the slot, as MMDVMHost sends them as DMRA and DMRG.
+func (r *radio) embedded(d *mmdvm.DMRData) {
+	i, ok := slotIndex(d.Slot)
+	if !ok {
+		return
+	}
+	s := &r.slots[i]
+	switch d.Hint().VoiceBurst { //nolint:exhaustive // only bursts B to E carry the embedded LC
+	case enums.VoiceBurstB, enums.VoiceBurstC, enums.VoiceBurstD, enums.VoiceBurstE:
+	default:
+		return
+	}
+	emb := d.Burst.EMB()
+	if emb.FEC.Uncorrectable || emb.ColorCode != colorCode(r.m) || !s.hasCall || !s.rf {
+		s.emb.Reset()
+		return
+	}
+	lc, _, done, err := s.emb.Add(d.Burst.EmbeddedData(), emb.LCSS)
+	if err != nil || !done {
+		return
+	}
+	var data [7]byte
+	copy(data[:], lc[2:])
+	switch flco := enums.FLCO(lc[0] & flcoMask); flco { //nolint:exhaustive // only the talker alias and GPS go to the hub
+	case enums.FLCOTalkerAliasHeader, enums.FLCOTalkerAliasBlock1, enums.FLCOTalkerAliasBlock2, enums.FLCOTalkerAliasBlock3:
+		r.out.alias(dmrd.TalkerAlias{Repeater: r.repeater, Source: s.call.Source, Type: uint8(flco - enums.FLCOTalkerAliasHeader),
+			Data: data, Size: talkerAliasSize})
+	case enums.FLCOGPSInfo:
+		r.out.position(dmrd.Position{Repeater: r.repeater, Source: s.call.Source, Data: data, Size: positionSize})
+	}
 }
 
 // packet takes a packet that the hub routed to the modem.

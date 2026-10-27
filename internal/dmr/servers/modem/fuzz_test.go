@@ -26,6 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/mmdvm"
 )
 
@@ -33,6 +34,10 @@ type nopSink struct{ frames, packets int }
 
 func (n *nopSink) write([]byte)        { n.frames++ }
 func (n *nopSink) route(models.Packet) { n.packets++ }
+
+func (n *nopSink) alias(dmrd.TalkerAlias) { n.packets++ }
+
+func (n *nopSink) position(dmrd.Position) { n.packets++ }
 
 func fuzzSeeds(f *testing.F) {
 	f.Helper()

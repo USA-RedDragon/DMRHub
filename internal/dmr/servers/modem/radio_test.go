@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/mmdvm"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
 )
@@ -49,6 +50,8 @@ type bench struct {
 	now        time.Duration
 	sent       []mmdvm.Frame
 	routed     []models.Packet
+	aliases    []dmrd.TalkerAlias
+	positions  []dmrd.Position
 	wantStatus bool
 	silent     bool
 }
@@ -83,6 +86,10 @@ func (b *bench) write(f []byte) {
 }
 
 func (b *bench) route(p models.Packet) { b.routed = append(b.routed, p) }
+
+func (b *bench) alias(a dmrd.TalkerAlias) { b.aliases = append(b.aliases, a) }
+
+func (b *bench) position(p dmrd.Position) { b.positions = append(b.positions, p) }
 
 func (b *bench) status() {
 	var p []byte

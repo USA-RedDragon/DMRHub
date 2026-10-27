@@ -39,6 +39,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/mmdvm"
 	"gorm.io/gorm"
 )
@@ -445,6 +446,18 @@ func (k linkSink) write(f []byte) { k.l.send(f) }
 func (k linkSink) route(p models.Packet) {
 	if k.s.hub != nil {
 		k.s.hub.RoutePacket(k.s.ctx, p, models.RepeaterTypeModem)
+	}
+}
+
+func (k linkSink) alias(a dmrd.TalkerAlias) {
+	if k.s.hub != nil {
+		k.s.hub.RecordTalkerAlias(a, models.RepeaterTypeModem, uint(k.s.id))
+	}
+}
+
+func (k linkSink) position(p dmrd.Position) {
+	if k.s.hub != nil {
+		k.s.hub.RecordPosition(p, models.RepeaterTypeModem, uint(k.s.id))
 	}
 }
 

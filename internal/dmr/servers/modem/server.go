@@ -317,32 +317,47 @@ func (s *Server) handshake(l *link) (mmdvm.Version, error) {
 }
 
 func (s *Server) readVersion(l *link) (mmdvm.Version, error) {
+	v, _, err := s.askVersion(l)
+	if err != nil {
+		return v, err
+	}
+	return v, checkVersion(v)
+}
+
+// askVersion asks the modem for its version up to versionTries times, and
+// returns the reply and the number of tries.
+func (s *Server) askVersion(l *link) (mmdvm.Version, int, error) {
 	get, err := frame(mmdvm.CommandGetVersion, nil)
 	if err != nil {
-		return mmdvm.Version{}, err
+		return mmdvm.Version{}, 0, err
 	}
-	for range versionTries {
+	for try := 1; try <= versionTries; try++ {
 		l.send(get)
 		f, err := s.next(l, func(f mmdvm.Frame) bool { return f.Command == mmdvm.CommandGetVersion })
 		if errors.Is(err, errNoReply) {
 			continue
 		}
 		if err != nil {
-			return mmdvm.Version{}, err
+			return mmdvm.Version{}, try, err
 		}
 		v, err := mmdvm.DecodeVersion(f.Payload)
-		switch {
-		case err != nil:
-			return v, fmt.Errorf("%w: %w", errNoVersion, err)
-		case v.Protocol != 1 && v.Protocol != 2:
-			return v, fmt.Errorf("%w: %d", errProtocol, v.Protocol)
-		case !v.Capabilities.Has(mmdvm.CapDMR):
-			return v, errNoDMR
+		if err != nil {
+			return v, try, fmt.Errorf("%w: %w", errNoVersion, err)
 		}
 		v.Description = append([]byte(nil), v.Description...)
-		return v, nil
+		return v, try, nil
 	}
-	return mmdvm.Version{}, errNoVersion
+	return mmdvm.Version{}, versionTries, errNoVersion
+}
+
+func checkVersion(v mmdvm.Version) error {
+	switch {
+	case v.Protocol != 1 && v.Protocol != 2:
+		return fmt.Errorf("%w: %d", errProtocol, v.Protocol)
+	case !v.Capabilities.Has(mmdvm.CapDMR):
+		return errNoDMR
+	}
+	return nil
 }
 
 func (s *Server) command(l *link, c mmdvm.Command, msg appender) error {

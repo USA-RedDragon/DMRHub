@@ -1,163 +1,183 @@
-# Deployment Guide
+# Install DMRHub
 
-## Quick Start
+This page lists the ways to install and run DMRHub, and the ports that it uses. For a step-by-step walkthrough from the install to the first call, see [Set up a DMRHub server](../setup.md).
 
-1. Download or run DMRHub (see options below)
-2. On first launch, the **setup wizard** opens automatically in your browser
-3. Follow the wizard to configure the application and create your first admin user
-4. DMRHub continues into normal operation
+## What you need
 
-For advanced configuration options, see the [Configuration Guide](Configuration.md).
+DMRHub is one program. By default it keeps its data in a SQLite file, so it needs no other services. For more than one server, or for more load, it can also use:
 
-## Prerequisites
+- **PostgreSQL**, **MySQL** or **MariaDB** as the database.
+- **Redis**, so that several DMRHub replicas share the work. See [Replicas and scaling](replicas.md).
 
-DMRHub ships with SQLite as the default database, so **no external services are required** for a basic deployment. Optionally, you can use:
+See [Configuration](configuration.md) for the database settings.
 
-- **PostgreSQL**, **MySQL** or **MariaDB** as the database backend (for larger or multi-server deployments)
-- **Redis** for distributed pub/sub (for multi-instance scaling)
+## First start and the setup wizard
 
-See the [Configuration Guide](Configuration.md) for database setup instructions.
+DMRHub starts the setup wizard instead of the network when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database:
 
-## Running DMRHub
+1. DMRHub writes the reason and the wizard address to its log, for example:
 
-### Docker (Recommended)
+   ```text
+   INF No admin exists yet
+   INF Opening setup wizard at http://localhost:3005/setup?token=AbCdEfGhIjKl
+   ```
 
-Docker images are published at [ghcr.io/usa-reddragon/dmrhub](https://github.com/USA-RedDragon/DMRHub/pkgs/container/dmrhub).
+   The wizard always listens on TCP port 3005 on all addresses, whatever `http.port` is. The token changes at each start. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
 
-Supported architectures: `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `linux/arm/v6`.
+2. Open the address from the log. If the browser is on another computer, replace `localhost` with the address of the server, and keep the token.
+3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database.
+4. Make the first admin user on the **Create Initial Admin User** page. DMRHub checks the DMR ID and callsign against RadioID.net, unless `dmr.disable-radio-id-validation` is on. This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
+5. DMRHub stops the wizard and starts the network in the same process, with the new settings. Log in at `<siteurl>/login`.
 
-Tags follow Git releases. For example, `v1.0.4` produces tags `:v1.0.4`, `:1.0.4`, `:1.0`, and `:1`. Using a less specific tag like `:1` lets you receive updates automatically.
+The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete.
 
-#### Basic Docker Run
+<!-- screenshot: setup-wizard.png | /setup?token=... on a fresh install: the Setup page with the General Settings card at the top -->
+
+<!-- screenshot: setup-initial-user.png | /setup/user?token=...: the Create Initial Admin User card, filled in with N0CALL and 3100001 -->
+
+## Docker
+
+DMRHub publishes images for `linux/amd64`, `linux/arm64`, `linux/arm/v7` and `linux/arm/v6`, at:
+
+- `ghcr.io/usa-reddragon/dmrhub`
+- `docker.io/jamcswain/dmrhub`
+
+Each release gets four tags. For release v1.3.16, they are `v1.3.16`, `v1.3`, `v1` and `latest`. Use `v1` to get each new v1 release when you pull. Do not use the tags without the `v`, such as `1`: they are old images from 2023 and do not get updates.
+
+The image runs `/app/DMRHub` as user and group 65534, with `/app` as the working directory. The image has no shell. Give DMRHub a volume for its data, and tell it to keep its database there:
+
+1. Make the volume and give it to user 65534. A new volume belongs to root, and DMRHub cannot write to it:
+
+   ```bash
+   docker volume create dmrhub-data
+   docker run --rm -v dmrhub-data:/data alpine chown 65534:65534 /data
+   ```
+
+2. Start DMRHub:
+
+   ```bash
+   docker run -d \
+       --restart unless-stopped \
+       --name dmrhub \
+       -e DATABASE_DATABASE=/data/DMRHub.db \
+       -p 3005:3005 \
+       -p 62031:62031/udp \
+       -v dmrhub-data:/data \
+       ghcr.io/usa-reddragon/dmrhub:v1
+   ```
+
+   `DATABASE_DATABASE` puts the SQLite file in the volume. DMRHub keeps the Setup settings, the secret and the password salt in that database. Without this setting, DMRHub keeps its database in the container, where you lose it when you remove the container.
+
+3. Get the wizard address from the log, and open it:
+
+   ```bash
+   docker logs dmrhub 2>&1 | grep 'setup wizard at'
+   ```
+
+Add a `-p` option for each other port that you turn on (see [Ports](#ports)). To use another port on the host, change the number before the `:`.
+
+### Settings from environment variables
+
+You can give each setting as an environment variable. See [Configuration](configuration.md#environment-variables) for the names. For example:
 
 ```bash
-sudo docker run \
-    -d \
+docker run -d \
     --restart unless-stopped \
-    -p 3005:3005 \
-    -p 62031:62031/udp \
-    -v dmrhub-data:/data \
     --name dmrhub \
-    ghcr.io/usa-reddragon/dmrhub:1
-```
-
-On first run, open `http://localhost:3005` in your browser to complete the setup wizard.
-
-#### Docker with YAML Config
-
-To provide a pre-configured YAML file:
-
-```bash
-sudo docker run \
-    -d \
-    --restart unless-stopped \
-    -p 3005:3005 \
-    -p 62031:62031/udp \
-    -v /path/to/config.yaml:/config.yaml:ro \
-    -v dmrhub-data:/data \
-    --name dmrhub \
-    ghcr.io/usa-reddragon/dmrhub:1
-```
-
-#### Docker with Environment Variables
-
-```bash
-sudo docker run \
-    -d \
-    --restart unless-stopped \
-    -e SECRET=your-random-secret \
-    -e PASSWORD_SALT=your-random-salt \
+    -e SECRET=<random value> \
+    -e PASSWORD_SALT=<another random value> \
     -e HTTP_CANONICAL_HOST=https://dmrhub.example.com \
+    -e DATABASE_DATABASE=/data/DMRHub.db \
     -p 3005:3005 \
     -p 62031:62031/udp \
     -v dmrhub-data:/data \
-    --name dmrhub \
-    ghcr.io/usa-reddragon/dmrhub:1
+    ghcr.io/usa-reddragon/dmrhub:v1
 ```
 
-To adjust port mappings, change the host-side port number (before the `:`).
+A setting from the environment is locked: the Setup page shows it as set by the deployment and cannot change it. See [Setup settings](configuration.md#setup-settings).
 
-### Binary Releases
+### Settings from a file
 
-Binary releases are available at [GitHub Releases](https://github.com/USA-RedDragon/DMRHub/releases).
-
-Binaries are released for many platforms including:
-
-- linux/amd64, linux/arm64, linux/arm, linux/386, linux/riscv64
-- darwin/amd64, darwin/arm64
-- windows/386, windows/amd64
-- freebsd, openbsd, netbsd variants
-
-Only Linux is officially supported. On other platforms, ensure the configuration is provided appropriately.
-
-#### Running on Linux with SystemD
-
-##### 1. Create a System User
+To give DMRHub a configuration file of your own, mount it at `/app/config.yaml`, the working directory of the image:
 
 ```bash
-sudo mkdir /etc/dmrhub
-sudo groupadd --system dmrhub
-sudo useradd --home-dir /etc/dmrhub --no-create-home --no-user-group \
-    --system --shell /sbin/nologin dmrhub
-sudo chown dmrhub:dmrhub /etc/dmrhub
-sudo chmod 770 /etc/dmrhub
+-v /path/to/config.yaml:/app/config.yaml:ro
 ```
 
-##### 2. Install the Binary
+DMRHub does not read a file at `/config.yaml`. DMRHub never writes the configuration file, so it can be read-only. A setting that the file sets is locked on the Setup page.
 
-```bash
-sudo mv DMRHub /usr/local/bin/
-sudo chmod a+x /usr/local/bin/DMRHub
-```
+## Binary releases
 
-##### 3. Create Configuration
+[GitHub Releases](https://github.com/USA-RedDragon/DMRHub/releases) has a `.tar.gz` file for each of these platforms:
 
-Place a `config.yaml` in `/etc/dmrhub/`:
+- Linux: `amd64`, `arm64`, `armv7`, `armv6`, `riscv64`
+- macOS: `amd64`, `arm64`
+- Windows: `amd64`, `arm64`
 
-```bash
-sudo -u dmrhub nano /etc/dmrhub/config.yaml
-```
+Each file has the `DMRHub` program, the `dmrhub-parrot` and `dmrhub-locator` plugin programs, the license and a README. Only Linux is supported.
 
-See the [Configuration Guide](Configuration.md) for the full reference. At minimum, you need:
+### Run DMRHub with systemd
 
-```yaml
-secret: "your-random-secret-here"
-password-salt: "your-random-salt-here"
-http:
-  canonical-host: "https://dmrhub.example.com"
-```
+1. Make a system user and its directory:
 
-Alternatively, leave the config empty and use the setup wizard on first launch. DMRHub makes its own secret and password salt and keeps them in the database.
+   ```bash
+   sudo groupadd --system dmrhub
+   sudo useradd --system --gid dmrhub --home-dir /etc/dmrhub --no-create-home \
+       --shell /sbin/nologin dmrhub
+   sudo mkdir /etc/dmrhub
+   sudo chown dmrhub:dmrhub /etc/dmrhub
+   sudo chmod 770 /etc/dmrhub
+   ```
 
-##### 4. Install the SystemD Unit File
+2. Install the program:
 
-The repository includes a SystemD unit file at [`hack/dmrhub.service`](../hack/dmrhub.service).
+   ```bash
+   tar -xzf DMRHub_<version>_linux_amd64.tar.gz DMRHub
+   sudo install -m 0755 DMRHub /usr/local/bin/DMRHub
+   ```
 
-```bash
-sudo cp hack/dmrhub.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now dmrhub.service
-```
+3. Install the unit file [`hack/dmrhub.service`](../../hack/dmrhub.service) from the repository, and start DMRHub:
 
-##### 5. Viewing Logs
+   ```bash
+   sudo cp hack/dmrhub.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now dmrhub.service
+   ```
 
-```bash
-journalctl -f -u dmrhub.service
-```
+4. Get the wizard address from the log, and open it:
+
+   ```bash
+   journalctl -u dmrhub.service | grep 'setup wizard at'
+   ```
+
+5. To see the log as it grows:
+
+   ```bash
+   journalctl -f -u dmrhub.service
+   ```
+
+The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. These files are in that directory:
+
+| File | What it is |
+| ---- | ---------- |
+| `/etc/dmrhub/DMRHub.db` | The SQLite database, with `DMRHub.db-wal` and `DMRHub.db-shm` |
+| `/etc/dmrhub/config.yaml` | A configuration file of your own, if you write one. DMRHub never writes it. A setting that it sets is locked on the Setup page. |
+| `/etc/dmrhub/dmrhub-database.json` | The database setting that the setup wizard saves when DMRHub could not reach its database |
+| `/etc/dmrhub/env` | Environment variables for DMRHub, one `NAME=value` on each line. The file is optional. |
+
+The unit mounts `/etc` read-only for DMRHub, except `/etc/dmrhub`, and hides the home directories.
 
 ## Ports
 
-| Port  | Protocol |               Purpose                |
-| ----- | -------- | ------------------------------------ |
-| 3005  | TCP      | HTTP server (web UI, API, WebSocket) |
-| 50000 | UDP      | IPSC server (if enabled)             |
-| 62031 | UDP      | MMDVM DMR server                     |
-| 62035 | UDP      | OpenBridge server (if enabled)       |
-| 9000  | TCP      | Metrics server (if enabled)          |
-| 6060  | TCP      | PProf server (if enabled)            |
+| Port  | Protocol | What it is | When it is open |
+| ----- | -------- | ---------- | --------------- |
+| 3005  | TCP      | The web interface, the API and the websockets (`http.port`) | Always. The setup wizard always uses 3005. |
+| 62031 | UDP      | The MMDVM server for hotspots and repeaters (`dmr.mmdvm.port`) | Always |
+| 62032 | UDP      | WebTransport for browser hotspots and radios (`dmr.mmdvm.webtransport.port`) | When `dmr.mmdvm.webtransport.enabled` is on |
+| 62035 | UDP      | The OpenBridge server (`dmr.openbridge.port`) | When `dmr.openbridge.enabled` is on |
+| 50000 | UDP      | The IPSC server for Motorola repeaters (`dmr.ipsc.port`) | When `dmr.ipsc.enabled` is on |
+| 3006  | TCP      | The listener for plugins that run as their own programs (`dmr.plugins.port`) | When `dmr.plugins.enabled` is on |
+| 9000  | TCP      | Prometheus metrics at `/metrics` (`metrics.port`) | When `metrics.enabled` is on |
+| 6060  | TCP      | PProf (`pprof.port`) | When `pprof.enabled` is on |
 
-## Network Requirements
-
-- MMDVM repeaters/hotspots connect via UDP to the DMR port (default 62031)
-- Users access the web interface via HTTP on the configured port (default 3005)
-- If deploying behind a reverse proxy, set `http.trusted-proxies` and `http.canonical-host` appropriately
+Behind a reverse proxy, set `http.canonical-host` to the address that users open, and `http.trusted-proxies` to the addresses of the proxy. The proxy must also pass websockets.

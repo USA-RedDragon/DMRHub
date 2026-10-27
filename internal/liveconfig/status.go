@@ -42,6 +42,9 @@ type Setting struct {
 	StartOnly bool `json:"start_only"`
 	// Source is where the value that this replica runs with comes from.
 	Source Source `json:"source"`
+	// Origin is the environment variable or the flag that sets the
+	// setting, for SourceEnv and SourceFlag.
+	Origin string `json:"origin,omitempty"`
 	// Saved is the value saved in Setup, if any.
 	Saved json.RawMessage `json:"saved,omitempty"`
 	// Default is the default value; none for a secret.
@@ -105,8 +108,8 @@ func (l *Live) Status(ctx context.Context) (Status, error) {
 	wanted := l.effective(saved)
 	def := defaults()
 	for _, k := range l.keys {
-		_, locked := l.opts.Locks[k.Path]
-		s := Setting{Editable: l.Editable(k), Locked: locked, StartOnly: !k.Setup, Source: l.source(k)}
+		lock, locked := l.opts.Locks[k.Path]
+		s := Setting{Editable: l.Editable(k), Locked: locked, StartOnly: !k.Setup, Source: l.source(k), Origin: lock.Name}
 		if raw, ok := saved.Values[k.Path]; ok && k.Setup {
 			s.Saved = raw
 		}
@@ -193,6 +196,7 @@ func PendingStatus(locks Locks, canStore bool) Status {
 		s := Setting{Locked: locked, StartOnly: !k.Setup, Source: SourceDefault, Default: defaultOf(k, def)}
 		if locked {
 			s.Source = lock.Source
+			s.Origin = lock.Name
 		}
 		s.Editable = editable && under(k.Path, "database")
 		st.Settings[k.Path] = s

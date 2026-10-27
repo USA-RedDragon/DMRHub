@@ -46,6 +46,9 @@ type Lock struct {
 	Source Source
 	// File is the config file that sets it, for SourceFile.
 	File string
+	// Name is the environment variable that sets it, for SourceEnv, or
+	// the flag with its leading dashes, for SourceFlag.
+	Name string
 }
 
 // Locks are the locked settings of a replica, by path.
@@ -98,8 +101,12 @@ func LocksFrom(report *configulator.Report) Locks {
 				continue
 			}
 			l := Lock{Source: sourceOf(o.Layer)}
-			if l.Source == SourceFile {
+			switch l.Source {
+			case SourceFile:
 				l.File = o.Detail
+			case SourceEnv, SourceFlag:
+				l.Name = o.Detail
+			case SourceDefault, SourceSetup, SourceGenerated, SourceWizard:
 			}
 			if old, ok := locks[k.Path]; !ok || rank(l.Source) > rank(old.Source) {
 				locks[k.Path] = l

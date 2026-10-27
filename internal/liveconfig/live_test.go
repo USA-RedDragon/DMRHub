@@ -189,6 +189,39 @@ func TestPrecedence(t *testing.T) {
 	}
 }
 
+// TestStatusNamesTheOrigin checks that the status names the environment
+// variable or the flag that sets a locked setting, and nothing for the
+// other sources.
+func TestStatusNamesTheOrigin(t *testing.T) {
+	t.Parallel()
+	database := newDB(t, testutils.SQLiteMemoryBackend())
+	l := boot(t, database, deployment{
+		file:  validDeployment + "dmr:\n  ipsc:\n    network-id: 222222\n",
+		env:   map[string]string{"DMR_OPENBRIDGE_SERVER_ID": "3333", "DMR_RETENTION_MESSAGES": "33"},
+		flags: []string{"--dmr.retention.messages=44", "--dmr.public-address=dmr.example.org"},
+	})
+	st, err := l.Status(context.Background())
+	require.NoError(t, err)
+	for path, want := range map[string]struct {
+		source liveconfig.Source
+		origin string
+	}{
+		"dmr.openbridge.server-id": {liveconfig.SourceEnv, "DMR_OPENBRIDGE_SERVER_ID"},
+		"dmr.retention.messages":   {liveconfig.SourceFlag, "--dmr.retention.messages"},
+		"dmr.public-address":       {liveconfig.SourceFlag, "--dmr.public-address"},
+		"dmr.ipsc.network-id":      {liveconfig.SourceFile, ""},
+		"network-name":             {liveconfig.SourceDefault, ""},
+	} {
+		assert.Equal(t, want.source, st.Settings[path].Source, path)
+		assert.Equal(t, want.origin, st.Settings[path].Origin, path)
+	}
+	assert.Equal(t, "dmr.example.org", l.Current().Get().DMR.PublicAddress)
+
+	pending := liveconfig.PendingStatus(l.Locks(), true)
+	assert.Equal(t, "DMR_OPENBRIDGE_SERVER_ID", pending.Settings["dmr.openbridge.server-id"].Origin)
+	assert.Equal(t, "--dmr.retention.messages", pending.Settings["dmr.retention.messages"].Origin)
+}
+
 // TestPublicAddressIsASetupSetting saves the public address in Setup and
 // sets it back to its default, which removes the saved value.
 func TestPublicAddressIsASetupSetting(t *testing.T) {

@@ -106,8 +106,13 @@ func TestVersionRoute(t *testing.T) {
 func TestNetworkFeaturesRoute(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ ipsc, openbridge, smtp bool }{{true, false, true}, {false, true, false}} {
+	for _, tc := range []struct {
+		ipsc, openbridge, smtp bool
+		mmdvmPort, ipscPort    int
+	}{{true, false, true, 62031, 50000}, {false, true, false, 62040, 50010}} {
 		router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
+			c.DMR.MMDVM.Port = tc.mmdvmPort
+			c.DMR.IPSC.Port = tc.ipscPort
 			c.DMR.IPSC.Enabled = tc.ipsc
 			c.DMR.OpenBridge.Enabled = tc.openbridge
 			c.SMTP.Enabled = tc.smtp
@@ -126,6 +131,9 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		var got map[string]any
 		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-		assert.Equal(t, map[string]any{"ipsc": tc.ipsc, "openbridge": tc.openbridge, "password_reset": tc.smtp}, got)
+		assert.Equal(t, map[string]any{
+			"ipsc": tc.ipsc, "openbridge": tc.openbridge, "password_reset": tc.smtp,
+			"mmdvm_port": float64(tc.mmdvmPort), "ipsc_port": float64(tc.ipscPort),
+		}, got)
 	}
 }

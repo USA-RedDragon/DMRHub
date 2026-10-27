@@ -35,6 +35,8 @@ interface SettingsState {
   ipscEnabled: boolean;
   openBridgeEnabled: boolean;
   passwordResetEnabled: boolean;
+  mmdvmPort: number;
+  ipscPort: number;
   loaded: boolean;
 }
 
@@ -59,6 +61,8 @@ export const useSettingsStore = defineStore('settings', {
     ipscEnabled: false,
     openBridgeEnabled: false,
     passwordResetEnabled: false,
+    mmdvmPort: 62031,
+    ipscPort: 50000,
     loaded: false,
   }),
   getters: {},
@@ -71,6 +75,8 @@ export const useSettingsStore = defineStore('settings', {
         this.ipscEnabled = res.data?.ipsc ?? false;
         this.openBridgeEnabled = res.data?.openbridge ?? false;
         this.passwordResetEnabled = res.data?.password_reset ?? false;
+        this.mmdvmPort = res.data?.mmdvm_port || 62031;
+        this.ipscPort = res.data?.ipsc_port || 50000;
         this.loaded = true;
       } catch {
         // Config endpoint unavailable; leave defaults

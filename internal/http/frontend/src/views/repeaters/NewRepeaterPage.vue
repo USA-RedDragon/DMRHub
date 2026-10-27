@@ -175,6 +175,7 @@ export default {
               life: 3000,
             });
           } else {
+            const settingsStore = useSettingsStore();
             if (this.repeaterType === 'mmdvm') {
               window.alert(
                 'Repeater Created\n\n'
@@ -184,7 +185,7 @@ export default {
                 + 'Name=AREDN\n'
                 + 'Enabled=1\n'
                 + `Address=${this.hostname}\n`
-                + 'Port=62031\n'
+                + `Port=${settingsStore.mmdvmPort}\n`
                 + `Password="${res.data.password}"\n`
                 + `Id=${this.radioID}\n`
                 + 'Location=1\n'
@@ -196,7 +197,7 @@ export default {
                 + 'Your Motorola IPSC repeater has been created. '
                 + 'Save this auth key now, as you will not be able to retrieve it again.\n\n'
                 + `Master IP: ${this.hostname}\n`
-                + 'Port: 50000\n'
+                + `Port: ${settingsStore.ipscPort}\n`
                 + `Auth Key: ${res.data.password}`,
               );
             }

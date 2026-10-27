@@ -102,6 +102,8 @@ func GETNetworkFeatures(c *gin.Context) {
 		"ipsc":           config.DMR.IPSC.Enabled,
 		"openbridge":     config.DMR.OpenBridge.Enabled,
 		"password_reset": config.SMTP.Enabled,
+		"mmdvm_port":     config.DMR.MMDVM.Port,
+		"ipsc_port":      config.DMR.IPSC.Port,
 	})
 }
 

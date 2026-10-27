@@ -51,8 +51,7 @@ func TestRoutePacketGroupVoice(t *testing.T) {
 	// Activate repeaters so subscriptions are created
 	h.ActivateRepeater(context.Background(), 100002)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt := makeVoicePacket(1, 55555, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
@@ -63,7 +62,7 @@ func TestRoutePacketGroupVoice(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(1), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for routed packet")
 	}
 }
@@ -82,8 +81,7 @@ func TestRoutePacketPrivateCallToRepeater(t *testing.T) {
 	// Activate destination repeater so it has a subscription goroutine
 	h.ActivateRepeater(context.Background(), 100002)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Private call to repeater 100002
 	pkt := makeVoicePacket(100002, 55556, false, false)
@@ -93,7 +91,7 @@ func TestRoutePacketPrivateCallToRepeater(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(100002), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for private call to repeater")
 	}
 }
@@ -110,8 +108,7 @@ func TestRoutePacketPrivateCallToUser(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Private call to user 1000002 (7-digit = user ID)
 	pkt := makeVoicePacket(1000002, 55557, false, false)
@@ -151,8 +148,7 @@ func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
 	// Activate destination repeater so it has a subscription goroutine
 	h.ActivateRepeater(context.Background(), 100003)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Private call to user 1000002 should go to repeater 100003 (last heard)
 	pkt := makeVoicePacket(1000002, 55558, false, false)
@@ -161,17 +157,12 @@ func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100003), rp.RepeaterID)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for private call to last-heard repeater")
 	}
 
 	// Ensure nothing else was delivered
-	select {
-	case rp := <-srvHandle.Packets:
-		t.Fatalf("unexpected extra packet delivered to repeater %d", rp.RepeaterID)
-	case <-time.After(200 * time.Millisecond):
-		// success: only one packet
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt, 100003), "unexpected extra packet delivered")
 }
 
 func TestRoutePacketNonexistentTalkgroup(t *testing.T) {
@@ -253,8 +244,7 @@ func TestRoutePacketPrivateCallTo8DigitUserID(t *testing.T) {
 	// Activate destination repeater so it has a subscription goroutine
 	h.ActivateRepeater(context.Background(), 100002)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Private call to 8-digit user ID — previously silently dropped
 	pkt := makeVoicePacket(10000001, 77777, false, false)
@@ -264,7 +254,7 @@ func TestRoutePacketPrivateCallTo8DigitUserID(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(10000001), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for private call to 8-digit user ID — call was silently dropped")
 	}
 }
@@ -320,8 +310,7 @@ func TestMultipleRepeatersReceiveGroupCall(t *testing.T) {
 	// Activate the destination repeater (it subscribes to TG10)
 	h.ActivateRepeater(context.Background(), 100002)
 
-	// Allow subscription goroutines to fully start
-	time.Sleep(250 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Source repeater 100001 sends to TG10
 	pkt := makeVoicePacket(10, 55559, true, false)
@@ -332,7 +321,7 @@ func TestMultipleRepeatersReceiveGroupCall(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(10), rp.Packet.Dst)
-	case <-time.After(5 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for group call delivery to repeater 100002")
 	}
 }
@@ -382,7 +371,7 @@ func TestRoutePacketDoesNotWaitOnAnotherSourceSlot(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	release := h.HoldSource(makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
 	defer release()
@@ -395,7 +384,7 @@ func TestRoutePacketDoesNotWaitOnAnotherSourceSlot(t *testing.T) {
 	}()
 	select {
 	case <-returned:
-	case <-time.After(time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("RoutePacket waited on a busy source slot")
 	}
 
@@ -403,7 +392,7 @@ func TestRoutePacketDoesNotWaitOnAnotherSourceSlot(t *testing.T) {
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(7002), rp.Packet.StreamID)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("a source slot waited behind a busy one")
 	}
 }

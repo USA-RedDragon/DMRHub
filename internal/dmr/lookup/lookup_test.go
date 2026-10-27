@@ -162,3 +162,38 @@ func TestAStalledLoadHoldsReadsForWaitOnce(t *testing.T) {
 	}, time.Second, 5*time.Millisecond)
 	assert.Equal(t, int64(1), loads.Load(), "loads of one key")
 }
+
+func TestHeldWaitsEndWithTheLoadOrTheirEnd(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	c := lookup.New("test", time.Hour, func(k int) (int, error) {
+		if k == 2 {
+			<-release
+		}
+		return k, nil
+	})
+	end := make(chan struct{})
+	c.HoldWaits(end)
+
+	v, err := c.Get(1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, v)
+
+	got := make(chan error, 1)
+	go func() {
+		_, err := c.Get(2)
+		got <- err
+	}()
+	select {
+	case err := <-got:
+		require.Fail(t, "a held wait ended before its end", "%v", err)
+	case <-time.After(2 * lookup.Wait):
+	}
+	close(end)
+	require.ErrorIs(t, <-got, lookup.ErrSlow)
+	close(release)
+	assert.Eventually(t, func() bool {
+		v, err := c.Get(2)
+		return err == nil && v == 2
+	}, time.Minute, 5*time.Millisecond)
+}

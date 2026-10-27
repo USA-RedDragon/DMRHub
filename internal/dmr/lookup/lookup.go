@@ -60,7 +60,8 @@ type Cache[K comparable, V any] struct {
 
 // Flights runs one load of each key at a time, in the background.
 type Flights[K comparable, V any] struct {
-	m *xsync.Map[K, *flight[V]]
+	m    *xsync.Map[K, *flight[V]]
+	held atomic.Pointer[<-chan struct{}]
 }
 
 type flight[V any] struct {
@@ -85,6 +86,15 @@ func (f *Flights[K, V]) Do(key K, load func() (V, error)) (V, error) {
 		return fl.val, fl.err
 	default:
 	}
+	if end := f.held.Load(); end != nil {
+		select {
+		case <-fl.done:
+			return fl.val, fl.err
+		case <-*end:
+			var zero V
+			return zero, ErrSlow
+		}
+	}
 	t := time.NewTimer(time.Until(fl.until))
 	defer t.Stop()
 	select {
@@ -94,6 +104,13 @@ func (f *Flights[K, V]) Do(key K, load func() (V, error)) (V, error) {
 		var zero V
 		return zero, ErrSlow
 	}
+}
+
+// HoldWaits makes Do wait for a load until end is closed, instead of until
+// Wait after the load started, so that a test can stand for a load that
+// takes longer than Wait without waiting Wait.
+func (f *Flights[K, V]) HoldWaits(end <-chan struct{}) {
+	f.held.Store(&end)
 }
 
 // DoWait is Do that waits for the load to end.
@@ -149,6 +166,12 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 		}
 		return v, err
 	})
+}
+
+// HoldWaits makes Get wait for a load until end is closed, as
+// Flights.HoldWaits does.
+func (c *Cache[K, V]) HoldWaits(end <-chan struct{}) {
+	c.flights.HoldWaits(end)
 }
 
 func newEntry[V any](v V, now time.Time) *entry[V] {

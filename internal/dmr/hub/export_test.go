@@ -69,6 +69,30 @@ func (h *Hub) HoldStreamClaimWaits() (end func()) {
 	return func() { once.Do(func() { close(ch) }) }
 }
 
+// HoldLastSeenWaits makes the waits of the hub for the records in the KV
+// store of where radios were heard end only when end is called, instead
+// of after lookup.Wait.
+func (h *Hub) HoldLastSeenWaits() (end func()) {
+	ch := make(chan struct{})
+	h.lastSeen.HoldWaits(ch)
+	var once sync.Once
+	return func() { once.Do(func() { close(ch) }) }
+}
+
+// HoldLookupWaits makes the reads of the hub of the database wait for
+// their loads until end is called, instead of for at most lookup.Wait.
+func (h *Hub) HoldLookupWaits() (end func()) {
+	ch := make(chan struct{})
+	h.talkgroupIDs.HoldWaits(ch)
+	h.radioOwners.HoldWaits(ch)
+	h.radioCalls.HoldWaits(ch)
+	h.egressTable.HoldWaits(ch)
+	h.tgRepeaters.HoldWaits(ch)
+	h.repeaters.flights.HoldWaits(ch)
+	var once sync.Once
+	return func() { once.Do(func() { close(ch) }) }
+}
+
 // StreamClaimHold is streamClaimHold.
 const StreamClaimHold = streamClaimHold
 

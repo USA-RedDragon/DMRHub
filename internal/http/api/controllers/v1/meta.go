@@ -91,7 +91,7 @@ func GETNetworkWebTransport(c *gin.Context) {
 
 // GETNetworkFeatures answers which optional servers are on, whether users
 // can have a forgotten password emailed, and the address and ports that
-// hotspots and repeaters connect to, for the frontend to show its pages
+// hotspots, repeaters and OpenBridge peers connect to, for the frontend to show its pages
 // without the admin-only config.
 func GETNetworkFeatures(c *gin.Context) {
 	config, ok := utils.GetConfig(c)
@@ -100,12 +100,13 @@ func GETNetworkFeatures(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ipsc":           config.DMR.IPSC.Enabled,
-		"openbridge":     config.DMR.OpenBridge.Enabled,
-		"password_reset": config.SMTP.Enabled,
-		"mmdvm_port":     config.DMR.MMDVM.Port,
-		"ipsc_port":      config.DMR.IPSC.Port,
-		"server_address": config.ServerAddress(),
+		"ipsc":            config.DMR.IPSC.Enabled,
+		"openbridge":      config.DMR.OpenBridge.Enabled,
+		"password_reset":  config.SMTP.Enabled,
+		"mmdvm_port":      config.DMR.MMDVM.Port,
+		"ipsc_port":       config.DMR.IPSC.Port,
+		"openbridge_port": config.DMR.OpenBridge.Port,
+		"server_address":  config.ServerAddress(),
 	})
 }
 

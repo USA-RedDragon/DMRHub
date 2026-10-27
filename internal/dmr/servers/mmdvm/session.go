@@ -54,6 +54,8 @@ const maxPending = 1024
 
 var errTooManyPending = errors.New("too many sessions that are not logged in")
 
+var errRecordsBusy = errors.New("too many record jobs wait for the repeater")
+
 // link is the session of the repeater at one address.
 type link struct {
 	key     string
@@ -180,11 +182,16 @@ func (s *Server) recordNeeded(l *link, data []byte) (uint32, bool) {
 }
 
 // resolve looks up the KV record of the repeater id off the listener, then
-// handles the packets from remote that waited for it, in order.
+// handles the packets from remote that waited for it, in order. It reads
+// the record after the record jobs of the repeater that are queued, so
+// that a session that ended here never resumes from the record that its
+// end deletes.
 func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32, data []byte) {
 	defer s.lookups.Done()
-	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-	if kvDown(err) {
+	var repeater models.Repeater
+	err := errRecordsBusy
+	s.records.After(uint(id), func() { repeater, err = s.kvClient.GetRepeater(ctx, uint(id)) })
+	if kvDown(err) && !errors.Is(err, errRecordsBusy) {
 		if own, ok := s.ownRecord(uint(id)); ok && remote.matchesKV(own.IP, own.Port) {
 			repeater, err = own, nil
 		}

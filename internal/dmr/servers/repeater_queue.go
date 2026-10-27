@@ -40,6 +40,25 @@ type RepeaterQueue struct {
 // Do queues fn after the jobs of the repeater id. A repeater with
 // maxQueuedPerRepeater jobs waiting drops fn.
 func (q *RepeaterQueue) Do(id uint, fn func()) {
+	q.add(id, fn)
+}
+
+// After calls fn once the jobs of the repeater id that are queued now are
+// done, and waits for it to return. It reports false, without calling fn,
+// when the queue of the repeater is full.
+func (q *RepeaterQueue) After(id uint, fn func()) bool {
+	done := make(chan struct{})
+	if !q.add(id, func() {
+		defer close(done)
+		fn()
+	}) {
+		return false
+	}
+	<-done
+	return true
+}
+
+func (q *RepeaterQueue) add(id uint, fn func()) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.jobs == nil {
@@ -48,13 +67,14 @@ func (q *RepeaterQueue) Do(id uint, fn func()) {
 	jobs, busy := q.jobs[id]
 	if len(jobs) >= maxQueuedPerRepeater {
 		slog.Warn("Dropping a job of a repeater with a full queue", "repeaterID", id)
-		return
+		return false
 	}
 	q.jobs[id] = append(jobs, fn)
 	if !busy {
 		q.running++
 		go q.run(id)
 	}
+	return true
 }
 
 func (q *RepeaterQueue) run(id uint) {

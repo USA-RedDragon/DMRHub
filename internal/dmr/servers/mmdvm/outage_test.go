@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -171,4 +172,76 @@ func TestAHotspotThatEndedItsSessionDoesNotResumeInARedisOutage(t *testing.T) {
 	assert.NotContains(t, r.s.byID, uint32(id), "the ended session resumed")
 	_, ok := r.s.resumeForEgress(context.Background(), id)
 	assert.False(t, ok, "egress resumed the ended session")
+}
+
+// heldDeleteKV holds each Delete while held is set until release closes,
+// as a slow Redis holds the delete of the record of an ended session.
+type heldDeleteKV struct {
+	kv.KV
+	held    atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (h *heldDeleteKV) Delete(ctx context.Context, key string) error {
+	if h.held.Load() {
+		close(h.entered)
+		<-h.release
+	}
+	return h.KV.Delete(ctx, key) //nolint:wrapcheck
+}
+
+// TestAnEndedSessionDoesNotResumeFromTheRecordThatItsEndDeletes ends the
+// session of a hotspot, as the server does when it ends one, while the delete
+// of its KV record waits on a slow Redis. A ping that comes in then must
+// not take the session back from that record.
+func TestAnEndedSessionDoesNotResumeFromTheRecordThatItsEndDeletes(t *testing.T) {
+	t.Parallel()
+	const id = 3000103
+	r := newDialectRig(t, id)
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	store, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	held := &heldDeleteKV{KV: store, entered: make(chan struct{}), release: make(chan struct{})}
+	r.kv = servers.MakeKVClient(held)
+	r.s.kvClient = r.kv
+	r.login(dmrd.DialectMMDVM, id)
+	r.s.records.Wait()
+
+	held.held.Store(true)
+	r.s.mu.Lock()
+	l := r.s.links[r.from.String()]
+	now := r.s.now()
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	r.s.run(context.Background(), now, l, l.m.Close(now, buf[:0]))
+	r.s.forget(l)
+	r.s.mu.Unlock()
+	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)
+	<-held.entered
+	held.held.Store(false)
+
+	var once sync.Once
+	release := func() { once.Do(func() { close(held.release) }) }
+	timer := time.AfterFunc(300*time.Millisecond, release)
+	t.Cleanup(func() { timer.Stop() })
+	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	r.s.handleFrom(context.Background(), udpEndpoint(r.from), p, time.Now())
+	go func() {
+		r.s.lookups.Wait()
+		release()
+	}()
+	r.s.lookups.Wait()
+	r.s.records.Wait()
+
+	if p := r.read(200 * time.Millisecond); p != nil {
+		k, err := dmrd.DecodeControl(p, dmrd.DialectMMDVM)
+		require.NoError(t, err)
+		assert.NotEqual(t, dmrd.CommandMSTPONG, k.Command, "the ended session answered a ping")
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	assert.NotContains(t, r.s.byID, uint32(id), "the ended session resumed")
 }

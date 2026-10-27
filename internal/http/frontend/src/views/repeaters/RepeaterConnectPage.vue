@@ -35,7 +35,7 @@
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div class="min-w-0 flex-[1_1_20rem]">
             <h1 class="mb-1.5 text-[26px] leading-tight font-bold" data-test="title">{{ title }}</h1>
-            <p class="text-muted-foreground" data-test="lead">{{ lead }}</p>
+            <p v-if="lead" class="text-muted-foreground" data-test="lead">{{ lead }}</p>
           </div>
           <span
             class="mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 text-xs leading-[22px] font-medium whitespace-nowrap"
@@ -87,8 +87,8 @@
               <b>Rotate {{ secretWord }}</b>. DMRHub then makes a new one and shows it once.
             </div>
             <div v-if="rotatedAt" class="mt-3.5 rounded-[10px] border bg-muted px-3.5 py-3 text-sm" data-test="rotated">
-              The old {{ secretWord }} stopped working. DMRHub dropped the connection of the {{ noun }}. Put the new
-              {{ secretWord }} in your software and it logs in again.
+              The old {{ secretWord }} stopped working. Put the new {{ secretWord }} in your software and it logs in
+              again.
             </div>
           </template>
         </CardContent>
@@ -97,7 +97,6 @@
       <Card class="gap-5 pb-5">
         <CardHeader>
           <CardTitle>Set up your software</CardTitle>
-          <CardDescription>Pick the program that runs your {{ noun }}.</CardDescription>
         </CardHeader>
         <Tabs v-model="tab" class="gap-0">
           <TabsList class="h-auto w-full justify-start gap-0.5 overflow-x-auto rounded-none border-b bg-transparent p-0 px-6">
@@ -160,7 +159,7 @@
 
 <script lang="ts">
 import { Button as ShadButton } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog as ShadDialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
@@ -209,7 +208,6 @@ export default {
   components: {
     Card,
     CardContent,
-    CardDescription,
     CardHeader,
     CardTitle,
     ClientSteps,
@@ -316,7 +314,7 @@ export default {
         const where = this.kind === 'ipsc' ? 'CPS of the repeater' : `program that runs your ${this.noun}`;
         return `${owner}Put the values below in the ${where}.`;
       }
-      return `${owner}You can open these steps at any time from the page of the ${this.noun}.`;
+      return owner.trim();
     },
     lastPing(): number {
       return timeOf(this.repeater?.last_ping_time);

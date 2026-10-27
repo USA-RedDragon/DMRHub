@@ -28,7 +28,7 @@
     <CardContent>
       <p class="mb-3 text-sm text-muted-foreground">
         AMBEserver protocol, usually UDP port 2460. A call tries the servers in this order and holds one server for its
-        whole length. Each server must report the decoder status of each frame; a server that cannot converts no call.
+        whole length.
       </p>
       <div class="grid gap-2" data-test="ambe-servers">
         <div
@@ -73,7 +73,7 @@
         </div>
       </div>
       <p class="mt-1.5 text-sm text-muted-foreground">
-        Calls at once: empty is no limit. Use 1 for a server with one vocoder chip, which answers only its last client.
+        Calls at once: empty is no limit. Use 1 for a server with one vocoder chip.
       </p>
       <div class="mt-2.5">
         <ShadButton type="button" variant="outline" size="sm" :disabled="locked" data-test="ambe-server-add" @click="addRow">

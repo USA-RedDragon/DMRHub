@@ -67,7 +67,7 @@
       </select>
     </div>
     <p class="mt-1.5 text-sm text-muted-foreground">
-      The serial device of the board.<template v-if="ports.length > 0"> The list shows the ports that {{ grouped ? 'each replica' : 'this server' }} finds.</template>
+      The serial device of the board.
     </p>
   </div>
 </template>

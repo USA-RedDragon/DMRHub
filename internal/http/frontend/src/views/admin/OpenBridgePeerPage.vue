@@ -134,7 +134,7 @@
               <b>Rotate password</b>.
             </div>
             <div v-if="rotatedAt" class="mt-3.5 rounded-[10px] border bg-muted px-3.5 py-3 text-sm" data-test="rotated">
-              The old password stopped working. Put the new password in the other server.
+              The old password stopped working.
             </div>
           </template>
         </CardContent>

@@ -108,7 +108,7 @@ describe('Modem tab serial port', () => {
     ]);
     expect((select.element as HTMLSelectElement).value).toBe('/dev/ttyAMA0');
     expect(wrapper.find('[data-test="modem-port-path"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('The list shows the ports that this server finds.');
+    expect(wrapper.find('a[href="https://github.com/g4klx/MMDVM-Host/blob/master/RSSI.dat"]').exists()).toBe(true);
     await select.setValue('/dev/serial/by-id/usb-MMDVM_HS-if00');
     expect(wrapper.find('[data-test="menu-dirty-modem"]').exists()).toBe(true);
     wrapper.unmount();
@@ -132,7 +132,6 @@ describe('Modem tab serial port', () => {
     const wrapper = await mountModem();
     expect(wrapper.find('[data-test="modem-port-select"]').exists()).toBe(false);
     expect((wrapper.find('#setup-dmr-modem-port').element as HTMLInputElement).value).toBe('/dev/ttyAMA0');
-    expect(wrapper.text()).not.toContain('The list shows');
     wrapper.unmount();
   });
 
@@ -152,7 +151,6 @@ describe('Modem tab with two replicas', () => {
     const select = wrapper.find('[data-test="modem-port-select"]');
     expect(select.findAll('optgroup').map((g) => g.attributes('label'))).toEqual(['Replica a41c', 'Replica 7f3c']);
     expect((select.element as HTMLSelectElement).value).toBe('a41c00000000000a\u0001/dev/ttyAMA0');
-    expect(wrapper.text()).toContain('The list shows the ports that each replica finds.');
     await select.setValue('7f3c00000000000b\u0001/dev/ttyACM0');
     expect((wrapper.find('[data-test="modem-port-select"]').element as HTMLSelectElement).value).toBe('7f3c00000000000b\u0001/dev/ttyACM0');
     await wrapper.find('[data-test="modem-test-run"]').trigger('click');

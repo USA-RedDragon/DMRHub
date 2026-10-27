@@ -21,11 +21,7 @@
 
 <template>
   <div data-test="modem-test">
-    <p class="text-sm text-muted-foreground">
-      Opens the serial port with the settings above and asks the board for its firmware, without saving. While the modem
-      runs, the test shows its live state instead.
-    </p>
-    <div class="mt-2.5">
+    <div>
       <ShadButton type="button" variant="outline" size="sm" :disabled="running" data-test="modem-test-run" @click="run">
         {{ running ? 'Testing the modem' : 'Test the modem' }}
       </ShadButton>

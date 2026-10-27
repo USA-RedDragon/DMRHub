@@ -139,7 +139,11 @@
         @update:model-value="(v: string | number) => set(String(v))"
       />
     </template>
-    <p v-if="help" class="mt-1.5 text-sm text-muted-foreground">{{ help }}</p>
+    <p v-if="help" class="mt-1.5 text-sm text-muted-foreground">
+      {{ help }}<template v-for="l in field.links ?? []" :key="l.href">
+        {{ ' ' }}<a :href="l.href" target="_blank" rel="noopener" class="text-primary underline">{{ l.text }}</a></template
+      >
+    </p>
     <SettingNote
       :path="field.path"
       menu

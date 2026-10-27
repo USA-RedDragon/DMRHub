@@ -50,6 +50,8 @@ export type FieldDef = {
   label: string;
   kind: FieldKind;
   help?: string | ((read: Read) => string);
+  /** Links shown after the help, each one a sentence. */
+  links?: { text: string; href: string }[];
   options?: Option[];
   show?: (read: Read) => boolean;
   off?: (read: Read) => boolean;
@@ -106,7 +108,7 @@ export const isField = (r: Row): r is FieldDef => 'path' in r;
 const on = (path: string) => (read: Read) => read(path) === true;
 
 const hangHelp = (kind: string) =>
-  `Data and CSBK calls to a slot wait this long after a ${kind} call on it. 0 is off, at most 10 seconds.`;
+  `How long data and CSBK calls to a slot wait after a ${kind} call on it ends. 0 is off, at most 10 seconds.`;
 
 const reach: Option[] = [
   {
@@ -181,7 +183,7 @@ export const TABS: TabDef[] = [
       {
         title: 'Secrets',
         rows: [
-          { path: 'secret', label: 'Secret', kind: 'secret', help: 'Signs the sessions of the users. At least 15 random characters.' },
+          { path: 'secret', label: 'Secret', kind: 'secret', help: 'At least 15 random characters.' },
           { path: 'password-salt', label: 'Password salt', kind: 'secret', help: 'Salt for the password hashes of the users. Different from the secret.' },
           { path: 'hibp-api-key', label: 'Have I Been Pwned API key', kind: 'secret', help: 'Checks new passwords against known leaks. Empty turns the check off.' },
         ],
@@ -199,7 +201,7 @@ export const TABS: TabDef[] = [
         rows: [
           {
             path: 'http.canonical-host', label: 'Site URL', kind: 'text', placeholder: 'https://dmrhub.example.org',
-            help: 'The URL that people use to reach this site. Unless the DMR and MMDVM tab sets a public server address, hotspots connect to its host name.',
+            help: 'The URL that people use to reach this site.',
           },
           {
             path: 'http.robots-txt.mode', label: 'robots.txt', kind: 'select',
@@ -326,7 +328,7 @@ export const TABS: TabDef[] = [
       {
         title: 'PProf',
         rows: [
-          { path: 'pprof.enabled', label: 'Serve PProf', kind: 'bool', help: 'Profiles for debugging. Leave off unless a developer asks for them.' },
+          { path: 'pprof.enabled', label: 'Serve PProf', kind: 'bool', help: 'Profiles for debugging. Leave off unless a DMRHub developer asks for them.' },
           { path: 'pprof.bind', label: 'Bind address', kind: 'text', show: on('pprof.enabled') },
           { path: 'pprof.port', label: 'Port', kind: 'number', show: on('pprof.enabled') },
           { path: 'pprof.trusted-proxies', label: 'Trusted proxies', kind: 'list', show: on('pprof.enabled') },
@@ -338,16 +340,16 @@ export const TABS: TabDef[] = [
     id: 'dmr',
     group: 'DMR',
     name: 'DMR and MMDVM',
-    intro: ['Hotspots, MMDVMHost, DMRGateway, DroidStar and HBlink connect to the MMDVM server. It is always on.'],
+    intro: ['Hotspots, MMDVMHost, DMRGateway, DroidStar and HBlink connect to the MMDVM server.'],
     cards: [
       {
         title: 'MMDVM server',
         rows: [
           { path: 'dmr.mmdvm.bind', label: 'Bind address', kind: 'text', help: 'The address that the MMDVM server listens on.' },
-          { path: 'dmr.mmdvm.port', label: 'Port', kind: 'number', help: 'The UDP port that hotspots connect to. The enroll page shows this port to users.' },
+          { path: 'dmr.mmdvm.port', label: 'Port', kind: 'number', help: 'The UDP port that hotspots connect to.' },
           {
             path: 'dmr.public-address', label: 'Public server address', kind: 'text', placeholder: 'dmr.example.org',
-            help: 'The host name or IP address that hotspots and repeaters connect to. The enroll page shows it to users. Empty uses the host name of the site URL.',
+            help: 'The host name or IP address that hotspots and repeaters connect to. Empty uses the host name of the site URL.',
           },
         ],
       },
@@ -465,7 +467,7 @@ export const TABS: TabDef[] = [
     group: 'DMR',
     name: 'Modem',
     intro: [
-      'DMRHub can drive an MMDVM modem board, such as an MMDVM_HS hat, an MMDVM repeater board or a DVMega, on a serial port. The board is then a hotspot or repeater of this server, with no MMDVMHost.',
+      'DMRHub can drive an MMDVM modem board, such as an MMDVM_HS hat, an MMDVM repeater board or a DVMega, on a serial port.',
     ],
     saveNote: 'Saving restarts the modem. Calls on it stop for a few seconds.',
     cards: [
@@ -499,9 +501,6 @@ export const TABS: TabDef[] = [
                   ['dmr.modem.tx-frequency', read('dmr.modem.rx-frequency')],
                   ['dmr.modem.beacons.enabled', false],
                 ]),
-                help: (read) => (read('dmr.modem.duplex') === true
-                  ? 'A repeater uses both timeslots, and repeats what it hears.'
-                  : 'A hotspot has one channel, which is timeslot 2 on the network. Calls on timeslot 1 are not sent.'),
               },
             ],
           },
@@ -516,11 +515,6 @@ export const TABS: TabDef[] = [
                   },
                   { path: 'dmr.modem.tx-frequency', label: 'Transmit frequency (MHz)', kind: 'mhz', required: true, show: on('dmr.modem.duplex') },
                 ],
-              },
-              {
-                text: (read) => (read('dmr.modem.duplex') === true
-                  ? 'A repeater receives and transmits on its two frequencies.'
-                  : 'A hotspot sends and receives on the same frequency.'),
               },
               {
                 grid: [
@@ -556,6 +550,10 @@ export const TABS: TabDef[] = [
                   {
                     path: 'dmr.modem.rssi-mapping-file', label: 'RSSI mapping file', kind: 'text', placeholder: '/etc/dmrhub/RSSI.dat',
                     help: 'An RSSI.dat file in the MMDVMHost format, which turns the signal reading of the board into dBm. Without it the signal strength of calls is not shown.',
+                    links: [
+                      { text: 'Get the RSSI.dat of MMDVMHost.', href: 'https://github.com/g4klx/MMDVM-Host/blob/master/RSSI.dat' },
+                      { text: 'How to fill it in.', href: 'https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/modem.md#signal-strength-rssi' },
+                    ],
                   },
                   { path: 'dmr.modem.debug', label: 'Log the debug messages of the board', kind: 'bool' },
                 ],
@@ -654,7 +652,7 @@ export const TABS: TabDef[] = [
         rows: [
           {
             path: 'dmr.positions.aprs-is.callsign', label: 'APRS-IS callsign', kind: 'text',
-            help: 'The callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS. DMRHub makes the passcode from the callsign.',
+            help: 'The callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS.',
           },
           { path: 'dmr.positions.aprs-is.server', label: 'APRS-IS server', kind: 'text', help: 'As host:port.' },
         ],
@@ -705,7 +703,7 @@ export const TABS: TabDef[] = [
           { path: 'dmr.plugins.port', label: 'Port', kind: 'number', help: 'The TCP port that plugins connect to.' },
           {
             path: 'dmr.plugins.cert-file', label: 'Certificate file', kind: 'text',
-            help: 'Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint.',
+            help: 'Empty uses a certificate that DMRHub makes; plugins check it by its fingerprint.',
           },
           { path: 'dmr.plugins.key-file', label: 'Key file', kind: 'text' },
         ],
@@ -726,7 +724,7 @@ export const TABS: TabDef[] = [
           { path: 'dmr.private-calls.voice.unknown', label: 'When DMRHub does not know where the radio is', kind: 'choice', options: unknown },
           {
             path: 'dmr.private-calls.voice.max-age', label: 'Last heard age limit (minutes)', kind: 'minutes',
-            help: 'A call goes to the place where DMRHub last heard the radio. Set a limit to treat radios that DMRHub has not heard for longer as unknown. 0 is no limit.',
+            help: 'Calls go to where DMRHub last heard the radio. With a limit, a radio not heard for longer counts as unknown. 0 is no limit.',
           },
         ],
       },

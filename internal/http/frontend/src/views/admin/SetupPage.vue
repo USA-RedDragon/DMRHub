@@ -22,9 +22,6 @@
 <template>
   <div class="mx-auto max-w-[1180px]">
     <h1 class="mb-1 text-2xl font-bold">Setup</h1>
-    <p class="mb-4.5 text-muted-foreground">
-      Settings that you save here go into effect at once on every replica, without a restart.
-    </p>
     <div
       v-if="applyErrors.length > 0"
       role="alert"
@@ -299,8 +296,8 @@ export default defineComponent({
       if (this.failMsg) {
         return this.failMsg;
       }
-      const extra = this.tab.saveNote ?? 'Saves only the settings on this tab.';
-      return this.dirty[this.tab.id] ? `You have unsaved changes on this tab. ${extra}` : extra;
+      const extra = this.tab.saveNote ?? '';
+      return this.dirty[this.tab.id] ? `You have unsaved changes on this tab. ${extra}`.trim() : extra;
     },
     allCurrent(): boolean {
       return this.setupState.replicas.every((r) => r.current);

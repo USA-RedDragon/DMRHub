@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,7 +41,33 @@ const (
 	burstPeriod   = 60 * time.Millisecond
 )
 
-type slowDB struct{ on atomic.Bool }
+// slowDB makes every statement of a database take a while when on, or
+// wait for release while held.
+type slowDB struct {
+	on   atomic.Bool
+	mu   sync.Mutex
+	gate chan struct{}
+	held atomic.Int64
+}
+
+// hold makes every statement from now on wait for release.
+func (s *slowDB) hold() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gate == nil {
+		s.gate = make(chan struct{})
+	}
+}
+
+// release lets the held statements go, and holds no more.
+func (s *slowDB) release() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gate != nil {
+		close(s.gate)
+		s.gate = nil
+	}
+}
 
 func slowDown(t *testing.T, database *gorm.DB) *slowDB {
 	t.Helper()
@@ -51,6 +78,15 @@ func slowDownBy(t *testing.T, database *gorm.DB, d time.Duration) *slowDB {
 	t.Helper()
 	s := &slowDB{}
 	wait := func(*gorm.DB) {
+		s.mu.Lock()
+		gate := s.gate
+		s.mu.Unlock()
+		if gate != nil {
+			s.held.Add(1)
+			<-gate
+			s.held.Add(-1)
+			return
+		}
 		if s.on.Load() {
 			time.Sleep(d)
 		}
@@ -62,6 +98,7 @@ func slowDownBy(t *testing.T, database *gorm.DB, d time.Duration) *slowDB {
 	require.NoError(t, cb.Create().Before("gorm:create").Register("test:slow_create", wait))
 	require.NoError(t, cb.Update().Before("gorm:update").Register("test:slow_update", wait))
 	require.NoError(t, cb.Delete().Before("gorm:delete").Register("test:slow_delete", wait))
+	t.Cleanup(s.release)
 	return s
 }
 
@@ -127,14 +164,17 @@ func worstDelay(t *testing.T, arrivals <-chan arrival, stream uint, sent []time.
 	}
 }
 
-// TestSlowDatabaseHoldsNoBurst starts calls of each kind while every
-// database statement takes 300 ms, after the hub has routed calls of the
+// TestSlowDatabaseHoldsNoBurst starts calls of each kind while the
+// database holds every statement, after the hub has routed calls of the
 // same kinds once. Routing must not wait on the database: each burst
-// reaches its targets in less than half a statement.
+// reaches its targets while the database holds a statement of the calls,
+// and the statements run when the database lets them go.
 func TestSlowDatabaseHoldsNoBurst(t *testing.T) {
 	t.Parallel()
 	h, database := makeTestHub(t)
 	slow := slowDown(t, database)
+	endLookups := h.HoldLookupWaits()
+	t.Cleanup(endLookups)
 
 	seedUser(t, database, testSrcID, "CALLER")
 	seedUser(t, database, 1000002, "TARGET")
@@ -174,16 +214,17 @@ func TestSlowDatabaseHoldsNoBurst(t *testing.T) {
 		stream++
 		worstDelay(t, arrivals, stream, sendStream(h, c.dst, stream, c.group, bursts), c.targets...)
 	}
-	time.Sleep(200 * time.Millisecond)
+	endLookups()
 
-	slow.on.Store(true)
-	defer slow.on.Store(false)
+	slow.hold()
 	for _, c := range calls {
 		stream++
-		worst := worstDelay(t, arrivals, stream, sendStream(h, c.dst, stream, c.group, bursts), c.targets...)
-		t.Logf("%s: worst delay %v with %v per statement", c.name, worst, slowStatement)
-		assert.Less(t, worst, slowStatement/2, "%s: a burst waited on the database", c.name)
+		worstDelay(t, arrivals, stream, sendStream(h, c.dst, stream, c.group, bursts), c.targets...)
 	}
+	require.Eventually(t, func() bool { return slow.held.Load() > 0 }, time.Minute, 10*time.Millisecond, "the calls ran no statement for the database to hold")
+	t.Logf("the calls passed while the database held %d statements", slow.held.Load())
+	slow.release()
+	require.Eventually(t, func() bool { return slow.held.Load() == 0 }, time.Minute, 10*time.Millisecond, "the held statements did not run when the database let them go")
 }
 
 func TestAStalledDatabaseHoldsNoBurstOfANewCall(t *testing.T) {

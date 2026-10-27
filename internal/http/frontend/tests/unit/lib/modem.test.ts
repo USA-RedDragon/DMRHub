@@ -19,7 +19,7 @@
 
 
 import { describe, expect, it } from 'vitest';
-import { modemPill, modemStateOf, otherPort, portLabel, portsOf, testView, type ProbeResult } from '@/lib/modem';
+import { modemPill, modemStateOf, otherPort, portLabel, portsOf, replicaOfPort, testView, type ProbeResult } from '@/lib/modem';
 
 const ok: ProbeResult = {
   port: '/dev/ttyAMA0', baud: 115200, opened: true, tries: 1, answered: true,
@@ -29,10 +29,21 @@ const ok: ProbeResult = {
 };
 
 describe('modem ports', () => {
-  it('reads only ports with a path', () => {
-    expect(portsOf({ ports: [{ path: '/dev/ttyACM0' }, { device: 'x' }, 3] })).toEqual([{ path: '/dev/ttyACM0' }]);
+  it('reads the ports of each replica, only those with a path', () => {
+    expect(portsOf({ replicas: [{ replica: 'a41c', self: true, ports: [{ path: '/dev/ttyACM0' }, { device: 'x' }, 3] }, { ports: [] }, { replica: 'b7', ports: null }] }))
+      .toEqual([{ replica: 'a41c', self: true, ports: [{ path: '/dev/ttyACM0' }] }, { replica: 'b7', self: false, ports: [] }]);
     expect(portsOf({ data: 1 })).toEqual([]);
     expect(portsOf(null)).toEqual([]);
+  });
+
+  it('picks this replica first for a port that several replicas have', () => {
+    const groups = [
+      { replica: 'b7', self: false, ports: [{ path: '/dev/ttyAMA0' }, { path: '/dev/ttyACM0' }] },
+      { replica: 'a41c', self: true, ports: [{ path: '/dev/ttyAMA0' }] },
+    ];
+    expect(replicaOfPort(groups, '/dev/ttyAMA0')).toBe('a41c');
+    expect(replicaOfPort(groups, '/dev/ttyACM0')).toBe('b7');
+    expect(replicaOfPort(groups, '/dev/ttyS3')).toBe('');
   });
 
   it('labels a link with its device', () => {
@@ -41,7 +52,7 @@ describe('modem ports', () => {
   });
 
   it('types a path when the list is empty or does not have it', () => {
-    const ports = [{ path: '/dev/ttyAMA0' }];
+    const ports = [{ replica: 'a41c', self: true, ports: [{ path: '/dev/ttyAMA0' }] }];
     expect(otherPort([], '')).toBe(true);
     expect(otherPort(ports, '')).toBe(false);
     expect(otherPort(ports, '/dev/ttyAMA0')).toBe(false);
@@ -99,6 +110,14 @@ describe('modem test result', () => {
     const v = testView({ live: false, result: { ...ok, modes: ['D-Star'], frequencies: undefined, settings: undefined, error: 'modem firmware has no DMR' } });
     expect(v.title).toBe('DMRHub cannot drive this board');
     expect(v.rows).toEqual([['Firmware', ok.firmware], ['Protocol', '1'], ['Modes', 'D-Star']]);
+  });
+
+  it('names another replica that ran the test or did not answer', () => {
+    const v = testView({ replica: '7f3c00000000000b', self: false, live: false, result: ok });
+    expect(v.rows[0]).toEqual(['Replica', '7f3c']);
+    const gone = testView({ replica: '7f3c00000000000b', self: false, unanswered: true, live: false });
+    expect(gone.tone).toBe('bad');
+    expect(gone.title).toBe('Replica 7f3c did not answer');
   });
 
   it('shows the live state of the running modem instead', () => {

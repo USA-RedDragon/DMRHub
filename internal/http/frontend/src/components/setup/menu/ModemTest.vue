@@ -57,7 +57,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Button as ShadButton } from '@/components/ui/button';
-import { testView, type ModemTest, type ResultView } from '@/lib/modem';
+import { portReplica, testView, type ModemTest, type ResultView } from '@/lib/modem';
 import { getAt, TABS, tabFields, type Read } from '@/lib/setupMenu';
 import API from '@/services/API';
 
@@ -92,7 +92,7 @@ const run = async () => {
   running.value = true;
   view.value = null;
   try {
-    const res = await API.post('/config/modem/test', props.read('dmr.modem') ?? {});
+    const res = await API.post('/config/modem/test', props.read('dmr.modem') ?? {}, portReplica.value ? { params: { replica: portReplica.value } } : undefined);
     view.value = testView(res.data as ModemTest);
   } catch (error: unknown) {
     const res = asRecord(asRecord(error)?.response);

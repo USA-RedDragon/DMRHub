@@ -17,10 +17,17 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
+import { ref } from 'vue';
 import { replicaName } from '@/lib/setupState';
 
-/** A serial port of the replica that answers, from /config/modem/ports. */
+/** A serial port of a replica. */
 export type SerialPort = { path: string; device?: string };
+
+/** The serial ports of one replica, from /config/modem/ports. */
+export type ReplicaPorts = { replica: string; self: boolean; ports: SerialPort[] };
+
+/** The replica of the port that the admin chose; empty for none. */
+export const portReplica = ref('');
 
 /** The live state of the modem of a replica. */
 export type ModemStatus = {
@@ -56,21 +63,40 @@ export type ProbeResult = {
 };
 
 /** The answer of /config/modem/test. */
-export type ModemTest = { live: boolean; state?: ModemState; result?: ProbeResult };
+export type ModemTest = {
+  replica?: string;
+  self?: boolean;
+  unanswered?: boolean;
+  live: boolean;
+  state?: ModemState;
+  result?: ProbeResult;
+};
 
 export type Tone = 'ok' | 'bad' | 'idle';
 
 const asRecord = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
-/** The ports of an answer of /config/modem/ports; none for anything else. */
-export const portsOf = (data: unknown): SerialPort[] => {
-  const ports = asRecord(data)?.ports;
-  if (!Array.isArray(ports)) {
+const portList = (ports: unknown): SerialPort[] =>
+  Array.isArray(ports) ? ports.filter((p): p is SerialPort => typeof asRecord(p)?.path === 'string') : [];
+
+/** The ports of each replica in an answer of /config/modem/ports; none for anything else. */
+export const portsOf = (data: unknown): ReplicaPorts[] => {
+  const replicas = asRecord(data)?.replicas;
+  if (!Array.isArray(replicas)) {
     return [];
   }
-  return ports.filter((p): p is SerialPort => typeof asRecord(p)?.path === 'string');
+  return replicas
+    .map((r) => asRecord(r))
+    .filter((r): r is Record<string, unknown> => typeof r?.replica === 'string')
+    .map((r) => ({ replica: r.replica as string, self: r.self === true, ports: portList(r.ports) }));
 };
+
+/** The replica to list first for a port that several replicas have: this one. */
+export const replicaOfPort = (groups: ReplicaPorts[], path: string): string =>
+  groups.find((g) => g.self && g.ports.some((p) => p.path === path))?.replica
+  ?? groups.find((g) => g.ports.some((p) => p.path === path))?.replica
+  ?? '';
 
 /** The state of an answer of /config/modem; null for anything else. */
 export const modemStateOf = (data: unknown): ModemState | null => {
@@ -86,8 +112,10 @@ export const modemStateOf = (data: unknown): ModemState | null => {
 export const portLabel = (p: SerialPort): string => (p.device ? `${p.path} (${p.device})` : p.path);
 
 /** Whether the port select shows the box for a path that is not listed. */
-export const otherPort = (ports: SerialPort[], value: string): boolean =>
-  ports.length === 0 || (value !== '' && !ports.some((p) => p.path === value));
+export const otherPort = (groups: ReplicaPorts[], value: string): boolean => {
+  const ports = groups.flatMap((g) => g.ports);
+  return ports.length === 0 || (value !== '' && !ports.some((p) => p.path === value));
+};
 
 const on = (s: ModemState) => (s.self ? '' : ` on replica ${replicaName(s.status?.replica ?? '')}`);
 
@@ -131,6 +159,20 @@ const checkPort = 'Check the port and its speed, and that no other program, such
 
 /** How the Modem tab shows the answer of a test. */
 export const testView = (t: ModemTest): ResultView => {
+  if (t.unanswered) {
+    return {
+      tone: 'bad', title: `Replica ${replicaName(t.replica ?? '')} did not answer`, rows: [],
+      text: 'Try again.',
+    };
+  }
+  const view = resultView(t);
+  if (t.replica && t.self === false && !t.live) {
+    view.rows.unshift(['Replica', replicaName(t.replica)]);
+  }
+  return view;
+};
+
+const resultView = (t: ModemTest): ResultView => {
   if (t.live && t.state?.status) {
     const st = t.state.status;
     const where = t.state.self ? 'The modem runs on this port.' : `The modem runs on this port on replica ${replicaName(st.replica ?? '')}.`;

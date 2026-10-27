@@ -32,23 +32,42 @@
       @change="pick(($event.target as HTMLSelectElement).value)"
     >
       <option v-if="value === '' && !typing" value="" disabled>Choose a port</option>
-      <option v-for="p in ports" :key="p.path" :value="p.path">{{ portLabel(p) }}</option>
+      <template v-if="grouped">
+        <optgroup v-for="g in groups" :key="g.replica" :label="`Replica ${replicaName(g.replica)}`">
+          <option v-for="p in g.ports" :key="p.path" :value="key(g.replica, p.path)">{{ portLabel(p) }}</option>
+        </optgroup>
+      </template>
+      <template v-else>
+        <option v-for="p in ports" :key="p.path" :value="p.path">{{ portLabel(p) }}</option>
+      </template>
       <option :value="OTHER">Another path</option>
     </select>
-    <ShadInput
-      v-if="typing"
-      :id="ports.length > 0 ? `${id}-path` : id"
-      :class="[boxClass, ports.length > 0 ? 'mt-2' : '']"
-      :aria-label="ports.length > 0 ? 'Path of the serial port' : undefined"
-      :placeholder="placeholder"
-      :disabled="disabled"
-      :model-value="value"
-      :aria-invalid="invalid ? true : undefined"
-      data-test="modem-port-path"
-      @update:model-value="(v: string | number) => $emit('update', String(v))"
-    />
+    <div v-if="typing" :class="['flex gap-2', ports.length > 0 ? 'mt-2' : '']">
+      <ShadInput
+        :id="ports.length > 0 ? `${id}-path` : id"
+        :class="boxClass"
+        :aria-label="ports.length > 0 ? 'Path of the serial port' : undefined"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        :model-value="value"
+        :aria-invalid="invalid ? true : undefined"
+        data-test="modem-port-path"
+        @update:model-value="(v: string | number) => $emit('update', String(v))"
+      />
+      <select
+        v-if="groups.length > 1"
+        :class="[boxClass, 'h-9 w-auto bg-background']"
+        :disabled="disabled"
+        :value="portReplica"
+        aria-label="Replica of the serial port"
+        data-test="modem-port-replica"
+        @change="portReplica = ($event.target as HTMLSelectElement).value"
+      >
+        <option v-for="g in groups" :key="g.replica" :value="g.replica">Replica {{ replicaName(g.replica) }}</option>
+      </select>
+    </div>
     <p class="mt-1.5 text-sm text-muted-foreground">
-      The serial device of the board.<template v-if="ports.length > 0"> The list shows the ports that this server finds.</template>
+      The serial device of the board.<template v-if="ports.length > 0"> The list shows the ports that {{ grouped ? 'each replica' : 'this server' }} finds.</template>
     </p>
   </div>
 </template>
@@ -56,19 +75,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Input as ShadInput } from '@/components/ui/input';
-import { otherPort, portLabel, portsOf, type SerialPort } from '@/lib/modem';
+import { otherPort, portLabel, portReplica, portsOf, replicaOfPort, type ReplicaPorts } from '@/lib/modem';
+import { replicaName } from '@/lib/setupState';
 import API from '@/services/API';
 
 const OTHER = '\u0000other';
+const SEP = '\u0001';
 
 const props = defineProps<{ id: string; value: string; disabled?: boolean; invalid?: boolean; placeholder?: string; boxClass: string }>();
 const emit = defineEmits<{ (e: 'update', value: string): void }>();
 
-const ports = ref<SerialPort[]>([]);
+const groups = ref<ReplicaPorts[]>([]);
 const chose = ref(false);
 
-const typing = computed(() => chose.value || otherPort(ports.value, props.value));
-const choice = computed(() => (typing.value ? OTHER : props.value));
+const ports = computed(() => groups.value.flatMap((g) => g.ports));
+const grouped = computed(() => groups.value.length > 1);
+const typing = computed(() => chose.value || otherPort(groups.value, props.value));
+const key = (replica: string, path: string) => `${replica}${SEP}${path}`;
+const choice = computed(() => {
+  if (typing.value) {
+    return OTHER;
+  }
+  return grouped.value && props.value !== '' ? key(portReplica.value, props.value) : props.value;
+});
 
 const pick = (v: string) => {
   if (v === OTHER) {
@@ -76,15 +105,25 @@ const pick = (v: string) => {
     return;
   }
   chose.value = false;
+  if (grouped.value) {
+    const [replica = '', path = ''] = v.split(SEP);
+    portReplica.value = replica;
+    emit('update', path);
+    return;
+  }
   emit('update', v);
 };
 
 onMounted(async () => {
+  portReplica.value = '';
   try {
     const res = await API.get('/config/modem/ports');
-    ports.value = portsOf(res.data);
+    groups.value = portsOf(res.data);
   } catch {
-    ports.value = [];
+    groups.value = [];
+  }
+  if (grouped.value) {
+    portReplica.value = replicaOfPort(groups.value, props.value) || (groups.value.find((g) => g.self)?.replica ?? '');
   }
 });
 </script>

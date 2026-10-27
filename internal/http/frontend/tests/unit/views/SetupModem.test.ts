@@ -64,7 +64,7 @@ const answer = (a: Answers) => {
   mockAPI.get.mockImplementation((url: string) => {
     switch (url) {
       case '/config/modem/ports':
-        return Promise.resolve({ data: a.ports ?? { ports: [] } });
+        return Promise.resolve({ data: a.ports ?? { replicas: [{ replica: 'a41c00000000000a', self: true, ports: [] }] } });
       case '/config/modem':
         return Promise.resolve({ data: a.state ?? { status: null, self: false } });
       default:
@@ -82,7 +82,14 @@ const mountModem = async (): Promise<VueWrapper> => {
   return wrapper;
 };
 
-const ports = { ports: [{ path: '/dev/serial/by-id/usb-MMDVM_HS-if00', device: '/dev/ttyACM0' }, { path: '/dev/ttyAMA0' }] };
+const ports = { replicas: [{ replica: 'a41c00000000000a', self: true, ports: [{ path: '/dev/serial/by-id/usb-MMDVM_HS-if00', device: '/dev/ttyACM0' }, { path: '/dev/ttyAMA0' }] }] };
+
+const twoReplicas = {
+  replicas: [
+    { replica: 'a41c00000000000a', self: true, ports: [{ path: '/dev/ttyAMA0' }] },
+    { replica: '7f3c00000000000b', self: false, ports: [{ path: '/dev/ttyAMA0' }, { path: '/dev/ttyACM0' }] },
+  ],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -133,6 +140,51 @@ describe('Modem tab serial port', () => {
     answer({ ports, config: configOf(modem(), { 'dmr.modem.port': { ...plain, editable: false, locked: true, source: 'env', origin: 'DMR_MODEM_PORT' } }) });
     const wrapper = await mountModem();
     expect(wrapper.find('[data-test="modem-port-select"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
+});
+
+describe('Modem tab with two replicas', () => {
+  it('groups the ports by replica and tests on the replica of the chosen port', async () => {
+    answer({ ports: twoReplicas });
+    mockAPI.post.mockResolvedValue({ data: { replica: '7f3c00000000000b', self: false, live: false, result: { port: '/dev/ttyACM0', baud: 115200, opened: true, tries: 1, answered: true, frequencies: { taken: true }, settings: { taken: true } } } });
+    const wrapper = await mountModem();
+    const select = wrapper.find('[data-test="modem-port-select"]');
+    expect(select.findAll('optgroup').map((g) => g.attributes('label'))).toEqual(['Replica a41c', 'Replica 7f3c']);
+    expect((select.element as HTMLSelectElement).value).toBe('a41c00000000000a\u0001/dev/ttyAMA0');
+    expect(wrapper.text()).toContain('The list shows the ports that each replica finds.');
+    await select.setValue('7f3c00000000000b\u0001/dev/ttyACM0');
+    expect((wrapper.find('[data-test="modem-port-select"]').element as HTMLSelectElement).value).toBe('7f3c00000000000b\u0001/dev/ttyACM0');
+    await wrapper.find('[data-test="modem-test-run"]').trigger('click');
+    await flushPromises();
+    const [, body, opts] = mockAPI.post.mock.calls[0]!;
+    expect(body).toMatchObject({ port: '/dev/ttyACM0' });
+    expect(opts).toEqual({ params: { replica: '7f3c00000000000b' } });
+    expect(wrapper.find('[data-test="modem-test-result"]').text()).toContain('Replica7f3c');
+    wrapper.unmount();
+  });
+
+  it('asks for the replica of a typed path', async () => {
+    answer({ ports: twoReplicas });
+    const wrapper = await mountModem();
+    await wrapper.find('[data-test="modem-port-select"]').setValue('\u0000other');
+    const replica = wrapper.find('[data-test="modem-port-replica"]');
+    expect(replica.findAll('option').map((o) => o.text())).toEqual(['Replica a41c', 'Replica 7f3c']);
+    await replica.setValue('7f3c00000000000b');
+    mockAPI.post.mockResolvedValue({ data: { replica: '7f3c00000000000b', self: false, unanswered: true, live: false } });
+    await wrapper.find('[data-test="modem-test-run"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.post.mock.calls[0]![2]).toEqual({ params: { replica: '7f3c00000000000b' } });
+    expect(wrapper.find('[data-test="modem-test-result"]').text()).toContain('Replica 7f3c did not answer');
+    wrapper.unmount();
+  });
+
+  it('shows no replica choice with one replica', async () => {
+    answer({ ports });
+    const wrapper = await mountModem();
+    expect(wrapper.find('optgroup').exists()).toBe(false);
+    await wrapper.find('[data-test="modem-port-select"]').setValue('\u0000other');
+    expect(wrapper.find('[data-test="modem-port-replica"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

@@ -20,6 +20,8 @@ package openbridge
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -184,4 +186,69 @@ func TestTheOutboxPublishesWhatWaitsAtTheStop(t *testing.T) {
 			t.Fatalf("message %d of the outbox was not published", i)
 		}
 	}
+}
+
+var errPausedRedis = errors.New("read tcp: i/o timeout")
+
+// pausedKV acts as a Redis that stops answering while paused: each call
+// fails, as a call to a paused Redis times out.
+type pausedKV struct {
+	kv.KV
+	paused atomic.Bool
+}
+
+func (p *pausedKV) Get(ctx context.Context, key string) ([]byte, error) {
+	if p.paused.Load() {
+		return nil, errPausedRedis
+	}
+	return p.KV.Get(ctx, key) //nolint:wrapcheck
+}
+
+func (p *pausedKV) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	if p.paused.Load() {
+		return false, errPausedRedis
+	}
+	return p.KV.SetNX(ctx, key, value, ttl) //nolint:wrapcheck
+}
+
+func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	if p.paused.Load() {
+		return errPausedRedis
+	}
+	return p.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
+}
+
+// TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage pauses Redis while
+// a replica holds the egress lease. No other replica can take the lease
+// before it expires, so the holder must keep sending until EgressLeaseTTL
+// after its last renewal, and then stop.
+func TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ctx := context.Background()
+	store, err := kv.MakeKV(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	paused := &pausedKV{KV: store}
+	s := &Server{kv: paused, id: "a"}
+	s.renewLease(ctx)
+	require.True(t, s.IsEgressLeader())
+
+	renewed := time.Now()
+	s.renewLease(ctx)
+	require.True(t, s.IsEgressLeader())
+	paused.paused.Store(true)
+	for time.Since(renewed) < EgressLeaseTTL-egressLeaseRenew {
+		s.renewLease(ctx)
+		require.True(t, s.IsEgressLeader(), "the holder stopped %s after its last renewal, before its lease ran out", time.Since(renewed).Round(time.Millisecond))
+		time.Sleep(egressLeaseRenew / 4)
+	}
+	time.Sleep(time.Until(renewed.Add(EgressLeaseTTL)))
+	s.renewLease(ctx)
+	assert.False(t, s.IsEgressLeader(), "the holder still sends after its lease ran out")
+
+	paused.paused.Store(false)
+	s.renewLease(ctx)
+	assert.NotEqual(t, roleFollower, s.role.Load(), "the holder takes the lease again once Redis is back")
 }

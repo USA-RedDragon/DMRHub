@@ -24,11 +24,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
@@ -117,27 +119,50 @@ func (s *Server) IsEgressLeader() bool {
 
 // holdLease takes the egress lease when it is free and renews it when this
 // replica holds it. Without a KV store, as one replica, it always holds it.
+// When the KV store fails, a holder keeps the lease until it would have
+// expired, as no other replica can take it before then.
 func (s *Server) holdLease(ctx context.Context) bool {
 	if s.kv == nil {
 		return true
 	}
+	at := time.Now()
+	held, err := s.tryLease(ctx)
+	if err != nil {
+		slog.Error("Error holding the OpenBridge egress lease", "error", err)
+		return at.Before(s.leaseUntil)
+	}
+	if !held {
+		s.leaseUntil = time.Time{}
+		return false
+	}
+	s.leaseUntil = at.Add(EgressLeaseTTL)
+	return true
+}
+
+// tryLease takes or renews the lease in the KV store and reports whether
+// this replica holds it.
+func (s *Server) tryLease(ctx context.Context) (bool, error) {
 	ok, err := s.kv.SetNX(ctx, egressLeaseKey, s.id, EgressLeaseTTL)
 	if err != nil {
-		slog.Error("Error taking the OpenBridge egress lease", "error", err)
-		return false
+		return false, fmt.Errorf("taking the lease: %w", err)
 	}
 	if ok {
-		return true
+		return true, nil
 	}
 	v, err := s.kv.Get(ctx, egressLeaseKey)
-	if err != nil || string(v) != s.id {
-		return false
+	if errors.Is(err, kv.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reading the lease: %w", err)
+	}
+	if string(v) != s.id {
+		return false, nil
 	}
 	if err := s.kv.Expire(ctx, egressLeaseKey, EgressLeaseTTL); err != nil {
-		slog.Error("Error renewing the OpenBridge egress lease", "error", err)
-		return false
+		return false, fmt.Errorf("renewing the lease: %w", err)
 	}
-	return true
+	return true, nil
 }
 
 func (s *Server) runLease(ctx context.Context) {

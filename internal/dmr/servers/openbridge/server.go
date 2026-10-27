@@ -111,6 +111,7 @@ type Server struct {
 	// roleMu orders the changes of role.
 	roleMu         sync.Mutex
 	takingAt       time.Time
+	leaseUntil     time.Time
 	released       chan struct{}
 	handedOver     chan struct{}
 	handedOverOnce sync.Once

@@ -295,6 +295,13 @@ func RequireSelfOrAdmin() gin.HandlerFunc {
 // isTalkgroupNCOOrOwnerOrAdmin checks if the given approved, unsuspended
 // user is a system admin, a talkgroup admin, or a talkgroup NCO for the
 // talkgroup identified by talkgroupID.
+// CanRunNets reports whether user may start, stop and schedule the nets of
+// the talkgroup talkgroupID: an admin, an admin of the talkgroup, or one of
+// its NCOs.
+func CanRunNets(db *gorm.DB, user models.User, talkgroupID uint) bool {
+	return isTalkgroupNCOOrOwnerOrAdmin(db, user, talkgroupID)
+}
+
 func isTalkgroupNCOOrOwnerOrAdmin(db *gorm.DB, user models.User, talkgroupID interface{}) bool {
 	if user.Admin {
 		return true

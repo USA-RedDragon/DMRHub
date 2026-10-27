@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/middleware"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/gin-contrib/sessions"
@@ -239,6 +240,14 @@ func POSTNetStart(c *gin.Context) {
 	}
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: "Talkgroup not found"})
+		return
+	}
+	user, ok := utils.GetSessionUser(c, db)
+	if !ok {
+		return
+	}
+	if !middleware.CanRunNets(db, user, req.TalkgroupID) {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: middleware.MsgNotTalkgroupNCO})
 		return
 	}
 

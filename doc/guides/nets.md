@@ -23,6 +23,10 @@ DMRHub adds your check-in to the net. The check-in counts only when your radio I
 2. The net page shows when the net started, who started it, its status, and the users who checked in.
 3. When you are logged in, click **Export CSV** or **Export JSON** to save the list.
 
+## Who can run a net
+
+Only an admin of the talkgroup, a net control operator (NCO) of the talkgroup, or a network admin can start, stop and schedule the nets of a talkgroup. The talkgroup page shows **Start Net**, **Stop Net**, **Schedule Net**, and **Edit** and **Delete** on scheduled nets only to these users.
+
 ## Start a net now
 
 1. Log in and open the page of the talkgroup.
@@ -30,7 +34,7 @@ DMRHub adds your check-in to the net. The check-in counts only when your radio I
 3. Type an optional description, and an optional duration in minutes (1 to 1440).
 4. Click **Start**.
 
-A talkgroup has at most one active net. To end the net, click **Stop Net** on the page of the talkgroup. Only an admin of the talkgroup, a net control operator (NCO) of the talkgroup, or a network admin can stop a net.
+A talkgroup has at most one active net. To end the net, click **Stop Net** on the page of the talkgroup.
 
 ## Schedule a net
 
@@ -40,7 +44,7 @@ A talkgroup has at most one active net. To end the net, click **Stop Net** on th
 
 <!-- screenshot: scheduled-net-form.png | the New Scheduled Net form at /nets/scheduled/new filled in for a weekly net on TG 3100 -->
 
-DMRHub starts the net at that time each week. The page of the talkgroup lists the scheduled nets in UTC. Talkgroup admins, NCOs and network admins can click **Edit** or **Delete** on a scheduled net.
+DMRHub starts the net at that time each week. The page of the talkgroup lists the scheduled nets in UTC, with **Edit** and **Delete**.
 
 ## Become a net control operator
 

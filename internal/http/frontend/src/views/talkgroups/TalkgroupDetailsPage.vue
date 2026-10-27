@@ -123,7 +123,7 @@
           <div class="flex items-center justify-between">
             <CardTitle>Net Control</CardTitle>
             <div class="flex gap-2">
-              <RouterLink v-if="!activeNet" :to="`/nets/scheduled/new?talkgroup_id=${talkgroupID}`">
+              <RouterLink v-if="canRunNets && !activeNet" :to="`/nets/scheduled/new?talkgroup_id=${talkgroupID}`">
                 <ShadButton variant="outline" size="sm">Schedule Net</ShadButton>
               </RouterLink>
             </div>
@@ -164,20 +164,20 @@
               <RouterLink :to="`/nets/${activeNet.id}`">
                 <ShadButton variant="outline" size="sm">View Check-Ins</ShadButton>
               </RouterLink>
-              <ShadButton variant="destructive" size="sm" @click="handleStopNet">Stop Net</ShadButton>
+              <ShadButton v-if="canRunNets" variant="destructive" size="sm" @click="handleStopNet">Stop Net</ShadButton>
             </div>
           </div>
 
           <!-- No active net -->
           <div v-else class="space-y-3">
             <p class="text-sm text-muted-foreground">No active net on this talkgroup.</p>
-            <div class="flex gap-2">
+            <div v-if="canRunNets" class="flex gap-2">
               <ShadButton variant="outline" size="sm" @click="showStartNet = !showStartNet">
                 {{ showStartNet ? 'Cancel' : 'Start Net' }}
               </ShadButton>
             </div>
             <!-- Inline start form -->
-            <div v-if="showStartNet" class="space-y-2 pt-2">
+            <div v-if="canRunNets && showStartNet" class="space-y-2 pt-2">
               <ShadInput
                 type="text"
                 v-model="netDescription"
@@ -205,7 +205,7 @@
                   <span v-if="sn.duration_minutes">({{ sn.duration_minutes }}m)</span>
                   <span v-if="!sn.enabled" class="text-muted-foreground"> (disabled)</span>
                 </span>
-                <span>
+                <span v-if="canRunNets">
                   <RouterLink :to="`/nets/scheduled/${sn.id}/edit`">
                     <ShadButton variant="ghost" size="sm">Edit</ShadButton>
                   </RouterLink>
@@ -274,6 +274,7 @@ import {
 } from '@/services/net';
 import { getWebsocketURI } from '@/services/util';
 import ws from '@/services/ws';
+import { useUserStore } from '@/store';
 
 type UserRef = {
   id: number;
@@ -366,6 +367,13 @@ export default {
     },
   },
   computed: {
+    canRunNets(): boolean {
+      const user = useUserStore();
+      if (!user.loggedIn) return false;
+      if (user.admin) return true;
+      const tg = this.talkgroup;
+      return !!tg && [...(tg.admins ?? []), ...(tg.ncos ?? [])].some((u) => u.id === user.id);
+    },
     columns() {
       void this.now;
       return lastHeardColumns({ destination: false });

@@ -271,6 +271,7 @@ type configShadow struct {
 	PProf        *pProfShadow    `json:"pprof"              toml:"pprof"              yaml:"pprof"`
 	HIBPAPIKey   *string         `json:"hibp-api-key"       toml:"hibp-api-key"       yaml:"hibp-api-key"`
 	AutoApprove  *bool           `json:"auto-approve-users" toml:"auto-approve-users" yaml:"auto-approve-users"`
+	LoginBackoff *bool           `json:"login-backoff"      toml:"login-backoff"      yaml:"login-backoff"`
 }
 
 // ConfigSchema returns the generated schema for Config.
@@ -470,6 +471,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("pprof.bind", configulator.LayerDefault, "default tag")
 	cfg.PProf.Port = 6060
 	set("pprof.port", configulator.LayerDefault, "default tag")
+	cfg.LoginBackoff = false
+	set("login-backoff", configulator.LayerDefault, "default tag")
 	return nil
 }
 
@@ -1172,6 +1175,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 	if s.AutoApprove != nil {
 		cfg.AutoApprove = *s.AutoApprove
 		set("auto-approve-users", configulator.LayerFile, file)
+	}
+	if s.LoginBackoff != nil {
+		cfg.LoginBackoff = *s.LoginBackoff
+		set("login-backoff", configulator.LayerFile, file)
 	}
 	return nil
 }
@@ -2400,6 +2407,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.AutoApprove = p
 		set("auto-approve-users", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "login-backoff"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "login-backoff",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.LoginBackoff = p
+		set("login-backoff", configulator.LayerEnv, n)
+	}
 	return nil
 }
 
@@ -2551,6 +2571,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"pprof" + o.Separator + "port",
 		"hibp-api-key",
 		"auto-approve-users",
+		"login-backoff",
 	}
 	for i, name := range names {
 		if f := fs.Lookup(name); f != nil {
@@ -2705,6 +2726,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(6060), names[135], "PProf server port")
 	fs.String(names[136], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
 	fs.Bool(names[137], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Bool(names[138], false, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
 	return nil
 }
 
@@ -4365,6 +4387,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.AutoApprove = v
 		set("auto-approve-users", configulator.LayerCLI, "--"+n)
 	}
+	if n := "login-backoff"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "login-backoff",
+				Source: "--" + n,
+			}
+		}
+		cfg.LoginBackoff = v
+		set("login-backoff", configulator.LayerCLI, "--"+n)
+	}
 	return nil
 }
 
@@ -4595,6 +4629,19 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.AutoApprove = &b
 			default:
 				return configJSONError("auto-approve-users", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "login-backoff":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.LoginBackoff = &b
+			default:
+				return configJSONError("login-backoff", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -7958,6 +8005,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "pprof.port = %v\n", c.PProf.Port)
 	fmt.Fprintf(&b, "hibp-api-key = %v\n", c.HIBPAPIKey)
 	fmt.Fprintf(&b, "auto-approve-users = %v\n", c.AutoApprove)
+	fmt.Fprintf(&b, "login-backoff = %v\n", c.LoginBackoff)
 	return b.String()
 }
 

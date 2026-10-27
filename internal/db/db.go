@@ -287,7 +287,7 @@ func migrate(db *gorm.DB, config *configPkg.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	err = db.AutoMigrate(&models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{}, &models.EmailVerification{}, &models.SetupSettings{}, &models.GeneratedSecret{}, &models.FirstAdmin{}, &models.RadioIDDrift{}, &models.RoutingRule{})
+	err = db.AutoMigrate(&models.Call{}, &models.Peer{}, &models.PeerRule{}, &models.Repeater{}, &models.Ratelimit{}, &models.Talkgroup{}, &models.User{}, &models.Message{}, &models.UserRadioID{}, &models.Session{}, &models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PositionSetting{}, &models.Position{}, &models.Plugin{}, &models.PluginRange{}, &models.PasswordReset{}, &models.EmailVerification{}, &models.SetupSettings{}, &models.GeneratedSecret{}, &models.FirstAdmin{}, &models.RadioIDDrift{}, &models.RoutingRule{}, &models.LoginFailure{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}

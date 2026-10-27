@@ -45,6 +45,7 @@ type Config struct {
 	PProf        PProf    `json:"pprof,omitempty" name:"pprof" description:"PProf configuration for the application, used for profiling and debugging purposes"`
 	HIBPAPIKey   string   `json:"-" yaml:"hibp-api-key" name:"hibp-api-key" description:"API key for the Have I Been Pwned service, used for checking if passwords have been compromised"`
 	AutoApprove  bool     `json:"auto-approve-users,omitempty" yaml:"auto-approve-users" name:"auto-approve-users" description:"Approve new users when they register, so they can log in at once without waiting for an admin"`
+	LoginBackoff bool     `json:"login-backoff" yaml:"login-backoff" name:"login-backoff" description:"Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes" default:"false"`
 }
 
 // GetDerivedSecret generates a derived secret key using PBKDF2 with the configured secret and password salt.

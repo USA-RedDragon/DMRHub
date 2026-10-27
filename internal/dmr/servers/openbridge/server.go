@@ -56,6 +56,9 @@ const (
 	quenchTTL        = 30 * time.Second
 	quenchPruneSize  = 1024
 	keepaliveTick    = time.Second
+	// staleAfter is the age at which a DMRE packet is dropped, as FreeDMR
+	// drops it (hblink.py "more than 5s old").
+	staleAfter = 5 * time.Second
 )
 
 // maxHops is the most OpenBridge links a call may cross, as FreeDMR's
@@ -604,6 +607,12 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 			s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
 			return
 		}
+	}
+
+	if bridge.Version != 1 && time.Since(time.Unix(0, int64(bridge.Time))) > staleAfter { //nolint:gosec
+		slog.Debug("Dropping a stale OpenBridge packet", "peerID", peerID, "sourceServer", bridge.SourceServer, "stream", packet.StreamID)
+		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
+		return
 	}
 
 	if !peer.Ingress || !rules.IngressAllows(known.ingress, &packet) {

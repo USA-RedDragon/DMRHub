@@ -457,25 +457,38 @@ func TestTransparencyMatrix(t *testing.T) {
 	for _, src := range mxSources() {
 		t.Run(src.name, func(t *testing.T) {
 			t.Parallel()
-			forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-				n := newMXNet(t, stack)
-				stream := uint(0xE0000)
-				for _, addr := range mxAddrs() {
-					for _, p := range mxPayloads() {
-						if !addr.takes(p) || (src.ipsc && (!p.ipsc || p.noIPSCSource)) {
-							continue
+			for _, be := range allBackends() {
+				t.Run(be.Name, func(t *testing.T) {
+					t.Parallel()
+					stream := uint(0xE0000)
+					for _, addr := range mxAddrs() {
+						first := stream
+						for _, p := range mxPayloads() {
+							if addr.takes(p) && (!src.ipsc || (p.ipsc && !p.noIPSCSource)) {
+								stream += 16
+							}
 						}
-						stream += 16
-						runMXCase(t, n, src, addr, p, stream)
+						t.Run(addr.name, func(t *testing.T) {
+							t.Parallel()
+							n := newMXNet(t, testutils.SetupIntegrationStack(t, be))
+							stream := first
+							for _, p := range mxPayloads() {
+								if !addr.takes(p) || (src.ipsc && (!p.ipsc || p.noIPSCSource)) {
+									continue
+								}
+								stream += 16
+								runMXCase(t, n, src, addr, p, stream)
+							}
+						})
 					}
-				}
-			})
+				})
+			}
 		})
 	}
 }
 
 func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, stream uint) {
-	t.Run(addr.name+"/"+p.name, func(t *testing.T) {
+	t.Run(p.name, func(t *testing.T) {
 		txs := p.build(t, addr.c)
 		var sent, heard []models.Packet
 		for i, tx := range txs {
@@ -494,7 +507,7 @@ func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, s
 		for _, tx := range txs {
 			total += len(tx.bursts)
 		}
-		g := n.drain(time.Duration(total)*60*time.Millisecond + time.Second)
+		g := n.drain(time.Duration(total) * 60 * time.Millisecond)
 		g.user = append(heard, g.user...)
 		mine := func(pkts []models.Packet) []models.Packet {
 			return ofCall(pkts, uint(addr.c.src), uint(addr.c.dst))

@@ -428,6 +428,8 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			r := newDialectRig(t, 311865)
+			check, err := secretCheck(testPassword)
+			require.NoError(t, err)
 			store := func() {
 				r.kv.StoreRepeater(context.Background(), 311865, models.Repeater{
 					RepeaterConfiguration: models.RepeaterConfiguration{ID: 311865},
@@ -436,6 +438,7 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 					Port:                  r.from.Port,
 					LastPing:              time.Now(),
 					Dialect:               tc.stored,
+					SecretCheck:           check,
 				})
 			}
 			store()

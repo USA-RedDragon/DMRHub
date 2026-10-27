@@ -57,6 +57,10 @@ Upgrade one replica at a time. Each replica that stops hands its repeaters, peer
 
 The first replica of the new release migrates the database. The replicas of the old release keep running on the migrated database until you upgrade them. Read the release notes for changes that the old release cannot run with.
 
+## Hotspots log in again once
+
+With `redis.enabled`, DMRHub keeps the session of each MMDVM hotspot in Redis, with a salted check of the hotspot password, so that another replica, or the same one after a restart, resumes the session. v1.3.17 and older keep no check. This release does not resume a session without a check, so after you upgrade from v1.3.17 or older, each MMDVM hotspot logs in again once. This takes a few seconds and needs no action.
+
 ## Roll back
 
 DMRHub has no command to undo a migration. An older release ignores the migrations that it does not know, so it can start on a database that a newer release migrated. But the database is not as the older release left it, and some changes stay. For example, after an upgrade from v1.3.0 and a downgrade to v1.3.0 on the same database, v1.3.0 made the parrot user and talkgroup 9990 again. When we upgraded again, the migration that deletes them did not run a second time, so they stayed.

@@ -1114,11 +1114,9 @@ func secretCheck(password string) ([]byte, error) {
 // loggedInWithCurrentSecret reports whether the KV record rec of the
 // repeater id came from a login with the password that the repeater has
 // now, so that a session that logged in with an old one never resumes. A
-// record without a check, from an older DMRHub, is taken as current.
+// record without a check, from an older DMRHub, is not: that hotspot logs in
+// again.
 func (s *Server) loggedInWithCurrentSecret(id uint, rec models.Repeater) bool {
-	if len(rec.SecretCheck) == 0 {
-		return true
-	}
 	if s.DB == nil || len(rec.SecretCheck) != secretSaltSize+sha256.Size {
 		return false
 	}

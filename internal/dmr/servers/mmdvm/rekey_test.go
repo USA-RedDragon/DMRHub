@@ -143,3 +143,28 @@ func TestAResumeThatReadTheRecordBeforeAPasswordChangeDoesNotTakeTheSession(t *t
 	second.records.Wait()
 	r.noPong(second, id)
 }
+
+// TestAReplicaDoesNotResumeASessionWithoutASecretCheck logs a hotspot in
+// and then drops the secret check from the KV record of the session, as in a
+// record that an older DMRHub wrote. Another replica must not resume the
+// session from it, for a ping or for egress, so the hotspot logs in again.
+func TestAReplicaDoesNotResumeASessionWithoutASecretCheck(t *testing.T) {
+	t.Parallel()
+	const id = 3000203
+	r, store := newSharedKVRig(t, id)
+	r.login(dmrd.DialectMMDVM, id)
+	r.s.records.Wait()
+	rec, err := r.kv.GetRepeater(context.Background(), id)
+	require.NoError(t, err)
+	require.NotEmpty(t, rec.SecretCheck)
+	rec.SecretCheck = nil
+	r.kv.StoreRepeater(context.Background(), id, rec)
+	second := r.secondReplica(store)
+
+	_, ok := second.resumeForEgress(context.Background(), id)
+	assert.False(t, ok, "egress resumed a session without a secret check")
+	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
+	require.NoError(t, err)
+	second.handlePacket(context.Background(), r.from, p)
+	r.noPong(second, id)
+}

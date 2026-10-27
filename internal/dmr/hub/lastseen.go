@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
 )
@@ -83,7 +84,7 @@ func (h *Hub) runSightings() {
 		case <-h.done:
 			return
 		case s := <-h.sightings:
-			h.recordSighting(context.Background(), s)
+			h.recordSighting(s)
 		case now := <-ticker.C:
 			pruneStreams(h.sightedStreams, now)
 			h.heardOn.Range(func(src uint, heard heardAt) bool {
@@ -122,8 +123,10 @@ func (h *Hub) runSightings() {
 // recordSighting moves the routing location of a registered radio to the
 // repeater that heard it, when the radio's user owns that repeater or an
 // admin trusts it. Other sightings are logged only, so a hotspot that
-// spoofs a source ID cannot pull that radio's private traffic.
-func (h *Hub) recordSighting(ctx context.Context, s sighting) {
+// spoofs a source ID cannot pull that radio's private traffic. The record
+// in the KV store, and the word to the plugins, go through the outbox of
+// the radio, so that a paused Redis holds no other sighting.
+func (h *Hub) recordSighting(s sighting) {
 	user, err := models.FindUserByID(h.db, s.src)
 	if err != nil {
 		h.noteHeardRadio(s)
@@ -140,16 +143,28 @@ func (h *Hub) recordSighting(ctx context.Context, s sighting) {
 	}
 	h.tellHeard(s, &rpt)
 	key := fmt.Sprintf("%s%d", lastSeenKeyPrefix, user.ID)
-	if prev, err := h.kv.Get(ctx, key); err == nil && string(prev) != strconv.FormatUint(uint64(rpt.ID), 10) {
-		slog.Info("Radio moved", "radioID", user.ID, "from", string(prev), "to", rpt.ID)
+	value := strconv.FormatUint(uint64(rpt.ID), 10)
+	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
+		Topic:      key,
+		Repeatable: true,
+		Send:       func() error { return h.storeSighting(user.ID, key, value) },
+	})
+}
+
+// storeSighting records in the KV store under key that the radio was
+// last heard on the repeater value.
+func (h *Hub) storeSighting(radio uint, key, value string) error {
+	ctx := context.Background()
+	if prev, err := h.kv.Get(ctx, key); err == nil && string(prev) != value {
+		slog.Info("Radio moved", "radioID", radio, "from", string(prev), "to", value)
 	}
-	if err := h.kv.Set(ctx, key, []byte(strconv.FormatUint(uint64(rpt.ID), 10))); err != nil {
-		slog.Warn("Failed to store where a radio was heard", "radioID", user.ID, "error", err)
-		return
+	if err := h.kv.Set(ctx, key, []byte(value)); err != nil {
+		return fmt.Errorf("storing where radio %d was heard: %w", radio, err)
 	}
 	if err := h.kv.Expire(ctx, key, lastSeenTTL); err != nil {
-		slog.Warn("Failed to expire where a radio was heard", "radioID", user.ID, "error", err)
+		return fmt.Errorf("expiring where radio %d was heard: %w", radio, err)
 	}
+	return nil
 }
 
 // noteHeardRadio tells the plugins where a radio ID that a user
@@ -174,9 +189,11 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 	if s.slot {
 		slot = 2
 	}
-	if err := plugins.PublishHeard(h.pubsub, s.src, rpt.ID, slot, rpt.ColorCode&0xF); err != nil {
-		slog.Warn("Failed to tell the plugins where a radio was heard", "radioID", s.src, "error", err)
-	}
+	repeater, cc := rpt.ID, rpt.ColorCode&0xF
+	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
+		Topic: plugins.HeardTopic,
+		Send:  func() error { return plugins.PublishHeard(h.pubsub, s.src, repeater, slot, cc) },
+	})
 }
 
 // locateRadio returns the repeater to send private traffic for the

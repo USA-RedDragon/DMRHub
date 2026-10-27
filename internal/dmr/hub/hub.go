@@ -108,6 +108,17 @@ const peerOwnerKeyPrefix = "dmrhub:peer_owner:"
 // crash without cleanup.
 const peerOwnerTTL = 5 * time.Minute
 
+// laterKey names a queue of the background work of the hub that goes to
+// Redis: what it is, and the radio or repeater it is for.
+type laterKey struct {
+	what string
+	id   uint
+}
+
+// sightingsWork is the work of laterKey that records and tells where a
+// radio was heard.
+const sightingsWork = "sightings"
+
 // Hub is the central routing core for all DMR protocols.
 type Hub struct {
 	db          *gorm.DB
@@ -145,6 +156,7 @@ type Hub struct {
 	routing    *streamorder.Queue[sourceSlot]
 	links      *streamorder.Queue[uint]
 	outbox     *outbox.Outbox[sourceSlot]
+	later      *outbox.Outbox[laterKey]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
 	userIDs      *lookup.Cache[uint, bool]
@@ -217,6 +229,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.links = streamorder.New[uint](routingQueueSize, h.done)
 	h.outbox = outbox.New(ps, h.done, "the bursts of a source slot", func(k sourceSlot) []any {
 		return []any{"server", k.server, "repeater", k.repeater, "slot", k.slot}
+	})
+	h.later = outbox.New(ps, h.done, "the background work of the hub", func(k laterKey) []any {
+		return []any{"work", k.what, "id", k.id}
 	})
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.userIDs = lookup.New("users", lookup.TTL, func(id uint) (bool, error) { return models.UserIDExists(h.db, id) })

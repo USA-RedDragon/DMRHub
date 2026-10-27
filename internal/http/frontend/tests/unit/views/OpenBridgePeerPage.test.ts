@@ -162,7 +162,7 @@ describe('OpenBridgePeerPage', () => {
     expect(later.find('[data-test="title"]').text()).toBe('Peer 3000');
     expect(later.find('[data-test="secret"]').exists()).toBe(false);
     expect(later.find('[data-test="copy-now"]').exists()).toBe(false);
-    expect(later.find('[data-test="secret-hidden"]').text()).toBe('Hidden. DMRHub showed it once, when you added this peer.');
+    expect(later.find('[data-test="secret-hidden"]').text()).toBe('Hidden');
     later.unmount();
   });
 

@@ -137,7 +137,7 @@ describe('RepeaterConnectPage', () => {
     expect(later.find('[data-test="title"]').text()).toBe('Hotspot 300000101: connect');
     expect(later.find('[data-test="secret"]').exists()).toBe(false);
     expect(later.find('[data-test="copy-now"]').exists()).toBe(false);
-    expect(later.find('[data-test="secret-hidden"]').text()).toBe('Hidden. DMRHub showed it once, when you enrolled this hotspot.');
+    expect(later.find('[data-test="secret-hidden"]').text()).toBe('Hidden');
     expect(later.text()).not.toContain('Ab3dE6gH9jK2');
     expect(later.find('[data-test="panel-pistar"]').text()).toContain('<hotspot password>');
     expect(later.find('[data-test="rotate"]').text()).toBe('Rotate password');

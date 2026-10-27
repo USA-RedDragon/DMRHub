@@ -68,9 +68,7 @@
               <CopyButton :text="secret" :label="`Copy ${secretWord}`" />
             </div>
             <div v-else class="details-v justify-between">
-              <span class="text-muted-foreground" data-test="secret-hidden">
-                Hidden. DMRHub showed it once, when you enrolled this {{ noun }}.
-              </span>
+              <span class="text-muted-foreground" data-test="secret-hidden">Hidden</span>
               <ShadButton
                 v-if="canRotate"
                 type="button"
@@ -318,8 +316,7 @@ export default {
         const where = this.kind === 'ipsc' ? 'CPS of the repeater' : `program that runs your ${this.noun}`;
         return `${owner}Put the values below in the ${where}.`;
       }
-      const hidden = this.secret ? '' : ` The ${this.secretWord} stays hidden.`;
-      return `${owner}You can open these steps at any time from the page of the ${this.noun}.${hidden}`;
+      return `${owner}You can open these steps at any time from the page of the ${this.noun}.`;
     },
     lastPing(): number {
       return timeOf(this.repeater?.last_ping_time);

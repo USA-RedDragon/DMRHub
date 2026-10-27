@@ -117,9 +117,7 @@
               <CopyButton :text="secret" label="Copy password" />
             </div>
             <div v-else class="details-v justify-between">
-              <span class="text-muted-foreground" data-test="secret-hidden">
-                Hidden. DMRHub showed it once, when you added this peer.
-              </span>
+              <span class="text-muted-foreground" data-test="secret-hidden">Hidden</span>
               <ShadButton
                 type="button"
                 variant="outline"

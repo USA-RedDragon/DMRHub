@@ -199,27 +199,37 @@ A new network has no talkgroups. Add one for the test call.
 
 ![The New Repeater page with the DMR Radio ID 300000101](Screenshots/setup-new-repeater.png)
 
-The browser then shows a dialog with a DMRGateway configuration, like this one:
+DMRHub then opens the connect page of the hotspot. It shows the server address, the port, the hotspot ID and the password, each with a **Copy** button, and a status that changes from **Waiting for the first login** to **Connected now** when the hotspot logs in. The **Set up your software** tabs (Pi-Star, WPSD, MMDVMHost, DMRGateway, DroidStar, HBlink3 and Other) have the values of the hotspot already filled in. The DMRGateway tab has a section like this one:
 
 ```ini
+[General]
+Id=300000101
+
 [DMR Network 2]
-Name=DMRHub
 Enabled=1
+Name=DMRHub
 Address=dmrhub.example.org
 Port=62031
-Password="kG7tZ2pQ9wX4"
 Id=300000101
+Password="kG7tZ2pQ9wX4"
+PassAllTG=1
+PassAllTG=2
+PassAllPC=1
+PassAllPC=2
+Options="TS1=91;TS2=3100;"
 Location=1
 Debug=0
 ```
 
-> **Important:** Copy the password now. DMRHub shows it only once. If you lose it, delete the hotspot on the Repeaters page and enroll it again.
+> **Important:** Copy the password now. DMRHub shows it only once. If you lose it, open the page of the hotspot, click **Connect**, then click **Rotate password**. See [Rotate the password](guides/connect-hotspot.md#rotate-the-password).
 
-The dialog takes `Address` from the address in your browser, and `Port` from the MMDVM port of the server. If you opened DMRHub by another name, use the real address.
+An older password can have a `#` or a `%`, which some hotspot software does not read correctly. If your password has one, rotate it the same way.
+
+The server address is the address that your admin set for hotspots, or else the host name of the DMRHub web site. The port is the MMDVM port of the server. If you opened DMRHub by another name, use the real address.
 
 ## Step 6: Configure the hotspot
 
-Use the values from step 5: the address of the server, the port, the hotspot ID and the password.
+Use the values from the connect page in step 5: the address of the server, the port, the hotspot ID and the password. The tab of your software on the connect page has the same steps as this section, with your values filled in.
 
 ### Pi-Star
 
@@ -271,8 +281,8 @@ MMDVMHost releases since June 2023 cannot connect to a master directly. They con
    Slot2=1
    ```
 
-2. In `DMRGateway.ini`, set `RptPort` and `LocalPort` of the `[General]` section to the two ports above, then add the section from step 5. Use a network number that is free in your file.
-3. Add pass rules to the section. Without them, DMRGateway sends nothing to DMRHub. When DMRHub is the only network, add all of these lines:
+2. In `DMRGateway.ini`, set `RptPort` and `LocalPort` of the `[General]` section to the two ports above, then add the section from the DMRGateway tab of the connect page. Use a network number that is free in your file.
+3. Keep the pass rules of the section. Without them, DMRGateway sends nothing to DMRHub. When DMRHub is the only network, the section needs all of these lines:
 
    ```ini
    [DMR Network 2]
@@ -294,7 +304,7 @@ MMDVMHost releases since June 2023 cannot connect to a master directly. They con
 
    When DMRHub shares DMRGateway with other networks, use rewrite rules (`TGRewrite`, `PCRewrite`) instead, and send only the talkgroups that you want to DMRHub. See the DMRGateway documentation for the rule format.
 
-With the section from step 5 alone, DMRGateway logs in to DMRHub, but drops each call. With `RuleTrace=1` in the `[General]` section, its log shows:
+Without the pass rules, DMRGateway logs in to DMRHub, but drops each call. With `RuleTrace=1` in the `[General]` section, its log shows:
 
 ```text
 Rule Trace, RF transmission: Slot=2 Src=3000001 Dst=TG9990
@@ -353,7 +363,9 @@ The steps were done on 2026-10-27 with these versions:
 | MMDVMHost in Pi-Star direct mode | MMDVMHost `0ecf2de` (2023-01-19), the last version before direct mode was removed |
 | Pi-Star settings | From the source of the Pi-Star dashboard, `Pi-Star_DV_Dash` `ca50804` |
 
-v1.3.17 keeps the Setup settings, the secret and the password salt in the database, and the hotspot dialog shows `Name=DMRHub` and the MMDVM port of the server. The install, wizard and dialog steps above follow v1.3.17. Of these changes, only the stored secret and password salt of a new install were checked again, with a build of v1.3.17. The screenshots of the wizard are from before v1.3.17.
+v1.3.17 keeps the Setup settings, the secret and the password salt in the database, and the hotspot dialog shows `Name=DMRHub` and the MMDVM port of the server. The install and wizard steps above follow v1.3.17. Of these changes, only the stored secret and password salt of a new install were checked again, with a build of v1.3.17. The screenshots of the wizard are from before v1.3.17.
+
+The connect page and password rotation in step 5 follow the release after v1.3.17. In v1.3.17 and earlier, Enroll New Repeater shows a dialog with the DMRGateway section without pass rules, and a lost password needs a new enroll. These steps were not checked again with a build, and the screenshot of step 5 is from before the connect page.
 
 The first-admin steps follow the release after v1.3.17, which has no setup token and adds the banner. In v1.3.17 and earlier, the log address ends in `?token=` and a code, the wizard opens only with that address, and the page is named **Create Initial Admin User**. These first-admin steps were not checked again with a build.
 
@@ -362,6 +374,6 @@ No radio and no RF were used. A fake MMDVM modem stood in for the modem board an
 The tests that passed:
 
 - Docker, Docker Compose and systemd installs: the wizard, the first admin, and a parrot call through a hotspot. After `docker restart`, `docker compose restart`, `systemctl restart` and a restart of the systemd container, DMRHub started the network with the saved configuration.
-- MMDVMHost with DMRGateway: with the section from step 5 alone, DMRGateway rejected the call. With `PassAllTG` and `PassAllPC`, the parrot reply came back to the hotspot.
+- MMDVMHost with DMRGateway: with the section of the old enroll dialog alone, which has no pass rules, DMRGateway rejected the call. With `PassAllTG` and `PassAllPC`, the parrot reply came back to the hotspot.
 - MMDVMHost in direct mode, as Pi-Star configures it: the parrot reply came back with no other settings.
 - A call to talkgroup 1 from one hotspot reached a second hotspot that had made a call to talkgroup 1 before.

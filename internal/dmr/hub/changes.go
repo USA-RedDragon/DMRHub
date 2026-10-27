@@ -133,7 +133,7 @@ func (h *Hub) announce(topic string, id uint) {
 func (h *Hub) applyChange(topic string, id uint) {
 	switch topic {
 	case talkgroupChangedTopic:
-		h.talkgroupIDs.Reload(id)
+		h.noteTalkgroup(id)
 	case userChangedTopic:
 		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)

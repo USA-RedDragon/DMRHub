@@ -189,6 +189,26 @@ func (c *Cache[K, V]) Reload(key K) {
 	c.entries.Store(key, newEntry(v, time.Now()))
 }
 
+// Refresh loads the answer for key again when the Cache holds one, and
+// keeps the new answer, so that an answer that is read seldom is not
+// pruned. When the load fails, the Cache keeps the answer that it had.
+func (c *Cache[K, V]) Refresh(key K) error {
+	if _, ok := c.entries.Load(key); !ok {
+		return nil
+	}
+	v, err := c.load(key)
+	if err != nil {
+		return err
+	}
+	c.Put(key, v)
+	return nil
+}
+
+// Put keeps v as the answer for key.
+func (c *Cache[K, V]) Put(key K, v V) {
+	c.entries.Store(key, newEntry(v, time.Now()))
+}
+
 // Drop forgets the answer for key, so that the next Get loads it.
 func (c *Cache[K, V]) Drop(key K) {
 	c.entries.Delete(key)

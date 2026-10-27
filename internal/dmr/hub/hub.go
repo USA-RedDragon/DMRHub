@@ -160,6 +160,10 @@ type Hub struct {
 	later      *outbox.Outbox[laterKey]
 
 	talkgroupIDs *lookup.Cache[uint, bool]
+	// talkgroups holds the IDs of all talkgroups, so that a burst to one
+	// never waits on the database.
+	talkgroups   atomic.Pointer[map[uint]struct{}]
+	talkgroupsMu sync.Mutex
 	radioOwners  *lookup.Cache[uint, uint]
 	radioCalls   *lookup.Cache[uint, heardAt]
 	egressTable  *lookup.Cache[struct{}, []egressPeer]
@@ -267,6 +271,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
 	h.tgRepeaters = lookup.New("talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
 	h.heard = make(chan heardNote, heardQueue)
+	if db != nil {
+		h.loadTalkgroups()
+	}
 	go h.runHeard()
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)

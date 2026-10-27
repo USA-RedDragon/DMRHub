@@ -21,7 +21,9 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"maps"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -131,4 +133,60 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 	}
 	h.repeaterChanged(repeater.ID)
 	h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
+}
+
+// loadTalkgroups reads the IDs of all talkgroups from the database. When
+// the database fails, the hub keeps the IDs that it had.
+func (h *Hub) loadTalkgroups() {
+	var ids []uint
+	if err := h.db.Model(&models.Talkgroup{}).Pluck("id", &ids).Error; err != nil {
+		slog.Error("Cannot load the talkgroups, keeping the ones known", "error", err)
+		return
+	}
+	set := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	h.talkgroupsMu.Lock()
+	h.talkgroups.Store(&set)
+	h.talkgroupsMu.Unlock()
+}
+
+// noteTalkgroup reads the talkgroup id again after a change of it.
+func (h *Hub) noteTalkgroup(id uint) {
+	exists, err := models.TalkgroupIDExists(h.db, id)
+	if err != nil {
+		slog.Error("Cannot read a changed talkgroup, forgetting it", "talkgroupID", id, "error", err)
+		h.talkgroupIDs.Drop(id)
+		return
+	}
+	h.talkgroupIDs.Put(id, exists)
+	h.talkgroupsMu.Lock()
+	defer h.talkgroupsMu.Unlock()
+	set := map[uint]struct{}{}
+	if old := h.talkgroups.Load(); old != nil {
+		set = maps.Clone(*old)
+	}
+	if exists {
+		set[id] = struct{}{}
+	} else {
+		delete(set, id)
+	}
+	h.talkgroups.Store(&set)
+}
+
+// talkgroupExists reports whether the talkgroup id exists. It waits on the
+// database at most lookup.Wait, and only for a talkgroup that the hub did
+// not load.
+func (h *Hub) talkgroupExists(id uint) (bool, error) {
+	if set := h.talkgroups.Load(); set != nil {
+		if _, ok := (*set)[id]; ok {
+			return true, nil
+		}
+	}
+	exists, err := h.talkgroupIDs.Get(id)
+	if err != nil {
+		return false, fmt.Errorf("looking up talkgroup %d: %w", id, err)
+	}
+	return exists, nil
 }

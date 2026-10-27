@@ -232,6 +232,8 @@ func (h *Hub) resyncRepeaters() {
 		case <-h.done:
 			return
 		case <-ticker.C:
+			h.loadTalkgroups()
+			h.refreshPeers()
 			var ids []uint
 			h.subscriptionMgr.subscriptions.Range(func(id uint, _ *xsync.Map[uint, *subscription]) bool {
 				ids = append(ids, id)

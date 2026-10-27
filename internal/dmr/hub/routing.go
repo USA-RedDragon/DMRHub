@@ -204,7 +204,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	if _, ok := h.streamTalkgroups.Load(streamTarget{stream: packet.StreamID, dst: packet.Dst}); ok {
 		return false
 	}
-	exists, err := h.talkgroupIDs.Get(packet.Dst)
+	exists, err := h.talkgroupExists(packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if talkgroup exists", "error", err)
 		return true
@@ -217,7 +217,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 func (h *Hub) handleGroupCall(key sourceSlot, packet models.Packet) {
 	target := streamTarget{stream: packet.StreamID, dst: packet.Dst}
 	if _, ok := h.streamTalkgroups.Load(target); !ok {
-		exists, err := h.talkgroupIDs.Get(packet.Dst)
+		exists, err := h.talkgroupExists(packet.Dst)
 		if err != nil {
 			slog.Error("Error checking if talkgroup exists", "error", err)
 			return

@@ -119,6 +119,15 @@ type egressPeer struct {
 	rules []models.PeerRule
 }
 
+// refreshPeers reads the peers that the hub sends bursts to from the
+// database again, once the hub read them, so that a quiet hub keeps them.
+// When the database fails, the hub keeps the peers that it had.
+func (h *Hub) refreshPeers() {
+	if err := h.egressTable.Refresh(struct{}{}); err != nil {
+		slog.Error("Cannot load the peers, keeping the ones known", "error", err)
+	}
+}
+
 func (h *Hub) loadEgressPeers(struct{}) ([]egressPeer, error) {
 	peers, err := models.ListPeers(h.db)
 	if err != nil {

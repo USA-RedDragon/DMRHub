@@ -326,6 +326,9 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
+import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import Talkgroup from '@/components/Talkgroup.vue';
+import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import { heardLine, type Codec, type Codec2Mode, type SlotCodec } from '@/lib/codec';
 import {
@@ -423,6 +426,9 @@ export default {
     Skeleton,
     DataTable,
     TypeFilter,
+    RelativeTimestamp,
+    Talkgroup,
+    User,
   },
   head: {
     title: 'Repeater Details',

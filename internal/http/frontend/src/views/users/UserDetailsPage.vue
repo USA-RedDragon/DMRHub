@@ -186,6 +186,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
+import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import {
   cleanCalls,
@@ -227,6 +228,7 @@ export default {
     DataTable,
     TypeFilter,
     RouterLink,
+    RelativeTimestamp,
   },
   head: {
     title: 'User Details',

@@ -40,6 +40,14 @@ export default defineConfigWithVueTs(
     },
   },
   {
+    files: ['src/**/*.vue'],
+    rules: {
+      'vue/no-undef-components': ['error', {
+        ignorePatterns: ['^RouterLink$', '^RouterView$', '^component$', '^SettingBadges$', '^SettingNote$'],
+      }],
+    },
+  },
+  {
     files: ['src/components/ui/**/*.vue'],
     rules: {
       'vue/multi-word-component-names': 'off',

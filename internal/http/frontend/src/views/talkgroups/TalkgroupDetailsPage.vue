@@ -250,6 +250,8 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
+import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import {
   cleanCalls,
@@ -304,6 +306,8 @@ export default {
     TypeFilter,
     ShadButton,
     ShadInput,
+    RelativeTimestamp,
+    User,
   },
   head: {
     title: 'Talkgroup Details',

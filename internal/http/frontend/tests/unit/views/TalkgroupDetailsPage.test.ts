@@ -27,6 +27,9 @@ vi.mock('@/services/API', () => ({
 vi.mock('@/services/ws', () => ({
   default: { connect: vi.fn(() => ({ close: vi.fn() })) },
 }));
+vi.mock('@/services/userdb', () => ({
+  getUserDB: vi.fn(() => Promise.resolve(null)),
+}));
 vi.mock('@/services/net', () => ({
   getNets: vi.fn(),
   startNet: vi.fn(),
@@ -112,6 +115,19 @@ describe('TalkgroupDetailsPage net controls', () => {
       expect(await page(user, true)).toContain('Stop Net');
     });
   }
+});
+
+describe('TalkgroupDetailsPage details', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows when the talkgroup was made and its admins and NCOs', async () => {
+    await page({ loggedIn: false }, false);
+    expect(lastText).toMatch(/Created\s*\d+ \w+ ago/);
+    expect(lastText).toContain('N0OWN');
+    expect(lastText).toContain('N0NCO');
+  });
 });
 
 describe('TalkgroupDetailsPage scheduled nets', () => {

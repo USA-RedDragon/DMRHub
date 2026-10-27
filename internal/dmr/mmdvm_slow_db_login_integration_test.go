@@ -33,8 +33,7 @@ import (
 // another while three more log in at once, as after a restart of the hub,
 // and every database statement takes 300 ms. No burst of the call may wait
 // on the database for the logins, and each login must still complete.
-func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
-	t.Parallel()
+func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) { //nolint:paralleltest,tparallel // the parallel tests of the package starve the call of CPU for more than half a statement
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		slow := slowDown(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")

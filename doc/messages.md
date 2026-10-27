@@ -18,7 +18,7 @@ This page lists the facts about text messages and SMS Storage on DMRHub. For the
 - You can add more 7-digit DMR IDs. RadioID.net must list each one under your callsign, and it must not belong to another user.
 - Hotspot and repeater IDs go on the Repeaters page, not on the list of radio IDs.
 - When you remove an ID, the messages to and from that ID go away from your Messages page.
-- On a network where the admin turned off the RadioID.net checks, only an admin can add radio IDs.
+- On a network where the admin turned off the RadioID.net checks, RadioID.net does not have to list the ID under your callsign.
 
 | Message | Meaning |
 | --- | --- |
@@ -26,7 +26,6 @@ This page lists the facts about text messages and SMS Storage on DMRHub. For the
 | N is already on your list | You added this ID before. |
 | N belongs to another DMRHub user | Another account has this ID. |
 | RadioID.net does not list N under your callsign | RadioID.net lists the ID under another callsign, or not at all. |
-| Only an admin can add radio IDs on this hub | The admin turned off the RadioID.net checks. |
 
 ## Boxes
 

@@ -217,14 +217,24 @@ func TestAddRadioIDErrors(t *testing.T) {
 	assert.Equal(t, int64(1), n)
 }
 
-func TestOnlyAdminsAddRadioIDsWithoutValidation(t *testing.T) {
+func TestUsersAddRadioIDsWithoutValidation(t *testing.T) {
 	t.Parallel()
 	router, db := settingsRouter(t, false)
 	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
+	testutils.SeedAccount(t, db, 3000001, "N0TEST", "other")
 	jar := testutils.Login(t, router, "owner")
 
-	w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", apimodels.RadioIDPost{ID: ownerSecondID})
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", apimodels.RadioIDPost{ID: 3000002})
+	require.Equal(t, http.StatusCreated, w.Code, "no RadioID.net check: %s", w.Body.String())
+	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", apimodels.RadioIDPost{ID: 3000001})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "belongs to another DMRHub user")
+	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", apimodels.RadioIDPost{ID: 30000003})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Enter a 7-digit DMR ID")
+	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3000002", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+
 	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3191868})
 	assert.Equal(t, http.StatusForbidden, w.Code, "a user is not an admin")
 	w = testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/1000001/radio-ids", nil)

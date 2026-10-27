@@ -28,6 +28,7 @@ import (
 
 const (
 	errorKey               = "error"
+	errorsKey              = "errors"
 	msgInternalServerError = "Internal server error"
 )
 

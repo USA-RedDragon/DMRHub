@@ -26,11 +26,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
@@ -40,13 +43,13 @@ import (
 
 const wizardToken = "wizard-token"
 
-func wizardRequest(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+func wizardRequest(t *testing.T, r *gin.Engine, method string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
 		require.NoError(t, json.NewEncoder(&buf).Encode(body))
 	}
-	req := httptest.NewRequestWithContext(context.Background(), method, path, &buf)
+	req := httptest.NewRequestWithContext(context.Background(), method, "/api/v1/config", &buf)
 	req.Header.Set("X-SetupWizard-Token", wizardToken)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -77,8 +80,10 @@ func TestSetupWizardSavesToTheDatabase(t *testing.T) {
 	require.NoError(t, live.Boot(context.Background()))
 	require.Error(t, live.Current().Get().Validate())
 
-	r := internalhttp.CreateSetupWizardRouter(&base, live, wizardToken, make(chan any, 1), "test", "test")
-	w := wizardRequest(t, r, http.MethodGet, "/api/v1/config", nil)
+	state := setupwizard.NewState()
+	state.SetLive(live, database)
+	r := internalhttp.CreateSetupWizardRouter(&base, state, wizardToken, make(chan any, 1), "test", "test")
+	w := wizardRequest(t, r, http.MethodGet, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var cfg map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
@@ -87,16 +92,155 @@ func TestSetupWizardSavesToTheDatabase(t *testing.T) {
 	httpSection["canonical-host"] = "https://hub.example"
 
 	cfg["secret"] = "another-secret-that-is-long-enough"
-	w = wizardRequest(t, r, http.MethodPut, "/api/v1/config", cfg)
+	w = wizardRequest(t, r, http.MethodPut, cfg)
 	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 	assert.Contains(t, w.Body.String(), "secret")
 
 	delete(cfg, "secret")
-	w = wizardRequest(t, r, http.MethodPut, "/api/v1/config", cfg)
+	w = wizardRequest(t, r, http.MethodPut, cfg)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	require.NoError(t, live.Current().Get().Validate())
 
 	next := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
 	require.NoError(t, next.Boot(context.Background()))
 	assert.Equal(t, "https://hub.example", next.Current().Get().HTTP.CanonicalHost)
+}
+
+type wizardConfig struct {
+	Settings map[string]liveconfig.Setting `json:"settings"`
+	Wizard   *struct {
+		Phase          string `json:"phase"`
+		DatabaseError  string `json:"database_error"`
+		DatabaseLocked bool   `json:"database_locked"`
+		DatabaseFile   string `json:"database_file"`
+		StoreError     string `json:"store_error"`
+	} `json:"wizard"`
+}
+
+// brokenDatabase returns a config whose SQLite database is in a directory
+// that does not exist, the error of its connection, and a wizard router in
+// the database phase.
+func brokenDatabase(t *testing.T, locks liveconfig.Locks, store liveconfig.DatabaseState) (*liveconfig.DatabaseFix, *gin.Engine) {
+	t.Helper()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.Database.Database = filepath.Join(t.TempDir(), "missing", "DMRHub.db")
+	_, openErr := db.MakeDB(&base)
+	require.Error(t, openErr)
+	fix := liveconfig.NewDatabaseFix(&base, locks, store, db.MakeDB, openErr)
+	state := setupwizard.NewState()
+	state.SetDatabaseFix(fix)
+	return fix, internalhttp.CreateSetupWizardRouter(&base, state, wizardToken, make(chan any, 1), "test", "test")
+}
+
+func wizardGET(t *testing.T, r *gin.Engine) (map[string]any, wizardConfig) {
+	t.Helper()
+	w := wizardRequest(t, r, http.MethodGet, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+	var cfg wizardConfig
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
+	return raw, cfg
+}
+
+func setDatabase(raw map[string]any, path string) {
+	d, _ := raw["database"].(map[string]any)
+	d["database"] = path
+}
+
+// TestSetupWizardFixesTheDatabase starts the wizard of a hub that cannot
+// reach its database. Only the database settings can change. A setting
+// that still fails stays refused; one that works reaches the start of
+// DMRHub and stays in the state file, readable by its owner only.
+func TestSetupWizardFixesTheDatabase(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	fix, r := brokenDatabase(t, liveconfig.Locks{}, store)
+
+	raw, cfg := wizardGET(t, r)
+	require.NotNil(t, cfg.Wizard)
+	assert.Equal(t, liveconfig.PhaseDatabase, cfg.Wizard.Phase)
+	assert.NotEmpty(t, cfg.Wizard.DatabaseError)
+	assert.Equal(t, store.Path, cfg.Wizard.DatabaseFile)
+	assert.Empty(t, cfg.Wizard.StoreError)
+	assert.True(t, cfg.Settings["database.database"].Editable)
+	assert.False(t, cfg.Settings["network-name"].Editable)
+
+	name := raw["network-name"]
+	raw["network-name"] = "Too early"
+	w := wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "fix the database first")
+	raw["network-name"] = name
+
+	setDatabase(raw, filepath.Join(t.TempDir(), "still", "missing.db"))
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "cannot reach this database")
+	_, err := os.Stat(store.Path)
+	assert.ErrorIs(t, err, os.ErrNotExist, "a setting that fails is not kept")
+
+	good := filepath.Join(t.TempDir(), "DMRHub.db")
+	setDatabase(raw, good)
+	got := make(chan liveconfig.Fixed, 1)
+	go func() {
+		f := <-fix.Fixed()
+		got <- f
+		f.Done(liveconfig.PhaseSetup)
+	}()
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), `"phase":"setup"`)
+	f := <-got
+	assert.Equal(t, good, f.Config.Database.Database)
+	require.NotNil(t, f.DB)
+	if sqlDB, err := f.DB.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	st, err := os.Stat(store.Path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	kept, ok, err := store.Load()
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, good, kept.Database)
+
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusBadRequest, w.Code, "a second fix is refused")
+}
+
+// TestSetupWizardLeavesALockedDatabaseToTheDeployment starts the wizard of
+// a hub whose environment sets the database host. The wizard cannot change
+// the database and says so.
+func TestSetupWizardLeavesALockedDatabaseToTheDeployment(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	_, r := brokenDatabase(t, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store)
+	raw, cfg := wizardGET(t, r)
+	assert.True(t, cfg.Wizard.DatabaseLocked)
+	assert.False(t, cfg.Settings["database.database"].Editable)
+	setDatabase(raw, filepath.Join(t.TempDir(), "DMRHub.db"))
+	w := wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "the deployment sets the database")
+}
+
+// TestSetupWizardSaysWhenItCannotKeepTheDatabase starts the wizard in a
+// working directory that DMRHub cannot write, as on a read-only mount. The
+// wizard cannot change the database and says where it would keep it.
+func TestSetupWizardSaysWhenItCannotKeepTheDatabase(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "readonly")
+	require.NoError(t, os.Mkdir(dir, 0o500))
+	store := liveconfig.DatabaseState{Path: filepath.Join(dir, liveconfig.DatabaseStateFile)}
+	_, r := brokenDatabase(t, liveconfig.Locks{}, store)
+	raw, cfg := wizardGET(t, r)
+	assert.Contains(t, cfg.Wizard.StoreError, dir)
+	assert.False(t, cfg.Settings["database.database"].Editable)
+	setDatabase(raw, filepath.Join(t.TempDir(), "DMRHub.db"))
+	w := wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "cannot keep a database setting")
 }

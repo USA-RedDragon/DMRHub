@@ -78,6 +78,17 @@ type ConfigResponse struct {
 	config.Config
 	Secrets SecretStatus `json:"secrets"`
 	liveconfig.Status
+	// Wizard is the state of the setup wizard while DMRHub cannot reach
+	// its database; nil otherwise.
+	Wizard *WizardStatus `json:"wizard,omitempty"`
+}
+
+// WizardStatus is the phase of the setup wizard, one of
+// liveconfig.PhaseDatabase, PhaseSetup and PhaseDone, with why DMRHub
+// cannot reach its database in the database phase.
+type WizardStatus struct {
+	Phase string `json:"phase"`
+	liveconfig.Problem
 }
 
 // ConfigSaveResponse is how the replicas put a save of the Setup settings

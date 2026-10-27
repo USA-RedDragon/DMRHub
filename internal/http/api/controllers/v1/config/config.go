@@ -73,7 +73,7 @@ func PUTConfig(c *gin.Context) {
 	res, errs, err := live.Save(c.Request.Context(), next)
 	switch {
 	case len(errs) > 0:
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: formatErrors(errs)})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: FormatErrors(errs)})
 		return
 	case errors.Is(err, liveconfig.ErrBusy):
 		c.JSON(http.StatusServiceUnavailable, gin.H{errorKey: err.Error()})
@@ -147,7 +147,7 @@ func GETConfigValidate(c *gin.Context) {
 
 	errs := config.ValidateWithFields()
 
-	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: FormatErrors(errs)})
 }
 
 // POSTConfigValidate checks a config as PUTConfig does, without a save.
@@ -167,10 +167,12 @@ func POSTConfigValidate(c *gin.Context) {
 
 	errs := live.Check(nextCfg)
 
-	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: formatErrors(errs)})
+	c.JSON(http.StatusOK, gin.H{"valid": len(errs) == 0, errorsKey: FormatErrors(errs)})
 }
 
-func formatErrors(errs []config.ValidationError) map[string]any {
+// FormatErrors nests the errors of errs by the parts of their fields, as
+// the Setup page shows them.
+func FormatErrors(errs []config.ValidationError) map[string]any {
 	errors := make(map[string]any)
 
 	for _, e := range errs {

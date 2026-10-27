@@ -96,6 +96,9 @@ type Options struct {
 	// settings of LoadedFile when it is LegacyFile; see Boot.
 	LoadedFile string
 	LegacyFile string
+	// WizardDatabase is whether the database settings come from the file
+	// in which the setup wizard keeps them; see DatabaseState.
+	WizardDatabase bool
 }
 
 // Replica is what a Live needs to share the settings with the other
@@ -304,6 +307,9 @@ func (l *Live) source(k Key) Source {
 	}
 	if _, ok := l.generated[k.Path]; ok {
 		return SourceGenerated
+	}
+	if l.opts.WizardDatabase && under(k.Path, "database") {
+		return SourceWizard
 	}
 	if _, ok := l.saved.Values[k.Path]; ok && k.Setup {
 		return SourceSetup

@@ -36,6 +36,8 @@ const (
 	// SourceGenerated is a secret that DMRHub made because no deployment
 	// set it.
 	SourceGenerated Source = "generated"
+	// SourceWizard is a database setting that the setup wizard set.
+	SourceWizard Source = "wizard"
 )
 
 // Lock is a setting that the config file, the environment or a flag sets.
@@ -65,7 +67,7 @@ func sourceOf(l configulator.Layer) Source {
 
 func rank(s Source) int {
 	switch s {
-	case SourceDefault, SourceSetup, SourceGenerated:
+	case SourceDefault, SourceSetup, SourceGenerated, SourceWizard:
 		return 0
 	case SourceFile:
 		return 1

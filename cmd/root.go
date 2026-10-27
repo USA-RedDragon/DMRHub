@@ -26,7 +26,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -34,13 +33,13 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/netscheduler"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
-	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
@@ -58,7 +57,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lmittmann/tint"
-	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -86,7 +84,8 @@ func NewCommand(version, commit string) *cobra.Command {
 
 func runRoot(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	fmt.Printf("DMRHub - %s (%s)\n", cmd.Annotations["version"], cmd.Annotations["commit"])
+	version, commit := cmd.Annotations["version"], cmd.Annotations["commit"]
+	fmt.Printf("DMRHub - %s (%s)\n", version, commit)
 
 	c, base, err := loadConfig(ctx)
 	if err != nil {
@@ -95,22 +94,11 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	setupLogger(base)
 
-	database, err := db.MakeDB(base)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+	booted, exit, err := bootConfig(ctx, c.Report(), base, version, commit)
+	if err != nil || exit {
+		return err
 	}
-
-	live := liveconfig.New(liveconfig.Options{
-		Base:       base,
-		Locks:      liveconfig.LocksFrom(c.Report()),
-		DB:         database,
-		LoadedFile: c.Report().File().Path,
-		LegacyFile: legacyConfigFile(),
-	})
-	if err := live.Boot(ctx); err != nil {
-		return fmt.Errorf("failed to read the Setup settings: %w", err)
-	}
-	current := live.Current()
+	live, database, current := booted.live, booted.db, booted.live.Current()
 	cfg := current.Get()
 
 	setupLogger(cfg)
@@ -123,19 +111,6 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	setupDMRDatabaseJobs(current, scheduler)
 
 	scheduler.Start()
-
-	if err := cfg.Validate(); err != nil {
-		// Validation failed, we need to still run the server to
-		// allow the user to fix the config
-		slog.Info("Configuration validation failed", "error", err)
-		exit := waitForConfig(base, live, cmd.Annotations["version"], cmd.Annotations["commit"])
-		if exit {
-			return nil
-		}
-		cfg = current.Get()
-	}
-
-	setupLogger(cfg)
 
 	cleanup, err := setupTracing(cfg)
 	if err != nil {
@@ -166,7 +141,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
 
-	servers, err := initializeServers(ctx, live, dmrHub, callTracker, kvStore, pubsubClient, database, cmd.Annotations["version"], cmd.Annotations["commit"])
+	servers, err := initializeServers(ctx, live, dmrHub, callTracker, kvStore, pubsubClient, database, version, commit)
 	if err != nil {
 		return err
 	}
@@ -178,6 +153,103 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+type booted struct {
+	live *liveconfig.Live
+	db   *gorm.DB
+}
+
+// bootConfig connects to the database and reads the Setup settings. It
+// runs the setup wizard while DMRHub cannot reach its database, and while
+// the config is not valid or no admin exists. exit is true when a signal
+// ends the wizard.
+func bootConfig(ctx context.Context, report *configulator.Report, base *config.Config, version, commit string) (booted, bool, error) {
+	locks := liveconfig.LocksFrom(report)
+	state := liveconfig.DatabaseStateIn()
+	wizardDB := false
+	if !liveconfig.DatabaseLocked(locks) {
+		d, ok, err := state.Load()
+		switch {
+		case err != nil:
+			slog.Error("Failed to read the database setting of the setup wizard", "file", state.Path, "error", err)
+		case ok:
+			withState := *base
+			withState.Database = d
+			base, wizardDB = &withState, true
+		}
+	}
+
+	var wiz *wizard
+	defer func() {
+		if wiz != nil {
+			wiz.stop(ctx)
+		}
+	}()
+	var fixed *liveconfig.Fixed
+	database, err := db.MakeDB(base) //nolint:contextcheck // MakeDB takes no context; it connects and migrates once at start
+	if err != nil {
+		slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
+		if wiz, err = startWizard(base, version, commit); err != nil {
+			return booted{}, false, err
+		}
+		f, exit := wiz.waitForDatabase(liveconfig.NewDatabaseFix(base, locks, state, db.MakeDB, err))
+		if exit {
+			return booted{}, true, nil
+		}
+		fixed, database, base, wizardDB = &f, f.DB, f.Config, true
+	}
+
+	live := liveconfig.New(liveconfig.Options{
+		Base:           base,
+		Locks:          locks,
+		DB:             database,
+		LoadedFile:     report.File().Path,
+		LegacyFile:     legacyConfigFile(),
+		WizardDatabase: wizardDB,
+	})
+	if err := live.Boot(ctx); err != nil {
+		return booted{}, false, fmt.Errorf("failed to read the Setup settings: %w", err)
+	}
+	needSetup, err := needsSetup(live.Current().Get(), database)
+	if err != nil {
+		return booted{}, false, err
+	}
+	if fixed != nil {
+		phase := liveconfig.PhaseDone
+		if needSetup {
+			phase = liveconfig.PhaseSetup
+		}
+		fixed.Done(phase)
+	}
+	if needSetup {
+		if wiz == nil {
+			if wiz, err = startWizard(base, version, commit); err != nil {
+				return booted{}, false, err
+			}
+		}
+		if wiz.waitForSetup(live, database) {
+			return booted{}, true, nil
+		}
+	}
+	return booted{live: live, db: database}, false, nil
+}
+
+// needsSetup reports whether the setup wizard must run: the config is not
+// valid, or no admin exists.
+func needsSetup(cfg *config.Config, database *gorm.DB) (bool, error) {
+	if err := cfg.Validate(); err != nil {
+		slog.Info("Configuration validation failed", "error", err)
+		return true, nil
+	}
+	admins, err := models.CountUserAdmins(database)
+	if err != nil {
+		return false, fmt.Errorf("failed to count the admins: %w", err)
+	}
+	if admins == 0 {
+		slog.Info("No admin exists yet")
+	}
+	return admins == 0, nil
+}
+
 // legacyConfigFile is the file that DMRHub wrote the settings of the Setup
 // page to before it kept them in the database.
 func legacyConfigFile() string {
@@ -186,57 +258,6 @@ func legacyConfigFile() string {
 		return ""
 	}
 	return filepath.Join(dir, "DMRHub", "config.yaml")
-}
-
-// waitForConfig runs the setup wizard until it completes or a signal
-// comes. It saves the Setup settings with live. The settings that take
-// effect at start only come from the config file and the environment.
-func waitForConfig(config *config.Config, live *liveconfig.Live, version, commit string) (exit bool) {
-	slog.Info("Setup can be completed in a web browser")
-	token, err := utils.RandomPassword(12, 0, 0)
-	if err != nil {
-		slog.Error("Failed to generate token", "error", err)
-		return
-	}
-	url := "http://localhost:3005/setup?token=" + token
-	slog.Info("Opening setup wizard at " + url)
-	configCh := make(chan any, 1)
-	httpServer := http.MakeSetupWizardServer(config, live, token, configCh, version, commit)
-	go func() {
-		err := httpServer.Start()
-		if err != nil {
-			if !strings.Contains(err.Error(), "server closed") {
-				slog.Error("failed to start HTTP server", "error", err)
-			}
-		}
-	}()
-
-	err = browser.OpenURL(url)
-	if err != nil {
-		slog.Error("Failed to open browser, please open "+url+" manually", "error", err)
-	}
-
-	stop := func(sig os.Signal) {
-		slog.Error("Shutting down due to signal", "signal", sig)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		httpServer.Stop(ctx)
-		if sig != nil {
-			exit = true
-		}
-	}
-
-	interruptCh := make(chan os.Signal, 1)
-	go func() {
-		<-configCh
-		slog.Info("Setup complete, shutting down setup wizard")
-		signal.Stop(interruptCh)
-		close(interruptCh)
-	}()
-
-	signal.Notify(interruptCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
-	stop(<-interruptCh)
-	return
 }
 
 // loadConfig loads the configuration from context, without the saved

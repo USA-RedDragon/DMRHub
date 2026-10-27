@@ -36,13 +36,13 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
 }
 
 func v1(group *gin.RouterGroup) {
-	group.PUT("/config", middleware.RequireSetupWizardToken(), v1APIConfigControllers.PUTConfig)
+	group.PUT("/config", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.PUTConfig)
 	group.POST("/setupwizard/complete", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.POSTSetupWizardComplete)
-	group.GET("/config", middleware.RequireSetupWizardToken(), v1APIConfigControllers.GETConfig)
+	group.GET("/config", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.GETConfig)
 	group.GET("/config/validate", middleware.RequireSetupWizardToken(), v1APIConfigControllers.GETConfigValidate)
-	group.POST("/config/validate", middleware.RequireSetupWizardToken(), v1APIConfigControllers.POSTConfigValidate)
+	group.POST("/config/validate", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.POSTConfigValidate)
 
-	group.POST("/users", middleware.RequireSetupWizardToken(), middleware.MakeDB(), v1APIUsersControllers.POSTUser, v1SetupWizardControllers.ApproveAndPromoteAdminUser)
+	group.POST("/users", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.ProvideDB, v1APIUsersControllers.POSTUser, v1SetupWizardControllers.ApproveAndPromoteAdminUser)
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
 	group.GET("/network/name", v1APIControllers.GETNetworkName)
 	group.GET("/version", v1APIControllers.GETVersion)

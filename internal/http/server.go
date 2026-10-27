@@ -45,6 +45,7 @@ import (
 	gormRateLimit "github.com/USA-RedDragon/DMRHub/internal/http/ratelimit"
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
+	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
@@ -132,10 +133,10 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 	}
 }
 
-// MakeSetupWizardServer returns the server of the setup wizard, which saves
-// the Setup settings with live; nil when the database is not reachable.
-func MakeSetupWizardServer(config *configPkg.Config, live *liveconfig.Live, token string, configCompleteChan chan any, version, commit string) Server {
-	r := CreateSetupWizardRouter(config, live, token, configCompleteChan, version, commit)
+// MakeSetupWizardServer returns the server of the setup wizard, whose
+// phase state holds.
+func MakeSetupWizardServer(config *configPkg.Config, state *setupwizard.State, token string, configCompleteChan chan any, version, commit string) Server {
+	r := CreateSetupWizardRouter(config, state, token, configCompleteChan, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", "[::]", "port", "3005")
 	s := &http.Server{
@@ -223,19 +224,23 @@ func currentConfig(current configPkg.Source) gin.HandlerFunc {
 	}
 }
 
-func addSetupWizardMiddleware(config *configPkg.Config, live *liveconfig.Live, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
+func addSetupWizardMiddleware(config *configPkg.Config, state *setupwizard.State, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("setupwizard"))
 		r.Use(middleware.TracingProvider(config))
 	}
 
-	if live != nil {
-		r.Use(currentConfig(live.Current()))
-		r.Use(middleware.Provider(v1ConfigControllers.LiveKey, live))
-	} else {
-		r.Use(middleware.Provider("Config", config))
-	}
+	r.Use(middleware.Provider(v1SetupWizardControllers.StateKey, state))
+	r.Use(func(c *gin.Context) {
+		if live := state.Live(); live != nil {
+			c.Set("Config", live.Current().Get())
+			c.Set(v1ConfigControllers.LiveKey, live)
+		} else {
+			c.Set("Config", config)
+		}
+		c.Next()
+	})
 	r.Use(middleware.Provider("SetupWizard", token))
 	r.Use(middleware.Provider("SetupWizardConfigCompleteChan", configCompleteChan))
 
@@ -250,16 +255,15 @@ func addSetupWizardMiddleware(config *configPkg.Config, live *liveconfig.Live, r
 	r.Use(middleware.Provider("Commit", commit))
 }
 
-// CreateSetupWizardRouter returns the router of the setup wizard, which
-// saves the Setup settings with live; nil when the database is not
-// reachable.
-func CreateSetupWizardRouter(config *configPkg.Config, live *liveconfig.Live, token string, configCompleteChan chan any, version, commit string) *gin.Engine {
+// CreateSetupWizardRouter returns the router of the setup wizard, whose
+// phase state holds.
+func CreateSetupWizardRouter(config *configPkg.Config, state *setupwizard.State, token string, configCompleteChan chan any, version, commit string) *gin.Engine {
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	addSetupWizardMiddleware(config, live, r, token, configCompleteChan, version, commit)
+	addSetupWizardMiddleware(config, state, r, token, configCompleteChan, version, commit)
 
 	setupwizard.ApplyRoutes(config, r)
 

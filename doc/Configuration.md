@@ -2,15 +2,18 @@
 
 ## Setup Wizard (Recommended)
 
-The easiest way to configure DMRHub is with the **built-in setup wizard**. When DMRHub starts and its configuration is not valid, it starts a web-based setup wizard and opens your browser to it.
+The easiest way to configure DMRHub is with the **built-in setup wizard**. DMRHub starts it, and opens your browser to it, when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database.
 
 The wizard will:
 
-1. Show all configuration options, and check your settings while you type
-2. Save the settings that Setup changes in the database
-3. Create your first admin user
+1. Fix the database settings when DMRHub cannot reach its database
+2. Show all configuration options, and check your settings while you type
+3. Save the settings that Setup changes in the database
+4. Create your first admin user
 
-Before the first start, set `secret` and `password-salt` in the config file or the environment. The wizard cannot set them, because DMRHub never writes a config file. The same is true of the other settings that take effect at start only; see [Setup settings](#setup-settings).
+DMRHub never writes a config file. When no config file, environment variable or flag sets `secret` or `password-salt`, DMRHub makes a strong random value for each at its first start and keeps it in the database. Every later start and every replica uses the same values. A value that the deployment sets wins over the one DMRHub made. Do not change `password-salt` after users exist: their passwords stop working.
+
+When DMRHub cannot reach its database, the wizard lets you fix the database settings. DMRHub tries the new settings at once. When they work, it keeps them in `dmrhub-database.json` in its working directory, which is where the default SQLite database lives too, readable by its owner only, and uses that file at each start. It cannot keep them in the database that it could not reach. DMRHub uses this file only when the config file, the environment and the flags set no database setting. When the deployment sets any database setting, or the working directory is read-only, such as on a Kubernetes mount, the wizard cannot fix the database: set it in the config file or the environment of the deployment.
 
 ## Configuration Sources
 
@@ -33,7 +36,7 @@ A setting that the config file, an environment variable or a flag sets is **lock
 
 These settings take effect at start only. They come from the config file, the environment and the flags only, and DMRHub never keeps them in the database:
 
-- `secret`, `password-salt`, `hibp-api-key` and the passwords of SMTP, the database and Redis
+- `secret`, `password-salt`, `hibp-api-key` and the passwords of SMTP, the database and Redis (DMRHub makes `secret` and `password-salt` when no deployment sets them; see [Setup Wizard](#setup-wizard-recommended))
 - `database.*` and `redis.*`
 - `http.bind`, `http.port`, `http.trusted-proxies` and `http.cors.*`
 - `metrics.*` and `pprof.*`
@@ -159,7 +162,7 @@ Every option is listed below with its YAML key, default, environment variable, a
 
 ### Required Settings
 
-At minimum, the following must be configured. Set `secret` and `password-salt` in the config file or the environment; the setup wizard can set `http.canonical-host`:
+At minimum, the following must be configured. DMRHub makes `secret` and `password-salt` when no deployment sets them, and the setup wizard can set `http.canonical-host`:
 
 |        Setting        |                                             Description                                             |
 | --------------------- | --------------------------------------------------------------------------------------------------- |

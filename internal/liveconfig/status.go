@@ -25,6 +25,9 @@ import (
 	"encoding/json"
 	"sort"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 // Setting is how one setting stands on this replica and the others.
@@ -41,6 +44,8 @@ type Setting struct {
 	Source Source `json:"source"`
 	// Saved is the value saved in Setup, if any.
 	Saved json.RawMessage `json:"saved,omitempty"`
+	// Default is the default value; none for a secret.
+	Default json.RawMessage `json:"default,omitempty"`
 	// NotInEffect is whether this replica could not put into effect the
 	// value it should run with: that of the deployment when the setting is
 	// locked, else the saved value, else the default. It then keeps its
@@ -98,12 +103,14 @@ func (l *Live) Status(ctx context.Context) (Status, error) {
 	settings := make(map[string]Setting, len(l.keys))
 	running := l.cur.Get()
 	wanted := l.effective(saved)
+	def := defaults()
 	for _, k := range l.keys {
 		_, locked := l.opts.Locks[k.Path]
 		s := Setting{Editable: l.Editable(k), Locked: locked, StartOnly: !k.Setup, Source: l.source(k)}
 		if raw, ok := saved.Values[k.Path]; ok && k.Setup {
 			s.Saved = raw
 		}
+		s.Default = defaultOf(k, def)
 		s.NotInEffect = !k.Equal(running, wanted)
 		settings[k.Path] = s
 	}
@@ -152,4 +159,43 @@ func disagree(all []Report, path string) bool {
 		}
 	}
 	return false
+}
+
+func defaults() *config.Config {
+	d, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		return nil
+	}
+	return &d
+}
+
+func defaultOf(k Key, defaults *config.Config) json.RawMessage {
+	if k.Secret || defaults == nil {
+		return nil
+	}
+	v, err := k.Value(defaults)
+	if err != nil {
+		return nil
+	}
+	return v
+}
+
+// PendingStatus is how the settings stand while DMRHub cannot reach its
+// database. Only the database settings can change then, and only when the
+// deployment sets none of them and canStore, so that the setup wizard can
+// keep them; see DatabaseState.
+func PendingStatus(locks Locks, canStore bool) Status {
+	editable := canStore && !DatabaseLocked(locks)
+	st := Status{Settings: map[string]Setting{}, Replicas: []ReplicaStatus{}}
+	def := defaults()
+	for _, k := range Keys() {
+		lock, locked := locks[k.Path]
+		s := Setting{Locked: locked, StartOnly: !k.Setup, Source: SourceDefault, Default: defaultOf(k, def)}
+		if locked {
+			s.Source = lock.Source
+		}
+		s.Editable = editable && under(k.Path, "database")
+		st.Settings[k.Path] = s
+	}
+	return st
 }

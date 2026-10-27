@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
@@ -63,7 +64,12 @@ func lastSeenHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
 
 func lastSeenHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
 	t.Helper()
-	h, database, ps := makeTestHubWithPubSub(t)
+	return lastSeenHubWrappingKV(t, func(k kv.KV) kv.KV { return k })
+}
+
+func lastSeenHubWrappingKV(t *testing.T, wrapKV func(kv.KV) kv.KV) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
+	t.Helper()
+	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, wrapKV)
 	seedUser(t, database, 1000001, "OTHER")
 	seedUser(t, database, 1000002, "TARGET")
 	seedRepeater(t, database, 100003, 1000002)
@@ -282,9 +288,31 @@ func countTableQueries(t *testing.T, database *gorm.DB, table string) queryCount
 	return queryCount{n: c, base: c.Load()}
 }
 
+// countedGets counts the reads of key in the KV store.
+type countedGets struct {
+	kv.KV
+	key string
+	n   atomic.Int64
+}
+
+func (c *countedGets) Get(ctx context.Context, key string) ([]byte, error) {
+	if key == c.key {
+		c.n.Add(1)
+	}
+	return c.KV.Get(ctx, key) //nolint:wrapcheck
+}
+
+// TestPrivateStreamLooksUpItsTargetOnce sends a private stream to a radio,
+// and counts the reads of the owner of the radio in the database and of
+// where it was heard in the KV store after the first burst. The stream
+// keeps the target of its first burst, so it reads neither again.
 func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
+	heardReads := &countedGets{key: "dmrhub:lastheard:1000002"}
+	h, database, _, srv := lastSeenHubWrappingKV(t, func(k kv.KV) kv.KV {
+		heardReads.KV = k
+		return heardReads
+	})
 	loadLookups(t, h, nil, []uint{1000001})
 
 	hear(t, h, 1000002, 100003, 1)
@@ -297,12 +325,14 @@ func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond, "the sightings of both streams are recorded")
 
 	users := countTableQueries(t, database, "users")
+	heard := heardReads.n.Load()
 	for seq := uint(1); seq < 10; seq++ {
 		burst.Seq = seq
 		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
 		expectAt(t, srv, 100003, "a later burst of the stream")
 	}
 	assert.Zero(t, users.Load(), "user lookups after the first burst of a private stream")
+	assert.Equal(t, heard, heardReads.n.Load(), "reads of where the target was heard after the first burst of a private stream")
 }
 
 func TestGroupStreamChecksItsTalkgroupOnce(t *testing.T) {

@@ -55,7 +55,7 @@ Each box shows the 250 most recent messages. New messages appear while the page 
 | ETSI IP         | Text in an IP and UDP packet                               |
 | Motorola TMS    | Motorola Text Messaging Service                            |
 | AnyTone         | AnyTone text messages                                      |
-| Hytera          | Hytera text messages                                       |
+| Hytera          | Short data in the Hytera text layout, which AnyTone radios send in H-SMS mode |
 | Defined Data    | Text sent as ETSI defined short data                       |
 | Data (not text) | A data message that is not text, for example location data |
 | Unknown         | A format that DMRHub does not know                         |

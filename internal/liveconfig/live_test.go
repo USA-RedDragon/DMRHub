@@ -361,3 +361,46 @@ func TestBootImportsOnlyTheFileThatDMRHubWroteAndLoads(t *testing.T) {
 		assert.Equal(t, "DMRHub", l.Current().Get().NetworkName)
 	})
 }
+
+// TestBootMakesTheSecretsOnce boots replicas whose deployment sets no
+// secret. The first makes a secret and a password salt, every later boot
+// and replica gets the same ones, a secret that the environment sets wins,
+// and no status shows them.
+func TestBootMakesTheSecretsOnce(t *testing.T) {
+	t.Parallel()
+	for _, be := range backends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			database := newDB(t, be)
+			first := boot(t, database, deployment{})
+			got := first.Current().Get()
+			assert.GreaterOrEqual(t, len(got.Secret), 40)
+			assert.GreaterOrEqual(t, len(got.PasswordSalt), 40)
+			assert.NotEqual(t, got.Secret, got.PasswordSalt)
+
+			again := boot(t, database, deployment{})
+			assert.Equal(t, got.Secret, again.Current().Get().Secret)
+			assert.Equal(t, got.PasswordSalt, again.Current().Get().PasswordSalt)
+
+			locked := boot(t, database, deployment{env: map[string]string{"SECRET": "a-secret-that-the-environment-sets"}})
+			assert.Equal(t, "a-secret-that-the-environment-sets", locked.Current().Get().Secret)
+			assert.Equal(t, got.PasswordSalt, locked.Current().Get().PasswordSalt)
+
+			st, err := again.Status(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, liveconfig.SourceGenerated, st.Settings["secret"].Source)
+			assert.False(t, st.Settings["secret"].Editable)
+			b, err := json.Marshal(st)
+			require.NoError(t, err)
+			assert.NotContains(t, string(b), got.Secret)
+			assert.NotContains(t, string(b), got.PasswordSalt)
+
+			next := *again.Current().Get()
+			next.NetworkName = "Net"
+			next.HTTP.CanonicalHost = "http://localhost"
+			_, errs, err := again.Save(context.Background(), &next)
+			require.NoError(t, err)
+			assert.Empty(t, errs, "a save keeps the made secrets")
+		})
+	}
+}

@@ -156,10 +156,11 @@ type Live struct {
 	cur  *config.Current
 	keys []Key
 
-	mu     sync.Mutex
-	saved  Saved
-	report Report
-	rep    Replica
+	mu        sync.Mutex
+	saved     Saved
+	report    Report
+	rep       Replica
+	generated map[string]string
 
 	stopMu  sync.Mutex
 	cancel  context.CancelFunc
@@ -214,6 +215,9 @@ func (l *Live) Editable(k Key) bool {
 // overrides, and no value equal to its default.
 func (l *Live) Boot(ctx context.Context) error {
 	if err := l.importLegacy(ctx); err != nil {
+		return err
+	}
+	if err := l.loadGenerated(ctx); err != nil {
 		return err
 	}
 	saved, err := LoadSaved(ctx, l.opts.DB)
@@ -286,12 +290,20 @@ func (l *Live) effective(saved Saved) *config.Config {
 			slog.Error("A saved Setup setting does not fit its setting, so the replica leaves it out", "setting", k.Path, "error", err)
 		}
 	}
+	for _, k := range l.keys {
+		if v, ok := l.generated[k.Path]; ok {
+			k.field(&next).SetString(v)
+		}
+	}
 	return &next
 }
 
 func (l *Live) source(k Key) Source {
 	if lock, ok := l.opts.Locks[k.Path]; ok {
 		return lock.Source
+	}
+	if _, ok := l.generated[k.Path]; ok {
+		return SourceGenerated
 	}
 	if _, ok := l.saved.Values[k.Path]; ok && k.Setup {
 		return SourceSetup

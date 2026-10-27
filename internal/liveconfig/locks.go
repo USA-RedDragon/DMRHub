@@ -33,6 +33,9 @@ const (
 	SourceFile    Source = "file"
 	SourceEnv     Source = "env"
 	SourceFlag    Source = "flag"
+	// SourceGenerated is a secret that DMRHub made because no deployment
+	// set it.
+	SourceGenerated Source = "generated"
 )
 
 // Lock is a setting that the config file, the environment or a flag sets.
@@ -62,7 +65,7 @@ func sourceOf(l configulator.Layer) Source {
 
 func rank(s Source) int {
 	switch s {
-	case SourceDefault, SourceSetup:
+	case SourceDefault, SourceSetup, SourceGenerated:
 		return 0
 	case SourceFile:
 		return 1

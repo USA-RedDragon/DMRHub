@@ -59,7 +59,7 @@ func TestActivateRepeaterWithDynamicTG(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt := makeVoicePacket(7, 70001, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
@@ -68,7 +68,7 @@ func TestActivateRepeaterWithDynamicTG(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(7), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for dynamic TG delivery")
 	}
 }
@@ -92,13 +92,14 @@ func TestActivateRepeaterReceivesAtOnce(t *testing.T) {
 	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
+	knowTalkgroups(t, h)
 	h.ActivateRepeater(context.Background(), 100002)
 	h.RoutePacket(context.Background(), makeVoicePacket(60, 60001, true, false), models.RepeaterTypeMMDVM)
 
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
-	case <-time.After(5 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("a burst routed right after ActivateRepeater was lost")
 	}
 }
@@ -150,7 +151,7 @@ func TestActivateRepeaterBothTimeslotStaticTGs(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Send group call on TS1 TG20
 	pkt := makeVoicePacket(20, 70002, true, false)
@@ -160,7 +161,7 @@ func TestActivateRepeaterBothTimeslotStaticTGs(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(20), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for TS1 static TG delivery")
 	}
 
@@ -172,7 +173,7 @@ func TestActivateRepeaterBothTimeslotStaticTGs(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(21), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for TS2 static TG delivery")
 	}
 }
@@ -204,7 +205,7 @@ func TestDynamicTGOnBothTimeslots(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify TS1 dynamic TG
 	pkt := makeVoicePacket(25, 70010, true, false)
@@ -214,7 +215,7 @@ func TestDynamicTGOnBothTimeslots(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(25), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for TS1 dynamic TG delivery")
 	}
 
@@ -226,7 +227,7 @@ func TestDynamicTGOnBothTimeslots(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(26), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for TS2 dynamic TG delivery")
 	}
 }
@@ -250,18 +251,13 @@ func TestSubscribeTGIgnoresEchoFromSameRepeater(t *testing.T) {
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
 	h.ActivateRepeater(context.Background(), 100001)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Repeater 100001 sends to TG30 — it should NOT receive its own packet back
 	pkt := makeVoicePacket(30, 70004, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("subscribeTG should not echo packets back to the originating repeater")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery back to self
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt, 100001), "subscribeTG should not echo packets back to the originating repeater")
 }
 
 // TestSimplexRepeaterCrossTimeslotEcho verifies that a simplex repeater
@@ -284,7 +280,7 @@ func TestSimplexRepeaterCrossTimeslotEcho(t *testing.T) {
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
 	h.ActivateRepeater(context.Background(), 100001)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Repeater 100001 sends on TS1 (slot=false) to TG31 — simplex should echo back on TS2 (slot=true)
 	pkt := makeVoicePacket(31, 70020, true, false)
@@ -295,7 +291,7 @@ func TestSimplexRepeaterCrossTimeslotEcho(t *testing.T) {
 		assert.Equal(t, uint(100001), rp.RepeaterID)
 		assert.Equal(t, uint(31), rp.Packet.Dst)
 		assert.True(t, rp.Packet.Slot, "Simplex echo should deliver on opposite timeslot (TS2)")
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for simplex cross-timeslot echo")
 	}
 }
@@ -320,7 +316,7 @@ func TestSimplexRepeaterTS2ToTS1(t *testing.T) {
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
 	h.ActivateRepeater(context.Background(), 100001)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Repeater 100001 sends on TS2 (slot=true) to TG32 — simplex should echo back on TS1 (slot=false)
 	pkt := makeVoicePacket(32, 70021, true, true)
@@ -331,7 +327,7 @@ func TestSimplexRepeaterTS2ToTS1(t *testing.T) {
 		assert.Equal(t, uint(100001), rp.RepeaterID)
 		assert.Equal(t, uint(32), rp.Packet.Dst)
 		assert.False(t, rp.Packet.Slot, "Simplex echo should deliver on opposite timeslot (TS1)")
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for simplex TS2→TS1 echo")
 	}
 }
@@ -355,17 +351,12 @@ func TestNonSimplexRepeaterDoesNotEcho(t *testing.T) {
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
 	h.ActivateRepeater(context.Background(), 100001)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt := makeVoicePacket(33, 70022, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("Non-simplex repeater should not echo packets back to itself")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery back to self
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt, 100001), "Non-simplex repeater should not echo packets back to itself")
 }
 
 // TestReloadRepeaterPicksUpNewStaticTG verifies that reloading a repeater after
@@ -383,7 +374,7 @@ func TestReloadRepeaterPicksUpNewStaticTG(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Create TG40 and assign it to repeater 100002 after Start
 	seedTalkgroup(t, database, 40, "TG40")
@@ -393,7 +384,7 @@ func TestReloadRepeaterPicksUpNewStaticTG(t *testing.T) {
 
 	// Reload so the subscription manager picks up the new static TG
 	h.ReloadRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt := makeVoicePacket(40, 70005, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
@@ -402,7 +393,7 @@ func TestReloadRepeaterPicksUpNewStaticTG(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(40), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for delivery after reload with new static TG")
 	}
 }
@@ -444,7 +435,7 @@ func TestActivateRepeaterIdempotent(t *testing.T) {
 		h.ActivateRepeater(context.Background(), 100001)
 		h.ActivateRepeater(context.Background(), 100002)
 	})
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify only ONE packet is delivered (no duplicate subscription)
 	pkt := makeVoicePacket(60, 70008, true, false)
@@ -453,17 +444,12 @@ func TestActivateRepeaterIdempotent(t *testing.T) {
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for delivery")
 	}
 
 	// No second packet should arrive
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("Duplicate subscription detected — received extra packet")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no duplicate
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt, 100002), "Duplicate subscription detected — received extra packet")
 }
 
 // TestDeactivateRepeaterStopsDelivery verifies that deactivating a repeater
@@ -486,7 +472,7 @@ func TestDeactivateRepeaterStopsDelivery(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify delivery works before deactivation
 	pkt := makeVoicePacket(70, 70050, true, false)
@@ -495,24 +481,18 @@ func TestDeactivateRepeaterStopsDelivery(t *testing.T) {
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for delivery before deactivation")
 	}
 
 	// Deactivate the destination repeater
 	h.DeactivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
 
 	// Packets should no longer be delivered
 	pkt2 := makeVoicePacket(70, 70051, true, false)
 	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
 
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("Deactivated repeater should not receive packets")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt2, 100001), "Deactivated repeater should not receive packets")
 }
 
 // TestDeleteTalkgroupAndReloadClearsSubscription verifies that after deleting
@@ -537,7 +517,7 @@ func TestDeleteTalkgroupAndReloadClearsSubscription(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify delivery works before deletion
 	pkt := makeVoicePacket(80, 70060, true, false)
@@ -547,7 +527,7 @@ func TestDeleteTalkgroupAndReloadClearsSubscription(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(80), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for delivery before talkgroup deletion")
 	}
 
@@ -560,18 +540,13 @@ func TestDeleteTalkgroupAndReloadClearsSubscription(t *testing.T) {
 	for _, rid := range affectedIDs {
 		h.ReloadRepeater(context.Background(), rid)
 	}
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Packets to the deleted talkgroup should no longer be delivered
 	pkt2 := makeVoicePacket(80, 70061, true, false)
 	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
 
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("Repeater should not receive packets for a deleted talkgroup")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery after talkgroup deletion
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt2, 100002), "Repeater should not receive packets for a deleted talkgroup")
 }
 
 // TestDeleteTalkgroupWithDynamicTGReturnsAffectedRepeaters verifies that
@@ -598,7 +573,7 @@ func TestDeleteTalkgroupWithDynamicTGReturnsAffectedRepeaters(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify delivery works
 	pkt := makeVoicePacket(90, 70070, true, true)
@@ -607,7 +582,7 @@ func TestDeleteTalkgroupWithDynamicTGReturnsAffectedRepeaters(t *testing.T) {
 	select {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for dynamic TG delivery")
 	}
 
@@ -620,17 +595,12 @@ func TestDeleteTalkgroupWithDynamicTGReturnsAffectedRepeaters(t *testing.T) {
 	for _, rid := range affectedIDs {
 		h.ReloadRepeater(context.Background(), rid)
 	}
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt2 := makeVoicePacket(90, 70071, true, true)
 	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
 
-	select {
-	case <-srvHandle.Packets:
-		t.Fatal("Repeater should not receive packets for deleted dynamic talkgroup")
-	case <-time.After(500 * time.Millisecond):
-		// Expected
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt2, 100002), "Repeater should not receive packets for deleted dynamic talkgroup")
 }
 
 // TestReloadRepeaterNoOpForNonConnected verifies that calling ReloadRepeater
@@ -656,22 +626,17 @@ func TestReloadRepeaterNoOpForNonConnected(t *testing.T) {
 
 	// Only activate the source — leave 100002 disconnected
 	h.ActivateRepeater(context.Background(), 100001)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Reload the non-connected repeater (simulates admin API call)
 	h.ReloadRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Send a packet on TG95 — should NOT be delivered to non-connected 100002
 	pkt := makeVoicePacket(95, 70080, true, false)
 	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case rp := <-srvHandle.Packets:
-		t.Fatalf("Non-connected repeater should not receive packets, got delivery to repeaterID=%d", rp.RepeaterID)
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery for non-connected repeater
-	}
+	assert.Empty(t, flush(t, h, srvHandle, pkt, 100001), "Non-connected repeater should not receive packets")
 }
 
 // TestSubscribeTGWantRXFalseCleansUpSubscription verifies that when subscribeTG
@@ -701,7 +666,7 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Verify delivery works initially
 	pkt := makeVoicePacket(50, 80001, true, false)
@@ -711,7 +676,7 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(50), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for initial TG50 delivery")
 	}
 
@@ -728,10 +693,7 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 	h.RoutePacket(context.Background(), pkt2, models.RepeaterTypeMMDVM)
 
 	// Drain any delivery (shouldn't arrive, but don't let it block)
-	select {
-	case <-srvHandle.Packets:
-	case <-time.After(500 * time.Millisecond):
-	}
+	flush(t, h, srvHandle, pkt2, 100002)
 
 	// Re-assign the dynamic talkgroup
 	require.NoError(t, database.Model(&models.Repeater{
@@ -744,7 +706,7 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 	// activateRepeaterLocked will see it and skip creating a new subscription,
 	// meaning this packet will never be delivered.
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	pkt3 := makeVoicePacket(50, 80003, true, false)
 	h.RoutePacket(context.Background(), pkt3, models.RepeaterTypeMMDVM)
@@ -753,7 +715,7 @@ func TestSubscribeTGWantRXFalseCleansUpSubscription(t *testing.T) {
 	case rp := <-srvHandle.Packets:
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(50), rp.Packet.Dst)
-	case <-time.After(2 * time.Second):
+	case <-time.After(failAfter):
 		t.Fatal("Timed out waiting for TG50 delivery after re-subscription — stale map entry was not cleaned up")
 	}
 }
@@ -784,6 +746,7 @@ func TestStopAllRepeatersDeactivatesEveryRepeater(t *testing.T) {
 	for id := firstID; id < firstID+numRepeaters; id++ {
 		h.ActivateRepeater(context.Background(), id)
 	}
+	knowTalkgroups(t, h)
 	waitAllReceive(t, h, srvHandle, 200, numRepeaters, 90000)
 
 	for id := firstID; id < firstID+numRepeaters; id++ {
@@ -813,7 +776,7 @@ func waitAllReceive(t *testing.T, h *hub.Hub, srv *hub.ServerHandle, tg uint, wa
 	t.Helper()
 	h.RoutePacket(context.Background(), makeVoicePacket(tg, stream, true, false), models.RepeaterTypeMMDVM)
 	seen := map[uint]bool{}
-	timeout := time.After(time.Minute)
+	timeout := time.After(failAfter)
 	for len(seen) < want {
 		select {
 		case rp := <-srv.Packets:
@@ -827,17 +790,18 @@ func waitAllReceive(t *testing.T, h *hub.Hub, srv *hub.ServerHandle, tg uint, wa
 type lookupGate struct {
 	armed   atomic.Bool
 	held    chan uint
+	passed  chan uint
 	open    chan struct{}
 	release func()
 }
 
 // gateRepeaterLookups holds every query for a repeater with an ID in
 // [lo, hi], once armed, until release is called, and reports each held ID on
-// held. It must be set up before the database is used concurrently, because
+// held and, once it ends, on passed. It must be set up before the database is used concurrently, because
 // gorm callbacks cannot be registered while queries run.
 func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGate {
 	t.Helper()
-	g := &lookupGate{held: make(chan uint, 1000), open: make(chan struct{})}
+	g := &lookupGate{held: make(chan uint, 1000), passed: make(chan uint, 1000), open: make(chan struct{})}
 	var once sync.Once
 	g.release = func() { once.Do(func() { close(g.open) }) }
 	t.Cleanup(g.release)
@@ -849,6 +813,7 @@ func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGa
 			if id, ok := v.(uint); ok && id >= lo && id <= hi {
 				g.held <- id
 				<-g.open
+				g.passed <- id
 				return
 			}
 		}
@@ -858,11 +823,21 @@ func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGa
 
 func (g *lookupGate) waitHeld(t *testing.T, want int) {
 	t.Helper()
+	g.wait(t, g.held, want)
+}
+
+func (g *lookupGate) waitPassed(t *testing.T, want int) {
+	t.Helper()
+	g.wait(t, g.passed, want)
+}
+
+func (g *lookupGate) wait(t *testing.T, ch <-chan uint, want int) {
+	t.Helper()
 	ids := map[uint]bool{}
-	timeout := time.After(time.Minute)
+	timeout := time.After(failAfter)
 	for len(ids) < want {
 		select {
-		case id := <-g.held:
+		case id := <-ch:
 			ids[id] = true
 		case <-timeout:
 			t.Fatalf("only %d of %d repeater lookups reached the gate", len(ids), want)
@@ -892,12 +867,12 @@ func TestDeliverToServerUnblocksOnStop(t *testing.T) {
 
 	// Register a server but NEVER consume from its channel — this simulates
 	// a slow/stuck consumer that lets the channel fill up.
-	_ = h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
 	h.ActivateRepeater(context.Background(), 100001)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	knowTalkgroups(t, h)
 
 	// Flood the channel with more packets than its buffer (500).
 	// Each RoutePacket publishes asynchronously via pubsub, so we send many
@@ -906,8 +881,15 @@ func TestDeliverToServerUnblocksOnStop(t *testing.T) {
 		pkt := makeVoicePacket(50, 80000+i, true, false)
 		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 	}
-	// Give subscription goroutines time to process and fill the channel.
-	time.Sleep(500 * time.Millisecond)
+	next := uint(80600)
+	require.Eventually(t, func() bool {
+		if len(srvHandle.Packets) == cap(srvHandle.Packets) {
+			return true
+		}
+		h.RoutePacket(context.Background(), makeVoicePacket(50, next, true, false), models.RepeaterTypeMMDVM)
+		next++
+		return false
+	}, failAfter, time.Millisecond, "the bursts did not fill the channel of the server")
 
 	// Stop must complete promptly even though the server channel is full.
 	// Before the fix, Stop() would hang because stopAllRepeaters cancels
@@ -922,8 +904,8 @@ func TestDeliverToServerUnblocksOnStop(t *testing.T) {
 	select {
 	case <-done:
 		// Stop completed — the blocked deliverToServer send was interrupted.
-	case <-time.After(5 * time.Second):
-		t.Fatal("Hub.Stop() did not complete within 5s — deliverToServer is likely blocked on a full channel")
+	case <-time.After(failAfter):
+		t.Fatal("Hub.Stop() did not complete — deliverToServer is likely blocked on a full channel")
 	}
 }
 

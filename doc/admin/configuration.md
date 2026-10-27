@@ -1,42 +1,54 @@
-# Configuration Guide
+# Configuration
 
-## Setup Wizard (Recommended)
+This page tells where DMRHub reads its settings, and lists every setting. To install DMRHub, see [Install DMRHub](install.md).
 
-The easiest way to configure DMRHub is with the **built-in setup wizard**. DMRHub starts it, and opens your browser to it, when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database.
+## Where DMRHub reads its settings
 
-The wizard will:
+DMRHub takes each setting from the first of these sources that has it:
 
-1. Fix the database settings when DMRHub cannot reach its database
-2. Show all configuration options, and check your settings while you type
-3. Save the settings that Setup changes in the database
-4. Create your first admin user
+1. **Command-line flags**, such as `--http.port 8080`.
+2. **Environment variables**, such as `HTTP_PORT=8080`. See [Environment variables](#environment-variables).
+3. **The configuration file**, in YAML.
+4. **The Setup settings**, which admins save on the Setup page and DMRHub keeps in the database. See [Setup settings](#setup-settings).
+5. **The defaults** in the table below.
 
-DMRHub never writes a config file. When no config file, environment variable or flag sets `secret` or `password-salt`, DMRHub makes a strong random value for each at its first start and keeps it in the database. Every later start and every replica uses the same values. A value that the deployment sets wins over the one DMRHub made. Do not change `password-salt` after users exist: their passwords stop working.
+DMRHub reads one configuration file, and never writes it, so the file can be read-only, such as a Kubernetes ConfigMap. With `--config <file>` (or `-c <file>`), it reads that file, and stops with an error when the file does not exist. Without `--config`, it reads the first of these files that exists:
+
+1. `config.yaml` in the working directory
+2. `config.yml` in the working directory
+3. `$XDG_CONFIG_HOME/DMRHub/config.yaml`. When `XDG_CONFIG_HOME` is not set, this is `$HOME/.config/DMRHub/config.yaml`.
+4. `$XDG_CONFIG_HOME/DMRHub/config.yml`
+
+With no file, DMRHub uses the flags, the environment, the Setup settings and the defaults.
+
+## The setup wizard
+
+DMRHub starts the setup wizard, and opens your browser to it, when its configuration is not valid, when no admin user exists yet, or when it cannot reach its database. See [First start and the setup wizard](install.md#first-start-and-the-setup-wizard). The wizard:
+
+1. Fixes the database settings when DMRHub cannot reach its database.
+2. Shows all the settings, and checks them while you type.
+3. Saves the settings that you change in the database.
+4. Makes the first admin user.
+
+When no config file, environment variable or flag sets `secret` or `password-salt`, DMRHub makes a strong random value for each at its first start and keeps it in the database. Every later start and every replica uses the same values. A value that the deployment sets wins over the one DMRHub made. Do not change `password-salt` after users exist: their passwords stop working.
 
 When DMRHub cannot reach its database, the wizard lets you fix the database settings. DMRHub tries the new settings at once. When they work, it keeps them in `dmrhub-database.json` in its working directory, which is where the default SQLite database lives too, readable by its owner only, and uses that file at each start. It cannot keep them in the database that it could not reach. DMRHub uses this file only when the config file, the environment and the flags set no database setting. When the deployment sets any database setting, or the working directory is read-only, such as on a Kubernetes mount, the wizard cannot fix the database: set it in the config file or the environment of the deployment.
 
-## Configuration Sources
+## The Setup page
 
-DMRHub loads configuration from multiple sources, with later sources overriding earlier ones:
+Admins can change the settings on the **Setup** page (`<siteurl>/admin/setup`). The page has the same cards as the setup wizard: **General Settings**, **DMR Settings**, **HTTP Settings**, **Database Settings**, **SMTP Settings**, **Redis Settings**, **Metrics Settings** and **PProf Settings**. Click **Save** at the bottom to check and save the settings.
 
-1. **Defaults**: sensible defaults are built in for most settings
-2. **Setup settings**: the settings that an admin saves on the Setup page, which DMRHub keeps in the database
-3. **YAML config file**: searched in the following locations (first found wins):
-   - `config.yaml` or `config.yml` in the current working directory
-   - `$XDG_CONFIG_HOME/DMRHub/config.yaml` or `config.yml` (typically `~/.config/DMRHub/config.yaml` on Linux)
-   - `--config` (`-c`) loads the given file instead of searching, and fails if it doesn't exist
-4. **Environment variables**: prefixed and separated by `_` (e.g., `HTTP_PORT=8080`)
-5. **Command-line flags**: highest priority
+<!-- screenshot: admin-setup.png | /admin/setup as an admin, the top of the page with the General Settings card -->
 
-## Setup Settings
+### Setup settings
 
-The Setup page changes most settings while DMRHub runs. DMRHub saves them in the database, and every replica puts them into effect at once, without a restart. DMRHub never writes a config file, so the config file can be read-only, such as a Kubernetes ConfigMap.
+The Setup page changes most settings while DMRHub runs. DMRHub saves them in the database, and every replica puts them into effect at once, without a restart. For example, the MMDVM, IPSC and OpenBridge servers and the modem start, stop, or restart with their new settings. If a server cannot take its new settings, for example because the new port is in use, it keeps its old settings, and the page shows the replicas that could not put the save into effect.
 
 A setting that the config file, an environment variable or a flag sets is **locked**. It wins at each start, and the Setup page shows it as set by the deployment and cannot change it. A list, such as `dmr.transcoding.ambe-servers`, is locked as a whole. When you remove a locked setting from the config file or the environment, the value saved on the Setup page comes back at the next start, or the default when no value was saved.
 
 These settings take effect at start only. They come from the config file, the environment and the flags only, and DMRHub never keeps them in the database:
 
-- `secret`, `password-salt`, `hibp-api-key` and the passwords of SMTP, the database and Redis (DMRHub makes `secret` and `password-salt` when no deployment sets them; see [Setup Wizard](#setup-wizard-recommended))
+- `secret`, `password-salt`, `hibp-api-key` and the passwords of SMTP, the database and Redis (DMRHub makes `secret` and `password-salt` when no deployment sets them; see [The setup wizard](#the-setup-wizard))
 - `database.*` and `redis.*`
 - `http.bind`, `http.port`, `http.trusted-proxies` and `http.cors.*`
 - `metrics.*` and `pprof.*`
@@ -50,9 +62,9 @@ Earlier versions wrote the settings of the Setup page, with the secrets, to `$XD
 
 DMRHub copies nothing when it loads another file, such as `./config.yaml`. In that case, earlier versions still wrote the Setup page to `$XDG_CONFIG_HOME/DMRHub/config.yaml`, but the hub never ran with that file, so its values can be old or wrong.
 
-## Configuration Reference
+## Configuration reference
 
-Every option is listed below with its YAML key, default, environment variable, and command-line flag. A commented sample config with every option and its default is in [config.example.yaml](../config.example.yaml).
+The table lists every setting with its YAML key, its type, its default, its environment variable and its flag. A sample file with every setting and its default is [config.example.yaml](../../config.example.yaml). The table and the sample file come from the code: the `configulator` tool makes them from the tags of `internal/config`, and CI checks that they are current.
 
 <!-- configulator:begin -->
 
@@ -160,79 +172,83 @@ Every option is listed below with its YAML key, default, environment variable, a
 
 <!-- configulator:end -->
 
-### Required Settings
+### Required settings
 
-At minimum, the following must be configured. DMRHub makes `secret` and `password-salt` when no deployment sets them, and the setup wizard can set `http.canonical-host`:
+DMRHub needs these settings. DMRHub makes `secret` and `password-salt` when no deployment sets them, and the setup wizard asks for `http.canonical-host`.
 
-|        Setting        |                                             Description                                             |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| `secret`              | Random string used for session signing/encryption. Use a 15+ character random value.                |
-| `password-salt`       | Random string used for password hashing. Use a 15+ character random value, different from `secret`. |
-| `http.canonical-host` | The URL your DMRHub instance is accessed at (e.g., `https://dmrhub.example.com`).                   |
+| Setting | What it is |
+| ------- | ---------- |
+| `secret` | A random value that DMRHub uses to sign the sessions. Use 15 or more random characters. |
+| `password-salt` | A random value that DMRHub uses to hash the passwords. Use 15 or more random characters, and a value that is not the same as `secret`. If you change it, no user can log in with their old password. |
+| `http.canonical-host` | The address where users open DMRHub, such as `https://dmrhub.example.com`. DMRHub uses it in links, for example in emails. |
 
-### Database Configuration Examples
+DMRHub checks only that `secret` and `password-salt` are not empty. It does not check their length.
 
-#### SQLite (Default)
+## Database
 
-No additional configuration needed. The database file defaults to `DMRHub.db` in the working directory.
+### SQLite
 
-#### PostgreSQL
+SQLite is the default, and needs no other settings. The database file is `DMRHub.db` in the working directory. Set `database.database` to a full path to put it in another place, for example `/data/DMRHub.db`.
+
+The default `database.extra-parameters` set the SQLite options `foreign_keys(1)`, `journal_mode(WAL)` and `synchronous(NORMAL)`. When you set your own parameters for SQLite, DMRHub adds `_pragma=synchronous(NORMAL)` when none of your parameters sets `synchronous`, and adds `_txlock=immediate` when none of them sets `_txlock` or `cache=shared`.
+
+### PostgreSQL
 
 ```yaml
 database:
   driver: postgres
-  host: localhost
+  host: postgres.example.com
   port: 5432
   username: dmrhub
-  password: your-password
+  password: <password>
   database: dmrhub
   extra-parameters: []
 ```
 
-To set up the PostgreSQL database:
+Set `extra-parameters` to PostgreSQL parameters, such as `sslmode=disable`, or to `[]`. DMRHub adds each parameter to the connection string. It leaves out the SQLite parameters that start with `_pragma=`, such as those of the default, so the default works too. With environment variables, set `DATABASE_EXTRA_PARAMETERS=` (empty) for no parameters.
+
+To make the database:
 
 ```sql
-CREATE USER dmrhub WITH ENCRYPTED PASSWORD 'your-password';
-CREATE DATABASE dmrhub;
-ALTER DATABASE dmrhub OWNER TO dmrhub;
-GRANT ALL PRIVILEGES ON DATABASE dmrhub TO dmrhub;
+CREATE USER dmrhub WITH ENCRYPTED PASSWORD '<password>';
+CREATE DATABASE dmrhub OWNER dmrhub;
 \c dmrhub
 GRANT ALL ON SCHEMA public TO dmrhub;
 ```
 
-#### MySQL and MariaDB
+### MySQL and MariaDB
 
 MySQL and MariaDB both use the `mysql` driver.
 
 ```yaml
 database:
   driver: mysql
-  host: localhost
+  host: mysql.example.com
   port: 3306
   username: dmrhub
-  password: your-password
+  password: <password>
   database: dmrhub
   extra-parameters: []
 ```
 
-To set up the database:
+To make the database:
 
 ```sql
 CREATE DATABASE dmrhub CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
-CREATE USER 'dmrhub'@'%' IDENTIFIED BY 'your-password';
+CREATE USER 'dmrhub'@'%' IDENTIFIED BY '<password>';
 GRANT ALL PRIVILEGES ON dmrhub.* TO 'dmrhub'@'%';
 ```
 
 Notes:
 
-- DMRHub connects with `charset=utf8mb4&parseTime=True&loc=Local`. Each entry of `extra-parameters` is added to these, for example `tls=true`.
+- DMRHub connects with `charset=utf8mb4&parseTime=True&loc=Local`, and adds each of `extra-parameters` with `&`, for example `tls=true`. It leaves out the SQLite parameters that start with `_pragma=`, such as those of the default.
 - DMRHub makes its tables with the `utf8mb4_bin` collation, so that names compare by their bytes as on PostgreSQL and SQLite. The first time this version starts, it changes every table of the database that has another collation to `utf8mb4_bin`.
 - DMRHub sets the session `sql_mode` to `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION`. This is the MySQL 8.4 default without `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`, because DMRHub stores unset times as `0000-00-00`. If you set `sql_mode` in `extra-parameters`, DMRHub uses yours, and it must allow zero dates.
 - `loc=Local` stores times in the time zone of the DMRHub process. Run every replica in the same time zone.
 - MySQL has no partial indexes. To allow one active net per talkgroup, the `nets` table has a virtual column `active_talkgroup_id` with a unique index.
 - Replicas take turns to migrate the database with `GET_LOCK`. This needs no extra privilege.
 
-### Supported Databases
+### Supported databases
 
 The tests run on each of these databases:
 
@@ -243,6 +259,10 @@ The tests run on each of these databases:
 | MySQL      | 8.4 (LTS)  |
 | MariaDB    | 12.3 (LTS) |
 
-## Environment Variables
+## Environment variables
 
-Configuration can also be provided via environment variables. The variable names are derived from the YAML path by uppercasing, replacing `-` with `_`, and joining nested keys with `_` (for example, `http.canonical-host` becomes `HTTP_CANONICAL_HOST`). List values are comma-separated. The Environment column of the [Configuration Reference](#configuration-reference) lists every variable.
+The name of the environment variable of a setting is its YAML key in upper case, with `_` in place of each `.` and `-`. For example, `http.canonical-host` is `HTTP_CANONICAL_HOST`, and `dmr.ipsc.call-hang-hold` is `DMR_IPSC_CALL_HANG_HOLD`. The names have no prefix. For a list, separate the values with commas, for example `HTTP_TRUSTED_PROXIES=10.0.0.1,10.0.0.2`. The **Environment** column of the [Configuration reference](#configuration-reference) lists every variable.
+
+## Command-line flags
+
+Each setting also has a flag, which is its YAML key with `--` in front, such as `--dmr.mmdvm.port 62031`. `DMRHub --help` lists the flags. `--config` (`-c`) picks the configuration file, and `--version` (`-v`) shows the version.

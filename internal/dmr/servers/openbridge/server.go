@@ -699,7 +699,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		return
 	}
 
-	if !peer.Ingress || !rules.IngressAllows(known.ingress, &packet) {
+	if !peer.Ingress || !rules.IngressAllows(known.ingress, peer.IngressPrivate, &packet) {
 		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
 		return
 	}
@@ -714,7 +714,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 			if p.ID == peerID {
 				continue
 			}
-			if p.Egress && rules.EgressAllows(p.egress, &packet) {
+			if p.Egress && rules.EgressAllows(p.egress, p.EgressPrivate, &packet) {
 				s.sendPacketToPeer(p.ID, packet, org)
 			}
 		}

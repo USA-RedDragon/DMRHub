@@ -116,7 +116,8 @@ func (h *Hub) peerSet(ctx context.Context, packet models.Packet) (streamPeerSet,
 
 type egressPeer struct {
 	peerTarget
-	rules []models.PeerRule
+	rules   []models.PeerRule
+	private bool
 }
 
 // loadPeers reads the peers that the hub sends bursts to from the
@@ -153,7 +154,7 @@ func (h *Hub) loadEgressPeers(struct{}) ([]egressPeer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("listing the egress rules of peer %d: %w", p.ID, err)
 		}
-		out = append(out, egressPeer{peerTarget: peerTarget{id: p.ID, codec2: p.Codec2}, rules: egressRules})
+		out = append(out, egressPeer{peerTarget: peerTarget{id: p.ID, codec2: p.Codec2}, rules: egressRules, private: p.EgressPrivate})
 	}
 	return out, nil
 }
@@ -168,7 +169,7 @@ func (h *Hub) egressPeers(ctx context.Context, packet models.Packet) ([]peerTarg
 	}
 	var out []peerTarget
 	for _, p := range peers {
-		if rules.EgressAllows(p.rules, &packet) {
+		if rules.EgressAllows(p.rules, p.private, &packet) {
 			out = append(out, p.peerTarget)
 		}
 	}

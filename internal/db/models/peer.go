@@ -41,6 +41,12 @@ type Peer struct {
 	OwnerID  uint      `json:"-" msg:"-"`
 	Ingress  bool      `json:"ingress" msg:"-"`
 	Egress   bool      `json:"egress" msg:"-"`
+	// IngressPrivate lets in the private calls from the peer that the
+	// source rules allow, whatever the destination rules say.
+	IngressPrivate bool `json:"ingress_private" gorm:"not null;default:false" msg:"-"`
+	// EgressPrivate sends the peer the private calls that the source rules
+	// allow, whatever the destination rules say.
+	EgressPrivate bool `json:"egress_private" gorm:"not null;default:false" msg:"-"`
 	// Enhanced makes the link FreeDMR's enhanced OpenBridge: DMRE packets
 	// and BCKA keepalives. Only an admin sets it.
 	Enhanced  bool           `json:"enhanced" gorm:"default:false" msg:"-"`

@@ -89,5 +89,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_email_verified_migration_202610270100(db, cfg),
 		add_callsign_override_migration_202610271300(db, cfg),
 		add_peer_rule_match_migration_202610271400(db, cfg),
+		add_peer_private_calls_migration_202610271410(db, cfg),
 	}
 }

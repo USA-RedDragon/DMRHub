@@ -431,6 +431,15 @@ func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, passwor
 	s.Hub.PeerChanged(id)
 }
 
+// SetPeerPrivateCalls sets the private call switches of a peer in the DB
+// and tells the hub, as the API does.
+func (s *IntegrationStack) SetPeerPrivateCalls(t *testing.T, id uint, ingress bool, egress bool) {
+	t.Helper()
+	err := s.DB.Model(&models.Peer{ID: id}).Updates(map[string]any{"ingress_private": ingress, "egress_private": egress}).Error
+	require.NoError(t, err)
+	s.Hub.PeerChanged(id)
+}
+
 // SeedPeerRule creates a peer rule in the DB and tells the hub, as the API
 // does.
 func (s *IntegrationStack) SeedPeerRule(t *testing.T, peerID uint, direction bool, subjectIDMin uint, subjectIDMax uint) {

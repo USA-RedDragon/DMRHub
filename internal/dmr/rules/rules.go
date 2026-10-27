@@ -32,7 +32,7 @@ func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) (boo
 		if err != nil {
 			return false, fmt.Errorf("failed to list egress rules for peer %d: %w", peer.ID, err)
 		}
-		return EgressAllows(egressRules, packet), nil
+		return EgressAllows(egressRules, peer.EgressPrivate, packet), nil
 	}
 	return false, nil
 }
@@ -41,9 +41,11 @@ func PeerShouldEgress(db *gorm.DB, peer models.Peer, packet *models.Packet) (boo
 // packet. It mirrors the SUB_ACL and TGID_ACL of an HBlink3 or FreeDMR
 // OpenBridge system: for each match that has rules, one of them must cover
 // the ID of packet that it checks, and a match with no rules does not
-// restrict. With no rules at all, the peer gets nothing.
-func EgressAllows(egressRules []models.PeerRule, packet *models.Packet) bool {
-	return allows(egressRules, packet)
+// restrict. With no rules at all, the peer gets nothing. With
+// privateCalls, a private call skips the destination rules and needs only
+// the source rules, so with no source rules every private call passes.
+func EgressAllows(egressRules []models.PeerRule, privateCalls bool, packet *models.Packet) bool {
+	return allows(egressRules, privateCalls, packet)
 }
 
 func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (bool, error) {
@@ -52,18 +54,18 @@ func PeerShouldIngress(db *gorm.DB, peer *models.Peer, packet *models.Packet) (b
 		if err != nil {
 			return false, fmt.Errorf("failed to list ingress rules for peer %d: %w", peer.ID, err)
 		}
-		return IngressAllows(ingressRules, packet), nil
+		return IngressAllows(ingressRules, peer.IngressPrivate, packet), nil
 	}
 	return false, nil
 }
 
 // IngressAllows reports whether the ingress rules of a peer let packet
 // in, by the same logic as EgressAllows.
-func IngressAllows(ingressRules []models.PeerRule, packet *models.Packet) bool {
-	return allows(ingressRules, packet)
+func IngressAllows(ingressRules []models.PeerRule, privateCalls bool, packet *models.Packet) bool {
+	return allows(ingressRules, privateCalls, packet)
 }
 
-func allows(rs []models.PeerRule, packet *models.Packet) bool {
+func allows(rs []models.PeerRule, privateCalls bool, packet *models.Packet) bool {
 	var hasSrc, srcOK, hasDst, dstOK bool
 	for i := range rs {
 		r := &rs[i]
@@ -79,6 +81,9 @@ func allows(rs []models.PeerRule, packet *models.Packet) bool {
 			hasDst = true
 			dstOK = dstOK || (r.SubjectIDMin <= packet.Dst && packet.Dst <= r.SubjectIDMax)
 		}
+	}
+	if privateCalls && !packet.GroupCall {
+		return !hasSrc || srcOK
 	}
 	return (hasSrc || hasDst) && (!hasSrc || srcOK) && (!hasDst || dstOK)
 }

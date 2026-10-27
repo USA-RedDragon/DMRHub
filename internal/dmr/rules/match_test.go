@@ -72,7 +72,7 @@ func TestEgressRuleMatches(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, c.want, rules.EgressAllows(c.rules, c.packet))
+			assert.Equal(t, c.want, rules.EgressAllows(c.rules, false, c.packet))
 		})
 	}
 }
@@ -103,7 +103,7 @@ func TestIngressRuleMatches(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, c.want, rules.IngressAllows(c.rules, c.packet))
+			assert.Equal(t, c.want, rules.IngressAllows(c.rules, false, c.packet))
 		})
 	}
 }
@@ -115,8 +115,42 @@ func TestRuleMatchDoesNotAllocate(t *testing.T) { //nolint:paralleltest // Alloc
 	}
 	p := groupCall(3000050, 3100)
 	allocs := testing.AllocsPerRun(100, func() {
-		_ = rules.EgressAllows(rs, p)
-		_ = rules.IngressAllows(rs, p)
+		_ = rules.EgressAllows(rs, true, p)
+		_ = rules.IngressAllows(rs, true, p)
 	})
 	assert.Zero(t, allocs)
+}
+
+func TestPrivateCallSwitch(t *testing.T) {
+	t.Parallel()
+	const (
+		src = models.PeerRuleMatchSource
+		dst = models.PeerRuleMatchDestination
+	)
+	talkgroup := []models.PeerRule{rule(false, dst, 3100, 3100)}
+	both := []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, src, 3000001, 3000099)}
+	cases := []struct {
+		name    string
+		rules   []models.PeerRule
+		private bool
+		packet  *models.Packet
+		want    bool
+	}{
+		{"off keeps a private call that no destination rule covers", talkgroup, false, privateCall(3100001), false},
+		{"on sends a private call past the destination rules", talkgroup, true, privateCall(3100001), true},
+		{"on leaves group calls to the destination rules", talkgroup, true, groupCall(3000050, 91), false},
+		{"on keeps the source rules", both, true, &models.Packet{Src: 3100001, Dst: 3100002}, false},
+		{"on sends a private call from an allowed radio", both, true, privateCall(3100001), true},
+		{"on with no rules sends private calls", nil, true, privateCall(3100001), true},
+		{"on with no rules keeps group calls", nil, true, groupCall(3000050, 3100), false},
+		{"off with no rules keeps private calls", nil, false, privateCall(3100001), false},
+		{"on leaves group calls to the source rules", []models.PeerRule{rule(false, src, 3000001, 3000099)}, true, groupCall(3000050, 91), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.want, rules.EgressAllows(c.rules, c.private, c.packet))
+			assert.Equal(t, c.want, rules.IngressAllows(c.rules, c.private, c.packet))
+		})
+	}
 }

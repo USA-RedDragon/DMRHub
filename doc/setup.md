@@ -47,7 +47,7 @@ The image runs as user and group 65534, so the data volume must belong to that u
 
    `DATABASE_DATABASE` puts the SQLite file at `/data/DMRHub.db`, in the volume. DMRHub keeps the Setup settings, the secret and the password salt in that database.
 
-3. Get the address of the setup wizard from the log:
+3. Check in the log that the setup wizard started:
 
    ```bash
    docker logs dmrhub 2>&1 | grep 'setup wizard at'
@@ -56,7 +56,7 @@ The image runs as user and group 65534, so the data volume must belong to that u
    The line looks like this:
 
    ```text
-   INF Opening setup wizard at http://localhost:3005/setup?token=AbCdEfGhIjKl
+   INF Opening setup wizard at http://localhost:3005/setup
    ```
 
    The log also shows a `Failed to open browser` error. This error is normal in a container.
@@ -132,7 +132,7 @@ docker compose logs dmrhub | grep 'setup wizard at'
    sudo systemctl enable --now dmrhub.service
    ```
 
-5. Get the address of the setup wizard from the log:
+5. Check in the log that the setup wizard started:
 
    ```bash
    journalctl -u dmrhub.service | grep 'setup wizard at'
@@ -142,7 +142,9 @@ The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. DMRHub keeps its da
 
 ## Step 2: Finish the setup wizard
 
-1. Open the address from the log in a web browser. If the browser is on another computer, replace `localhost` with the address of the server. Keep the token. The token changes each time DMRHub starts.
+The setup wizard has no password. Anyone who opens it can change the settings, and the first visitor to make the admin account becomes the super admin. Do this step before you open port 3005 to the internet, or open the port only to you until you finish.
+
+1. Open `http://<server>:3005/setup` in a web browser. Use the address of the server for `<server>`, or `localhost` on the server itself. You do not need anything from the log.
 2. In **General Settings**, enter a **Network Name**. Leave **Secret** and **Password Salt** blank: DMRHub made random values for them at the first start and keeps them in the database, so both show `Stored. Leave blank to keep the existing value.`
 
    ![The General Settings card of the setup wizard, with a network name](Screenshots/setup-wizard-general.png)
@@ -155,16 +157,18 @@ The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. DMRHub keeps its da
 
    ![The HTTP Settings card of the setup wizard with the canonical host set](Screenshots/setup-wizard-http.png)
 
-5. Click **Save** at the bottom of the page. The wizard opens the **Create Initial Admin User** page.
+5. Click **Save** at the bottom of the page. The wizard opens the **Create the first admin** page. A banner above the form says that no admin exists yet, and that whoever makes this account first becomes the admin.
 6. Enter your **DMR ID**, a **Username**, your **Callsign** and a **Password** two times, then click **Create User**.
 
-   ![The Create Initial Admin User page, filled in with the DMR ID 3000001 and the callsign N0CALL](Screenshots/setup-admin-user.png)
+   ![The Create the first admin page, filled in with the DMR ID 3000001 and the callsign N0CALL](Screenshots/setup-admin-user.png)
 
    If the DMR ID and the callsign do not match in the RadioID.net data, the page shows `Callsign does not match DMR ID`. Correct them and try again.
 
+   If another visitor made the admin first, the page shows `Someone else made the first admin already. Log in with that account.`
+
 7. DMRHub closes the wizard and starts the network in the same process. The browser goes to the **Log in** page. Log in with your username or callsign and your password.
 
-This first user is the super admin. The wizard is the only way to make the first admin.
+This first user is the super admin. The wizard is the only way to make the first admin. Only one visitor can make it, also when several replicas run the wizard at once.
 
 ## Step 3: Check the parrot
 
@@ -350,6 +354,8 @@ The steps were done on 2026-10-27 with these versions:
 | Pi-Star settings | From the source of the Pi-Star dashboard, `Pi-Star_DV_Dash` `ca50804` |
 
 v1.3.17 keeps the Setup settings, the secret and the password salt in the database, and the hotspot dialog shows `Name=DMRHub` and the MMDVM port of the server. The install, wizard and dialog steps above follow v1.3.17. Of these changes, only the stored secret and password salt of a new install were checked again, with a build of v1.3.17. The screenshots of the wizard are from before v1.3.17.
+
+The first-admin steps follow the release after v1.3.17, which has no setup token and adds the banner. In v1.3.17 and earlier, the log address ends in `?token=` and a code, the wizard opens only with that address, and the page is named **Create Initial Admin User**. These first-admin steps were not checked again with a build.
 
 No radio and no RF were used. A fake MMDVM modem stood in for the modem board and the radio. It is the `modemtest` package of DMRHub (`internal/dmr/servers/modem/modemtest`). It spoke the MMDVM modem protocol to MMDVMHost over UDP (`Protocol=udp` in the `[Modem]` section), sent voice calls on timeslot 2 as a radio does, and counted the bursts that MMDVMHost sent back for the air. MMDVMHost, DMRGateway and DMRHub ran on the same computer, so the test used other ports between MMDVMHost and DMRGateway (62037 and 62038) than the examples on this page.
 

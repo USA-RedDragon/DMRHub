@@ -45,7 +45,7 @@ func setup(t *testing.T, be testutils.Backend) (*config.Config, *gorm.DB, kv.KV)
 	require.NoError(t, err)
 	cfg.Database.Database = fmt.Sprintf("file:memdb_ret_%p", t)
 	cfg.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
-	be.Setup(t, &cfg)
+	be.Migrated().Setup(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)

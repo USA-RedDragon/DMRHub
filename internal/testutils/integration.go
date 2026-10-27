@@ -84,6 +84,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	for _, be := range backends {
 		be.Setup(t, &defConfig)
 	}
+	useMigratedCopy(t, &defConfig)
 
 	const localhost = "127.0.0.1"
 

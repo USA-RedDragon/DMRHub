@@ -59,7 +59,7 @@ func newUserEnv(t *testing.T, be testutils.Backend) *userEnv {
 	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
 		c.Database.Database = fmt.Sprintf("file:wsuser_%p", t)
 		c.Database.ExtraParameters = []string{"mode=memory", "cache=shared"}
-		be.Setup(t, c)
+		be.Migrated().Setup(t, c)
 	})
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)

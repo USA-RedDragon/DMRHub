@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -113,6 +114,11 @@ var shared struct { //nolint:gochecknoglobals // the containers that the tests o
 	pgPort  int
 	pgAdmin *sql.DB
 	pgErr   error
+	pgOwn   sync.Map
+
+	tmplOnce sync.Once
+	tmplErr  error
+	tmplMu   sync.Mutex
 
 	seq atomic.Int64
 
@@ -349,10 +355,59 @@ func sharedPostgres(t *testing.T) (int, string) {
 	if _, err := shared.pgAdmin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create postgres database %s: %v", name, err)
 	}
+	shared.pgOwn.Store(name, struct{}{})
 	t.Cleanup(func() {
 		_, _ = shared.pgAdmin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	return shared.pgPort, name
+}
+
+const templateDatabase = "migrated"
+
+// useMigratedCopy makes the database of cfg, when it is an empty one that
+// the shared Postgres server made for the test, a copy of a database that
+// db.MakeDB migrated once for all the tests of the package.
+func useMigratedCopy(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	if cfg.Database.Driver != config.DatabaseDriverPostgres {
+		return
+	}
+	name := cfg.Database.Database
+	if _, ok := shared.pgOwn.Load(name); !ok {
+		return
+	}
+	shared.tmplOnce.Do(func() {
+		if _, err := shared.pgAdmin.ExecContext(context.Background(), "CREATE DATABASE "+templateDatabase); err != nil {
+			shared.tmplErr = fmt.Errorf("create the migrated database: %w", err)
+			return
+		}
+		tcfg := *cfg
+		tcfg.Database.Database = templateDatabase
+		gdb, err := db.MakeDB(&tcfg)
+		if err != nil {
+			shared.tmplErr = fmt.Errorf("migrate the migrated database: %w", err)
+			return
+		}
+		sqlDB, err := gdb.DB()
+		if err != nil {
+			shared.tmplErr = fmt.Errorf("close the migrated database: %w", err)
+			return
+		}
+		shared.tmplErr = sqlDB.Close()
+	})
+	if shared.tmplErr != nil {
+		t.Fatal(shared.tmplErr)
+	}
+	shared.tmplMu.Lock()
+	defer shared.tmplMu.Unlock()
+	for _, q := range []string{
+		"DROP DATABASE " + name + " WITH (FORCE)",
+		"CREATE DATABASE " + name + " TEMPLATE " + templateDatabase,
+	} {
+		if _, err := shared.pgAdmin.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("copy the migrated database to %s: %v", name, err)
+		}
+	}
 }
 
 func sharedRedis(t *testing.T) int {
@@ -524,6 +579,20 @@ func clearMySQL(admin *sql.DB, name string) error {
 		return fmt.Errorf("dropping mysql database %s: %w", name, err)
 	}
 	return nil
+}
+
+// Migrated returns b with a Setup that, on the shared Postgres server of
+// Main, gives the test a copy of a database that db.MakeDB migrated once
+// rather than an empty one, for a test that runs db.MakeDB on it to use the
+// database rather than to test the migrations.
+func (b Backend) Migrated() Backend {
+	setup := b.Setup
+	b.Setup = func(t *testing.T, cfg *config.Config) {
+		t.Helper()
+		setup(t, cfg)
+		useMigratedCopy(t, cfg)
+	}
+	return b
 }
 
 // MySQLBackend returns a backend with a MySQL database of its own and the

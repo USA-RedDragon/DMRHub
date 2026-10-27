@@ -47,7 +47,7 @@ func newEnvOn(t *testing.T, be testutils.Backend) (*env, *config.Config) {
 	t.Helper()
 	var cfg *config.Config
 	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
-		be.Setup(t, c)
+		be.Migrated().Setup(t, c)
 		cfg = c
 	})
 	require.NoError(t, err)

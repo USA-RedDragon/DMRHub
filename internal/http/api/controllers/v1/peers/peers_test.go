@@ -277,7 +277,7 @@ func TestDELETEPeerWithRules(t *testing.T) {
 	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
-			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Setup(t, c) })
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Migrated().Setup(t, c) })
 			require.NoError(t, err)
 			defer tdb.CloseDB()
 

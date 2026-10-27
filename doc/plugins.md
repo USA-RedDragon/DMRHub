@@ -13,7 +13,7 @@ In this page, `<siteurl>` is the URL of your DMRHub instance.
 
 ### Settings
 
-Go to **Admin**, then **Setup** (`<siteurl>/admin/setup`), and find the **Plugins** card in **DMR Settings**.
+Go to **Admin**, then **Setup**, and open the **Plugins** tab (`<siteurl>/admin/setup#plugins`).
 
 <!-- screenshot: setup-plugins-card.png | The Plugins card in DMR Settings on /admin/setup, with "Run plugins inside DMRHub" on and "Accept plugins that run as their own programs" on, so that the Port, Certificate file and Key file fields show -->
 
@@ -25,7 +25,7 @@ Go to **Admin**, then **Setup** (`<siteurl>/admin/setup`), and find the **Plugin
 | Certificate file                              | The TLS certificate of the listener. DMRHub reads it again when it changes. | `dmr.plugins.cert-file`  | Empty   |
 | Key file                                      | The key of the certificate.                                                 | `dmr.plugins.key-file`   | Empty   |
 
-The listener binds to `dmr.plugins.bind`, which is `[::]` (all addresses) by default. The Setup page does not show this key.
+The listener binds to `dmr.plugins.bind`, which is `[::]` (all addresses) by default. DMRHub reads the listener settings at start only, so the Setup page shows them but cannot change them.
 
 - Turn off **Run plugins inside DMRHub** only when every plugin runs as its own program. A Setup save turns it on or off at once on the replica that took the save. The other replicas follow when they restart. A hub that started with both settings off also needs a restart.
 - The listener starts when DMRHub restarts.

@@ -2,7 +2,7 @@
 
 DMRHub can drive an MMDVM modem board on a serial port, such as an MMDVM_HS hat, an MMDVM repeater board or a DVMega. Then DMRHub is a hotspot or a repeater by itself, with no MMDVMHost. To the network, the modem is one more repeater: its calls go to the hub, and the hub routes calls to it like to any other repeater.
 
-The Setup page does not have the modem settings. Set them in the configuration file, with environment variables or with flags. See the `dmr.modem.*` keys in [Configuration](configuration.md#configuration-reference).
+Set the modem on the **Modem** tab of the Setup page (`<siteurl>/admin/setup#modem`), or in the configuration file, with environment variables or with flags. See the `dmr.modem.*` keys in [Configuration](configuration.md#configuration-reference). A save on the Setup page restarts the modem, and calls on it stop for a few seconds.
 
 ## Set up the modem
 

@@ -36,7 +36,15 @@ When DMRHub cannot reach its database, the wizard lets you fix the database sett
 
 ## The Setup page
 
-Admins can change the settings on the **Setup** page (`<siteurl>/admin/setup`). The page has the same cards as the setup wizard: **General Settings**, **DMR Settings**, **HTTP Settings**, **Database Settings**, **SMTP Settings**, **Redis Settings**, **Metrics Settings** and **PProf Settings**. Click **Save** at the bottom to check and save the settings.
+Admins can change the settings on the **Setup** page (`<siteurl>/admin/setup`). A menu on the left has one tab for each area, in three groups:
+
+- **Server**: **General**, **HTTP**, **Database**, **Redis**, **SMTP** and **Metrics and PProf**
+- **DMR**: **DMR and MMDVM**, **IPSC**, **OpenBridge**, **WebTransport**, **Modem** and **Transcoding**
+- **Features**: **Positions and APRS**, **Messages**, **Plugins** and **Private call routing**
+
+Each tab has its own link, such as `<siteurl>/admin/setup#ipsc`, and its own **Save** and **Reset** buttons at the bottom. **Save** checks and saves only the settings on that tab. A dot in the menu marks a tab with changes that are not saved yet.
+
+Next to each setting, a chip shows where its value comes from: **Default**, **Saved in Setup**, **Config file**, **Environment** with the name of the variable, or **Command line** with the name of the flag. A setting that is saved in Setup and differs from its default has a **Use the default** link.
 
 <!-- screenshot: admin-setup.png | /admin/setup as an admin, the top of the page with the General Settings card -->
 
@@ -44,7 +52,7 @@ Admins can change the settings on the **Setup** page (`<siteurl>/admin/setup`). 
 
 The Setup page changes most settings while DMRHub runs. DMRHub saves them in the database, and every replica puts them into effect at once, without a restart. For example, the MMDVM, IPSC and OpenBridge servers and the modem start, stop, or restart with their new settings. If a server cannot take its new settings, for example because the new port is in use, it keeps its old settings, and the page shows the replicas that could not put the save into effect.
 
-A setting that the config file, an environment variable or a flag sets is **locked**. It wins at each start, and the Setup page shows it as set by the deployment and cannot change it. A list, such as `dmr.transcoding.ambe-servers`, is locked as a whole. When you remove a locked setting from the config file or the environment, the value saved on the Setup page comes back at the next start, or the default when no value was saved.
+A setting that the config file, an environment variable or a flag sets is **locked**. It wins at each start, and the Setup page shows it as set by the deployment, with a lock, and cannot change it. A list, such as `dmr.transcoding.ambe-servers`, is locked as a whole. When you remove a locked setting from the config file or the environment, the value saved on the Setup page comes back at the next start, or the default when no value was saved.
 
 These settings take effect at start only. They come from the config file, the environment and the flags only, and DMRHub never keeps them in the database:
 

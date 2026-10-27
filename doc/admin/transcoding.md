@@ -6,9 +6,9 @@ DMRHub has the Codec2 codec built in. For AMBE it needs one or more AMBE servers
 
 ## Add AMBE servers
 
-1. Go to **Admin**, then **Setup**, and find the **Transcoding** card in **DMR Settings**.
-2. Click **Add AMBE server**.
-3. In **AMBE server**, enter the host and the UDP port, for example `ambeserver.example.org:2460`.
+1. Go to **Admin**, then **Setup**, and open the **Transcoding** tab.
+2. Click **Add a server**.
+3. In the address box, enter the host and the UDP port, for example `ambeserver.example.org:2460`.
 4. In **Calls at once**, enter how many calls the server can convert at the same time. Leave it empty when the server has no limit. Use 1 for a server with one vocoder chip, which answers only its last client.
 5. Click **Save**.
 
@@ -30,7 +30,7 @@ Each server must accept the setting that makes it report the decoder status of e
 
 ## Check the servers
 
-On the **Setup** page, the **Status** column of the **Transcoding** card shows, for each saved server:
+On the **Transcoding** tab of the **Setup** page, the status next to each saved server shows:
 
 | Status | What it means |
 | ------ | ------------- |

@@ -34,17 +34,17 @@ Click a row to see the details of the message and its raw bytes.
 
 By default, DMRHub keeps all records forever. To delete old records:
 
-1. Go to **Admin**, then **Setup**, and find the **Retention** card in **DMR Settings**.
-2. Pick a period for each kind of record:
+1. Go to **Admin**, then **Setup**.
+2. Enter a number of days for each kind of record:
 
-   | Setting | What it deletes | Configuration key |
-   | ------- | --------------- | ----------------- |
-   | **Messages** | Text and data messages, with their raw bytes | `dmr.retention.messages` |
-   | **Transmissions** | Last Heard entries for voice, data and control traffic | `dmr.retention.transmissions` |
-   | **Raw bursts** | The raw DMR bursts of each transmission | `dmr.retention.bursts` |
+   | Setting | Tab | What it deletes | Configuration key |
+   | ------- | --- | --------------- | ----------------- |
+   | **Keep messages (days)** | **Messages** | Text and data messages, with their raw bytes | `dmr.retention.messages` |
+   | **Keep last heard (days)** | **DMR and MMDVM** | Last Heard entries for voice, data and control traffic | `dmr.retention.transmissions` |
+   | **Keep raw bursts (days)** | **DMR and MMDVM** | The raw DMR bursts of each transmission | `dmr.retention.bursts` |
 
-3. Click **Save**.
+3. Click **Save** on each tab that you changed.
 
-The Setup page offers **Keep forever**, **30 days**, **90 days**, **1 year**, **2 years** and **5 years**. In the configuration, each value is a number of days from 0 to 36500, and 0 keeps the records forever. A value from the configuration file that is not in the list shows as a number of days.
+Each value is a number of days from 0 to 36500, and 0 keeps the records forever.
 
 DMRHub deletes old records once each hour. With several replicas, only one replica deletes in each hour. Retention also deletes records from the admin search. Set a period that your local rules allow.

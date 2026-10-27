@@ -4,8 +4,8 @@ OpenBridge links DMRHub to another network server, such as another DMRHub, HBlin
 
 ## Turn on OpenBridge
 
-1. Go to **Admin**, then **Setup**, and find the **OpenBridge Settings** card in **DMR Settings**.
-2. Turn on **Enabled**. Set the **Port** (default 62035, UDP) and, for FreeDMR peers, the **Server ID** (see [Enhanced peers](#enhanced-peers-for-freedmr)).
+1. Go to **Admin**, then **Setup**, and open the **OpenBridge** tab.
+2. Turn on **Accept OpenBridge peers**. Set the **Port** (default 62035, UDP) and, for FreeDMR peers, the **Server ID** (see [Enhanced peers](#enhanced-peers-for-freedmr)).
 3. Click **Save**.
 
 The configuration keys are `dmr.openbridge.enabled`, `dmr.openbridge.bind`, `dmr.openbridge.port` and `dmr.openbridge.server-id`. Open the UDP port in your firewall.

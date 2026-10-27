@@ -154,3 +154,21 @@ func TestOpenBridgeQuenchesAStreamItsRulesRefuse(t *testing.T) {
 		assert.Positive(t, quenches(s.peer.DrainControls(300*time.Millisecond), 9621), "the refused stream was not quenched")
 	})
 }
+
+// TestOpenBridgeSendsItsVersion links an enhanced peer. FreeDMR sends a
+// BCVE of its version at the start of the link and every minute
+// (hblink.py send_bcve), so a peer that runs an older version learns the
+// newest that it may send; the hub must send its own.
+func TestOpenBridgeSendsItsVersion(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		s := startConformStack(t, stack, true)
+		var versions []uint8
+		for _, c := range s.peer.DrainControls(3 * time.Second) {
+			if c.Command == dmrd.CommandBCVE {
+				versions = append(versions, c.Version)
+			}
+		}
+		assert.Contains(t, versions, uint8(5), "the hub sent no BCVE of version 5")
+	})
+}

@@ -56,6 +56,9 @@ const (
 	quenchTTL        = 30 * time.Second
 	quenchPruneSize  = 1024
 	keepaliveTick    = time.Second
+	// versionEvery is how often an enhanced link sends its BCVE, as
+	// FreeDMR does (hblink.py startProtocol).
+	versionEvery = time.Minute
 	// staleAfter is the age at which a DMRE packet is dropped, as FreeDMR
 	// drops it (hblink.py "more than 5s old").
 	staleAfter = 5 * time.Second
@@ -175,11 +178,13 @@ type quench struct {
 // bridge is the OpenBridge link of one peer, for the passphrase it was made
 // with.
 type bridge struct {
-	mu       sync.Mutex
-	password string
-	enhanced bool
-	b        *dmrdsession.Bridge
-	key      *dmrdauth.BridgeKey
+	mu        sync.Mutex
+	password  string
+	enhanced  bool
+	b         *dmrdsession.Bridge
+	key       *dmrdauth.BridgeKey
+	versioned bool
+	versionAt time.Duration
 }
 
 func (s *Server) bridgeFor(peer models.Peer) (*bridge, error) {
@@ -241,6 +246,18 @@ func (b *bridge) tick(now time.Duration) [][]byte {
 		case dmrdsession.OutputDown:
 			slog.Info("Enhanced OpenBridge peer sent nothing for a minute")
 		}
+	}
+	if b.enhanced && (!b.versioned || now-b.versionAt >= versionEvery) {
+		p, err := (&dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: enhancedVersion}).AppendBinary(nil)
+		if err == nil {
+			err = b.key.SignInPlace(p)
+		}
+		if err != nil {
+			slog.Error("Error making an OpenBridge version packet", "error", err)
+			return out
+		}
+		b.versioned, b.versionAt = true, now
+		out = append(out, p)
 	}
 	return out
 }

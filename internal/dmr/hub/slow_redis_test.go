@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,7 +33,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/stretchr/testify/assert"
@@ -50,22 +50,19 @@ const (
 	stallNotSent
 )
 
-type heldMessage struct {
-	topic   string
-	message []byte
-}
-
-// stalledPubSub acts as a Redis that stops for a while on the topics that
-// stalls picks. In stallTimeout, as a paused Redis, each publish waits a
-// second and fails, and Redis runs it once it goes on. In stallNotSent, as
-// a stopped Redis, each publish fails at once and never runs.
+// stalledPubSub acts as a Redis that stops on the topics that stalls
+// picks until resume. In stallTimeout, as a paused Redis, each publish
+// waits for resume and fails, and Redis runs it once it goes on. In
+// stallNotSent, as a stopped Redis, each publish fails at once and never
+// runs.
 type stalledPubSub struct {
 	pubsub.PubSub
 	stalls func(topic string) bool
 	mu     sync.Mutex
 	mode   stallMode
-	held   []heldMessage
+	paused chan struct{}
 	calls  atomic.Int64
+	held   atomic.Int64
 }
 
 func (s *stalledPubSub) Publish(topic string, message []byte) error {
@@ -75,20 +72,16 @@ func (s *stalledPubSub) Publish(topic string, message []byte) error {
 		return s.PubSub.Publish(topic, message) //nolint:wrapcheck
 	}
 	s.calls.Add(1)
-	if s.mode == stallNotSent {
-		s.mu.Unlock()
+	mode, paused := s.mode, s.paused
+	s.mu.Unlock()
+	if mode == stallNotSent {
 		time.Sleep(5 * time.Millisecond)
 		return fmt.Errorf("dial tcp: connection refused: %w", pubsub.ErrNotSent)
 	}
-	s.mu.Unlock()
-	time.Sleep(stalledRedisCall)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.mode == stallNone {
-		_ = s.PubSub.Publish(topic, message)
-	} else {
-		s.held = append(s.held, heldMessage{topic: topic, message: append([]byte(nil), message...)})
-	}
+	s.held.Add(1)
+	<-paused
+	s.held.Add(-1)
+	_ = s.PubSub.Publish(topic, message)
 	return errors.New("read tcp: i/o timeout")
 }
 
@@ -96,16 +89,19 @@ func (s *stalledPubSub) stall(mode stallMode) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mode = mode
+	if mode == stallTimeout && s.paused == nil {
+		s.paused = make(chan struct{})
+	}
 }
 
 func (s *stalledPubSub) resume() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mode = stallNone
-	for _, m := range s.held {
-		_ = s.PubSub.Publish(m.topic, m.message)
+	if s.paused != nil {
+		close(s.paused)
+		s.paused = nil
 	}
-	s.held = nil
 }
 
 func seedStalledRedisHub(t *testing.T, database *gorm.DB) {
@@ -132,6 +128,8 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 		stalled.PubSub = ps
 		return stalled
 	}, func(k kv.KV) kv.KV { return k })
+	t.Cleanup(stalled.resume)
+	t.Cleanup(h.HoldLookupWaits())
 	seedStalledRedisHub(t, database)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
@@ -205,32 +203,38 @@ func assertAllInOrder(t *testing.T, d deliveries, key string, n int) {
 }
 
 // TestAStalledPubSubHoldsNoBurst sends a group call while every publish to
-// its talkgroup waits a second and fails, as a paused Redis makes it, for
-// three seconds, and another call on the other slot meanwhile. The routing
-// worker of the stalled slot must not wait on the publishes: its bursts to
-// the peer, which do not go through pubsub, come at once, as do the bursts
-// of the other slot. Once Redis goes on, every burst must reach the
+// its talkgroup waits and fails, as a paused Redis makes it, and another
+// call on the other slot meanwhile. The routing worker of the stalled slot
+// must not wait on the publishes: all its bursts to the peer, which do not
+// go through pubsub, come while Redis holds a publish, as do all the
+// bursts of the other slot. Once Redis goes on, every burst must reach the
 // repeater once and in order.
 func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 	t.Parallel()
 	h, stalled, arrivals := makeStalledRedisHub(t, func(topic string) bool { return topic == "hub:packets:talkgroup:1" })
 
-	const stream, other, bursts = 70201, 70211, 120
+	const stream, other, bursts = 70201, 70211, 20
 	stalled.stall(stallTimeout)
-	time.AfterFunc(3*time.Second, stalled.resume)
 	sentOther := make(chan []time.Time, 1)
 	go func() { sentOther <- sendSlotStream(h, 2, other, true, bursts) }()
 	sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
 	sent[other] = <-sentOther
 
-	d := gather(arrivals, sent, map[string]int{
-		"70201 mmdvm:100002": bursts, "70201 peers:3100100": bursts,
-		"70211 mmdvm:100002": bursts, "70211 peers:3100100": bursts,
-	}, time.Second)
-	t.Logf("worst delays %v after %d stalled publishes", d.worst, stalled.calls.Load())
-	assert.Less(t, d.worst["70201 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a stalled publish")
-	assert.Less(t, d.worst["70211 mmdvm:100002"], stalledRedisCall/4, "a burst of the other slot waited on a stalled publish")
-	assert.Less(t, d.worst["70211 peers:3100100"], stalledRedisCall/4, "a burst of the other slot to the peer waited on a stalled publish")
+	held := gather(arrivals, sent, map[string]int{
+		"70201 peers:3100100": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3100100": bursts,
+	}, 0)
+	t.Logf("while Redis held %d publishes the targets got %v", stalled.held.Load(), held.seqs)
+	assert.Positive(t, stalled.held.Load(), "the call sent no publish for Redis to hold")
+	assert.Empty(t, held.seqs["70201 mmdvm:100002"], "a burst reached the repeater through a held publish")
+	for _, k := range []string{"70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
+		assert.Len(t, held.seqs[k], bursts, "%s: a burst waited on a held publish", k)
+	}
+	stalled.resume()
+
+	d := gather(arrivals, sent, map[string]int{"70201 mmdvm:100002": bursts - len(held.seqs["70201 mmdvm:100002"])}, time.Second)
+	for k, seqs := range held.seqs {
+		d.seqs[k] = slices.Concat(seqs, d.seqs[k])
+	}
 	for _, k := range []string{"70201 mmdvm:100002", "70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
 		assertAllInOrder(t, d, k, bursts)
 	}
@@ -256,17 +260,36 @@ func TestAPublishThatDidNotReachRedisIsSentAgain(t *testing.T) {
 	assert.Less(t, d.worst["70202 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
 }
 
+// lastHeardReads counts the reads of the records of where radios were
+// heard.
+type lastHeardReads struct {
+	kv.KV
+	n atomic.Int64
+}
+
+func (r *lastHeardReads) Get(ctx context.Context, key string) ([]byte, error) {
+	if strings.HasPrefix(key, "dmrhub:lastheard:") {
+		r.n.Add(1)
+	}
+	return r.KV.Get(ctx, key) //nolint:wrapcheck
+}
+
 // TestAStalledKVHoldsNoBurstOfAPrivateCall starts a private call to a
-// radio while every call to the KV store takes two seconds, as a paused
-// Redis makes it. Finding where the radio is must wait no longer than a
-// database lookup does, and then fall back to its last call.
+// radio while every call to the KV store hangs, as a paused Redis makes
+// it. Finding where the radio is must wait on the KV store no longer than
+// the wait for the claim of the stream and a lookup: once both end, every
+// burst must reach the repeater of the last call of the radio while the KV
+// store still hangs.
 func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 	t.Parallel()
-	slow := &slowKV{delay: 2 * time.Second}
+	slow := &slowKV{hang: make(chan struct{})}
+	reads := &lastHeardReads{KV: slow}
 	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
 		slow.KV = k
-		return slow
+		return reads
 	})
+	t.Cleanup(func() { close(slow.hang) })
+	t.Cleanup(h.HoldLookupWaits())
 	seedStalledRedisHub(t, database)
 	arrivals := collect(map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
@@ -275,11 +298,19 @@ func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 	h.ActivateRepeater(context.Background(), 100002)
 	time.Sleep(100 * time.Millisecond)
 
+	endClaims := h.HoldStreamClaimWaits()
+	endLookups := h.HoldLastSeenWaits()
 	slow.on.Store(true)
-	defer slow.on.Store(false)
-	worst := worstDelay(t, arrivals, 70300, sendStream(h, 1000002, 70300, false, 8), "mmdvm:100002")
-	t.Logf("worst delay %v with %v per KV call", worst, slow.delay)
-	assert.Less(t, worst, hub.StreamClaimWait+lookup.Wait+200*time.Millisecond, "a burst of a private call waited on a stalled KV store")
+	sent := sendStream(h, 1000002, 70300, false, 8)
+	endClaims()
+	endLookups()
+	worstDelay(t, arrivals, 70300, sent, "mmdvm:100002")
+	slow.mu.Lock()
+	claims := len(slow.setNX)
+	slow.mu.Unlock()
+	t.Logf("the call passed while the KV store held %d claims and %d reads of where the radio was heard", claims, reads.n.Load())
+	assert.Positive(t, claims, "the call made no claim for the KV store to hold")
+	assert.Positive(t, reads.n.Load(), "the call read no record of where the radio was heard for the KV store to hold")
 }
 
 type stalledPlugins struct {

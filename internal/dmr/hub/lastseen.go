@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
+	"gorm.io/gorm"
 )
 
 const (
@@ -131,20 +132,34 @@ func (h *Hub) runSightings() {
 // user owns, as the account ID or a radio ID the user added, moves only to
 // a repeater that its user owns or an admin trusts; other sightings of it
 // are logged only, so a hotspot that spoofs a source ID cannot pull that
-// radio's private traffic. The record in the KV store, and the word to
-// the plugins, go through the outbox of the radio, so that a paused Redis
-// holds no other sighting.
+// radio's private traffic. The check of the owner, the record in the KV
+// store and the word to the plugins go through the outbox of the radio,
+// so that a slow database or a paused Redis holds no other sighting, and
+// a check that the database does not answer runs again.
 func (h *Hub) recordSighting(s sighting) {
+	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
+		Topic:      lastHeardKey(s.src),
+		Repeatable: true,
+		Send:       func() error { return h.vetSighting(s) },
+	})
+}
+
+// vetSighting checks whether private traffic in the hybrid and members
+// reach may follow the radio of s to its repeater, and queues the record
+// of s. It fails when the database does not answer.
+func (h *Hub) vetSighting(s sighting) error {
 	owner, err := h.radioOwners.Get(s.src)
 	if err != nil {
-		slog.Error("Error finding the owner of a radio", "radioID", s.src, "error", err)
-		return
+		return fmt.Errorf("finding the owner of radio %d: %w", s.src, err)
 	}
 	vetted := true
 	if owner != 0 {
-		rpt, ok := h.routableFor(owner, s.repeater)
+		rpt, ok, err := h.routableFor(owner, s.repeater)
+		if err != nil {
+			return err
+		}
 		if !ok && rpt.ID == 0 {
-			return
+			return nil
 		}
 		if ok {
 			h.tellHeard(s, &rpt)
@@ -160,6 +175,7 @@ func (h *Hub) recordSighting(s sighting) {
 		Repeatable: true,
 		Send:       func() error { return h.storeSighting(s, key, vetted) },
 	})
+	return nil
 }
 
 func lastHeardKey(radio uint) string {
@@ -340,10 +356,14 @@ func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {
 // routableFor reports whether private traffic for the radio of userID may
 // follow it to repeaterID: the user owns the repeater or an admin trusts
 // it. It returns the repeater it found, with ID 0 when there is none.
-func (h *Hub) routableFor(userID, repeaterID uint) (models.Repeater, bool) {
+func (h *Hub) routableFor(userID, repeaterID uint) (models.Repeater, bool, error) {
 	var rpt models.Repeater
-	if err := h.db.Select("id", "owner_id", "trusted", "color_code").First(&rpt, repeaterID).Error; err != nil {
-		return models.Repeater{}, false
+	err := h.db.Select("id", "owner_id", "trusted", "color_code").First(&rpt, repeaterID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.Repeater{}, false, nil
 	}
-	return rpt, rpt.OwnerID == userID || rpt.Trusted
+	if err != nil {
+		return models.Repeater{}, false, fmt.Errorf("finding repeater %d: %w", repeaterID, err)
+	}
+	return rpt, rpt.OwnerID == userID || rpt.Trusted, nil
 }

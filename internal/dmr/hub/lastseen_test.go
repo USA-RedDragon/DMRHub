@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
@@ -150,6 +151,33 @@ func TestPrivateTrafficFollowsASightingThatIsNotStoredYet(t *testing.T) {
 	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
 	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
 	expectAt(t, srv, 100003, "private traffic goes where the radio was just heard")
+}
+
+// TestASlowDatabaseLosesNoSighting hears a radio on its owner's hotspot,
+// and another radio on a hotspot of another user, each while every
+// statement of the database takes longer than lookup.Wait, so the lookup
+// of the owner of each radio gives up. Both sightings must reach the
+// record once the database is fast again: the first moves its radio, and
+// the second is only the last repeater that heard its radio.
+func TestASlowDatabaseLosesNoSighting(t *testing.T) {
+	t.Parallel()
+	h, database, _ := lastSeenHub(t)
+	slow := slowDownBy(t, database, lookup.Wait+200*time.Millisecond)
+	ctx := context.Background()
+	hearSlowly := func(radio, repeater, stream uint) {
+		slow.on.Store(true)
+		h.RoutePacket(ctx, dataHeader(radio, 1, repeater, stream), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		slow.on.Store(false)
+	}
+	heard := func(radio, vetted, last uint) func() bool {
+		return func() bool { return h.HeardAt(ctx, radio) == vetted && h.HeardLastOn(ctx, radio) == last }
+	}
+
+	hearSlowly(1000002, 100003, 1)
+	require.Eventually(t, heard(1000002, 100003, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on the owner's hotspot was lost")
+	hearSlowly(1000001, 100003, 2)
+	require.Eventually(t, heard(1000001, 0, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on another user's hotspot was lost, or moved the radio")
 }
 
 func TestPrivateTrafficToUnregisteredRadioIsDroppedInTheMembersReach(t *testing.T) {

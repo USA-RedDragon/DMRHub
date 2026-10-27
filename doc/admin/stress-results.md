@@ -1,272 +1,215 @@
-# Stress test results
+# Stress results
 
-This document gives the results of the DMRHub stress battery on the SQLite and the Postgres and Redis backends. It tells what each area of the battery does, how the runs were set up, and what the results show. It also gives the root cause of each problem that the runs found.
+This page shows how much traffic DMRHub carries on the SQLite backend and on the PostgreSQL and Redis backend, what fails first when the load goes up, why, what an operator sees when it happens, and which settings or hardware move the limit. All numbers come from one set of runs on one commit (see [The runs](#the-runs)).
 
-## Run the battery
+## Summary
 
-The battery is in `internal/stress` (build tag `stress`). `hack/stress.sh` runs it area by area and writes JSON, CSV, logs and PNG graphs to a results directory. `hack/stress_plot.py` makes the graphs. The environment variables are at the top of `hack/stress.sh`.
+| | SQLite | PostgreSQL and Redis |
+| - | ------ | -------------------- |
+| Normal traffic | Pass. callmix and transports: no missing, duplicated or misrouted burst. chaos: no misrouted burst, and every fault recovered. | Pass. The same as SQLite. |
+| First metric to degrade | p99 latency over 50 ms at 100 busy repeaters | p99 latency over 50 ms at 100 busy repeaters |
+| First records lost | 200 busy repeaters: the call tracker drops packets | 100 busy repeaters: the call tracker drops packets |
+| Why bursts are lost | A lookup on the routing path (where a radio was last heard) waits 500 ms for the database, then gives up | A lookup on the routing path (a repeater) waits 500 ms for the database, then gives up |
+| First bursts lost | 400 busy repeaters: 23 of 595641 in the ramp. None in the single-step run of 400. | 100 busy repeaters in the ramp (1223 of 175096), 200 in the single-step runs (2036 of 295956) |
+| Failure (p99 over 500 ms) | 400 busy repeaters | 400 busy repeaters |
+| What fails first | The one SQLite writer: the call tracker cannot write the records as fast as they come, and a dynamic talkgroup link waits for the writer on the routing path. | The database connection pool: all 40 connections are in use, the call tracker queue fills, and lookups on the routing path give up. |
+| Not the limit | CPU: DMRHub used at most 1.6 of its 4 cores, and was never throttled. | CPU: DMRHub used at most 2 of its 4 cores, and was never throttled. |
 
-The runs in this document used these commands:
+A busy repeater has calls on both timeslots for 60% of the time, with mostly voice and some SMS. 100 busy repeaters are 200 lanes and about 7400 deliveries each second.
+
+The machine also ran other heavy jobs during the runs, with a one-minute load average of 67 to 106 on 32 threads. This makes the latency at low load higher than on a quiet server (see [Latency at low load](#latency-at-low-load)).
+
+## The runs
+
+| Item | Value |
+| ---- | ----- |
+| Code | `main` at `8d7a3bf0` (the standard battery) and `4b12a3d8` (the ramps). The two commits have the same code; only the docs changed. |
+| Date | 2026-10-26, 23:06 to 23:41 CDT |
+| Machine | AMD Ryzen 9 7950X, 16 cores, 32 threads, 93 GB RAM, NVMe SSD (ext4 on LVM), Linux 7.2.9 |
+| CPU limits | One Go process (Go 1.27.3) holds DMRHub, the simulated repeaters, the ledger and the sampler. It runs in a systemd scope with `CPUQuota=400%` (4 cores), `nice -n 19` and `GOMAXPROCS=4`. |
+| PostgreSQL and Redis | `postgres:16-alpine` and `redis:7-alpine` in Docker 29.9.0, each limited to 4 CPUs, on loopback. The database pool of DMRHub has 10 connections for each CPU of `GOMAXPROCS`, so 40. |
+| SQLite | A database file with the default parameters: `foreign_keys(1)`, `journal_mode(WAL)`, `synchronous(NORMAL)` and `_txlock=immediate`. |
+| Other load | The machine ran training, labeling and build jobs at the same time. The one-minute load average was 67 to 106. Each result records it. |
+| External clients | Not run. The transports area can also run MMDVMHost, DMRGateway, HBlink and other programs (`DMRHUB_STRESS_EXT_DIR`), but they were not on this machine. |
+| Network | Loopback only |
+
+### Run it yourself
+
+The battery is in `internal/stress` (build tag `stress`). `hack/stress.sh` runs it area by area and writes JSON, CSV and logs to a results directory, and `hack/stress_plot.py` draws the graphs. The settings are environment variables, listed at the top of `hack/stress.sh`. `PYTHON` must be a path, such as `/usr/bin/python3`, with matplotlib.
+
+The standard battery:
 
 ```sh
 DMRHUB_STRESS_AREAS="callmix transports ramp chaos" \
 DMRHUB_STRESS_BACKENDS="sqlite postgres-redis" \
-DMRHUB_STRESS_RESULTS=<results dir> PYTHON=python3 \
+DMRHUB_STRESS_RESULTS=<results dir> PYTHON=/usr/bin/python3 \
 systemd-run --user --scope -q -p CPUQuota=400% nice -n 19 env GOMAXPROCS=4 hack/stress.sh
-
-python3 hack/stress_plot.py <results dir> <earlier results dir>
 ```
 
-The second argument of `stress_plot.py` is optional. When you give the results of an earlier run, the script also draws `ramp-compare.png`.
+The ramp to failure, with profiles:
+
+```sh
+DMRHUB_STRESS_AREAS=ramp \
+DMRHUB_STRESS_BACKENDS="sqlite postgres-redis" \
+DMRHUB_STRESS_RAMP=100,200,400,800 DMRHUB_STRESS_PPROF=1 \
+DMRHUB_STRESS_RESULTS=<results dir> PYTHON=/usr/bin/python3 \
+systemd-run --user --scope -q -p CPUQuota=400% nice -n 19 env GOMAXPROCS=4 hack/stress.sh
+```
+
+The ramp stops at the first step whose p99 is over 10 times the limit (500 ms). The single-step runs below use the same command with one value in `DMRHUB_STRESS_RAMP` for each run, so that each step has its own profiles and its own rig of that many repeaters. They also record the `cpu.stat` and `cpu.pressure` of the cgroup of the scope before and after each run.
 
 ## Areas
 
-Each area starts its own hub in the test process, with 20 MMDVM repeaters (the load ramp uses 100) that log in over UDP on loopback. Repeater `i` has one static talkgroup on each timeslot. With the default fanout of 5, about 5 repeaters carry each talkgroup on each slot. Each slot of each repeater is a lane. A lane carries one transmission at a time, at the pace of the air interface (one burst every 60 ms), and is busy for 60% of the time (`DMRHUB_STRESS_DUTY`). A ledger knows each burst that a lane sent and each target that must get it. It counts every delivery, so it finds missing, duplicate, changed and misrouted bursts. The latency of a burst is the time from the send to the receive at a target, in the same process.
+Each area starts its own hub in the test process, with 20 MMDVM repeaters that log in over UDP on loopback (the ramp uses as many as its largest step). Repeater `i` has one static talkgroup on each timeslot, and with the default fanout of 5, about 5 repeaters carry each talkgroup on each slot. Each slot of each repeater is a lane, which carries one transmission at a time at the pace of the air interface (one burst every 60 ms). A ledger knows each burst that a lane sent and each target that must get it, so it finds missing, duplicated, changed and misrouted bursts. The latency of a burst is the time from the send to the receive at a target, in the same process.
 
 | Area | Test | What it does | Pass criteria |
-| --- | --- | --- | --- |
-| callmix | `TestCallMix` | Runs the call mix on both slots of every repeater for 20 s: group calls, kerchunks, late entry, lost terminators, private calls to radios and to repeaters, calls to the parrot plugin, group and private SMS. An OpenBridge peer gets every call. One call on the first repeater lasts 16 s. | Every burst reaches each target exactly once and unchanged. Each transmission has one correct row that is not active at the end. Each SMS has one message row. The parrot plays each call back to its caller only. |
-| transports | `TestTransports` | Runs the call mix and, on one talkgroup, sends voice, SMS and a CSBK in turn from each transport: MMDVM, an MMDVM session peer, OpenBridge v1 and v5, and IPSC. The targets are the MMDVM repeaters of the talkgroup, the session peer, the OpenBridge peer and the IPSC repeater 329001. Then it logs in a peer that speaks HBRP. | Same as callmix. On IPSC, the voice and data payloads must arrive. A burst that the IPSC server reports `slot_busy` is dropped and counted, not missing (see [Transports](#transports-and-the-ipsc-slot)). |
-| ramp | `TestLoadRamp` | Connects 100 repeaters, then makes 10, 25, 50 and 100 of them busy, 20 s for each step, with mostly voice and some SMS on the same slots. | The area records where the hub degrades: a p99 latency over 50 ms or a missing delivery. |
-| chaos | `TestChaos` | Keeps 3 repeaters busy at 42% duty and breaks one thing at a time (the steps below). After each step a probe call must get through. | No burst goes to a wrong target. The bursts of the lossy path arrive as often as the proxy passed them. No burst arrives more than 5 s late (traffic is dropped and counted, never held). |
+| ---- | ---- | ------------ | ------------- |
+| callmix | `TestCallMix` | 20 s of group calls, kerchunks, late entry, lost terminators, private calls to radios and to repeaters, calls to the parrot plugin, and group and private SMS, on both slots of every repeater. An OpenBridge peer gets every call. One call lasts 16 s. | Every burst reaches each target once and unchanged. Each transmission has one correct row that is not active at the end. Each SMS has one message row. The parrot plays each call back to its caller only. |
+| transports | `TestTransports` | The call mix, plus voice, SMS and a CSBK from each transport in turn: MMDVM, an MMDVM session peer, OpenBridge v1 and v5, and IPSC. Then a peer logs in with the dialect of the published Homebrew specification. | As callmix. A burst that the IPSC server reports as `slot_busy` is dropped and counted, not missing. |
+| ramp | `TestLoadRamp` | Makes 10, 25, 50 and 100 repeaters busy (or the steps of `DMRHUB_STRESS_RAMP`), 20 s for each step, with mostly voice and some SMS. | Records the step where the p99 goes over 50 ms or a delivery is missing. |
+| chaos | `TestChaos` | Keeps 3 repeaters busy and breaks one thing at a time: a repeater stops in a call, a lossy UDP proxy, a restart of the MMDVM server with a handoff, a 5 s pause of Redis and of PostgreSQL, and the stop of a second replica. | No burst goes to a wrong target. The bursts of the lossy path arrive as often as the proxy passed them. A probe call gets through after each fault. |
 
-The chaos steps:
-
-| Step | What it does | Recovery check |
-| --- | --- | --- |
-| peer-drop | A repeater stops in the middle of a 6 s call, then logs in again. | A call from it gets through within 15 s. |
-| loss-dup-reorder | A UDP proxy between one repeater and the hub loses 5%, duplicates 5% and reorders 5% of the DMRD packets, for 10 calls of 40 bursts. | Each target gets each burst as often as the proxy passed it. |
-| mmdvm-restart-handoff | Restarts the MMDVM server with a handoff of its sessions. | A call gets through within 20 s. |
-| redis-outage | Pauses the Redis container for 5 s (`postgres-redis` only). | A call gets through within 30 s. |
-| postgres-outage | Pauses the Postgres container for 5 s (`postgres-redis` only). | A call gets through within 30 s. |
-| replica-failover | Starts a second replica with a session peer on it, then stops the replica. The peer logs in to the first replica. | A call from the peer gets through within 30 s. |
-| clock-jump | Skipped: the step has no clock injection point. | None. |
-
-## Setup of the runs
-
-| Item | Value |
-| --- | --- |
-| Date | 2026-10-26, 11:12 to 11:22 CDT. The SQLite ramp ran again at 12:24 CDT with the synchronous change (see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)). |
-| Code | main at `8ecf1dbe` (v1.3.14) plus the changes in [Changes in this branch](#changes-in-this-branch) |
-| Machine | AMD Ryzen 9 7950X, 16 cores, 32 threads, 93 GB RAM, NVMe SSD (ext4 on LVM), Linux 7.2.9 |
-| Other load | The machine also ran training and labeling jobs. The one-minute load average was 11 to 22 during the runs. Each area records it in `loadavg_start` and `loadavg_end`. |
-| Hub and test process | One Go process (Go 1.27.3) in a systemd scope with `CPUQuota=400%`, `nice -n 19` and `GOMAXPROCS=4`. The hub, the simulated repeaters, the ledger and the sampler share these 4 CPUs. |
-| Postgres and Redis | `postgres:16-alpine` and `redis:7-alpine` in Docker 29.9.0, each capped at 4 CPUs (`NanoCPUs`), on loopback |
-| SQLite | A database file with the default parameters of a production install: `foreign_keys(1)`, `journal_mode(WAL)`, `_txlock=immediate`, and for the SQLite ramp `synchronous(NORMAL)`. The other SQLite areas ran with the old default, `synchronous(FULL)`. |
-| Network | Loopback only. No public network. |
-| Duration | 20 s of traffic for each area and for each ramp step |
-
-## Results
-
-### Summary
-
-Latency is the time from the send of a burst to its receive at a target, over all targets of all bursts of the area. "slot_busy drops" are the deliveries to the IPSC repeater that the IPSC server dropped and reported, because its timeslot was busy (see [Transports](#transports-and-the-ipsc-slot)). The chaos area counts its losses during the faults but does not fail for them.
+## Normal traffic
 
 | Area | Backend | Result | Bursts sent | Deliveries expected | Missing | Duplicates | Wrong target | slot_busy drops | p50 ms | p90 ms | p99 ms | max ms |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| callmix | sqlite | pass | 8603 | 36798 | 0 | 0 | 0 | 0 | 0.11 | 0.18 | 0.33 | 2.34 |
-| callmix | postgres-redis | pass | 8603 | 36798 | 0 | 0 | 0 | 0 | 0.21 | 0.36 | 0.70 | 3.35 |
-| transports | sqlite | pass | 8596 | 38752 | 0 | 0 | 0 | 516 | 0.10 | 0.17 | 0.34 | 83.5 |
-| transports | postgres-redis | pass | 8596 | 38752 | 0 | 0 | 0 | 516 | 0.28 | 0.69 | 2.14 | 11.7 |
-| chaos | sqlite | pass | 1944 | 7665 | 20 | 0 | 0 | - | 0.18 | 0.29 | 60.2 | 120 |
-| chaos | postgres-redis | fail | 2404 | 8833 | 86 | 0 | 0 | - | 0.34 | 1.11 | 4536 | 5011 |
-| ramp, 100 busy | sqlite | pass | 43077 | 148504 | 0 | 0 | 0 | - | 0.13 | 0.29 | 1.46 | 41.1 |
-| ramp, 100 busy | postgres-redis | pass | 43077 | 148504 | 0 | 0 | 0 | - | 0.27 | 0.75 | 2.50 | 8.34 |
+| ---- | ------- | ------ | ----------- | ------------------- | ------- | ---------- | ------------ | --------------- | ------ | ------ | ------ | ------ |
+| callmix | sqlite | pass | 8603 | 36798 | 0 | 0 | 0 | - | 0.72 | 2.85 | 20.4 | 191 |
+| callmix | postgres-redis | pass | 8603 | 36798 | 0 | 0 | 0 | - | 1.58 | 6.88 | 24.8 | 58.5 |
+| transports | sqlite | pass | 8596 | 38752 | 0 | 0 | 0 | 516 | 0.63 | 2.70 | 10.6 | 44.9 |
+| transports | postgres-redis | pass | 8596 | 38752 | 0 | 0 | 0 | 516 | 1.43 | 5.88 | 19.1 | 51.7 |
+| chaos | sqlite | pass | 1944 | 7665 | 21 | 0 | 0 | - | 0.87 | 3.40 | 60.8 | 125 |
+| chaos | postgres-redis | pass | 2461 | 9118 | 74 | 0 | 0 | - | 1.94 | 8.69 | 4749 | 5125 |
 
-Other checks of callmix and transports, on both backends:
+On both backends:
 
 - Each of the 223 (callmix) and 241 (transports) transmissions has one correct row, and no row is active at the end.
 - Each of the 26 SMS of callmix has one message row with its text.
 - The parrot played 220 bursts back for 188 voice bursts sent to it, to the callers only.
-- A peer that speaks HBRP logged in.
-- No burst arrived changed, and no packet of an unknown stream arrived.
+- The peer with the dialect of the published Homebrew specification logged in.
+- The 516 `slot_busy` drops are the bursts that the transports area sends to one IPSC timeslot while it is busy. The area sends more traffic to that slot than one slot can carry, on purpose.
 
-### Latency by kind
+Data does not wait behind voice:
 
-| Area | Backend | Kind | Deliveries | p50 ms | p90 ms | p99 ms | max ms |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| callmix | sqlite | voice | 35804 | 0.11 | 0.18 | 0.32 | 2.34 |
-| callmix | sqlite | data | 994 | 0.09 | 0.17 | 0.49 | 0.88 |
-| callmix | postgres-redis | voice | 35804 | 0.21 | 0.36 | 0.70 | 3.35 |
-| callmix | postgres-redis | data | 994 | 0.21 | 0.36 | 0.55 | 2.15 |
-| transports | sqlite | voice | 36288 | 0.10 | 0.17 | 0.34 | 83.5 |
-| transports | sqlite | data | 1485 | 0.10 | 0.19 | 0.64 | 1.28 |
-| transports | sqlite | csbk | 45 | 0.19 | 0.29 | 0.33 | 0.33 |
-| transports | sqlite | IPSC slot | 408 | 7795 | 10732 | 23621 | 24522 |
-| transports | postgres-redis | voice | 36288 | 0.28 | 0.69 | 2.20 | 11.7 |
-| transports | postgres-redis | data | 1485 | 0.27 | 0.59 | 1.44 | 2.66 |
-| transports | postgres-redis | csbk | 45 | 0.38 | 0.94 | 1.07 | 1.08 |
-| transports | postgres-redis | IPSC slot | 408 | 7793 | 10732 | 23620 | 24520 |
+| Area | Backend | Voice p50 / p99 ms | Data p50 / p99 ms | CSBK p50 / p99 ms |
+| ---- | ------- | ------------------ | ----------------- | ----------------- |
+| callmix | sqlite | 0.72 / 20.9 | 0.61 / 7.57 | - |
+| callmix | postgres-redis | 1.58 / 25.0 | 1.50 / 22.3 | - |
+| transports | sqlite | 0.63 / 10.9 | 0.63 / 6.93 | 1.85 / 5.14 |
+| transports | postgres-redis | 1.44 / 19.1 | 1.32 / 20.9 | 3.73 / 5.78 |
 
-Data does not wait behind voice: the data p99 is near the voice p99 in each area. The "IPSC slot" row is the time that the bursts to the IPSC repeater waited for its timeslot. It is not a forwarding latency (see [Transports](#transports-and-the-ipsc-slot)).
+The `ipsc_slot` bar in the graphs below is the time that the bursts to the IPSC repeater waited for its busy timeslot. It is not a forwarding latency.
 
 ![Latency by area, SQLite](stress/latency-sqlite.png)
 
-![Latency by area, Postgres and Redis](stress/latency-postgres-redis.png)
-
-### Load ramp
-
-| Backend | Busy repeaters | Lanes | Bursts sent | Deliveries expected | Missing | Duplicates | p50 ms | p90 ms | p99 ms | max ms | CPU (cores) | DB statements per burst | DB pool wait ms | Call tracker drops | Load average |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| sqlite | 10 | 20 | 4339 | 17244 | 0 | 0 | 0.15 | 0.29 | 0.91 | 6.39 | 0.06 | 1.28 | 0 | 0 | 14.4 |
-| sqlite | 25 | 50 | 10685 | 38553 | 0 | 0 | 0.13 | 0.26 | 1.05 | 8.83 | 0.11 | 0.93 | 0 | 0 | 12.2 |
-| sqlite | 50 | 100 | 21288 | 72779 | 0 | 0 | 0.12 | 0.26 | 0.84 | 18.7 | 0.19 | 0.78 | 0 | 0 | 11.3 |
-| sqlite | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.13 | 0.29 | 1.46 | 41.1 | 0.34 | 0.64 | 0 | 0 | 13.6 |
-| sqlite, synchronous FULL | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.12 | 0.22 | 0.54 | 86.8 | 0.28 | 0.57 | 0 | 21491 | 17.7 |
-| postgres-redis | 10 | 20 | 4339 | 17244 | 0 | 0 | 0.34 | 0.64 | 1.42 | 4.86 | 0.09 | 1.28 | 0 | 0 | 16.2 |
-| postgres-redis | 25 | 50 | 10685 | 38553 | 0 | 0 | 0.24 | 0.45 | 1.28 | 5.15 | 0.15 | 0.99 | 0 | 0 | 14.5 |
-| postgres-redis | 50 | 100 | 21288 | 72779 | 0 | 0 | 0.25 | 0.55 | 1.53 | 7.51 | 0.25 | 0.74 | 0 | 0 | 11.4 |
-| postgres-redis | 100 | 200 | 43077 | 148504 | 0 | 0 | 0.27 | 0.75 | 2.50 | 8.34 | 0.46 | 0.64 | 0 | 0 | 15.3 |
-
-The SQLite rows come from the run with `synchronous(NORMAL)`. The last row is the 100 repeater step of the 11:12 run, with the old default `synchronous(FULL)`.
-
-The hub forwards every burst at every step on both backends, with a p99 under 3 ms. The CPU column is the CPU time of the whole test process (hub and simulated repeaters) for each second of the step. At 100 busy repeaters the process uses about 0.3 cores (SQLite) and 0.46 cores (Postgres and Redis) of its 4.
-
-With `synchronous(FULL)`, the ramp found a limit in the records, not in the forwarding: at 100 busy repeaters on SQLite, the call tracker dropped 21491 packets because its queue was full. With `synchronous(NORMAL)` it dropped none (see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)).
-
-![Load ramp, SQLite](stress/ramp-sqlite.png)
-
-![Load ramp, Postgres and Redis](stress/ramp-postgres-redis.png)
+![Latency by area, PostgreSQL and Redis](stress/latency-postgres-redis.png)
 
 ### Chaos
 
-| Step | sqlite recovery s | postgres-redis recovery s |
-| --- | --- | --- |
-| peer-drop | 0.74 | 0.74 |
-| loss-dup-reorder | (no probe) | (no probe) |
-| mmdvm-restart-handoff | 0.74 | 0.74 |
-| redis-outage | (skipped) | 0.74 |
-| postgres-outage | (skipped) | 0.74 |
-| replica-failover | 2.32 | 2.32 |
-| clock-jump | (skipped) | (skipped) |
+| Fault | SQLite recovery s | PostgreSQL and Redis recovery s |
+| ----- | ----------------- | ------------------------------- |
+| A repeater stops in a call and logs in again | 0.74 | 0.74 |
+| MMDVM server restart with a handoff | 0.74 | 0.74 |
+| Redis paused for 5 s | (no Redis) | 0.74 |
+| PostgreSQL paused for 5 s | (no PostgreSQL) | 0.74 |
+| A second replica stops | 2.33 | 2.33 |
 
-A recovery of 0.74 s is the first probe call: the call got through at once. The lossy proxy lost 22, duplicated 18 and reordered 24 packets, and each target got each burst of the lossy calls as often as the proxy passed it on.
+A recovery of 0.74 s is the first probe call: it got through at once. The lossy proxy lost 22, duplicated 18 and reordered 24 packets, and each target got each burst of the lossy calls as often as the proxy passed it.
 
-Losses during the faults:
+| Backend | Missing deliveries | Where |
+| ------- | ------------------ | ----- |
+| sqlite | 21 | 20 in the first call from a session peer after its replica stopped, before the peer logged in to the other replica. 1 in a group call. |
+| postgres-redis | 74 | 20 as above. 53 in private calls that started while Redis or PostgreSQL was paused. 1 in a group call. |
 
-| Backend | Missing deliveries | Cause |
-| --- | --- | --- |
-| sqlite | 20 | All in `replica-after`: the first call from the session peer after its replica stopped, before the peer logged in again to the first replica. |
-| postgres-redis | 86 | 20 in `replica-after` as above. 66 (47 private, 19 group) in the calls that started while Redis was paused. |
+The p99 of 4.7 s on PostgreSQL and Redis is the bursts that waited in Redis while it was paused, and arrived when it resumed. Outside the faults, the largest latency was 124 ms.
 
-The p99 of 60 ms on both backends comes from the reorder step: the proxy holds a packet until the next one, 60 ms later. The postgres-redis area fails because a burst arrived 5.0 s after it was sent (see [Bursts held through a Redis outage](#bursts-held-through-a-redis-outage)).
+![Chaos, PostgreSQL and Redis: gauges each second](stress/chaos-postgres-redis-samples.png)
 
-![Chaos, Postgres and Redis: gauges each second](stress/chaos-postgres-redis-samples.png)
+## Load until failure
 
-The burst rate peaks at about 33 s, when Redis resumes and runs the PUBLISH commands that waited in its socket.
+### The ramp
 
-## Findings
+One process, one rig of 800 repeaters, and steps of 100, 200, 400 and 800 busy repeaters. Both backends stopped after the 400 step, because the p99 was over 500 ms.
 
-### Load ramp p99 not monotonic
+| Backend | Busy repeaters | Deliveries expected | Missing | p50 ms | p99 ms | max ms | Call tracker drops | CPU cores |
+| ------- | -------------- | ------------------- | ------- | ------ | ------ | ------ | ------------------ | --------- |
+| sqlite | 100 | 175156 | 0 | 1.75 | 54.5 | 98.6 | 0 | 0.94 |
+| sqlite | 200 | 324551 | 0 | 1.94 | 58.1 | 314 | 14361 | 1.18 |
+| sqlite | 400 | 595641 | 23 | 32.4 | 1548 | 2684 | 159092 | 1.74 |
+| postgres-redis | 100 | 175096 | 1223 | 10.9 | 174 | 1673 | 20984 | 0.97 |
+| postgres-redis | 200 | 324295 | 4007 | 20.7 | 199 | 1655 | 72870 | 1.37 |
+| postgres-redis | 400 | 596290 | 25346 | 6730 | 13455 | 17348 | 173556 | 1.98 |
 
-**Status: fixed on main before this run. No change in this branch.**
+![Load ramp to failure: p50, p99 and database pool wait](stress/ramp-compare.png)
 
-In the run of 2026-10-23 (handoff bundle, `stress/run1-sqlite-before-fixes`), the p99 latency of the ramp went up and down with the number of busy repeaters:
+### Single steps
 
-| Busy repeaters | p99 ms (2026-10-23) | DB pool wait ms in the step (2026-10-23) | p99 ms (now, sqlite) |
-| --- | --- | --- | --- |
-| 10 | 3.79 | 85458 (see note) | 0.91 |
-| 25 | 346 | 4742 | 1.05 |
-| 50 | 11.4 | 0 | 0.84 |
-| 100 | 280 | 70858 | 1.46 |
+One process for each step, with a rig of that many repeaters, and the CPU numbers of its cgroup. "CPU pressure" is the share of the run in which at least one thread of the process waited for a CPU (`cpu.pressure`, `some`).
 
-Root cause: in that version, the routing of a burst read the database (for example `FindRepeaterByID` in `subscribeTG`), so a burst waited for a free connection of the database pool. The pool waits came in bursts, and the p99 of each step followed the pool wait of that step, not the load: the step with no pool wait (50 repeaters) had the lowest p99 after the first step.
+| Backend | Busy repeaters | Bursts sent | Deliveries | Missing | p50 ms | p99 ms | max ms | Tracker queue (max of 8192) | Tracker drops | DB connections in use (max of 40) | DB wait s | CPU cores in the step (of 4) | CPU throttled s | CPU pressure % | Load average |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sqlite | 25 | 10755 | 35270 | 0 | 0.7 | 16.3 | 110 | 28 | 0 | 1 | 0.0 | 0.25 | 0.0 | 3 | 105 |
+| sqlite | 100 | 43035 | 148448 | 0 | 1.2 | 57.3 | 291 | 866 | 0 | 4 | 0.0 | 0.66 | 0.0 | 4 | 102 |
+| sqlite | 200 | 86279 | 295839 | 0 | 1.3 | 70.7 | 239 | 8192 | 13332 | 4 | 0.0 | 1.09 | 0.0 | 4 | 100 |
+| sqlite | 400 | 173645 | 593099 | 0 | 19.7 | 1034.6 | 1712 | 8192 | 148025 | 4 | 0.0 | 1.60 | 0.0 | 5 | 101 |
+| postgres-redis | 25 | 10755 | 35270 | 0 | 1.8 | 20.7 | 53 | 50 | 0 | 10 | 0.0 | 0.33 | 0.0 | 2 | 102 |
+| postgres-redis | 100 | 43106 | 148519 | 0 | 4.3 | 62.3 | 274 | 8183 | 14355 | 40 | 48.7 | 0.88 | 0.0 | 3 | 96 |
+| postgres-redis | 200 | 86298 | 295956 | 2036 | 21.8 | 428.9 | 1871 | 8192 | 78013 | 40 | 8444.5 | 1.28 | 0.0 | 4 | 102 |
+| postgres-redis | 400 | 173686 | 593088 | 70348 | 5108.6 | 11824.0 | 15689 | 8192 | 168289 | 40 | 18310.1 | 2.07 | 0.0 | 4 | 105 |
 
-Main took the database and Redis off the packet path (for example `a764216d` "hub: keep the database off the routing path", `6c1a80ba` "hub: cache the repeater on the delivery path", `ec0d63cc` "hub: hold no burst on a lookup of a stalled database", with its test in `internal/dmr/hub/slow_db_test.go`). Proof that a slow database no longer reaches the bursts: in the 100 repeater step of the 11:12 run, with `synchronous(FULL)`, SQLite writers waited for the write lock for more than the 5 s busy timeout of the driver (25 `SQLITE_BUSY` errors, see [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk)), and the p99 of that step was 0.54 ms. The p99 is now flat: 0.84 to 1.46 ms on SQLite (0.29 to 0.54 ms in the 11:12 run with FULL; at the 100 step, the six strace runs below gave 0.44 to 1.93 ms with either setting, so the difference is within the spread of this shared machine), 1.28 to 2.50 ms on Postgres and Redis.
+### What fails first, and why
 
-Note: the 85458 ms of the first step of 2026-10-23 are the waits of the rig setup (100 logins and the first call of each user), not of the step. The sampler took its first sample on its own goroutine, so the first step often had no sample to start from and counted the setup. The commit "stress: take the first sample before the sampler returns" fixes this: before the fix, a run of this branch showed 77121 ms for the first step, and in this run the first step shows 0.
+**SQLite: the one writer.** SQLite has one writer at a time, and DMRHub writes every transmission row, every heard codec and every dynamic talkgroup link through it.
 
-A run of the steps 10, 100, 10 and 25 in that order gave a p99 of 0.69, 0.37, 0.39 and 0.40 ms. The first step after the setup is a little slower (warm-up). The order of the steps, not the load, explains the small changes that remain.
+- At 200 busy repeaters, the call tracker queue (8 shards of 1024 packets) is full, and the call tracker drops 13332 packets. The block profile shows the call tracker shards waiting for the writer in `sqliteWriters.wait`, when they open a row (`shard.open`) and when they finish one (`shard.finish`): 324 s of waiting in the step.
+- At 400 busy repeaters, the p50 goes from 1.3 ms to 19.7 ms and the p99 to over 1 s. The block profile of that step shows where the goroutines wait: the call tracker 720 s for the writer, the links of dynamic talkgroups 396 s for the writer (`LinkDynamicTalkgroup`, which `routeNow` calls), and the deliveries 1656 s for room in the queue of the MMDVM server (`deliverToServerUnless`). The profiles show these waits, but not which one sets the p50.
+- In the ramp, with 800 repeaters logged in, the 400 step also used all 40 connections of the pool for some seconds (see the gauges below). Then a lookup on the routing path waits at most 500 ms (`lookup.Wait`) and gives up: the 23 missing deliveries of that step are 23 private calls whose lookup of where the radio was last heard failed with `Error querying where a radio was last heard ... the lookup is waiting on the database`.
+- The CPU is not the limit: the process used 1.6 cores of its 4 in the 400 step, the cgroup was never throttled, and at least one thread waited for a CPU in only 5% of the run (`cpu.pressure`).
 
-![Load ramp now and on 2026-10-23](stress/ramp-compare.png)
+**PostgreSQL and Redis: the database connections.** The pool has 40 connections.
 
-In the third panel a step with no pool wait shows as 1 ms, because the scale is logarithmic.
+- At 100 busy repeaters, all 40 connections are in use, the calls of the pool waited 48.7 s for a connection in the step, the call tracker queue reaches 8183 of 8192, and the call tracker drops 14355 packets. The goroutines that wait for a connection are the call tracker shards (`shard.open`, `shard.voice`) and the repeater cache (`cachedRepeater`), which reloads each repeater from the database each 10 seconds with five joins (`FindRepeaterByID`).
+- After the traffic of the 400 step ended, all 40 connections stayed in use for about 60 seconds while the call tracker worked off its queue (see the gauges below).
+- At 200 busy repeaters, bursts go missing: 2036 of 295956. To deliver a call to a repeater whose cache entry is not ready, DMRHub looks the repeater up in the database, and waits at most 500 ms (`lookup.Wait`). With the pool full, the lookup gives up, DMRHub logs `Failed to find repeater for delivery ... the lookup is waiting on the database`, and does not deliver the burst. At 400 busy repeaters, 70348 of 593088 deliveries are missing, and the p50 is 5.1 s.
+- PostgreSQL itself was not busy. We ran the 200 step again and looked inside the PostgreSQL container 35 seconds after the start: it used 32% of one CPU, and in three samples 4 s apart, 33 to 38 of the 40 connections of DMRHub were idle in PostgreSQL, waiting for DMRHub to send the next query (`ClientRead`). The 2 to 7 active queries were commits that waited for the write-ahead log (`WALWrite`, `WALSync`). So the connections are busy on the DMRHub side, between queries, more than in PostgreSQL. We did not find which code holds them.
+- The same step gives very different results at different times on this machine. That second run of the 200 step, at a load average of 73 instead of 102, had a p99 of 8 ms, no missing burst and 247 call tracker drops, against 429 ms, 2036 and 78013 in the first one. The pool still reached 40 connections and the call tracker queue 6479 packets. The mechanism stays the same, but the load at which it shows depends on the other work of the machine.
+- The CPU is not the limit: the process used at most 2 cores of its 4, and was never throttled.
 
-### Transports and the IPSC slot
+![Ramp, SQLite: gauges each second](stress/ramp-samples-sqlite.png)
 
-**Status: not a bug. The battery now counts each drop.**
+![Ramp, PostgreSQL and Redis: gauges each second](stress/ramp-samples-postgres-redis.png)
 
-The 2026-10-23 run found 152 missing deliveries, all to target 329001, and 94 duplicates. 329001 is the IPSC repeater of the transports area (`ipscRptID` in `internal/stress/rig_test.go`). It carries the talkgroup of the transports on timeslot 1 only.
+### Latency at low load
 
-Root cause: the area sends more traffic to that one timeslot than a timeslot can carry. The calls of 4 rig lanes on that talkgroup (one slot of each of 4 repeaters, at 60% duty) and the calls of the five transport sources, one after another, all go to the one IPSC slot. An IPSC slot carries one call at a time at 60 ms for each burst. The IPSC pacer (`internal/dmr/servers/ipsc/pacer.go`) queues the calls that wait, at most 8 calls and 30 s each, then drops a call and reports each of its bursts with the reason `slot_busy`. In this run the IPSC repeater got 408 bursts (about 24 s of air time), the waiting bursts waited 7.8 s at p50 and up to 24.5 s, and the pacer dropped 516 deliveries of voice and data bursts (639 reports with the LC headers and terminators). The duplicates and some of the missing deliveries of 2026-10-23 were faults of the ledger, which `b367eb8e` and `26b0e123` fixed (IPSC has no stream ID, so the ledger gave late bursts to the wrong call).
+On this machine, the p99 at 25 busy repeaters was 16 ms on SQLite and 21 ms on PostgreSQL and Redis, while the p50 stayed under 2 ms. No queue was full and no connection waited, so the tail comes from outside DMRHub's queues. To find it, we ran the 100 step on SQLite again (p50 1.6 ms, p99 52 ms) and recorded the scheduler events of the process for 15 seconds with `perf sched record`. In that window, the threads of the process woke up 54541 times. The time that a thread was ready but waited for a CPU was:
 
-The battery used to forgive missing deliveries to 329001 when their number was at most the `slot_busy` counter. The commit "stress: count each burst that the IPSC server drops as slot_busy" replaces this: the rig hooks the undeliverable reports of the hub, the ledger marks each reported burst for its target, and the area fails when a missing delivery has no report or when a reported burst arrives. In this run all 516 missing deliveries had a `slot_busy` report, no report named an unknown burst, and no reported burst arrived.
+| p50 | p90 | p99 | p99.9 | max | Waits over 1 ms | Waits over 10 ms |
+| --- | --- | --- | ----- | --- | --------------- | ---------------- |
+| 0 ms | 0.35 ms | 4.2 ms | 9.9 ms | 20.5 ms | 2999 (5.5%) | 52 |
 
-The owner keeps the transports area as the IPSC overload test.
+The cgroup was never throttled, so these waits come from the other jobs on the machine, which the kernel gives a larger share of the CPUs than a process at `nice -n 19`. A burst passes through several threads (the sender, the hub, the server that sends it, the receiver), so these waits add up in the tail of the latency. We did not measure the same step on an idle machine; we expect a much lower p99 there.
 
-### Duplicate bursts after a Redis stall
+### What an operator sees
 
-**Status: fixed in this branch ("pubsub: send a publish to a stalled Redis only once").**
+| Sign | Where |
+| ---- | ----- |
+| `CallTracker: queue full, packets not recorded` | Log, warning. Last Heard misses calls, or has calls without their last bursts. |
+| `Dropping the codec heard on a timeslot, the queue is full` | Log, warning. The **Automatic** codec of a timeslot can show an older codec. |
+| `Dropping a sighting, the queue is full` | Log, warning. A private call can go to the repeater where the radio was heard before. |
+| `SLOW SQL >= 200ms` | Log, from the database library, with the SQL |
+| `CallTracker: error saving call` | Log, error. See [Bugs that the runs found](#bugs-that-the-runs-found). |
+| `call_tracker_dropped_packets_total` | Metric. Goes up with each dropped packet. |
+| `dmr_ingress_dropped_bursts_total`, `dmr_undeliverable_bursts_total` | Metrics of bursts that DMRHub did not route or could not deliver |
 
-In the chaos area on postgres-redis, 28 to 33 deliveries arrived twice. Each was the first burst of a source slot that the hub published while Redis was paused. The trace of the slow publishes showed that each of these publishes took 4.1 s and failed with an i/o timeout, and each duplicate arrived when Redis resumed.
+### What moves the limit
 
-Root cause: go-redis sends a command again after a read timeout (`MaxRetries` defaults to 3, and `shouldRetry` in go-redis v9.23.0 `error.go` retries a timeout when the command has no read timeout of its own). Each copy of the PUBLISH went to another connection of the pool and waited in the socket of the paused Redis. When Redis resumed, it ran each copy. `internal/pubsub/redis.go` now sets `MaxRetries: -1`, because a PUBLISH is not idempotent.
+| Change | Effect |
+| ------ | ------ |
+| PostgreSQL or MySQL in place of SQLite, on a server with fast disks | More than one writer. On this machine, the PostgreSQL container shared the disk and the CPUs with the other jobs, so it did not do better than SQLite. |
+| A faster or less loaded database server | The call tracker and the repeater lookups wait less for the database. |
+| `GOMAXPROCS` | The database pool has 10 connections for each, so 4 gives 40. More connections help only when the database server can take them. |
+| More replicas with Redis | Each replica has its own call tracker and its own pool, and the replicas share the repeaters. The database is still shared. Not measured here. |
 
-Test: `TestAPublishToAStalledRedisIsSentOnce` in `internal/pubsub/redis_stall_test.go`. Before the fix, 3 of 3 runs failed: the publish returned after 4.09 s and the subscriber got the message 4 times. After the fix, 3 of 3 runs passed: the publish returned after 1.0 s and the message arrived once. The chaos area on postgres-redis now has 0 duplicates.
+## Bugs that the runs found
 
-The KV client in `internal/kv/redis.go` keeps the retries. The hub calls only Get, Set, SetNX, Expire, Delete and Scan on it, which it can repeat without harm (`sharedClaim` reads the owner back after a SETNX that reports no change). `RPush` and `LDrain` of the KV interface are not safe to repeat, but nothing calls them.
-
-### Bursts held through a Redis outage
-
-**Status: open, in the `hub-redisout` lane.**
-
-On postgres-redis, the bursts that the hub publishes while Redis is paused arrive when Redis resumes, up to 5.0 s late (p99 4.5 s). Each PUBLISH waits in the socket of Redis, and Redis runs it when it resumes, after the publish timed out on the hub. The chaos area fails for this, because traffic must be dropped and counted, never held. A fix needs the receiver to drop a burst that is too old, which is a change of the wire format.
-
-### SQLite commits waited for the disk
-
-**Status: fixed in this branch ("db: commit to SQLite with synchronous=NORMAL").**
-
-With the old default parameters, at 100 busy repeaters (200 lanes) on SQLite, the queue of the call tracker filled up (about 7800 packets) and the tracker dropped 21491 packets. The forwarding was not affected, but a dropped tracker packet can leave a transmission row without its last bursts, or with wrong loss figures. The log had 25 `database is locked (SQLITE_BUSY)` errors. The process used 0.28 cores, so the CPU was not the limit. Postgres and Redis dropped nothing.
-
-Root cause: in WAL mode with `synchronous=FULL` (the SQLite default), each commit waits for an fsync of the WAL file. SQLite has one writer at a time, so the commits wait for each other, and the fsync time is serial. To prove it, the 100 repeater step ran alone under `strace -f -e trace=fsync,fdatasync -T`, with the same caps, three times with each setting, in turns:
-
-| Run | synchronous | WAL fsyncs in the 20 s step | Fsync time in the step | Fsync p50 ms | Fsync p99 ms | Call tracker drops |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | FULL | 3307 (165/s) | 13.8 s (69%) | 3.72 | 8.18 | 1056 |
-| 1 | NORMAL | 72 (4/s) | 0.7 s (3%) | 3.98 | 14.5 | 0 |
-| 2 | FULL | 3418 (171/s) | 13.3 s (66%) | 3.65 | 8.11 | 826 |
-| 2 | NORMAL | 82 (4/s) | 0.5 s (2%) | 3.86 | 21.0 | 0 |
-| 3 | FULL | 3061 (153/s) | 14.3 s (71%) | 3.67 | 9.40 | 2285 |
-| 3 | NORMAL | 112 (6/s) | 0.7 s (3%) | 4.66 | 14.4 | 0 |
-
-With FULL, the one writer spent about 70% of the step in fsync, at about 3.7 ms for each commit, so the writes could not keep up and the tracker dropped packets. With NORMAL, the WAL is synced only at a checkpoint, the fsync time fell to 2 to 3% of the step, and the tracker dropped nothing. The SQLite ramp of this document, without strace, also had 0 drops and logged no error or warning.
-
-Durability: with `synchronous=NORMAL` in WAL mode, a power cut or an operating system crash can lose the last commits before the next checkpoint. The database stays consistent. A crash of DMRHub alone loses nothing.
-
-How an install gets it:
-
-- The default of `database.extra-parameters` now has `_pragma=synchronous(NORMAL)`.
-- An install that sets its own `database.extra-parameters` for SQLite gets `_pragma=synchronous(NORMAL)` added when none of its parameters is a `_pragma=synchronous(...)`. An install that sets synchronous keeps its own value. This is the same rule as for `_txlock=immediate`.
-- `TestSQLiteSynchronousIsNormal` in `internal/db/db_test.go` checks the three cases on four connections of the pool. Before the change, the default and the own-parameters cases failed (`synchronous is 2, want 1`).
-
-### Known design limit: replica moves under heavy load
-
-`TestRotationMidCall` can duplicate or lose the two packets inside `hub.MoveSlack` when a replica moves under heavy load. This is a known limit of the handover design. This run did not touch it.
-
-### Clock jumps
-
-The chaos step `clock-jump` still skips: it has no way to step the clock of the hub inside the test process. Main tests wall clock steps in a throwaway VM (`f4b24122`).
-
-## Changes in this branch
-
-| Commit | Change |
-| --- | --- |
-| testutils: cap the Postgres and Redis containers at 4 CPUs | Each container of the postgres-redis backend gets at most 4 CPUs, as the MySQL container does. |
-| pubsub: send a publish to a stalled Redis only once | See [Duplicate bursts after a Redis stall](#duplicate-bursts-after-a-redis-stall). |
-| stress: time the session peer deliveries when they arrive | The transports area read the session peer in 100 ms drains and stamped each packet at the end of its drain, which added up to 100 ms to the latency (transports p99 57 ms before, 0.34 ms after). |
-| stress: count each burst that the IPSC server drops as slot_busy | See [Transports and the IPSC slot](#transports-and-the-ipsc-slot). |
-| stress: take the first sample before the sampler returns | See the note in [Load ramp p99 not monotonic](#load-ramp-p99-not-monotonic). |
-| hack: compare the load ramp with an earlier run | `stress_plot.py` takes an earlier results directory and draws `ramp-compare.png`. |
-| db: commit to SQLite with synchronous=NORMAL | See [SQLite commits waited for the disk](#sqlite-commits-waited-for-the-disk). |
-
-## Compared with 2026-10-23
-
-The 2026-10-23 results are in the handoff bundle (`stress/run1-sqlite-before-fixes`). That run was on SQLite only, on a quiet machine of unknown type (load average 0.6 to 1.9), without CPU caps.
-
-| Area | p99 ms then | p99 ms now (sqlite) | Missing then | Missing now | Duplicates then | Duplicates now |
-| --- | --- | --- | --- | --- | --- | --- |
-| callmix | 5.67 | 0.33 | 0 | 0 | 0 | 0 |
-| transports | 4318 | 0.34 | 152 | 0 (516 slot_busy drops) | 94 | 0 |
-| chaos | 60.6 | 60.2 | 20 | 20 | 0 | 0 |
-| ramp, 25 busy | 346 | 1.05 | 0 | 0 | 0 | 0 |
-| ramp, 100 busy | 280 | 1.46 | 0 | 0 | 0 | 0 |
+- **A lost voice burst before a voice sync can make a call row that PostgreSQL refuses.** In `calcSequenceLoss` (`internal/dmr/calltracker/voice.go`), a voice sync burst after a lost burst subtracts `call.LastFrameNum + 1` from a smaller unsigned number, and `TotalPackets` and `LostSequences` wrap around to near 2^64. PostgreSQL refuses the value (`unable to encode 0xffffffffffffffff into binary format for int8`), so DMRHub does not save the end of that call. The runs logged this 99 times in the PostgreSQL ramp, when the call tracker dropped packets, and the same happens when the network loses a burst at the end of a superframe.
+- **The default `database.extra-parameters` break PostgreSQL and MySQL.** The default holds SQLite parameters, and DMRHub passes them to every driver. See [Configuration](configuration.md#postgresql).

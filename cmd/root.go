@@ -189,9 +189,7 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 	database, err := db.MakeDB(base) //nolint:contextcheck // MakeDB takes no context; it connects and migrates once at start
 	if err != nil {
 		slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
-		if wiz, err = startWizard(base, version, commit); err != nil {
-			return booted{}, false, err
-		}
+		wiz = startWizard(base, version, commit)
 		f, exit := wiz.waitForDatabase(liveconfig.NewDatabaseFix(base, locks, state, db.MakeDB, err))
 		if exit {
 			return booted{}, true, nil
@@ -223,9 +221,7 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 	}
 	if needSetup {
 		if wiz == nil {
-			if wiz, err = startWizard(base, version, commit); err != nil {
-				return booted{}, false, err
-			}
+			wiz = startWizard(base, version, commit)
 		}
 		if wiz.waitForSetup(live, database) {
 			return booted{}, true, nil

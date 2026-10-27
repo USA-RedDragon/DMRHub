@@ -281,6 +281,15 @@ export default defineComponent({
     return { [setupStateKey as symbol]: this.setupState };
   },
   created() {
+    if (!this.isAdminSetup) {
+      API.get('/setupwizard')
+        .then((res: AxiosResponse) => {
+          if (res.data?.config_valid && res.data?.first_admin_open) {
+            this.$router.replace('/setup/user');
+          }
+        })
+        .catch(() => {});
+    }
     this.getConfig();
   },
   mounted() { },
@@ -359,20 +368,8 @@ export default defineComponent({
       });
       this.getConfig();
     },
-    setupWizardHeaders(): Record<string, string> {
-      const token = this.$route.query.token;
-      if (typeof token === 'string' && token.length > 0) {
-        return { 'X-SetupWizard-Token': token };
-      }
-
-      if (Array.isArray(token) && token.length > 0 && token[0]) {
-        return { 'X-SetupWizard-Token': token[0] };
-      }
-
-      return {};
-    },
     getConfig() {
-      API.get('/config', { headers: this.setupWizardHeaders() })
+      API.get('/config')
         .then((response: AxiosResponse) => {
           const payload = response.data && response.data.config ? response.data.config : response.data;
           this.secretStatus = response.data && response.data.secrets ? response.data.secrets : this.secretStatus;
@@ -441,11 +438,7 @@ export default defineComponent({
       return false;
     },
     async checkConfig(config: Record<string, unknown>, showToast: boolean): Promise<boolean> {
-      const response = await API.post(
-        '/config/validate',
-        config,
-        { headers: this.setupWizardHeaders() },
-      );
+      const response = await API.post('/config/validate', config);
       if (response.data.valid) {
         this.errors = createInitialErrors();
         return true;
@@ -471,7 +464,7 @@ export default defineComponent({
         if (!await this.checkConfig(payload, true)) {
           return;
         }
-        const response = await API.put('/config', payload, { headers: this.setupWizardHeaders() });
+        const response = await API.put('/config', payload);
         this.saves++;
         this.applyErrors = [];
         this.failedReplicas = [];
@@ -489,14 +482,8 @@ export default defineComponent({
           life: 3000,
         });
         if (!this.isAdminSetup) {
-          const queryToken = this.$route.query.token;
           setTimeout(() => {
-            this.$router.push({
-              path: '/setup/user',
-              query: {
-                token: typeof queryToken === 'string' ? queryToken : undefined,
-              },
-            });
+            this.$router.push('/setup/user');
           }, 500);
         }
       } catch (error: unknown) {

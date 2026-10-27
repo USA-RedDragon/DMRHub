@@ -31,7 +31,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
-	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/pkg/browser"
@@ -49,24 +48,20 @@ type wizard struct {
 	sig    chan os.Signal
 }
 
-func startWizard(cfg *config.Config, version, commit string) (*wizard, error) {
-	token, err := utils.RandomPassword(12, 0, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make the token of the setup wizard: %w", err)
-	}
+func startWizard(cfg *config.Config, version, commit string) *wizard {
 	w := &wizard{state: setupwizard.NewState(), done: make(chan any, 1), sig: make(chan os.Signal, 1)}
 	signal.Notify(w.sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
-	w.server = http.MakeSetupWizardServer(cfg, w.state, token, w.done, version, commit)
+	w.server = http.MakeSetupWizardServer(cfg, w.state, w.done, version, commit)
 	if err := w.server.Start(); err != nil && !strings.Contains(err.Error(), "server closed") {
 		slog.Error("failed to start HTTP server", "error", err)
 	}
-	url := fmt.Sprintf("http://localhost:%d/setup?token=%s", cfg.HTTP.Port, token)
-	slog.Info("Setup can be completed in a web browser")
+	url := fmt.Sprintf("http://localhost:%d/setup", cfg.HTTP.Port)
+	slog.Warn("Setup is not finished. The first visitor of the setup wizard can change the settings and becomes the admin, so finish setup before DMRHub is open to the internet.")
 	slog.Info("Opening setup wizard at " + url)
 	if err := browser.OpenURL(url); err != nil {
 		slog.Error("Failed to open browser, please open "+url+" manually", "error", err)
 	}
-	return w, nil
+	return w
 }
 
 // waitForDatabase runs the database phase until the admin fixes the

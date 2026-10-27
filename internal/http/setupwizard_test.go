@@ -28,6 +28,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -41,8 +42,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const wizardToken = "wizard-token"
-
 func wizardRequest(t *testing.T, r *gin.Engine, method string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
@@ -50,7 +49,6 @@ func wizardRequest(t *testing.T, r *gin.Engine, method string, body any) *httpte
 		require.NoError(t, json.NewEncoder(&buf).Encode(body))
 	}
 	req := httptest.NewRequestWithContext(context.Background(), method, "/api/v1/config", &buf)
-	req.Header.Set("X-SetupWizard-Token", wizardToken)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -82,7 +80,7 @@ func TestSetupWizardSavesToTheDatabase(t *testing.T) {
 
 	state := setupwizard.NewState()
 	state.SetLive(live, database)
-	r := internalhttp.CreateSetupWizardRouter(&base, state, wizardToken, make(chan any, 1), "test", "test")
+	r := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
 	w := wizardRequest(t, r, http.MethodGet, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var cfg map[string]any
@@ -130,7 +128,7 @@ func brokenDatabase(t *testing.T, locks liveconfig.Locks, store liveconfig.Datab
 	fix := liveconfig.NewDatabaseFix(&base, locks, store, db.MakeDB, openErr)
 	state := setupwizard.NewState()
 	state.SetDatabaseFix(fix)
-	return fix, internalhttp.CreateSetupWizardRouter(&base, state, wizardToken, make(chan any, 1), "test", "test")
+	return fix, internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
 }
 
 func wizardGET(t *testing.T, r *gin.Engine) (map[string]any, wizardConfig) {
@@ -253,6 +251,115 @@ func TestSetupWizardListensOnTheConfiguredAddress(t *testing.T) {
 	require.NoError(t, err)
 	base.HTTP.Bind = "127.0.0.1"
 	base.HTTP.Port = 3018
-	s := internalhttp.MakeSetupWizardServer(&base, setupwizard.NewState(), wizardToken, make(chan any, 1), "test", "test")
+	s := internalhttp.MakeSetupWizardServer(&base, setupwizard.NewState(), make(chan any, 1), "test", "test")
 	assert.Equal(t, "127.0.0.1:3018", s.Addr)
+}
+
+func wizardCall(t *testing.T, r *gin.Engine, method, path string, body any, origin string) *httptest.ResponseRecorder {
+	t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		require.NoError(t, json.NewEncoder(&buf).Encode(body))
+	}
+	req := httptest.NewRequestWithContext(context.Background(), method, path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func wizardStatus(t *testing.T, r *gin.Engine) (open, valid bool) {
+	t.Helper()
+	w := wizardCall(t, r, http.MethodGet, "/api/v1/setupwizard", nil, "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var got struct {
+		Open  bool `json:"first_admin_open"`
+		Valid bool `json:"config_valid"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	return got.Open, got.Valid
+}
+
+// TestSetupWizardLetsTheFirstVisitorMakeTheAdmin runs the setup wizard on
+// two replicas of one hub with complete settings and no admin. Visitors of
+// both send the first admin at once, with no token. Exactly one becomes
+// the admin and the others get 409. The wizard ends only once an admin
+// exists, and refuses a request that a page of another site sends.
+func TestSetupWizardLetsTheFirstVisitorMakeTheAdmin(t *testing.T) {
+	t.Parallel()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.Database.Database = filepath.Join(t.TempDir(), "DMRHub.db")
+	base.Secret = "a-secret-that-is-long-enough-for-the-check"
+	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
+	base.HTTP.CanonicalHost = "http://example.com"
+	base.DMR.DisableRadioIDValidation = true
+
+	var routers [2]*gin.Engine
+	var done [2]chan any
+	for i := range routers {
+		database, err := db.MakeDB(&base)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			if sqlDB, err := database.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		})
+		live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
+		require.NoError(t, live.Boot(context.Background()))
+		require.NoError(t, live.Current().Get().Validate())
+		state := setupwizard.NewState()
+		state.SetLive(live, database)
+		done[i] = make(chan any, 1)
+		routers[i] = internalhttp.CreateSetupWizardRouter(&base, state, done[i], "test", "test")
+	}
+
+	open, valid := wizardStatus(t, routers[0])
+	assert.True(t, open)
+	assert.True(t, valid)
+	w := wizardCall(t, routers[0], http.MethodPost, "/api/v1/setupwizard/complete", nil, "")
+	assert.Equal(t, http.StatusConflict, w.Code, "the wizard does not end without an admin: %s", w.Body.String())
+
+	user := func(i int) map[string]any {
+		return map[string]any{"id": 3000001 + i, "callsign": fmt.Sprintf("N%dCALL", i), "username": fmt.Sprintf("admin%d", i), "password": "Correct-Horse-Battery-9"}
+	}
+	w = wizardCall(t, routers[0], http.MethodPost, "/api/v1/users", user(9), "http://evil.example")
+	assert.Equal(t, http.StatusForbidden, w.Code, "a page of another site cannot make the admin: %s", w.Body.String())
+
+	const visitors = 6
+	codes := make([]int, visitors)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range visitors {
+		wg.Go(func() {
+			<-start
+			codes[i] = wizardCall(t, routers[i%2], http.MethodPost, "/api/v1/users", user(i), "http://example.com").Code
+		})
+	}
+	close(start)
+	wg.Wait()
+	won := 0
+	for i, code := range codes {
+		if code == http.StatusOK {
+			won++
+			continue
+		}
+		assert.Equal(t, http.StatusConflict, code, "visitor %d", i)
+	}
+	assert.Equal(t, 1, won, "visitors that became the admin: %v", codes)
+
+	for i, r := range routers {
+		open, _ := wizardStatus(t, r)
+		assert.False(t, open, "replica %d", i)
+		w := wizardCall(t, r, http.MethodPost, "/api/v1/setupwizard/complete", nil, "")
+		assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		select {
+		case <-done[i]:
+		default:
+			t.Errorf("replica %d did not end its setup wizard", i)
+		}
+	}
 }

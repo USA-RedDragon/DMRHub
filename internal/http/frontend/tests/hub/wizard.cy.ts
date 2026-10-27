@@ -20,14 +20,14 @@
 const hub = 'http://localhost:3005';
 const password = 'Correct-Horse-Battery-9';
 
-type Started = { token: string | null };
+type Started = { wizard: boolean };
 
 const start = (name: string, dir: string, env: Record<string, string> = {}) =>
   cy.task<Started>('hubStart', { name, dir, env }, { timeout: 120000 });
 
-const openWizard = (token: string | null) => {
-  expect(token, 'the setup wizard must start').to.be.a('string');
-  cy.visit(`${hub}/setup?token=${token}`);
+const openWizard = (wizard: boolean) => {
+  expect(wizard, 'the setup wizard must start').to.eq(true);
+  cy.visit(hub);
   cy.contains('h1', 'Setup').should('be.visible');
   cy.contains('General Settings').should('be.visible');
 };
@@ -38,6 +38,7 @@ const save = () => {
 
 const createAdmin = (name: string) => {
   cy.location('pathname', { timeout: 20000 }).should('eq', '/setup/user');
+  cy.get('[data-test="first-admin-banner"]').should('contain.text', 'Whoever creates this account first becomes the admin.');
   cy.get('#dmr_id').type('3191868');
   cy.get('#username').type('admin');
   cy.get('#callsign').type('KI5VMF');
@@ -75,8 +76,8 @@ describe('First start and the setup wizard', () => {
 
   it('sets up a fresh install with nothing set, and a restart keeps the made secrets', () => {
     cy.task<string>('workdir', 'fresh').then((dir) => {
-      start('fresh', dir).then(({ token }) => {
-        openWizard(token);
+      start('fresh', dir).then(({ wizard }) => {
+        openWizard(wizard);
         cy.get('#secret').should('have.attr', 'readonly');
         cy.contains('DMRHub made a random value at its first start and keeps it in the database.').should('be.visible');
         cy.get('#network-name').should('not.have.attr', 'readonly');
@@ -88,7 +89,7 @@ describe('First start and the setup wizard', () => {
       cy.task('readFile', `${dir}/dmrhub-database.json`).should('eq', null);
 
       cy.task('hubStop', 'fresh', { timeout: 60000 });
-      start('fresh', dir).its('token').should('eq', null);
+      start('fresh', dir).its('wizard').should('eq', false);
       cy.request(`${hub}/api/v1/users/me`).its('body.username').should('eq', 'admin', 'the session of before the restart still works, so the secret is the same');
       cy.clearCookies();
       login();
@@ -99,8 +100,8 @@ describe('First start and the setup wizard', () => {
   it('fixes a database that DMRHub cannot reach, keeps the fix, and the next start uses it', () => {
     cy.task<string>('workdir', 'baddb').then((dir) => {
       cy.task('mkdir', `${dir}/DMRHub.db`);
-      start('baddb', dir).then(({ token }) => {
-        openWizard(token);
+      start('baddb', dir).then(({ wizard }) => {
+        openWizard(wizard);
         cy.get('[data-test="database-problem"]').should('contain.text', 'DMRHub cannot reach its database.')
           .and('contain.text', `${dir}/dmrhub-database.json`);
         cy.get('#network-name').should('have.attr', 'readonly');
@@ -118,13 +119,13 @@ describe('First start and the setup wizard', () => {
       login();
 
       cy.task('hubStop', 'baddb', { timeout: 60000 });
-      start('baddb', dir).its('token').should('eq', null);
+      start('baddb', dir).its('wizard').should('eq', false);
       cy.clearCookies();
       login();
     });
   });
 
-  it('asks only for the admin when the deployment sets everything', () => {
+  it('opens on the first admin when the deployment sets everything', () => {
     const env = {
       SECRET: 'a-secret-that-the-deployment-sets-1234',
       PASSWORD_SALT: 'a-salt-that-the-deployment-sets-5678',
@@ -133,16 +134,9 @@ describe('First start and the setup wizard', () => {
       DMR_DISABLE_RADIO_ID_VALIDATION: 'true',
     };
     cy.task<string>('workdir', 'locked').then((dir) => {
-      start('locked', dir, env).then(({ token }) => {
-        openWizard(token);
-        cy.get('#network-name').should('have.value', 'Deployed Net');
-        cy.get('#network-name').should('have.attr', 'readonly');
-        cy.get('label[for="network-name"]').should('contain.text', 'Set by the deployment');
-        cy.get('#http-canonical-host').should('have.attr', 'readonly');
-        cy.get('#secret').should('have.attr', 'readonly');
-        cy.get('#disable-radio-id-validation').should('be.disabled');
-        cy.contains('The environment of the deployment sets this. Change it there and restart DMRHub.').should('be.visible');
-        save();
+      start('locked', dir, env).then(({ wizard }) => {
+        expect(wizard, 'the setup wizard must start').to.eq(true);
+        cy.visit(hub);
         createAdmin('locked');
       });
       login();
@@ -157,14 +151,14 @@ describe('First start and the setup wizard', () => {
   it('shares a save with a second replica that joins, and shows both replicas', () => {
     cy.task<Record<string, string>>('backends', null, { timeout: 180000 }).then((backends) => {
       cy.task<string>('workdir', 'replica-a').then((dirA) => {
-        start('a', dirA, { ...backends, DMR_MMDVM_PORT: '62131' }).then(({ token }) => {
-          openWizard(token);
+        start('a', dirA, { ...backends, DMR_MMDVM_PORT: '62131' }).then(({ wizard }) => {
+          openWizard(wizard);
           fillSetup();
           createAdmin('a');
         });
       });
       cy.task<string>('workdir', 'replica-b').then((dirB) => {
-        start('b', dirB, { ...backends, HTTP_PORT: '3105', DMR_MMDVM_PORT: '62231' }).its('token').should('eq', null);
+        start('b', dirB, { ...backends, HTTP_PORT: '3105', DMR_MMDVM_PORT: '62231' }).its('wizard').should('eq', false);
       });
       login();
       cy.visit(`${hub}/admin/setup`);

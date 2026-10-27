@@ -21,8 +21,19 @@
 
 <template>
   <div>
+    <div
+      role="alert"
+      class="my-4 flex flex-col gap-2 rounded-lg border border-amber-500/55 bg-amber-500/10 px-4 py-3 text-sm"
+      data-test="first-admin-banner"
+    >
+      <b class="font-semibold">No admin exists yet. Whoever creates this account first becomes the admin.</b>
+      <p>
+        The admin has full control of this DMRHub. Anyone who can open this page can create the account, so finish
+        setup before you expose DMRHub to the internet.
+      </p>
+    </div>
     <UserRegistrationCard
-      title="Create Initial Admin User"
+      title="Create the first admin"
       @register="handleRegister"
     />
   </div>
@@ -37,16 +48,34 @@ export default {
     UserRegistrationCard,
   },
   head: {
-    title: 'Initial User Setup',
-  },
-  created() {},
-  mounted() {},
-  data: function() {
-    return {};
+    title: 'Create the first admin',
   },
   methods: {
+    complete() {
+      API.post('/setupwizard/complete', {})
+        .then(() => {
+          this.$toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Setup wizard completed successfully',
+            life: 3000,
+          });
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+        })
+        .catch((err) => {
+          console.error(err);
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: err.response?.data?.error ?? 'Failed to complete setup wizard',
+            life: 3000,
+          });
+        });
+    },
     handleRegister(data: Record<string, unknown>) {
-      API.post('/users', data, { headers: { 'X-SetupWizard-Token': String(this.$route.query.token ?? '') } })
+      API.post('/users', data)
         .then((res) => {
           this.$toast.add({
             severity: 'success',
@@ -54,44 +83,18 @@ export default {
             detail: res.data.message,
             life: 3000,
           });
-          API.post('/setupwizard/complete', {}, { headers: { 'X-SetupWizard-Token': String(this.$route.query.token ?? '') } })
-            .then(() => {
-              this.$toast.add({
-                severity: 'success',
-                summary: 'Success',
-                detail: 'Setup wizard completed successfully',
-                life: 3000,
-              });
-              setTimeout(() => {
-                window.location.href = '/login';
-              }, 1000);
-            })
-            .catch((err) => {
-              console.error(err);
-              this.$toast.add({
-                severity: 'error',
-                summary: 'Error',
-                detail: 'Failed to complete setup wizard',
-                life: 3000,
-              });
-            });
+          this.complete();
         })
         .catch((err) => {
           console.error(err);
-          if (err.response && err.response.data && err.response.data.error) {
-            this.$toast.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: err.response.data.error,
-              life: 3000,
-            });
-          } else {
-            this.$toast.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: 'An unknown error occurred',
-              life: 3000,
-            });
+          this.$toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: err.response?.data?.error ?? 'An unknown error occurred',
+            life: 3000,
+          });
+          if (err.response?.status === 409) {
+            this.complete();
           }
         });
     },

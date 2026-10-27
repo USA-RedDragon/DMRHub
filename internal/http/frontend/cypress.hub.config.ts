@@ -154,8 +154,7 @@ export default defineConfig({
           hub.proc.on('exit', () => { hub.exited = true; });
           hubs.set(name, hub);
           const line = await waitFor(hub, /Opening setup wizard at|Server ready to accept traffic/, 0, 90000);
-          const m = /token=([^\s"]+)/.exec(line);
-          return { token: m ? m[1] : null };
+          return { wizard: /Opening setup wizard at/.test(line) };
         },
         async hubWait({ name, pattern }: { name: string; pattern: string }) {
           const hub = hubs.get(name);

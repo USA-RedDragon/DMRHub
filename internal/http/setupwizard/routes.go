@@ -25,7 +25,6 @@ import (
 	v1APIConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1APIUsersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/users"
 	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
-	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,13 +35,13 @@ func ApplyRoutes(config *configPkg.Config, router *gin.Engine) {
 }
 
 func v1(group *gin.RouterGroup) {
-	group.PUT("/config", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.PUTConfig)
-	group.POST("/setupwizard/complete", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.POSTSetupWizardComplete)
-	group.GET("/config", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.GETConfig)
-	group.GET("/config/validate", middleware.RequireSetupWizardToken(), v1APIConfigControllers.GETConfigValidate)
-	group.POST("/config/validate", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.POSTConfigValidate)
+	group.PUT("/config", v1SetupWizardControllers.PUTConfig)
+	group.POST("/setupwizard/complete", v1SetupWizardControllers.POSTSetupWizardComplete)
+	group.GET("/config", v1SetupWizardControllers.GETConfig)
+	group.GET("/config/validate", v1APIConfigControllers.GETConfigValidate)
+	group.POST("/config/validate", v1SetupWizardControllers.POSTConfigValidate)
 
-	group.POST("/users", middleware.RequireSetupWizardToken(), v1SetupWizardControllers.ProvideDB, v1APIUsersControllers.POSTUser, v1SetupWizardControllers.ApproveAndPromoteAdminUser)
+	group.POST("/users", v1SetupWizardControllers.ProvideDB, v1APIUsersControllers.POSTFirstAdmin)
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
 	group.GET("/network/name", v1APIControllers.GETNetworkName)
 	group.GET("/version", v1APIControllers.GETVersion)

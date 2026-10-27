@@ -20,10 +20,10 @@ package setupwizard
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 const (
@@ -32,47 +32,52 @@ const (
 	msgInternalServerError = "Internal server error"
 )
 
+// GETSetupWizard reports that the setup wizard runs, whether the settings
+// are complete, and whether a visitor can still make the first admin.
 func GETSetupWizard(c *gin.Context) {
-	c.JSON(200, gin.H{"setupwizard": true})
+	p := phaseOf(c)
+	open, valid := false, false
+	if p != nil && p.DB() != nil {
+		var err error
+		if open, err = models.FirstAdminOpen(p.DB().WithContext(c.Request.Context())); err != nil {
+			slog.Error("Failed to check for the first admin", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgInternalServerError})
+			return
+		}
+		valid = p.Live() != nil && p.Live().Current().Get().Validate() == nil
+	}
+	c.JSON(http.StatusOK, gin.H{"setupwizard": true, "config_valid": valid, "first_admin_open": open})
 }
 
+// POSTSetupWizardComplete ends the setup wizard once the settings are
+// complete and an admin exists.
 func POSTSetupWizardComplete(c *gin.Context) {
-	if v, ok := c.MustGet("SetupWizardConfigCompleteChan").(chan any); ok {
-		// Notify the setup wizard that config is complete
-		v <- struct{}{}
+	p := phaseOf(c)
+	if p == nil || p.DB() == nil || p.Live() == nil {
+		c.JSON(http.StatusConflict, gin.H{errorKey: "DMRHub cannot reach its database yet"})
+		return
+	}
+	if err := p.Live().Current().Get().Validate(); err != nil {
+		c.JSON(http.StatusConflict, gin.H{errorKey: "The settings are not complete yet"})
+		return
+	}
+	admins, err := models.CountUserAdmins(p.DB().WithContext(c.Request.Context()))
+	if err != nil {
+		slog.Error("Failed to count the admins", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgInternalServerError})
+		return
+	}
+	if admins == 0 {
+		c.JSON(http.StatusConflict, gin.H{errorKey: "Create the first admin first"})
+		return
+	}
+	if v, ok := c.Value("SetupWizardConfigCompleteChan").(chan any); ok {
+		select {
+		case v <- struct{}{}:
+		default:
+		}
 	} else {
 		slog.Warn("SetupWizardConfigCompleteChan not found in context or of wrong type")
 	}
-
-	c.JSON(200, gin.H{"message": "Setup wizard marked as complete"})
-}
-
-func ApproveAndPromoteAdminUser(c *gin.Context) {
-	newUserID, ok := c.MustGet("new_user_id").(uint)
-	if !ok {
-		slog.Error("ApproveAndPromoteAdminUser: new_user_id not found in context or of wrong type")
-		c.JSON(500, gin.H{errorKey: msgInternalServerError})
-		return
-	}
-	if db, ok := c.MustGet("DB").(*gorm.DB); ok {
-		if user, err := models.FindUserByID(db, newUserID); err == nil {
-			// Promote the user to admin
-			user.Approved = true
-			user.Admin = true
-			user.SuperAdmin = true
-			if err := db.Save(user).Error; err != nil {
-				slog.Error("Failed to promote user to admin", "error", err)
-				c.JSON(500, gin.H{errorKey: msgInternalServerError})
-				return
-			}
-		} else {
-			slog.Error("Failed to find user by ID", "error", err)
-			c.JSON(500, gin.H{errorKey: msgInternalServerError})
-			return
-		}
-	} else {
-		slog.Error("DB not found in context or of wrong type")
-		c.JSON(500, gin.H{errorKey: msgInternalServerError})
-		return
-	}
+	c.JSON(http.StatusOK, gin.H{"message": "Setup wizard marked as complete"})
 }

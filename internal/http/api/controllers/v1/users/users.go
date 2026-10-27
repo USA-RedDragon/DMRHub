@@ -20,6 +20,7 @@
 package users
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -88,127 +89,138 @@ func POSTUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-
 	db, ok := utils.GetDB(c)
 	if !ok {
 		return
 	}
+	user, ok := registration(c, db, config.DMR.DisableRadioIDValidation, config.HIBPAPIKey, config.PasswordSalt)
+	if !ok {
+		return
+	}
+	user.Approved = config.AutoApprove
+	if err := db.Create(&user).Error; err != nil {
+		slog.Error("Error creating user", "function", "POSTUser", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
+		return
+	}
+	publishUserChanged(c, user.ID)
+	authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, user.Email)
+	body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", user.Username, user.Callsign, user.ID)
+	if config.AutoApprove {
+		c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
+	} else {
+		c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
+		body += fmt.Sprintf("\nTo approve them, open %s/admin/users/approval\n", strings.TrimRight(config.HTTP.CanonicalHost, "/"))
+	}
+	if config.SMTP.Enabled {
+		if err := smtp.SendToAdmins(config, db, "New user registration", body); err != nil {
+			slog.Error("Error sending email", "function", "POSTUser", "error", err)
+		}
+	}
+}
+
+// POSTFirstAdmin makes the account in the request the first admin, while
+// no admin exists. The first visitor to send it wins; every later one gets
+// 409 Conflict.
+func POSTFirstAdmin(c *gin.Context) {
+	config, ok := utils.GetConfig(c)
+	if !ok {
+		return
+	}
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	user, ok := registration(c, db, config.DMR.DisableRadioIDValidation, config.HIBPAPIKey, config.PasswordSalt)
+	if !ok {
+		return
+	}
+	if err := models.ClaimFirstAdmin(db, &user); err != nil {
+		if errors.Is(err, models.ErrFirstAdminClaimed) {
+			c.JSON(http.StatusConflict, gin.H{errorKey: "Someone else made the first admin already. Log in with that account."})
+			return
+		}
+		slog.Error("Error creating the first admin", "function", "POSTFirstAdmin", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
+		return
+	}
+	slog.Info("A visitor made the first admin", "username", user.Username, "id", user.ID)
+	authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, user.Email)
+	c.JSON(http.StatusOK, gin.H{messageKey: "You are the admin of this DMRHub. You can log in now."})
+}
+
+// registration checks the registration in the request and returns the
+// user to create, with the password hashed. On a bad registration it
+// answers the request and returns false.
+func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, salt string) (models.User, bool) {
 	var json apimodels.UserRegistration
-	err := c.ShouldBindJSON(&json)
-	if err != nil {
+	if err := c.ShouldBindJSON(&json); err != nil {
 		slog.Error("JSON data is invalid", "function", "POSTUser", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "JSON data is invalid"})
-	} else {
-		if !config.DMR.DisableRadioIDValidation {
-			if !userdb.IsValidUserID(json.DMRId) {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
-				return
-			}
-			if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
-				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
-				return
-			}
-		}
-
-		isValid, errString := json.IsValidUsername()
-		if !isValid {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: errString})
-			return
-		}
-
-		// Check that password isn't a zero string
-		if json.Password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
-			return
-		}
-
-		email := strings.TrimSpace(json.Email)
-		if !authctl.CheckEmail(c, email) {
-			return
-		}
-
-		// Check if the username is already taken
-		var user models.User
-		err := db.Find(&user, "username = ?", json.Username).Error
-		if err != nil {
-			slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-			return
-		} else if user.ID != 0 {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
-			return
-		}
-
-		// Check if the DMR ID is already taken
-		exists, err := models.UserIDExists(db, json.DMRId)
-		if err != nil {
-			slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-			return
-		}
-		if !exists {
-			_, exists, err = models.RadioIDOwner(db, json.DMRId)
-			if err != nil {
-				slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
-				return
-			}
-		}
-		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is already registered"})
-			return
-		}
-
-		if status, msg := utils.CheckPwnedPassword(c, config.HIBPAPIKey, json.Password); status != 0 {
-			c.JSON(status, gin.H{errorKey: msg})
-			return
-		}
-
-		// argon2 the password
-		hashedPassword, err := utils.HashPassword(json.Password, config.PasswordSalt)
-		if err != nil {
-			slog.Error("Error hashing password", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
-			return
-		}
-
-		user = models.User{
-			Username: json.Username,
-			Password: hashedPassword,
-			Callsign: strings.ToUpper(json.Callsign),
-			ID:       json.DMRId,
-			Approved: config.AutoApprove,
-			Admin:    false,
-			Email:    email,
-		}
-		err = db.Create(&user).Error
-		if err != nil {
-			slog.Error("Error creating user", "function", "POSTUser", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error creating user"})
-			return
-		}
-		publishUserChanged(c, user.ID)
-		authctl.SendEmailVerification(c, db, nil, user.ID, user.Callsign, email)
-		body := fmt.Sprintf("A new user has registered.\n\nUsername: %s\nCallsign: %s\nDMR ID: %d\n", json.Username, strings.ToUpper(json.Callsign), json.DMRId)
-		if config.AutoApprove {
-			c.JSON(http.StatusOK, gin.H{messageKey: "Your account is ready. You can log in now."})
-		} else {
-			c.JSON(http.StatusOK, gin.H{messageKey: "User created, please wait for admin approval"})
-			body += fmt.Sprintf("\nTo approve them, open %s/admin/users/approval\n", strings.TrimRight(config.HTTP.CanonicalHost, "/"))
-		}
-		if config.SMTP.Enabled {
-			err = smtp.SendToAdmins(
-				config,
-				db,
-				"New user registration",
-				body,
-			)
-			if err != nil {
-				slog.Error("Error sending email", "function", "POSTUser", "error", err)
-			}
-		}
-		c.Set("new_user_id", user.ID)
+		return models.User{}, false
 	}
+	if !skipRadioIDCheck {
+		if !userdb.IsValidUserID(json.DMRId) {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is not valid"})
+			return models.User{}, false
+		}
+		if !userdb.ValidUserCallsign(json.DMRId, json.Callsign) {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign does not match DMR ID"})
+			return models.User{}, false
+		}
+	}
+	if isValid, errString := json.IsValidUsername(); !isValid {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: errString})
+		return models.User{}, false
+	}
+	if json.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Password cannot be blank"})
+		return models.User{}, false
+	}
+	email := strings.TrimSpace(json.Email)
+	if !authctl.CheckEmail(c, email) {
+		return models.User{}, false
+	}
+	var existing models.User
+	if err := db.Find(&existing, "username = ?", json.Username).Error; err != nil {
+		slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
+		return models.User{}, false
+	}
+	if existing.ID != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
+		return models.User{}, false
+	}
+	exists, err := models.UserIDExists(db, json.DMRId)
+	if err == nil && !exists {
+		_, exists, err = models.RadioIDOwner(db, json.DMRId)
+	}
+	if err != nil {
+		slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
+		return models.User{}, false
+	}
+	if exists {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "DMR ID is already registered"})
+		return models.User{}, false
+	}
+	if status, msg := utils.CheckPwnedPassword(c, hibpKey, json.Password); status != 0 {
+		c.JSON(status, gin.H{errorKey: msg})
+		return models.User{}, false
+	}
+	hashedPassword, err := utils.HashPassword(json.Password, salt)
+	if err != nil {
+		slog.Error("Error hashing password", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
+		return models.User{}, false
+	}
+	return models.User{
+		Username: json.Username,
+		Password: hashedPassword,
+		Callsign: strings.ToUpper(json.Callsign),
+		ID:       json.DMRId,
+		Email:    email,
+	}, true
 }
 
 func POSTUserDemote(c *gin.Context) {

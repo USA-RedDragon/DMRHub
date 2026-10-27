@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -135,8 +136,8 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 
 // MakeSetupWizardServer returns the server of the setup wizard, whose
 // phase state holds. It listens on http.bind and http.port of config.
-func MakeSetupWizardServer(config *configPkg.Config, state *setupwizard.State, token string, configCompleteChan chan any, version, commit string) Server {
-	r := CreateSetupWizardRouter(config, state, token, configCompleteChan, version, commit)
+func MakeSetupWizardServer(config *configPkg.Config, state *setupwizard.State, configCompleteChan chan any, version, commit string) Server {
+	r := CreateSetupWizardRouter(config, state, configCompleteChan, version, commit)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
@@ -224,13 +225,14 @@ func currentConfig(current configPkg.Source) gin.HandlerFunc {
 	}
 }
 
-func addSetupWizardMiddleware(config *configPkg.Config, state *setupwizard.State, r *gin.Engine, token string, configCompleteChan chan any, version, commit string) {
+func addSetupWizardMiddleware(config *configPkg.Config, state *setupwizard.State, r *gin.Engine, configCompleteChan chan any, version, commit string) {
 	// Tracing
 	if config.Metrics.OTLPEndpoint != "" {
 		r.Use(otelgin.Middleware("setupwizard"))
 		r.Use(middleware.TracingProvider(config))
 	}
 
+	r.Use(sameOrigin)
 	r.Use(middleware.Provider(v1SetupWizardControllers.StateKey, state))
 	r.Use(func(c *gin.Context) {
 		if live := state.Live(); live != nil {
@@ -241,29 +243,44 @@ func addSetupWizardMiddleware(config *configPkg.Config, state *setupwizard.State
 		}
 		c.Next()
 	})
-	r.Use(middleware.Provider("SetupWizard", token))
 	r.Use(middleware.Provider("SetupWizardConfigCompleteChan", configCompleteChan))
-
-	// CORS
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowOrigins = []string{"*"}
-	r.Use(cors.New(corsConfig))
 
 	// Versioning
 	r.Use(middleware.Provider("Version", version))
 	r.Use(middleware.Provider("Commit", commit))
 }
 
+// sameOrigin refuses a request that a page of another site sends. Anyone
+// who opens the setup wizard may use it, but a page of another site must
+// not use it through the browser of the visitor.
+func sameOrigin(c *gin.Context) {
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		c.Next()
+		return
+	}
+	origin := c.GetHeader("Origin")
+	if origin == "" {
+		c.Next()
+		return
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host != c.Request.Host {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "The setup wizard takes requests from its own pages only"})
+		return
+	}
+	c.Next()
+}
+
 // CreateSetupWizardRouter returns the router of the setup wizard, whose
 // phase state holds.
-func CreateSetupWizardRouter(config *configPkg.Config, state *setupwizard.State, token string, configCompleteChan chan any, version, commit string) *gin.Engine {
+func CreateSetupWizardRouter(config *configPkg.Config, state *setupwizard.State, configCompleteChan chan any, version, commit string) *gin.Engine {
 	r := gin.New()
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	addSetupWizardMiddleware(config, state, r, token, configCompleteChan, version, commit)
+	addSetupWizardMiddleware(config, state, r, configCompleteChan, version, commit)
 
 	setupwizard.ApplyRoutes(config, r)
 

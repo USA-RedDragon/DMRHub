@@ -20,7 +20,7 @@ Position tracking is off for each radio until you turn it on.
 4. Pick **Report every** (how often the radio reports) and **Keep positions for** (how long DMRHub keeps them).
 5. Click **Save**.
 
-<!-- screenshot: radio-positions-settings.png | the settings page of one radio at /positions/3100001 with tracking on, 10 minutes and 7 days -->
+<!-- screenshot: radio-positions-settings.png | the settings page of one radio at /positions/3000001 with tracking on, 10 minutes and 7 days -->
 
 The next time the radio registers or DMRHub hears it, the location server asks the radio to report at that interval.
 

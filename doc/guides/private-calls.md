@@ -15,7 +15,7 @@ A private call to the 6-digit ID of a repeater on the network goes to that repea
 
 ## Make the call
 
-1. Add the DMR ID of the other ham as a private call contact in your radio, for example 3100002.
+1. Add the DMR ID of the other ham as a private call contact in your radio, for example 3000002.
 2. Pick that contact and make the call on the timeslot that your hotspot uses.
 3. Wait for the other ham to answer. The answer comes to you as a private call.
 

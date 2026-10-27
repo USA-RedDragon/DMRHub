@@ -35,7 +35,7 @@ See [Create an account](guides/create-account.md) for the details and the error 
 ## Step 2: Enroll your hotspot
 
 1. Log in, then go to **Repeaters** and click **Enroll New Repeater**.
-2. Enter your DMR ID, or your DMR ID with two more digits (for example 310000101 for a second hotspot), and click **Save**.
+2. Enter your DMR ID, or your DMR ID with two more digits (for example 300000101 for a second hotspot), and click **Save**.
 3. Copy the configuration that DMRHub shows. It has the password of the hotspot, and DMRHub shows it only once.
 
 ## Step 3: Point the hotspot at DMRHub

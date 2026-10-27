@@ -13,7 +13,7 @@ Each timeslot of an MMDVM hotspot or repeater has a codec setting. The owner of 
    - **AMBE**: the radios on this timeslot use AMBE.
 3. Click **Save**.
 
-<!-- screenshot: voice-codec.png | the Voice codec card on /repeaters/310000101 with Timeslot 2 set to Codec2 -->
+<!-- screenshot: voice-codec.png | the Voice codec card on /repeaters/300000101 with Timeslot 2 set to Codec2 -->
 
 DMRHub then sends AMBE calls to a Codec2 timeslot as Codec2, and Codec2 calls to AMBE timeslots as AMBE. IPSC repeaters do not have this card.
 

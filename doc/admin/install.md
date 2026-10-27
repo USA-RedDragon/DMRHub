@@ -33,7 +33,7 @@ The wizard is the only way to make the first admin user. It starts while no admi
 
 <!-- screenshot: setup-wizard.png | /setup?token=... on a fresh install: the Setup page with the General Settings card at the top -->
 
-<!-- screenshot: setup-initial-user.png | /setup/user?token=...: the Create Initial Admin User card, filled in with N0CALL and 3100001 -->
+<!-- screenshot: setup-initial-user.png | /setup/user?token=...: the Create Initial Admin User card, filled in with N0CALL and 3000001 -->
 
 ## Docker
 

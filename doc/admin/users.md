@@ -18,7 +18,7 @@ To approve a user:
 
 The RadioID.net check shows that the DMR ID and the callsign go together. It does not show that the person who registered holds that callsign. Use your own judgment before you approve a user.
 
-<!-- screenshot: admin-user-approvals.png | /admin/users/approval with one user waiting (N0CALL, 3100001), the Approve button visible -->
+<!-- screenshot: admin-user-approvals.png | /admin/users/approval with one user waiting (N0CALL, 3000001), the Approve button visible -->
 
 ## Edit a user
 
@@ -50,4 +50,4 @@ Only the super admin can do this. On the **Users** page, turn on the **Admin?** 
 
 Only the super admin can do this. On the **Users** page, click **Delete** in the row of the user, then click **OK** in the browser message. Click **Cancel** to keep the user.
 
-<!-- screenshot: admin-users.png | /admin/users with two users (N0CALL 3100001 admin, N1CALL 3100002), showing the Edit, Reset password and Delete buttons and the Suspend? and Admin? boxes -->
+<!-- screenshot: admin-users.png | /admin/users with two users (N0CALL 3000001 admin, N1CALL 3000002), showing the Edit, Reset password and Delete buttons and the Suspend? and Admin? boxes -->

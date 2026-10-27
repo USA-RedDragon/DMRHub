@@ -36,7 +36,7 @@ dmr-web keeps your login on this device. To end it, click **Log out** in dmr-web
 
 dmr-web then shows **Welcome**, with your callsign, and the hotspots of your account.
 
-- **Register a new hotspot**: dmr-web adds a hotspot to your account. The ID is your DMR ID plus two digits that you pick, for example 3100001 + 07 = 310000107. Give it an optional **Name** and click **Register**. DMRHub makes a password and shows it once. dmr-web saves it on this device. Click **Copy** if you also want to use this ID in another place, then click **Connect now**.
+- **Register a new hotspot**: dmr-web adds a hotspot to your account. The ID is your DMR ID plus two digits that you pick, for example 3000001 + 07 = 300000107. Give it an optional **Name** and click **Register**. DMRHub makes a password and shows it once. dmr-web saves it on this device. Click **Copy** if you also want to use this ID in another place, then click **Connect now**.
 - **Pick a hotspot from the list**: a hotspot marked **READY** has its password saved on this device. For another hotspot, type the **Hotspot password** that DMRHub showed when you enrolled it. dmr-web saves it on this device.
 - **Enter ID and password by hand**: type a hotspot ID and its password.
 

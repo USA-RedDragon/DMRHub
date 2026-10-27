@@ -28,7 +28,7 @@ The configuration keys are `dmr.openbridge.enabled`, `dmr.openbridge.bind`, `dmr
 
 4. Click **Save**. The browser shows the password of the peer. Copy it now: DMRHub does not show it again. Put it in the configuration of the other server as the passphrase of the link.
 
-<!-- screenshot: admin-new-peer.png | /admin/peers/new filled in with peer ID 3100900, IP 192.0.2.10, port 62035, receive and transmit on -->
+<!-- screenshot: admin-new-peer.png | /admin/peers/new filled in with peer ID 3000900, IP 192.0.2.10, port 62035, receive and transmit on -->
 
 ## Add the rules of a peer
 
@@ -37,7 +37,7 @@ A peer carries only the traffic that its rules allow. A new peer has no rules, s
 - A receive rule (`"direction": true`) lets in the calls from the peer to the destination IDs from `subject_id_min` to `subject_id_max`.
 - A transmit rule (`"direction": false`) sends the peer the calls from the source radio IDs from `subject_id_min` to `subject_id_max`.
 
-For example, to take the calls to talkgroups 1 to 999999 from peer 3100900, and to send it the calls of every radio:
+For example, to take the calls to talkgroups 1 to 999999 from peer 3000900, and to send it the calls of every radio:
 
 ```bash
 curl -c cookies -H 'Content-Type: application/json' \
@@ -45,10 +45,10 @@ curl -c cookies -H 'Content-Type: application/json' \
     <siteurl>/api/v1/auth/login
 curl -b cookies -H 'Content-Type: application/json' \
     -d '{"direction":true,"subject_id_min":1,"subject_id_max":999999}' \
-    <siteurl>/api/v1/peers/3100900/rules
+    <siteurl>/api/v1/peers/3000900/rules
 curl -b cookies -H 'Content-Type: application/json' \
     -d '{"direction":false,"subject_id_min":1,"subject_id_max":4294967295}' \
-    <siteurl>/api/v1/peers/3100900/rules
+    <siteurl>/api/v1/peers/3000900/rules
 ```
 
 `GET <siteurl>/api/v1/peers/<peer ID>/rules` lists the rules, and `DELETE <siteurl>/api/v1/peers/<peer ID>/rules/<rule ID>` deletes one. The rules take effect at once, on every replica.

@@ -15,7 +15,7 @@ The Setup page does not have the modem settings. Set them in the configuration f
      modem:
        enabled: true
        port: /dev/ttyAMA0
-       repeater-id: 310000101
+       repeater-id: 300000101
        rx-frequency: 438800000
        tx-frequency: 438800000
        color-code: 1

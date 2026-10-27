@@ -8,8 +8,8 @@ Your hotspot connects with the MMDVM network protocol, the same protocol that MM
 
 A hotspot ID is one of these:
 
-- Your 7-digit DMR ID, for example 3100001.
-- Your 7-digit DMR ID with two more digits, from 00 to 99, for example 310000101. Use this form when you have more than one hotspot.
+- Your 7-digit DMR ID, for example 3000001.
+- Your 7-digit DMR ID with two more digits, from 00 to 99, for example 300000101. Use this form when you have more than one hotspot.
 
 The ID must start with the DMR ID of your account, unless the admin turned off the RadioID.net checks.
 
@@ -22,7 +22,7 @@ The ID must start with the DMR ID of your account, unless the admin turned off t
 5. Leave **Simplex Repeater** off for a normal hotspot. When it is on, DMRHub sends what it hears on one timeslot back on the other timeslot.
 6. Click **Save**.
 
-<!-- screenshot: new-repeater.png | the New Repeater form at /repeaters/new with DMR Radio ID 310000101 -->
+<!-- screenshot: new-repeater.png | the New Repeater form at /repeaters/new with DMR Radio ID 300000101 -->
 
 DMRHub then shows a DMRGateway configuration, like this one:
 
@@ -33,7 +33,7 @@ Enabled=1
 Address=dmrhub.example.org
 Port=62031
 Password="kG7tZ2pQ9wX4mN8v"
-Id=310000101
+Id=300000101
 Location=1
 Debug=0
 ```
@@ -105,7 +105,7 @@ Any software that speaks the MMDVM network protocol works. Give it these values:
 3. Click the hotspot ID to open its page. It shows **Online** or **Offline**, the frequencies, color code and software that the hotspot sent, and the last calls through it.
 4. Call the parrot to test your audio. See [Test with the parrot](parrot.md).
 
-<!-- screenshot: repeater-details.png | the repeater page at /repeaters/310000101 of a connected hotspot -->
+<!-- screenshot: repeater-details.png | the repeater page at /repeaters/300000101 of a connected hotspot -->
 
 ## Delete a hotspot
 

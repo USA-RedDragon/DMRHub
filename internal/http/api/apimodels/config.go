@@ -30,15 +30,15 @@ type POSTConfig struct {
 	SMTP         struct {
 		config.SMTP
 		Password *string `json:"password,omitempty"`
-	}
+	} `json:"smtp"`
 	Database struct {
 		config.Database
 		Password *string `json:"password,omitempty"`
-	}
+	} `json:"database"`
 	Redis struct {
 		config.Redis
 		Password *string `json:"password,omitempty"`
-	}
+	} `json:"redis"`
 }
 
 type SecretStatus struct {
@@ -54,6 +54,9 @@ type ConfigResponse struct {
 
 func (p POSTConfig) ToConfig(c *config.Config, fallback *config.Config) {
 	*c = p.Config
+	c.SMTP = p.SMTP.SMTP
+	c.Database = p.Database.Database
+	c.Redis = p.Redis.Redis
 	if fallback != nil {
 		c.Secret = fallback.Secret
 		c.PasswordSalt = fallback.PasswordSalt

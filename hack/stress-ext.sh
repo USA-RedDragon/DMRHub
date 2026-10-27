@@ -5,9 +5,10 @@
 # unshare -r -n, so the program reaches only loopback.
 # Usage: stress-ext.sh NAME WORKDIR HUB_MMDVM_PORT HUB_OB_PORT ID TG OB_ID OB_TG
 # NAME: dmrgateway hblink3 hblink4 mmdvm_bridge ysf2dmr
-# The configurations follow /home/user/work/ext/smoke/smoke.sh.
+# hack/external/setup.sh builds the programs into the directory that
+# DMRHUB_STRESS_EXT_DIR names, by default the one that setup.sh uses.
 set -u
-EXT=${DMRHUB_STRESS_EXT_DIR:-/home/user/work/ext}
+EXT=${DMRHUB_STRESS_EXT_DIR:-${DMRHUB_EXT_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/dmrhub-ext}}
 PY=$EXT/venv/bin/python
 name=$1 W=$2 HUB=$3 OB=$4 ID=$5 TG=$6 OBID=$7 OBTG=$8
 mkdir -p "$W"

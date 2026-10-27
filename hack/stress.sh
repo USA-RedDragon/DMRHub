@@ -23,7 +23,8 @@
 #   DMRHUB_STRESS_WS_CLIENTS websockets of the webclients area (default 40)
 #   DMRHUB_STRESS_BACKLOG   old rows of the database area (default 20000)
 #   DMRHUB_STRESS_PPROF     set to write CPU, heap, mutex and block profiles
-#   DMRHUB_STRESS_EXT_DIR   directory of the external clients (PINS.md); when set,
+#   DMRHUB_STRESS_EXT_DIR   directory of the external clients that
+#                           hack/external/setup.sh makes (PINS.md); when set,
 #                           the transports area runs them, inside unshare -r -n
 #                           (so on a SQLite backend only)
 #   DMRHUB_STRESS_EXT       external clients to run (default: all of

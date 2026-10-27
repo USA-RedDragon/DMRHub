@@ -58,6 +58,7 @@ export type WizardStatus = {
   phase: 'database' | 'setup' | 'done';
   database_error?: string;
   database_locked?: boolean;
+  database_saved?: boolean;
   database_file?: string;
   store_error?: string;
 };

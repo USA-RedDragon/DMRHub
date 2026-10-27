@@ -214,4 +214,39 @@ describe('Setup page with live settings', () => {
     expect(wrapper.find('[data-test="database-problem"]').text()).toContain(
       'The setup wizard cannot keep a database setting here: DMRHub cannot write in /app. Set the database in the config file or the environment of the deployment, then restart DMRHub.');
   });
+
+  const mountClosed = async (wizard: Promise<unknown>, config: Promise<unknown>) => {
+    mockAPI.get.mockImplementation((url: string) => (url === '/setupwizard' ? wizard : config));
+    const wrapper = mount(SetupWizard, {
+      attachTo: document.body,
+      global: { mocks: { $route: { path: '/setup', query: {} }, $router: { push: vi.fn(), replace: vi.fn() }, $toast: { add: vi.fn() } } },
+    });
+    await flushPromises();
+    return wrapper;
+  };
+
+  it('says to fix the config and restart once a database setting was saved', async () => {
+    const wrapper = await mountClosed(Promise.resolve({ data: { setupwizard: true, closed: 'database' } }), Promise.resolve(response()));
+    const card = wrapper.find('[data-test="wizard-closed"]');
+    expect(card.text()).toContain('DMRHub cannot reach its database.');
+    expect(card.text()).toContain('An admin must fix the database in the config file, the environment or the flags, then restart DMRHub.');
+    expect(wrapper.find('form').exists()).toBe(false);
+    expect(mockAPI.get).not.toHaveBeenCalledWith('/config');
+  });
+
+  it('says to fix the config and restart once an admin exists', async () => {
+    const wrapper = await mountClosed(Promise.resolve({ data: { setupwizard: true, closed: 'settings' } }), Promise.resolve(response()));
+    const card = wrapper.find('[data-test="wizard-closed"]');
+    expect(card.text()).toContain('DMRHub has an admin, so the setup wizard cannot change the settings.');
+    expect(card.text()).toContain('then restart DMRHub.');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it('shows the same page when the settings refuse the wizard', async () => {
+    const refused = Promise.reject({ response: { status: 409, data: { error: 'x', closed: 'settings' } } });
+    refused.catch(() => {});
+    const wrapper = await mountClosed(Promise.resolve({ data: { setupwizard: true } }), refused);
+    expect(wrapper.find('[data-test="wizard-closed"]').exists()).toBe(true);
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
 });

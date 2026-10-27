@@ -23,81 +23,92 @@
   <div>
     <h1>Setup</h1>
     <div
-      v-if="databasePhase"
+      v-if="closed"
       role="alert"
       class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
-      data-test="database-problem"
+      data-test="wizard-closed"
     >
-      <b class="font-semibold">DMRHub cannot reach its database.</b>
-      <p>{{ databaseAdvice }}</p>
-      <p v-if="setupState.wizard?.database_error" class="font-mono text-xs break-all text-muted-foreground">
-        {{ setupState.wizard.database_error }}
-      </p>
+      <b class="font-semibold">{{ closedText.heading }}</b>
+      <p>{{ closedText.advice }}</p>
     </div>
-    <div
-      v-if="applyErrors.length > 0"
-      role="alert"
-      class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
-      data-test="apply-errors"
-    >
-      <b class="font-semibold">{{ applyHeading }}</b>
-      <p v-for="(e, i) in applyErrors" :key="i">
-        {{ e.summary }}<br />
-        <span class="font-mono text-xs break-all text-muted-foreground">{{ e.detail }}</span>
-      </p>
-      <p v-if="applyOK">{{ applyOK }}</p>
-    </div>
-    <div
-      v-if="setupState.disagree"
-      role="status"
-      class="my-4 flex flex-col gap-2 rounded-lg border border-amber-500/55 bg-amber-500/10 px-4 py-3 text-sm"
-      data-test="replicas-differ"
-    >
-      <b class="font-semibold">The replicas do not run with the same settings.</b>
-      <p>
-        {{ differText }} A setting that the deployment sets on one replica stays as the deployment sets it there. Look
-        for the amber mark below.
-      </p>
-    </div>
-    <div
-      v-if="unanswered.length > 0"
-      role="status"
-      class="my-4 rounded-lg border px-4 py-3 text-sm text-muted-foreground"
-      data-test="replicas-unanswered"
-    >
-      {{ unansweredText }}
-    </div>
-    <form @submit.prevent="submit()">
-      <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
-      <br />
-      <DMRSettings
-        v-model="config.dmr"
-        :errors="errors.dmr"
-        :secret-status="secretStatus"
-        :show-transcoding-status="isAdminSetup"
-        :saves="saves"
-      />
-      <br />
-      <HTTPSettings v-model="config.http" :errors="errors.http" />
-      <br />
-      <DatabaseSettings v-model="config.database" :errors="errors.database" />
-      <br />
-      <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
-      <br />
-      <RedisSettings v-model="config.redis" :errors="errors.redis" />
-      <br />
-      <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
-      <br />
-      <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
-      <br v-if="setupState.replicas.length > 1" />
-      <ReplicasCard v-if="setupState.replicas.length > 1" :replicas="setupState.replicas" :revision="setupState.revision" />
-      <div class="card-footer mt-4 flex flex-wrap items-center gap-3">
-        <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
-        <small v-if="setupState.replicas.length > 1" class="text-muted-foreground">
-          Saving puts the settings into effect on every replica at once, without a restart.
-        </small>
+    <template v-else>
+      <div
+        v-if="databasePhase"
+        role="alert"
+        class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+        data-test="database-problem"
+      >
+        <b class="font-semibold">DMRHub cannot reach its database.</b>
+        <p>{{ databaseAdvice }}</p>
+        <p v-if="setupState.wizard?.database_error" class="font-mono text-xs break-all text-muted-foreground">
+          {{ setupState.wizard.database_error }}
+        </p>
       </div>
-    </form>
+      <div
+        v-if="applyErrors.length > 0"
+        role="alert"
+        class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+        data-test="apply-errors"
+      >
+        <b class="font-semibold">{{ applyHeading }}</b>
+        <p v-for="(e, i) in applyErrors" :key="i">
+          {{ e.summary }}<br />
+          <span class="font-mono text-xs break-all text-muted-foreground">{{ e.detail }}</span>
+        </p>
+        <p v-if="applyOK">{{ applyOK }}</p>
+      </div>
+      <div
+        v-if="setupState.disagree"
+        role="status"
+        class="my-4 flex flex-col gap-2 rounded-lg border border-amber-500/55 bg-amber-500/10 px-4 py-3 text-sm"
+        data-test="replicas-differ"
+      >
+        <b class="font-semibold">The replicas do not run with the same settings.</b>
+        <p>
+          {{ differText }} A setting that the deployment sets on one replica stays as the deployment sets it there. Look
+          for the amber mark below.
+        </p>
+      </div>
+      <div
+        v-if="unanswered.length > 0"
+        role="status"
+        class="my-4 rounded-lg border px-4 py-3 text-sm text-muted-foreground"
+        data-test="replicas-unanswered"
+      >
+        {{ unansweredText }}
+      </div>
+      <form @submit.prevent="submit()">
+        <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
+        <br />
+        <DMRSettings
+          v-model="config.dmr"
+          :errors="errors.dmr"
+          :secret-status="secretStatus"
+          :show-transcoding-status="isAdminSetup"
+          :saves="saves"
+        />
+        <br />
+        <HTTPSettings v-model="config.http" :errors="errors.http" />
+        <br />
+        <DatabaseSettings v-model="config.database" :errors="errors.database" />
+        <br />
+        <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
+        <br />
+        <RedisSettings v-model="config.redis" :errors="errors.redis" />
+        <br />
+        <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
+        <br />
+        <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
+        <br v-if="setupState.replicas.length > 1" />
+        <ReplicasCard v-if="setupState.replicas.length > 1" :replicas="setupState.replicas" :revision="setupState.revision" />
+        <div class="card-footer mt-4 flex flex-wrap items-center gap-3">
+          <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
+          <small v-if="setupState.replicas.length > 1" class="text-muted-foreground">
+            Saving puts the settings into effect on every replica at once, without a restart.
+          </small>
+        </div>
+      </form>
+    </template>
   </div>
 </template>
 
@@ -242,6 +253,13 @@ const localErrors = (config: Record<string, unknown>): SetupErrors | undefined =
   return { ...createInitialErrors(), dmr: { transcoding: { 'ambe-servers': error } } };
 };
 
+type ClosedReason = '' | 'database' | 'settings';
+
+const closedReasonOf = (data: unknown): ClosedReason => {
+  const closed = asRecord(data)?.closed;
+  return closed === 'database' || closed === 'settings' ? closed : '';
+};
+
 const showApplyError = (e: ApplyError, self: boolean): ShownApplyError => {
   const replica = e.replica ? replicaName(e.replica) : '';
   if (e.field) {
@@ -281,16 +299,24 @@ export default defineComponent({
     return { [setupStateKey as symbol]: this.setupState };
   },
   created() {
-    if (!this.isAdminSetup) {
-      API.get('/setupwizard')
-        .then((res: AxiosResponse) => {
-          if (res.data?.config_valid && res.data?.first_admin_open) {
-            this.$router.replace('/setup/user');
-          }
-        })
-        .catch(() => {});
+    if (this.isAdminSetup) {
+      this.getConfig();
+      return;
     }
-    this.getConfig();
+    API.get('/setupwizard')
+      .then((res: AxiosResponse) => {
+        if (closedReasonOf(res.data)) {
+          this.closed = closedReasonOf(res.data);
+          return;
+        }
+        if (res.data?.config_valid && res.data?.first_admin_open) {
+          this.$router.replace('/setup/user');
+        }
+        this.getConfig();
+      })
+      .catch(() => {
+        this.getConfig();
+      });
   },
   mounted() { },
   unmounted() { },
@@ -303,6 +329,7 @@ export default defineComponent({
       applyOK: '',
       unanswered: [] as string[],
       setupState: emptySetupState() as SetupState,
+      closed: '' as ClosedReason,
       saves: 0,
       secretStatus: {
         secretSet: false,
@@ -327,6 +354,18 @@ export default defineComponent({
         return `The setup wizard cannot keep a database setting here: ${w.store_error}. Set the database in the config file or the environment of the deployment, then restart DMRHub.`;
       }
       return `Fix the database settings below and save. DMRHub tries them at once and keeps them in ${w?.database_file ?? 'its working directory'}. The other settings open once DMRHub reaches its database.`;
+    },
+    closedText(): { heading: string; advice: string } {
+      if (this.closed === 'database') {
+        return {
+          heading: 'DMRHub cannot reach its database.',
+          advice: 'A database setting was saved before, so the setup wizard cannot change it. An admin must fix the database in the config file, the environment or the flags, then restart DMRHub.',
+        };
+      }
+      return {
+        heading: 'DMRHub needs an admin to fix its settings.',
+        advice: 'DMRHub has an admin, so the setup wizard cannot change the settings. An admin must fix them in the config file, the environment or the flags, then restart DMRHub.',
+      };
     },
     applyHeading(): string {
       if (this.failedReplicas.length === 0) {
@@ -385,6 +424,11 @@ export default defineComponent({
           };
         })
         .catch((error: unknown) => {
+          const closed = closedReasonOf(asRecord(asRecord(error)?.response)?.data);
+          if (closed && !this.isAdminSetup) {
+            this.closed = closed;
+            return;
+          }
           console.log(error);
           this.$toast.add({
             severity: 'error',

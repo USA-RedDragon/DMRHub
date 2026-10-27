@@ -192,10 +192,10 @@ func TestLoginTakesAUsernameOrACallsign(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code, name)
 		me := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil)
 		want := "1000001"
-		if name == "n0call" {
+		if name != "jdoe" {
 			want = "1000002"
 		}
-		assert.Contains(t, me.Body.String(), `"id":`+want, "%s: a username wins over a callsign", name)
+		assert.Contains(t, me.Body.String(), `"id":`+want, "%s: a username in any case wins over a callsign", name)
 	}
 	_, w, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "N0CALL", Password: "wrong"})
 	assert.Equal(t, http.StatusUnauthorized, w.Code)

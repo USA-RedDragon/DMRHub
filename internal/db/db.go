@@ -277,5 +277,9 @@ func migrate(db *gorm.DB, config *configPkg.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
+	if err := migration.MigrateSchema(db, config); err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
 	return nil
 }

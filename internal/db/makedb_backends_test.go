@@ -78,8 +78,9 @@ func backendConfig(t *testing.T, be testutils.Backend) config.Config {
 func checkSchema(t *testing.T, gdb *gorm.DB) {
 	t.Helper()
 	require.NoError(t, gdb.Create(&schemaUser{ID: 1, Callsign: "N0CALL", Username: "admin"}).Error)
-	require.NoError(t, gdb.Create(&schemaUser{ID: 2, Callsign: "n0call", Username: "Admin"}).Error, "callsigns and usernames are unique by their bytes")
-	require.Error(t, gdb.Create(&schemaUser{ID: 3, Callsign: "N0CALL", Username: "other"}).Error)
+	require.NoError(t, gdb.Create(&schemaUser{ID: 2, Callsign: "n0call", Username: "other"}).Error, "callsigns are unique by their bytes")
+	require.Error(t, gdb.Create(&schemaUser{ID: 3, Callsign: "N0CALL", Username: "third"}).Error)
+	require.Error(t, gdb.Create(&schemaUser{ID: 3000001, Callsign: "N1CALL", Username: "Admin"}).Error, "usernames are unique in any case")
 
 	burst := make([]byte, 33*10000)
 	for i := range burst {
@@ -151,8 +152,9 @@ var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 
 // newerSchema matches the DDL of the schema changes made after 2026-10-26:
 // the plugin names unique per built-in key, the Setup settings, the
-// generated secrets and the verified email addresses.
-var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins")
+// generated secrets, the verified email addresses, the first admin and the
+// usernames unique in any case.
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci")
 
 func (r *recorder) ddl() []string {
 	r.mu.Lock()

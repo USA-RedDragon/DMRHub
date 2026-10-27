@@ -181,13 +181,13 @@ func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, s
 	if !authctl.CheckEmail(c, email) {
 		return models.User{}, false
 	}
-	var existing models.User
-	if err := db.Find(&existing, "username = ?", json.Username).Error; err != nil {
+	taken, err := models.UsernameTaken(db, json.Username, 0)
+	if err != nil {
 		slog.Error(msgErrGettingUser, "function", "POSTUser", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
 		return models.User{}, false
 	}
-	if existing.ID != 0 {
+	if taken {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
 		return models.User{}, false
 	}
@@ -617,13 +617,12 @@ func PATCHUser(c *gin.Context) {
 
 		if json.Username != "" {
 			// Check if the username is already taken
-			var existingUser models.User
-			err := db.Find(&existingUser, "username = ?", json.Username).Error
+			taken, err := models.UsernameTaken(db, json.Username, user.ID)
 			if err != nil {
 				slog.Error(msgErrFindingUser, "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
 				return
-			} else if existingUser.ID != 0 {
+			} else if taken {
 				c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
 				return
 			}

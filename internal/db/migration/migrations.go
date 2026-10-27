@@ -37,6 +37,18 @@ func Migrate(db *gorm.DB, cfg *config.Config) error {
 	return nil
 }
 
+// MigrateSchema runs the migrations that need the tables that AutoMigrate
+// makes, on a new database too.
+func MigrateSchema(db *gorm.DB, cfg *config.Config) error {
+	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
+		case_insensitive_usernames_migration_202610270200(db, cfg),
+	})
+	if err := m.Migrate(); err != nil {
+		return fmt.Errorf("could not migrate: %w", err)
+	}
+	return nil
+}
+
 func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 	return []*gormigrate.Migration{
 		repeater_radio_id_migration_202302242025(db, cfg),

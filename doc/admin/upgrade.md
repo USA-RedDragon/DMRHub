@@ -46,6 +46,7 @@ At each start, before it opens the network, DMRHub brings the database up to dat
 
 1. It runs each migration that the database did not get yet, in order. The `migrations` table lists the IDs of the migrations that ran. A migration can add or drop tables and columns, and change data. For example, the migrations from v1.3.0 to v1.3.16 add the plugin tables and the password reset table, drop the `app_settings` table, and delete the parrot user and talkgroup 9990 that older releases made, because the parrot is now a plugin.
 2. It adds the tables and the columns that the current release needs and that are not in the database yet. This step does not drop anything.
+3. It runs the migrations that need those tables. One of them makes usernames the same in any case: `Alice` and `alice` are one username. If two users have usernames that differ only by case, this migration changes nothing and DMRHub exits with an error that lists each group, for example `usernames differ only by case: "Alice" (user 3000001), "alice" (user 3000002)`. Rename or delete all but one user of each group in the database, then start DMRHub again.
 
 With PostgreSQL or MySQL, DMRHub takes a lock in the database for these steps, so only one replica migrates at a time. If a migration fails, DMRHub exits with `failed to connect to database: failed to migrate database: ...`. Restore your backup and report the error.
 

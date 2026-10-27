@@ -102,6 +102,39 @@ func FindUserWithRepeaterTalkgroups(db *gorm.DB, id uint) (User, error) {
 	return user, err
 }
 
+// FindUserByUsername returns the user whose username is name in any case.
+func FindUserByUsername(db *gorm.DB, name string) (User, bool, error) {
+	return findUserBy(db, "LOWER(username) = LOWER(?)", name)
+}
+
+// FindUserByCallsign returns the user whose callsign is callsign in any
+// case.
+func FindUserByCallsign(db *gorm.DB, callsign string) (User, bool, error) {
+	return findUserBy(db, "UPPER(callsign) = UPPER(?)", callsign)
+}
+
+func findUserBy(db *gorm.DB, where, value string) (User, bool, error) {
+	var users []User
+	if err := db.Where(where, value).Limit(1).Find(&users).Error; err != nil {
+		return User{}, false, fmt.Errorf("could not find user %q: %w", value, err)
+	}
+	if len(users) == 0 {
+		return User{}, false, nil
+	}
+	return users[0], true, nil
+}
+
+// UsernameTaken reports whether a user other than except has the username
+// name in any case, deleted users included.
+func UsernameTaken(db *gorm.DB, name string, except uint) (bool, error) {
+	var count int64
+	err := db.Unscoped().Model(&User{}).Where("LOWER(username) = LOWER(?) AND id <> ?", name, except).Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("could not check username %q: %w", name, err)
+	}
+	return count > 0, nil
+}
+
 func ListUsers(db *gorm.DB) ([]User, error) {
 	var users []User
 	err := db.Preload("Repeaters").Find(&users).Error

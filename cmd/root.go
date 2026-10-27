@@ -21,6 +21,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -33,6 +34,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -187,6 +189,9 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 	}()
 	var fixed *liveconfig.Fixed
 	database, err := db.MakeDB(base) //nolint:contextcheck // MakeDB takes no context; it connects and migrates once at start
+	if errors.Is(err, migration.ErrUsernameClash) {
+		return booted{}, false, fmt.Errorf("an admin must fix the users first: %w", err)
+	}
 	if err != nil {
 		slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
 		wiz = startWizard(base, version, commit)

@@ -26,6 +26,8 @@ The RadioID.net check shows that the DMR ID and the callsign go together. It doe
 2. Click **Edit** in the row of the user.
 3. Change the **Callsign** or the **Username**, then click **Save Changes**. Click **Cancel** to keep the old values.
 
+Usernames are the same in any case, so a user can log in as `alice` or `Alice`, and two users cannot have usernames that differ only by case. A user can log in with their callsign in any case too.
+
 ## Suspend a user
 
 On the **Users** page, turn on the **Suspend?** box of the user. A suspended user cannot log in, and DMRHub refuses the API calls of their open sessions. Turn the box off to let the user in again. You cannot suspend yourself.

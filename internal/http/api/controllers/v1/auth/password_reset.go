@@ -171,16 +171,14 @@ func clientNetwork(ip string) string {
 }
 
 func findResetUser(db *gorm.DB, name string) (models.User, bool, error) {
-	for _, q := range []struct{ column, value string }{{"username", name}, {"callsign", strings.ToUpper(name)}} {
-		var users []models.User
-		if err := db.Where(q.column+" = ?", q.value).Limit(1).Find(&users).Error; err != nil {
-			return models.User{}, false, fmt.Errorf("could not find user %q: %w", name, err)
-		}
-		if len(users) == 1 {
-			return users[0], true, nil
-		}
+	user, ok, err := models.FindUserByUsername(db, name)
+	if err == nil && !ok {
+		user, ok, err = models.FindUserByCallsign(db, name)
 	}
-	return models.User{}, false, nil
+	if err != nil {
+		return models.User{}, false, fmt.Errorf("could not find the account to reset: %w", err)
+	}
+	return user, ok, nil
 }
 
 // POSTResetPasswordCheck answers the callsign of the account of a working

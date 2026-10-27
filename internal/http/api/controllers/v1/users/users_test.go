@@ -1202,3 +1202,49 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 		})
 	}
 }
+
+// TestUsernamesIgnoreCase registers a user on each database. A login by
+// the username or the callsign in another case works, and a registration
+// or a rename to the username in another case is refused. The user may
+// change the case of their own username.
+func TestUsernamesIgnoreCase(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Migrated().Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+
+			user := apimodels.UserRegistration{DMRId: 3000001, Callsign: "N0CALL", Username: "Alice", Password: "password"}
+			_, w, jar := testutils.CreateAndLoginUser(t, router, user)
+			require.Equal(t, http.StatusOK, w.Code)
+
+			for _, login := range []apimodels.AuthLogin{
+				{Username: "alice", Password: "password"},
+				{Username: "ALICE", Password: "password"},
+				{Username: "n0call", Password: "password"},
+				{Callsign: "n0Call", Password: "password"},
+			} {
+				_, w, _ := testutils.LoginUser(t, router, login)
+				assert.Equal(t, http.StatusOK, w.Code, "login %+v", login)
+			}
+			_, w, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "alice", Password: "wrong"})
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+			resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3000002, Callsign: "N1CALL", Username: "aLICE", Password: "password"})
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "Username is already taken", resp.Error)
+
+			other := apimodels.UserRegistration{DMRId: 3000003, Callsign: "N2CALL", Username: "bob", Password: "password"}
+			_, w, otherJar := testutils.CreateAndLoginUser(t, router, other)
+			require.Equal(t, http.StatusOK, w.Code)
+			resp, w = testutils.PatchUser(t, router, other.DMRId, otherJar, apimodels.UserPatch{Username: "ALICE"})
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "Username is already taken", resp.Error)
+
+			_, w = testutils.PatchUser(t, router, user.DMRId, jar, apimodels.UserPatch{Username: "alice"})
+			assert.Equal(t, http.StatusOK, w.Code, "a user may change the case of their own username")
+		})
+	}
+}

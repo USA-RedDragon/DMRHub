@@ -22,7 +22,6 @@ package auth
 import (
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -102,16 +101,17 @@ func POSTLogin(c *gin.Context) {
 		// users by measuring response latency (timing oracle attack).
 		loginStart := time.Now()
 
+		var findErr error
 		if json.Username != "" {
-			result := db.Find(&user, "username = ?", json.Username)
-			userFound = result.RowsAffected > 0
-			if !userFound {
-				result = db.Find(&user, "callsign = ?", strings.ToUpper(json.Username))
-				userFound = result.RowsAffected > 0
+			user, userFound, findErr = models.FindUserByUsername(db, json.Username)
+			if findErr == nil && !userFound {
+				user, userFound, findErr = models.FindUserByCallsign(db, json.Username)
 			}
 		} else {
-			result := db.Find(&user, "callsign = ?", json.Callsign)
-			userFound = result.RowsAffected > 0
+			user, userFound, findErr = models.FindUserByCallsign(db, json.Callsign)
+		}
+		if findErr != nil {
+			slog.Error("Failed to find the user", "function", "POSTLogin", "error", findErr)
 		}
 
 		// When the user is not found, compare against a dummy hash to prevent

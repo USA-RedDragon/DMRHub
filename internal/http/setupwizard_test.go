@@ -531,3 +531,69 @@ func TestSetupWizardKeepsTheSettingsOfAnAdmin(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "restart DMRHub")
 	assert.Empty(t, live.Current().Get().HTTP.CanonicalHost)
 }
+
+// sqliteHub returns a default config whose SQLite file DMRHub made, with n
+// users in it, and that DMRHub can no longer use, and the database fix of
+// its start.
+func sqliteHub(t *testing.T, n int, store liveconfig.DatabaseState) (*config.Config, *liveconfig.DatabaseFix) {
+	t.Helper()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	base.Database.Database = filepath.Join(t.TempDir(), "DMRHub.db")
+	database, err := db.MakeDB(&base)
+	require.NoError(t, err)
+	for i := range n {
+		require.NoError(t, database.Create(&models.User{ID: uint(3000001 + i), Callsign: fmt.Sprintf("N0US%c", 'A'+i), Username: fmt.Sprintf("user%d", i), Password: "x"}).Error)
+	}
+	sqlDB, err := database.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	base.Database.ExtraParameters = append(base.Database.ExtraParameters, "_txlock=broken")
+	_, openErr := db.MakeDB(&base)
+	require.Error(t, openErr)
+	return &base, liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, openErr)
+}
+
+// TestSetupWizardKeepsASQLiteFileWithUsers starts the wizard of a default
+// install whose SQLite file has a user but fails, with no state file. The
+// file counts as a saved database setting: a visitor cannot point DMRHub at
+// another database, and the wizard says to fix the config and restart.
+func TestSetupWizardKeepsASQLiteFileWithUsers(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	base, fix := sqliteHub(t, 1, store)
+	assert.True(t, fix.Closed())
+	state := setupwizard.NewState()
+	state.SetDatabaseFix(fix)
+	r := internalhttp.CreateSetupWizardRouter(base, state, make(chan any, 1), "test", "test")
+
+	assert.Equal(t, "database", wizardClosed(t, r))
+	w := wizardRequest(t, r, http.MethodGet, nil)
+	assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+
+	raw := map[string]any{}
+	require.NoError(t, json.Unmarshal(mustJSON(t, base), &raw))
+	setDatabase(raw, filepath.Join(t.TempDir(), "theirs.db"))
+	w = wizardRequest(t, r, http.MethodPut, raw)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "restart DMRHub")
+	assert.False(t, store.Saved())
+}
+
+// TestSetupWizardFixesASQLiteFileWithNoUsers starts the wizard of a first
+// install whose SQLite file has no user and fails. The wizard offers the
+// database step.
+func TestSetupWizardFixesASQLiteFileWithNoUsers(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	base, fix := sqliteHub(t, 0, store)
+	assert.False(t, fix.Closed())
+	state := setupwizard.NewState()
+	state.SetDatabaseFix(fix)
+	r := internalhttp.CreateSetupWizardRouter(base, state, make(chan any, 1), "test", "test")
+
+	assert.Empty(t, wizardClosed(t, r))
+	_, cfg := wizardGET(t, r)
+	require.NotNil(t, cfg.Wizard)
+	assert.Equal(t, liveconfig.PhaseDatabase, cfg.Wizard.Phase)
+}

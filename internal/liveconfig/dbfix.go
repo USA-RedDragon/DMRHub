@@ -48,9 +48,10 @@ type DatabaseFix struct {
 	// Err is why DMRHub cannot reach its database.
 	Err error
 
-	mu    sync.Mutex
-	done  bool
-	fixed chan Fixed
+	mu       sync.Mutex
+	done     bool
+	fixed    chan Fixed
+	usedFile bool
 }
 
 // Fixed is a database that the setup wizard reached. The start of DMRHub
@@ -81,7 +82,7 @@ const (
 // NewDatabaseFix returns a DatabaseFix for a base config whose database
 // DMRHub cannot reach because of err.
 func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(*config.Config) (*gorm.DB, error), err error) *DatabaseFix {
-	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed)}
+	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database)}
 }
 
 // Fixed returns the channel of the database that works.
@@ -117,11 +118,15 @@ func (f *DatabaseFix) Problem() Problem {
 	return p
 }
 
-// Closed reports whether a database setting was saved before and the
-// deployment sets none, so that the setup wizard cannot change the
-// database.
+// Closed reports whether a database setting was saved before, or the SQLite
+// file of the base config has a user, and the deployment sets none, so that
+// the setup wizard cannot change the database.
 func (f *DatabaseFix) Closed() bool {
-	return !DatabaseLocked(f.Locks) && f.State.Saved()
+	return !DatabaseLocked(f.Locks) && f.saved()
+}
+
+func (f *DatabaseFix) saved() bool {
+	return f.usedFile || f.State.Saved()
 }
 
 // Check returns why next cannot be tried: a change of a setting other than
@@ -161,7 +166,7 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, er
 	if DatabaseLocked(f.Locks) {
 		return "", ErrDatabaseLocked
 	}
-	if f.State.Saved() {
+	if f.saved() {
 		return "", ErrDatabaseSaved
 	}
 	if err := f.State.Writable(); err != nil {

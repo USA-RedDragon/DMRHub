@@ -33,7 +33,7 @@ DMRHub starts the setup wizard instead of the network when its configuration is 
 
 The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete. The database lets only one visitor make the first admin, also when several replicas run the wizard at once. A visitor who comes second gets the message that the admin exists, and can log in when that admin gives them an account.
 
-The wizard changes settings only on a new DMRHub. When an admin exists, it shows `DMRHub has an admin, so the setup wizard cannot change the settings.` When DMRHub cannot reach a database setting that the wizard saved before in `dmrhub-database.json`, it shows `A database setting was saved before, so the setup wizard cannot change it.` In both cases, fix the setting in the config file, the environment or the flags, then restart DMRHub. A database setting there wins over `dmrhub-database.json`.
+The wizard changes settings only on a new DMRHub. When an admin exists, it shows `DMRHub has an admin, so the setup wizard cannot change the settings.` When DMRHub cannot reach a database setting that the wizard saved before in `dmrhub-database.json`, or a SQLite file that has a user, it shows `A database setting was saved before, so the setup wizard cannot change it.` In both cases, fix the setting in the config file, the environment or the flags, then restart DMRHub. A database setting there wins over `dmrhub-database.json`.
 
 <!-- screenshot: setup-wizard.png | /setup on a fresh install: the Setup page with the General Settings card at the top -->
 

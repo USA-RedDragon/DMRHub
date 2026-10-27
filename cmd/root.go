@@ -198,8 +198,10 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 		switch {
 		case liveconfig.DatabaseLocked(locks):
 			slog.Error("DMRHub cannot reach its database; fix it in the config file, the environment or the flags and restart DMRHub", "error", err)
-		case fix.Closed():
+		case fix.Closed() && state.Saved():
 			slog.Error("DMRHub cannot reach the database setting saved in "+state.Path+"; fix the database in the config file, the environment or the flags and restart DMRHub", "error", err)
+		case fix.Closed():
+			slog.Error("DMRHub cannot reach its SQLite file, which has users; fix the database in the config file, the environment or the flags and restart DMRHub", "file", base.Database.Database, "error", err)
 		default:
 			slog.Error("DMRHub cannot reach its database; the setup wizard can fix the database setting", "error", err)
 		}

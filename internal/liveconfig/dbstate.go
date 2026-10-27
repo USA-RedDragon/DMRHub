@@ -23,10 +23,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // DatabaseStateFile is the file, in the working directory of DMRHub,
@@ -77,6 +83,42 @@ func DatabaseLocked(locks Locks) bool {
 func (s DatabaseState) Saved() bool {
 	_, err := os.Lstat(s.Path)
 	return !errors.Is(err, os.ErrNotExist)
+}
+
+// SQLiteFileUsed reports whether d is a SQLite file that has a user, so that
+// a hub used it. A file that DMRHub cannot read counts as used; no file, or a
+// file with no user table or no user, does not.
+func SQLiteFileUsed(d config.Database) bool {
+	if d.Driver != config.DatabaseDriverSQLite || slices.Contains(d.ExtraParameters, "mode=memory") {
+		return false
+	}
+	path := strings.TrimPrefix(d.Database, "file:")
+	if path == "" || path == ":memory:" {
+		return false
+	}
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	database, err := gorm.Open(sqlite.Open("file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro"), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		return true
+	}
+	defer func() {
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}()
+	var tables, users int64
+	if err := database.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'users'").Scan(&tables).Error; err != nil {
+		return true
+	}
+	if tables == 0 {
+		return false
+	}
+	if err := database.Raw("SELECT COUNT(*) FROM users").Scan(&users).Error; err != nil {
+		return true
+	}
+	return users > 0
 }
 
 // Load returns the database setting of the file, and whether there is one.

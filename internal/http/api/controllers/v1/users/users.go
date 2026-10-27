@@ -191,6 +191,9 @@ func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, s
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is already taken"})
 		return models.User{}, false
 	}
+	if !checkUsernameAndCallsign(c, db, json.DMRId, json.Username, json.Callsign) {
+		return models.User{}, false
+	}
 	exists, err := models.UserIDExists(db, json.DMRId)
 	if err == nil && !exists {
 		_, exists, err = models.RadioIDOwner(db, json.DMRId)
@@ -221,6 +224,55 @@ func registration(c *gin.Context, db *gorm.DB, skipRadioIDCheck bool, hibpKey, s
 		ID:       json.DMRId,
 		Email:    email,
 	}, true
+}
+
+// checkUsernameAndCallsign refuses a username that is the callsign of a
+// user other than id, and a callsign that is the username of a user other
+// than id, both in any case. A login by a username wins over a login by a
+// callsign, so either would take the logins of the other user. An empty
+// username or callsign is not checked. On a refusal it answers the request
+// and returns false.
+func checkUsernameAndCallsign(c *gin.Context, db *gorm.DB, id uint, username, callsign string) bool {
+	if username != "" {
+		clash, err := models.UsernameIsCallsign(db, username, id)
+		if err != nil {
+			slog.Error(msgErrGettingUser, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
+			return false
+		}
+		if clash {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Username is the callsign of another user"})
+			return false
+		}
+	}
+	if callsign != "" {
+		clash, err := models.UsernameTaken(db, callsign, id)
+		if err != nil {
+			slog.Error(msgErrGettingUser, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrGettingUser})
+			return false
+		}
+		if clash {
+			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Callsign is the username of another user"})
+			return false
+		}
+	}
+	return true
+}
+
+// checkPatchNames refuses a patch of user that sets a new username that is
+// the callsign of another user, or a new callsign that is the username of
+// another user. A name that only changes case is not new, so an edit that
+// keeps an old clash is not refused.
+func checkPatchNames(c *gin.Context, db *gorm.DB, user models.User, json apimodels.UserPatch) bool {
+	var username, callsign string
+	if !strings.EqualFold(json.Username, user.Username) {
+		username = json.Username
+	}
+	if !strings.EqualFold(json.Callsign, user.Callsign) {
+		callsign = json.Callsign
+	}
+	return checkUsernameAndCallsign(c, db, user.ID, username, callsign)
 }
 
 func POSTUserDemote(c *gin.Context) {
@@ -593,6 +645,9 @@ func PATCHUser(c *gin.Context) {
 			return
 		}
 
+		if !checkPatchNames(c, db, user, json) {
+			return
+		}
 		adminReset, ok := checkPasswordChange(c, db, json, user)
 		if !ok {
 			return

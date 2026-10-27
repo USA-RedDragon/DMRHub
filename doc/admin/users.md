@@ -26,7 +26,7 @@ The RadioID.net check shows that the DMR ID and the callsign go together. It doe
 2. Click **Edit** in the row of the user.
 3. Change the **Callsign** or the **Username**, then click **Save Changes**. Click **Cancel** to keep the old values.
 
-Usernames are the same in any case, so a user can log in as `alice` or `Alice`, and two users cannot have usernames that differ only by case. A user can log in with their callsign in any case too.
+Usernames are the same in any case, so a user can log in as `alice` or `Alice`, and two users cannot have usernames that differ only by case. A user can log in with their callsign in any case too. A username cannot be the callsign of another user, in any case, and a callsign cannot be the username of another user, because a login by a username comes before a login by a callsign. A user can have their own callsign as their username.
 
 ## Suspend a user
 

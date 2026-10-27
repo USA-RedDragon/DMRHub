@@ -135,6 +135,19 @@ func UsernameTaken(db *gorm.DB, name string, except uint) (bool, error) {
 	return count > 0, nil
 }
 
+// UsernameIsCallsign reports whether a user other than except has the
+// callsign name in any case, deleted users included. A login by a username
+// wins over a login by a callsign, so such a username would take the
+// logins of that user.
+func UsernameIsCallsign(db *gorm.DB, name string, except uint) (bool, error) {
+	var count int64
+	err := db.Unscoped().Model(&User{}).Where("UPPER(callsign) = UPPER(?) AND id <> ?", name, except).Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("could not check username %q against the callsigns: %w", name, err)
+	}
+	return count > 0, nil
+}
+
 func ListUsers(db *gorm.DB) ([]User, error) {
 	var users []User
 	err := db.Preload("Repeaters").Find(&users).Error

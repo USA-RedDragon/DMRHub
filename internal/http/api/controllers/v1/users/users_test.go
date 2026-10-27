@@ -1248,3 +1248,60 @@ func TestUsernamesIgnoreCase(t *testing.T) {
 		})
 	}
 }
+
+// TestUsernamesAreNotOtherCallsigns registers users on each database. As a
+// login by a username wins over a login by a callsign, a username may not
+// be the callsign of another user in any case, and a callsign may not be
+// the username of another user. A user may have their own callsign as
+// their username, in any case.
+func TestUsernamesAreNotOtherCallsigns(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Migrated().Setup(t, c) })
+			require.NoError(t, err)
+			defer tdb.CloseDB()
+
+			_, w, _ := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3000001, Callsign: "N0CALL", Username: "alice", Password: "password"})
+			require.Equal(t, http.StatusOK, w.Code)
+
+			for _, name := range []string{"n0call", "N0CALL", "n0Call"} {
+				resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3000002, Callsign: "N1CALL", Username: name, Password: "password"})
+				assert.Equal(t, http.StatusBadRequest, w.Code, name)
+				assert.Equal(t, "Username is the callsign of another user", resp.Error, name)
+			}
+			for _, callsign := range []string{"ALICE", "alice"} {
+				resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3000002, Callsign: callsign, Username: "dave", Password: "password"})
+				assert.Equal(t, http.StatusBadRequest, w.Code, callsign)
+				assert.Equal(t, "Callsign is the username of another user", resp.Error, callsign)
+			}
+
+			own := apimodels.UserRegistration{DMRId: 3000003, Callsign: "N2CALL", Username: "n2call", Password: "password"}
+			_, w, ownJar := testutils.CreateAndLoginUser(t, router, own)
+			require.Equal(t, http.StatusOK, w.Code, "a user may have their own callsign as their username")
+			_, w = testutils.PatchUser(t, router, own.DMRId, ownJar, apimodels.UserPatch{Username: "N2CALL"})
+			assert.Equal(t, http.StatusOK, w.Code, "a user may change the case of their own callsign as their username")
+
+			bob := apimodels.UserRegistration{DMRId: 3000004, Callsign: "N3CALL", Username: "bob", Password: "password"}
+			_, w, bobJar := testutils.CreateAndLoginUser(t, router, bob)
+			require.Equal(t, http.StatusOK, w.Code)
+			resp, w := testutils.PatchUser(t, router, bob.DMRId, bobJar, apimodels.UserPatch{Username: "N0call"})
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "Username is the callsign of another user", resp.Error)
+
+			_, w, _ = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3000005, Callsign: "N4CALL", Username: "ki5vmf", Password: "password"})
+			require.Equal(t, http.StatusOK, w.Code)
+			erin := apimodels.UserRegistration{DMRId: 3191868, Callsign: "N5CALL", Username: "erin", Password: "password"}
+			_, w, erinJar := testutils.CreateAndLoginUser(t, router, erin)
+			require.Equal(t, http.StatusOK, w.Code)
+			resp, w = testutils.PatchUser(t, router, erin.DMRId, erinJar, apimodels.UserPatch{Callsign: "ki5vmf"})
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, "Callsign is the username of another user", resp.Error)
+
+			require.NoError(t, tdb.DB().Model(&models.User{}).Where("id = ?", bob.DMRId).Update("username", "n0call").Error)
+			_, w = testutils.PatchUser(t, router, bob.DMRId, bobJar, apimodels.UserPatch{Username: "n0call"})
+			assert.Equal(t, http.StatusOK, w.Code, "an edit that keeps an old clash is not refused")
+		})
+	}
+}

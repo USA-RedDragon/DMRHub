@@ -191,7 +191,8 @@ func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 
 // TestAStreamStartedOnTwoReplicasAtOnceHasOneSource starts the same stream
 // from two sources on two replicas at the same time, over a KV store that
-// answers in 10 ms. Exactly one source may own it.
+// answers in 10 ms, and holds the waits of the hubs for the answers.
+// Exactly one source may own it.
 func TestAStreamStartedOnTwoReplicasAtOnceHasOneSource(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -206,6 +207,8 @@ func TestAStreamStartedOnTwoReplicasAtOnceHasOneSource(t *testing.T) {
 		two.Stop(context.Background())
 		_ = shared.Close()
 	})
+	t.Cleanup(one.HoldStreamClaimWaits())
+	t.Cleanup(two.HoldStreamClaimWaits())
 
 	for stream := uint(1); stream <= 20; stream++ {
 		var wg sync.WaitGroup

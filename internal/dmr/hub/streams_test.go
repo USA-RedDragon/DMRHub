@@ -70,6 +70,8 @@ func replicaHubs(t *testing.T, be testutils.Backend) (*hub.Hub, *hub.Hub) {
 		two.Stop(context.Background())
 		_ = shared.Close()
 	})
+	t.Cleanup(one.HoldStreamClaimWaits())
+	t.Cleanup(two.HoldStreamClaimWaits())
 	return one, two
 }
 

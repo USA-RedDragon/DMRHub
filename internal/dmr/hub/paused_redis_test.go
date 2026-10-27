@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,25 +39,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const pausedKVCall = time.Second
-
-// pausedKV acts as a Redis that stops while paused is set, for the keys
-// that start with prefix: each call waits a second and fails.
+// pausedKV acts as a Redis that stops while paused, for the keys that
+// start with prefix: each call waits until it goes on, and fails.
 type pausedKV struct {
 	kv.KV
 	prefix string
-	paused atomic.Bool
+	mu     sync.Mutex
+	gate   chan struct{}
 	calls  atomic.Int64
+	held   atomic.Int64
 }
 
 var errPausedKV = errors.New("read tcp: i/o timeout")
 
+// pause makes the calls on the keys from now on wait for resume.
+func (p *pausedKV) pause() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.gate == nil {
+		p.gate = make(chan struct{})
+	}
+}
+
+// resume lets the waiting calls fail, and pauses no more.
+func (p *pausedKV) resume() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.gate != nil {
+		close(p.gate)
+		p.gate = nil
+	}
+}
+
 func (p *pausedKV) stalls(key string) bool {
-	if !p.paused.Load() || !strings.HasPrefix(key, p.prefix) {
+	if !strings.HasPrefix(key, p.prefix) {
+		return false
+	}
+	p.mu.Lock()
+	gate := p.gate
+	p.mu.Unlock()
+	if gate == nil {
 		return false
 	}
 	p.calls.Add(1)
-	time.Sleep(pausedKVCall)
+	p.held.Add(1)
+	<-gate
+	p.held.Add(-1)
 	return true
 }
 
@@ -82,20 +110,21 @@ func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) er
 }
 
 // TestAPausedRedisLosesNoSighting hears 300 radios on a trusted repeater
-// in three seconds while every call on the records of where radios were
-// heard waits a second and fails, as a paused Redis makes it, for four
-// seconds. The
-// worker that takes the sightings must not wait on Redis, or its queue
-// fills and it drops sightings, and each record must be written once
-// Redis goes on.
+// while every call on the records of where they were heard waits and
+// fails, as a paused Redis makes it. The worker that takes the sightings
+// must not wait on Redis, or its queue fills and it drops sightings: the
+// record of each radio must wait on Redis while Redis is paused, and be
+// written once Redis goes on.
 func TestAPausedRedisLosesNoSighting(t *testing.T) {
 	t.Parallel()
-	paused := &pausedKV{prefix: "dmrhub:lastheard:"}
+	const radios, first, batch = 300, 1100000, 50
+	paused := &pausedKV{prefix: "dmrhub:lastheard:11"}
 	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
 		paused.KV = k
 		return paused
 	})
-	const radios, first = 300, 1100000
+	t.Cleanup(paused.resume)
+	t.Cleanup(h.HoldLookupWaits())
 	seedUser(t, database, 1000001, "OWNER")
 	seedRepeater(t, database, 100003, 1000001)
 	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100003).Error)
@@ -107,12 +136,15 @@ func TestAPausedRedisLosesNoSighting(t *testing.T) {
 	h.LiftSlotRate(true)
 	time.Sleep(100 * time.Millisecond)
 
-	paused.paused.Store(true)
-	time.AfterFunc(4*time.Second, func() { paused.paused.Store(false) })
+	paused.pause()
 	for i := range radios {
 		h.RoutePacket(context.Background(), dataHeader(first+uint(i), 1, 100003, 9000+uint(i)), models.RepeaterTypeMMDVM)
-		time.Sleep(10 * time.Millisecond)
+		if i%batch == batch-1 {
+			require.Eventually(t, func() bool { return paused.held.Load() == int64(i+1) }, time.Minute, 10*time.Millisecond,
+				"the records of the first %d radios do not all wait on the paused Redis", i+1)
+		}
 	}
+	paused.resume()
 	missing := func() []uint {
 		var out []uint
 		for i := range radios {
@@ -122,17 +154,17 @@ func TestAPausedRedisLosesNoSighting(t *testing.T) {
 		}
 		return out
 	}
-	assert.Eventually(t, func() bool { return len(missing()) == 0 }, 15*time.Second, 100*time.Millisecond, "where some radios were heard is not stored")
+	assert.Eventually(t, func() bool { return len(missing()) == 0 }, time.Minute, 100*time.Millisecond, "where some radios were heard is not stored")
 	t.Logf("%d of %d records missing after %d paused KV calls", len(missing()), radios, paused.calls.Load())
 }
 
 // TestAPausedRedisHoldsNoCodecChange announces the change of the codec of
-// a repeater while each publish waits a second and fails, as a paused
-// Redis makes it, and then while each publish fails at once without
-// reaching Redis, as a stopped Redis makes it. The announcement must not
-// wait on Redis, since the worker that records the codecs heard on the
-// timeslots makes it, and the other replicas must get each one once
-// Redis is back.
+// a repeater while each publish waits and fails, as a paused Redis makes
+// it, and then while each publish fails at once without reaching Redis,
+// as a stopped Redis makes it. The announcement must not wait on Redis,
+// since the worker that records the codecs heard on the timeslots makes
+// it: it must return while Redis still holds or fails its publish. The
+// other replicas must get each one once Redis is back.
 func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
 	t.Parallel()
 	stalled := &stalledPubSub{stalls: func(topic string) bool { return topic == "hub:repeaters:codec" }}
@@ -140,24 +172,32 @@ func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
 		stalled.PubSub = ps
 		return stalled
 	}, func(k kv.KV) kv.KV { return k })
+	t.Cleanup(stalled.resume)
 	seedUser(t, database, 1000001, "OWNER")
 	seedRepeater(t, database, 100003, 1000001)
 	sub := ps.Subscribe("hub:repeaters:codec")
 	t.Cleanup(func() { _ = sub.Close() })
 
 	for _, mode := range []stallMode{stallTimeout, stallNotSent} {
+		before := stalled.calls.Load()
 		stalled.stall(mode)
-		start := time.Now()
-		h.CodecChanged(100003)
-		waited := time.Since(start)
-		t.Logf("announcing a codec change waited %v in stall mode %d", waited, mode)
-		assert.Less(t, waited, stalledRedisCall/4, "the announcement waited on pubsub")
-		time.Sleep(200 * time.Millisecond)
+		announced := make(chan struct{})
+		go func() {
+			h.CodecChanged(100003)
+			close(announced)
+		}()
+		select {
+		case <-announced:
+		case <-time.After(time.Minute):
+			require.Fail(t, "the announcement waited on pubsub", "stall mode %d", mode)
+		}
+		require.Eventually(t, func() bool { return stalled.calls.Load() > before }, time.Minute, 10*time.Millisecond,
+			"the announcement made no publish for pubsub to stall in stall mode %d", mode)
 		stalled.resume()
 		select {
 		case msg := <-sub.Channel():
 			assert.True(t, strings.HasSuffix(string(msg), ":100003"), "the announcement names the repeater: %s", msg)
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Minute):
 			assert.Fail(t, "the other replicas did not get the announcement", "stall mode %d", mode)
 		}
 		select {
@@ -196,13 +236,13 @@ func TestOwnsRepeaterWaitsOnAPausedRedisNoLongerThanALookup(t *testing.T) {
 	require.NoError(t, ps.Publish("hub:claimed", fmt.Appendf(nil, "100004 replica-b %d", time.Now().UnixNano())))
 	time.Sleep(100 * time.Millisecond)
 
-	paused.paused.Store(true)
-	defer paused.paused.Store(false)
+	t.Cleanup(paused.resume)
+	paused.pause()
 	for id, want := range map[uint]bool{100003: true, 100004: false} {
 		start := time.Now()
 		owns := h.OwnsRepeater(context.Background(), id)
 		waited := time.Since(start)
-		t.Logf("OwnsRepeater(%d) = %v after %v with %v per KV call", id, owns, waited, pausedKVCall)
+		t.Logf("OwnsRepeater(%d) = %v after %v while the KV store holds its calls", id, owns, waited)
 		assert.Less(t, waited, lookup.Wait+200*time.Millisecond, "OwnsRepeater waited on a paused KV store")
 		assert.Equal(t, want, owns, "OwnsRepeater(%d) with a paused KV store", id)
 	}

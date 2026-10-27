@@ -32,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"go.opentelemetry.io/otel"
@@ -183,6 +184,11 @@ func (s *Server) recordNeeded(l *link, data []byte) (uint32, bool) {
 func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id uint32, data []byte) {
 	defer s.lookups.Done()
 	repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+	if kvDown(err) {
+		if own, ok := s.ownRecord(uint(id)); ok && remote.matchesKV(own.IP, own.Port) {
+			repeater, err = own, nil
+		}
+	}
 	rec := kvRecord{repeater: repeater}
 	if err == nil {
 		rec.moved = s.moved(ctx, remote, data, repeater, id)
@@ -620,7 +626,10 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
 		return false
 	}
-	s.records.Do(repeaterID, func() { s.kvClient.StoreRepeater(ctx, repeaterID, repeater) })
+	s.records.Do(repeaterID, func() {
+		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+		s.keepOwnRecord(repeaterID, repeater)
+	})
 	slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
 	return true
 }
@@ -676,8 +685,13 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	s.connected.Delete(uint(o.ID))
 	downAt := time.Now()
 	s.records.Do(uint(o.ID), func() {
-		if s.kvOwned(ctx, o, downAt) && !s.kvClient.DeleteRepeater(ctx, uint(o.ID)) {
+		owned := s.kvOwned(ctx, o, downAt)
+		deleted := owned && s.kvClient.DeleteRepeater(ctx, uint(o.ID))
+		if owned && !deleted {
 			slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
+		}
+		if deleted || !owned || o.Reason != dmrdsession.ReasonTimeout {
+			s.dropOwnRecord(uint(o.ID))
 		}
 		if s.hub != nil {
 			s.hub.DeactivateRepeater(ctx, uint(o.ID))
@@ -752,6 +766,13 @@ func (s *Server) ping(ctx context.Context, l *link) {
 	ip, port := l.ep.kvAddr()
 	s.records.Do(repeaterID, func() {
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
+		if kvDown(err) {
+			if own, ok := s.ownRecord(repeaterID); ok {
+				own.LastPing = now
+				own.IP, own.Port = ip, port
+				s.keepOwnRecord(repeaterID, own)
+			}
+		}
 		if err != nil {
 			slog.Error("Error getting repeater from kv", "repeaterID", repeaterID, "error", err)
 			return
@@ -760,6 +781,7 @@ func (s *Server) ping(ctx context.Context, l *link) {
 		repeater.LastPing = now
 		repeater.IP, repeater.Port = ip, port
 		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
+		s.keepOwnRecord(repeaterID, repeater)
 		if s.hub != nil {
 			s.hub.RenewOwnership(ctx, repeaterID)
 		}
@@ -843,8 +865,13 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 		return
 	}
 	l.moved = moved
+	ip, port := l.ep.kvAddr()
+	s.records.Do(uint(id), func() {
+		own := repeater
+		own.IP, own.Port = ip, port
+		s.keepOwnRecord(uint(id), own)
+	})
 	if moved {
-		ip, port := l.ep.kvAddr()
 		s.records.Do(uint(id), func() {
 			repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
 			if err != nil {
@@ -852,6 +879,7 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 			}
 			repeater.IP, repeater.Port = ip, port
 			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+			s.keepOwnRecord(uint(id), repeater)
 		})
 	}
 }
@@ -913,6 +941,7 @@ func (s *Server) dropMoved(id uint, since time.Time) {
 		return
 	}
 	slog.Info("Repeater session moved to another replica", "repeaterID", id, "remoteAddr", l.ep.String())
+	s.dropOwnRecord(id)
 	s.stopBeacon(l)
 	delete(s.byID, uint32(id))
 	s.connected.Delete(id)
@@ -940,6 +969,11 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 		return endpoint{}, false
 	}
 	repeater, err := s.kvClient.GetRepeater(ctx, id)
+	if kvDown(err) {
+		if own, ok := s.ownRecord(id); ok {
+			repeater, err = own, nil
+		}
+	}
 	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port == 0 || (s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) {
 		s.egressMiss.Store(id, time.Now())
 		return endpoint{}, false
@@ -962,4 +996,45 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 		s.egressMiss.Store(id, time.Now())
 	}
 	return a, ok
+}
+
+// ownRecordTTL is how long a record that this replica keeps of a session
+// lasts after its last ping, as long as the KV store keeps one.
+const ownRecordTTL = 5 * time.Minute
+
+// kvDown reports whether err is a failure of the KV store itself, not a
+// record that is missing or bad.
+func kvDown(err error) bool {
+	return err != nil && !errors.Is(err, servers.ErrNoSuchRepeater) && !errors.Is(err, servers.ErrUnmarshalRepeater)
+}
+
+// keepOwnRecord keeps rec as this replica's record of the session of the
+// repeater id, which a resume takes in place of the KV record while the KV
+// store is down.
+func (s *Server) keepOwnRecord(id uint, rec models.Repeater) {
+	s.ownMu.Lock()
+	defer s.ownMu.Unlock()
+	if s.ownRecords == nil {
+		s.ownRecords = map[uint]models.Repeater{}
+	}
+	s.ownRecords[id] = rec
+}
+
+func (s *Server) dropOwnRecord(id uint) {
+	s.ownMu.Lock()
+	defer s.ownMu.Unlock()
+	delete(s.ownRecords, id)
+}
+
+// ownRecord returns this replica's record of the session of the repeater
+// id, while it would still be in the KV store.
+func (s *Server) ownRecord(id uint) (models.Repeater, bool) {
+	s.ownMu.Lock()
+	defer s.ownMu.Unlock()
+	rec, ok := s.ownRecords[id]
+	if ok && time.Since(rec.LastPing) >= ownRecordTTL {
+		delete(s.ownRecords, id)
+		return models.Repeater{}, false
+	}
+	return rec, ok
 }

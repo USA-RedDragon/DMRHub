@@ -109,6 +109,9 @@ type Server struct {
 	// replica.
 	resumeKey []byte
 
+	ownMu      sync.Mutex
+	ownRecords map[uint]models.Repeater
+
 	pingMu      sync.Mutex
 	pings       map[uint]time.Time
 	pinging     bool

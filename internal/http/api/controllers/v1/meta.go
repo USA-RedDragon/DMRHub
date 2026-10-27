@@ -100,13 +100,14 @@ func GETNetworkFeatures(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ipsc":            config.DMR.IPSC.Enabled,
-		"openbridge":      config.DMR.OpenBridge.Enabled,
-		"password_reset":  config.SMTP.Enabled,
-		"mmdvm_port":      config.DMR.MMDVM.Port,
-		"ipsc_port":       config.DMR.IPSC.Port,
-		"openbridge_port": config.DMR.OpenBridge.Port,
-		"server_address":  config.ServerAddress(),
+		"ipsc":                config.DMR.IPSC.Enabled,
+		"openbridge":          config.DMR.OpenBridge.Enabled,
+		"password_reset":      config.SMTP.Enabled,
+		"mmdvm_port":          config.DMR.MMDVM.Port,
+		"ipsc_port":           config.DMR.IPSC.Port,
+		"openbridge_port":     config.DMR.OpenBridge.Port,
+		"server_address":      config.ServerAddress(),
+		"radio_id_validation": !config.DMR.DisableRadioIDValidation,
 	})
 }
 

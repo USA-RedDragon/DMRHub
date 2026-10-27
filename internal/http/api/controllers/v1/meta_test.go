@@ -108,12 +108,13 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 
 	for _, tc := range []struct {
 		ipsc, openbridge, smtp   bool
+		noRadioIDCheck           bool
 		mmdvmPort, ipscPort      int
 		openBridgePort           int
 		public, canonical, wantS string
 	}{
-		{true, false, true, 62031, 50000, 62035, "", "https://hub.example.org", "hub.example.org"},
-		{false, true, false, 62040, 50010, 62045, "dmr.example.org", "https://hub.example.org", "dmr.example.org"},
+		{true, false, true, false, 62031, 50000, 62035, "", "https://hub.example.org", "hub.example.org"},
+		{false, true, false, true, 62040, 50010, 62045, "dmr.example.org", "https://hub.example.org", "dmr.example.org"},
 	} {
 		router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
 			c.DMR.MMDVM.Port = tc.mmdvmPort
@@ -122,6 +123,7 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 			c.DMR.IPSC.Enabled = tc.ipsc
 			c.DMR.OpenBridge.Enabled = tc.openbridge
 			c.SMTP.Enabled = tc.smtp
+			c.DMR.DisableRadioIDValidation = tc.noRadioIDCheck
 			c.DMR.PublicAddress = tc.public
 			c.HTTP.CanonicalHost = tc.canonical
 		})
@@ -142,8 +144,9 @@ func TestNetworkFeaturesRoute(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"ipsc": tc.ipsc, "openbridge": tc.openbridge, "password_reset": tc.smtp,
 			"mmdvm_port": float64(tc.mmdvmPort), "ipsc_port": float64(tc.ipscPort),
-			"openbridge_port": float64(tc.openBridgePort),
-			"server_address":  tc.wantS,
+			"openbridge_port":     float64(tc.openBridgePort),
+			"server_address":      tc.wantS,
+			"radio_id_validation": !tc.noRadioIDCheck,
 		}, got)
 	}
 }

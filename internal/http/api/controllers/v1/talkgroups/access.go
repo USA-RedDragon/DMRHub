@@ -102,7 +102,9 @@ func PATCHTalkgroupAccess(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrSavingAccess})
 		return
 	}
-	talkgroupChanged(c, id)
+	if h, ok := dmrHubOf(c); ok {
+		h.RulesChanged(id)
+	}
 	answerAccess(c, db, id)
 }
 

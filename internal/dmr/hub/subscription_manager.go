@@ -193,7 +193,6 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	_, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
 		h.subscriptionMgr.subscriptions.Store(repeaterID, xsync.NewMap[uint, *subscription]())
-		go h.rulesOf(repeaterID)
 	}
 
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)

@@ -162,14 +162,14 @@ type Hub struct {
 	talkgroupIDs *lookup.Cache[uint, bool]
 	// talkgroups holds the IDs of all talkgroups, so that a burst to one
 	// never waits on the database.
-	talkgroups    atomic.Pointer[map[uint]struct{}]
-	talkgroupsMu  sync.Mutex
-	radioOwners   *lookup.Cache[uint, uint]
-	radioCalls    *lookup.Cache[uint, heardAt]
-	egressTable   *lookup.Cache[struct{}, []egressPeer]
-	repeaterRules *lookup.Cache[uint, *repeaterRules]
-	tgAccess      *lookup.Cache[uint, *talkgroupAccess]
-	lastSeen      *lookup.Flights[uint, []byte]
+	talkgroups   atomic.Pointer[map[uint]struct{}]
+	talkgroupsMu sync.Mutex
+	radioOwners  *lookup.Cache[uint, uint]
+	radioCalls   *lookup.Cache[uint, heardAt]
+	egressTable  *lookup.Cache[struct{}, []egressPeer]
+	rules        atomic.Pointer[ruleTable]
+	rulesMu      sync.Mutex
+	lastSeen     *lookup.Flights[uint, []byte]
 
 	sightings      chan sighting
 	sightedStreams *xsync.Map[sightingKey, time.Time]
@@ -255,8 +255,6 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.radioOwners = lookup.New("radio owners", lookup.TTL, h.radioOwner)
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
 	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
-	h.repeaterRules = lookup.New("repeater rules", lookup.TTL, h.loadRepeaterRules)
-	h.tgAccess = lookup.New("talkgroup access", lookup.TTL, h.loadTalkgroupAccess)
 	h.lastSeen = lookup.NewFlights[uint, []byte]()
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
@@ -280,6 +278,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.tgRepeaters = lookup.New("talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
 	h.heard = make(chan heardNote, heardQueue)
 	if db != nil {
+		h.loadRules()
 		h.loadTalkgroups()
 		h.loadPeers()
 	}
@@ -291,7 +290,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
 		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
-		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, peerChangedTopic, repeaterRekeyTopic} {
+		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic} {
 			go h.listenChanges(topic, ps.Subscribe(topic))
 		}
 	}

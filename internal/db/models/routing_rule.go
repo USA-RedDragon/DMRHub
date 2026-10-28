@@ -88,6 +88,15 @@ func ListRoutingRules(db *gorm.DB, repeaterID uint) ([]RoutingRule, error) {
 	return rules, nil
 }
 
+// ListAllRoutingRules returns every routing rule.
+func ListAllRoutingRules(db *gorm.DB) ([]RoutingRule, error) {
+	var rules []RoutingRule
+	if err := db.Find(&rules).Error; err != nil {
+		return nil, fmt.Errorf("could not list the routing rules: %w", err)
+	}
+	return rules, nil
+}
+
 // ReplaceRoutingRules replaces the routing rules of the kinds of the
 // repeater repeaterID with rules, in one transaction. Each rule must be of
 // one of kinds.

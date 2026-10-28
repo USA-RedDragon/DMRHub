@@ -42,34 +42,64 @@ func addRule(set *map[uint]struct{}, id uint) {
 	(*set)[id] = struct{}{}
 }
 
-func (h *Hub) loadRepeaterRules(id uint) (*repeaterRules, error) {
-	rules, err := models.ListRoutingRules(h.db, id)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // ListRoutingRules wraps its errors
+type ruleTable struct {
+	repeaters map[uint]*repeaterRules
+	access    map[uint]*talkgroupAccess
+}
+
+func (h *Hub) loadRules() {
+	if h.db == nil {
+		return
 	}
-	r := &repeaterRules{}
+	h.rulesMu.Lock()
+	defer h.rulesMu.Unlock()
+	rules, err := models.ListAllRoutingRules(h.db)
+	if err != nil {
+		slog.Error("Cannot read the routing rules, keeping the old ones", "error", err)
+		return
+	}
+	t := &ruleTable{repeaters: map[uint]*repeaterRules{}, access: map[uint]*talkgroupAccess{}}
+	repeater := func(id uint) *repeaterRules {
+		r, ok := t.repeaters[id]
+		if !ok {
+			r = &repeaterRules{}
+			t.repeaters[id] = r
+		}
+		return r
+	}
+	access := func(tg uint) *talkgroupAccess {
+		a, ok := t.access[tg]
+		if !ok {
+			a = &talkgroupAccess{}
+			t.access[tg] = a
+		}
+		return a
+	}
 	for _, rule := range rules {
 		switch rule.Kind {
 		case models.RoutingRuleSlotUser:
 			if rule.Slot == 1 || rule.Slot == 2 {
-				addRule(&r.slotUsers[rule.Slot-1], rule.SubjectID)
+				addRule(&repeater(rule.RepeaterID).slotUsers[rule.Slot-1], rule.SubjectID)
 			}
 		case models.RoutingRuleBlockTalkgroup:
-			addRule(&r.blocked, rule.SubjectID)
+			addRule(&repeater(rule.RepeaterID).blocked, rule.SubjectID)
 		case models.RoutingRuleAllowTalkgroup:
-			addRule(&r.allowed, rule.SubjectID)
+			addRule(&repeater(rule.RepeaterID).allowed, rule.SubjectID)
+		case models.RoutingRuleRestrictedTalkgroup:
+			access(rule.SubjectID).restricted = true
+		case models.RoutingRuleApprovedLink:
+			addRule(&access(rule.SubjectID).approved, rule.RepeaterID)
 		}
 	}
-	return r, nil
+	h.rules.Store(t)
 }
 
 func (h *Hub) rulesOf(repeaterID uint) *repeaterRules {
-	r, err := h.repeaterRules.Get(repeaterID)
-	if err != nil {
-		slog.Error("Cannot read the routing rules of a repeater", "repeaterID", repeaterID, "error", err)
+	t := h.rules.Load()
+	if t == nil {
 		return nil
 	}
-	return r
+	return t.repeaters[repeaterID]
 }
 
 func (h *Hub) slotRefuses(r *repeaterRules, slot bool, packet models.Packet, out bool) bool {
@@ -116,28 +146,16 @@ type talkgroupAccess struct {
 	approved   map[uint]struct{}
 }
 
-func (h *Hub) loadTalkgroupAccess(tg uint) (*talkgroupAccess, error) {
-	restricted, repeaters, err := models.TalkgroupAccess(h.db, tg)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // TalkgroupAccess wraps its errors
-	}
-	a := &talkgroupAccess{restricted: restricted}
-	for _, id := range repeaters {
-		addRule(&a.approved, id)
-	}
-	return a, nil
-}
-
 func (h *Hub) mayLink(repeaterID, tg uint) bool {
-	a, err := h.tgAccess.Get(tg)
-	if err != nil {
-		slog.Error("Cannot read the access of a talkgroup", "talkgroupID", tg, "error", err)
+	t := h.rules.Load()
+	if t == nil {
 		return true
 	}
-	if !a.restricted {
+	a, ok := t.access[tg]
+	if !ok || !a.restricted {
 		return true
 	}
-	_, ok := a.approved[repeaterID]
+	_, ok = a.approved[repeaterID]
 	return ok
 }
 

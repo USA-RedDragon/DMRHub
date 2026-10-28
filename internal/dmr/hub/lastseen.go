@@ -106,8 +106,6 @@ func (h *Hub) runSightings() {
 			h.radioOwners.Prune(now)
 			h.radioCalls.Prune(now)
 			h.egressTable.Prune(now)
-			h.repeaterRules.Prune(now)
-			h.tgAccess.Prune(now)
 			h.repeaters.prune(now)
 			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
 				if now.Sub(v.at) > sightedStreamTTL {

@@ -89,7 +89,7 @@ func PATCHRepeaterRules(c *gin.Context) {
 		return
 	}
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
-		dmrHub.ReloadRepeater(c.Request.Context(), id)
+		dmrHub.RulesChanged(id)
 	}
 	rules, err := repeaterRules(db, id)
 	if err != nil {
@@ -231,6 +231,7 @@ func repeaterRules(db *gorm.DB, id uint) (apimodels.RepeaterRules, error) {
 			userIDs = append(userIDs, r.SubjectID)
 		case models.RoutingRuleBlockTalkgroup, models.RoutingRuleAllowTalkgroup:
 			tgIDs = append(tgIDs, r.SubjectID)
+		case models.RoutingRuleRestrictedTalkgroup, models.RoutingRuleApprovedLink:
 		}
 	}
 	callsigns := map[uint]string{}
@@ -269,6 +270,7 @@ func repeaterRules(db *gorm.DB, id uint) (apimodels.RepeaterRules, error) {
 				out.TalkgroupMode = apimodels.TalkgroupModeAllow
 			}
 			out.Talkgroups = append(out.Talkgroups, apimodels.TalkgroupRef{ID: r.SubjectID, Name: names[r.SubjectID]})
+		case models.RoutingRuleRestrictedTalkgroup, models.RoutingRuleApprovedLink:
 		}
 	}
 	return out, nil

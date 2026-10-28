@@ -32,6 +32,7 @@ const (
 	userChangedTopic      = "hub:users:changed"
 	peerChangedTopic      = "hub:peers:changed"
 	repeaterRekeyTopic    = "hub:repeaters:rekey"
+	rulesChangedTopic     = "hub:rules:changed"
 )
 
 type watchers struct {
@@ -100,6 +101,19 @@ func (h *Hub) RepeaterSecretChanged(id uint) {
 	h.announce(repeaterRekeyTopic, id)
 }
 
+// OnRulesChange calls fn with the repeater or talkgroup ID of each change
+// of the routing rules that this replica took, after it read them again.
+// The returned func stops the calls.
+func (h *Hub) OnRulesChange(fn func(id uint)) (stop func()) {
+	return h.watchers.add(rulesChangedTopic, fn)
+}
+
+// RulesChanged makes every replica read the routing rules again after a
+// change of the rules of the repeater or talkgroup id.
+func (h *Hub) RulesChanged(id uint) {
+	h.announce(rulesChangedTopic, id)
+}
+
 // OnTalkgroupChange calls fn with the ID of a talkgroup after this replica
 // reads it again for a TalkgroupChanged on any replica. The returned func
 // stops the calls.
@@ -147,7 +161,6 @@ func (h *Hub) announce(topic string, id uint) {
 func (h *Hub) applyChange(topic string, id uint) {
 	switch topic {
 	case talkgroupChangedTopic:
-		h.tgAccess.Reload(id)
 		h.noteTalkgroup(id)
 		h.watchers.call(talkgroupChangedTopic, id)
 	case userChangedTopic:
@@ -157,6 +170,9 @@ func (h *Hub) applyChange(topic string, id uint) {
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})
 		h.watchers.call(peerChangedTopic, id)
+	case rulesChangedTopic:
+		h.loadRules()
+		h.watchers.call(rulesChangedTopic, id)
 	case repeaterRekeyTopic:
 		h.watchers.call(repeaterRekeyTopic, id)
 	}

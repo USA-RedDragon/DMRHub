@@ -161,7 +161,6 @@ func (h *Hub) refreshRepeater(id uint, old cachedRepeater) {
 }
 
 func (h *Hub) reloadRepeater(id uint) {
-	h.repeaterRules.Reload(id)
 	if _, err := h.loadRepeater(id, h.repeaters.bump()); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("Cannot reload a repeater", "repeaterID", id, "error", err)
 		h.repeaters.drop(id)
@@ -234,6 +233,7 @@ func (h *Hub) resyncRepeaters() {
 			return
 		case <-ticker.C:
 			h.loadTalkgroups()
+			h.loadRules()
 			h.refreshPeers()
 			var ids []uint
 			h.subscriptionMgr.subscriptions.Range(func(id uint, _ *xsync.Map[uint, *subscription]) bool {

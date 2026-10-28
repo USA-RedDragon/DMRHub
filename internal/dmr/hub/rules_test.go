@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -129,7 +130,7 @@ func forRuleBackends(t *testing.T, f func(t *testing.T, e *rulesEnv)) {
 func (e *rulesEnv) setRules(t *testing.T, rpt uint, kinds []models.RoutingRuleKind, rules ...models.RoutingRule) {
 	t.Helper()
 	require.NoError(t, models.ReplaceRoutingRules(e.db, rpt, kinds, rules))
-	e.hub.ReloadRepeater(context.Background(), rpt)
+	e.hub.RulesChanged(rpt)
 }
 
 func listedOn(slot uint8) models.RoutingRule {
@@ -283,7 +284,7 @@ func TestARuleEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
 		other := newRulesHub(t, e.db, e.ps, e.kv)
 		assert.True(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
 		changed := make(chan struct{}, 1)
-		t.Cleanup(e.hub.OnRepeaterChange(func(id uint) {
+		t.Cleanup(e.hub.OnRulesChange(func(id uint) {
 			if id == ruleReceiver {
 				select {
 				case changed <- struct{}{}:
@@ -292,7 +293,7 @@ func TestARuleEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
 			}
 		}))
 		require.NoError(t, models.ReplaceRoutingRules(e.db, ruleReceiver, models.SlotRuleKinds(), []models.RoutingRule{listedOn(1)}))
-		other.ReloadRepeater(context.Background(), ruleReceiver)
+		other.RulesChanged(ruleReceiver)
 		select {
 		case <-changed:
 		case <-time.After(failAfter):
@@ -305,7 +306,7 @@ func TestARuleEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
 func (e *rulesEnv) setAccess(t *testing.T, tg uint, restricted bool, repeaters ...uint) {
 	t.Helper()
 	require.NoError(t, models.SetTalkgroupAccess(e.db, tg, restricted, repeaters))
-	e.hub.TalkgroupChanged(tg)
+	e.hub.RulesChanged(tg)
 }
 
 func TestARestrictedTalkgroupReachesOnlyApprovedRepeaters(t *testing.T) {
@@ -347,7 +348,7 @@ func TestATalkgroupAccessEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T
 		other := newRulesHub(t, e.db, e.ps, e.kv)
 		assert.True(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
 		changed := make(chan struct{}, 1)
-		t.Cleanup(e.hub.OnTalkgroupChange(func(id uint) {
+		t.Cleanup(e.hub.OnRulesChange(func(id uint) {
 			if id == 1 {
 				select {
 				case changed <- struct{}{}:
@@ -356,12 +357,41 @@ func TestATalkgroupAccessEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T
 			}
 		}))
 		require.NoError(t, models.SetTalkgroupAccess(e.db, 1, true, []uint{ruleSender}))
-		other.TalkgroupChanged(1)
+		other.RulesChanged(1)
 		select {
 		case <-changed:
 		case <-time.After(failAfter):
 			require.FailNow(t, "the change notice did not arrive")
 		}
 		assert.False(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
+	})
+}
+
+func TestAHubStartsWithTheRulesInMemory(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		require.NoError(t, models.ReplaceRoutingRules(e.db, ruleReceiver, models.SlotRuleKinds(), []models.RoutingRule{listedOn(1)}))
+		require.NoError(t, models.SetTalkgroupAccess(e.db, 2, true, []uint{ruleSender, ruleReceiver}))
+		fresh := *e
+		fresh.hub = newRulesHub(t, e.db, e.ps, e.kv)
+		stalled := make(chan struct{})
+		var stall atomic.Bool
+		stall.Store(true)
+		require.NoError(t, e.db.Callback().Query().Before("gorm:query").Register("test:stall_rules", func(tx *gorm.DB) {
+			if stall.Load() && tx.Statement.Table == "routing_rules" {
+				<-stalled
+			}
+		}))
+		t.Cleanup(func() {
+			stall.Store(false)
+			close(stalled)
+		})
+		fresh.srv = fresh.hub.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		for _, rpt := range []uint{ruleSender, ruleReceiver} {
+			fresh.hub.ActivateRepeater(context.Background(), rpt)
+		}
+		knowTalkgroups(t, fresh.hub)
+		assert.False(t, fresh.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}), "while the database does not answer reads of the rules")
+		assert.True(t, fresh.carried(t, burst{from: ruleSender, src: listedUser, dst: 1}))
 	})
 }

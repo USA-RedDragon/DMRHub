@@ -96,6 +96,8 @@ func (h *Hub) runEphemeralTalkgroups() {
 		case <-h.done:
 			return
 		case <-timer.C:
+		case <-h.configSet:
+			timer.Stop()
 		}
 		r := h.routingConfig()
 		h.writeTalkgroupCalls()

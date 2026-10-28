@@ -293,9 +293,14 @@ func (h *Hub) routeToUser(ctx context.Context, key sourceSlot, packet models.Pac
 }
 
 // SetConfig makes src the config whose private call settings the hub
-// routes private traffic with. Without one it uses the defaults.
+// routes private traffic with. Without one it uses the defaults. The sweep
+// of the ephemeral talkgroups reads the new config at once.
 func (h *Hub) SetConfig(src config.Source) {
 	h.cfg.Store(&src)
+	select {
+	case h.configSet <- struct{}{}:
+	default:
+	}
 }
 
 // privateRoute returns the private call settings for packet: those of

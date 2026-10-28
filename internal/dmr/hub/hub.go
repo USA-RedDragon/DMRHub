@@ -193,6 +193,7 @@ type Hub struct {
 	loopLogged        *xsync.Map[uint, time.Time]
 	privateDropLogged *xsync.Map[uint, time.Time]
 	cfg               atomic.Pointer[config.Source]
+	configSet         chan struct{}
 	dynamicUses       *xsync.Map[repeaterSlot, dynamicUse]
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
 	slotRefused       *xsync.Map[slotStream, time.Time]
@@ -247,6 +248,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		activeStreams: make(map[uint]*activeStream),
 		done:          make(chan struct{}),
 		left:          make(chan struct{}, 1),
+		configSet:     make(chan struct{}, 1),
 	}
 	h.peerEgress = streamorder.New[sourceSlot](peerEgressQueueSize, h.done)
 	h.routing = streamorder.New[sourceSlot](routingQueueSize, h.done)

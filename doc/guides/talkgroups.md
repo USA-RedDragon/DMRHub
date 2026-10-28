@@ -79,5 +79,12 @@ On a repeater that the talkgroup does not approve:
 - The Repeaters page refuses the talkgroup as a static or dynamic talkgroup, with "Talkgroup N links only to approved repeaters".
 - The options of a hotspot (see above) leave the talkgroup out.
 
-Until the talkgroup page shows this setting, use the API: `GET /api/v1/talkgroups/<id>/access` gives `mode` (`open` or `approved`) and `repeaters`, the approved repeaters. `PATCH` on the same address changes them, for example `{"mode": "approved", "repeaters": [311860, 311861]}`. A field that you leave out keeps its value.
+To restrict a talkgroup, open its page (click its ID on the Talkgroups page). The **Who can link** card shows only to the admins of the talkgroup and the admins of the network.
+
+1. Click **Approved repeaters**.
+2. Type the ID of a repeater or hotspot in the **Repeater ID** box, and click **Add**. DMRHub shows "No such repeater" for an ID that it does not know. Do this for each repeater.
+3. To remove a repeater, click **×** on it.
+4. Click **Save**. **Reset** goes back to the saved setting.
+
+To open the talkgroup again, click **Open**, and click **Save**.
 

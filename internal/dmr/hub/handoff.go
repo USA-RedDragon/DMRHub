@@ -43,9 +43,9 @@ const handoverSettle = 50 * time.Millisecond
 // server named server has taken every packet that they handed it. A server
 // that hands the repeater over then knows each packet that it got for it.
 func (h *Hub) StopFor(server string, id uint) {
-	t := time.NewTimer(handoverSettle)
+	t := h.clock.NewTimer(handoverSettle)
 	select {
-	case <-t.C:
+	case <-t.C():
 	case <-h.done:
 		t.Stop()
 	}
@@ -66,11 +66,11 @@ func (h *Hub) Barrier(server string) {
 	}
 	done := make(chan struct{})
 	go h.deliverToServerUnless(h.done, server, RoutedPacket{Barrier: done})
-	t := time.NewTimer(barrierWait)
+	t := h.clock.NewTimer(barrierWait)
 	defer t.Stop()
 	select {
 	case <-done:
-	case <-t.C:
+	case <-t.C():
 		slog.Warn("A server did not reach a barrier in time", "server", server)
 	case <-h.done:
 	}

@@ -61,7 +61,7 @@ func (h *Hub) noteHeardOn(packet models.Packet, sourceName string) {
 	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return
 	}
-	h.heardOn.Store(packet.Src, heardAt{repeater: packet.Repeater, at: time.Now()})
+	h.heardOn.Store(packet.Src, heardAt{repeater: packet.Repeater, at: h.clock.Now()})
 }
 
 // noteSighting queues the place where the source of packet was heard, once
@@ -70,18 +70,18 @@ func (h *Hub) noteSighting(packet models.Packet, sourceName string) {
 	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return
 	}
-	if _, seen := h.sightedStreams.LoadOrStore(sightingKey{src: packet.Src, stream: packet.StreamID}, time.Now()); seen {
+	if _, seen := h.sightedStreams.LoadOrStore(sightingKey{src: packet.Src, stream: packet.StreamID}, h.clock.Now()); seen {
 		return
 	}
 	select {
-	case h.sightings <- sighting{src: packet.Src, repeater: packet.Repeater, slot: packet.Slot, at: time.Now()}:
+	case h.sightings <- sighting{src: packet.Src, repeater: packet.Repeater, slot: packet.Slot, at: h.clock.Now()}:
 	default:
 		slog.Warn("Dropping a sighting, the queue is full", "src", packet.Src, "repeater", packet.Repeater)
 	}
 }
 
 func (h *Hub) runSightings() {
-	ticker := time.NewTicker(sightedStreamTTL)
+	ticker := h.clock.NewTicker(sightedStreamTTL)
 	defer ticker.Stop()
 	for {
 		select {
@@ -89,7 +89,7 @@ func (h *Hub) runSightings() {
 			return
 		case s := <-h.sightings:
 			h.recordSighting(s)
-		case now := <-ticker.C:
+		case now := <-ticker.C():
 			pruneStreams(h.sightedStreams, now)
 			h.heardOn.Range(func(src uint, heard heardAt) bool {
 				if now.Sub(heard.at) > sightedStreamTTL {
@@ -286,7 +286,7 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 // trusts.
 func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config.PrivateRoute) (uint, bool) {
 	anyone := route.Reach == config.PrivateReachAnyone
-	now := time.Now()
+	now := h.clock.Now()
 	var best heardAt
 	consider := func(c heardAt) {
 		if c.repeater == 0 || !c.at.After(best.at) || (route.MaxAge > 0 && now.Sub(c.at) > route.MaxAge) {
@@ -310,7 +310,7 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 			}
 		}
 	}
-	if heard, ok := h.heardOn.Load(radioID); best.repeater == 0 && ok && time.Since(heard.at) < sightedStreamTTL {
+	if heard, ok := h.heardOn.Load(radioID); best.repeater == 0 && ok && h.clock.Since(heard.at) < sightedStreamTTL {
 		consider(heard)
 	}
 	if best.repeater == 0 && radioID == owner {

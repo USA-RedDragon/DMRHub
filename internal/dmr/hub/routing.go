@@ -56,7 +56,7 @@ func (h *Hub) trackCall(ctx context.Context, packet *models.Packet, sourceName s
 // that another source is already sending is dropped (see admitStream). The
 // call tracker gets the packet before the worker, in the order it came.
 func (h *Hub) RoutePacket(ctx context.Context, packet models.Packet, sourceName string) {
-	h.RouteStreamAt(ctx, packet, sourceName, time.Now(), nil)
+	h.RouteStreamAt(ctx, packet, sourceName, h.clock.Now(), nil)
 }
 
 // RoutePacketAt is RoutePacket for a packet that came at at, such as the
@@ -74,7 +74,7 @@ func (h *Hub) RoutePacketAt(ctx context.Context, packet models.Packet, sourceNam
 // calls admitted for them later on another goroutine, in the order they
 // came.
 func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName string, admitted func(bool)) {
-	h.RouteStreamAt(ctx, packet, sourceName, time.Now(), admitted)
+	h.RouteStreamAt(ctx, packet, sourceName, h.clock.Now(), admitted)
 }
 
 // RouteStreamAt is RouteStream for a packet that came at at, as
@@ -236,7 +236,7 @@ func (h *Hub) handleGroupCall(key sourceSlot, packet models.Packet) {
 			slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
 			return
 		}
-		h.streamTalkgroups.Store(target, time.Now())
+		h.streamTalkgroups.Store(target, h.clock.Now())
 	}
 
 	// talkgroupTopicPrefix is the fixed prefix for talkgroup pubsub topics.
@@ -345,14 +345,14 @@ func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bo
 		}
 		repeaterID = 0
 	}
-	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: time.Now()})
+	h.streamTargets.Store(key, targetAt{repeater: repeaterID, at: h.clock.Now()})
 	return repeaterID, true
 }
 
 // logPrivateDrop logs once per stream that the hub drops private traffic
 // to a radio, and why.
 func (h *Hub) logPrivateDrop(key streamTarget, packet models.Packet, route config.PrivateRoute, why string) {
-	if _, logged := h.privateDropLogged.LoadOrStore(key.stream, time.Now()); logged {
+	if _, logged := h.privateDropLogged.LoadOrStore(key.stream, h.clock.Now()); logged {
 		return
 	}
 	slog.Info("Dropping private traffic to a radio", "dst", packet.Dst, "src", packet.Src, "stream", packet.StreamID,

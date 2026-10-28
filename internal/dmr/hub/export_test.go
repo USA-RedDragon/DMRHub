@@ -105,12 +105,6 @@ func (h *Hub) LiftSlotRate(lift bool) {
 	h.slotRateOff.Store(lift)
 }
 
-// SetSlotClock makes the rate limit of the repeater slots read the time
-// from now.
-func (h *Hub) SetSlotClock(now func() time.Time) {
-	h.slotClock.Store(&now)
-}
-
 // HeardAt returns the repeater where private traffic in the hybrid and
 // members reach follows the radio userID to, as the KV store keeps it, or
 // 0.

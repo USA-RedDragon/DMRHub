@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
@@ -56,6 +57,23 @@ const (
 	// Packets are delivered per-peer based on egress rules.
 	RolePeer
 )
+
+// Option sets up a Hub in NewHub.
+type Option func(*Hub)
+
+// WithClock makes the hub, and the servers that ask it for its clock, wait
+// and measure on c.
+func WithClock(c clock.Clock) Option {
+	return func(h *Hub) { h.clock = clock.Or(c) }
+}
+
+// Clock returns the clock of the hub, or the real clock for a nil hub.
+func (h *Hub) Clock() clock.Clock {
+	if h == nil {
+		return clock.Real()
+	}
+	return h.clock
+}
 
 // RoutedPacket is a packet delivered to a registered server.
 // RepeaterID identifies the target repeater or peer.
@@ -122,6 +140,7 @@ const sightingsWork = "sightings"
 
 // Hub is the central routing core for all DMR protocols.
 type Hub struct {
+	clock       clock.Clock
 	db          *gorm.DB
 	kv          kv.KV
 	pubsub      pubsub.PubSub
@@ -189,7 +208,6 @@ type Hub struct {
 	slotBuckets           *xsync.Map[slotKey, slotBucket]
 	// slotRateOff lets the tests of the routing send faster than a slot.
 	slotRateOff       atomic.Bool
-	slotClock         atomic.Pointer[func() time.Time]
 	loopLogged        *xsync.Map[uint, time.Time]
 	privateDropLogged *xsync.Map[uint, time.Time]
 	cfg               atomic.Pointer[config.Source]
@@ -239,8 +257,9 @@ type Hub struct {
 }
 
 // NewHub creates a new Hub.
-func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTracker) *Hub {
+func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTracker, opts ...Option) *Hub {
 	h := &Hub{
+		clock:         clock.Real(),
 		db:            db,
 		kv:            kvStore,
 		pubsub:        ps,
@@ -250,6 +269,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 		left:          make(chan struct{}, 1),
 		configSet:     make(chan struct{}, 1),
+	}
+	for _, opt := range opts {
+		opt(h)
 	}
 	h.peerEgress = streamorder.New[sourceSlot](peerEgressQueueSize, h.done)
 	h.routing = streamorder.New[sourceSlot](routingQueueSize, h.done)
@@ -262,11 +284,11 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	})
 	h.autoTalkgroups = xsync.NewMap[uint, struct{}]()
 	h.talkgroupCalls = xsync.NewMap[uint, time.Time]()
-	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
-	h.radioOwners = lookup.New("radio owners", lookup.TTL, h.radioOwner)
-	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
-	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
-	h.lastSeen = lookup.NewFlights[uint, []byte]()
+	h.talkgroupIDs = lookup.New(h.clock, "talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
+	h.radioOwners = lookup.New(h.clock, "radio owners", lookup.TTL, h.radioOwner)
+	h.radioCalls = lookup.New(h.clock, "radio calls", lookup.TTL, h.lastCallRepeater)
+	h.egressTable = lookup.New(h.clock, "peers", lookup.TTL, h.loadEgressPeers)
+	h.lastSeen = lookup.NewFlights[uint, []byte](h.clock)
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()
 	h.heardOn = xsync.NewMap[uint, heardAt]()
@@ -278,7 +300,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.claimWaits = xsync.NewMap[sourceSlot, *claimWait]()
 	h.claimedAt = xsync.NewMap[uint, time.Time]()
 	h.claimedElsewhere = xsync.NewMap[uint, time.Time]()
-	h.owners = lookup.NewFlights[uint, []byte]()
+	h.owners = lookup.NewFlights[uint, []byte](h.clock)
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
@@ -286,11 +308,11 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
 	h.slotRefused = xsync.NewMap[slotStream, time.Time]()
 	h.streamPolicies = xsync.NewMap[claimKey, streamPolicy]()
-	h.transcoder = transcode.NewService(kvStore)
+	h.transcoder = transcode.NewService(kvStore, h.clock)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
 	h.copyOrders = map[sourceSlot]*copyOrder{}
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
-	h.tgRepeaters = lookup.New("talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
+	h.tgRepeaters = lookup.New(h.clock, "talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
 	h.heard = make(chan heardNote, heardQueue)
 	if db != nil {
 		h.loadRules()
@@ -302,7 +324,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.subscriptionMgr = newSubscriptionManager(h)
 	go h.runDynamicTimeouts()
 	go h.runEphemeralTalkgroups()
-	h.repeaters = newRepeaterCache()
+	h.repeaters = newRepeaterCache(h.clock)
 	h.origin = newOrigin()
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
@@ -548,7 +570,7 @@ func (h *Hub) OwnsRepeater(ctx context.Context, repeaterID uint) bool {
 // It subscribes before it claims the repeater, so that the replica that
 // served the repeater before keeps sending to it until this one can.
 func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
-	h.ActivateRepeaterSince(ctx, repeaterID, time.Now())
+	h.ActivateRepeaterSince(ctx, repeaterID, h.clock.Now())
 }
 
 // ActivateRepeaterSince is ActivateRepeater for a repeater whose packet

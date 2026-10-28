@@ -44,8 +44,8 @@ const undeliverableLogEvery = time.Second
 // once a second, with the number of streams it did not log since.
 func (h *Hub) ReportUndeliverable(packet models.Packet, target, reason string) {
 	metrics.NewMetrics().IncrementUndeliverable(target, reason)
-	if _, logged := h.undeliverableLogged.LoadOrStore(packet.StreamID, time.Now()); !logged {
-		now := monotime.Now()
+	if _, logged := h.undeliverableLogged.LoadOrStore(packet.StreamID, h.clock.Now()); !logged {
+		now := monotime.Of(h.clock.Now())
 		next := h.undeliverableLogNext.Load()
 		if now >= next && h.undeliverableLogNext.CompareAndSwap(next, now+int64(undeliverableLogEvery)) {
 			slog.Info("Burst cannot go to its target",

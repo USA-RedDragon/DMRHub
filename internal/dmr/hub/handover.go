@@ -149,7 +149,7 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 			if !ok {
 				return
 			}
-			id, instance, since, ok := parseClaim(msg)
+			id, instance, since, ok := parseClaim(msg, h.clock.Now())
 			if !ok || instance == h.instanceID {
 				continue
 			}
@@ -208,7 +208,7 @@ func (h *Hub) publishClaim(repeaterID uint, since time.Time) {
 	}
 }
 
-func parseClaim(b []byte) (uint, string, time.Time, bool) {
+func parseClaim(b []byte, now time.Time) (uint, string, time.Time, bool) {
 	f := strings.Fields(string(b))
 	if len(f) < 2 {
 		return 0, "", time.Time{}, false
@@ -217,7 +217,7 @@ func parseClaim(b []byte) (uint, string, time.Time, bool) {
 	if err != nil {
 		return 0, "", time.Time{}, false
 	}
-	since := time.Now()
+	since := now
 	if len(f) > 2 {
 		if ns, err := strconv.ParseInt(f[2], 10, 64); err == nil {
 			since = time.Unix(0, ns)
@@ -248,7 +248,7 @@ func (h *Hub) WaitMoved(ctx context.Context) int {
 	}
 	pending := h.activeRepeaters()
 	noticed := map[uint]time.Time{}
-	recheck := time.NewTicker(claimRecheck)
+	recheck := h.clock.NewTicker(claimRecheck)
 	defer recheck.Stop()
 	for {
 		active := h.activeRepeaters()
@@ -263,7 +263,7 @@ func (h *Hub) WaitMoved(ctx context.Context) int {
 		select {
 		case <-ctx.Done():
 			return len(pending)
-		case <-recheck.C:
+		case <-recheck.C():
 			h.handOffMissed(ctx, pending, noticed)
 		case <-h.left:
 		}
@@ -304,7 +304,7 @@ func (h *Hub) handOffMissed(ctx context.Context, pending map[uint]bool, noticed 
 		at, seen := noticed[id]
 		switch {
 		case !seen:
-			noticed[id] = time.Now()
+			noticed[id] = h.clock.Now()
 		case !at.IsZero():
 			slog.Warn("Handing off a repeater whose claim did not come", "repeaterID", id, "owner", owner)
 			h.handOff(context.WithoutCancel(ctx), id, at)

@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -176,10 +177,9 @@ func staysForTheHold(t *testing.T, one, two *hub.Hub, stream uint, hold, recheck
 
 func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	fake := clock.NewFake(time.Now())
+	h, _, _ := makeTestHubWrappingKV(t, keepPubSub, keepKV, fake)
 	h.LiftSlotRate(false)
-	now := time.Now()
-	h.SetSlotClock(func() time.Time { return now })
 	h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
 	admitted := func(server string, repeater uint, slot bool, n int) int {
 		got := 0
@@ -197,7 +197,7 @@ func TestASlotOfARepeaterIsCappedButPeersAreNot(t *testing.T) {
 	assert.Equal(t, 50, admitted(models.RepeaterTypeMMDVM, 100001, true, 50), "the other slot has its own allowance")
 	assert.Equal(t, 50, admitted(models.RepeaterTypeIPSC, 100001, false, 50), "the same ID on another server is another slot")
 	assert.Equal(t, 2000, admitted("openbridge", 300001, false, 2000), "a peer carries many streams in bulk")
-	now = now.Add(time.Second / 2)
+	fake.Advance(time.Second / 2)
 	assert.Equal(t, 25, admitted(models.RepeaterTypeMMDVM, 100001, false, 40), "the slot refills at 50 bursts a second")
 }
 

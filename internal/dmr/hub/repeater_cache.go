@@ -32,6 +32,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -57,8 +58,8 @@ type repeaterCache struct {
 	gen     uint64
 }
 
-func newRepeaterCache() *repeaterCache {
-	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater](), flights: lookup.NewFlights[uint, *models.Repeater]()}
+func newRepeaterCache(c clock.Clock) *repeaterCache {
+	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater](), flights: lookup.NewFlights[uint, *models.Repeater](c)}
 }
 
 func (c *repeaterCache) generation() uint64 {
@@ -74,11 +75,11 @@ func (c *repeaterCache) bump() uint64 {
 	return c.gen
 }
 
-func (c *repeaterCache) store(id uint, rpt *models.Repeater, gen uint64) {
+func (c *repeaterCache) store(id uint, rpt *models.Repeater, gen uint64, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.gen == gen {
-		c.entries.Store(id, cachedRepeater{rpt: rpt, at: time.Now(), refreshing: &atomic.Bool{}})
+		c.entries.Store(id, cachedRepeater{rpt: rpt, at: now, refreshing: &atomic.Bool{}})
 	}
 }
 
@@ -113,7 +114,7 @@ func (h *Hub) waitRepeater(id uint) (*models.Repeater, error) {
 
 func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 	if e, ok := h.repeaters.entries.Load(id); ok {
-		if time.Since(e.at) >= repeaterCacheTTL && e.refreshing.CompareAndSwap(false, true) {
+		if h.clock.Since(e.at) >= repeaterCacheTTL && e.refreshing.CompareAndSwap(false, true) {
 			go h.refreshRepeater(id, e)
 		}
 		if e.rpt == nil {
@@ -137,12 +138,12 @@ func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 func (h *Hub) loadRepeater(id uint, gen uint64) (*models.Repeater, error) {
 	rpt, err := models.FindRepeaterByID(h.db, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		h.repeaters.store(id, nil, gen)
+		h.repeaters.store(id, nil, gen, h.clock.Now())
 	}
 	if err != nil {
 		return nil, fmt.Errorf("finding repeater %d: %w", id, err)
 	}
-	h.repeaters.store(id, &rpt, gen)
+	h.repeaters.store(id, &rpt, gen, h.clock.Now())
 	return &rpt, nil
 }
 
@@ -152,7 +153,7 @@ func (h *Hub) refreshRepeater(id uint, old cachedRepeater) {
 		slog.Error("Cannot reload a repeater, keeping the old one", "repeaterID", id, "error", err)
 		h.repeaters.entries.Compute(id, func(cur cachedRepeater, loaded bool) (cachedRepeater, xsync.ComputeOp) {
 			if loaded && cur.refreshing == old.refreshing {
-				return cachedRepeater{rpt: cur.rpt, at: time.Now(), refreshing: &atomic.Bool{}}, xsync.UpdateOp
+				return cachedRepeater{rpt: cur.rpt, at: h.clock.Now(), refreshing: &atomic.Bool{}}, xsync.UpdateOp
 			}
 			return cur, xsync.CancelOp
 		})
@@ -225,13 +226,13 @@ func parseRepeaterChange(msg []byte) (string, uint, bool) {
 // each repeater connected here whose talkgroups differ from the database,
 // so a lost change notice heals.
 func (h *Hub) resyncRepeaters() {
-	ticker := time.NewTicker(repeaterCacheTTL)
+	ticker := h.clock.NewTicker(repeaterCacheTTL)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-h.done:
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 			h.loadTalkgroups()
 			h.loadRules()
 			h.refreshPeers()

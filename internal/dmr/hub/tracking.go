@@ -50,7 +50,7 @@ func (h *Hub) RecordTalkerAlias(a dmrd.TalkerAlias, sourceName string, repeater 
 // models.StorePosition, the same as a position from a data call.
 func (h *Hub) RecordPosition(p dmrd.Position, sourceName string, repeater uint) {
 	h.callTracker.Position(p, sourceName, repeater)
-	pos, ok := embeddedPosition(p, repeater, time.Now())
+	pos, ok := embeddedPosition(p, repeater, h.clock.Now())
 	if !ok || h.db == nil {
 		return
 	}

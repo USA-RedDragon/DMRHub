@@ -99,7 +99,7 @@ type heardNote struct {
 // Codec2 call show. A call without such an LC teaches nothing. It returns
 // nil for a burst of a stream that has had no voice.
 func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCodec {
-	now := time.Now()
+	now := h.clock.Now()
 	voice := transcode.IsVoice(packet) || isVoiceLC(packet)
 	sc, loaded := h.codecStreams.Load(packet.StreamID)
 	if loaded && sc.ended && transcode.IsHeader(packet) {
@@ -261,13 +261,13 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 		}
 	}()
 	ch := sub.Channel()
-	ticker := time.NewTicker(repeaterCacheTTL)
+	ticker := h.clock.NewTicker(repeaterCacheTTL)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-h.done:
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 			h.loadCodec2Repeaters()
 		case msg, ok := <-ch:
 			if !ok {

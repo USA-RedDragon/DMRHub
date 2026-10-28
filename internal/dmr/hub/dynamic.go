@@ -59,7 +59,7 @@ func (h *Hub) routingConfig() config.Routing {
 // noteDynamicUse restarts the timeout of the dynamic talkgroup tg of a
 // timeslot.
 func (h *Hub) noteDynamicUse(repeater uint, slot bool, tg uint) {
-	h.dynamicUses.Store(repeaterSlot{repeater: repeater, slot: slot}, dynamicUse{tg: tg, at: time.Now()})
+	h.dynamicUses.Store(repeaterSlot{repeater: repeater, slot: slot}, dynamicUse{tg: tg, at: h.clock.Now()})
 }
 
 func dynamicSweepEvery(timeout time.Duration) time.Duration {
@@ -73,13 +73,13 @@ func dynamicSweepEvery(timeout time.Duration) time.Duration {
 // of the repeaters active on this hub that had no transmission from the
 // repeater on them for the dynamic timeout.
 func (h *Hub) runDynamicTimeouts() {
-	timer := time.NewTimer(dynamicSweepEvery(h.routingConfig().DynamicTimeout))
+	timer := h.clock.NewTimer(dynamicSweepEvery(h.routingConfig().DynamicTimeout))
 	defer timer.Stop()
 	for {
 		select {
 		case <-h.done:
 			return
-		case <-timer.C:
+		case <-timer.C():
 		}
 		timeout := h.routingConfig().DynamicTimeout
 		if timeout > 0 {
@@ -90,7 +90,7 @@ func (h *Hub) runDynamicTimeouts() {
 }
 
 func (h *Hub) sweepDynamic(timeout time.Duration) {
-	now := time.Now()
+	now := h.clock.Now()
 	h.subscriptionMgr.subscriptions.Range(func(id uint, _ *xsync.Map[uint, *subscription]) bool {
 		rpt, err := h.routingRepeater(id)
 		if err != nil {
@@ -124,7 +124,7 @@ func (h *Hub) sweepDynamic(timeout time.Duration) {
 // talkgroup and still had no transmission for timeout.
 func (h *Hub) expireDynamic(id uint, slot bool, tg uint, timeout time.Duration) {
 	key := repeaterSlot{repeater: id, slot: slot}
-	if use, ok := h.dynamicUses.Load(key); ok && use.tg == tg && time.Since(use.at) < timeout {
+	if use, ok := h.dynamicUses.Load(key); ok && use.tg == tg && h.clock.Since(use.at) < timeout {
 		return
 	}
 	slog.Info("Unlinking a dynamic talkgroup after its timeout", "repeaterID", id, "slot2", slot, "talkgroupID", tg, "timeout", timeout)

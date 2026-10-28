@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 )
@@ -89,7 +90,7 @@ func (f *inflight) Wait() {
 }
 
 type activeStream struct {
-	timer *time.Timer
+	timer clock.Timer
 }
 
 // streamActive counts the stream of a routed packet as in progress until
@@ -103,7 +104,7 @@ func (h *Hub) streamActive(stream uint) {
 	}
 	h.calls.Add()
 	s := &activeStream{}
-	s.timer = time.AfterFunc(streamIdle, func() { h.endStream(stream, s) })
+	s.timer = h.clock.AfterFunc(streamIdle, func() { h.endStream(stream, s) })
 	h.activeStreams[stream] = s
 }
 
@@ -289,7 +290,7 @@ func (h *Hub) cachedOwner(ctx context.Context, packet models.Packet, src streamS
 	claim := claimKey{stream: packet.StreamID, src: packet.Src}
 	hold, recheck := h.claimTimes()
 	cached, ok := h.streamClaims.Load(claim)
-	now := time.Now()
+	now := h.clock.Now()
 	if ok && now.Sub(cached.checked) < recheck {
 		return cached.source, true
 	}
@@ -351,7 +352,7 @@ func (h *Hub) releaseHeld(ctx context.Context, key sourceSlot, w *claimWait) {
 // and known are the claim that the hub knew before.
 func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, cached streamClaim, known bool) streamSource {
 	hold, recheck := h.claimTimes()
-	owned := known && cached.source == src && !cached.renewed.IsZero() && time.Since(cached.renewed) < hold
+	owned := known && cached.source == src && !cached.renewed.IsZero() && h.clock.Since(cached.renewed) < hold
 	ctx, waited, stop := h.claimWaitFor(ctx)
 	defer stop()
 	answer := make(chan claimResult, 1)
@@ -366,7 +367,7 @@ func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, ca
 		r.err = errClaimSlow
 	}
 
-	now := time.Now()
+	now := h.clock.Now()
 	owner := cached.source
 	switch {
 	case r.err == nil && r.owner == src:
@@ -392,7 +393,7 @@ func (h *Hub) admitFrom(packet models.Packet, src, owner streamSource) bool {
 		return true
 	}
 	metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonStreamFromOtherSource)
-	if _, logged := h.loopLogged.LoadOrStore(packet.StreamID, time.Now()); !logged {
+	if _, logged := h.loopLogged.LoadOrStore(packet.StreamID, h.clock.Now()); !logged {
 		slog.Warn("Dropping a stream that another source is already sending",
 			"stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst,
 			"server", src.server, "repeaterID", packet.Repeater,
@@ -438,9 +439,9 @@ func (h *Hub) claimWaitFor(ctx context.Context) (context.Context, <-chan time.Ti
 		ctx, cancel := context.WithCancel(ctx)
 		return ctx, *end, cancel
 	}
-	ctx, cancel := context.WithTimeout(ctx, streamClaimWait)
-	timer := time.NewTimer(streamClaimWait)
-	return ctx, timer.C, func() {
+	ctx, cancel := clock.WithTimeout(ctx, h.clock, streamClaimWait)
+	timer := h.clock.NewTimer(streamClaimWait)
+	return ctx, timer.C(), func() {
 		timer.Stop()
 		cancel()
 	}

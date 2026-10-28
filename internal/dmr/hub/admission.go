@@ -54,7 +54,7 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 	if anyRadio && r.MaxTransmission <= 0 {
 		return true
 	}
-	now := time.Now()
+	now := h.clock.Now()
 	key := claimKey{stream: packet.StreamID, src: packet.Src}
 	p, _ := h.streamPolicies.LoadOrCompute(key, func() (streamPolicy, bool) {
 		return streamPolicy{start: now}, false

@@ -105,7 +105,7 @@ func (h *Hub) prepareCopy(ctx context.Context, packet *models.Packet, sc *stream
 	if isVoiceLC(packet) && !transcode.LCValid(packet) {
 		return nil, nil
 	}
-	now := time.Now()
+	now := h.clock.Now()
 	if sc.needAt.IsZero() || now.Sub(sc.needAt) >= needTTL {
 		sc.need = h.needsCopy(ctx, packet, sc, sourceName)
 		sc.needAt = now
@@ -374,7 +374,7 @@ func (h *Hub) noteCopy(packet *models.Packet, target string) {
 	if !packet.Copy || h.callTracker == nil {
 		return
 	}
-	if _, seen := h.copyReports.LoadOrStore(copyReport{stream: packet.StreamID, target: target}, time.Now()); seen {
+	if _, seen := h.copyReports.LoadOrStore(copyReport{stream: packet.StreamID, target: target}, h.clock.Now()); seen {
 		return
 	}
 	h.callTracker.Converted(*packet, transcode.Codec(packet.Codec).String(), target)
@@ -438,7 +438,7 @@ func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTic
 		return
 	}
 	select {
-	case t.in <- transcodeJob{packet: p, deadline: time.Now().Add(t.st.Budget()), ticket: ticket}:
+	case t.in <- transcodeJob{packet: p, deadline: t.h.clock.Now().Add(t.st.Budget()), ticket: ticket}:
 		t.mu.Unlock()
 	default:
 		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
@@ -499,13 +499,13 @@ func (t *transcoder) exit(ctx context.Context) {
 
 func (t *transcoder) run(ctx context.Context) {
 	defer t.exit(ctx)
-	idle := time.NewTimer(streamIdle)
+	idle := t.h.clock.NewTimer(streamIdle)
 	defer idle.Stop()
 	for {
 		select {
 		case <-t.h.done:
 			return
-		case <-idle.C:
+		case <-idle.C():
 			if t.idleEnd() {
 				return
 			}

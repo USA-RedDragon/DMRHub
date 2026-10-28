@@ -56,7 +56,7 @@ func (h *Hub) autoCreateTalkgroup(packet models.Packet, sourceName string, isVoi
 	if exists, err := h.talkgroupExists(packet.Dst); err != nil || exists {
 		return
 	}
-	now := time.Now()
+	now := h.clock.Now()
 	tg := models.Talkgroup{ID: packet.Dst, Name: autoTalkgroupNamed + strconv.FormatUint(uint64(packet.Dst), 10), AutoCreated: true, LastCallAt: &now}
 	res := h.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&tg)
 	if res.Error != nil {
@@ -74,7 +74,7 @@ func (h *Hub) autoCreateTalkgroup(packet models.Packet, sourceName string, isVoi
 // write to the database.
 func (h *Hub) noteTalkgroupCall(tg uint) {
 	if _, auto := h.autoTalkgroups.Load(tg); auto {
-		h.talkgroupCalls.Store(tg, time.Now())
+		h.talkgroupCalls.Store(tg, h.clock.Now())
 	}
 }
 
@@ -89,13 +89,13 @@ func ephemeralSweepEvery(ttl time.Duration) time.Duration {
 // hub made by itself, and deletes the ones with no call for the ephemeral
 // TTL, until the hub stops.
 func (h *Hub) runEphemeralTalkgroups() {
-	timer := time.NewTimer(ephemeralSweepMin)
+	timer := h.clock.NewTimer(ephemeralSweepMin)
 	defer timer.Stop()
 	for {
 		select {
 		case <-h.done:
 			return
-		case <-timer.C:
+		case <-timer.C():
 		case <-h.configSet:
 			timer.Stop()
 		}
@@ -133,12 +133,12 @@ func (h *Hub) expireTalkgroups(ttl time.Duration) {
 		return
 	}
 	var ids []uint
-	if err := h.db.Model(&models.Talkgroup{}).Where("auto_created = ? AND last_call_at < ?", true, time.Now().Add(-ttl)).Pluck("id", &ids).Error; err != nil {
+	if err := h.db.Model(&models.Talkgroup{}).Where("auto_created = ? AND last_call_at < ?", true, h.clock.Now().Add(-ttl)).Pluck("id", &ids).Error; err != nil {
 		slog.Error("Cannot list the ephemeral talkgroups", "error", err)
 		return
 	}
 	for _, id := range ids {
-		if at, ok := h.talkgroupCalls.Load(id); ok && time.Since(at) < ttl {
+		if at, ok := h.talkgroupCalls.Load(id); ok && h.clock.Since(at) < ttl {
 			continue
 		}
 		affected, err := models.DeleteTalkgroup(h.db, id)

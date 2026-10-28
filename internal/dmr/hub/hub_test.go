@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -51,8 +52,12 @@ func makeTestHub(t *testing.T) (*hub.Hub, *gorm.DB) {
 // instance so tests can publish/subscribe to channels directly.
 func makeTestHubWithPubSub(t testing.TB) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
-	return makeTestHubWrapping(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps })
+	return makeTestHubWrapping(t, keepPubSub)
 }
+
+func keepPubSub(ps pubsub.PubSub) pubsub.PubSub { return ps }
+
+func keepKV(k kv.KV) kv.KV { return k }
 
 // makeTestHubWatching is like makeTestHubWithPubSub, and the returned
 // channel receives once for each subscription to topic.
@@ -81,10 +86,10 @@ func (w *watchedPubSub) Subscribe(topic string) pubsub.Subscription {
 
 func makeTestHubWrapping(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
-	return makeTestHubWrappingKV(t, wrap, func(k kv.KV) kv.KV { return k })
+	return makeTestHubWrappingKV(t, wrap, keepKV)
 }
 
-func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(kv.KV) kv.KV) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
+func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub, wrapKV func(kv.KV) kv.KV, on ...clock.Clock) (*hub.Hub, *gorm.DB, pubsub.PubSub) {
 	t.Helper()
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
@@ -104,9 +109,13 @@ func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub,
 	require.NoError(t, err)
 	kvStore := wrapKV(innerKV)
 
-	ct := calltracker.NewCallTracker(database.WithContext(context.WithValue(context.Background(), trackerQuery{}, true)), ps, kvStore)
+	c := clock.Real()
+	if len(on) > 0 {
+		c = on[0]
+	}
+	ct := calltracker.NewCallTracker(database.WithContext(context.WithValue(context.Background(), trackerQuery{}, true)), ps, kvStore, calltracker.WithClock(c))
 
-	h := hub.NewHub(database, kvStore, ps, ct)
+	h := hub.NewHub(database, kvStore, ps, ct, hub.WithClock(c))
 	h.LiftSlotRate(true)
 
 	t.Cleanup(func() {

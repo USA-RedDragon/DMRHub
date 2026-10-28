@@ -54,7 +54,7 @@ func (h *Hub) holdsSlot(repeaterID uint, slot bool, packet models.Packet) bool {
 	}
 	key := repeaterSlot{repeater: repeaterID, slot: slot}
 	mine := slotStream{repeaterSlot: key, stream: packet.StreamID, src: packet.Src}
-	now := time.Now()
+	now := h.clock.Now()
 	if _, ok := h.slotRefused.Load(mine); ok {
 		h.slotRefused.Store(mine, now)
 		return false

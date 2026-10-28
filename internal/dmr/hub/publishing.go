@@ -109,7 +109,7 @@ func (h *Hub) peerSet(ctx context.Context, packet models.Packet) (streamPeerSet,
 		slog.Error("Failed to list peers for publishing", "error", err)
 		return streamPeerSet{}, false
 	}
-	set := streamPeerSet{peers: peers, at: time.Now()}
+	set := streamPeerSet{peers: peers, at: h.clock.Now()}
 	h.streamPeers.Store(key, set)
 	return set, true
 }

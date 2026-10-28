@@ -120,6 +120,7 @@ func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub,
 
 	t.Cleanup(func() {
 		h.Stop(context.Background())
+		ct.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()

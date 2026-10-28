@@ -84,7 +84,7 @@ When SMTP is on, DMRHub sends one email to a user with a confirmed address when 
 
 A login lasts 30 days. Change this with `http.session-length` on the Setup page, such as `12h` or `2160h`. The new length applies to each new login at once. A shorter length also ends the older logins that are past it. A longer length does not make the older logins last longer.
 
-Turn on `login-backoff` to slow down password guessing. After 10 failed logins of one account in 15 minutes, DMRHub refuses each login of that account, even with the right password, until fewer than 10 failures are in the last 15 minutes. A login by the username and a login by the callsign count for the same account. A successful login clears the count. Other accounts are not affected. `login-backoff` is off by default.
+`login-backoff` slows down password guessing. After 10 failed logins of one account in 15 minutes, DMRHub refuses each login of that account, even with the right password, until fewer than 10 failures are in the last 15 minutes. A login by the username and a login by the callsign count for the same account. A successful login clears the count. Other accounts are not affected. `login-backoff` is on by default.
 
 ## Suspend a user
 

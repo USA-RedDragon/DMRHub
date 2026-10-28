@@ -477,7 +477,7 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("registration", configulator.LayerDefault, "default tag")
 	cfg.Visibility = Visibility("public")
 	set("visibility", configulator.LayerDefault, "default tag")
-	cfg.LoginBackoff = false
+	cfg.LoginBackoff = true
 	set("login-backoff", configulator.LayerDefault, "default tag")
 	return nil
 }
@@ -2752,7 +2752,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Bool(names[137], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	fs.String(names[138], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
 	fs.String(names[139], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
-	fs.Bool(names[140], false, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
+	fs.Bool(names[140], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
 	return nil
 }
 

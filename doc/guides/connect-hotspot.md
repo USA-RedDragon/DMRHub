@@ -44,7 +44,7 @@ Each user can add up to 100 repeaters and hotspots, unless the admin set another
 
 Pick the tab of the program that runs your hotspot and follow its steps:
 
-- **Pi-Star**: add a DMRHub line to the host list, set the DMR fields, and put the password in MMDVMHost. Pi-Star does not take the password from the host list.
+- **Pi-Star**: add a DMRHub line to the host list, set the DMR fields, and put the password in MMDVMHost. Newer Pi-Star dashboards do not take the password from the host list when MMDVMHost already has one. See [Pi-Star](../external/pi-star.md).
 - **WPSD**: add DMRHub as the custom DMR network.
 - **MMDVMHost**: current builds connect through DMRGateway. The tab also has the direct settings for older builds.
 - **DMRGateway**: pick a network number that is free in your file, and copy the section into `DMRGateway.ini`. The section has `PassAllTG` and `PassAllPC` lines, so that all group and private calls on both timeslots go to DMRHub. When DMRHub shares DMRGateway with other networks, write rewrite rules (`TGRewrite`, `PCRewrite`) in their place. See the DMRGateway documentation for the rule format.

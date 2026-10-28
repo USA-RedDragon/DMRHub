@@ -243,7 +243,7 @@ When you select a DMR master other than DMRGateway, Pi-Star configures MMDVMHost
 | DMR Configuration | DMR Master | The DMRHub line that you added, for example `DMRHub_Local` |
 | DMR Configuration | DMR ESSID | The two extra digits of the hotspot ID, for example `01`, or None for a 7-digit hotspot ID |
 
-Pi-Star keeps a password that MMDVMHost already has. In **Expert**, then **MMDVMHost**, check that **Password** in **DMR Network** is the DMRHub password.
+Newer Pi-Star dashboards keep a password that MMDVMHost already has. In **Expert**, then **MMDVMHost**, check that **Password** in **DMR Network** is the DMRHub password. For what we checked on a real Pi-Star, and for Pi-Star with DMRGateway, see [Pi-Star](external/pi-star.md).
 
 With these settings, Pi-Star writes this to `MMDVMHost.ini`:
 

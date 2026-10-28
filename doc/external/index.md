@@ -2,7 +2,7 @@
 
 These pages tell how to connect other DMR programs to DMRHub. Each page tells what the program is, gives a configuration that worked, tells what to set in DMRHub, and tells how to check that the connection works.
 
-Every page comes from a run of the program against a local DMRHub (main at 569c6e70) on 2026-10-27, with all programs and DMRHub on 127.0.0.1 in a network namespace that has only loopback. A page that we could not run says why and is marked **Untested**.
+Every page comes from a run of the program against a local DMRHub (main at 569c6e70) on 2026-10-27, with all programs and DMRHub on 127.0.0.1 in a network namespace that has only loopback. The [Pi-Star](pi-star.md) page comes from a real Pi-Star hotspot on 2026-10-28 instead. A page that we could not run says why and is marked **Untested**.
 
 The example IDs, callsigns and passwords are not real. Replace them with your own.
 
@@ -12,7 +12,7 @@ The example IDs, callsigns and passwords are not real. Replace them with your ow
 | --- | --- | --- | --- |
 | [MMDVMHost](mmdvmhost.md) | Runs the modem of a hotspot or repeater | none (through DMRGateway) | Worked |
 | [DMRGateway](dmrgateway.md) | Connects MMDVMHost to one or more DMR networks | MMDVM, UDP 62031 | Worked |
-| [Pi-Star](pi-star.md) | Hotspot image with MMDVMHost, DMRGateway and a dashboard | MMDVM, UDP 62031 | Untested |
+| [Pi-Star](pi-star.md) | Hotspot image with MMDVMHost, DMRGateway and a dashboard | MMDVM, UDP 62031 | Worked through DMRGateway, on a real hotspot. Direct mode not run. |
 | [DroidStar](droidstar.md) | DMR client app for phones and desktops | MMDVM, UDP 62031 | Worked |
 | [HBlink3](hblink3.md) | DMR server and bridge in Python | MMDVM, UDP 62031, and OpenBridge, UDP 62035 | Worked |
 | [HBlink4](hblink4.md) | New DMR server and bridge in Python | MMDVM, UDP 62031, and OpenBridge, UDP 62035 | Worked |

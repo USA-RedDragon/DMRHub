@@ -23,12 +23,14 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,28 +41,30 @@ import (
 // replica must take it within EgressLeaseTTL plus one renewal.
 func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	a := &Server{clock: clock.Real(), kv: store, id: "a"}
-	b := &Server{clock: clock.Real(), kv: store, id: "b"}
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		store, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		a := &Server{clock: clock.Real(), kv: store, id: "a"}
+		b := &Server{clock: clock.Real(), kv: store, id: "b"}
 
-	ctx := context.Background()
-	require.True(t, a.holdLease(ctx))
-	require.False(t, b.holdLease(ctx), "one replica holds the lease")
-	require.True(t, a.holdLease(ctx), "the holder renews it")
+		ctx := context.Background()
+		require.True(t, a.holdLease(ctx))
+		require.False(t, b.holdLease(ctx), "one replica holds the lease")
+		require.True(t, a.holdLease(ctx), "the holder renews it")
 
-	crash := time.Now()
-	for !b.holdLease(ctx) {
-		require.Less(t, time.Since(crash), 2*EgressLeaseTTL, "the lease never moved")
-		time.Sleep(egressLeaseRenew)
-	}
-	gap := time.Since(crash)
-	t.Logf("the lease moved after %s", gap.Round(time.Millisecond))
-	assert.LessOrEqual(t, gap, EgressLeaseTTL+egressLeaseRenew+200*time.Millisecond)
-	assert.False(t, a.holdLease(ctx), "the old holder does not get it back")
+		crash := time.Now()
+		for !b.holdLease(ctx) {
+			require.Less(t, time.Since(crash), 2*EgressLeaseTTL, "the lease never moved")
+			time.Sleep(egressLeaseRenew)
+		}
+		gap := time.Since(crash)
+		t.Logf("the lease moved after %s", gap.Round(time.Millisecond))
+		assert.LessOrEqual(t, gap, EgressLeaseTTL+egressLeaseRenew+200*time.Millisecond)
+		assert.False(t, a.holdLease(ctx), "the old holder does not get it back")
+	})
 }
 
 // TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage gives a holder's
@@ -70,16 +74,18 @@ func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 // them twice.
 func TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage(t *testing.T) {
 	t.Parallel()
-	s := &Server{clock: clock.Real(), id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
-	s.role.Store(roleReleasing)
-	require.True(t, s.sends(), "a holder that gave the lease up sends until it is taken")
-	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
-	select {
-	case <-s.handedOver:
-	default:
-		t.Fatal("the holder was not told that the lease was taken")
-	}
-	assert.False(t, s.sends(), "the old holder sends the packets after the taken message too")
+	synctest.Test(t, func(t *testing.T) {
+		s := &Server{clock: clock.Real(), id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+		s.role.Store(roleReleasing)
+		require.True(t, s.sends(), "a holder that gave the lease up sends until it is taken")
+		s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
+		select {
+		case <-s.handedOver:
+		default:
+			t.Fatal("the holder was not told that the lease was taken")
+		}
+		assert.False(t, s.sends(), "the old holder sends the packets after the taken message too")
+	})
 }
 
 // TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage gives a holder's
@@ -89,39 +95,41 @@ func TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage(t *testing.T) {
 // message comes, or they are lost.
 func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	ps, err := pubsub.MakePubSub(ctx, &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ps.Close() })
-	s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
-	require.True(t, s.holdLease(ctx))
-	s.role.Store(roleLeader)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		ctx := context.Background()
+		store, err := kv.MakeKV(ctx, &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		ps, err := pubsub.MakePubSub(ctx, &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ps.Close() })
+		s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+		require.True(t, s.holdLease(ctx))
+		s.role.Store(roleLeader)
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		s.handOver(ctx)
-	}()
-	b := &Server{clock: clock.Real(), kv: store, id: "b"}
-	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
-	select {
-	case <-done:
-		t.Fatal("the old holder stopped before the taken message of the new one")
-	case <-time.After(5 * handoverCheck):
-	}
-	assert.True(t, s.sends(), "the old holder stopped sending before the taken message")
-	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("the old holder did not stop at the taken message")
-	}
-	assert.False(t, s.sends())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.handOver(ctx)
+		}()
+		b := &Server{clock: clock.Real(), kv: store, id: "b"}
+		bubble.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
+		select {
+		case <-done:
+			t.Fatal("the old holder stopped before the taken message of the new one")
+		case <-time.After(5 * handoverCheck):
+		}
+		assert.True(t, s.sends(), "the old holder stopped sending before the taken message")
+		s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("the old holder did not stop at the taken message")
+		}
+		assert.False(t, s.sends())
+	})
 }
 
 // TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker gives a holder's lease
@@ -129,33 +137,35 @@ func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
 // message and sends at once. The old holder must stop within takeWait.
 func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	ps, err := pubsub.MakePubSub(ctx, &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ps.Close() })
-	s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
-	require.True(t, s.holdLease(ctx))
-	s.role.Store(roleLeader)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		ctx := context.Background()
+		store, err := kv.MakeKV(ctx, &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		ps, err := pubsub.MakePubSub(ctx, &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ps.Close() })
+		s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+		require.True(t, s.holdLease(ctx))
+		s.role.Store(roleLeader)
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		s.handOver(ctx)
-	}()
-	b := &Server{clock: clock.Real(), kv: store, id: "b"}
-	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
-	took := time.Now()
-	select {
-	case <-done:
-	case <-time.After(handoverWait):
-		t.Fatal("the old holder did not stop after an old replica took the lease")
-	}
-	assert.Less(t, time.Since(took), takeWait+2*handoverCheck+200*time.Millisecond)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			s.handOver(ctx)
+		}()
+		b := &Server{clock: clock.Real(), kv: store, id: "b"}
+		bubble.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
+		took := time.Now()
+		select {
+		case <-done:
+		case <-time.After(handoverWait):
+			t.Fatal("the old holder did not stop after an old replica took the lease")
+		}
+		assert.Less(t, time.Since(took), takeWait+2*handoverCheck+200*time.Millisecond)
+	})
 }
 
 // TestTheOutboxPublishesWhatWaitsAtTheStop stops a replica with egress
@@ -164,29 +174,31 @@ func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
 // egress topic.
 func TestTheOutboxPublishesWhatWaitsAtTheStop(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ps.Close() })
-	sub := ps.Subscribe(egressTopic)
-	t.Cleanup(func() { _ = sub.Close() })
-	s := &Server{clock: clock.Real(), pubsub: ps, done: make(chan struct{})}
-	out := make(chan outMessage, 4)
-	for i := range 3 {
-		out <- outMessage{topic: egressTopic, msg: []byte{byte(i)}}
-	}
-	close(s.done)
-	s.wg.Add(1)
-	s.runOutbox(out)
-	for i := range 3 {
-		select {
-		case m := <-sub.Channel():
-			assert.Equal(t, []byte{byte(i)}, m)
-		case <-time.After(time.Second):
-			t.Fatalf("message %d of the outbox was not published", i)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ps.Close() })
+		sub := ps.Subscribe(egressTopic)
+		t.Cleanup(func() { _ = sub.Close() })
+		s := &Server{clock: clock.Real(), pubsub: ps, done: make(chan struct{})}
+		out := make(chan outMessage, 4)
+		for i := range 3 {
+			out <- outMessage{topic: egressTopic, msg: []byte{byte(i)}}
 		}
-	}
+		close(s.done)
+		s.wg.Add(1)
+		s.runOutbox(out)
+		for i := range 3 {
+			select {
+			case m := <-sub.Channel():
+				assert.Equal(t, []byte{byte(i)}, m)
+			case <-time.After(time.Second):
+				t.Fatalf("message %d of the outbox was not published", i)
+			}
+		}
+	})
 }
 
 var errPausedRedis = errors.New("read tcp: i/o timeout")
@@ -225,31 +237,33 @@ func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) er
 // after its last renewal, and then stop.
 func TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	paused := &pausedKV{KV: store}
-	s := &Server{clock: clock.Real(), kv: paused, id: "a"}
-	s.renewLease(ctx)
-	require.True(t, s.IsEgressLeader())
-
-	renewed := time.Now()
-	s.renewLease(ctx)
-	require.True(t, s.IsEgressLeader())
-	paused.paused.Store(true)
-	for time.Since(renewed) < EgressLeaseTTL-egressLeaseRenew {
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		ctx := context.Background()
+		store, err := kv.MakeKV(ctx, &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		paused := &pausedKV{KV: store}
+		s := &Server{clock: clock.Real(), kv: paused, id: "a"}
 		s.renewLease(ctx)
-		require.True(t, s.IsEgressLeader(), "the holder stopped %s after its last renewal, before its lease ran out", time.Since(renewed).Round(time.Millisecond))
-		time.Sleep(egressLeaseRenew / 4)
-	}
-	time.Sleep(time.Until(renewed.Add(EgressLeaseTTL)))
-	s.renewLease(ctx)
-	assert.False(t, s.IsEgressLeader(), "the holder still sends after its lease ran out")
+		require.True(t, s.IsEgressLeader())
 
-	paused.paused.Store(false)
-	s.renewLease(ctx)
-	assert.NotEqual(t, roleFollower, s.role.Load(), "the holder takes the lease again once Redis is back")
+		renewed := time.Now()
+		s.renewLease(ctx)
+		require.True(t, s.IsEgressLeader())
+		paused.paused.Store(true)
+		for time.Since(renewed) < EgressLeaseTTL-egressLeaseRenew {
+			s.renewLease(ctx)
+			require.True(t, s.IsEgressLeader(), "the holder stopped %s after its last renewal, before its lease ran out", time.Since(renewed).Round(time.Millisecond))
+			time.Sleep(egressLeaseRenew / 4)
+		}
+		time.Sleep(time.Until(renewed.Add(EgressLeaseTTL)))
+		s.renewLease(ctx)
+		assert.False(t, s.IsEgressLeader(), "the holder still sends after its lease ran out")
+
+		paused.paused.Store(false)
+		s.renewLease(ctx)
+		assert.NotEqual(t, roleFollower, s.role.Load(), "the holder takes the lease again once Redis is back")
+	})
 }

@@ -21,6 +21,7 @@ package monotime_test
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/monotime"
@@ -42,4 +43,14 @@ func TestNowIsAfterAnEarlierStamp(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	assert.Greater(t, monotime.Now(), before)
 	assert.Less(t, time.Since(monotime.Time(before)), time.Minute)
+}
+
+func TestAStampOfABubbleTimeIsPositive(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		assert.Positive(t, monotime.Now(), "a stamp in a synctest bubble")
+		before := monotime.Now()
+		time.Sleep(time.Second)
+		assert.Equal(t, int64(time.Second), monotime.Now()-before)
+	})
 }

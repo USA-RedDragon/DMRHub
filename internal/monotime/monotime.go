@@ -19,12 +19,17 @@
 
 // Package monotime keeps a time in an int64 with its monotonic clock
 // reading, so that a step of the wall clock does not change how long ago
-// it was. time.Time.UnixNano drops that reading.
+// it was. time.Time.UnixNano drops that reading. The epoch of the stamps
+// is a century before the process started, so that the stamp of a time
+// after 1926 is positive, also in a synctest bubble, whose clock starts in
+// 2000 with no monotonic clock reading.
 package monotime
 
 import "time"
 
-var epoch = time.Now() //nolint:gochecknoglobals
+const century = 100 * 365 * 24 * time.Hour
+
+var epoch = time.Now().Add(-century) //nolint:gochecknoglobals
 
 // Now returns the stamp of the current time.
 func Now() int64 {

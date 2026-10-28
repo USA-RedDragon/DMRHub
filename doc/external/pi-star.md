@@ -5,7 +5,7 @@
 - Pi-Star is a disk image for a Raspberry Pi. Its MMDVMHost and DMRGateway are binaries of its own builds.
 - The source of the Pi-Star MMDVMHost is not public. `github.com/AndyTaylorTweet/MMDVMHost` returns 404.
 
-What this page says comes from the source of the Pi-Star dashboard (github.com/AndyTaylorTweet/Pi-Star_DV_Dash, commit ca50804), not from a run. For the steps that a ham follows, see [Connect a Pi-Star hotspot](../guides/connect-hotspot.md#connect-a-pi-star-hotspot).
+What this page says comes from the source of the Pi-Star dashboard (github.com/AndyTaylorTweet/Pi-Star_DV_Dash, commit ca50804), not from a run. For the steps that a ham follows, see [Connect a Pi-Star hotspot](../guides/connect-hotspot.md#set-up-your-software).
 
 ## What it is
 

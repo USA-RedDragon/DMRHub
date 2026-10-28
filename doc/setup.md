@@ -235,7 +235,7 @@ Use the values from the connect page in step 5: the address of the server, the p
 
 When you select a DMR master other than DMRGateway, Pi-Star configures MMDVMHost to connect to the master directly. DMRHub needs no other rules in this mode.
 
-[Connect a hotspot](guides/connect-hotspot.md#connect-a-pi-star-hotspot) has the steps to add DMRHub to the Pi-Star host list. Then set these values in the Pi-Star **Configuration** page:
+[Connect a hotspot](guides/connect-hotspot.md#set-up-your-software) has the steps to add DMRHub to the Pi-Star host list. Then set these values in the Pi-Star **Configuration** page:
 
 | Section | Setting | Value |
 | --- | --- | --- |

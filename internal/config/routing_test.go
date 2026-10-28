@@ -50,6 +50,7 @@ func TestRoutingValidate(t *testing.T) {
 		{"dmr.routing.dynamic-timeout", config.Routing{DynamicTimeout: -time.Second}, config.ErrInvalidDynamicTimeout},
 		{"dmr.routing.contention", config.Routing{Contention: "loudest"}, config.ErrInvalidContention},
 		{"dmr.routing.transmit", config.Routing{Transmit: "friends"}, config.ErrInvalidTransmit},
+		{"dmr.routing.max-transmission", config.Routing{MaxTransmission: -time.Second}, config.ErrInvalidMaxTransmission},
 	} {
 		cfg := makeValidConfig()
 		cfg.DMR.Routing = c.r
@@ -64,7 +65,7 @@ func TestRoutingValidate(t *testing.T) {
 		}
 	}
 	cfg := makeValidConfig()
-	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Transmit: config.TransmitMembers, Contention: config.ContentionFirst}
+	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst}
 	if err := cfg.DMR.Routing.Validate(); err != nil {
 		t.Errorf("valid routing settings: %v", err)
 	}

@@ -246,3 +246,46 @@ func TestTransmitMembersTakesAccountsAndTheirAddedIDs(t *testing.T) {
 		assert.False(t, heardFrom(t, a, b, radioIDListed, 1303), "a radio ID with no account may not, even when RadioID lists it")
 	})
 }
+
+// longCall has talker send a voice call of n bursts, one each 60 ms, as
+// radio 1000001 on TG 3100, and returns the bursts of it that listener got.
+func longCall(t *testing.T, talker, listener *testutils.MMDVMClient, stream uint, n int) int {
+	t.Helper()
+	for i := range n {
+		p := makeGroupVoicePacket(1000001, 3100, stream, false)
+		p.Seq = uint(i)
+		require.NoError(t, talker.SendDMRD(p))
+		time.Sleep(60 * time.Millisecond)
+	}
+	term := makeGroupVoiceTermPacket(1000001, 3100, stream, false)
+	term.Seq = uint(n)
+	require.NoError(t, talker.SendDMRD(term))
+	got := 0
+	for _, p := range listener.Drain(drainWait) {
+		if p.StreamID == stream {
+			got++
+		}
+	}
+	return got
+}
+
+func TestMaxTransmissionCutsALongCall(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		routingStack(t, stack, config.Routing{MaxTransmission: 500 * time.Millisecond})
+		a, b := listenerPair(t, stack)
+		got := longCall(t, a, b, 1401, 25)
+		assert.Positive(t, got, "the start of a long call goes through")
+		assert.Less(t, got, 15, "DMRHub drops a call after the longest transmission")
+		assert.Equal(t, 4, longCall(t, a, b, 1402, 3), "a short call after it goes through whole")
+	})
+}
+
+func TestNoMaxTransmissionKeepsALongCall(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		routingStack(t, stack, config.Routing{})
+		a, b := listenerPair(t, stack)
+		assert.Equal(t, 26, longCall(t, a, b, 1501, 25), "with no limit a long call goes through whole")
+	})
+}

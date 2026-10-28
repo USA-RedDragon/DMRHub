@@ -76,7 +76,8 @@ const labelReason = "reason"
 const DropReasonStreamFromOtherSource = "stream_from_other_source"
 
 // DropReasonTransmit is the IngressDroppedBurstsTotal reason for a burst
-// of a radio that the routing settings do not let transmit.
+// of a radio that the routing settings do not let transmit, or of a voice
+// call past the longest transmission.
 const DropReasonTransmit = "transmit"
 
 // DropReasonSlotRate is the IngressDroppedBurstsTotal reason for a burst

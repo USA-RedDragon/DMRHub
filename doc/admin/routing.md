@@ -7,6 +7,7 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | Dynamic links off | When `true`, a call on a talkgroup and the default dial of a hotspot link no dynamic talkgroup. See [Dynamic talkgroups](#dynamic-talkgroups). | `false` | `dmr.routing.disable-dynamic-links` |
 | Dynamic talkgroup timeout | The time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks the talkgroup from that timeslot, such as `15m`. `0s` never unlinks it. | `15m` | `dmr.routing.dynamic-timeout` |
 | Who may transmit | The radios whose transmissions DMRHub takes from repeaters and hotspots: `any`, `radioid` or `members`. See [Who may transmit](#who-may-transmit). | `any` | `dmr.routing.transmit` |
+| Longest transmission | The longest voice call that DMRHub routes, such as `3m`. DMRHub drops the rest of a longer call. `0s` is no limit. | `0s` | `dmr.routing.max-transmission` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 
 ## Dynamic talkgroups
@@ -30,6 +31,10 @@ DMRHub checks the source radio ID of each transmission that comes from a repeate
 - `members` takes the DMR ID of each account and the radio IDs that users added on the Settings page.
 
 DMRHub drops a transmission that the setting refuses, all of it, logs it once and counts its bursts in the metric `ingress_dropped_bursts_total` with the reason `transmit`. It checks the first burst of each transmission, so a change of the setting applies from the next transmission. Transmissions from OpenBridge peers and plugins are not checked.
+
+## Longest transmission
+
+DMRHub counts the length of a voice call from its first burst. When a call is longer than the longest transmission, DMRHub drops the rest of it, its terminator too, logs it once and counts its bursts in the metric `ingress_dropped_bursts_total` with the reason `transmit`. The repeaters that got the start of the call end it as for a lost signal. The next call starts a new count. The limit applies to calls from repeaters, hotspots and OpenBridge peers, and not to plugins or data.
 
 ## Two calls at once
 

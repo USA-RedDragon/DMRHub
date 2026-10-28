@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -49,7 +50,8 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 		return true
 	}
 	r := h.routingConfig()
-	if r.Transmit == "" || r.Transmit == config.TransmitAny {
+	anyRadio := r.Transmit == "" || r.Transmit == config.TransmitAny
+	if anyRadio && r.MaxTransmission <= 0 {
 		return true
 	}
 	now := time.Now()
@@ -58,15 +60,25 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 		return streamPolicy{start: now}, false
 	})
 	p.last = now
+	if !p.checked && anyRadio {
+		p.checked = true
+	}
 	if !p.checked {
 		allowed, final := h.mayTransmit(r.Transmit, packet, sourceName)
 		p.checked, p.refused = final, !allowed
 	}
 	if p.refused {
 		h.refuseStream(key, &p, packet, sourceName, "transmit")
+		h.streamPolicies.Store(key, p)
+		return false
+	}
+	if isVoice, _ := utils.CheckPacketType(packet); isVoice && r.MaxTransmission > 0 && now.Sub(p.start) > r.MaxTransmission {
+		h.refuseStream(key, &p, packet, sourceName, "max-transmission")
+		h.streamPolicies.Store(key, p)
+		return false
 	}
 	h.streamPolicies.Store(key, p)
-	return !p.refused
+	return true
 }
 
 // mayTransmit reports whether the radio of packet may transmit under

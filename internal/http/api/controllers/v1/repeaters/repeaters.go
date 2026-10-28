@@ -411,6 +411,15 @@ func POSTRepeater(c *gin.Context) {
 			return
 		}
 
+		if over, err := overQuota(db, &user, config.DMR.RepeaterQuota); err != nil {
+			slog.Error("Error counting the repeaters of a user", "userID", user.ID, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+			return
+		} else if over {
+			c.JSON(http.StatusForbidden, gin.H{errorKey: fmt.Sprintf("You have %d repeaters and hotspots, the most that a user can add", config.DMR.RepeaterQuota)})
+			return
+		}
+
 		var repeater models.Repeater
 		repeater.Type = json.Type
 		repeater.SimplexRepeater = json.SimplexRepeater
@@ -516,6 +525,19 @@ func POSTRepeater(c *gin.Context) {
 		publishOwnerChanged(c, repeater.OwnerID)
 		c.JSON(http.StatusOK, gin.H{messageKey: "Repeater created", "password": repeater.Password})
 	}
+}
+
+// overQuota reports whether user, who is not an admin, already owns quota
+// repeaters or more. A quota of 0 is no limit.
+func overQuota(db *gorm.DB, user *models.User, quota int) (bool, error) {
+	if quota <= 0 || user.Admin {
+		return false, nil
+	}
+	var n int64
+	if err := db.Model(&models.Repeater{}).Where("owner_id = ?", user.ID).Count(&n).Error; err != nil {
+		return false, fmt.Errorf("counting the repeaters of user %d: %w", user.ID, err)
+	}
+	return n >= int64(quota), nil
 }
 
 var errNoSecret = errors.New("this type of repeater has no password")

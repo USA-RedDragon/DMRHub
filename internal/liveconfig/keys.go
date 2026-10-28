@@ -74,6 +74,7 @@ func setupPaths() []string {
 		"dmr.drain-timeout",
 		"dmr.ip-lists",
 		"dmr.routing",
+		"dmr.repeater-quota",
 	}
 }
 

@@ -129,6 +129,7 @@ type DMR struct {
 	PrivateCalls             PrivateCalls `json:"private-calls" yaml:"private-calls" name:"private-calls" description:"How DMRHub finds the radio that a private call, SMS or data message goes to"`
 	IPLists                  IPLists      `json:"ip-lists" yaml:"ip-lists" name:"ip-lists" description:"Source addresses that DMRHub refuses or alone accepts, before any other work on a packet"`
 	Routing                  Routing      `json:"routing" name:"routing" description:"How DMRHub links talkgroups and which transmissions it takes"`
+	RepeaterQuota            int          `json:"repeater-quota" yaml:"repeater-quota" name:"repeater-quota" description:"Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit" default:"100"`
 	DrainTimeout             int          `json:"drain-timeout" yaml:"drain-timeout" name:"drain-timeout" description:"Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once" default:"25"`
 }
 

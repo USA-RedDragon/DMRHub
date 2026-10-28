@@ -38,6 +38,9 @@ func TestRoutingDefaults(t *testing.T) {
 	if cfg.DMR.Routing != want {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
+	if cfg.DMR.RepeaterQuota != 100 {
+		t.Errorf("repeater quota %d, want 100", cfg.DMR.RepeaterQuota)
+	}
 }
 
 func TestRoutingValidate(t *testing.T) {
@@ -63,6 +66,11 @@ func TestRoutingValidate(t *testing.T) {
 		if !errors.Is(got, c.want) {
 			t.Errorf("%s: error %v, want %v", c.field, got, c.want)
 		}
+	}
+	quota := makeValidConfig()
+	quota.DMR.RepeaterQuota = -1
+	if err := quota.DMR.Validate(); !errors.Is(err, config.ErrInvalidRepeaterQuota) {
+		t.Errorf("a negative repeater quota: error %v, want %v", err, config.ErrInvalidRepeaterQuota)
 	}
 	cfg := makeValidConfig()
 	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst}

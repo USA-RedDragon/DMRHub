@@ -214,6 +214,7 @@ type dMRShadow struct {
 	PrivateCalls             *privateCallsShadow `json:"private-calls"               toml:"private-calls"               yaml:"private-calls"`
 	IPLists                  *iPListsShadow      `json:"ip-lists"                    toml:"ip-lists"                    yaml:"ip-lists"`
 	Routing                  *routingShadow      `json:"routing"                     toml:"routing"                     yaml:"routing"`
+	RepeaterQuota            *int                `json:"repeater-quota"              toml:"repeater-quota"              yaml:"repeater-quota"`
 	DrainTimeout             *int                `json:"drain-timeout"               toml:"drain-timeout"               yaml:"drain-timeout"`
 }
 
@@ -412,6 +413,8 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.routing.max-transmission", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.Contention = Contention("mix")
 	set("dmr.routing.contention", configulator.LayerDefault, "default tag")
+	cfg.DMR.RepeaterQuota = 100
+	set("dmr.repeater-quota", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
 	set("dmr.drain-timeout", configulator.LayerDefault, "default tag")
 	cfg.SMTP.Enabled = false
@@ -991,6 +994,10 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				cfg.DMR.Routing.Contention = Contention(*s.DMR.Routing.Contention)
 				set("dmr.routing.contention", configulator.LayerFile, file)
 			}
+		}
+		if s.DMR.RepeaterQuota != nil {
+			cfg.DMR.RepeaterQuota = *s.DMR.RepeaterQuota
+			set("dmr.repeater-quota", configulator.LayerFile, file)
 		}
 		if s.DMR.DrainTimeout != nil {
 			cfg.DMR.DrainTimeout = *s.DMR.DrainTimeout
@@ -2022,6 +2029,19 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Routing.Contention = Contention(v)
 		set("dmr.routing.contention", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "repeater-quota"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.repeater-quota",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.RepeaterQuota = int(p)
+		set("dmr.repeater-quota", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "drain-timeout"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2300,6 +2320,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "routing" + o.Separator + "transmit",
 		"dmr" + o.Separator + "routing" + o.Separator + "max-transmission",
 		"dmr" + o.Separator + "routing" + o.Separator + "contention",
+		"dmr" + o.Separator + "repeater-quota",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
 		"smtp" + o.Separator + "host",
@@ -2444,27 +2465,28 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[104], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
 	fs.Duration(names[105], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
 	fs.String(names[106], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
-	fs.Var(impl.NewInt(25), names[107], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[108], false, "Enable SMTP support for sending emails")
-	fs.String(names[109], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[110], "SMTP server port")
-	fs.String(names[111], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[112], "", "SMTP server username")
-	fs.String(names[113], "", "SMTP server password")
-	fs.String(names[114], "", "Email address to use as the sender")
-	fs.String(names[115], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[116], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[117], false, "Enable metrics collection and export")
-	fs.String(names[118], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[119], "Metrics server port")
-	fs.StringSlice(names[120], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[121], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[122], false, "Enable PProf profiling and debugging support")
-	fs.String(names[123], "[::]", "PProf server listen address")
-	fs.StringSlice(names[124], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[125], "PProf server port")
-	fs.String(names[126], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[127], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Var(impl.NewInt(100), names[107], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
+	fs.Var(impl.NewInt(25), names[108], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[109], false, "Enable SMTP support for sending emails")
+	fs.String(names[110], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[111], "SMTP server port")
+	fs.String(names[112], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[113], "", "SMTP server username")
+	fs.String(names[114], "", "SMTP server password")
+	fs.String(names[115], "", "Email address to use as the sender")
+	fs.String(names[116], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[117], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[118], false, "Enable metrics collection and export")
+	fs.String(names[119], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[120], "Metrics server port")
+	fs.StringSlice(names[121], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[122], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[123], false, "Enable PProf profiling and debugging support")
+	fs.String(names[124], "[::]", "PProf server listen address")
+	fs.StringSlice(names[125], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[126], "PProf server port")
+	fs.String(names[127], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[128], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3753,6 +3775,18 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.DMR.Routing.Contention = Contention(v)
 		set("dmr.routing.contention", configulator.LayerCLI, "--"+n)
 	}
+	if n := "dmr" + o.Separator + "repeater-quota"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.repeater-quota",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.RepeaterQuota = v
+		set("dmr.repeater-quota", configulator.LayerCLI, "--"+n)
+	}
 	if n := "dmr" + o.Separator + "drain-timeout"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
 		if err != nil {
@@ -4993,6 +5027,26 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 					return err
 				}
 				s.Routing = &sub
+			}
+		case "repeater-quota":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".repeater-quota", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".repeater-quota", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.RepeaterQuota = &num
+			default:
+				return configJSONError(path+".repeater-quota", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		case "drain-timeout":
 			v, err := dec.ReadToken()
@@ -7382,6 +7436,7 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.routing.transmit = %v\n", c.DMR.Routing.Transmit)
 	fmt.Fprintf(&b, "dmr.routing.max-transmission = %v\n", c.DMR.Routing.MaxTransmission)
 	fmt.Fprintf(&b, "dmr.routing.contention = %v\n", c.DMR.Routing.Contention)
+	fmt.Fprintf(&b, "dmr.repeater-quota = %v\n", c.DMR.RepeaterQuota)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)
 	fmt.Fprintf(&b, "smtp.host = %v\n", c.SMTP.Host)

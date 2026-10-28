@@ -658,6 +658,11 @@ const fieldMaxTransmission = "dmr.routing.max-transmission"
 // ErrInvalidContention indicates a contention setting that is not mix or first.
 var ErrInvalidContention = errors.New("the contention setting must be mix or first")
 
+// ErrInvalidRepeaterQuota indicates a negative repeater quota.
+var ErrInvalidRepeaterQuota = errors.New("the repeater quota must be 0 for no limit or a positive number")
+
+const fieldRepeaterQuota = "dmr.repeater-quota"
+
 // ErrInvalidDynamicTimeout indicates a negative dynamic talkgroup timeout.
 var ErrInvalidDynamicTimeout = errors.New("the dynamic talkgroup timeout must be 0 to never unlink or a positive time, such as 15m")
 
@@ -738,6 +743,9 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 	errs = append(errs, d.PrivateCalls.ValidateWithFields()...)
 	errs = append(errs, d.IPLists.ValidateWithFields()...)
 	errs = append(errs, d.Routing.ValidateWithFields()...)
+	if d.RepeaterQuota < 0 {
+		errs = append(errs, ValidationError{Field: fieldRepeaterQuota, Err: ErrInvalidRepeaterQuota})
+	}
 
 	if d.DrainTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDrainTimeout, Err: ErrInvalidDrainTimeout})

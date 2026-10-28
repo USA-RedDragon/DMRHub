@@ -38,6 +38,8 @@ An older password can have a `#` or a `%`, which some hotspot software does not 
 
 To open the connect page later, open the page of the hotspot and click **Connect**. The password is then hidden, and the steps show `<hotspot password>` in its place.
 
+Each user can add up to 100 repeaters and hotspots, unless the admin set another limit. Past the limit, the save fails with a message that tells the limit.
+
 ## Set up your software
 
 Pick the tab of the program that runs your hotspot and follow its steps:

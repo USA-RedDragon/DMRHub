@@ -27,3 +27,7 @@ The owner of a repeater, and an admin, can lock a timeslot to a list of users, f
 ## Talkgroup lists
 
 The owner of a repeater, and an admin, can block talkgroups on the repeater, or allow only some talkgroups. See [Set the rules of your repeater](../guides/repeater-rules.md). An owner can misuse the lists to shut people out of a repeater, for example to keep a community off a shared repeater. Admins can see and change the lists of every repeater.
+
+## Repeaters for each user
+
+A user can add at most 100 repeaters and hotspots. When a user has that many, DMRHub refuses another one with the message "You have 100 repeaters and hotspots, the most that a user can add". Admins have no limit, and an admin can still assign a repeater to a user who has that many. To change the limit, set `dmr.repeater-quota`; `0` is no limit. A change applies at once on every replica, and a user who has more than a new limit keeps the repeaters and hotspots they have. See [Configuration](configuration.md).

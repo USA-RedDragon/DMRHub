@@ -271,6 +271,8 @@ dmr:
     max-transmission: "0s"
     # What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)
     contention: "mix"
+  # Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit
+  repeater-quota: 100
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once
   drain-timeout: 25
 # SMTP configuration for sending emails

@@ -331,6 +331,8 @@ timer	internal/testutils/plugins.go	2	baseline of 2026-10-28, not reviewed: repl
 elapsed	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/testutils/settings.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/testutils/starvation.go	2	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
+sleep	internal/testutils/starvation.go	1	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
 timer	internal/testutils/wsclient.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/wsclient_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

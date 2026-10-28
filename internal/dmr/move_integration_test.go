@@ -20,13 +20,16 @@
 package dmr_test
 
 import (
+	"fmt"
 	"net"
-	"slices"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
@@ -288,22 +291,77 @@ func TestIPSCMovesFromADrainingReplica(t *testing.T) {
 	})
 }
 
+// heldReport is a PubSub that holds the messages of topic to its
+// subscribers until release is closed.
+type heldReport struct {
+	pubsub.PubSub
+	topic   string
+	release chan struct{}
+}
+
+type heldSubscription struct {
+	pubsub.Subscription
+	ch   chan []byte
+	stop chan struct{}
+	once sync.Once
+}
+
+func (h *heldReport) Subscribe(topic string) pubsub.Subscription {
+	sub := h.PubSub.Subscribe(topic)
+	if topic != h.topic {
+		return sub
+	}
+	held := &heldSubscription{Subscription: sub, ch: make(chan []byte, 8), stop: make(chan struct{})}
+	go func() {
+		for msg := range sub.Channel() {
+			select {
+			case <-h.release:
+			case <-held.stop:
+				return
+			}
+			select {
+			case held.ch <- msg:
+			case <-held.stop:
+				return
+			}
+		}
+	}()
+	return held
+}
+
+func (s *heldSubscription) Channel() <-chan []byte { return s.ch }
+
+func (s *heldSubscription) Close() error {
+	s.once.Do(func() { close(s.stop) })
+	if err := s.Subscription.Close(); err != nil {
+		return fmt.Errorf("closing the held subscription: %w", err)
+	}
+	return nil
+}
+
 // TestIPSCMoveKeepsEachBurstInItsSlot moves an IPSC peer from a draining
 // replica in a call, right before a burst. A peer plays each burst on the
 // 60 ms grid of the call and fills the slot of a burst that is not there
-// in time, so every burst must reach the peer within half a slot of the
-// time it would have come without the move.
+// in time, so the burst at the move must not wait for the full handover
+// report, which comes handoverSettle after the claim. The new replica gets
+// the full report only once the peer got the burst at the move, or after
+// reportHold, which is less than handoverWait.
 func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		const bursts, moveAt, stream = 60, 25, 7601
+		const reportHold = 800 * time.Millisecond
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
 		stack.AssignTS1StaticTG(t, 200001, 1)
 		first := testutils.Register(t, stack.Hub, stack.KV)
+		held := &heldReport{PubSub: stack.PubSub, topic: "hub:handover:" + models.RepeaterTypeIPSC + ":200001", release: make(chan struct{})}
+		shared := stack.PubSub
+		stack.PubSub = held
 		second, _ := stack.SpawnRegisteredReplica(t)
+		stack.PubSub = shared
 		stack.StartServers(t)
 
 		front := testutils.NewUDPFront(t)
@@ -319,17 +377,61 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 		time.Sleep(settleDuration)
 		front.Add(t, second.IPSCAddr)
 
-		sent := make([]time.Time, bursts)
+		var got []uint16
+		reached := make(chan int, 2*bursts)
+		stop := make(chan struct{})
+		collected := make(chan struct{})
+		go func() {
+			defer close(collected)
+			for {
+				select {
+				case <-stop:
+					return
+				case b := <-peer.ReceivedPackets():
+					u, err := ipscwire.DecodeUser(b.Data)
+					if err != nil {
+						continue
+					}
+					got = append(got, u.RTP.Seq)
+					select {
+					case reached <- int(u.RTP.Seq - got[0]):
+					default:
+					}
+				}
+			}
+		}()
+		waitFor := func(n int, d time.Duration) bool {
+			tm := time.NewTimer(d)
+			defer tm.Stop()
+			for {
+				select {
+				case r := <-reached:
+					if r == n {
+						return true
+					}
+				case <-tm.C:
+					return false
+				}
+			}
+		}
+
+		released := make(chan bool, 1)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
 			next := time.Now()
 			for i := range bursts {
 				if i == moveAt {
+					if !assert.True(t, waitFor(moveAt-1, drainWait), "the peer got the burst before the move") {
+						released <- false
+						close(held.release)
+						return
+					}
 					first.MarkDraining(t.Context())
 					front.Drain(stack.IPSCAddr)
 					assert.NoError(t, peer.SendAlive())
 					time.Sleep(5 * time.Millisecond)
+					next = time.Now()
 				}
 				p := makeGroupVoicePacket(1000001, 1, stream, false)
 				p.Seq = uint(i)
@@ -341,45 +443,32 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 					p = makeGroupVoiceTermPacket(1000001, 1, stream, false)
 					p.Seq = uint(i)
 				}
-				sent[i] = time.Now()
 				assert.NoError(t, talker.SendDMRD(p))
+				if i == moveAt {
+					released <- waitFor(moveAt, reportHold)
+					close(held.release)
+					next = time.Now()
+				}
 				next = next.Add(rotationInterval)
 				time.Sleep(time.Until(next))
 			}
 		}()
 		<-done
-		got := peer.Drain(drainWait)
+		time.Sleep(drainWait)
+		close(stop)
+		<-collected
 		require.Equal(t, 1, front.Moves(), "the front moved the peer")
 		assert.Zero(t, peer.Downs(), "the peer lost its registration")
-
-		var at []time.Time
-		var start uint16
-		for _, b := range got {
-			u, err := ipscwire.DecodeUser(b.Data)
-			require.NoError(t, err)
-			if len(at) == 0 {
-				start = u.RTP.Seq
-			}
-			switch n := int(u.RTP.Seq - start); {
-			case n == len(at):
-				at = append(at, b.At)
-			case n > len(at):
-				require.Failf(t, "the peer got a burst before an earlier one", "burst %d came before burst %d", n, len(at))
+		require.True(t, <-released, "the burst at the move waited for the full handover report")
+		next := 0
+		for _, seq := range got {
+			switch n := int(seq - got[0]); {
+			case n == next:
+				next++
+			case n > next:
+				require.Failf(t, "the peer got a burst before an earlier one", "burst %d came before burst %d", n, next)
 			}
 		}
-		require.Len(t, at, bursts, "the peer lost bursts")
-		lag := make([]time.Duration, bursts)
-		for i := range bursts {
-			lag[i] = at[i].Sub(sent[i])
-		}
-		steady := slices.Clone(lag[:moveAt])
-		slices.Sort(steady)
-		base := steady[len(steady)/2]
-		for i := range bursts {
-			if late := lag[i] - base; late > rotationInterval/2 {
-				t.Errorf("burst %d came %s late", i, late.Round(time.Millisecond))
-			}
-		}
-		t.Logf("lag %s, at the move %s more", base.Round(time.Microsecond), (slices.Max(lag) - base).Round(time.Microsecond))
+		require.Equal(t, bursts, next, "the peer lost bursts")
 	})
 }

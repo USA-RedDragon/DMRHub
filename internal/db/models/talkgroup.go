@@ -120,6 +120,10 @@ func DeleteTalkgroup(db *gorm.DB, id uint) ([]uint, error) {
 		tx.Unscoped().Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
 		tx.Unscoped().Table("repeater_ts2_static_talkgroups").Where("talkgroup_id = ?", id).Delete(&Repeater{})
 
+		if err := tx.Where("subject_id = ? AND kind IN ?", id, []RoutingRuleKind{RoutingRuleRestrictedTalkgroup, RoutingRuleApprovedLink}).Delete(&RoutingRule{}).Error; err != nil {
+			return fmt.Errorf("delete the access rules: %w", err)
+		}
+
 		tx.Unscoped().Select(clause.Associations, "Admins").Select(clause.Associations, "NCOs").Delete(&Talkgroup{ID: id})
 
 		// Collect affected IDs for the caller

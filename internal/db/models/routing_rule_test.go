@@ -148,3 +148,62 @@ func TestDeletingAUserDeletesTheirRoutingRules(t *testing.T) {
 		assert.EqualValues(t, kept, rules[0].SubjectID)
 	})
 }
+
+func TestARestrictedTalkgroupLinksOnlyToApprovedRepeaters(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
+		const approved, other, tg, open = 311860, 311861, 3100, 91
+		for _, id := range []uint{approved, other} {
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeMMDVM}).Error)
+		}
+		for _, id := range []uint{tg, open} {
+			require.NoError(t, database.Create(&models.Talkgroup{ID: id, Name: "TG"}).Error)
+		}
+
+		restricted, repeaters, err := models.TalkgroupAccess(database, tg)
+		require.NoError(t, err)
+		assert.False(t, restricted, "a talkgroup is open by default")
+		assert.Empty(t, repeaters)
+		refused, err := models.LinkRefused(database, other, tg, open)
+		require.NoError(t, err)
+		assert.Zero(t, refused)
+
+		require.NoError(t, models.SetTalkgroupAccess(database, tg, true, []uint{approved, approved}))
+		restricted, repeaters, err = models.TalkgroupAccess(database, tg)
+		require.NoError(t, err)
+		assert.True(t, restricted)
+		assert.Equal(t, []uint{approved}, repeaters)
+		refused, err = models.LinkRefused(database, other, open, tg)
+		require.NoError(t, err)
+		assert.EqualValues(t, tg, refused)
+		refused, err = models.LinkRefused(database, approved, open, tg)
+		require.NoError(t, err)
+		assert.Zero(t, refused)
+
+		rules, err := models.ListRoutingRules(database, approved)
+		require.NoError(t, err)
+		require.Len(t, rules, 1)
+		require.NoError(t, models.ReplaceRoutingRules(database, approved, models.SlotRuleKinds(), nil))
+		_, repeaters, err = models.TalkgroupAccess(database, tg)
+		require.NoError(t, err)
+		assert.Equal(t, []uint{approved}, repeaters, "a slot edit keeps the approvals")
+
+		require.NoError(t, models.DeleteRepeater(database, approved))
+		_, repeaters, err = models.TalkgroupAccess(database, tg)
+		require.NoError(t, err)
+		assert.Empty(t, repeaters, "deleting a repeater deletes its approvals")
+
+		require.NoError(t, models.SetTalkgroupAccess(database, tg, true, []uint{other}))
+		_, err = models.DeleteTalkgroup(database, tg)
+		require.NoError(t, err)
+		var n int64
+		require.NoError(t, database.Model(&models.RoutingRule{}).Where("subject_id = ?", tg).Count(&n).Error)
+		assert.Zero(t, n, "deleting a talkgroup deletes its access rules")
+
+		require.NoError(t, models.SetTalkgroupAccess(database, open, false, []uint{other}))
+		restricted, repeaters, err = models.TalkgroupAccess(database, open)
+		require.NoError(t, err)
+		assert.False(t, restricted)
+		assert.Equal(t, []uint{other}, repeaters, "an open talkgroup keeps its approvals")
+	})
+}

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -271,8 +272,7 @@ type pacer struct {
 	send     func(slotKey, []byte)
 	discard  func(models.Packet)
 	end      func(slotKey, queuedFrame) []byte
-	now      func() time.Time
-	after    func(time.Duration) <-chan time.Time
+	clock    clock.Clock
 	callHold time.Duration
 	dataHold time.Duration
 	mu       sync.Mutex
@@ -281,8 +281,8 @@ type pacer struct {
 	wg       sync.WaitGroup
 }
 
-func newPacer(send func(slotKey, []byte), discard func(models.Packet)) *pacer {
-	return &pacer{send: send, discard: discard, now: time.Now, after: time.After, callHold: callHangHold, dataHold: dataHangHold, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
+func newPacer(c clock.Clock, send func(slotKey, []byte), discard func(models.Packet)) *pacer {
+	return &pacer{clock: clock.Or(c), send: send, discard: discard, callHold: callHangHold, dataHold: dataHangHold, slots: map[slotKey]*slotQueue{}, done: make(chan struct{})}
 }
 
 // enqueue queues frame, of the packet pkt of the stream, to the peer slot
@@ -306,7 +306,7 @@ func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt mode
 	default:
 	}
 	q := p.queue(k)
-	now := p.now()
+	now := p.clock.Now()
 	if at, gone := q.discarded[stream]; gone {
 		if now.Sub(at) < callHang {
 			q.discarded[stream] = now
@@ -383,7 +383,7 @@ func (p *pacer) slot(k slotKey) *slotQueue {
 	if q, ok := p.slots[k]; ok {
 		return q
 	}
-	now := p.now()
+	now := p.clock.Now()
 	for key, q := range p.slots {
 		if !q.running && q.idle(now, p.callHold, p.dataHold) {
 			delete(p.slots, key)
@@ -410,7 +410,7 @@ func (p *pacer) holdFor(k slotKey, left time.Duration) {
 	default:
 	}
 	q := p.queue(k)
-	q.holdUntil = later(q.holdUntil, p.now().Add(left))
+	q.holdUntil = later(q.holdUntil, p.clock.Now().Add(left))
 	select {
 	case q.wake <- struct{}{}:
 	default:
@@ -439,7 +439,7 @@ func (p *pacer) heard(k slotKey, pkt models.Packet) {
 	default:
 	}
 	q := p.slot(k)
-	now := p.now()
+	now := p.clock.Now()
 	q.hold(now, p.callHold, p.dataHold)
 	c := q.heard
 	if c != nil && c.stream != pkt.StreamID {
@@ -570,21 +570,21 @@ func (p *pacer) take(k slotKey, q *slotQueue, now time.Time) (queuedFrame, time.
 
 func (p *pacer) run(k slotKey, q *slotQueue) {
 	defer p.wg.Done()
-	idle := time.NewTimer(pacerIdleExpiry)
+	idle := p.clock.NewTimer(pacerIdleExpiry)
 	defer idle.Stop()
 	var next time.Time
 	onGrid := false
 	for {
-		if wait := time.Until(next); wait > 0 {
-			t := time.NewTimer(wait)
+		if wait := p.clock.Until(next); wait > 0 {
+			t := p.clock.NewTimer(wait)
 			select {
 			case <-p.done:
 				t.Stop()
 				return
-			case <-t.C:
+			case <-t.C():
 			}
 		}
-		frame, wait, ok := p.take(k, q, p.now())
+		frame, wait, ok := p.take(k, q, p.clock.Now())
 		if !ok {
 			onGrid = false
 			if p.idle(k, q, wait, idle) {
@@ -592,7 +592,7 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 			}
 			continue
 		}
-		now := time.Now()
+		now := p.clock.Now()
 		switch {
 		case !frame.due.IsZero():
 			if !onGrid {
@@ -607,7 +607,7 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 		next = next.Add(burstTime)
 		if !idle.Stop() {
 			select {
-			case <-idle.C:
+			case <-idle.C():
 			default:
 			}
 		}
@@ -622,7 +622,7 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 	defer p.mu.Unlock()
 	q.sending = nil
 	if c := q.sendingCall; c != nil {
-		c.sentAt = p.now()
+		c.sentAt = p.clock.Now()
 		q.sendingCall = nil
 	}
 	if f.state == nil {
@@ -631,7 +631,7 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 	if len(q.sent) == sentKeep {
 		q.sent = q.sent[1:]
 	}
-	q.sent = append(q.sent, sentPacket{at: time.Now(), pkt: f.pkt, state: *f.state})
+	q.sent = append(q.sent, sentPacket{at: p.clock.Now(), pkt: f.pkt, state: *f.state})
 }
 
 // handOver returns, for each call that the pacer sent to the peer, the
@@ -643,7 +643,7 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 	since = since.Add(-hub.MoveSlack)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	now := p.now()
+	now := p.clock.Now()
 	var calls []handedCall
 	var lost []models.Packet
 	var hangs []handedHang
@@ -697,22 +697,22 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 	return calls, lost, hangs
 }
 
-func (p *pacer) idle(k slotKey, q *slotQueue, wait time.Duration, idle *time.Timer) bool {
+func (p *pacer) idle(k slotKey, q *slotQueue, wait time.Duration, idle clock.Timer) bool {
 	var hang <-chan time.Time
 	if wait > 0 {
-		hang = p.after(wait)
+		hang = p.clock.After(wait)
 	}
 	select {
 	case <-p.done:
 		return true
 	case <-q.wake:
 	case <-hang:
-	case <-idle.C:
+	case <-idle.C():
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if q.frames() == 0 && len(q.pending) == 0 && len(q.discarded) == 0 {
 			q.running = false
-			if q.idle(p.now(), p.callHold, p.dataHold) {
+			if q.idle(p.clock.Now(), p.callHold, p.dataHold) {
 				delete(p.slots, k)
 			}
 			return true

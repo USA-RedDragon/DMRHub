@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
@@ -43,6 +44,7 @@ import (
 // direction a dmrgo voice.Receiver per call places each voice burst in the
 // superframe.
 type IPSCTranslator struct {
+	clock          clock.Clock
 	mu             sync.Mutex
 	peerID         uint32
 	repeaterID     uint32
@@ -72,7 +74,7 @@ const dropLogEvery = time.Second
 // not log since. The caller holds t.mu.
 func (t *IPSCTranslator) dropped(u *ipscwire.User, reason string, err error) {
 	metrics.NewMetrics().IncrementIngressDropped(reason)
-	now := time.Now()
+	now := t.clock.Now()
 	if now.Before(t.dropLogNext) {
 		t.dropUnlogged++
 		return
@@ -149,14 +151,19 @@ const (
 )
 
 func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
+	return newTranslator(clock.Real(), peerID)
+}
+
+func newTranslator(c clock.Clock, peerID uint32) *IPSCTranslator {
 	return &IPSCTranslator{
+		clock:               clock.Or(c),
 		streams:             make(map[uint32]*streamState),
 		reverseStreams:      make(map[uint32]*reverseStreamState),
 		peerID:              peerID,
 		repeaterID:          peerID,
 		burst:               layer2.NewBurst(),
 		events:              make([]voice.Event, 0, voice.MaxEvents),
-		epoch:               time.Now(),
+		epoch:               c.Now(),
 		rawBlocksAnXPRDrops: sendRawBlocksAnXPRDrops,
 	}
 }
@@ -199,12 +206,12 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 			callControl:  t.nextCallControl,
 			ipscSeq:      t.nextCallSeq,
 			firstPacket:  true,
-			lastActivity: time.Now(),
+			lastActivity: t.clock.Now(),
 		}
 		t.nextCallSeq++
 	}
 	t.streams[uint32(streamID)] = ss
-	ss.lastActivity = time.Now()
+	ss.lastActivity = t.clock.Now()
 	t.notePreamble(pkt, b, ss)
 
 	dtypeOrVSeq := pkt.DTypeOrVSeq
@@ -292,7 +299,7 @@ func (t *IPSCTranslator) TranslateToIPSC(pkt models.Packet) [][]byte {
 // caller holds t.mu.
 func (t *IPSCTranslator) joinPreambles(pkt models.Packet, b *layer2.Burst) (*streamState, bool) {
 	run := t.preambles[slotIndex(pkt.Slot)]
-	if run == nil || b == nil || time.Since(run.at) >= preambleGap {
+	if run == nil || b == nil || t.clock.Since(run.at) >= preambleGap {
 		return nil, false
 	}
 	switch b.Data.(type) {
@@ -313,7 +320,7 @@ func (t *IPSCTranslator) notePreamble(pkt models.Packet, b *layer2.Burst, ss *st
 	slot := slotIndex(pkt.Slot)
 	switch {
 	case b != nil && isPreamble(b):
-		t.preambles[slot] = &preambleRun{ss: ss, src: pkt.Src, dst: pkt.Dst, group: pkt.GroupCall, at: time.Now()}
+		t.preambles[slot] = &preambleRun{ss: ss, src: pkt.Src, dst: pkt.Dst, group: pkt.GroupCall, at: t.clock.Now()}
 	case t.preambles[slot] != nil && t.preambles[slot].ss == ss:
 		t.preambles[slot] = nil
 	}
@@ -349,7 +356,7 @@ func (t *IPSCTranslator) Continue(streamID uint32, st streamSnapshot) {
 		rtpTimestamp: st.RTPTimestamp,
 		ipscSeq:      st.CallSeq,
 		headersSent:  3,
-		lastActivity: time.Now(),
+		lastActivity: t.clock.Now(),
 		lc:           st.LC,
 		haveLC:       st.HaveLC,
 	}
@@ -412,7 +419,7 @@ func (t *IPSCTranslator) CleanupStaleStreams(maxAge time.Duration) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	now := time.Now()
+	now := t.clock.Now()
 	cleaned := 0
 
 	for id, ss := range t.streams {
@@ -711,7 +718,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 
 	// Use call control as the stream identifier
 	rss, ok := t.reverseStreams[u.CallControl]
-	if ok && rss.ended && time.Since(rss.lastActivity) > endedCallHold {
+	if ok && rss.ended && t.clock.Since(rss.lastActivity) > endedCallHold {
 		ok = false
 	}
 	if !ok {
@@ -726,12 +733,12 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 		}
 		rss = &reverseStreamState{
 			streamID:     t.nextStreamID,
-			lastActivity: time.Now(),
+			lastActivity: t.clock.Now(),
 			rx:           rx,
 		}
 		t.reverseStreams[u.CallControl] = rss
 	}
-	rss.lastActivity = time.Now()
+	rss.lastActivity = t.clock.Now()
 
 	base := models.Packet{
 		Signature: string(dmrconst.CommandDMRD),
@@ -751,7 +758,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 	case u.Burst.Type() == ipscwire.BurstRaw:
 		results = t.rawToMMDVM(&u, base, rss)
 	case u.Burst.Type() == ipscwire.BurstSyncLost:
-		t.events = rss.rx.Lost(time.Since(t.epoch), t.events[:0])
+		t.events = rss.rx.Lost(t.clock.Since(t.epoch), t.events[:0])
 	case isData:
 		results = t.dataToMMDVM(&u, dt, base, rss)
 	default:
@@ -784,7 +791,7 @@ func (t *IPSCTranslator) dataToMMDVM(u *ipscwire.User, dt enums.DataType, base m
 		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
-	now := time.Since(t.epoch)
+	now := t.clock.Since(t.epoch)
 	t.events = rss.rx.Burst(now, &raw, u.Hint(now), t.events[:0])
 
 	if dt == enums.DataTypeVoiceLCHeader {
@@ -813,7 +820,7 @@ func (t *IPSCTranslator) rawToMMDVM(u *ipscwire.User, base models.Packet, rss *r
 		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
-	now := time.Since(t.epoch)
+	now := t.clock.Since(t.epoch)
 	h := u.Hint(now)
 	t.events = rss.rx.Burst(now, &raw, h, t.events[:0])
 
@@ -872,7 +879,7 @@ func (t *IPSCTranslator) voiceToMMDVM(u *ipscwire.User, base models.Packet, rss 
 		t.dropped(u, metrics.DropReasonIPSCBurst, err)
 		return nil
 	}
-	now := time.Since(t.epoch)
+	now := t.clock.Since(t.epoch)
 	t.events = rss.rx.Burst(now, &raw, u.Hint(now), t.events[:0])
 
 	var results []models.Packet

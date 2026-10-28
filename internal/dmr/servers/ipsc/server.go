@@ -31,6 +31,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -48,6 +49,7 @@ import (
 // IPSCServer is the IPSC master of DMRHub. One ipscsession.Master serves every
 // repeater, each with its own key.
 type IPSCServer struct {
+	clock      clock.Clock
 	cfg        *config.Config
 	db         *gorm.DB
 	hub        *hub.Hub
@@ -137,18 +139,20 @@ const (
 )
 
 func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
+	c := hub.Clock()
 	s := &IPSCServer{
+		clock:      c,
 		cfg:        cfg,
 		db:         db,
 		hub:        hub,
 		localID:    cfg.DMR.IPSC.NetworkID,
 		peers:      map[uint32]*peerState{},
-		epoch:      time.Now(),
+		epoch:      c.Now(),
 		done:       make(chan struct{}),
-		translator: NewIPSCTranslator(cfg.DMR.IPSC.NetworkID),
+		translator: newTranslator(c, cfg.DMR.IPSC.NetworkID),
 		egress:     map[uint32]*peerTranslator{},
 	}
-	s.pacer = newPacer(func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) }, func(pkt models.Packet) {
+	s.pacer = newPacer(c, func(k slotKey, frame []byte) { s.sendPacketToPeers(frame, k.peer) }, func(pkt models.Packet) {
 		if s.hub != nil {
 			s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, undeliverable.ReasonSlotBusy)
 		}
@@ -169,7 +173,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		s.m = m
 		s.out = make([]ipscsession.Output, 0, m.MaxOutputs())
 	}
-	s.keys = lookup.New("ipsc keys", lookup.TTL, s.loadPeerAuthKey)
+	s.keys = lookup.New(s.clock, "ipsc keys", lookup.TTL, s.loadPeerAuthKey)
 	s.keyFor = s.lookupPeerAuthKey
 	return s
 }
@@ -360,18 +364,18 @@ func (s *IPSCServer) closeSessions(ctx context.Context) {
 }
 
 func (s *IPSCServer) now() time.Duration {
-	return time.Since(s.epoch)
+	return s.clock.Since(s.epoch)
 }
 
 func (s *IPSCServer) ticker(ctx context.Context) {
 	defer s.wg.Done()
-	t := time.NewTicker(tickInterval)
+	t := s.clock.NewTicker(tickInterval)
 	defer t.Stop()
 	for {
 		select {
 		case <-s.done:
 			return
-		case <-t.C:
+		case <-t.C():
 			s.tick(ctx, s.now())
 		}
 	}
@@ -396,7 +400,7 @@ func (s *IPSCServer) handler(ctx context.Context) {
 	buf := make([]byte, ipscsession.MaxPacket)
 	oob := make([]byte, servers.RxOOBLen)
 	for {
-		n, addr, at, err := servers.ReadStamped(s.udp, s.stamped, buf, oob)
+		n, addr, at, err := servers.ReadStamped(s.udp, s.clock, s.stamped, buf, oob)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -419,7 +423,7 @@ func (s *IPSCServer) handler(ctx context.Context) {
 }
 
 func (s *IPSCServer) handlePacket(ctx context.Context, data []byte, addr *net.UDPAddr) error {
-	return s.handlePacketAt(ctx, data, addr, time.Now())
+	return s.handlePacketAt(ctx, data, addr, s.clock.Now())
 }
 
 // handlePacketAt handles the packet data from addr, which came at heard.
@@ -463,8 +467,8 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 	s.apply(ctx, out)
 	if p, ok := s.peers[raw.ID]; ok {
 		s.updateRepeaterDBTimes(p, uint(raw.ID), false)
-		if s.hub != nil && time.Since(p.lastClaim) >= claimRenew {
-			p.lastClaim = time.Now()
+		if s.hub != nil && s.clock.Since(p.lastClaim) >= claimRenew {
+			p.lastClaim = s.clock.Now()
 			id := uint(raw.ID)
 			s.peerJobs.Do(id, func() { s.hub.RenewOwnership(ctx, id) })
 		}
@@ -498,14 +502,14 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			}
 		case ipscsession.OutputUp:
 			slog.Info("IPSC peer registered", "peerID", o.ID)
-			p := &peerState{lastClaim: time.Now()}
+			p := &peerState{lastClaim: s.clock.Now()}
 			s.peers[o.ID] = p
 			s.updateRepeaterDBTimes(p, uint(o.ID), true)
 			if s.hub != nil {
 				id, peer := uint(o.ID), o.ID
 				since := s.heard
 				if since.IsZero() {
-					since = time.Now()
+					since = s.clock.Now()
 				}
 				s.peerJobs.Do(id, func() {
 					if s.hub.OwnerLeaving(ctx, id) {
@@ -544,7 +548,7 @@ func (s *IPSCServer) runBursts(bursts []burst) {
 	for _, b := range bursts {
 		at := b.at
 		if at.IsZero() {
-			at = time.Now()
+			at = s.clock.Now()
 		}
 		s.burstHandler(b.op, b.data, b.addr, at)
 	}
@@ -598,7 +602,7 @@ func (s *IPSCServer) updateRepeaterDBTimes(p *peerState, repeaterID uint, isConn
 	if s.db == nil {
 		return
 	}
-	now := time.Now()
+	now := s.clock.Now()
 	if !isConnect && !p.lastDBWrite.IsZero() && now.Sub(p.lastDBWrite) < dbWriteDebounceInterval {
 		return
 	}
@@ -728,7 +732,7 @@ func (s *IPSCServer) egressTranslator(repeaterID uint32) *IPSCTranslator {
 		if s.egress == nil {
 			s.egress = map[uint32]*peerTranslator{}
 		}
-		t := NewIPSCTranslator(s.localID)
+		t := newTranslator(s.clock, s.localID)
 		if s.hub != nil {
 			t.onUndeliverable = func(pkt models.Packet, reason string) {
 				s.hub.ReportUndeliverable(pkt, models.RepeaterTypeIPSC, reason)
@@ -737,7 +741,7 @@ func (s *IPSCServer) egressTranslator(repeaterID uint32) *IPSCTranslator {
 		e = &peerTranslator{t: t}
 		s.egress[repeaterID] = e
 	}
-	e.used = time.Now()
+	e.used = s.clock.Now()
 	return e.t
 }
 
@@ -749,7 +753,7 @@ func (s *IPSCServer) cleanupStaleStreams() {
 	defer s.egressMu.Unlock()
 	for id, e := range s.egress {
 		e.t.CleanupStaleStreams(staleStreamAge)
-		if forward, reverse := e.t.StreamCount(); forward == 0 && reverse == 0 && time.Since(e.used) > staleStreamAge {
+		if forward, reverse := e.t.StreamCount(); forward == 0 && reverse == 0 && s.clock.Since(e.used) > staleStreamAge {
 			delete(s.egress, id)
 		}
 	}

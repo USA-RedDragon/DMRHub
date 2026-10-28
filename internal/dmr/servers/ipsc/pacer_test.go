@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func (l *sendLog) times(k slotKey) []time.Time {
 func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 	t.Parallel()
 	log := newSendLog()
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: false}
@@ -77,7 +78,7 @@ func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 	t.Parallel()
 	log := newSendLog()
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	defer p.stop()
 
 	busy := slotKey{peer: 311860, slot: false}
@@ -100,7 +101,7 @@ func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 	t.Parallel()
 	log := newSendLog()
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: true}
@@ -126,7 +127,7 @@ func TestPacerKeepsTheGridAfterALateBurst(t *testing.T) {
 	var mu sync.Mutex
 	var times []time.Time
 	got := make(chan struct{}, n)
-	p := newPacer(func(slotKey, []byte) {
+	p := newPacer(clock.Real(), func(slotKey, []byte) {
 		mu.Lock()
 		times = append(times, time.Now())
 		i := len(times)
@@ -159,7 +160,7 @@ func TestPacerQueuesEveryBurst(t *testing.T) {
 	t.Parallel()
 	var started atomic.Int64
 	release := make(chan struct{})
-	p := newPacer(func(slotKey, []byte) {
+	p := newPacer(clock.Real(), func(slotKey, []byte) {
 		started.Add(1)
 		<-release
 	}, nil)
@@ -191,7 +192,7 @@ func (l *frameLog) send(_ slotKey, frame []byte) {
 func TestPacerQueuesASecondCallBehindTheFirst(t *testing.T) {
 	t.Parallel()
 	log := &frameLog{got: make(chan struct{}, 100)}
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: false}
@@ -211,7 +212,7 @@ func TestPacerQueuesASecondCallBehindTheFirst(t *testing.T) {
 func TestPacerStartsTheNextCallAfterALostTerminator(t *testing.T) {
 	t.Parallel()
 	log := &frameLog{got: make(chan struct{}, 100)}
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	defer p.stop()
 
 	k := slotKey{peer: 311860, slot: true}
@@ -232,21 +233,20 @@ func TestPacerDiscardsACallThatWaitedTooLong(t *testing.T) {
 	log := &frameLog{got: make(chan struct{}, 100)}
 	var mu sync.Mutex
 	var discarded []uint
-	p := newPacer(log.send, func(pkt models.Packet) {
+	offset := &offsetClock{Clock: clock.Real()}
+	p := newPacer(offset, log.send, func(pkt models.Packet) {
 		mu.Lock()
 		discarded = append(discarded, pkt.StreamID)
 		mu.Unlock()
 	})
 	defer p.stop()
-	var offset atomic.Int64
-	p.now = func() time.Time { return time.Now().Add(time.Duration(offset.Load())) }
 
 	k := slotKey{peer: 311860, slot: false}
 	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil, time.Time{})
 	<-log.got
 	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
 	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{StreamID: 2}, nil, time.Time{})
-	offset.Store(int64(maxCallWait + time.Second))
+	offset.by.Store(int64(maxCallWait + time.Second))
 	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{StreamID: 1}, nil, time.Time{})
 	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
 	<-log.got
@@ -259,4 +259,22 @@ func TestPacerDiscardsACallThatWaitedTooLong(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []uint{2, 2, 2}, discarded, "every burst of the discarded call, later ones too")
+}
+
+// offsetClock is the real clock moved on by an offset that the test sets.
+type offsetClock struct {
+	clock.Clock
+	by atomic.Int64
+}
+
+func (c *offsetClock) Now() time.Time {
+	return c.Clock.Now().Add(time.Duration(c.by.Load()))
+}
+
+func (c *offsetClock) Since(t time.Time) time.Duration {
+	return c.Now().Sub(t)
+}
+
+func (c *offsetClock) Until(t time.Time) time.Duration {
+	return t.Sub(c.Now())
 }

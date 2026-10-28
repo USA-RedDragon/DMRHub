@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -32,6 +33,7 @@ import (
 )
 
 type fakeClock struct {
+	clock.Clock
 	mu      sync.Mutex
 	offset  time.Duration
 	waiters []fakeWaiter
@@ -42,13 +44,21 @@ type fakeWaiter struct {
 	ch chan time.Time
 }
 
-func (c *fakeClock) now() time.Time {
+func (c *fakeClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return time.Now().Add(c.offset)
 }
 
-func (c *fakeClock) after(d time.Duration) <-chan time.Time {
+func (c *fakeClock) Since(t time.Time) time.Duration {
+	return c.Now().Sub(t)
+}
+
+func (c *fakeClock) Until(t time.Time) time.Duration {
+	return t.Sub(c.Now())
+}
+
+func (c *fakeClock) After(d time.Duration) <-chan time.Time {
 	ch := make(chan time.Time, 1)
 	c.mu.Lock()
 	c.waiters = append(c.waiters, fakeWaiter{at: time.Now().Add(c.offset + d), ch: ch})
@@ -94,12 +104,12 @@ type hangLog struct {
 
 func newHangPacer(t *testing.T) (*pacer, *fakeClock, *hangLog, *[]uint) {
 	t.Helper()
-	clock := &fakeClock{}
+	clock := &fakeClock{Clock: realClock()}
 	log := &hangLog{clock: clock, got: make(chan hangSend, 1000)}
 	var mu sync.Mutex
 	var discarded []uint
-	p := newPacer(func(k slotKey, frame []byte) {
-		s := hangSend{key: k, tag: frame[0], at: clock.now()}
+	p := newPacer(clock, func(k slotKey, frame []byte) {
+		s := hangSend{key: k, tag: frame[0], at: clock.Now()}
 		log.mu.Lock()
 		log.sent = append(log.sent, s)
 		log.mu.Unlock()
@@ -109,8 +119,6 @@ func newHangPacer(t *testing.T) (*pacer, *fakeClock, *hangLog, *[]uint) {
 		discarded = append(discarded, pkt.StreamID)
 		mu.Unlock()
 	})
-	p.now = clock.now
-	p.after = clock.after
 	t.Cleanup(p.stop)
 	return p, clock, log, &discarded
 }
@@ -319,7 +327,7 @@ func TestHandOverCarriesTheCallHang(t *testing.T) {
 func TestFinishHandoverHoldsForTheReportedHang(t *testing.T) {
 	t.Parallel()
 	p, clock, log, _ := newHangPacer(t)
-	s := &IPSCServer{pacer: p, localID: 1}
+	s := &IPSCServer{clock: clock, pacer: p, localID: 1}
 	b, err := json.Marshal(handoverReport{Hangs: []handedHang{{Slot: true, Left: callHangHold}}})
 	require.NoError(t, err)
 	var r handoverReport
@@ -331,4 +339,8 @@ func TestFinishHandoverHoldsForTheReportedHang(t *testing.T) {
 	log.none(t, "a CSBK went out in the reported call hang")
 	clock.endHang()
 	assert.Equal(t, byte('d'), log.next(t, time.Second).tag)
+}
+
+func realClock() clock.Clock {
+	return clock.Real()
 }

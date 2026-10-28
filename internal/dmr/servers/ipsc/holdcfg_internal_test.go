@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/stretchr/testify/assert"
@@ -74,7 +75,7 @@ func TestTheDataHangHoldComesFromTheConfig(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			p, log := configuredHangPacer(t, callHangHold, hold)
-			s := &IPSCServer{pacer: p, localID: 1}
+			s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
 			data := smsBursts(t, "one")
 			pkts := make([]models.Packet, 0, len(data))
 			for _, raw := range data {

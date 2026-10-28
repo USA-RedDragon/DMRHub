@@ -23,6 +23,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
@@ -162,7 +163,7 @@ func TestTranslateToIPSCRawBlocks(t *testing.T) {
 
 func TestCleanupKeepsATranslatorInUse(t *testing.T) {
 	t.Parallel()
-	s := &IPSCServer{localID: 12345}
+	s := &IPSCServer{clock: clock.Real(), localID: 12345}
 	first := s.egressTranslator(200001)
 	s.cleanupStaleStreams()
 	if s.egressTranslator(200001) != first {

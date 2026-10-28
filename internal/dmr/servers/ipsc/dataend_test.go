@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -135,7 +136,7 @@ func receive(t *testing.T, log *hangLog, n int, within time.Duration) []hangSend
 func TestPacerSendsAnMMDVMHostSMSWithoutGaps(t *testing.T) {
 	t.Parallel()
 	p, _, log, discarded := newHangPacer(t)
-	s := &IPSCServer{pacer: p, localID: 1}
+	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
 	first := mmdvmHostSMS(t, 1, 5, "first")
 	second := mmdvmHostSMS(t, 100, 5, "second")
 	sendAll(s, first)
@@ -158,7 +159,7 @@ func TestPacerSendsAnMMDVMHostSMSWithoutGaps(t *testing.T) {
 func TestPacerKeepsAHeldPreambleRunWhole(t *testing.T) {
 	t.Parallel()
 	p, clock, log, discarded := newHangPacer(t)
-	s := &IPSCServer{pacer: p, localID: 1}
+	s := &IPSCServer{clock: clock, pacer: p, localID: 1}
 	k := slotKey{peer: smsPeer, slot: false}
 	sendVoiceCall(p, k, 1, 'v')
 	receive(t, log, 3, time.Second)
@@ -179,7 +180,7 @@ func TestPacerKeepsAHeldPreambleRunWhole(t *testing.T) {
 func TestPacerSendsAOneStreamSMSWithoutGaps(t *testing.T) {
 	t.Parallel()
 	p, _, log, discarded := newHangPacer(t)
-	s := &IPSCServer{pacer: p, localID: 1}
+	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
 	data := smsBursts(t, "one")
 	raws := append(preambleBursts(t, 3, len(data)), data...)
 	pkts := make([]models.Packet, 0, len(raws))

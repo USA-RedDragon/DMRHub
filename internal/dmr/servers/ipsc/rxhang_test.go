@@ -61,7 +61,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeer(t *testing.T) {
 				p, clock, log, _ := newHangPacer(t)
 				k := slotKey{peer: 311860, slot: true}
 				hearVoiceCall(p, k, true)
-				end := clock.now()
+				end := clock.Now()
 				clock.advance(after)
 				p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, dt), nil, time.Time{})
 				log.none(t, "a data or CSBK call went out in the call hang of the peer")
@@ -96,7 +96,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeerWithoutItsTerminator(t *testing
 	p, clock, log, _ := newHangPacer(t)
 	k := slotKey{peer: 311860, slot: true}
 	hearVoiceCall(p, k, false)
-	last := clock.now()
+	last := clock.Now()
 	clock.advance(time.Second)
 	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in a voice call of the peer")
@@ -117,7 +117,7 @@ func TestPacerHoldsDataAfterADataCallFromThePeer(t *testing.T) {
 	for _, raw := range smsBursts(t, "hang") {
 		p.heard(k, smsPacketOf(1, raw))
 	}
-	end := clock.now()
+	end := clock.Now()
 	clock.advance(500 * time.Millisecond)
 	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in the data hang of the peer")
@@ -165,7 +165,7 @@ func TestHandOverCarriesTheCallHangOfThePeer(t *testing.T) {
 func TestServerHoldsDataAfterAnXPRVoiceCall(t *testing.T) {
 	t.Parallel()
 	p, clock, log, _ := newHangPacer(t)
-	s := &IPSCServer{pacer: p, localID: 1, translator: NewIPSCTranslator(1)}
+	s := &IPSCServer{clock: clock, pacer: p, localID: 1, translator: NewIPSCTranslator(1)}
 	call := readXPRCapture(t, "voicecall")
 	for _, raw := range call {
 		s.fromPeer(t.Context(), raw[0], raw, time.Now())
@@ -190,7 +190,7 @@ func TestPacerHoldsDataAfterADataCallFromThePeerWithoutItsLastBlock(t *testing.T
 	for _, raw := range bursts[:len(bursts)-1] {
 		p.heard(k, smsPacketOf(1, raw))
 	}
-	last := clock.now()
+	last := clock.Now()
 	p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
 	log.none(t, "a data call went out in a data call of the peer")
 	clock.advance(callHang)

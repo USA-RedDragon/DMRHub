@@ -240,13 +240,13 @@ func (s *IPSCServer) awaitHandover(id uint32, since time.Time) {
 		if early != nil {
 			defer func() { _ = early.Close() }()
 		}
-		t := time.NewTimer(handoverWait)
+		t := s.clock.NewTimer(handoverWait)
 		defer t.Stop()
 		for {
 			var report *handoverReport
 			select {
 			case <-s.done:
-			case <-t.C:
+			case <-t.C():
 				slog.Warn("No handover came for an IPSC peer that moved here", "peerID", id)
 			case b, ok := <-earlyCh:
 				earlyCh = nil
@@ -338,7 +338,7 @@ func (s *IPSCServer) finishHandover(id uint32, since time.Time, report *handover
 		}
 	}
 	m.held = nil
-	m.done, m.grace = true, time.Now().Add(handedGrace)
+	m.done, m.grace = true, s.clock.Now().Add(handedGrace)
 }
 
 // sendHanded sends the peer id the packets of a report that it did not get
@@ -389,7 +389,7 @@ func (s *IPSCServer) route(rp hub.RoutedPacket) {
 			s.forward(id, m, rp.Packet)
 			s.movingMu.Unlock()
 			return
-		case time.Now().After(m.grace):
+		case s.clock.Now().After(m.grace):
 			delete(s.moving, id)
 		case m.seen[keyOf(rp.Packet)]:
 			s.movingMu.Unlock()

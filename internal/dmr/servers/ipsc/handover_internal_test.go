@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -32,7 +33,7 @@ import (
 )
 
 func sentPacer(since time.Time, before ...time.Duration) *pacer {
-	p := newPacer(func(slotKey, []byte) {}, nil)
+	p := newPacer(clock.Real(), func(slotKey, []byte) {}, nil)
 	q := &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
 	for i, d := range before {
 		q.sent = append(q.sent, sentPacket{
@@ -101,9 +102,9 @@ func TestHandOverKeepsTheCallOnTime(t *testing.T) {
 	t.Parallel()
 	const id, copies, live = uint32(311860), 9, 10
 	log := newSendLog()
-	p := newPacer(log.send, nil)
+	p := newPacer(clock.Real(), log.send, nil)
 	t.Cleanup(p.stop)
-	s := &IPSCServer{pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
+	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
 	var report handoverReport
 	for i := range copies {
 		pkt := handedVoice(i)
@@ -155,14 +156,14 @@ func TestAnEarlyHandoverSendsWhatFollowsIt(t *testing.T) {
 	t.Parallel()
 	const id = uint32(311860)
 	got := make(chan uint16, 20)
-	p := newPacer(func(_ slotKey, frame []byte) {
+	p := newPacer(clock.Real(), func(_ slotKey, frame []byte) {
 		u, err := ipscwire.DecodeUser(frame)
 		if assert.NoError(t, err) {
 			got <- u.RTP.Seq
 		}
 	}, nil)
 	t.Cleanup(p.stop)
-	s := &IPSCServer{pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
+	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
 	since := time.Now()
 	s.startHandover(id, since, reportOf(t, 0, 1, 2))
 	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(2)})

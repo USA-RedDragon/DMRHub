@@ -22,16 +22,19 @@ package servers
 import (
 	"net"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 )
 
 // ReadStamped reads a packet of c into b and returns the time it came: the
 // time the kernel got it when stamped, as StampArrivals reported, so that
-// a reader that runs late does not make the packet late, or else now. oob
-// is room for the stamp, RxOOBLen octets.
-func ReadStamped(c *net.UDPConn, stamped bool, b, oob []byte) (int, *net.UDPAddr, time.Time, error) {
-	if !stamped {
+// a reader that runs late does not make the packet late, or else now on
+// clk. The kernel stamps the real time, so only the real clock uses them.
+// oob is room for the stamp, RxOOBLen octets.
+func ReadStamped(c *net.UDPConn, clk clock.Clock, stamped bool, b, oob []byte) (int, *net.UDPAddr, time.Time, error) {
+	if !stamped || !clock.IsReal(clk) {
 		n, addr, err := c.ReadFromUDP(b)
-		return n, addr, time.Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
+		return n, addr, clock.Or(clk).Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
 	}
 	n, oobn, _, addr, err := c.ReadMsgUDP(b, oob)
 	at, ok := Arrival(oob[:oobn])

@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -99,7 +100,7 @@ func awaitStamps(t *testing.T, c *net.UDPConn, peer *net.UDPConn) {
 			t.Fatalf("probe: %v", err)
 		}
 		time.Sleep(20 * time.Millisecond)
-		if _, _, at, err := servers.ReadStamped(c, true, buf, oob); err == nil && at.Sub(sent) < 10*time.Millisecond {
+		if _, _, at, err := servers.ReadStamped(c, clock.Real(), true, buf, oob); err == nil && at.Sub(sent) < 10*time.Millisecond {
 			return
 		}
 	}

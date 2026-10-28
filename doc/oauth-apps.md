@@ -16,11 +16,11 @@ An app needs no registration. No admin or user adds it first, and there is no se
 
 The user allows the app on the consent page of DMRHub.
 
-<!-- screenshot: oauth-consent.png | /oauth/authorize for the app http://localhost:8080 asking for talkgroups:read and lastheard:read, signed in as N0CALL, with the Don't allow and Allow buttons -->
+![The consent page of DMRHub for the app http://localhost:8080, with the Allow and Don't allow buttons](Screenshots/oauth-consent.png)
 
 Each user sees the apps they allowed in **Settings** (`<siteurl>/settings`), in the **Apps** card. The card shows the app, what it **Can use**, the day it was **Allowed**, and when it was **Last used**. **Remove** signs the app out at once.
 
-<!-- screenshot: settings-apps-card.png | The Apps card on /settings with one allowed app, showing the Can use, Allowed and Last used columns and the Remove button -->
+![The Apps card with one allowed app and its Remove button](Screenshots/settings-apps-card.png)
 
 ## Endpoints
 

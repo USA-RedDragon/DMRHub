@@ -10,7 +10,7 @@ In this page, `<siteurl>` is the URL of your DMRHub server.
 
 Go to **Admin**, then **Setup**, and open the **Plugins** tab (`<siteurl>/admin/setup#plugins`).
 
-<!-- screenshot: setup-plugins-card.png | The Plugins card in DMR Settings on /admin/setup, with "Run plugins inside DMRHub" on and "Accept plugins that run as their own programs" on, so that the Port, Certificate file and Key file fields show -->
+![The Plugins tab of the Setup page](../Screenshots/setup-plugins-card.png)
 
 | Setting                                       | What it does                                                                | Configuration key        | Default |
 | --------------------------------------------- | --------------------------------------------------------------------------- | ------------------------ | ------- |
@@ -30,7 +30,7 @@ The listener binds to `dmr.plugins.bind`, which is `[::]` (all addresses) by def
 
 Go to **Admin**, then **Plugins** (`<siteurl>/admin/plugins`). The page lists each plugin with its name, where it runs, its version, its IDs, its status and its calls today.
 
-<!-- screenshot: admin-plugins-list.png | /admin/plugins with the built-in Parrot and Location server plugins running, one uploaded plugin and one external plugin, showing the Runs and Status columns -->
+![The Plugins page with the built-in plugins and an uploaded plugin](../Screenshots/admin-plugins-list.png)
 
 The **Runs** column shows one of these:
 
@@ -70,7 +70,7 @@ You cannot remove a built-in plugin. Turn it off on its page instead. You can ch
 3. Change the IDs if necessary. Select the hosts that the plugin can reach.
 4. Click **Upload and start**.
 
-<!-- screenshot: admin-plugin-upload.png | /admin/plugins/upload after a .wasm file is chosen, showing the manifest (Name, Version, Author), the IDs field and the Network host checkboxes -->
+![The Upload a plugin page after a .wasm file is chosen, with its manifest and IDs](../Screenshots/admin-plugin-upload.png)
 
 A plugin file is at most 32 MiB. DMRHub refuses a file when:
 
@@ -94,7 +94,7 @@ Open the plugin from the plugins page. Its page has:
 
 Click **Save** to keep the changes.
 
-<!-- screenshot: admin-plugin-inside.png | /admin/plugins/<id> of an uploaded plugin, with On, IDs, Network and Upload a new version -->
+![The page of an uploaded plugin, with the On switch, its IDs and Upload a new version](../Screenshots/admin-plugin-inside.png)
 
 ## Add a plugin that runs as its own program
 
@@ -103,7 +103,7 @@ Click **Save** to keep the changes.
 3. Give it a **Name** and its **IDs**, as one or more ranges. Use **Add a range** for each more range. Click **Save**.
 4. Copy the token. DMRHub shows it only once.
 
-<!-- screenshot: admin-plugin-token.png | /admin/plugins/new after Save, showing the one-time token with the Copy button, the Address and the Certificate fingerprint -->
+![The one-time token of a new external plugin, with the Copy button](../Screenshots/admin-plugin-token.png)
 
 The **Connection** card of the plugin shows the address and the certificate fingerprint that the plugin connects with.
 

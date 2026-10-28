@@ -19,7 +19,7 @@ You need an account to enroll a hotspot, pick talkgroups, read your text message
 3. Click **Create User**.
 4. If you gave an email address, open the link in the email that DMRHub sends to it. The link works once, for 24 hours. Until you open it, the address is not confirmed, and DMRHub sends no password reset link to it.
 
-<!-- screenshot: register.png | the registration form at /register, filled in with N0CALL and 3000001 -->
+![The Register page, filled in](../Screenshots/register.png)
 
 The message that comes up tells you what happens next:
 

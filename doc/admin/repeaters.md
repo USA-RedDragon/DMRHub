@@ -4,7 +4,7 @@ The **Repeaters** page in the **Admin** menu (`<siteurl>/admin/repeaters`) lists
 
 For each repeater the table shows the **DMR Radio ID**, the **Type** (MMDVM or IPSC), **Last Connected**, **Last Ping**, the static and dynamic talkgroups of each timeslot, **Simplex**, **Trusted** and **Created**.
 
-<!-- screenshot: admin-repeaters.png | /admin/repeaters with one MMDVM repeater 310001, showing the Edit and Delete buttons and the Trusted column -->
+![The Repeaters page under Admin](../Screenshots/admin-repeaters.png)
 
 ## Edit or delete a repeater
 

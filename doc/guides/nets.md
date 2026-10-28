@@ -6,7 +6,7 @@ A net is a session on a talkgroup where hams check in. DMRHub counts a check-in 
 
 Go to **Nets** (`<siteurl>/nets`). Anyone can open this page. It shows the featured nets, the upcoming scheduled nets, and the active and past nets with their check-in counts.
 
-<!-- screenshot: nets.png | the Nets page at /nets with one active net and one upcoming scheduled net -->
+![The Nets page with an active net and the weekly scheduled net](../Screenshots/nets.png)
 
 The page of a talkgroup (**Talkgroups**, then click the talkgroup) also shows its active net and its scheduled nets.
 
@@ -42,7 +42,7 @@ A talkgroup has at most one active net. To end the net, click **Stop Net** on th
 2. Fill in **Name**, **Talkgroup**, **Day of Week**, **Time**, and optionally **Description** and **Duration**. The day and time are in the time zone of your browser.
 3. Leave **Enabled** on, and click **Create**.
 
-<!-- screenshot: scheduled-net-form.png | the New Scheduled Net form at /nets/scheduled/new filled in for a weekly net on TG 3100 -->
+![The New Scheduled Net form, filled in](../Screenshots/scheduled-net-form.png)
 
 DMRHub starts the net at that time each week. The page of the talkgroup lists the scheduled nets in UTC, with **Edit** and **Delete**.
 

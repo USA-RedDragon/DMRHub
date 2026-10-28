@@ -14,7 +14,7 @@ The configuration keys are `dmr.ipsc.enabled`, `dmr.ipsc.bind`, `dmr.ipsc.port` 
 
 When IPSC is on, **Motorola IPSC** shows in the **Repeater Type** field of the **Enroll New Repeater** page. DMRHub makes a 40-digit hex auth key for each IPSC repeater and shows it once.
 
-<!-- screenshot: admin-setup-ipsc.png | /admin/setup, the IPSC Settings card with Enabled on, port 50000 and network ID 310999 -->
+![The IPSC tab of the Setup page with network ID 310999](../Screenshots/admin-setup-ipsc.png)
 
 ## Hold times for data after a call
 

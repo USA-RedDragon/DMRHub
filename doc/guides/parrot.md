@@ -11,7 +11,7 @@ The parrot is a plugin. It works only when your admin installed it. It usually a
 3. Talk for a few seconds, then release the PTT.
 4. About 3 seconds after your call ends, the parrot plays your call back to you as a private call from 9990.
 
-<!-- screenshot: lastheard-parrot.png | the Last Heard page at /lastheard with a call from N0CALL to 9990 and the reply from 9990 -->
+![The Last Heard page with a call from N0CALL to 9990 and the reply of the parrot](../Screenshots/lastheard-parrot.png)
 
 The parrot keeps at most 3 minutes of one call.
 

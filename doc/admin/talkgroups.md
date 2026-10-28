@@ -20,7 +20,7 @@ A group call goes only to a talkgroup that exists. DMRHub drops a group call to 
 
 4. Click **Save**.
 
-<!-- screenshot: admin-new-talkgroup.png | /admin/talkgroups/new filled in with ID 91, name "Doc TG", one admin N0CALL -->
+![The New Talkgroup page filled in with talkgroup 91, Chat](../Screenshots/admin-new-talkgroup.png)
 
 ## Edit a talkgroup
 
@@ -34,4 +34,4 @@ The admins of a talkgroup can also edit it on their **Owned** talkgroups page, a
 
 On the **Talkgroups** page, click **Delete** in the row of the talkgroup, then click **OK** in the browser message.
 
-<!-- screenshot: admin-talkgroups.png | /admin/talkgroups with talkgroup 91 in the table, showing the Edit and Delete buttons and the Admins and Net Control Operators columns -->
+![The Talkgroups page under Admin with the Edit and Delete buttons](../Screenshots/admin-talkgroups.png)

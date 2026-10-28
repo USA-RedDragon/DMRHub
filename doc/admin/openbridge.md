@@ -36,7 +36,7 @@ To change a peer later, click its ID on the **Peers** page.
 
 If you lose the password, open the page of the peer and click **Rotate password**, then **Rotate password** again in the dialog. The owner of the peer or an admin can do this. DMRHub makes a new password and shows it once. The old password stops working at once on every replica, so the link stays down until you put the new password in the other server.
 
-<!-- screenshot: admin-new-peer.png | /admin/peers/new filled in with peer ID 3000900, IP 192.0.2.10, port 62035, receive and transmit on -->
+![The New OpenBridge Peer page filled in with peer 3000900 at 192.0.2.10, port 62035](../Screenshots/admin-new-peer.png)
 
 ## Add the rules of a peer
 
@@ -50,7 +50,7 @@ Open the page of the peer. The **Rules** card has a **Receive** group for calls 
 
 To delete a rule, click **Delete** on its row, then **Delete** again. The owner of the peer or an admin can change the rules. They take effect at once, on every replica.
 
-<!-- screenshot: peer-rules.png | the Rules card of peer 3000900 with receive rules to 91 and 3100, transmit rules to 3100 and 31665 and from radios 3000001 to 3000099, and Private calls on for transmit -->
+![The Rules card of peer 3000900](../Screenshots/peer-rules.png)
 
 A call passes the rules of a direction when one **To** rule covers its destination and one **From** rule covers its caller. When a direction has rules of only one kind, the other kind does not restrict. This follows the `TGID_ACL` and `SUB_ACL` of an HBlink3 or FreeDMR OpenBridge system. A transmit rule for talkgroup 3100 sends the peer the calls to talkgroup 3100 and no private calls.
 

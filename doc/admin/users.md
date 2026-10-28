@@ -16,7 +16,7 @@ To approve a user:
 
 The RadioID.net check shows that the DMR ID and the callsign go together. It does not show that the person who registered holds that callsign. Use your own judgment before you approve a user.
 
-<!-- screenshot: admin-user-approvals.png | /admin/users/approval with one user waiting (N0CALL, 3000001), the Approve button visible -->
+![The Approvals page with one user waiting and the Approve button](../Screenshots/admin-user-approvals.png)
 
 ## Who can register
 
@@ -105,7 +105,7 @@ DMRHub logs the user out everywhere. When the user logs in with the temporary pa
 
 When SMTP is on, users can also reset their own password with **Forgot your password?** on the login page. DMRHub sends the link only to the email address of the account, and only when the user confirmed that address. The link works once, for 1 hour. Users set and confirm their address in the **Email** card on **Settings**.
 
-<!-- screenshot: admin-reset-password.png | /admin/users after clicking Reset password: the "Reset the password of N0CALL" dialog with a temporary password -->
+![The Reset password dialog of a user](../Screenshots/admin-reset-password.png)
 
 ## Make a user an admin
 
@@ -115,4 +115,4 @@ Only the super admin can do this. On the **Users** page, turn on the **Admin?** 
 
 Only the super admin can do this. On the **Users** page, click **Delete** in the row of the user, then click **OK** in the browser message. Click **Cancel** to keep the user.
 
-<!-- screenshot: admin-users.png | /admin/users with two users (N0CALL 3000001 admin, N1CALL 3000002), showing the Edit, Reset password and Delete buttons and the Suspend? and Admin? boxes -->
+![The Users page under Admin](../Screenshots/admin-users.png)

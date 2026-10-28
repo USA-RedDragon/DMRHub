@@ -28,7 +28,7 @@ You can search by:
 
 Click a row to see the details of the message and its raw bytes.
 
-<!-- screenshot: admin-messages.png | /admin/messages with a search for From ID 3000001 and one result row open, showing the details and raw bytes -->
+![The Messages page under Admin with the text messages of the network](../Screenshots/admin-messages.png)
 
 ## Message access log
 

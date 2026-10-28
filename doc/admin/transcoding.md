@@ -26,7 +26,7 @@ The order of the list is the order in which a call tries the servers. Each conve
 
 Each server must accept the setting that makes it report the decoder status of each frame (`PKT_SPCHFMT`). A server that refuses this setting converts no call.
 
-<!-- screenshot: admin-setup-transcoding.png | /admin/setup, the Transcoding card with one AMBE server ambeserver.example.org:2460, calls at once 1, and its Status -->
+![The Transcoding tab of the Setup page](../Screenshots/admin-setup-transcoding.png)
 
 ## Check the servers
 

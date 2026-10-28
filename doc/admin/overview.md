@@ -42,7 +42,7 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 | **Plugins** | `<siteurl>/admin/plugins` | Add and change plugins. See [Plugins](plugins.md). |
 | **Setup** | `<siteurl>/admin/setup` | Change the settings. See [The Setup page](configuration.md#the-setup-page). |
 
-<!-- screenshot: admin-menu.png | any page, logged in as an admin, with the Admin menu open in the navigation bar -->
+![The Admin menu open in the navigation bar](../Screenshots/admin-menu.png)
 
 ## Admin tasks
 

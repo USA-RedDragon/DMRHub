@@ -2,7 +2,7 @@
 
 The **Last Heard** page (`<siteurl>/lastheard`) lists the recent transmissions on the network.
 
-<!-- screenshot: lastheard.png | the Last Heard page at /lastheard, logged in, with voice and SMS rows -->
+![The Last Heard page with voice calls and text messages](../Screenshots/lastheard.png)
 
 ## What the list shows
 

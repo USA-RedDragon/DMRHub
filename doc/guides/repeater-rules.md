@@ -2,7 +2,7 @@
 
 The owner of a hotspot or repeater, and an admin, can set rules for it on the **Rules** card of the repeater page (click the ID of the repeater on the **Repeaters** page). The rules apply to traffic in both directions: what the repeater sends to the network, and what the network sends to the repeater.
 
-<!-- screenshot: repeater-rules.png | the Rules card of a repeater page with timeslot 2 locked to two users and TG 91 blocked -->
+![The Rules card of hotspot 300000101 with timeslot 2 locked to two users and TG 91 blocked](../Screenshots/repeater-rules.png)
 
 ## Lock a timeslot to listed users
 

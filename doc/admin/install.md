@@ -35,9 +35,9 @@ The wizard is the only way to make the first admin user. It starts while no admi
 
 The wizard changes settings only on a new DMRHub. When an admin exists, it shows `DMRHub has an admin, so the setup wizard cannot change the settings.` When DMRHub cannot reach a database setting that the wizard saved before in `dmrhub-database.json`, or a SQLite file that has a user, it shows `A database setting was saved before, so the setup wizard cannot change it.` In both cases, fix the setting in the config file, the environment or the flags, then restart DMRHub. A database setting there wins over `dmrhub-database.json`.
 
-<!-- screenshot: setup-wizard.png | /setup on a fresh install: the Setup page with the General Settings card at the top -->
+![The setup wizard with the General Settings card at the top](../Screenshots/setup-wizard-general.png)
 
-<!-- screenshot: setup-initial-user.png | /setup/user: the first-admin banner above the Create the first admin card, filled in with N0CALL and 3000001 -->
+![The Create the first admin page, filled in with the DMR ID 3000001 and the callsign N0CALL](../Screenshots/setup-admin-user.png)
 
 ## Docker
 

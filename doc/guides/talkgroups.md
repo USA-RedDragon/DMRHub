@@ -26,7 +26,7 @@ Make a voice call to TG 4000 on the timeslot. DMRHub removes the dynamic talkgro
 4. In **TS1 Dynamic TG** and **TS2 Dynamic TG**, pick a dynamic talkgroup, or **0 - None**.
 5. Click **Save**.
 
-<!-- screenshot: repeaters-edit.png | the Repeaters page at /repeaters with one row in edit mode and TS2 static talkgroups selected -->
+![The Repeaters page with one row in edit mode](../Screenshots/repeaters-edit.png)
 
 If an admin deletes a talkgroup while you edit, the save fails with "talkgroup N does not exist" and nothing changes.
 

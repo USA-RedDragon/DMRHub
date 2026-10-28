@@ -28,7 +28,7 @@ The Browser Radio does not ask for your DMRHub password. It sends you to the DMR
    - Change the talkgroups of your hotspots
 6. Click **Allow**. DMRHub sends you back to the Browser Radio.
 
-<!-- screenshot: browser-radio-login.png | the Browser Radio start page with the Hub field and the Log in with DMRHub button -->
+![The start page of the Browser Radio with the Hub field and the Log in with DMRHub button](../Screenshots/browser-radio-login.png)
 
 The Browser Radio keeps your login on this device. To end it, click **Log out** in the Browser Radio **Settings**, **Connection**, or click **Remove** next to `https://radio.dmrhub.net` in the **Apps** card on DMRHub **Settings**. See [Manage your account](account.md#apps).
 
@@ -44,7 +44,7 @@ Use a hotspot ID for the Browser Radio that no other hotspot uses at the same ti
 
 Check **Callsign**, then click **Connect**.
 
-<!-- screenshot: browser-radio-hotspots.png | the Browser Radio Welcome page with two hotspots, one marked READY -->
+![The Welcome page of the Browser Radio with the hotspots of the account, one marked READY](../Screenshots/browser-radio-hotspots.png)
 
 The new hotspot also shows on the Repeaters page of DMRHub.
 

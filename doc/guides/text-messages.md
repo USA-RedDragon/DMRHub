@@ -19,7 +19,7 @@ SMS Storage is off by default. While it is off, DMRHub keeps no copy of your mes
 2. Go to **Settings** (`<siteurl>/settings`).
 3. In the **SMS Storage** card, turn on the switch.
 
-<!-- screenshot: settings-sms-storage.png | the SMS Storage card on /settings with the switch on -->
+![The SMS Storage card with the switch on](../Screenshots/settings-sms-storage.png)
 
 To turn it off, turn off the switch, then click **Turn off**. Your inbox and outbox are then empty.
 
@@ -37,7 +37,7 @@ RadioID.net must list the ID under your callsign. Hotspot and repeater IDs go on
 1. Go to **Messages** (`<siteurl>/messages`).
 2. Click **Inbox** for private messages to your radio IDs, or **Outbox** for messages from your radio IDs, group messages too.
 
-<!-- screenshot: messages-inbox.png | the Messages page at /messages with the Inbox tab open and two messages -->
+![The Messages page with the Inbox tab open](../Screenshots/messages-inbox.png)
 
 New messages appear while the page is open. Each box shows the 250 newest messages. The **State** column shows whether the other radio accepted the message. See the [Messages reference](../messages.md) for what each column means.
 

@@ -32,7 +32,7 @@ DMRHub calculates the APRS-IS passcode from the callsign, so there is nothing to
 
 Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.
 
-<!-- screenshot: admin-setup-positions.png | /admin/setup, the Positions card with interval 5, longest time 30 days, APRS-IS callsign N0CALL-10 and the default server -->
+![The Positions tab of the Setup page with the APRS-IS callsign N0CALL-10](../Screenshots/admin-setup-positions.png)
 
 ## The map
 

@@ -58,7 +58,7 @@ MMDVMHost with `Duplex=0` (a simplex hotspot) uses only timeslot 2. In our runs,
 
 1. Open `<siteurl>/repeaters/<repeater ID>`. **Last Connected** and **Last Ping** must show the current time. **Software ID** and **Package ID** show the program that logged in.
 
-   <!-- screenshot: external-repeater-dmrgateway.png | /repeaters/300000101 while DMRGateway 20260713 is connected: Protocol MMDVM, Last Connected and Last Ping now, Package ID MMDVM, Software ID 20260713, static talkgroups 91 on TS1 and 3100 on TS2 -->
+   ![The page of hotspot 300000102 while DMRGateway is connected, with its software and package IDs](../Screenshots/external-repeater-dmrgateway.png)
 
 2. Make a call on a talkgroup of the repeater from another radio or hotspot. The program must log the call, and the call must show in **Last Heard**.
 3. For an OpenBridge peer, make a call on a talkgroup that the peer carries, and check the log of the server.

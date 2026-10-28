@@ -47,7 +47,7 @@ Each tab has its own link, such as `<siteurl>/admin/setup#ipsc`, and its own **S
 
 Next to each setting, a chip shows where its value comes from: **Default**, **Saved in Setup**, **Config file**, **Environment** with the name of the variable, or **Command line** with the name of the flag. A setting that is saved in Setup and differs from its default has a **Use the default** link.
 
-<!-- screenshot: admin-setup.png | /admin/setup as an admin, the top of the page with the General Settings card -->
+![The Setup page under Admin](../Screenshots/admin-setup.png)
 
 ### Setup settings
 

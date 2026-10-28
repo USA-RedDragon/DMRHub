@@ -7,4 +7,4 @@ The **Nets** table shows the ID, the talkgroup, the status (**Active** or **Ende
 - Turn on the **Showcase** switch of a net or a scheduled net to show it at the top of the public **Nets** page.
 - Click **Edit** in the row of a scheduled net to change it, or **Delete** to delete it.
 
-<!-- screenshot: admin-nets.png | /admin/nets with one ended net and one scheduled net, the Showcase switch on for the scheduled net -->
+![The Nets page under Admin with an ended net and the scheduled net](../Screenshots/admin-nets.png)

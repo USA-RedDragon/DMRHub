@@ -22,7 +22,7 @@ The ID must start with the DMR ID of your account, unless the admin turned off t
 5. Leave **Simplex Repeater** off for a normal hotspot. When it is on, DMRHub sends what it hears on one timeslot back on the other timeslot.
 6. Click **Save**.
 
-<!-- screenshot: new-repeater.png | the New Repeater form at /repeaters/new with DMR Radio ID 300000101 -->
+![The New Repeater page with the DMR Radio ID 300000101](../Screenshots/setup-new-repeater.png)
 
 DMRHub then opens the connect page of the hotspot. It shows:
 
@@ -30,7 +30,7 @@ DMRHub then opens the connect page of the hotspot. It shows:
 - A status at the top: **Waiting for the first login** until the hotspot logs in, then **Connected now** with the time of the last ping. The page updates it while you wait.
 - **Set up your software**: one tab for each program, with the values of your hotspot already filled in. The tabs are Pi-Star, WPSD, MMDVMHost, DMRGateway, DroidStar, HBlink3 and Other. A **Tested** mark shows the version that the steps were tested with.
 
-<!-- screenshot: connect-hotspot.png | the connect page at /repeaters/300000101/connect right after enroll -->
+![The connect page of hotspot 300000101 right after it was added](../Screenshots/connect-hotspot.png)
 
 > **Important:** Copy the password now. DMRHub shows it only once. If you lose it, click **Rotate password** on the page of the hotspot. See [Rotate the password](#rotate-the-password).
 
@@ -70,7 +70,7 @@ The old password stops working at once, and DMRHub drops the connection of the h
 3. Click the hotspot ID to open its page. It shows **Online** or **Offline**, the frequencies, color code and software that the hotspot sent, and the last calls through it.
 4. Call the parrot to test your audio. See [Test with the parrot](parrot.md).
 
-<!-- screenshot: repeater-details.png | the repeater page at /repeaters/300000101 of a connected hotspot -->
+![The page of hotspot 300000101 while it is connected](../Screenshots/repeater-details.png)
 
 ## Delete a hotspot
 

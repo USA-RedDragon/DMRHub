@@ -24,7 +24,7 @@ Position tracking is off for each radio until you turn it on.
 4. Pick **Report every** (how often the radio reports) and **Keep positions for** (how long DMRHub keeps them).
 5. Click **Save**.
 
-<!-- screenshot: radio-positions-settings.png | the settings page of one radio at /positions/3000001 with tracking on, 10 minutes and 7 days -->
+![The page of radio 3000001 with its position settings](../Screenshots/radio-positions-settings.png)
 
 The next time the radio registers or DMRHub hears it, the location server asks the radio to report at that interval.
 
@@ -34,7 +34,7 @@ The list has your account ID and the radio IDs that you added on the Settings pa
 
 On the **Positions** page, the map shows where each radio last reported from, and its track. Pick **24 hours**, **7 days** or **30 days** to see a longer track. Click a radio, on the map or in the list, to see its last position, its accuracy, and the repeater and timeslot it came through.
 
-<!-- screenshot: positions-map.png | the Positions page at /positions with one radio and its track for 24 hours -->
+![The Positions page with two radios and their tracks](../Screenshots/positions-map.png)
 
 ## Share your positions with other users
 

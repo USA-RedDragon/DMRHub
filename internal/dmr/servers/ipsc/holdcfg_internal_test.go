@@ -20,6 +20,7 @@ package ipsc
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -49,19 +50,21 @@ func TestTheCallHangHoldComesFromTheConfig(t *testing.T) {
 	for name, hold := range map[string]time.Duration{"off": 0, "400ms": 400 * time.Millisecond} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			p, log := configuredHangPacer(t, hold, dataHangHold)
-			k := slotKey{peer: 311860, slot: true}
-			sendVoiceCall(p, k, 1, 'v')
-			sent := receive(t, log, 3, time.Second)
-			end := sent[2]
-			require.Equal(t, byte('V'), end.tag)
+			synctest.Test(t, func(t *testing.T) {
+				p, log := configuredHangPacer(t, hold, dataHangHold)
+				k := slotKey{peer: 311860, slot: true}
+				sendVoiceCall(p, k, 1, 'v')
+				sent := receive(t, log, 3, time.Second)
+				end := sent[2]
+				require.Equal(t, byte('V'), end.tag)
 
-			p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
-			got := log.next(t, time.Second)
-			assert.Equal(t, byte('d'), got.tag)
-			gap := got.at.Sub(end.at)
-			assert.GreaterOrEqual(t, gap, hold)
-			assert.Less(t, gap, hold+3*burstTime)
+				p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
+				got := log.next(t, time.Second)
+				assert.Equal(t, byte('d'), got.tag)
+				gap := got.at.Sub(end.at)
+				assert.GreaterOrEqual(t, gap, hold)
+				assert.Less(t, gap, hold+3*burstTime)
+			})
 		})
 	}
 }
@@ -74,21 +77,23 @@ func TestTheDataHangHoldComesFromTheConfig(t *testing.T) {
 	for name, hold := range map[string]time.Duration{"off": 0, "400ms": 400 * time.Millisecond} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			p, log := configuredHangPacer(t, callHangHold, hold)
-			s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
-			data := smsBursts(t, "one")
-			pkts := make([]models.Packet, 0, len(data))
-			for _, raw := range data {
-				pkts = append(pkts, smsPacketOf(7, raw))
-			}
-			sendAll(s, pkts)
-			s.sendTo(smsPeer, smsPacketOf(8, preambleBursts(t, 1, 0)[0]))
+			synctest.Test(t, func(t *testing.T) {
+				p, log := configuredHangPacer(t, callHangHold, hold)
+				s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
+				data := smsBursts(t, "one")
+				pkts := make([]models.Packet, 0, len(data))
+				for _, raw := range data {
+					pkts = append(pkts, smsPacketOf(7, raw))
+				}
+				sendAll(s, pkts)
+				s.sendTo(smsPeer, smsPacketOf(8, preambleBursts(t, 1, 0)[0]))
 
-			got := receive(t, log, len(pkts), time.Second)
-			next := log.next(t, callHang+time.Second)
-			gap := next.at.Sub(got[len(got)-1].at)
-			assert.GreaterOrEqual(t, gap, hold)
-			assert.Less(t, gap, hold+3*burstTime)
+				got := receive(t, log, len(pkts), time.Second)
+				next := log.next(t, callHang+time.Second)
+				gap := next.at.Sub(got[len(got)-1].at)
+				assert.GreaterOrEqual(t, gap, hold)
+				assert.Less(t, gap, hold+3*burstTime)
+			})
 		})
 	}
 }

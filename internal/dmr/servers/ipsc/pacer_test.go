@@ -22,10 +22,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,66 +57,72 @@ func (l *sendLog) times(k slotKey) []time.Time {
 
 func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 	t.Parallel()
-	log := newSendLog()
-	p := newPacer(clock.Real(), log.send, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := newSendLog()
+		p := newPacer(clock.Real(), log.send, nil)
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: false}
-	start := time.Now()
-	for range 6 {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
-	}
-	for range 6 {
-		<-log.got
-	}
-	times := log.times(k)
-	require.Len(t, times, 6)
-	assert.Less(t, times[0].Sub(start), 30*time.Millisecond, "the first burst on an idle slot goes at once")
-	for i := 1; i < len(times); i++ {
-		assert.GreaterOrEqual(t, times[i].Sub(times[0]), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
-	}
+		k := slotKey{peer: 311860, slot: false}
+		start := time.Now()
+		for range 6 {
+			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
+		}
+		for range 6 {
+			<-log.got
+		}
+		times := log.times(k)
+		require.Len(t, times, 6)
+		assert.Less(t, times[0].Sub(start), 30*time.Millisecond, "the first burst on an idle slot goes at once")
+		for i := 1; i < len(times); i++ {
+			assert.GreaterOrEqual(t, times[i].Sub(times[0]), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
+		}
+	})
 }
 
 func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 	t.Parallel()
-	log := newSendLog()
-	p := newPacer(clock.Real(), log.send, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := newSendLog()
+		p := newPacer(clock.Real(), log.send, nil)
+		defer p.stop()
 
-	busy := slotKey{peer: 311860, slot: false}
-	for range 20 {
-		p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
-	}
-	<-log.got
-	for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
-		start := time.Now()
-		p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil, time.Time{})
-		for got := range log.got {
-			if got == k {
-				break
-			}
+		busy := slotKey{peer: 311860, slot: false}
+		for range 20 {
+			p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 		}
-		assert.Less(t, time.Since(start), 30*time.Millisecond, "%+v waited behind a busy slot", k)
-	}
+		<-log.got
+		for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
+			start := time.Now()
+			p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil, time.Time{})
+			for got := range log.got {
+				if got == k {
+					break
+				}
+			}
+			assert.Less(t, time.Since(start), 30*time.Millisecond, "%+v waited behind a busy slot", k)
+		}
+	})
 }
 
 func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 	t.Parallel()
-	log := newSendLog()
-	p := newPacer(clock.Real(), log.send, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := newSendLog()
+		p := newPacer(clock.Real(), log.send, nil)
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: true}
-	var last time.Time
-	for range 20 {
-		time.Sleep(burstTime)
-		at := time.Now()
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
-		<-log.got
-		last = at
-	}
-	times := log.times(k)
-	assert.Less(t, times[len(times)-1].Sub(last), 30*time.Millisecond, "a stream at the burst time is sent as it arrives")
+		k := slotKey{peer: 311860, slot: true}
+		var last time.Time
+		for range 20 {
+			time.Sleep(burstTime)
+			at := time.Now()
+			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
+			<-log.got
+			last = at
+		}
+		times := log.times(k)
+		assert.Less(t, times[len(times)-1].Sub(last), 30*time.Millisecond, "a stream at the burst time is sent as it arrives")
+	})
 }
 
 // TestPacerKeepsTheGridAfterALateBurst stalls the sender of a slot on its
@@ -123,57 +131,61 @@ func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 // before its place on the grid.
 func TestPacerKeepsTheGridAfterALateBurst(t *testing.T) {
 	t.Parallel()
-	const n, stalled, stall = 12, 4, 90 * time.Millisecond
-	var mu sync.Mutex
-	var times []time.Time
-	got := make(chan struct{}, n)
-	p := newPacer(clock.Real(), func(slotKey, []byte) {
-		mu.Lock()
-		times = append(times, time.Now())
-		i := len(times)
-		mu.Unlock()
-		if i <= stalled {
-			time.Sleep(stall)
-		}
-		got <- struct{}{}
-	}, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		const n, stalled, stall = 12, 4, 90 * time.Millisecond
+		var mu sync.Mutex
+		var times []time.Time
+		got := make(chan struct{}, n)
+		p := newPacer(clock.Real(), func(slotKey, []byte) {
+			mu.Lock()
+			times = append(times, time.Now())
+			i := len(times)
+			mu.Unlock()
+			if i <= stalled {
+				time.Sleep(stall)
+			}
+			got <- struct{}{}
+		}, nil)
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: false}
-	for range n {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
-	}
-	for range n {
-		<-got
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	start := times[0]
-	for i, at := range times {
-		assert.GreaterOrEqual(t, at.Sub(start), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
-	}
-	late := times[n-1].Sub(start) - (n-1)*burstTime
-	assert.Less(t, late, 200*time.Millisecond, "the last burst is %s behind the grid", late)
+		k := slotKey{peer: 311860, slot: false}
+		for range n {
+			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
+		}
+		for range n {
+			<-got
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		start := times[0]
+		for i, at := range times {
+			assert.GreaterOrEqual(t, at.Sub(start), time.Duration(i)*burstTime-2*time.Millisecond, "burst %d went before its place on the grid", i)
+		}
+		late := times[n-1].Sub(start) - (n-1)*burstTime
+		assert.Less(t, late, 200*time.Millisecond, "the last burst is %s behind the grid", late)
+	})
 }
 
 func TestPacerQueuesEveryBurst(t *testing.T) {
 	t.Parallel()
-	var started atomic.Int64
-	release := make(chan struct{})
-	p := newPacer(clock.Real(), func(slotKey, []byte) {
-		started.Add(1)
-		<-release
-	}, nil)
-	defer p.stop()
-	defer close(release)
+	synctest.Test(t, func(t *testing.T) {
+		var started atomic.Int64
+		release := make(chan struct{})
+		p := newPacer(clock.Real(), func(slotKey, []byte) {
+			started.Add(1)
+			<-release
+		}, nil)
+		defer p.stop()
+		defer close(release)
 
-	k := slotKey{peer: 311860, slot: false}
-	const n = 5000
-	for range n {
-		p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
-	}
-	require.Eventually(t, func() bool { return started.Load() == 1 }, time.Second, time.Millisecond)
-	assert.Equal(t, n-1, p.queued(), "bursts waiting behind the one being sent")
+		k := slotKey{peer: 311860, slot: false}
+		const n = 5000
+		for range n {
+			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
+		}
+		bubble.Eventually(t, func() bool { return started.Load() == 1 }, time.Second, time.Millisecond)
+		assert.Equal(t, n-1, p.queued(), "bursts waiting behind the one being sent")
+	})
 }
 
 type frameLog struct {
@@ -191,74 +203,80 @@ func (l *frameLog) send(_ slotKey, frame []byte) {
 
 func TestPacerQueuesASecondCallBehindTheFirst(t *testing.T) {
 	t.Parallel()
-	log := &frameLog{got: make(chan struct{}, 100)}
-	p := newPacer(clock.Real(), log.send, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := &frameLog{got: make(chan struct{}, 100)}
+		p := newPacer(clock.Real(), log.send, nil)
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: false}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{}, nil, time.Time{})
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
-	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{}, nil, time.Time{})
-	for range 5 {
-		<-log.got
-	}
-	log.mu.Lock()
-	defer log.mu.Unlock()
-	assert.Equal(t, "aaaBB", string(log.sent))
+		k := slotKey{peer: 311860, slot: false}
+		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
+		p.enqueue(k, 2, []byte{'B'}, false, models.Packet{}, nil, time.Time{})
+		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
+		p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
+		p.enqueue(k, 1, []byte{'a'}, true, models.Packet{}, nil, time.Time{})
+		for range 5 {
+			<-log.got
+		}
+		log.mu.Lock()
+		defer log.mu.Unlock()
+		assert.Equal(t, "aaaBB", string(log.sent))
+	})
 }
 
 func TestPacerStartsTheNextCallAfterALostTerminator(t *testing.T) {
 	t.Parallel()
-	log := &frameLog{got: make(chan struct{}, 100)}
-	p := newPacer(clock.Real(), log.send, nil)
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := &frameLog{got: make(chan struct{}, 100)}
+		p := newPacer(clock.Real(), log.send, nil)
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: true}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
-	<-log.got
-	start := time.Now()
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
-	select {
-	case <-log.got:
-	case <-time.After(callHang + time.Second):
-		t.Fatal("the waiting call never started")
-	}
-	assert.GreaterOrEqual(t, time.Since(start), callHang-100*time.Millisecond, "the waiting call started before the active one went quiet")
+		k := slotKey{peer: 311860, slot: true}
+		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
+		<-log.got
+		start := time.Now()
+		p.enqueue(k, 2, []byte{'B'}, true, models.Packet{}, nil, time.Time{})
+		select {
+		case <-log.got:
+		case <-time.After(callHang + time.Second):
+			t.Fatal("the waiting call never started")
+		}
+		assert.GreaterOrEqual(t, time.Since(start), callHang-100*time.Millisecond, "the waiting call started before the active one went quiet")
+	})
 }
 
 func TestPacerDiscardsACallThatWaitedTooLong(t *testing.T) {
 	t.Parallel()
-	log := &frameLog{got: make(chan struct{}, 100)}
-	var mu sync.Mutex
-	var discarded []uint
-	offset := &offsetClock{Clock: clock.Real()}
-	p := newPacer(offset, log.send, func(pkt models.Packet) {
-		mu.Lock()
-		discarded = append(discarded, pkt.StreamID)
-		mu.Unlock()
-	})
-	defer p.stop()
+	synctest.Test(t, func(t *testing.T) {
+		log := &frameLog{got: make(chan struct{}, 100)}
+		var mu sync.Mutex
+		var discarded []uint
+		offset := &offsetClock{Clock: clock.Real()}
+		p := newPacer(offset, log.send, func(pkt models.Packet) {
+			mu.Lock()
+			discarded = append(discarded, pkt.StreamID)
+			mu.Unlock()
+		})
+		defer p.stop()
 
-	k := slotKey{peer: 311860, slot: false}
-	p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil, time.Time{})
-	<-log.got
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
-	p.enqueue(k, 2, []byte{'B'}, true, models.Packet{StreamID: 2}, nil, time.Time{})
-	offset.by.Store(int64(maxCallWait + time.Second))
-	p.enqueue(k, 1, []byte{'a'}, true, models.Packet{StreamID: 1}, nil, time.Time{})
-	p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
-	<-log.got
-	select {
-	case <-log.got:
-		log.mu.Lock()
-		t.Fatalf("a discarded call was sent: %q", log.sent)
-	case <-time.After(300 * time.Millisecond):
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []uint{2, 2, 2}, discarded, "every burst of the discarded call, later ones too")
+		k := slotKey{peer: 311860, slot: false}
+		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil, time.Time{})
+		<-log.got
+		p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
+		p.enqueue(k, 2, []byte{'B'}, true, models.Packet{StreamID: 2}, nil, time.Time{})
+		offset.by.Store(int64(maxCallWait + time.Second))
+		p.enqueue(k, 1, []byte{'a'}, true, models.Packet{StreamID: 1}, nil, time.Time{})
+		p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})
+		<-log.got
+		select {
+		case <-log.got:
+			log.mu.Lock()
+			t.Fatalf("a discarded call was sent: %q", log.sent)
+		case <-time.After(300 * time.Millisecond):
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Equal(t, []uint{2, 2, 2}, discarded, "every burst of the discarded call, later ones too")
+	})
 }
 
 // offsetClock is the real clock moved on by an offset that the test sets.

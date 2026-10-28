@@ -20,6 +20,7 @@ package ipsc
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -135,21 +136,23 @@ func receive(t *testing.T, log *hangLog, n int, within time.Duration) []hangSend
 // the first, not the callHang quiet that ends a call with no terminator.
 func TestPacerSendsAnMMDVMHostSMSWithoutGaps(t *testing.T) {
 	t.Parallel()
-	p, _, log, discarded := newHangPacer(t)
-	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
-	first := mmdvmHostSMS(t, 1, 5, "first")
-	second := mmdvmHostSMS(t, 100, 5, "second")
-	sendAll(s, first)
-	sendAll(s, second)
+	synctest.Test(t, func(t *testing.T) {
+		p, _, log, discarded := newHangPacer(t)
+		s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
+		first := mmdvmHostSMS(t, 1, 5, "first")
+		second := mmdvmHostSMS(t, 100, 5, "second")
+		sendAll(s, first)
+		sendAll(s, second)
 
-	a := receive(t, log, len(first), callHang+time.Second)
-	assertBackToBack(t, a, "first SMS")
-	b := receive(t, log, len(second), callHang+dataHangHold+time.Second)
-	assertBackToBack(t, b, "second SMS")
-	gap := b[0].at.Sub(a[len(a)-1].at)
-	assert.GreaterOrEqual(t, gap, dataHangHold, "the second SMS went out in the hold of the first")
-	assert.Less(t, gap, dataHangHold+3*burstTime, "the second SMS waited past the hold of the first")
-	assert.Empty(t, *discarded)
+		a := receive(t, log, len(first), callHang+time.Second)
+		assertBackToBack(t, a, "first SMS")
+		b := receive(t, log, len(second), callHang+dataHangHold+time.Second)
+		assertBackToBack(t, b, "second SMS")
+		gap := b[0].at.Sub(a[len(a)-1].at)
+		assert.GreaterOrEqual(t, gap, dataHangHold, "the second SMS went out in the hold of the first")
+		assert.Less(t, gap, dataHangHold+3*burstTime, "the second SMS waited past the hold of the first")
+		assert.Empty(t, *discarded)
+	})
 }
 
 // TestPacerKeepsAHeldPreambleRunWhole sends an SMS with 16 preambles, as
@@ -158,19 +161,21 @@ func TestPacerSendsAnMMDVMHostSMSWithoutGaps(t *testing.T) {
 // bound on waiting calls, and they go out back to back when the hang ends.
 func TestPacerKeepsAHeldPreambleRunWhole(t *testing.T) {
 	t.Parallel()
-	p, clock, log, discarded := newHangPacer(t)
-	s := &IPSCServer{clock: clock, pacer: p, localID: 1}
-	k := slotKey{peer: smsPeer, slot: false}
-	sendVoiceCall(p, k, 1, 'v')
-	receive(t, log, 3, time.Second)
+	synctest.Test(t, func(t *testing.T) {
+		p, clock, log, discarded := newHangPacer(t)
+		s := &IPSCServer{clock: clock, pacer: p, localID: 1}
+		k := slotKey{peer: smsPeer, slot: false}
+		sendVoiceCall(p, k, 1, 'v')
+		receive(t, log, 3, time.Second)
 
-	pkts := mmdvmHostSMS(t, 10, 16, "held")
-	sendAll(s, pkts)
-	assert.Empty(t, *discarded, "streams of the held SMS that were discarded")
-	log.none(t, "the SMS went out in the call hang")
-	clock.endHang()
-	got := receive(t, log, len(pkts), time.Second)
-	assertBackToBack(t, got, "held SMS")
+		pkts := mmdvmHostSMS(t, 10, 16, "held")
+		sendAll(s, pkts)
+		assert.Empty(t, *discarded, "streams of the held SMS that were discarded")
+		log.none(t, "the SMS went out in the call hang")
+		clock.endHang()
+		got := receive(t, log, len(pkts), time.Second)
+		assertBackToBack(t, got, "held SMS")
+	})
 }
 
 // TestPacerSendsAOneStreamSMSWithoutGaps sends an SMS whose preambles and
@@ -179,23 +184,25 @@ func TestPacerKeepsAHeldPreambleRunWhole(t *testing.T) {
 // waits for the callHang quiet.
 func TestPacerSendsAOneStreamSMSWithoutGaps(t *testing.T) {
 	t.Parallel()
-	p, _, log, discarded := newHangPacer(t)
-	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
-	data := smsBursts(t, "one")
-	raws := append(preambleBursts(t, 3, len(data)), data...)
-	pkts := make([]models.Packet, 0, len(raws))
-	for _, raw := range raws {
-		pkts = append(pkts, smsPacketOf(7, raw))
-	}
-	sendAll(s, pkts)
-	csbk := smsPacketOf(8, preambleBursts(t, 1, 0)[0])
-	s.sendTo(smsPeer, csbk)
+	synctest.Test(t, func(t *testing.T) {
+		p, _, log, discarded := newHangPacer(t)
+		s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1}
+		data := smsBursts(t, "one")
+		raws := append(preambleBursts(t, 3, len(data)), data...)
+		pkts := make([]models.Packet, 0, len(raws))
+		for _, raw := range raws {
+			pkts = append(pkts, smsPacketOf(7, raw))
+		}
+		sendAll(s, pkts)
+		csbk := smsPacketOf(8, preambleBursts(t, 1, 0)[0])
+		s.sendTo(smsPeer, csbk)
 
-	got := receive(t, log, len(pkts), callHang+time.Second)
-	assertBackToBack(t, got, "one-stream SMS")
-	next := log.next(t, callHang+dataHangHold+time.Second)
-	gap := next.at.Sub(got[len(got)-1].at)
-	assert.GreaterOrEqual(t, gap, dataHangHold)
-	assert.Less(t, gap, dataHangHold+3*burstTime)
-	assert.Empty(t, *discarded)
+		got := receive(t, log, len(pkts), callHang+time.Second)
+		assertBackToBack(t, got, "one-stream SMS")
+		next := log.next(t, callHang+dataHangHold+time.Second)
+		gap := next.at.Sub(got[len(got)-1].at)
+		assert.GreaterOrEqual(t, gap, dataHangHold)
+		assert.Less(t, gap, dataHangHold+3*burstTime)
+		assert.Empty(t, *discarded)
+	})
 }

@@ -104,7 +104,6 @@ describe('PluginsPage', () => {
     expect(row).toContain('12');
     expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('310001–310009');
     expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('Off');
-    expect(wrapper.find('[data-test="plugins-note"]').text()).toContain('It can send calls only from its IDs');
     expect(wrapper.find('[data-test="add-plugin"]').attributes('href')).toBe('/admin/plugins/new');
     expect(wrapper.text()).not.toMatch(/dmr\.plugins|cert-file/);
     wrapper.unmount();

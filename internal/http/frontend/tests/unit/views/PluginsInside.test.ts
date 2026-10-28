@@ -148,10 +148,7 @@ describe('PluginsPage with plugins inside DMRHub', () => {
     expect(wrapper.find('[data-test="upload-plugin"]').text()).toBe('Upload a plugin');
     expect(wrapper.find('[data-test="add-plugin"]').attributes('href')).toBe('/admin/plugins/new');
     expect(wrapper.find('[data-test="add-plugin"]').text()).toBe('Add an external plugin');
-    expect(wrapper.find('[data-test="plugins-note"]').text()).toBe(
-      'A plugin gets the calls to its IDs. It can send calls only from its IDs, to a radio or to a talkgroup among its IDs. ' +
-        'Plugins that run inside DMRHub cannot reach your files, and reach only the hosts you allow on their page.',
-    );
+    expect(wrapper.find('[data-test="plugins-note"]').exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/in-process|dmr\.plugins|cert-file/);
     wrapper.unmount();
   });

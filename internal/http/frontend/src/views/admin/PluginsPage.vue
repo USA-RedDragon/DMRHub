@@ -89,11 +89,6 @@
         </tbody>
       </table>
     </div>
-
-    <div v-if="state === 'ready'" role="note" class="max-w-[80ch] rounded-lg border bg-muted/40 px-3.5 py-3 text-sm" data-test="plugins-note">
-      A plugin gets the calls to its IDs. It can send calls only from its IDs, to a radio or to a talkgroup among its IDs.
-      Plugins that run inside DMRHub cannot reach your files, and reach only the hosts you allow on their page.
-    </div>
   </div>
 </template>
 

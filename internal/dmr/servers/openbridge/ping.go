@@ -48,7 +48,7 @@ func (s *Server) notePing(peer uint) {
 	if s.pinged == nil {
 		return
 	}
-	now := time.Now()
+	now := s.clock.Now()
 	if last, ok := s.pinged.Load(peer); ok && now.Sub(last) < pingEvery {
 		return
 	}

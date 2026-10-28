@@ -30,6 +30,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -86,6 +87,7 @@ type origin struct {
 
 // OpenBridge is the same as HBRP, but with a single packet type.
 type Server struct {
+	clock         clock.Clock
 	Buffer        []byte
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
@@ -300,17 +302,18 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 	}
 
 	return Server{
+		clock:         hub.Clock(),
 		Buffer:        make([]byte, dmrdsession.MaxPacket+1),
 		SocketAddress: socketAddress,
 		hub:           hub,
 		Server:        server,
 		DB:            db,
-		peers:         lookup.New("openbridge peers", lookup.TTL, func(struct{}) (peerTable, error) { return loadPeerTable(db) }),
+		peers:         lookup.New(hub.Clock(), "openbridge peers", lookup.TTL, func(struct{}) (peerTable, error) { return loadPeerTable(db) }),
 		pubsub:        pubsub,
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		serverID:      config.DMR.OpenBridge.ServerID,
 		done:          make(chan struct{}),
-		epoch:         time.Now(),
+		epoch:         hub.Clock().Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
 		versions:      xsync.NewMap[uint, peerVersion](),
 		pinged:        xsync.NewMap[uint, time.Time](),
@@ -437,13 +440,13 @@ func (s *Server) consumeHubPackets() {
 // keepalive sends the BCKA of each enhanced peer when it is due.
 func (s *Server) keepalive() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(keepaliveTick)
+	ticker := s.clock.NewTicker(keepaliveTick)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-s.done:
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 		}
 		if !s.IsEgressLeader() {
 			continue
@@ -453,7 +456,7 @@ func (s *Server) keepalive() {
 			slog.Error("Failed to list peers for OpenBridge keepalives", "error", err)
 			continue
 		}
-		now := time.Since(s.epoch)
+		now := s.clock.Since(s.epoch)
 		for _, k := range table.all {
 			p := k.Peer
 			if !s.enhanced(p) || p.IP == "" || p.Port == 0 || !s.allowsPeer(p) {
@@ -517,7 +520,7 @@ func (s *Server) encode(peer models.Peer, packet models.Packet, org origin) ([]b
 	bridge := dmrd.Bridge{
 		Version:        version,
 		Data:           packet.Data(),
-		Time:           uint64(time.Now().UnixNano()), //nolint:gosec
+		Time:           uint64(s.clock.Now().UnixNano()), //nolint:gosec
 		SourceServer:   server,
 		SourceRepeater: org.repeater,
 		Hops:           org.hops + 1,
@@ -667,7 +670,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		slog.Error("Error making OpenBridge link", "peerID", peerID, "error", err)
 		return
 	}
-	if !b.verified(time.Since(s.epoch), data) {
+	if !b.verified(s.clock.Since(s.epoch), data) {
 		slog.Error("Invalid OpenBridge HMAC", "peerID", peerID)
 		return
 	}
@@ -693,7 +696,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 		}
 	}
 
-	if bridge.Version != 1 && time.Since(time.Unix(0, int64(bridge.Time))) > staleAfter { //nolint:gosec
+	if bridge.Version != 1 && s.clock.Since(time.Unix(0, int64(bridge.Time))) > staleAfter { //nolint:gosec
 		slog.Debug("Dropping a stale OpenBridge packet", "peerID", peerID, "sourceServer", bridge.SourceServer, "stream", packet.StreamID)
 		s.sendQuench(peer, b, bridge.Data.Destination, bridge.Data.Stream, remoteAddr)
 		return
@@ -739,7 +742,7 @@ func (s *Server) handleControl(ctx context.Context, remoteAddr *net.UDPAddr, dat
 			continue
 		}
 		b, err := s.bridgeFor(p)
-		if err != nil || !b.verifiedControl(time.Since(s.epoch), data) {
+		if err != nil || !b.verifiedControl(s.clock.Since(s.epoch), data) {
 			continue
 		}
 		s.notePing(p.ID)
@@ -777,7 +780,7 @@ func (s *Server) sendQuench(peer models.Peer, b *bridge, talkgroup, stream uint3
 }
 
 func (s *Server) quenchStream(peer, stream uint) {
-	now := time.Now()
+	now := s.clock.Now()
 	s.quenched.Store(quench{peer: peer, stream: stream}, now)
 	s.shareQuench(quench{peer: peer, stream: stream})
 	if s.quenched.Size() > quenchPruneSize {
@@ -801,7 +804,7 @@ func (s *Server) isQuenched(peer, stream uint) bool {
 	if !ok {
 		return false
 	}
-	if time.Since(at) > quenchTTL {
+	if s.clock.Since(at) > quenchTTL {
 		s.quenched.Delete(quench{peer: peer, stream: stream})
 		return false
 	}

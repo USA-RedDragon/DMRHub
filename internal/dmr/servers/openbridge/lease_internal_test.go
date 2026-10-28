@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -43,8 +44,8 @@ func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 	store, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
-	a := &Server{kv: store, id: "a"}
-	b := &Server{kv: store, id: "b"}
+	a := &Server{clock: clock.Real(), kv: store, id: "a"}
+	b := &Server{clock: clock.Real(), kv: store, id: "b"}
 
 	ctx := context.Background()
 	require.True(t, a.holdLease(ctx))
@@ -69,7 +70,7 @@ func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 // them twice.
 func TestAHolderThatGaveTheLeaseUpStopsAtTheTakenMessage(t *testing.T) {
 	t.Parallel()
-	s := &Server{id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	s := &Server{clock: clock.Real(), id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
 	s.role.Store(roleReleasing)
 	require.True(t, s.sends(), "a holder that gave the lease up sends until it is taken")
 	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
@@ -97,7 +98,7 @@ func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
 	ps, err := pubsub.MakePubSub(ctx, &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
-	s := &Server{kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
 	require.True(t, s.holdLease(ctx))
 	s.role.Store(roleLeader)
 
@@ -106,7 +107,7 @@ func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
 		defer close(done)
 		s.handOver(ctx)
 	}()
-	b := &Server{kv: store, id: "b"}
+	b := &Server{clock: clock.Real(), kv: store, id: "b"}
 	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
 	select {
 	case <-done:
@@ -137,7 +138,7 @@ func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
 	ps, err := pubsub.MakePubSub(ctx, &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
-	s := &Server{kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
+	s := &Server{clock: clock.Real(), kv: store, pubsub: ps, id: "a", handedOver: make(chan struct{}), released: make(chan struct{}, 1)}
 	require.True(t, s.holdLease(ctx))
 	s.role.Store(roleLeader)
 
@@ -146,7 +147,7 @@ func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
 		defer close(done)
 		s.handOver(ctx)
 	}()
-	b := &Server{kv: store, id: "b"}
+	b := &Server{clock: clock.Real(), kv: store, id: "b"}
 	require.Eventually(t, func() bool { return b.holdLease(ctx) }, time.Second, 10*time.Millisecond)
 	took := time.Now()
 	select {
@@ -170,7 +171,7 @@ func TestTheOutboxPublishesWhatWaitsAtTheStop(t *testing.T) {
 	t.Cleanup(func() { _ = ps.Close() })
 	sub := ps.Subscribe(egressTopic)
 	t.Cleanup(func() { _ = sub.Close() })
-	s := &Server{pubsub: ps, done: make(chan struct{})}
+	s := &Server{clock: clock.Real(), pubsub: ps, done: make(chan struct{})}
 	out := make(chan outMessage, 4)
 	for i := range 3 {
 		out <- outMessage{topic: egressTopic, msg: []byte{byte(i)}}
@@ -231,7 +232,7 @@ func TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	paused := &pausedKV{KV: store}
-	s := &Server{kv: paused, id: "a"}
+	s := &Server{clock: clock.Real(), kv: paused, id: "a"}
 	s.renewLease(ctx)
 	require.True(t, s.IsEgressLeader())
 

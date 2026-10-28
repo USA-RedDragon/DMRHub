@@ -131,7 +131,7 @@ func (s *Server) holdLease(ctx context.Context) bool {
 	if s.kv == nil {
 		return true
 	}
-	at := time.Now()
+	at := s.clock.Now()
 	held, err := s.tryLease(ctx)
 	if err != nil {
 		slog.Error("Error holding the OpenBridge egress lease", "error", err)
@@ -173,13 +173,13 @@ func (s *Server) tryLease(ctx context.Context) (bool, error) {
 
 func (s *Server) runLease(ctx context.Context) {
 	defer s.wg.Done()
-	ticker := time.NewTicker(egressLeaseRenew)
+	ticker := s.clock.NewTicker(egressLeaseRenew)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-s.done:
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 		case <-s.released:
 		}
 		s.renewLease(ctx)
@@ -200,7 +200,7 @@ func (s *Server) renewLease(ctx context.Context) {
 	switch {
 	case held && role == roleFollower:
 		s.beginTaking()
-	case held && role == roleTaking && time.Since(s.takingAt) >= takeWait:
+	case held && role == roleTaking && s.clock.Since(s.takingAt) >= takeWait:
 		s.setRole(roleLeader)
 	case !held && role != roleFollower:
 		s.setRole(roleFollower)
@@ -215,7 +215,7 @@ func (s *Server) beginTaking() {
 		s.setRole(roleLeader)
 		return
 	}
-	s.takingAt = time.Now()
+	s.takingAt = s.clock.Now()
 	s.setRole(roleTaking)
 	if err := s.publishControl(kindTaken); err != nil {
 		slog.Error("Error announcing the OpenBridge egress lease", "error", err)
@@ -291,9 +291,9 @@ func (s *Server) handOver(ctx context.Context) {
 		slog.Error("Error handing the OpenBridge egress lease over", "error", err)
 		return
 	}
-	check := time.NewTicker(handoverCheck)
+	check := s.clock.NewTicker(handoverCheck)
 	defer check.Stop()
-	deadline := time.NewTimer(handoverWait)
+	deadline := s.clock.NewTimer(handoverWait)
 	defer deadline.Stop()
 	var taken <-chan time.Time
 	for {
@@ -302,20 +302,20 @@ func (s *Server) handOver(ctx context.Context) {
 			return
 		case <-taken:
 			return
-		case <-deadline.C:
+		case <-deadline.C():
 			if taken != nil {
 				continue
 			}
 			slog.Warn("No replica took the OpenBridge egress lease in time")
 			return
-		case <-check.C:
+		case <-check.C():
 			if taken != nil {
 				continue
 			}
 			if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && len(v) > 0 && string(v) != s.id {
-				t := time.NewTimer(takeWait)
+				t := s.clock.NewTimer(takeWait)
 				defer t.Stop()
-				taken = t.C
+				taken = t.C()
 			}
 		}
 	}
@@ -458,7 +458,7 @@ func (s *Server) consumeQuenches() {
 				slog.Error("Error decoding an OpenBridge source quench", "error", err)
 				continue
 			}
-			s.quenched.Store(quench{peer: m.Peer, stream: m.Stream}, time.Now())
+			s.quenched.Store(quench{peer: m.Peer, stream: m.Stream}, s.clock.Now())
 		}
 	}
 }

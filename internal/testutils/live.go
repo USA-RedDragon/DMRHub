@@ -22,10 +22,17 @@ package testutils
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -81,15 +88,54 @@ type LiveOptions struct {
 	Every, Wait time.Duration
 }
 
-// FreeUDPPort returns a loopback UDP port that was free a moment ago.
+// givenPorts are the ports that FreeUDPPort returned in this process.
+var givenPorts sync.Map //nolint:gochecknoglobals // one set for the whole test process
+
+// FreeUDPPort returns a loopback UDP port that was free a moment ago, for
+// a server whose port a config must name. It picks the port below the
+// range that the kernel gives the sockets that bind port 0, so that no
+// such socket, of this process or another, takes it before the server
+// binds it, and never returns a port twice in a process.
 func FreeUDPPort(t *testing.T) int {
 	t.Helper()
-	c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	defer func() { _ = c.Close() }()
-	addr, ok := c.LocalAddr().(*net.UDPAddr)
-	require.True(t, ok)
-	return addr.Port
+	low := ephemeralLow()
+	for range 100 {
+		port := freePortMin + rand.IntN(low-freePortMin) //nolint:gosec // a port pick, not a secret
+		if _, given := givenPorts.LoadOrStore(port, struct{}{}); given {
+			continue
+		}
+		c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+		if err != nil {
+			continue
+		}
+		_ = c.Close()
+		return port
+	}
+	require.FailNow(t, "no free loopback UDP port below the ephemeral range")
+	return 0
+}
+
+const (
+	freePortMin       = 10000
+	ephemeralLowFloor = 32768
+)
+
+// ephemeralLow returns the first port that the kernel gives the sockets
+// that bind port 0.
+func ephemeralLow() int {
+	b, err := os.ReadFile("/proc/sys/net/ipv4/ip_local_port_range")
+	if err != nil {
+		return ephemeralLowFloor
+	}
+	f := strings.Fields(string(b))
+	if len(f) == 0 {
+		return ephemeralLowFloor
+	}
+	low, err := strconv.Atoi(f[0])
+	if err != nil || low <= freePortMin {
+		return ephemeralLowFloor
+	}
+	return low
 }
 
 // SetupLiveStack makes a LiveStack whose MMDVM, IPSC and OpenBridge
@@ -124,9 +170,6 @@ func setupLiveStack(t *testing.T, register bool, opts LiveOptions, backends []Ba
 	cfg.Secret = "live-config-test-secret"
 	cfg.PasswordSalt = "live-config-test-salt"
 	cfg.HTTP.CanonicalHost = "http://localhost:3005"
-	cfg.DMR.MMDVM.Port = FreeUDPPort(t)
-	cfg.DMR.IPSC.Port = FreeUDPPort(t)
-	cfg.DMR.OpenBridge.Port = FreeUDPPort(t)
 
 	hash, err := utils.HashPassword(TestPassword, cfg.PasswordSalt)
 	require.NoError(t, err)
@@ -158,9 +201,6 @@ func (l *LiveStack) SpawnLiveReplica(t *testing.T, opts LiveOptions) *LiveReplic
 	})
 
 	cfg := *l.first.Config
-	cfg.DMR.MMDVM.Port = FreeUDPPort(t)
-	cfg.DMR.IPSC.Port = FreeUDPPort(t)
-	cfg.DMR.OpenBridge.Port = FreeUDPPort(t)
 	if opts.Locks == nil {
 		opts.Locks = liveconfig.Locks{}
 		for _, p := range []string{"dmr.mmdvm.port", "dmr.ipsc.port", "dmr.openbridge.port"} {
@@ -178,17 +218,39 @@ func (a managerApplier) Apply(next *config.Config) []liveconfig.ApplyError {
 	return manager.LiveErrors(a.m.Apply(next))
 }
 
+// bindTries is how many sets of free ports a replica of a LiveStack tries.
+// Another process can bind a port that FreeUDPPort found free before the
+// server of the replica does.
+const bindTries = 5
+
+func pickServerPorts(cfg *config.Config, t *testing.T) {
+	cfg.DMR.MMDVM.Port = FreeUDPPort(t)
+	cfg.DMR.IPSC.Port = FreeUDPPort(t)
+	cfg.DMR.OpenBridge.Port = FreeUDPPort(t)
+}
+
 func (l *LiveStack) startReplica(t *testing.T, h *hub.Hub, cfg *config.Config, opts LiveOptions) *LiveReplica {
 	t.Helper()
-	if opts.Change != nil {
-		opts.Change(cfg)
+	var live *liveconfig.Live
+	var m *manager.Manager
+	for try := 1; ; try++ {
+		pickServerPorts(cfg, t)
+		if opts.Change != nil {
+			opts.Change(cfg)
+		}
+		live = liveconfig.New(liveconfig.Options{Base: cfg, Locks: opts.Locks, DB: l.DB})
+		require.NoError(t, live.Boot(context.Background()))
+		h.SetConfig(live.Current())
+		m = manager.New(manager.Deps{Hub: h, DB: l.DB, PubSub: l.PubSub, KV: l.KV, Version: "test", Commit: "test"})
+		err := m.Start(context.Background(), live.Current().Get())
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || try == bindTries {
+			require.NoError(t, err)
+		}
+		t.Logf("a port was taken before the server bound it, trying others: %v", err)
 	}
-	live := liveconfig.New(liveconfig.Options{Base: cfg, Locks: opts.Locks, DB: l.DB})
-	require.NoError(t, live.Boot(context.Background()))
-	h.SetConfig(live.Current())
-
-	m := manager.New(manager.Deps{Hub: h, DB: l.DB, PubSub: l.PubSub, KV: l.KV, Version: "test", Commit: "test"})
-	require.NoError(t, m.Start(context.Background(), live.Current().Get()))
 	t.Cleanup(func() { m.Stop(context.Background()) })
 
 	id, err := servers.GenerateInstanceID()

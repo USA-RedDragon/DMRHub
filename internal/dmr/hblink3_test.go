@@ -143,7 +143,7 @@ func TestExternalHBlink3(t *testing.T) {
 	stack.SeedMMDVMRepeater(t, mxTGRpt, mxRadio, testPassword)
 	stack.AssignTS1StaticTG(t, mxTGRpt, mxTG)
 
-	obpPort, masterPort, reportPort := freePort(t), freePort(t), freePort(t)
+	obpPort, masterPort, reportPort := testutils.FreeUDPPort(t), testutils.FreeUDPPort(t), testutils.FreeUDPPort(t)
 	stack.SeedPeer(t, hblink3NetworkID, mxRadio, obPassword, "127.0.0.1", obpPort, true, true)
 	stack.SeedPeerRule(t, hblink3NetworkID, true, 1, 99999999)
 	stack.SeedPeerRule(t, hblink3NetworkID, false, 1, 99999999)

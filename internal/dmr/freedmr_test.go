@@ -148,17 +148,6 @@ PROXY_CONTROL: False
 OVERRIDE_IDENT_TG:
 `
 
-func freePort(t *testing.T) int {
-	t.Helper()
-	var lc net.ListenConfig
-	c, err := lc.ListenPacket(t.Context(), "udp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer func() { _ = c.Close() }()
-	addr, ok := c.LocalAddr().(*net.UDPAddr)
-	require.True(t, ok)
-	return addr.Port
-}
-
 type lockedLog struct {
 	mu sync.Mutex
 	b  strings.Builder
@@ -213,7 +202,7 @@ func TestExternalFreeDMR(t *testing.T) {
 	stack.SeedMMDVMRepeater(t, mxTGRpt, mxRadio, testPassword)
 	stack.AssignTS1StaticTG(t, mxTGRpt, 91)
 
-	obpPort, masterPort, reportPort := freePort(t), freePort(t), freePort(t)
+	obpPort, masterPort, reportPort := testutils.FreeUDPPort(t), testutils.FreeUDPPort(t), testutils.FreeUDPPort(t)
 	stack.SeedPeer(t, freeDMRServerID, mxRadio, obPassword, "127.0.0.1", obpPort, true, true)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", freeDMRServerID).Update("enhanced", true).Error)
 	stack.SeedPeerRule(t, freeDMRServerID, true, 1, 99999999)

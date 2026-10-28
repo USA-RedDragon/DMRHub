@@ -91,4 +91,9 @@ describe('RepeaterDetailsPage details', () => {
     expect(text).toMatch(/Owner\s*N0DEMO/);
     expect(text).toMatch(/Created\s*3 days ago/);
   });
+
+  it('shows no rules to a visitor who does not own the repeater', async () => {
+    const text = await badge(new Date(Date.now() - 10_000).toISOString(), { owner: { id: 3000001, callsign: 'N0DEMO' } });
+    expect(text).not.toContain('Slot lock');
+  });
 });

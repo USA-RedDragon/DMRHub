@@ -127,6 +127,8 @@
         </CardContent>
       </Card>
 
+      <RepeaterRulesCard v-if="canEditCodec" :repeater-id="repeater.id" />
+
       <!-- Info grid -->
       <div class="grid gap-6 md:grid-cols-2">
         <!-- Radio Configuration -->
@@ -330,6 +332,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import RepeaterRulesCard from '@/components/RepeaterRulesCard.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
@@ -431,6 +434,7 @@ export default {
     DataTable,
     TypeFilter,
     RelativeTimestamp,
+    RepeaterRulesCard,
     Talkgroup,
     User,
   },

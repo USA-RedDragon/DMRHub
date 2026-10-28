@@ -14,6 +14,19 @@ For each repeater the table shows the **DMR Radio ID**, the **Type** (MMDVM or I
 
 To delete a repeater, click **Edit**, then **Delete**, then click **OK** in the browser message.
 
+## Assign an owner
+
+When a modem connects with an ID that no repeater has, DMRHub makes the repeater with no owner (see [MMDVM modem on a serial port](modem.md)). The repeater carries traffic at once. While a repeater has no owner, the **Admin** menu shows **Unassigned** with the number of such repeaters.
+
+1. Go to **Admin**, then **Unassigned** (`<siteurl>/admin/repeaters/unassigned`). The table shows the **ID**, **Kind**, **Callsign**, **Frequencies**, **Color code**, when the repeater last **Connected**, and when DMRHub **Made** it.
+2. Click **Assign owner** in the row of the repeater.
+3. Find the user by callsign, username or DMR ID, and pick the user.
+4. Click **Assign owner**.
+
+The repeater then shows in the repeater list of that user, and the user can set its talkgroups and details. You can assign an owner only to a repeater that has none. When another admin assigned one first, the page shows "Repeater already has an owner".
+
+<!-- screenshot: admin-unassigned-repeaters.png | /admin/repeaters/unassigned with one modem hotspot 311860 and one modem repeater 311861 -->
+
 ## Trusted repeaters
 
 DMRHub sends a private call or a text message to the repeater where the radio was last heard. For a radio ID that a user owns, it does this only when the user owns that repeater, or when an admin marked the repeater as trusted. Otherwise the private traffic does not follow the radio to that repeater. The `anyone` reach turns this check off. See [Private call routing](private-calls.md).

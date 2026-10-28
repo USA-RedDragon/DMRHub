@@ -40,6 +40,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 )
 
 // Path is the path of the WebTransport endpoint of the MMDVM server.
@@ -70,7 +72,7 @@ type Source struct {
 	loaded   *tls.Certificate
 	certTime time.Time
 	keyTime  time.Time
-	now      func() time.Time
+	clock    clock.Clock
 }
 
 type owned struct {
@@ -83,7 +85,7 @@ type owned struct {
 // It reads the files once, so that a listener with files that are not a
 // key pair does not start.
 func New(secret []byte, certFile, keyFile string) (*Source, error) {
-	s := &Source{secret: append([]byte(nil), secret...), certFile: certFile, keyFile: keyFile, own: map[int64]owned{}, now: time.Now}
+	s := &Source{secret: append([]byte(nil), secret...), certFile: certFile, keyFile: keyFile, own: map[int64]owned{}, clock: clock.Real()}
 	if s.Files() {
 		if _, err := s.reload(); err != nil {
 			return nil, err
@@ -126,7 +128,7 @@ func (s *Source) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) 
 	if s.Files() {
 		return s.reload()
 	}
-	o, err := s.ownFor(window(s.now()))
+	o, err := s.ownFor(window(s.clock.Now()))
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +142,7 @@ func (s *Source) Hashes() ([][sha256.Size]byte, error) {
 	if s.Files() {
 		return nil, nil
 	}
-	w := window(s.now())
+	w := window(s.clock.Now())
 	var hashes [][sha256.Size]byte
 	for _, k := range []int64{w, w + 1} {
 		o, err := s.ownFor(k)

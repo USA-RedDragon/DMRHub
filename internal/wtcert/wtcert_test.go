@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func at(t *testing.T, secret string, now time.Time) *Source {
 	t.Helper()
 	s, err := New([]byte(secret), "", "")
 	require.NoError(t, err)
-	s.now = func() time.Time { return now }
+	s.clock = clock.NewFake(now)
 	return s
 }
 

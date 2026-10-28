@@ -21,11 +21,13 @@ package dmr_test
 
 import (
 	"encoding/hex"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
@@ -82,7 +84,7 @@ func newTCNet(t *testing.T, stack *testutils.IntegrationStack) *tcNet {
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", tcOBCodec2).Update("codec2", true).Error)
 	stack.Hub.PeerChanged(tcOBCodec2)
 	time.Sleep(settleDuration)
-	n.drain(500 * time.Millisecond)
+	n.flush(500 * time.Millisecond)
 	return n
 }
 
@@ -98,25 +100,94 @@ type tcGot struct {
 	ipsc                                             []testutils.IPSCBurst
 }
 
-func (n *tcNet) drain(d time.Duration) tcGot {
+// drainCall drains the packets of the call sent, until the hub ended it
+// and each client that got a packet of it got its terminator, and for at
+// least callWait. A stall of the hub then makes the drain wait for the
+// rest of the call, instead of taking it for the end of the call.
+func (n *tcNet) drainCall(sent []models.Packet) tcGot {
+	stream := sent[0].StreamID
+	clients := []*testutils.MMDVMClient{n.c2, n.ambeListen, n.c2Listen, n.ambeTalk}
 	var g tcGot
-	done := make(chan []testutils.IPSCBurst, 1)
-	stop := time.Now().Add(d)
+	ended := make(chan struct{})
+	ipscDone := make(chan []testutils.IPSCBurst, 1)
 	go func() {
 		var all []testutils.IPSCBurst
 		for {
-			got := n.ipsc.Drain(500 * time.Millisecond)
+			got := n.ipsc.Drain(300 * time.Millisecond)
 			all = append(all, got...)
-			if len(got) == 0 && time.Now().After(stop) {
-				done <- all
+			select {
+			case <-ended:
+				if len(got) == 0 {
+					ipscDone <- all
+					return
+				}
+			default:
+			}
+		}
+	}()
+	earliest, deadline := time.Now().Add(callWait(sent)), time.Now().Add(callWait(sent)+30*time.Second)
+	var out [][]models.Packet
+	for {
+		got := drainAll(100*time.Millisecond, n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
+		if out == nil {
+			out = got
+		} else {
+			for i := range got {
+				out[i] = append(out[i], got[i]...)
+			}
+		}
+		if time.Now().After(deadline) || (time.Now().After(earliest) && n.callEnded(stream) && allEnded(out[:len(clients)], stream)) {
+			break
+		}
+	}
+	got := drainAll(300*time.Millisecond, n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
+	for i := range got {
+		out[i] = append(out[i], got[i]...)
+	}
+	close(ended)
+	g.c2, g.ambeListen, g.c2Listen, g.ambeTalk, g.ob, g.obCodec2 = out[0], out[1], out[2], out[3], out[4], out[5]
+	g.ipsc = <-ipscDone
+	return g
+}
+
+// callEnded reports whether the call tracker ended the voice call of
+// stream.
+func (n *tcNet) callEnded(stream uint) bool {
+	var count int64
+	err := n.stack.DB.Model(&models.Call{}).Where("stream_id = ? AND kind = ? AND active = ?", stream, models.CallKindVoice, false).Count(&count).Error
+	return err == nil && count > 0
+}
+
+// allEnded reports whether each of got that holds a packet of stream holds
+// its terminator.
+func allEnded(got [][]models.Packet, stream uint) bool {
+	for _, pkts := range got {
+		mine := ofStream(pkts, stream)
+		if len(mine) > 0 && !slices.ContainsFunc(mine, isTerminator) {
+			return false
+		}
+	}
+	return true
+}
+
+func isTerminator(p models.Packet) bool {
+	return p.FrameType == dmrconst.FrameDataSync && p.DTypeOrVSeq == uint(dmrconst.DTypeVoiceTerm)
+}
+
+// flush drains what the clients got before, until they are quiet for d.
+func (n *tcNet) flush(d time.Duration) {
+	done := make(chan struct{})
+	stop := time.Now().Add(d)
+	go func() {
+		defer close(done)
+		for {
+			if len(n.ipsc.Drain(500*time.Millisecond)) == 0 && time.Now().After(stop) {
 				return
 			}
 		}
 	}()
-	got := drainQuiet(d, n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
-	g.c2, g.ambeListen, g.c2Listen, g.ambeTalk, g.ob, g.obCodec2 = got[0], got[1], got[2], got[3], got[4], got[5]
-	g.ipsc = <-done
-	return g
+	drainQuiet(d, n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
+	<-done
 }
 
 // requireCopy checks that got is the call sent converted: the same
@@ -245,7 +316,7 @@ func (n *tcNet) send(t *testing.T, c *testutils.MMDVMClient, cc c2Call, stream u
 	t.Helper()
 	sent := cc.tx.packets(stream)
 	sendC2(t, c.SendDMRD, sent)
-	return sent, n.drain(callWait(sent))
+	return sent, n.drainCall(sent)
 }
 
 // TestTranscoding sends calls between a Codec2 hotspot and AMBE targets.
@@ -326,7 +397,7 @@ func TestTranscoding(t *testing.T) {
 			good, repeat, silence := transcodeFrames(models.CodecAMBE, "good", "voice"), transcodeFrames(models.CodecAMBE, "lost", "repeat"), transcodeFrames(models.CodecAMBE, "lost", "silence")
 			fills := n.ambe.LostFrames()
 			sendC2(t, n.ambeTalk.SendDMRD, sent)
-			g := n.drain(callWait(sent))
+			g := n.drainCall(sent)
 			got := ofStream(g.c2Listen, stream)
 			require.Len(t, got, len(all), "the copy has a burst in place of the lost one")
 			for i := range all {
@@ -366,7 +437,7 @@ func TestTranscoding(t *testing.T) {
 			cc := voiceCall(t, tcLC(t, c, enums.FIDStandardized), c, c2Slots(uint64(stream), tcFrames))
 			sent := cc.tx.packets(stream)[1:]
 			sendC2(t, n.ambeTalk.SendDMRD, sent)
-			g := n.drain(callWait(sent))
+			g := n.drainCall(sent)
 			assertSamePackets(t, sent, ofStream(g.ambeListen, stream), tcAMBERpt, false)
 			require.Len(t, ofStream(g.c2Listen, stream), len(sent), "the Codec2 slot gets the call as AMBE converted")
 			n.requireRow(t, stream, tcRow{codec: models.CodecAMBE, sentCodec2: 1})
@@ -381,7 +452,7 @@ func TestTranscoding(t *testing.T) {
 			cc := newC2Call(t, group, false, tcBursts, uint64(stream))
 			sent := cc.tx.packets(stream)[1:]
 			sendC2(t, n.c2.SendDMRD, sent)
-			g := n.drain(callWait(sent))
+			g := n.drainCall(sent)
 			got := ofStream(g.ambeListen, stream)
 			require.Len(t, got, len(sent))
 			requireEmbeddedLC(t, got[12:], lc0)
@@ -403,7 +474,7 @@ func TestTranscoding(t *testing.T) {
 			last := len(sent) - 1
 			sent[last].DMRData = badHeader(layer2.RawBurst(sent[last].DMRData))
 			sendC2(t, n.c2.SendDMRD, sent)
-			g := n.drain(callWait(sent))
+			g := n.drainCall(sent)
 			got := ofStream(g.ambeListen, stream)
 			require.Len(t, got, len(sent), "the AMBE target must get every burst")
 			assert.Equal(t, sent[last].DMRData, got[last].DMRData, "a terminator without a copy goes out as it came")
@@ -419,7 +490,7 @@ func TestTranscoding(t *testing.T) {
 				return n.ob.SendRawPacket(p)
 			}
 			sendC2(t, fromPeer, sent)
-			g := n.drain(callWait(sent))
+			g := n.drainCall(sent)
 			got := ofStream(g.ambeListen, stream)
 			require.Len(t, got, len(sent))
 			for _, i := range []int{len(got) - 2, len(got) - 1} {
@@ -467,7 +538,7 @@ func TestTranscodingPrivateCall(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
 		keyUp(t, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
-		n.drain(300 * time.Millisecond)
+		n.flush(300 * time.Millisecond)
 
 		c := call{dst: tcOther, src: tcTalker}
 		stream := n.nextStream()
@@ -501,14 +572,14 @@ func TestTranscodingPrivateCallWithoutHeader(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
 		keyUp(t, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
-		n.drain(300 * time.Millisecond)
+		n.flush(300 * time.Millisecond)
 
 		c := call{dst: tcOther, src: tcTalker}
 		stream := n.nextStream()
 		cc := voiceCall(t, tcLC(t, c, 0xC2), c, c2Slots(uint64(stream), tcFrames))
 		sent := cc.tx.packets(stream)[1:]
 		sendC2(t, n.c2.SendDMRD, sent)
-		g := n.drain(callWait(sent))
+		g := n.drainCall(sent)
 		lc0 := cc.lc
 		lc0.SetFID(enums.FIDStandardized)
 		got := ofStream(g.ambeTalk, stream)
@@ -714,7 +785,7 @@ func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 		require.Equal(t, len(restSent), j, "the first call did not hold the server long enough to send the second")
 		require.Greater(t, svc.Refused(), refused, "the hub did not refuse the second call while the first held the server")
 		send(p1[len(p1)-1], &convSent)
-		g := n.drain(callWait(convSent))
+		g := n.drainCall(convSent)
 
 		rows := map[uint]models.Call{}
 		require.Eventually(t, func() bool {
@@ -805,7 +876,7 @@ func TestATerminatorWithoutACopyComesAfterTheCopies(t *testing.T) {
 		last := len(sent) - 1
 		sent[last].DMRData = badHeader(layer2.RawBurst(sent[last].DMRData))
 		sendC2(t, n.c2.SendDMRD, sent)
-		g := n.drain(callWait(sent))
+		g := n.drainCall(sent)
 		got := ofStream(g.ambeListen, stream)
 		require.Len(t, got, len(sent), "the AMBE hotspot must get every burst")
 		assert.Equal(t, sent[last].DMRData, got[last].DMRData, "the terminator came before a copy")
@@ -830,7 +901,7 @@ func TestTheCopiesOfBackToBackCallsKeepTheirOrder(t *testing.T) {
 			sent = append(sent, cc.tx.packets(stream)...)
 		}
 		sendC2(t, n.c2.SendDMRD, sent)
-		g := n.drain(callWait(sent))
+		g := n.drainCall(sent)
 
 		var order []uint
 		for _, p := range g.ambeListen {

@@ -45,10 +45,13 @@ const (
 
 // Result counts what one purge removed.
 type Result struct {
-	Ran           bool
-	Messages      int
-	Transmissions int
-	Bursts        int
+	Ran      bool
+	Messages int
+	// MessageAccesses is the entries of the message access log purged,
+	// which follow the retention of the messages.
+	MessageAccesses int
+	Transmissions   int
+	Bursts          int
 }
 
 // Purger deletes old records in batches. Only one replica purges in each
@@ -121,7 +124,11 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 		return res, fmt.Errorf("retention: %w", err)
 	}
 	if r.Messages > 0 {
-		if res.Messages, err = purgeMessages(db, now.Add(-time.Duration(r.Messages)*day)); err != nil {
+		cut := now.Add(-time.Duration(r.Messages) * day)
+		if res.Messages, err = purgeMessages(db, cut); err != nil {
+			return res, err
+		}
+		if res.MessageAccesses, err = purgeMessageAccesses(db, cut); err != nil {
 			return res, err
 		}
 	}
@@ -135,8 +142,8 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 			return res, err
 		}
 	}
-	if res.Messages+res.Bursts+res.Transmissions > 0 {
-		slog.Info("Retention: purged old records", "messages", res.Messages, "transmissions", res.Transmissions, "bursts", res.Bursts)
+	if res.Messages+res.MessageAccesses+res.Bursts+res.Transmissions > 0 {
+		slog.Info("Retention: purged old records", "messages", res.Messages, "message_accesses", res.MessageAccesses, "transmissions", res.Transmissions, "bursts", res.Bursts)
 	}
 	return res, nil
 }
@@ -153,6 +160,35 @@ func purgeMessages(db *gorm.DB, cut time.Time) (int, error) {
 		}
 		if err := db.Where("id IN ?", ids).Delete(&models.Message{}).Error; err != nil {
 			return total, fmt.Errorf("retention: cannot delete old messages: %w", err)
+		}
+		total += len(ids)
+		if len(ids) < batchSize {
+			return total, nil
+		}
+	}
+}
+
+func purgeMessageAccesses(db *gorm.DB, cut time.Time) (int, error) {
+	total := 0
+	for {
+		var ids []uint
+		if err := db.Model(&models.MessageAccess{}).Where("at < ?", cut.UTC()).Order("id").Limit(batchSize).Pluck("id", &ids).Error; err != nil {
+			return total, fmt.Errorf("retention: cannot find old message accesses: %w", err)
+		}
+		if len(ids) == 0 {
+			return total, nil
+		}
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("access_id IN ?", ids).Delete(&models.MessageAccessRadioID{}).Error; err != nil {
+				return fmt.Errorf("cannot delete the radio IDs of old message accesses: %w", err)
+			}
+			if err := tx.Where("id IN ?", ids).Delete(&models.MessageAccess{}).Error; err != nil {
+				return fmt.Errorf("cannot delete old message accesses: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return total, fmt.Errorf("retention: %w", err)
 		}
 		total += len(ids)
 		if len(ids) < batchSize {

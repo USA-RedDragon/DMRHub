@@ -175,3 +175,36 @@ func TestRetentionPrunesPositionsAtTheirRadiosRetentionAndTheHubsMost(t *testing
 	assert.Equal(t, int64(1), count(t, database, &models.Position{}, "radio_id = 3191868"), "24 hours")
 	assert.Equal(t, int64(2), count(t, database, &models.Position{}, "radio_id = 3140598"), "7 days, cut to the hub's 3")
 }
+
+func TestRetentionPurgesTheMessageAccessLogWithTheMessages(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			for _, days := range []int{0, 30} {
+				t.Run(fmt.Sprintf("%d days", days), func(t *testing.T) {
+					cfg, database, kvStore := setup(t, be)
+					now := time.Now()
+					msgs := []models.Message{{SourceID: 3100001, DestinationID: 3100002}}
+					for _, age := range []int{1, 20, 40, 100} {
+						require.NoError(t, models.LogMessageAccess(database, 1, models.MessageAccessSearch, nil, "", msgs, now.Add(-time.Duration(age)*daySpan)))
+					}
+					cfg.DMR.Retention = config.Retention{Messages: days}
+
+					res, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+					require.NoError(t, err)
+					if days == 0 {
+						assert.Equal(t, 0, res.MessageAccesses)
+						assert.Equal(t, int64(4), count(t, database, &models.MessageAccess{}), "0 keeps the log")
+						assert.Equal(t, int64(8), count(t, database, &models.MessageAccessRadioID{}))
+						return
+					}
+					assert.Equal(t, 2, res.MessageAccesses)
+					assert.Equal(t, int64(2), count(t, database, &models.MessageAccess{}))
+					assert.Equal(t, int64(0), count(t, database, &models.MessageAccess{}, "at < ?", now.Add(-30*daySpan)))
+					assert.Equal(t, int64(4), count(t, database, &models.MessageAccessRadioID{}), "the radio IDs of a purged entry go with it")
+				})
+			}
+		})
+	}
+}

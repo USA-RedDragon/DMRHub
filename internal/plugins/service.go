@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
@@ -97,7 +98,7 @@ type Service struct {
 	registry  *Registry
 	router    Router
 	notify    func(models.Position)
-	now       func() time.Time
+	clock     clock.Clock
 	heartbeat time.Duration
 	grace     time.Duration
 
@@ -117,7 +118,7 @@ type openStream struct {
 // a plugin sent and the hub stored.
 func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router, notify func(models.Position)) *Service {
 	return &Service{
-		db: db, pubsub: ps, registry: registry, router: router, notify: notify, now: time.Now, heartbeat: heartbeatEvery,
+		db: db, pubsub: ps, registry: registry, router: router, notify: notify, clock: clock.Real(), heartbeat: heartbeatEvery,
 		grace: handoffGrace, streams: map[*openStream]struct{}{}, drained: make(chan struct{}),
 	}
 }
@@ -262,12 +263,12 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 	if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
 		address = pr.Addr.String()
 	}
-	if err := models.NotePluginConnected(s.db, p.ID, session, address, s.now()); err != nil {
+	if err := models.NotePluginConnected(s.db, p.ID, session, address, s.clock.Now()); err != nil {
 		slog.Warn("Plugins: cannot note a connection", "plugin", p.Name, "error", err)
 	}
 	slog.Info("Plugins: connected", "plugin", p.Name, "address", address)
 	defer func() {
-		if err := models.NotePluginDisconnected(s.db, p.ID, session, s.now()); err != nil {
+		if err := models.NotePluginDisconnected(s.db, p.ID, session, s.clock.Now()); err != nil {
 			slog.Warn("Plugins: cannot note a disconnection", "plugin", p.Name, "error", err)
 		}
 		slog.Info("Plugins: disconnected", "plugin", p.Name)
@@ -396,7 +397,7 @@ type watcher struct {
 func (w *watcher) watch(ctx context.Context) {
 	defer w.unsubscribe()
 	current := w.p.Ranges
-	heartbeat := time.NewTicker(w.s.heartbeat)
+	heartbeat := w.s.clock.NewTicker(w.s.heartbeat)
 	defer heartbeat.Stop()
 	var handoff <-chan time.Time
 	for {
@@ -407,8 +408,8 @@ func (w *watcher) watch(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-heartbeat.C:
-			if err := models.NotePluginSeen(w.s.db, w.p.ID, w.session, w.s.now()); err != nil {
+		case <-heartbeat.C():
+			if err := models.NotePluginSeen(w.s.db, w.p.ID, w.session, w.s.clock.Now()); err != nil {
 				slog.Warn("Plugins: cannot note a heartbeat", "plugin", w.p.Name, "error", err)
 			}
 		case b, ok := <-w.kick.Channel():
@@ -422,7 +423,7 @@ func (w *watcher) watch(ctx context.Context) {
 				w.cancel(errReplaced)
 				return
 			}
-			handoff = time.After(w.s.grace)
+			handoff = w.s.clock.After(w.s.grace)
 		case <-handoff:
 			w.handOver()
 			return
@@ -567,7 +568,7 @@ func (w *watcher) store(p *pluginv1.Position, ranges []models.PluginRange) {
 	if !ok {
 		via = w.heardOn[p.GetRadio()]
 	}
-	pos, ok := positionOf(p, ranges, via, w.s.now())
+	pos, ok := positionOf(p, ranges, via, w.s.clock.Now())
 	if !ok {
 		return
 	}

@@ -34,7 +34,9 @@ import (
 // twoTalkers logs in the hotspots 100001 and 100002 of two users and the
 // listener 100003, which all carry TG 3100 on TS1, and has both talkers
 // key up TG 3100 at once, their bursts interleaved, the first talker
-// 30 ms ahead. It returns the stream
+// ahead: the second one keys up once the first burst of the first one
+// reached the listener, as the hub gives the timeslot to the call that
+// reaches it first. It returns the stream
 // IDs that the listener got, with the count of bursts of each, and the
 // clients of the talkers and the listener.
 func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, []*testutils.MMDVMClient) {
@@ -71,9 +73,24 @@ func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, 
 		return p
 	}
 	const bursts = 6
+	got := map[uint]int{}
 	for i := range bursts {
 		require.NoError(t, clients[0].SendDMRD(burst(1000001, 1001, i)))
-		time.Sleep(30 * time.Millisecond)
+		if i == 0 {
+			reached := time.After(drainWait)
+			for got[1001] == 0 {
+				select {
+				case p := <-clients[2].ReceivedPackets():
+					if p.Dst == 3100 {
+						got[p.StreamID]++
+					}
+				case <-reached:
+					require.FailNow(t, "the listener got no burst of the first talker")
+				}
+			}
+		} else {
+			time.Sleep(30 * time.Millisecond)
+		}
 		require.NoError(t, clients[1].SendDMRD(burst(1000002, 1002, i)))
 		time.Sleep(30 * time.Millisecond)
 	}
@@ -84,7 +101,6 @@ func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, 
 	require.NoError(t, clients[0].SendDMRD(a))
 	require.NoError(t, clients[1].SendDMRD(b))
 
-	got := map[uint]int{}
 	for _, p := range clients[2].Drain(drainWait) {
 		if p.Dst == 3100 {
 			got[p.StreamID]++

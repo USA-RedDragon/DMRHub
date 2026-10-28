@@ -23,6 +23,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -35,166 +36,177 @@ var errDown = errors.New("database down")
 
 func TestStaleAnswerComesAtOnceAndIsReplaced(t *testing.T) {
 	t.Parallel()
-	var answer atomic.Int64
-	answer.Store(1)
-	release := make(chan struct{})
-	var slow atomic.Bool
-	c := lookup.New(clock.Real(), "test", 20*time.Millisecond, func(int) (int64, error) {
-		if slow.Load() {
-			<-release
-		}
-		return answer.Load(), nil
-	})
+	synctest.Test(t, func(t *testing.T) {
+		var answer atomic.Int64
+		answer.Store(1)
+		release := make(chan struct{})
+		var slow atomic.Bool
+		c := lookup.New(clock.Real(), "test", 20*time.Millisecond, func(int) (int64, error) {
+			if slow.Load() {
+				<-release
+			}
+			return answer.Load(), nil
+		})
 
-	v, err := c.Get(7)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), v)
-
-	answer.Store(2)
-	slow.Store(true)
-	time.Sleep(30 * time.Millisecond)
-	start := time.Now()
-	v, err = c.Get(7)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), v, "a stale answer comes while the load waits")
-	assert.Less(t, time.Since(start), 10*time.Millisecond)
-	close(release)
-	assert.Eventually(t, func() bool {
 		v, err := c.Get(7)
-		return err == nil && v == 2
-	}, time.Second, 5*time.Millisecond)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), v)
+
+		answer.Store(2)
+		slow.Store(true)
+		time.Sleep(30 * time.Millisecond)
+		v, err = c.Get(7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), v, "a stale answer comes while the load waits")
+		close(release)
+		synctest.Wait()
+		v, err = c.Get(7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), v, "the load replaced the stale answer")
+	})
 }
 
 func TestFailedReloadKeepsTheAnswer(t *testing.T) {
 	t.Parallel()
-	var down atomic.Bool
-	var loads atomic.Int64
-	c := lookup.New(clock.Real(), "test", 10*time.Millisecond, func(int) (string, error) {
-		loads.Add(1)
-		if down.Load() {
-			return "", errDown
-		}
-		return "up", nil
-	})
-	_, err := c.Get(1)
-	require.NoError(t, err)
-
-	down.Store(true)
-	time.Sleep(20 * time.Millisecond)
-	for range 50 {
-		v, err := c.Get(1)
+	synctest.Test(t, func(t *testing.T) {
+		var down atomic.Bool
+		var loads atomic.Int64
+		c := lookup.New(clock.Real(), "test", 10*time.Millisecond, func(int) (string, error) {
+			loads.Add(1)
+			if down.Load() {
+				return "", errDown
+			}
+			return "up", nil
+		})
+		_, err := c.Get(1)
 		require.NoError(t, err)
-		assert.Equal(t, "up", v)
-	}
-	time.Sleep(5 * time.Millisecond)
-	assert.LessOrEqual(t, loads.Load(), int64(3), "a failed reload waits a TTL before the next")
+
+		down.Store(true)
+		time.Sleep(20 * time.Millisecond)
+		for range 50 {
+			v, err := c.Get(1)
+			require.NoError(t, err)
+			assert.Equal(t, "up", v)
+		}
+		synctest.Wait()
+		assert.Equal(t, int64(2), loads.Load(), "a failed reload waits a TTL before the next")
+	})
 }
 
 func TestColdLoadErrorIsNotKept(t *testing.T) {
 	t.Parallel()
-	var down atomic.Bool
-	down.Store(true)
-	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (bool, error) {
-		if down.Load() {
-			return false, errDown
-		}
-		return true, nil
+	synctest.Test(t, func(t *testing.T) {
+		var down atomic.Bool
+		down.Store(true)
+		c := lookup.New(clock.Real(), "test", time.Minute, func(int) (bool, error) {
+			if down.Load() {
+				return false, errDown
+			}
+			return true, nil
+		})
+		_, err := c.Get(1)
+		require.ErrorIs(t, err, errDown)
+		down.Store(false)
+		v, err := c.Get(1)
+		require.NoError(t, err)
+		assert.True(t, v)
 	})
-	_, err := c.Get(1)
-	require.ErrorIs(t, err, errDown)
-	down.Store(false)
-	v, err := c.Get(1)
-	require.NoError(t, err)
-	assert.True(t, v)
 }
 
 func TestDropAndPrune(t *testing.T) {
 	t.Parallel()
-	var loads atomic.Int64
-	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
-	v, _ := c.Get(1)
-	assert.Equal(t, int64(1), v)
-	c.Drop(1)
-	v, _ = c.Get(1)
-	assert.Equal(t, int64(2), v)
-	c.Prune(time.Now().Add(lookup.Idle + time.Second))
-	v, _ = c.Get(1)
-	assert.Equal(t, int64(3), v)
+	synctest.Test(t, func(t *testing.T) {
+		var loads atomic.Int64
+		c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
+		v, _ := c.Get(1)
+		assert.Equal(t, int64(1), v)
+		c.Drop(1)
+		v, _ = c.Get(1)
+		assert.Equal(t, int64(2), v)
+		c.Prune(time.Now().Add(lookup.Idle + time.Second))
+		v, _ = c.Get(1)
+		assert.Equal(t, int64(3), v)
+	})
 }
 
 func TestReloadReplacesAFreshAnswerAndSkipsUnknownKeys(t *testing.T) {
 	t.Parallel()
-	var loads atomic.Int64
-	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
-	c.Reload(1)
-	assert.Zero(t, loads.Load(), "a key nobody read is not loaded")
-	v, _ := c.Get(1)
-	assert.Equal(t, int64(1), v)
-	c.Reload(1)
-	v, _ = c.Get(1)
-	assert.Equal(t, int64(2), v, "a reload replaces an answer that is not stale yet")
+	synctest.Test(t, func(t *testing.T) {
+		var loads atomic.Int64
+		c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
+		c.Reload(1)
+		assert.Zero(t, loads.Load(), "a key nobody read is not loaded")
+		v, _ := c.Get(1)
+		assert.Equal(t, int64(1), v)
+		c.Reload(1)
+		v, _ = c.Get(1)
+		assert.Equal(t, int64(2), v, "a reload replaces an answer that is not stale yet")
+	})
 }
 
 func TestAStalledLoadHoldsReadsForWaitOnce(t *testing.T) {
 	t.Parallel()
-	release := make(chan struct{})
-	var loads atomic.Int64
-	c := lookup.New(clock.Real(), "test", time.Hour, func(int) (int, error) {
-		loads.Add(1)
-		<-release
-		return 7, nil
-	})
-	start := time.Now()
-	_, err := c.Get(1)
-	require.ErrorIs(t, err, lookup.ErrSlow)
-	took := time.Since(start)
-	assert.GreaterOrEqual(t, took, lookup.Wait)
-	assert.Less(t, took, lookup.Wait+time.Second)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		var loads atomic.Int64
+		c := lookup.New(clock.Real(), "test", time.Hour, func(int) (int, error) {
+			loads.Add(1)
+			<-release
+			return 7, nil
+		})
+		start := time.Now()
+		_, err := c.Get(1)
+		require.ErrorIs(t, err, lookup.ErrSlow)
+		assert.Equal(t, start.Add(lookup.Wait), time.Now(), "a read waits Wait for a stalled load")
 
-	start = time.Now()
-	_, err = c.Get(1)
-	require.ErrorIs(t, err, lookup.ErrSlow)
-	assert.Less(t, time.Since(start), 50*time.Millisecond, "a read waited again for a load that already used its wait")
+		_, err = c.Get(1)
+		require.ErrorIs(t, err, lookup.ErrSlow)
+		assert.Equal(t, start.Add(lookup.Wait), time.Now(), "a read waited again for a load that already used its wait")
 
-	close(release)
-	assert.Eventually(t, func() bool {
+		close(release)
+		synctest.Wait()
 		v, err := c.Get(1)
-		return err == nil && v == 7
-	}, time.Second, 5*time.Millisecond)
-	assert.Equal(t, int64(1), loads.Load(), "loads of one key")
+		require.NoError(t, err)
+		assert.Equal(t, 7, v)
+		assert.Equal(t, int64(1), loads.Load(), "loads of one key")
+	})
 }
 
 func TestHeldWaitsEndWithTheLoadOrTheirEnd(t *testing.T) {
 	t.Parallel()
-	release := make(chan struct{})
-	c := lookup.New(clock.Real(), "test", time.Hour, func(k int) (int, error) {
-		if k == 2 {
-			<-release
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		c := lookup.New(clock.Real(), "test", time.Hour, func(k int) (int, error) {
+			if k == 2 {
+				<-release
+			}
+			return k, nil
+		})
+		end := make(chan struct{})
+		c.HoldWaits(end)
+
+		v, err := c.Get(1)
+		require.NoError(t, err)
+		assert.Equal(t, 1, v)
+
+		got := make(chan error, 1)
+		go func() {
+			_, err := c.Get(2)
+			got <- err
+		}()
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		select {
+		case err := <-got:
+			require.Fail(t, "a held wait ended before its end", "%v", err)
+		default:
 		}
-		return k, nil
+		close(end)
+		require.ErrorIs(t, <-got, lookup.ErrSlow)
+		close(release)
+		synctest.Wait()
+		v, err = c.Get(2)
+		require.NoError(t, err)
+		assert.Equal(t, 2, v)
 	})
-	end := make(chan struct{})
-	c.HoldWaits(end)
-
-	v, err := c.Get(1)
-	require.NoError(t, err)
-	assert.Equal(t, 1, v)
-
-	got := make(chan error, 1)
-	go func() {
-		_, err := c.Get(2)
-		got <- err
-	}()
-	select {
-	case err := <-got:
-		require.Fail(t, "a held wait ended before its end", "%v", err)
-	case <-time.After(2 * lookup.Wait):
-	}
-	close(end)
-	require.ErrorIs(t, <-got, lookup.ErrSlow)
-	close(release)
-	assert.Eventually(t, func() bool {
-		v, err := c.Get(2)
-		return err == nil && v == 2
-	}, time.Minute, 5*time.Millisecond)
 }

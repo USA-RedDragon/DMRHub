@@ -101,15 +101,16 @@ func (h *Hub) RepeaterSecretChanged(id uint) {
 	h.announce(repeaterRekeyTopic, id)
 }
 
-// OnRulesChange calls fn with the repeater or talkgroup ID of each change
-// of the routing rules that this replica took, after it read them again.
-// The returned func stops the calls.
+// OnRulesChange calls fn with the repeater, talkgroup or user ID of each
+// change of the routing rules that this replica took, after it read them
+// again. The returned func stops the calls.
 func (h *Hub) OnRulesChange(fn func(id uint)) (stop func()) {
 	return h.watchers.add(rulesChangedTopic, fn)
 }
 
 // RulesChanged makes every replica read the routing rules again after a
-// change of the rules of the repeater or talkgroup id.
+// change of the rules of the repeater or talkgroup id, or after the delete
+// of the user, repeater or talkgroup id.
 func (h *Hub) RulesChanged(id uint) {
 	h.announce(rulesChangedTopic, id)
 }

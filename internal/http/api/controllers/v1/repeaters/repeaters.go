@@ -199,6 +199,7 @@ func DELETERepeater(c *gin.Context) {
 	}
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
 		dmrHub.ReloadRepeater(c.Request.Context(), repeaterID)
+		dmrHub.RulesChanged(repeaterID)
 	}
 	for _, owner := range owners {
 		publishOwnerChanged(c, owner)

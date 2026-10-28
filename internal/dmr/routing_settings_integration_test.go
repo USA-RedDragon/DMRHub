@@ -21,6 +21,7 @@ package dmr_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,6 +358,8 @@ func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: 1500 * time.Millisecond})
 		c := oneHotspot(t, stack)
+		rules := stack.PubSub.Subscribe("hub:rules:changed")
+		t.Cleanup(func() { _ = rules.Close() })
 
 		for i := range uint(6) {
 			tgCall(t, c, 3999, 1800+i)
@@ -367,6 +370,12 @@ func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return !ok }, 10*time.Second, 50*time.Millisecond,
 			"the talkgroup goes after its TTL with no call")
 		assert.Nil(t, dynamicTS2(t, stack), "the deleted talkgroup is no longer linked")
+		select {
+		case msg := <-rules.Channel():
+			assert.True(t, strings.HasSuffix(string(msg), ":3999"), "notice %q", msg)
+		case <-time.After(2 * time.Second):
+			assert.Fail(t, "the delete of the talkgroup did not announce a rules change")
+		}
 	})
 }
 

@@ -149,5 +149,6 @@ func (h *Hub) expireTalkgroups(ttl time.Duration) {
 			h.ReloadRepeater(context.Background(), rid)
 		}
 		h.TalkgroupChanged(id)
+		h.RulesChanged(id)
 	}
 }

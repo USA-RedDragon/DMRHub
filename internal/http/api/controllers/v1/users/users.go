@@ -967,6 +967,7 @@ func DELETEUser(c *gin.Context) {
 		for _, p := range peers {
 			dmrHub.PeerChanged(p.ID)
 		}
+		dmrHub.RulesChanged(uint(idUint64))
 	}
 	if store, ok := c.Value("SessionStore").(*sessionstore.Store); ok {
 		if err := store.DeleteUserSessions(c.Request.Context(), uint(idUint64), ""); err != nil {

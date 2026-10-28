@@ -158,6 +158,7 @@ func DELETETalkgroup(c *gin.Context) {
 		for _, rid := range affectedRepeaterIDs {
 			dmrHub.ReloadRepeater(c.Request.Context(), rid)
 		}
+		dmrHub.RulesChanged(uint(idUint64))
 	}
 	talkgroupChanged(c, uint(idUint64))
 	c.JSON(http.StatusOK, gin.H{messageKey: "Talkgroup deleted"})

@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -165,4 +166,83 @@ func TestRoutingSettingsReachEveryReplica(t *testing.T) { //nolint:paralleltest 
 			assert.Nil(t, dynamicTS2(t, l.IntegrationStack, 100001), "the other replica must take the setting")
 		})
 	}
+}
+
+// listenerPair logs in the hotspot 100001 of N0CALL and the listener
+// 100002, which both carry TG 3100 on TS1.
+func listenerPair(t *testing.T, stack *testutils.IntegrationStack) (*testutils.MMDVMClient, *testutils.MMDVMClient) {
+	t.Helper()
+	stack.SeedUser(t, 1000001, "N0CALL")
+	stack.SeedTalkgroup(t, 3100, "TG")
+	for _, id := range []uint{100001, 100002} {
+		stack.SeedMMDVMRepeater(t, id, 1000001, testPassword)
+		stack.AssignTS1StaticTG(t, id, 3100)
+	}
+	stack.StartServers(t)
+	var out []*testutils.MMDVMClient
+	for _, id := range []uint32{100001, 100002} {
+		c := testutils.NewMMDVMClient(id, "", testPassword)
+		require.NoError(t, c.Connect(stack.MMDVMAddr))
+		t.Cleanup(c.Close)
+		require.NoError(t, c.WaitReady(handshakeWait))
+		out = append(out, c)
+	}
+	time.Sleep(settleDuration)
+	return out[0], out[1]
+}
+
+// heardFrom has talker key up TG 3100 on TS1 as radio src, and reports
+// whether listener got the call.
+func heardFrom(t *testing.T, talker, listener *testutils.MMDVMClient, src, stream uint) bool {
+	t.Helper()
+	require.NoError(t, talker.SendDMRD(makeGroupVoicePacket(src, 3100, stream, false)))
+	time.Sleep(50 * time.Millisecond)
+	require.NoError(t, talker.SendDMRD(makeGroupVoiceTermPacket(src, 3100, stream, false)))
+	for _, p := range listener.Drain(drainWait) {
+		if p.StreamID == stream {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	radioIDListed   = uint(3191868)
+	radioIDUnlisted = uint(1000002)
+	addedRadioID    = uint(1000003)
+)
+
+func TestTransmitAnyTakesEveryRadio(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		routingStack(t, stack, config.Routing{})
+		a, b := listenerPair(t, stack)
+		assert.True(t, heardFrom(t, a, b, radioIDUnlisted, 1101), "by default any radio may transmit")
+	})
+}
+
+func TestTransmitRadioIDTakesOnlyListedRadios(t *testing.T) {
+	t.Parallel()
+	_, listed := userdb.Get(radioIDListed)
+	require.True(t, listed, "the RadioID list must have %d", radioIDListed)
+	_, unlisted := userdb.Get(radioIDUnlisted)
+	require.False(t, unlisted, "the RadioID list must not have %d", radioIDUnlisted)
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		routingStack(t, stack, config.Routing{Transmit: config.TransmitRadioID})
+		a, b := listenerPair(t, stack)
+		assert.True(t, heardFrom(t, a, b, radioIDListed, 1201), "a radio ID that RadioID lists may transmit")
+		assert.False(t, heardFrom(t, a, b, radioIDUnlisted, 1202), "a radio ID that RadioID does not list may not")
+	})
+}
+
+func TestTransmitMembersTakesAccountsAndTheirAddedIDs(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		routingStack(t, stack, config.Routing{Transmit: config.TransmitMembers})
+		a, b := listenerPair(t, stack)
+		require.NoError(t, stack.DB.Create(&models.UserRadioID{UserID: 1000001, RadioID: addedRadioID, VerifiedAt: time.Now()}).Error)
+		assert.True(t, heardFrom(t, a, b, 1000001, 1301), "the DMR ID of an account may transmit")
+		assert.True(t, heardFrom(t, a, b, addedRadioID, 1302), "a radio ID that a user added may transmit")
+		assert.False(t, heardFrom(t, a, b, radioIDListed, 1303), "a radio ID with no account may not, even when RadioID lists it")
+	})
 }

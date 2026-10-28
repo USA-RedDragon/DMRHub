@@ -53,7 +53,7 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 - [MMDVM modem on a serial port](modem.md)
 - [Transcoding between Codec2 and AMBE](transcoding.md)
 - [Private call routing](private-calls.md)
-- [Routing settings](routing.md): dynamic talkgroups and their timeout, and two calls at once.
+- [Routing settings](routing.md): dynamic talkgroups and their timeout, who may transmit, and two calls at once.
 - [IP lists](ip-lists.md): refuse the addresses of hotspots, repeaters and peers, or accept only some.
 - [Messages and retention](messages.md)
 - [Positions and APRS-IS](positions.md)

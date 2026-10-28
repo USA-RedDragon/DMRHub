@@ -84,6 +84,7 @@ func (h *Hub) RouteStreamAt(ctx context.Context, packet models.Packet, sourceNam
 		return
 	}
 	h.admitStream(ctx, packet, sourceName, func(ok bool) {
+		ok = ok && h.admitRouting(packet, sourceName)
 		if admitted != nil {
 			admitted(ok)
 		}

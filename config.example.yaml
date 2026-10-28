@@ -265,6 +265,8 @@ dmr:
     disable-dynamic-links: false
     # Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it
     dynamic-timeout: "15m"
+    # Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)
+    transmit: "any"
     # What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)
     contention: "mix"
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once

@@ -647,6 +647,9 @@ func (p PrivateCalls) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// ErrInvalidTransmit indicates a transmit setting that is not any, radioid or members.
+var ErrInvalidTransmit = errors.New("the transmit setting must be any, radioid or members")
+
 // ErrInvalidContention indicates a contention setting that is not mix or first.
 var ErrInvalidContention = errors.New("the contention setting must be mix or first")
 
@@ -663,6 +666,9 @@ func (r Routing) Validate() error {
 func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	if r.DynamicTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDynamicTimeout, Err: ErrInvalidDynamicTimeout})
+	}
+	if r.Transmit != "" && r.Transmit != TransmitAny && r.Transmit != TransmitRadioID && r.Transmit != TransmitMembers {
+		errs = append(errs, ValidationError{Field: "dmr.routing.transmit", Err: ErrInvalidTransmit})
 	}
 	if r.Contention != "" && r.Contention != ContentionMix && r.Contention != ContentionFirst {
 		errs = append(errs, ValidationError{Field: "dmr.routing.contention", Err: ErrInvalidContention})

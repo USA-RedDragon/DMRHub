@@ -34,7 +34,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, Contention: config.ContentionMix}
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, Transmit: config.TransmitAny, Contention: config.ContentionMix}
 	if cfg.DMR.Routing != want {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
@@ -49,6 +49,7 @@ func TestRoutingValidate(t *testing.T) {
 	}{
 		{"dmr.routing.dynamic-timeout", config.Routing{DynamicTimeout: -time.Second}, config.ErrInvalidDynamicTimeout},
 		{"dmr.routing.contention", config.Routing{Contention: "loudest"}, config.ErrInvalidContention},
+		{"dmr.routing.transmit", config.Routing{Transmit: "friends"}, config.ErrInvalidTransmit},
 	} {
 		cfg := makeValidConfig()
 		cfg.DMR.Routing = c.r
@@ -63,7 +64,7 @@ func TestRoutingValidate(t *testing.T) {
 		}
 	}
 	cfg := makeValidConfig()
-	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Contention: config.ContentionFirst}
+	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Transmit: config.TransmitMembers, Contention: config.ContentionFirst}
 	if err := cfg.DMR.Routing.Validate(); err != nil {
 		t.Errorf("valid routing settings: %v", err)
 	}

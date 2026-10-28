@@ -117,3 +117,18 @@ const (
 	// ContentionFirst lets the first call hold the timeslot until it ends.
 	ContentionFirst Contention = "first"
 )
+
+// Transmit is which radios may transmit through the repeaters and
+// hotspots of the network.
+type Transmit string
+
+const (
+	// TransmitAny lets any radio transmit.
+	TransmitAny Transmit = "any"
+	// TransmitRadioID lets the radio IDs that the RadioID list has
+	// transmit.
+	TransmitRadioID Transmit = "radioid"
+	// TransmitMembers lets the DMR IDs of accounts and the radio IDs that
+	// their users added transmit.
+	TransmitMembers Transmit = "members"
+)

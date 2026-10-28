@@ -75,6 +75,10 @@ const labelReason = "reason"
 // for a burst of a stream that another source is already sending.
 const DropReasonStreamFromOtherSource = "stream_from_other_source"
 
+// DropReasonTransmit is the IngressDroppedBurstsTotal reason for a burst
+// of a radio that the routing settings do not let transmit.
+const DropReasonTransmit = "transmit"
+
 // DropReasonSlotRate is the IngressDroppedBurstsTotal reason for a burst
 // over the rate that one repeater slot can carry.
 const DropReasonSlotRate = "slot_rate"

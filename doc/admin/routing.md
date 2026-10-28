@@ -6,6 +6,7 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | ------- | ------------ | ------- | ----------------- |
 | Dynamic links off | When `true`, a call on a talkgroup and the default dial of a hotspot link no dynamic talkgroup. See [Dynamic talkgroups](#dynamic-talkgroups). | `false` | `dmr.routing.disable-dynamic-links` |
 | Dynamic talkgroup timeout | The time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks the talkgroup from that timeslot, such as `15m`. `0s` never unlinks it. | `15m` | `dmr.routing.dynamic-timeout` |
+| Who may transmit | The radios whose transmissions DMRHub takes from repeaters and hotspots: `any`, `radioid` or `members`. See [Who may transmit](#who-may-transmit). | `any` | `dmr.routing.transmit` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 
 ## Dynamic talkgroups
@@ -19,6 +20,16 @@ Each voice call from the repeater on its dynamic talkgroup starts the timeout ag
 - A change of the timeout applies to the links that exist. With `0s`, no link times out.
 
 With dynamic links off, calls still reach the repeaters that carry the talkgroup as a static talkgroup or as a dynamic talkgroup that was linked before. A user or an admin can still pick a dynamic talkgroup on the **Repeaters** page, and talkgroup 4000 still unlinks.
+
+## Who may transmit
+
+DMRHub checks the source radio ID of each transmission that comes from a repeater or hotspot of this network:
+
+- `any` takes every radio ID.
+- `radioid` takes the radio IDs that the RadioID list has (see `dmr.radio-id-url` in [Configuration](configuration.md)).
+- `members` takes the DMR ID of each account and the radio IDs that users added on the Settings page.
+
+DMRHub drops a transmission that the setting refuses, all of it, logs it once and counts its bursts in the metric `ingress_dropped_bursts_total` with the reason `transmit`. It checks the first burst of each transmission, so a change of the setting applies from the next transmission. Transmissions from OpenBridge peers and plugins are not checked.
 
 ## Two calls at once
 

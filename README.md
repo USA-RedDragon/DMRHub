@@ -8,13 +8,14 @@ DMRHub runs a DMR network server, like TGIF or BrandMeister, in a single binary.
 
 ## Documentation
 
-| Section     | For                                    | Start here                                                                                                                       |
-| ----------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Get started | Hams who are new to DMRHub             | [User's Guide](doc/User-Guide.md): make an account and connect your first hotspot.                                               |
-| Guides      | Hams with a radio or a hotspot         | [User's Guide](doc/User-Guide.md): one task at a time, such as talkgroups, the parrot, private calls and text messages.          |
-| Admin       | People who run a DMRHub server         | [Set up a DMRHub server](doc/setup.md): from install to the first call. [Install DMRHub](doc/admin/install.md), [Admin overview](doc/admin/overview.md), [Configuration](doc/admin/configuration.md), [Plugins](doc/admin/plugins.md), [Stress results](doc/admin/stress-results.md) |
-| Reference   | Facts to look up                       | [Messages and SMS Storage](doc/messages.md), [Positions](doc/positions.md), [FAQ](doc/FAQ.md)                                    |
-| Developers  | People who write plugins, apps or code | [Plugins](doc/plugins.md), [OAuth Apps](doc/oauth-apps.md), [MMDVM over WebTransport](doc/webtransport.md), [Building from Source](doc/Building.md) |
+| Section          | For                                    | Start here |
+| ---------------- | -------------------------------------- | ---------- |
+| Get started      | Hams who are new to DMRHub             | [Get started](doc/getting-started.md): make an account and connect your first hotspot. [FAQ](doc/FAQ.md) |
+| Guides: users    | Hams with a radio, a hotspot or a browser | [User's Guide](doc/User-Guide.md): one task at a time, such as talkgroups, the parrot, private calls, text messages and the [DMRHub Browser Radio](doc/guides/browser-radio.md). |
+| Guides: admins   | People who run a DMRHub server         | [Set up a DMRHub server](doc/setup.md): from install to the first call. [Install DMRHub](doc/admin/install.md), [Admin overview](doc/admin/overview.md), [Configuration](doc/admin/configuration.md), [Plugins](doc/admin/plugins.md), [Stress results](doc/admin/stress-results.md) |
+| External software | People who connect other DMR programs | [External software](doc/external/index.md): Pi-Star, MMDVMHost, DMRGateway, DroidStar, HBlink, FreeDMR and more. |
+| Reference        | Facts to look up                       | [Messages and SMS Storage](doc/messages.md), [Positions](doc/positions.md), [Transmission kinds](doc/admin/transmission-kinds.md) |
+| Developers       | People who write plugins, apps or code | [Plugins](doc/plugins.md), [OAuth Apps](doc/oauth-apps.md), [MMDVM over WebTransport](doc/webtransport.md), [Building from Source](doc/Building.md) |
 
 ## Live server
 

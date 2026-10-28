@@ -69,3 +69,4 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 - [Configuration](configuration.md): every setting, its default, its environment variable and its flag.
 - [Transmission kinds](transmission-kinds.md): the `kind` and `sub_kind` of each Last Heard entry, and the undeliverable reasons.
 - [Stress results](stress-results.md): how much load DMRHub carries, and what fails first.
+- [External software](../external/index.md): how to connect Pi-Star, MMDVMHost, DMRGateway, HBlink, FreeDMR and other programs.

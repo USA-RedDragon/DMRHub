@@ -257,6 +257,47 @@ func TestAClaimOlderThanOurOwnEndsNothing(t *testing.T) {
 	})
 }
 
+// TestAClaimAtTheSameTimeAsOurOwnEndsOneSession has two replicas each
+// claim a repeater, and then get the claim of the other replica for it with
+// the same time as their own, as two replicas that stamp in the same tick
+// do. Exactly one replica must keep the repeater: the one whose ID sorts
+// last.
+func TestAClaimAtTheSameTimeAsOurOwnEndsOneSession(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 2)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000001)
+		ctx := context.Background()
+		one, two := r[0].hub, r[1].hub
+		toldOne := make(chan uint, 2)
+		one.OnClaimedElsewhere(func(id uint, _ time.Time) { toldOne <- id })
+		toldTwo := make(chan uint, 2)
+		two.OnClaimedElsewhere(func(id uint, _ time.Time) { toldTwo <- id })
+		at := time.Now()
+		one.ActivateRepeaterSince(ctx, 100001, at)
+		two.ActivateRepeaterSince(ctx, 100002, at)
+		synctest.Wait()
+		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-2")))
+		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100002", []byte("replica-1")))
+		require.NoError(t, r[0].ps.Publish("hub:claimed", fmt.Appendf(nil, "100001 replica-2 %d", at.UnixNano())))
+		require.NoError(t, r[0].ps.Publish("hub:claimed", fmt.Appendf(nil, "100002 replica-1 %d", at.UnixNano())))
+		synctest.Wait()
+		select {
+		case id := <-toldOne:
+			assert.Equal(t, uint(100001), id)
+		default:
+			t.Error("the replica whose ID sorts first kept a repeater that the other claimed at the same time")
+		}
+		select {
+		case id := <-toldTwo:
+			t.Errorf("the replica whose ID sorts last lost repeater %d to a claim at the same time as its own", id)
+		default:
+		}
+	})
+}
+
 // TestWaitMovedWaitsForTheHandOverOfAClaimItMissed claims a repeater in the
 // KV store only, as when the claim on pubsub is late or lost. WaitMoved
 // must not return before the servers handed the repeater over, or the

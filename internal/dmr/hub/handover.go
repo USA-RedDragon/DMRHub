@@ -154,22 +154,24 @@ func (h *Hub) followClaims(sub pubsub.Subscription) {
 				continue
 			}
 			h.claimedElsewhere.Store(id, since)
-			h.handOff(context.Background(), id, since)
+			h.handOff(context.Background(), id, instance, since)
 		}
 	}
 }
 
-// handOff runs the claim callbacks for the repeater id, which another
-// replica claimed for a packet that it got at since, when the repeater is
+// handOff runs the claim callbacks for the repeater id, which the replica
+// by claimed for a packet that it got at since, when the repeater is
 // active here and this replica did not claim it again since: a claim that
-// comes after this replica's own newer one is stale. Once they are done,
+// comes after this replica's own newer one is stale. Of two claims at the
+// same time, the one of the replica whose ID sorts last wins, so that
+// exactly one replica keeps the repeater. Once they are done,
 // it stops the subscriptions of the repeater here when no server did and
 // another replica still owns it. WaitMoved waits for it.
-func (h *Hub) handOff(ctx context.Context, id uint, since time.Time) {
+func (h *Hub) handOff(ctx context.Context, id uint, by string, since time.Time) {
 	if _, active := h.subscriptionMgr.subscriptions.Load(id); !active {
 		return
 	}
-	if mine, ok := h.claimedAt.Load(id); ok && since.Before(mine) {
+	if mine, ok := h.claimedAt.Load(id); ok && (since.Before(mine) || (since.Equal(mine) && by < h.instanceID)) {
 		return
 	}
 	h.claimedMu.Lock()
@@ -307,7 +309,7 @@ func (h *Hub) handOffMissed(ctx context.Context, pending map[uint]bool, noticed 
 			noticed[id] = h.clock.Now()
 		case !at.IsZero():
 			slog.Warn("Handing off a repeater whose claim did not come", "repeaterID", id, "owner", owner)
-			h.handOff(context.WithoutCancel(ctx), id, at)
+			h.handOff(context.WithoutCancel(ctx), id, owner, at)
 			noticed[id] = time.Time{}
 		}
 	}

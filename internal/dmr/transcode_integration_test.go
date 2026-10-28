@@ -706,7 +706,7 @@ func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 				send(restSent[j], nil)
 				j++
 			}
-			time.Sleep(30 * time.Millisecond)
+			time.Sleep(burstPeriod)
 			if j == len(restSent) && svc.Refused() > refused {
 				break
 			}
@@ -758,27 +758,27 @@ func missedBusy() float64 {
 	return testutil.ToFloat64(m.WithLabelValues(models.CodecAMBE, transcode.ReasonBusy)) + testutil.ToFloat64(m.WithLabelValues(models.CodecAMBE, transcode.ReasonLate))
 }
 
-// roomy gives the calls that the hub converts 2 s for each burst and
-// 500 ms for each answer of the AMBE server. The tests that check what a
-// conversion makes, rather than when, run next to many other tests on CI
-// machines with 2 to 4 cores, where the race detector and the coverage
-// counters slow every goroutine; there the fake AMBE server and the
-// transcoder can wait longer than the 18 ms of an attempt, and frames went
-// out as silence.
+// roomy gives the calls that the hub converts a minute for each burst and
+// 20 s for each answer of the AMBE server, so that no frame goes out as
+// silence for being late. The tests that check what a conversion makes,
+// rather than when, run next to many other tests under the race detector
+// on few cores, where the fake AMBE server and the transcoder wait for the
+// CPU far longer than any real-time budget; with a 2 s budget and 500 ms
+// answers, frames went out late or timed out there.
 func roomy(h *hub.Hub) {
-	h.Transcoder().SetTiming(2*time.Second, 500*time.Millisecond)
+	h.Transcoder().SetTiming(time.Minute, 20*time.Second)
 }
 
 // TestABacklogWithinTheBudgetLosesNoBurst makes the AMBE server answer
 // after 30 ms, so each burst takes about 90 ms to convert while the call
-// sends one every 30 ms. With a 10 s budget every burst still fits it, so
+// sends one every 60 ms. With the roomy budget every burst still fits it, so
 // the queue of the transcoder must hold the backlog: the AMBE hotspot gets
 // every burst, and no audio is lost.
 func TestABacklogWithinTheBudgetLosesNoBurst(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
-		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		roomy(stack.Hub)
 		n.ambe.SetDelay(30 * time.Millisecond)
 		stream := n.nextStream()
 		cc := newC2Call(t, call{group: true, dst: tcTG, src: tcTalker}, false, tcBursts, uint64(stream))
@@ -797,7 +797,7 @@ func TestATerminatorWithoutACopyComesAfterTheCopies(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
-		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		roomy(stack.Hub)
 		n.ambe.SetDelay(30 * time.Millisecond)
 		stream := n.nextStream()
 		cc := newC2Call(t, call{group: true, dst: tcTG, src: tcTalker}, false, tcBursts, uint64(stream))
@@ -821,7 +821,7 @@ func TestTheCopiesOfBackToBackCallsKeepTheirOrder(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
-		stack.Hub.Transcoder().SetTiming(10*time.Second, 500*time.Millisecond)
+		roomy(stack.Hub)
 		n.ambe.SetDelay(30 * time.Millisecond)
 		first, second := n.nextStream(), n.nextStream()
 		sent := make([]models.Packet, 0, 2*(tcBursts+2))

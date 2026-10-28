@@ -342,11 +342,14 @@ func awaitStream(t *testing.T, c *testutils.MMDVMClient, stream uint, n int) []m
 	return got
 }
 
+// sendC2 sends pkts one burst period apart, as a radio does. The queue of
+// a transcoder holds the bursts that come within its budget at that pace,
+// so a faster call could fill it while the transcoder waits for the CPU.
 func sendC2(t *testing.T, send func(models.Packet) error, pkts []models.Packet) {
 	t.Helper()
 	for _, p := range pkts {
 		require.NoError(t, send(p))
-		time.Sleep(30 * time.Millisecond)
+		time.Sleep(burstPeriod)
 	}
 }
 

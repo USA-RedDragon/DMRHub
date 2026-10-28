@@ -109,6 +109,10 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 		defer h.endCodecStream(packet.StreamID)
 	}
 
+	if h.refuseIngress(packet, sourceName) {
+		return
+	}
+
 	h.noteHeardOn(packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 

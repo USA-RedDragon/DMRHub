@@ -193,6 +193,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	_, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
 	if !ok {
 		h.subscriptionMgr.subscriptions.Store(repeaterID, xsync.NewMap[uint, *subscription]())
+		go h.rulesOf(repeaterID)
 	}
 
 	radioSubs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
@@ -649,6 +650,9 @@ func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Pa
 		slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
 		return
 	}
+	if m.hub.refusal(repeaterID, packet.Slot, packet, true) != "" {
+		return
+	}
 	if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
 		return
 	}
@@ -684,6 +688,9 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 	if !want {
 		m.forget(repeaterID, sub.tg, sub)
 		sub.stop()
+		return
+	}
+	if m.hub.refusal(repeaterID, slot, packet, true) != "" {
 		return
 	}
 	packet.Repeater = p.ID

@@ -161,6 +161,7 @@ func (h *Hub) refreshRepeater(id uint, old cachedRepeater) {
 }
 
 func (h *Hub) reloadRepeater(id uint) {
+	h.repeaterRules.Reload(id)
 	if _, err := h.loadRepeater(id, h.repeaters.bump()); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("Cannot reload a repeater", "repeaterID", id, "error", err)
 		h.repeaters.drop(id)

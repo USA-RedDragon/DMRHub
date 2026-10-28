@@ -162,12 +162,13 @@ type Hub struct {
 	talkgroupIDs *lookup.Cache[uint, bool]
 	// talkgroups holds the IDs of all talkgroups, so that a burst to one
 	// never waits on the database.
-	talkgroups   atomic.Pointer[map[uint]struct{}]
-	talkgroupsMu sync.Mutex
-	radioOwners  *lookup.Cache[uint, uint]
-	radioCalls   *lookup.Cache[uint, heardAt]
-	egressTable  *lookup.Cache[struct{}, []egressPeer]
-	lastSeen     *lookup.Flights[uint, []byte]
+	talkgroups    atomic.Pointer[map[uint]struct{}]
+	talkgroupsMu  sync.Mutex
+	radioOwners   *lookup.Cache[uint, uint]
+	radioCalls    *lookup.Cache[uint, heardAt]
+	egressTable   *lookup.Cache[struct{}, []egressPeer]
+	repeaterRules *lookup.Cache[uint, *repeaterRules]
+	lastSeen      *lookup.Flights[uint, []byte]
 
 	sightings      chan sighting
 	sightedStreams *xsync.Map[sightingKey, time.Time]
@@ -253,6 +254,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.radioOwners = lookup.New("radio owners", lookup.TTL, h.radioOwner)
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
 	h.egressTable = lookup.New("peers", lookup.TTL, h.loadEgressPeers)
+	h.repeaterRules = lookup.New("repeater rules", lookup.TTL, h.loadRepeaterRules)
 	h.lastSeen = lookup.NewFlights[uint, []byte]()
 	h.sightings = make(chan sighting, sightingQueueSize)
 	h.sightedStreams = xsync.NewMap[sightingKey, time.Time]()

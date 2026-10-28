@@ -56,11 +56,9 @@ func TestEmbeddedGPSOfATrackedRadioIsStored(t *testing.T) {
 
 	h.RecordPosition(gpsPosition(t, testSrcID, 32.75, -97.25, layer3.PositionLessThan20M), models.RepeaterTypeModem, testRepeaterID)
 
-	var got []models.Position
-	require.Eventually(t, func() bool {
-		got = storedPositions(t, database, testSrcID)
-		return len(got) == 1
-	}, 5*time.Second, 20*time.Millisecond, "the GPS of the RF call is a position of the tracked radio")
+	h.WaitBackground()
+	got := storedPositions(t, database, testSrcID)
+	require.Len(t, got, 1, "the GPS of the RF call is a position of the tracked radio")
 	p := got[0]
 	assert.InDelta(t, 32.75, p.Latitude, 0.001)
 	assert.InDelta(t, -97.25, p.Longitude, 0.001)

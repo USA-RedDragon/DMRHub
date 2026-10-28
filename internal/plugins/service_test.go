@@ -71,6 +71,7 @@ func (r *routed) all() ([]models.Packet, []string) {
 type rig struct {
 	mu       sync.Mutex
 	notified []models.Position
+	stored   chan models.Position
 	t        *testing.T
 	db       *gorm.DB
 	ps       pubsub.PubSub
@@ -93,7 +94,7 @@ func newRig(t *testing.T) *rig {
 	require.NoError(t, err)
 	done := make(chan struct{})
 	registry.Follow(done)
-	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20)}
+	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20), stored: make(chan models.Position, 64)}
 	srv := grpc.NewServer()
 	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify)
 	pluginv1.RegisterPluginServiceServer(srv, r.svc)
@@ -113,6 +114,15 @@ func (r *rig) notify(p models.Position) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.notified = append(r.notified, p)
+	select {
+	case r.stored <- p:
+	default:
+	}
+}
+
+// nextPosition waits for the next position that the hub stores and pushes.
+func (r *rig) nextPosition() models.Position {
+	return <-r.stored
 }
 
 func (r *rig) positions() []models.Position {

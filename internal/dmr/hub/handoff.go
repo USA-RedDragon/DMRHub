@@ -92,6 +92,31 @@ func (h *Hub) HandOver(server string, id uint, report []byte) {
 	}
 }
 
+func earlyHandoverTopic(server string, id uint) string {
+	return "hub:handover-early:" + server + ":" + strconv.FormatUint(uint64(id), 10)
+}
+
+// HandOverEarly sends report to the server named server of the replica that
+// took over the repeater id from this one, at the claim, before StopFor:
+// what the server here knows then, so that the server there can go on at
+// once. HandOver still follows it with the full report.
+func (h *Hub) HandOverEarly(server string, id uint, report []byte) {
+	if h.pubsub == nil {
+		return
+	}
+	if err := h.pubsub.Publish(earlyHandoverTopic(server, id), report); err != nil {
+		slog.Warn("failed to publish an early handover", "repeaterID", id, "error", err)
+	}
+}
+
+// AwaitHandOverEarly is AwaitHandOver for the report of HandOverEarly.
+func (h *Hub) AwaitHandOverEarly(server string, id uint) pubsub.Subscription {
+	if h.pubsub == nil {
+		return nil
+	}
+	return h.pubsub.Subscribe(earlyHandoverTopic(server, id))
+}
+
 // AwaitHandOver subscribes for the report that the server named server of
 // the replica that served the repeater id sends with HandOver once this one
 // claims it. Call it before the claim. It returns nil without pubsub.

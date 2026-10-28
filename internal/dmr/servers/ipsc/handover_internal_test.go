@@ -26,6 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,7 +103,7 @@ func TestHandOverKeepsTheCallOnTime(t *testing.T) {
 	log := newSendLog()
 	p := newPacer(log.send, nil)
 	t.Cleanup(p.stop)
-	s := &IPSCServer{pacer: p, localID: 1, moving: map[uint32]*moving{id: {seen: map[packetKey]bool{}}}}
+	s := &IPSCServer{pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
 	var report handoverReport
 	for i := range copies {
 		pkt := handedVoice(i)
@@ -131,4 +132,70 @@ drain:
 	times := log.times(slotKey{peer: id})
 	require.GreaterOrEqual(t, len(times), copies+live)
 	assert.Less(t, times[len(times)-1].Sub(last), 2*burstTime, "the call fell behind the copies of the handover")
+}
+
+func reportOf(t *testing.T, seqs ...int) *handoverReport {
+	t.Helper()
+	var r handoverReport
+	for _, i := range seqs {
+		pkt := handedVoice(i)
+		b, err := pkt.MarshalMsg(nil)
+		require.NoError(t, err)
+		r.Lost = append(r.Lost, b)
+	}
+	return &r
+}
+
+// TestAnEarlyHandoverSendsWhatFollowsIt takes the early report of a replica
+// that a peer moved from in a call, and then bursts that this replica gets
+// for the peer: one that follows the report goes out at once, and the
+// bursts after a gap wait for the full report, which brings the burst of
+// the gap. The peer must get each burst once and in order.
+func TestAnEarlyHandoverSendsWhatFollowsIt(t *testing.T) {
+	t.Parallel()
+	const id = uint32(311860)
+	got := make(chan uint16, 20)
+	p := newPacer(func(_ slotKey, frame []byte) {
+		u, err := ipscwire.DecodeUser(frame)
+		if assert.NoError(t, err) {
+			got <- u.RTP.Seq
+		}
+	}, nil)
+	t.Cleanup(p.stop)
+	s := &IPSCServer{pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
+	since := time.Now()
+	s.startHandover(id, since, reportOf(t, 0, 1, 2))
+	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(2)})
+	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(3)})
+	var seqs []uint16
+	next := func() {
+		select {
+		case seq := <-got:
+			seqs = append(seqs, seq)
+		case <-time.After(time.Second):
+			require.FailNow(t, "a burst did not go out")
+		}
+	}
+	for range 4 {
+		next()
+	}
+	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(5)})
+	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(6)})
+	select {
+	case seq := <-got:
+		require.Failf(t, "a burst after a gap went out before the full report", "RTP sequence %d", seq)
+	case <-time.After(3 * burstTime):
+	}
+	s.finishHandover(id, since, reportOf(t, 0, 1, 2, 3, 4))
+	for range 3 {
+		next()
+	}
+	select {
+	case seq := <-got:
+		require.Failf(t, "the peer got a burst again", "RTP sequence %d", seq)
+	case <-time.After(3 * burstTime):
+	}
+	for i, seq := range seqs {
+		assert.Equal(t, seqs[0]+uint16(i), seq, "burst %d", i) //nolint:gosec
+	}
 }

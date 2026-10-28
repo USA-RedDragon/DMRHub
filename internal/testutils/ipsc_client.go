@@ -68,6 +68,7 @@ type IPSCClient struct {
 	started bool
 	rtpSeq  uint16
 	rxAt    time.Time
+	alive   []byte
 
 	downs    atomic.Int32
 	heard    atomic.Int64
@@ -233,6 +234,21 @@ func (c *IPSCClient) SendRaw(p []byte) error {
 	return nil
 }
 
+// SendAlive sends the last keepalive of the client to the master again, at
+// once, as a peer whose keepalive falls due does.
+func (c *IPSCClient) SendAlive() error {
+	c.mu.Lock()
+	alive := append([]byte(nil), c.alive...)
+	c.mu.Unlock()
+	if c.conn == nil || len(alive) == 0 {
+		return ErrIPSCNotConnected
+	}
+	if _, err := c.conn.WriteToUDP(alive, c.master); err != nil {
+		return fmt.Errorf("sending keepalive: %w", err)
+	}
+	return nil
+}
+
 // SendUser encodes u with the peer ID of the client and sends it.
 func (c *IPSCClient) SendUser(u ipscwire.User) error {
 	u.ID = c.PeerID
@@ -338,6 +354,9 @@ func (c *IPSCClient) run(out []ipscsession.Output) {
 		switch o.Kind {
 		case ipscsession.OutputSend:
 			to := &net.UDPAddr{IP: net.IPv4(o.Addr.IP[0], o.Addr.IP[1], o.Addr.IP[2], o.Addr.IP[3]), Port: int(o.Addr.Port)}
+			if len(o.Packet) > 0 && ipscwire.Opcode(o.Packet[0]) == ipscwire.OpAliveRequest {
+				c.alive = append(c.alive[:0], o.Packet...)
+			}
 			_, _ = c.conn.WriteToUDP(o.Packet, to)
 		case ipscsession.OutputUp:
 			c.upOnce.Do(func() { close(c.ready) })

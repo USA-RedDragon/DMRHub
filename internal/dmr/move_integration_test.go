@@ -21,12 +21,15 @@ package dmr_test
 
 import (
 	"net"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -282,5 +285,101 @@ func TestIPSCMovesFromADrainingReplica(t *testing.T) {
 			assert.Zero(t, c.Downs(), "peer %d lost its registration", c.PeerID)
 			assert.NotEmpty(t, c.Drain(drainWait), "peer %d got no call from the other replica", c.PeerID)
 		}
+	})
+}
+
+// TestIPSCMoveKeepsEachBurstInItsSlot moves an IPSC peer from a draining
+// replica in a call, right before a burst. A peer plays each burst on the
+// 60 ms grid of the call and fills the slot of a burst that is not there
+// in time, so every burst must reach the peer within half a slot of the
+// time it would have come without the move.
+func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		const bursts, moveAt, stream = 60, 25, 7601
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 1, "TG1")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+		stack.AssignTS1StaticTG(t, 200001, 1)
+		first := testutils.Register(t, stack.Hub, stack.KV)
+		second, _ := stack.SpawnRegisteredReplica(t)
+		stack.StartServers(t)
+
+		front := testutils.NewUDPFront(t)
+		front.Add(t, stack.IPSCAddr)
+		peer := testutils.NewIPSCClient(200001, ipscAuthKey)
+		require.NoError(t, peer.Connect(front.Addr()))
+		t.Cleanup(peer.Close)
+		require.NoError(t, peer.WaitReady(handshakeWait))
+		talker := testutils.NewMMDVMClient(100001, "", testPassword)
+		require.NoError(t, talker.Connect(second.MMDVMAddr))
+		defer talker.Close()
+		require.NoError(t, talker.WaitReady(handshakeWait))
+		time.Sleep(settleDuration)
+		front.Add(t, second.IPSCAddr)
+
+		sent := make([]time.Time, bursts)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			next := time.Now()
+			for i := range bursts {
+				if i == moveAt {
+					first.MarkDraining(t.Context())
+					front.Drain(stack.IPSCAddr)
+					assert.NoError(t, peer.SendAlive())
+					time.Sleep(5 * time.Millisecond)
+				}
+				p := makeGroupVoicePacket(1000001, 1, stream, false)
+				p.Seq = uint(i)
+				p.DTypeOrVSeq = dmrconst.VoiceA + uint(i%6)
+				if i%6 == 0 {
+					p.FrameType = dmrconst.FrameVoiceSync
+				}
+				if i == bursts-1 {
+					p = makeGroupVoiceTermPacket(1000001, 1, stream, false)
+					p.Seq = uint(i)
+				}
+				sent[i] = time.Now()
+				assert.NoError(t, talker.SendDMRD(p))
+				next = next.Add(rotationInterval)
+				time.Sleep(time.Until(next))
+			}
+		}()
+		<-done
+		got := peer.Drain(drainWait)
+		require.Equal(t, 1, front.Moves(), "the front moved the peer")
+		assert.Zero(t, peer.Downs(), "the peer lost its registration")
+
+		var at []time.Time
+		var start uint16
+		for _, b := range got {
+			u, err := ipscwire.DecodeUser(b.Data)
+			require.NoError(t, err)
+			if len(at) == 0 {
+				start = u.RTP.Seq
+			}
+			switch n := int(u.RTP.Seq - start); {
+			case n == len(at):
+				at = append(at, b.At)
+			case n > len(at):
+				require.Failf(t, "the peer got a burst before an earlier one", "burst %d came before burst %d", n, len(at))
+			}
+		}
+		require.Len(t, at, bursts, "the peer lost bursts")
+		lag := make([]time.Duration, bursts)
+		for i := range bursts {
+			lag[i] = at[i].Sub(sent[i])
+		}
+		steady := slices.Clone(lag[:moveAt])
+		slices.Sort(steady)
+		base := steady[len(steady)/2]
+		for i := range bursts {
+			if late := lag[i] - base; late > rotationInterval/2 {
+				t.Errorf("burst %d came %s late", i, late.Round(time.Millisecond))
+			}
+		}
+		t.Logf("lag %s, at the move %s more", base.Round(time.Microsecond), (slices.Max(lag) - base).Round(time.Microsecond))
 	})
 }

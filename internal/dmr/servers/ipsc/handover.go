@@ -23,10 +23,12 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
 // A peer that moves from a draining replica to this one in a call gets the
@@ -39,6 +41,17 @@ import (
 // packets that the peer did not get, and this replica holds what it has
 // for the peer until the report comes, then sends the peer both, in order
 // and each once, going on from that state.
+//
+// The draining replica sends an early report at the claim and the full one
+// once its hub stopped the subscriptions of the peer, handoverSettle
+// later, as it may still get packets that were published before this
+// replica subscribed. A packet that this replica holds goes out at the
+// early report when it follows the last packet of its call that the
+// report knows, by sequence, as no packet that only the full report can
+// hold is then before it. The other packets of its slot wait for the full
+// report, so that the calls of a slot keep their order. A packet that
+// lands here in a call then does not wait handoverSettle and miss its slot
+// at the peer.
 const (
 	// handoverWait is the longest time this replica holds the packets to a
 	// peer that moved while it waits for the report.
@@ -104,19 +117,49 @@ func keyOf(p models.Packet) packetKey {
 	return packetKey{slot: p.Slot, stream: p.StreamID, seq: p.Seq}
 }
 
+// streamKey is a call to a peer, by its slot and stream.
+type streamKey struct {
+	slot   bool
+	stream uint
+}
+
 // moving is a peer that moved here from a draining replica, whose packets
 // wait for the report of that replica, and after it the packets that went
-// to the peer then, until the grace ends.
+// to the peer then, until the grace ends. Once the early report came, last
+// holds the sequence of the last packet of each call that went to the
+// peer, and blocked the slots whose packets wait for the full report.
 type moving struct {
-	held  []models.Packet
-	done  bool
-	seen  map[packetKey]bool
-	grace time.Time
+	held    []models.Packet
+	early   bool
+	done    bool
+	seen    map[packetKey]bool
+	last    map[streamKey]uint
+	blocked [2]bool
+	grace   time.Time
+}
+
+func newMoving() *moving {
+	return &moving{seen: map[packetKey]bool{}, last: map[streamKey]uint{}}
+}
+
+func slotOf(p models.Packet) int {
+	if p.Slot {
+		return 1
+	}
+	return 0
+}
+
+// follows reports whether p is the packet after the last one of its call
+// that went to the peer. The sequence of a packet has 8 bits.
+func (m *moving) follows(p models.Packet) bool {
+	l, ok := m.last[streamKey{slot: p.Slot, stream: p.StreamID}]
+	return ok && p.Seq&0xff == (l+1)&0xff
 }
 
 // handOverPeer reports to the replica that claimed the peer id what this
 // one sent to it before since, when the peer moved there, and stops
-// sending to it.
+// sending to it. It reports at once what it knows, and again in full once
+// the hub stopped the subscriptions of the peer.
 func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	if id > math.MaxUint32 {
 		return
@@ -129,14 +172,14 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	if !here || s.hub == nil {
 		return
 	}
-	s.hub.StopFor(models.RepeaterTypeIPSC, id)
 	calls, lost, hangs := s.pacer.handOver(peer, since)
-	report := handoverReport{Calls: calls, Hangs: hangs}
-	for _, p := range lost {
-		if b, err := p.MarshalMsg(nil); err == nil {
-			report.Lost = append(report.Lost, b)
-		}
+	report := handoverReport{Calls: calls, Hangs: hangs, Lost: marshalPackets(nil, lost)}
+	if b, err := json.Marshal(report); err == nil {
+		s.hub.HandOverEarly(models.RepeaterTypeIPSC, id, b)
 	}
+	s.hub.StopFor(models.RepeaterTypeIPSC, id)
+	_, lost, report.Hangs = s.pacer.handOver(peer, since)
+	report.Lost = marshalPackets(report.Lost, lost)
 	b, err := json.Marshal(report)
 	if err != nil {
 		slog.Error("Error encoding an IPSC handover", "peerID", id, "error", err)
@@ -146,93 +189,192 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	slog.Info("IPSC peer moved to another replica", "peerID", id, "calls", len(report.Calls))
 }
 
+func marshalPackets(out [][]byte, pkts []models.Packet) [][]byte {
+	for _, p := range pkts {
+		if b, err := p.MarshalMsg(nil); err == nil {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func unmarshalPackets(raws [][]byte) []models.Packet {
+	out := make([]models.Packet, 0, len(raws))
+	for _, raw := range raws {
+		var p models.Packet
+		if _, err := p.UnmarshalMsg(raw); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // awaitHandover holds the packets to the peer id, which moves here, until
-// the report of the replica that served it comes or handoverWait passes.
+// the reports of the replica that served it come or handoverWait passes.
 // since is when the packet of the peer that moved it here came. Call it
 // before the claim of the peer.
 func (s *IPSCServer) awaitHandover(id uint32, since time.Time) {
+	var early pubsub.Subscription
+	var wg sync.WaitGroup
+	wg.Go(func() { early = s.hub.AwaitHandOverEarly(models.RepeaterTypeIPSC, uint(id)) })
 	sub := s.hub.AwaitHandOver(models.RepeaterTypeIPSC, uint(id))
+	wg.Wait()
+	var earlyCh <-chan []byte
+	if early != nil {
+		earlyCh = early.Channel()
+	}
 	if sub == nil {
+		if early != nil {
+			_ = early.Close()
+		}
 		return
 	}
 	s.movingMu.Lock()
 	if s.moving == nil {
 		s.moving = map[uint32]*moving{}
 	}
-	s.moving[id] = &moving{seen: map[packetKey]bool{}}
+	s.moving[id] = newMoving()
 	s.movingMu.Unlock()
 	go func() {
 		defer func() { _ = sub.Close() }()
+		if early != nil {
+			defer func() { _ = early.Close() }()
+		}
 		t := time.NewTimer(handoverWait)
 		defer t.Stop()
-		var report *handoverReport
-		select {
-		case <-s.done:
-		case <-t.C:
-			slog.Warn("No handover came for an IPSC peer that moved here", "peerID", id)
-		case b, ok := <-sub.Channel():
-			var r handoverReport
-			if ok && json.Unmarshal(b, &r) == nil {
-				report = &r
+		for {
+			var report *handoverReport
+			select {
+			case <-s.done:
+			case <-t.C:
+				slog.Warn("No handover came for an IPSC peer that moved here", "peerID", id)
+			case b, ok := <-earlyCh:
+				earlyCh = nil
+				var r handoverReport
+				if ok && json.Unmarshal(b, &r) == nil {
+					s.startHandover(id, since, &r)
+				}
+				continue
+			case b, ok := <-sub.Channel():
+				var r handoverReport
+				if ok && json.Unmarshal(b, &r) == nil {
+					report = &r
+				}
 			}
+			s.finishHandover(id, since, report)
+			return
 		}
-		s.finishHandover(id, since, report)
 	}()
 }
 
-// finishHandover makes the calls to the peer id go on from the state of
-// the report, and sends the peer the packets that the report holds and then
-// those held for it, in order and each once. Packets that come for the
-// peer meanwhile are held too and sent after them. The packets of the
-// report were due on the grid of the other replica before since, when the
-// peer moved, so they go out as late as they are, and the packets after
-// them keep their time.
-func (s *IPSCServer) finishHandover(id uint32, since time.Time, report *handoverReport) {
-	var batch []models.Packet
-	if report != nil {
-		for _, h := range report.Hangs {
-			s.pacer.holdFor(slotKey{peer: id, slot: h.Slot}, min(h.Left, s.pacer.longestHold()))
-		}
-		t := s.egressTranslator(id)
-		for _, c := range report.Calls {
-			if !c.State.Ended && c.Stream <= math.MaxUint32 {
-				t.Continue(uint32(c.Stream), c.State)
-			}
-		}
-		for _, raw := range report.Lost {
-			var p models.Packet
-			if _, err := p.UnmarshalMsg(raw); err == nil {
-				batch = append(batch, p)
-			}
+// applyReport holds the slots of the peer id for the call hangs of report,
+// and, when calls is set, makes the calls to the peer go on from the state
+// of the report.
+func (s *IPSCServer) applyReport(id uint32, report *handoverReport, calls bool) {
+	for _, h := range report.Hangs {
+		s.pacer.holdFor(slotKey{peer: id, slot: h.Slot}, min(h.Left, s.pacer.longestHold()))
+	}
+	if !calls {
+		return
+	}
+	t := s.egressTranslator(id)
+	for _, c := range report.Calls {
+		if !c.State.Ended && c.Stream <= math.MaxUint32 {
+			t.Continue(uint32(c.Stream), c.State)
 		}
 	}
+}
+
+// startHandover makes the calls to the peer id go on from the state of the
+// early report, sends the peer the packets that the report holds, and then
+// those held for it that follow the last packet of their call, in order
+// and each once.
+func (s *IPSCServer) startHandover(id uint32, since time.Time, report *handoverReport) {
 	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
 	m, ok := s.moving[id]
-	s.movingMu.Unlock()
+	if !ok || m.early || m.done {
+		return
+	}
+	m.early = true
+	s.applyReport(id, report, true)
+	for _, c := range report.Calls {
+		m.last[streamKey{slot: c.Slot, stream: c.Stream}] = c.Seq
+	}
+	s.sendHanded(id, m, unmarshalPackets(report.Lost), since)
+	held := m.held
+	m.held = nil
+	for _, p := range held {
+		s.forward(id, m, p)
+	}
+}
+
+// finishHandover makes the calls to the peer id go on from the state of
+// the report, unless an early report did, and sends the peer the packets
+// that the report holds and then those held for it, in order and each
+// once. The packets of the report were due on the grid of the other
+// replica before since, when the peer moved, so they go out as late as
+// they are, and the packets after them keep their time.
+func (s *IPSCServer) finishHandover(id uint32, since time.Time, report *handoverReport) {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	m, ok := s.moving[id]
+	if ok && m.done {
+		return
+	}
+	var batch []models.Packet
+	if report != nil {
+		s.applyReport(id, report, !ok || !m.early)
+		batch = unmarshalPackets(report.Lost)
+	}
 	if !ok {
 		return
 	}
-	due := since.Add(-time.Duration(len(batch)) * burstTime)
-	for {
-		for _, p := range batch {
-			if m.seen[keyOf(p)] {
-				continue
-			}
-			m.seen[keyOf(p)] = true
-			s.sendToDue(id, p, due)
-			if !due.IsZero() {
-				due = due.Add(burstTime)
-			}
+	s.sendHanded(id, m, batch, since)
+	for _, p := range m.held {
+		if k := keyOf(p); !m.seen[k] {
+			m.seen[k] = true
+			s.sendTo(id, p)
 		}
-		due = time.Time{}
-		s.movingMu.Lock()
-		if len(m.held) == 0 {
-			m.done, m.grace = true, time.Now().Add(handedGrace)
-			s.movingMu.Unlock()
-			return
+	}
+	m.held = nil
+	m.done, m.grace = true, time.Now().Add(handedGrace)
+}
+
+// sendHanded sends the peer id the packets of a report that it did not get
+// from here yet, as due before since. The caller holds s.movingMu.
+func (s *IPSCServer) sendHanded(id uint32, m *moving, batch []models.Packet, since time.Time) {
+	fresh := batch[:0]
+	for _, p := range batch {
+		if k := keyOf(p); !m.seen[k] {
+			m.seen[k] = true
+			fresh = append(fresh, p)
 		}
-		batch, m.held = m.held, nil
-		s.movingMu.Unlock()
+	}
+	due := since.Add(-time.Duration(len(fresh)) * burstTime)
+	for _, p := range fresh {
+		m.last[streamKey{slot: p.Slot, stream: p.StreamID}] = p.Seq
+		s.sendToDue(id, p, due)
+		due = due.Add(burstTime)
+	}
+}
+
+// forward sends p to the peer id, which waits for a handover, when the
+// early report came and p follows the last packet of its call, and holds
+// it otherwise. The caller holds s.movingMu.
+func (s *IPSCServer) forward(id uint32, m *moving, p models.Packet) {
+	k := keyOf(p)
+	switch {
+	case m.seen[k]:
+	case m.early && !m.blocked[slotOf(p)] && m.follows(p):
+		m.seen[k] = true
+		m.last[streamKey{slot: p.Slot, stream: p.StreamID}] = p.Seq
+		s.sendTo(id, p)
+	default:
+		if m.early {
+			m.blocked[slotOf(p)] = true
+		}
+		m.held = append(m.held, p)
 	}
 }
 
@@ -244,7 +386,7 @@ func (s *IPSCServer) route(rp hub.RoutedPacket) {
 	if m, ok := s.moving[id]; ok {
 		switch {
 		case !m.done:
-			m.held = append(m.held, rp.Packet)
+			s.forward(id, m, rp.Packet)
 			s.movingMu.Unlock()
 			return
 		case time.Now().After(m.grace):

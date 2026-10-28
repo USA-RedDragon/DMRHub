@@ -39,7 +39,7 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 | **Invites** | `<siteurl>/admin/invites` | Make invite links. It shows only while registration is by invite. See [Invite a user](users.md#invite-a-user). |
 | **Messages** | `<siteurl>/admin/messages` | Search all stored messages. See [Messages and retention](messages.md). |
 | **Message access** | `<siteurl>/admin/message-access` | See which admin saw whose messages, and when. See [Message access log](messages.md#message-access-log). |
-| **Plugins** | `<siteurl>/admin/plugins` | Add and change plugins. See [Plugins](../plugins.md). |
+| **Plugins** | `<siteurl>/admin/plugins` | Add and change plugins. See [Plugins](plugins.md). |
 | **Setup** | `<siteurl>/admin/setup` | Change the settings. See [The Setup page](configuration.md#the-setup-page). |
 
 <!-- screenshot: admin-menu.png | any page, logged in as an admin, with the Admin menu open in the navigation bar -->
@@ -59,6 +59,7 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 - [IP lists](ip-lists.md): refuse the addresses of hotspots, repeaters and peers, or accept only some.
 - [Messages and retention](messages.md)
 - [Positions and APRS-IS](positions.md)
+- [Plugins](plugins.md): the parrot, the location server, uploaded plugins and plugins that run as their own programs.
 - [Replicas and scaling](replicas.md)
 - [Back up and restore](backups.md)
 - [Upgrade DMRHub](upgrade.md)

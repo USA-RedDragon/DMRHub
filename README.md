@@ -12,7 +12,7 @@ DMRHub runs a DMR network server, like TGIF or BrandMeister, in a single binary.
 | ----------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Get started | Hams who are new to DMRHub             | [User's Guide](doc/User-Guide.md): make an account and connect your first hotspot.                                               |
 | Guides      | Hams with a radio or a hotspot         | [User's Guide](doc/User-Guide.md): one task at a time, such as talkgroups, the parrot, private calls and text messages.          |
-| Admin       | People who run a DMRHub server         | [Set up a DMRHub server](doc/setup.md): from install to the first call. [Install DMRHub](doc/admin/install.md), [Admin overview](doc/admin/overview.md), [Configuration](doc/admin/configuration.md), [Stress results](doc/admin/stress-results.md) |
+| Admin       | People who run a DMRHub server         | [Set up a DMRHub server](doc/setup.md): from install to the first call. [Install DMRHub](doc/admin/install.md), [Admin overview](doc/admin/overview.md), [Configuration](doc/admin/configuration.md), [Plugins](doc/admin/plugins.md), [Stress results](doc/admin/stress-results.md) |
 | Reference   | Facts to look up                       | [Messages and SMS Storage](doc/messages.md), [Positions](doc/positions.md), [FAQ](doc/FAQ.md)                                    |
 | Developers  | People who write plugins, apps or code | [Plugins](doc/plugins.md), [OAuth Apps](doc/oauth-apps.md), [MMDVM over WebTransport](doc/webtransport.md), [Building from Source](doc/Building.md) |
 

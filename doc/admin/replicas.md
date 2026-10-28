@@ -18,7 +18,7 @@ Some work must happen in one place. A replica holds a lease in Redis for each of
 | Work | Details |
 | ---- | ------- |
 | OpenBridge traffic | One replica sends all OpenBridge traffic, so that the peers see one source address. See [OpenBridge peers](openbridge.md#several-replicas). |
-| Plugins inside DMRHub | One replica runs each plugin. See [Plugins](../plugins.md#several-replicas). |
+| Plugins inside DMRHub | One replica runs each plugin. See [Plugins](plugins.md#several-replicas). |
 | APRS-IS | One replica logs in to APRS-IS. |
 | Retention | One replica deletes the old records in each hour. |
 

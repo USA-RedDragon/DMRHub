@@ -1,6 +1,6 @@
 # Positions and APRS-IS
 
-The location server is a plugin that comes with DMRHub (see [The built-in plugins](../plugins.md#the-built-in-plugins)). For what users see and set, see the [Positions reference](../positions.md).
+The location server is a plugin that comes with DMRHub (see [The built-in plugins](plugins.md#the-built-in-plugins)). For what users see and set, see the [Positions reference](../positions.md).
 
 ## What the hub stores
 

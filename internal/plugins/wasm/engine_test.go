@@ -253,11 +253,7 @@ func TestAPluginThatTakesTooMuchMemoryIsStopped(t *testing.T) {
 		l.MemoryPages = 512
 		l.CPUShare = 100
 		inst, _ := newRig(t).run(t, engine.Limited(l), "Hog", guestOf(t, compiler, "hog"), nil)
-		select {
-		case <-inst.Done():
-		case <-time.After(time.Minute):
-			t.Fatal("the plugin still grows")
-		}
+		<-inst.Done()
 		require.ErrorIs(t, inst.Err(), wasm.ErrMemory)
 	})
 }

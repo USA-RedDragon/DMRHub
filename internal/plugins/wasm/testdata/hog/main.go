@@ -18,7 +18,8 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 // Command hog is a test plugin that says hello, then takes all the memory
-// it can.
+// it can. It writes a byte in each page of 4 KiB, so that the system
+// gives it each page.
 package main
 
 import (
@@ -34,8 +35,8 @@ func main() {
 	plugin.MainWith(&pluginv1.Hello{Name: "Hog"}, func(context.Context, *plugin.Conn) error {
 		for {
 			b := make([]byte, 1<<20)
-			for i := range b {
-				b[i] = byte(i)
+			for i := 0; i < len(b); i += 4096 {
+				b[i] = byte(i >> 12)
 			}
 			kept = append(kept, b)
 		}

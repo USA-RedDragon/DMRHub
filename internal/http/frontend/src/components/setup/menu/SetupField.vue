@@ -24,14 +24,24 @@
     <div v-if="field.kind === 'bool'" class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-semibold">
       <Switch
         :id="id"
-        :model-value="normalized === true"
+        :model-value="field.invert ? normalized !== true : normalized === true"
         :disabled="disabled"
-        @update:model-value="(v: boolean) => $emit('set', field.path, v)"
+        @update:model-value="(v: boolean) => $emit('set', field.path, field.invert ? !v : v)"
       />
       <label :for="id" :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'">{{ field.label }}</label>
       <SourceChips :setting="setting" />
     </div>
-    <template v-else>
+    <div v-if="field.toggle" class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-semibold" :class="toggledOn ? 'mb-5' : ''">
+      <Switch
+        :id="`${id}-toggle`"
+        :model-value="toggledOn"
+        :disabled="disabled"
+        data-test="field-toggle"
+        @update:model-value="(v: boolean) => $emit('set', field.path, v ? field.toggle?.value : 0)"
+      />
+      <label :for="`${id}-toggle`" :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'">{{ field.toggle.label }}</label>
+    </div>
+    <template v-if="field.kind !== 'bool' && (!field.toggle || toggledOn)">
       <div class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 font-semibold">
         <label v-if="labelFor" :for="id">{{ field.label }}</label>
         <span v-else :id="`${id}-label`">{{ field.label }}</span>
@@ -139,7 +149,7 @@
         @update:model-value="(v: string | number) => set(String(v))"
       />
     </template>
-    <p v-if="help" class="mt-1.5 text-sm text-muted-foreground">
+    <p v-if="help && (!field.toggle || toggledOn)" class="mt-1.5 text-sm text-muted-foreground">
       {{ help }}<template v-for="l in field.links ?? []" :key="l.href">
         {{ ' ' }}<a :href="l.href" target="_blank" rel="noopener" class="text-primary underline">{{ l.text }}</a></template
       >
@@ -185,6 +195,7 @@ const locked = computed(() => fieldLocked(props.setting));
 const disabled = computed(() => locked.value || (props.field.off?.(props.read) ?? false));
 const normalized = computed(() => normalize(props.field, props.value));
 const text = computed(() => inputValue(props.field, props.value));
+const toggledOn = computed(() => typeof normalized.value === 'number' && normalized.value !== 0);
 const labelFor = computed(() => props.field.kind !== 'choice' && props.field.kind !== 'mode' && props.field.kind !== 'segment');
 const shownError = computed(() => props.error ?? props.field.check?.(normalized.value));
 const warning = computed(() => props.field.warn?.(props.read));
@@ -204,6 +215,7 @@ const inputType = computed(() => {
     case 'number':
     case 'seconds':
     case 'minutes':
+    case 'hours':
     case 'mhz':
       return 'number';
     default:

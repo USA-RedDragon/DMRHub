@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  TABS, defaultNote, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload, tabReadOnly,
+  TABS, defaultNote, fromInput, inputValue, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload, tabReadOnly,
   tabStartOnly, visibleTabs, type FieldDef, type TabDef,
 } from '@/lib/setupMenu';
 import { emptySetupState, type Setting, type SetupState } from '@/lib/setupState';
@@ -36,7 +36,7 @@ describe('setup menu tabs', () => {
   it('splits General and HTTP and keeps Metrics and PProf', () => {
     expect(TABS.map((t) => t.id)).toEqual([
       'general', 'http', 'database', 'redis', 'smtp', 'metrics', 'dmr', 'ipsc', 'openbridge', 'webtransport', 'modem',
-      'transcoding', 'iplists', 'positions', 'messages', 'plugins', 'pcroute',
+      'transcoding', 'iplists', 'routing', 'positions', 'messages', 'plugins', 'pcroute',
     ]);
     expect(tabPaths(tab('general'))).toEqual(['network-name', 'log-level', 'auto-approve-users', 'secret', 'password-salt', 'hibp-api-key']);
     expect(tabPaths(tab('http'))).toContain('http.canonical-host');
@@ -220,5 +220,47 @@ describe('setup menu IP lists', () => {
     expect(allow.warn?.(reader({ 'dmr.ip-lists.openbridge.allow': ['192.0.2.1'] }))).toBeUndefined();
     expect(allow.check?.([])).toBeUndefined();
     expect(field('dmr.ip-lists.mmdvm.allow').warn?.(reader({}))).toBe('With no address listed, every hotspot and repeater is refused.');
+  });
+});
+
+describe('setup menu routing', () => {
+  const reader = (v: Record<string, unknown>) => (p: string) => v[p];
+
+  it('has the routing settings and no explainer text', () => {
+    expect(tabPaths(tab('routing'))).toEqual([
+      'dmr.routing.disable-dynamic-links', 'dmr.routing.dynamic-timeout', 'dmr.routing.transmit', 'dmr.routing.max-transmission',
+      'dmr.routing.contention', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
+      'dmr.repeater-quota',
+    ]);
+    expect(tab('routing').intro).toEqual([]);
+    expect(tab('routing').group).toBe('DMR');
+  });
+
+  it('shows the timeout only while dynamic links are on', () => {
+    const f = field('dmr.routing.dynamic-timeout');
+    expect(f.show?.(reader({}))).toBe(true);
+    expect(f.show?.(reader({ 'dmr.routing.disable-dynamic-links': true }))).toBe(false);
+    expect(field('dmr.routing.disable-dynamic-links').invert).toBe(true);
+  });
+
+  it('shows ephemeral only for made talkgroups, and the lifetime only when ephemeral', () => {
+    const eph = field('dmr.routing.ephemeral-talkgroups');
+    const ttl = field('dmr.routing.ephemeral-ttl');
+    expect(eph.show?.(reader({}))).toBe(false);
+    expect(eph.show?.(reader({ 'dmr.routing.auto-create-talkgroups': true }))).toBe(true);
+    expect(ttl.show?.(reader({ 'dmr.routing.auto-create-talkgroups': true }))).toBe(false);
+    expect(ttl.show?.(reader({ 'dmr.routing.auto-create-talkgroups': true, 'dmr.routing.ephemeral-talkgroups': true }))).toBe(true);
+  });
+
+  it('converts the durations of the API', () => {
+    expect(inputValue(field('dmr.routing.dynamic-timeout'), 15 * 6e10)).toBe('15');
+    expect(fromInput(field('dmr.routing.dynamic-timeout'), '30')).toBe(30 * 6e10);
+    expect(inputValue(field('dmr.routing.ephemeral-ttl'), 24 * 3.6e12)).toBe('24');
+    expect(fromInput(field('dmr.routing.ephemeral-ttl'), '1.5')).toBe(1.5 * 3.6e12);
+    expect(fromInput(field('dmr.routing.max-transmission'), '180')).toBe(180e9);
+  });
+
+  it('turns the longest transmission on at 3 minutes', () => {
+    expect(field('dmr.routing.max-transmission').toggle).toEqual({ label: 'Limit transmission length', value: 180e9 });
   });
 });

@@ -39,7 +39,7 @@ When DMRHub cannot reach its database, the wizard lets you fix the database sett
 Admins can change the settings on the **Setup** page (`<siteurl>/admin/setup`). A menu on the left has one tab for each area, in three groups:
 
 - **Server**: **General**, **HTTP**, **Database**, **Redis**, **SMTP** and **Metrics and PProf**
-- **DMR**: **DMR and MMDVM**, **IPSC**, **OpenBridge**, **WebTransport**, **Modem** and **Transcoding**
+- **DMR**: **DMR and MMDVM**, **IPSC**, **OpenBridge**, **WebTransport**, **Modem**, **Transcoding**, **IP lists** and **Routing** (see [Routing settings](routing.md))
 - **Features**: **Positions and APRS**, **Messages**, **Plugins** and **Private call routing**
 
 Each tab has its own link, such as `<siteurl>/admin/setup#ipsc`, and its own **Save** and **Reset** buttons at the bottom. **Save** checks and saves only the settings on that tab. A dot in the menu marks a tab with changes that are not saved yet.

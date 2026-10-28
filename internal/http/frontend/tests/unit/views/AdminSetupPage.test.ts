@@ -382,3 +382,87 @@ describe('Admin Setup page IP lists', () => {
     wrapper.unmount();
   });
 });
+
+describe('Admin Setup page routing tab', () => {
+  const routingSettings = Object.fromEntries([
+    ['dmr.routing.disable-dynamic-links', false], ['dmr.routing.dynamic-timeout', 9e11], ['dmr.routing.transmit', 'any'],
+    ['dmr.routing.max-transmission', 0], ['dmr.routing.contention', 'mix'], ['dmr.routing.auto-create-talkgroups', false],
+    ['dmr.routing.ephemeral-talkgroups', false], ['dmr.routing.ephemeral-ttl', 8.64e13], ['dmr.repeater-quota', 100],
+  ].map(([p, d]) => [p, { ...plain, default: d }]));
+  const routing = {
+    'disable-dynamic-links': false, 'dynamic-timeout': 9e11, transmit: 'any', 'max-transmission': 0, contention: 'mix',
+    'auto-create-talkgroups': false, 'ephemeral-talkgroups': false, 'ephemeral-ttl': 8.64e13,
+  };
+  const withRouting = () => {
+    const cfg = config();
+    (cfg.dmr as Record<string, unknown>).routing = { ...routing };
+    (cfg.dmr as Record<string, unknown>)['repeater-quota'] = 100;
+    getConfig(() => response(cfg, routingSettings));
+  };
+  const area = (w: VueWrapper, path: string) => w.find(`[data-test="field-${path}"]`);
+
+  it('shows the defaults with only the fields that apply', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    const text = wrapper.find('[data-test="tab-routing"]').text();
+    for (const title of ['Dynamic talkgroups', 'Transmissions', 'Talkgroups', 'Repeaters']) {
+      expect(text).toContain(title);
+    }
+    expect((wrapper.find('#setup-dmr-routing-disable-dynamic-links').attributes('data-state'))).toBe('checked');
+    expect((wrapper.find('#setup-dmr-routing-dynamic-timeout').element as HTMLInputElement).value).toBe('15');
+    expect(area(wrapper, 'dmr.routing.max-transmission').find('#setup-dmr-routing-max-transmission').exists()).toBe(false);
+    expect(area(wrapper, 'dmr.routing.ephemeral-talkgroups').exists()).toBe(false);
+    expect(area(wrapper, 'dmr.routing.ephemeral-ttl').exists()).toBe(false);
+    expect(text).not.toMatch(/dmr\.routing|repeater-quota/);
+    wrapper.unmount();
+  });
+
+  it('turns dynamic links off and hides the timeout', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    await wrapper.find('#setup-dmr-routing-disable-dynamic-links').trigger('click');
+    expect(area(wrapper, 'dmr.routing.dynamic-timeout').exists()).toBe(false);
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.put.mock.calls[0]![1].dmr.routing['disable-dynamic-links']).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('limits the transmission length with its switch', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    await wrapper.find('#setup-dmr-routing-max-transmission-toggle').trigger('click');
+    expect((wrapper.find('#setup-dmr-routing-max-transmission').element as HTMLInputElement).value).toBe('180');
+    await wrapper.find('#setup-dmr-routing-max-transmission').setValue('120');
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.put.mock.calls[0]![1].dmr.routing['max-transmission']).toBe(120e9);
+    wrapper.unmount();
+  });
+
+  it('shows ephemeral and its lifetime only when they apply', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    await wrapper.find('#setup-dmr-routing-auto-create-talkgroups').trigger('click');
+    expect(area(wrapper, 'dmr.routing.ephemeral-talkgroups').exists()).toBe(true);
+    expect(area(wrapper, 'dmr.routing.ephemeral-ttl').exists()).toBe(false);
+    await wrapper.find('#setup-dmr-routing-ephemeral-talkgroups').trigger('click');
+    expect((wrapper.find('#setup-dmr-routing-ephemeral-ttl').element as HTMLInputElement).value).toBe('24');
+    wrapper.unmount();
+  });
+
+  it('saves who may transmit, the contention and the quota', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    await area(wrapper, 'dmr.routing.transmit').findAll('input[type="radio"]')[2]!.setValue(true);
+    await area(wrapper, 'dmr.routing.contention').findAll('input[type="radio"]')[1]!.setValue(true);
+    await wrapper.find('#setup-dmr-repeater-quota').setValue('5');
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    const payload = mockAPI.put.mock.calls[0]![1];
+    expect(payload.dmr.routing.transmit).toBe('members');
+    expect(payload.dmr.routing.contention).toBe('first');
+    expect(payload.dmr['repeater-quota']).toBe(5);
+    wrapper.unmount();
+  });
+});

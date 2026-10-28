@@ -1,16 +1,16 @@
 # Routing settings
 
-This page tells how DMRHub links talkgroups to the timeslots of repeaters and hotspots, and the settings that change it. DMRHub puts a change of these settings into effect at once on every replica, with no restart. Set them in the config file, in the environment or with flags. See [Configuration](configuration.md).
+This page tells how DMRHub links talkgroups to the timeslots of repeaters and hotspots, and the settings that change it. Change them on the **Routing** tab of the Setup page (`<siteurl>/admin/setup#routing`), or set them in the config file, in the environment or with flags. See [Configuration](configuration.md). DMRHub puts a change of these settings into effect at once on every replica, with no restart.
 
 | Setting | What it does | Default | Configuration key |
 | ------- | ------------ | ------- | ----------------- |
-| Dynamic links off | When `true`, a call on a talkgroup and the default dial of a hotspot link no dynamic talkgroup. See [Dynamic talkgroups](#dynamic-talkgroups). | `false` | `dmr.routing.disable-dynamic-links` |
+| Dynamic links | When off, a call on a talkgroup and the default dial of a hotspot link no dynamic talkgroup. See [Dynamic talkgroups](#dynamic-talkgroups). | on | `dmr.routing.disable-dynamic-links` (`true` turns them off) |
 | Dynamic talkgroup timeout | The time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks the talkgroup from that timeslot, such as `15m`. `0s` never unlinks it. | `15m` | `dmr.routing.dynamic-timeout` |
 | Make unknown talkgroups | When `true`, a group voice call from a repeater or hotspot to an ID that is not a talkgroup makes that talkgroup. See [Unknown talkgroups](#unknown-talkgroups). | `false` | `dmr.routing.auto-create-talkgroups` |
 | Ephemeral talkgroups | When `true`, DMRHub deletes a talkgroup that it made by itself when no call is made on it for the ephemeral TTL. | `false` | `dmr.routing.ephemeral-talkgroups` |
 | Ephemeral TTL | The time with no call after which DMRHub deletes a talkgroup that it made by itself, such as `24h`, when ephemeral talkgroups are on. | `24h` | `dmr.routing.ephemeral-ttl` |
 | Who may transmit | The radios whose transmissions DMRHub takes from repeaters and hotspots: `any`, `radioid` or `members`. See [Who may transmit](#who-may-transmit). | `any` | `dmr.routing.transmit` |
-| Longest transmission | The longest voice call that DMRHub routes, such as `3m`. DMRHub drops the rest of a longer call. `0s` is no limit. | `0s` | `dmr.routing.max-transmission` |
+| Longest transmission | The longest voice call that DMRHub routes. DMRHub drops the rest of a longer call. On the Setup page, **Limit transmission length** turns it on at 180 seconds. `0s` is no limit. | `0s` | `dmr.routing.max-transmission` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 
 ## Dynamic talkgroups

@@ -37,6 +37,7 @@ export type FieldKind =
   | 'secret'
   | 'seconds'
   | 'minutes'
+  | 'hours'
   | 'mhz'
   | 'mode'
   | 'port'
@@ -68,6 +69,13 @@ export type FieldDef = {
   check?: (value: unknown) => string | undefined;
   /** A warning about a value that can be saved. */
   warn?: (read: Read) => string | undefined;
+  /** Shows a bool setting on when it is false, for a setting that turns a feature off. */
+  invert?: boolean;
+  /**
+   * A switch in front of a number setting whose 0 is off: off saves 0 and
+   * hides the input, on saves value.
+   */
+  toggle?: { label: string; value: number };
 };
 
 export type GridRow = { grid: FieldDef[] };
@@ -131,6 +139,17 @@ const unknown: Option[] = [
 ];
 
 const sameAsVoice: Option = { value: '', label: 'The same as voice calls' };
+
+const transmit: Option[] = [
+  { value: 'any', label: 'Any radio' },
+  { value: 'radioid', label: 'Radio IDs on RadioID' },
+  { value: 'members', label: 'Accounts and their radio IDs' },
+];
+
+const contention: Option[] = [
+  { value: 'mix', label: 'Send both' },
+  { value: 'first', label: 'First talker holds it' },
+];
 
 const ipModes: Option[] = [
   { value: 'off', label: 'Off' },
@@ -628,6 +647,50 @@ export const TABS: TabDef[] = [
     ],
   },
   {
+    id: 'routing',
+    group: 'DMR',
+    name: 'Routing',
+    intro: [],
+    cards: [
+      {
+        title: 'Dynamic talkgroups',
+        rows: [
+          { path: 'dmr.routing.disable-dynamic-links', label: 'Dynamic links', kind: 'bool', invert: true },
+          {
+            path: 'dmr.routing.dynamic-timeout', label: 'Timeout (minutes)', kind: 'minutes', help: '0 never.',
+            show: (read) => read('dmr.routing.disable-dynamic-links') !== true,
+          },
+        ],
+      },
+      {
+        title: 'Transmissions',
+        rows: [
+          { path: 'dmr.routing.transmit', label: 'Who may transmit', kind: 'segment', options: transmit },
+          {
+            path: 'dmr.routing.max-transmission', label: 'Longest transmission (seconds)', kind: 'seconds',
+            toggle: { label: 'Limit transmission length', value: 180e9 },
+          },
+          { path: 'dmr.routing.contention', label: 'Two talkers at once', kind: 'segment', options: contention },
+        ],
+      },
+      {
+        title: 'Talkgroups',
+        rows: [
+          { path: 'dmr.routing.auto-create-talkgroups', label: 'Create unknown talkgroups', kind: 'bool' },
+          { path: 'dmr.routing.ephemeral-talkgroups', label: 'Ephemeral', kind: 'bool', show: on('dmr.routing.auto-create-talkgroups') },
+          {
+            path: 'dmr.routing.ephemeral-ttl', label: 'Lifetime (hours after the last call)', kind: 'hours', step: 'any',
+            show: (read) => read('dmr.routing.auto-create-talkgroups') === true && read('dmr.routing.ephemeral-talkgroups') === true,
+          },
+        ],
+      },
+      {
+        title: 'Repeaters',
+        rows: [{ path: 'dmr.repeater-quota', label: 'Repeaters for each user', kind: 'number', help: '0 no limit.' }],
+      },
+    ],
+  },
+  {
     id: 'positions',
     group: 'Features',
     name: 'Positions and APRS',
@@ -840,6 +903,7 @@ export const normalize = (f: FieldDef, v: unknown): unknown => {
     case 'number':
     case 'seconds':
     case 'minutes':
+    case 'hours':
     case 'mhz':
       return toNumber(v);
     case 'list':
@@ -977,6 +1041,8 @@ export const shownValue = (f: FieldDef, v: unknown): string => {
       return `${(n as number) / 1e9} seconds`;
     case 'minutes':
       return `${(n as number) / 6e10} minutes`;
+    case 'hours':
+      return `${(n as number) / 3.6e12} hours`;
     case 'mhz':
       return `${((n as number) / 1e6).toFixed(4)} MHz`;
     case 'mode':
@@ -1011,6 +1077,8 @@ export const inputValue = (f: FieldDef, v: unknown): string => {
       return String(toNumber(v) / 1e9);
     case 'minutes':
       return String(toNumber(v) / 6e10);
+    case 'hours':
+      return String(toNumber(v) / 3.6e12);
     case 'mhz':
       return toNumber(v) === 0 ? '' : (toNumber(v) / 1e6).toFixed(4);
     case 'list':
@@ -1029,6 +1097,8 @@ export const fromInput = (f: FieldDef, text: string): unknown => {
       return Math.round(Number(text) * 1e9) || 0;
     case 'minutes':
       return Math.round(Number(text) * 6e10) || 0;
+    case 'hours':
+      return Math.round(Number(text) * 3.6e12) || 0;
     case 'mhz':
       return Math.round(Number(text) * 1e6) || 0;
     case 'list':

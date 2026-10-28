@@ -30,7 +30,7 @@ The machine also ran other heavy jobs during the runs, with a one-minute load av
 | PostgreSQL and Redis | `postgres:16-alpine` and `redis:7-alpine` in Docker 29.9.0, each limited to 4 CPUs, on loopback. The database pool of DMRHub has 10 connections for each CPU of `GOMAXPROCS`, so 40. |
 | SQLite | A database file with the default parameters: `foreign_keys(1)`, `journal_mode(WAL)`, `synchronous(NORMAL)` and `_txlock=immediate`. |
 | Other load | The machine ran training, labeling and build jobs at the same time. The one-minute load average was 67 to 106. Each result records it. |
-| External clients | Not run. The transports area can also run MMDVMHost, DMRGateway, HBlink and other programs (`DMRHUB_STRESS_EXT_DIR`), but they were not on this machine. |
+| External clients | A separate run of the transports area on SQLite, with the programs that `hack/external/setup.sh` builds. See [External clients](#external-clients). |
 | Network | Loopback only |
 
 ### Run it yourself
@@ -96,6 +96,29 @@ Data does not wait behind voice:
 | callmix | postgres-redis | 1.58 / 25.0 | 1.50 / 22.3 | - |
 | transports | sqlite | 0.63 / 10.9 | 0.63 / 6.93 | 1.85 / 5.14 |
 | transports | postgres-redis | 1.44 / 19.1 | 1.32 / 20.9 | 3.73 / 5.78 |
+
+### External clients
+
+The transports area also runs real DMR programs against the hub, when `DMRHUB_STRESS_EXT_DIR` names the directory that `hack/external/setup.sh` builds. Each program logs in as a repeater (HBlink3 and HBlink4 also as OpenBridge peers), and a rig repeater then makes 3 calls on its talkgroup. The program must log in within 40 s and hear each call. YSF2DMR only logs in.
+
+| Program | Commit | Logged in | Seconds to log in | Calls sent | Calls heard |
+| ------- | ------ | --------- | ----------------- | ---------- | ----------- |
+| MMDVMHost and DMRGateway | `9384d68` and `d751e20` | yes | 10.5 | 3 | 3 |
+| HBlink3 | `1db2730` | yes | 0.5 | 3 | 6 |
+| HBlink4 | `2348c3b` | yes | 0.5 | 3 | 3 |
+| MMDVM_Bridge | `285e51e` | yes | 10.5 | 3 | 3 |
+| YSF2DMR (MMDVM_CM) | `7328c9e` | yes | 10.5 | - | - |
+
+HBlink3 heard each call two times: once as a repeater and once as an OpenBridge peer. The 10.5 s logins are the start time of the programs: the test checks the login each 0.5 s, and DMRGateway, MMDVM_Bridge and YSF2DMR wait about 10 s before they connect.
+
+The same run had the same result as the standard battery: pass, 8596 bursts, 38752 deliveries expected, 0 missing, 0 duplicates, 0 wrong target, 516 `slot_busy` drops, p50 0.19 ms, p99 1.04 ms, max 50.3 ms. It ran on 2026-10-28 at 00:20 CDT on `main` at `e1034b5d`, with `CPUQuota=200%`, `nice -n 19` and `GOMAXPROCS=2`, and a one-minute load average of 11.8 to 24.8. The command:
+
+```sh
+DMRHUB_STRESS_AREAS=transports DMRHUB_STRESS_BACKENDS=sqlite \
+DMRHUB_STRESS_EXT_DIR=~/.cache/dmrhub-ext \
+DMRHUB_STRESS_RESULTS=<results dir> PYTHON=/usr/bin/python3 \
+systemd-run --user --scope -q -p CPUQuota=200% nice -n 19 env GOMAXPROCS=2 hack/stress.sh
+```
 
 The `ipsc_slot` bar in the graphs below is the time that the bursts to the IPSC repeater waited for its busy timeslot. It is not a forwarding latency.
 

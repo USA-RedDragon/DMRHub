@@ -179,6 +179,14 @@ func (h *Hub) loadTalkgroups() {
 	h.talkgroupsMu.Lock()
 	h.talkgroups.Store(&set)
 	h.talkgroupsMu.Unlock()
+	var auto []uint
+	if err := h.db.Model(&models.Talkgroup{}).Where("auto_created = ?", true).Pluck("id", &auto).Error; err != nil {
+		slog.Error("Cannot load the talkgroups that the hub made", "error", err)
+		return
+	}
+	for _, id := range auto {
+		h.autoTalkgroups.Store(id, struct{}{})
+	}
 }
 
 // noteTalkgroup reads the talkgroup id again after a change of it.
@@ -190,6 +198,7 @@ func (h *Hub) noteTalkgroup(id uint) {
 		return
 	}
 	h.talkgroupIDs.Put(id, exists)
+	h.noteAutoTalkgroup(id, exists)
 	h.talkgroupsMu.Lock()
 	defer h.talkgroupsMu.Unlock()
 	set := map[uint]struct{}{}
@@ -202,6 +211,23 @@ func (h *Hub) noteTalkgroup(id uint) {
 		delete(set, id)
 	}
 	h.talkgroups.Store(&set)
+}
+
+// noteAutoTalkgroup reads again whether the hub made the talkgroup id by
+// itself.
+func (h *Hub) noteAutoTalkgroup(id uint, exists bool) {
+	var auto []uint
+	if exists {
+		if err := h.db.Model(&models.Talkgroup{}).Where("id = ? AND auto_created = ?", id, true).Pluck("id", &auto).Error; err != nil {
+			slog.Error("Cannot read whether the hub made a talkgroup", "talkgroupID", id, "error", err)
+			return
+		}
+	}
+	if len(auto) > 0 {
+		h.autoTalkgroups.Store(id, struct{}{})
+		return
+	}
+	h.autoTalkgroups.Delete(id)
 }
 
 // talkgroupExists reports whether the talkgroup id exists. It waits on the

@@ -34,6 +34,8 @@ type Talkgroup struct {
 	Description string         `json:"description"`
 	Admins      []User         `json:"admins" gorm:"many2many:talkgroup_admins;"`
 	NCOs        []User         `json:"ncos" gorm:"many2many:talkgroup_ncos;"`
+	AutoCreated bool           `json:"-" gorm:"not null;default:false"`
+	LastCallAt  *time.Time     `json:"-"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"-"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

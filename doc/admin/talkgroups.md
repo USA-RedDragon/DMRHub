@@ -2,7 +2,7 @@
 
 This page tells how an admin makes, edits and deletes talkgroups. For how users pick talkgroups for their hotspots, see [Talkgroups](../guides/talkgroups.md).
 
-A group call goes only to a talkgroup that exists. DMRHub drops a group call to an ID that is not a talkgroup, unless a plugin owns that ID (see [How the hub routes plugin calls](../plugins.md#how-the-hub-routes-plugin-calls)). A voice call to talkgroup 4000 unlinks the dynamic talkgroup of the timeslot, whether or not a talkgroup 4000 exists.
+A group call goes only to a talkgroup that exists. DMRHub drops a group call to an ID that is not a talkgroup, unless a plugin owns that ID (see [How the hub routes plugin calls](../plugins.md#how-the-hub-routes-plugin-calls)) or the admin turned on unknown talkgroups (see [Unknown talkgroups](routing.md#unknown-talkgroups)). A voice call to talkgroup 4000 unlinks the dynamic talkgroup of the timeslot, whether or not a talkgroup 4000 exists.
 
 ## Make a talkgroup
 

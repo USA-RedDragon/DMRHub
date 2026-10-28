@@ -197,6 +197,8 @@ type Hub struct {
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
 	slotRefused       *xsync.Map[slotStream, time.Time]
 	streamPolicies    *xsync.Map[claimKey, streamPolicy]
+	autoTalkgroups    *xsync.Map[uint, struct{}]
+	talkgroupCalls    *xsync.Map[uint, time.Time]
 
 	repeaters *repeaterCache
 	origin    string
@@ -255,6 +257,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.later = outbox.New(ps, h.done, "the background work of the hub", func(k laterKey) []any {
 		return []any{"work", k.what, "id", k.id}
 	})
+	h.autoTalkgroups = xsync.NewMap[uint, struct{}]()
+	h.talkgroupCalls = xsync.NewMap[uint, time.Time]()
 	h.talkgroupIDs = lookup.New("talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
 	h.radioOwners = lookup.New("radio owners", lookup.TTL, h.radioOwner)
 	h.radioCalls = lookup.New("radio calls", lookup.TTL, h.lastCallRepeater)
@@ -294,6 +298,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	go h.runSightings()
 	h.subscriptionMgr = newSubscriptionManager(h)
 	go h.runDynamicTimeouts()
+	go h.runEphemeralTalkgroups()
 	h.repeaters = newRepeaterCache()
 	h.origin = newOrigin()
 	if ps != nil {

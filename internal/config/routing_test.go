@@ -34,7 +34,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, Transmit: config.TransmitAny, Contention: config.ContentionMix}
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix}
 	if cfg.DMR.Routing != want {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
@@ -53,6 +53,8 @@ func TestRoutingValidate(t *testing.T) {
 		{"dmr.routing.dynamic-timeout", config.Routing{DynamicTimeout: -time.Second}, config.ErrInvalidDynamicTimeout},
 		{"dmr.routing.contention", config.Routing{Contention: "loudest"}, config.ErrInvalidContention},
 		{"dmr.routing.transmit", config.Routing{Transmit: "friends"}, config.ErrInvalidTransmit},
+		{"dmr.routing.ephemeral-ttl", config.Routing{Ephemeral: true}, config.ErrInvalidEphemeralTTL},
+		{"dmr.routing.ephemeral-ttl", config.Routing{EphemeralTTL: -time.Hour}, config.ErrInvalidEphemeralTTL},
 		{"dmr.routing.max-transmission", config.Routing{MaxTransmission: -time.Second}, config.ErrInvalidMaxTransmission},
 	} {
 		cfg := makeValidConfig()
@@ -73,7 +75,7 @@ func TestRoutingValidate(t *testing.T) {
 		t.Errorf("a negative repeater quota: error %v, want %v", err, config.ErrInvalidRepeaterQuota)
 	}
 	cfg := makeValidConfig()
-	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst}
+	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst}
 	if err := cfg.DMR.Routing.Validate(); err != nil {
 		t.Errorf("valid routing settings: %v", err)
 	}

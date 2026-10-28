@@ -655,6 +655,11 @@ var ErrInvalidMaxTransmission = errors.New("the longest transmission must be 0 f
 
 const fieldMaxTransmission = "dmr.routing.max-transmission"
 
+// ErrInvalidEphemeralTTL indicates an ephemeral talkgroup TTL that is not positive.
+var ErrInvalidEphemeralTTL = errors.New("the ephemeral TTL must be a positive time, such as 24h")
+
+const fieldEphemeralTTL = "dmr.routing.ephemeral-ttl"
+
 // ErrInvalidContention indicates a contention setting that is not mix or first.
 var ErrInvalidContention = errors.New("the contention setting must be mix or first")
 
@@ -676,6 +681,9 @@ func (r Routing) Validate() error {
 func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	if r.DynamicTimeout < 0 {
 		errs = append(errs, ValidationError{Field: fieldDynamicTimeout, Err: ErrInvalidDynamicTimeout})
+	}
+	if r.EphemeralTTL < 0 || (r.Ephemeral && r.EphemeralTTL == 0) {
+		errs = append(errs, ValidationError{Field: fieldEphemeralTTL, Err: ErrInvalidEphemeralTTL})
 	}
 	if r.MaxTransmission < 0 {
 		errs = append(errs, ValidationError{Field: fieldMaxTransmission, Err: ErrInvalidMaxTransmission})

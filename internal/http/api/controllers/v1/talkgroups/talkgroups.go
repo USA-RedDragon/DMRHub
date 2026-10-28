@@ -304,6 +304,7 @@ func PATCHTalkgroup(c *gin.Context) {
 			}
 			talkgroup.Description = json.Description
 		}
+		talkgroup.AutoCreated = false
 
 		err = db.Save(&talkgroup).Error
 		if err != nil {

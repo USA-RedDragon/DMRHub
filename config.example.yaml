@@ -265,6 +265,12 @@ dmr:
     disable-dynamic-links: false
     # Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it
     dynamic-timeout: "15m"
+    # Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call
+    auto-create-talkgroups: false
+    # Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept
+    ephemeral-talkgroups: false
+    # Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h
+    ephemeral-ttl: "24h"
     # Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)
     transmit: "any"
     # Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit

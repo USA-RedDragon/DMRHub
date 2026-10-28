@@ -191,11 +191,14 @@ type iPListsShadow struct {
 }
 
 type routingShadow struct {
-	DisableDynamicLinks *bool          `json:"disable-dynamic-links" toml:"disable-dynamic-links" yaml:"disable-dynamic-links"`
-	DynamicTimeout      *impl.Duration `json:"dynamic-timeout"       toml:"dynamic-timeout"       yaml:"dynamic-timeout"`
-	Transmit            *string        `json:"transmit"              toml:"transmit"              yaml:"transmit"`
-	MaxTransmission     *impl.Duration `json:"max-transmission"      toml:"max-transmission"      yaml:"max-transmission"`
-	Contention          *string        `json:"contention"            toml:"contention"            yaml:"contention"`
+	DisableDynamicLinks *bool          `json:"disable-dynamic-links"  toml:"disable-dynamic-links"  yaml:"disable-dynamic-links"`
+	DynamicTimeout      *impl.Duration `json:"dynamic-timeout"        toml:"dynamic-timeout"        yaml:"dynamic-timeout"`
+	AutoCreate          *bool          `json:"auto-create-talkgroups" toml:"auto-create-talkgroups" yaml:"auto-create-talkgroups"`
+	Ephemeral           *bool          `json:"ephemeral-talkgroups"   toml:"ephemeral-talkgroups"   yaml:"ephemeral-talkgroups"`
+	EphemeralTTL        *impl.Duration `json:"ephemeral-ttl"          toml:"ephemeral-ttl"          yaml:"ephemeral-ttl"`
+	Transmit            *string        `json:"transmit"               toml:"transmit"               yaml:"transmit"`
+	MaxTransmission     *impl.Duration `json:"max-transmission"       toml:"max-transmission"       yaml:"max-transmission"`
+	Contention          *string        `json:"contention"             toml:"contention"             yaml:"contention"`
 }
 
 type dMRShadow struct {
@@ -407,6 +410,12 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.routing.disable-dynamic-links", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.DynamicTimeout = time.Duration(int64(900000000000))
 	set("dmr.routing.dynamic-timeout", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.AutoCreate = false
+	set("dmr.routing.auto-create-talkgroups", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.Ephemeral = false
+	set("dmr.routing.ephemeral-talkgroups", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.EphemeralTTL = time.Duration(int64(86400000000000))
+	set("dmr.routing.ephemeral-ttl", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.Transmit = Transmit("any")
 	set("dmr.routing.transmit", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.MaxTransmission = time.Duration(int64(0))
@@ -974,6 +983,25 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 				}
 				cfg.DMR.Routing.DynamicTimeout = v
 				set("dmr.routing.dynamic-timeout", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.AutoCreate != nil {
+				cfg.DMR.Routing.AutoCreate = *s.DMR.Routing.AutoCreate
+				set("dmr.routing.auto-create-talkgroups", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.Ephemeral != nil {
+				cfg.DMR.Routing.Ephemeral = *s.DMR.Routing.Ephemeral
+				set("dmr.routing.ephemeral-talkgroups", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.EphemeralTTL != nil {
+				v, ok := s.DMR.Routing.EphemeralTTL.Value()
+				if !ok {
+					return &configulator.OpaqueSpellingError{
+						Hint: "\"30s\"",
+						Path: "dmr.routing.ephemeral-ttl",
+					}
+				}
+				cfg.DMR.Routing.EphemeralTTL = v
+				set("dmr.routing.ephemeral-ttl", configulator.LayerFile, file)
 			}
 			if s.DMR.Routing.Transmit != nil {
 				cfg.DMR.Routing.Transmit = Transmit(*s.DMR.Routing.Transmit)
@@ -2008,6 +2036,45 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Routing.DynamicTimeout = d
 		set("dmr.routing.dynamic-timeout", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "auto-create-talkgroups"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.auto-create-talkgroups",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Routing.AutoCreate = p
+		set("dmr.routing.auto-create-talkgroups", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "ephemeral-talkgroups"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.ephemeral-talkgroups",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Routing.Ephemeral = p
+		set("dmr.routing.ephemeral-talkgroups", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "ephemeral-ttl"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.ephemeral-ttl",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Routing.EphemeralTTL = d
+		set("dmr.routing.ephemeral-ttl", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "transmit"); ok {
 		cfg.DMR.Routing.Transmit = Transmit(v)
 		set("dmr.routing.transmit", configulator.LayerEnv, n)
@@ -2317,6 +2384,9 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "ip-lists" + o.Separator + "openbridge" + o.Separator + "allow",
 		"dmr" + o.Separator + "routing" + o.Separator + "disable-dynamic-links",
 		"dmr" + o.Separator + "routing" + o.Separator + "dynamic-timeout",
+		"dmr" + o.Separator + "routing" + o.Separator + "auto-create-talkgroups",
+		"dmr" + o.Separator + "routing" + o.Separator + "ephemeral-talkgroups",
+		"dmr" + o.Separator + "routing" + o.Separator + "ephemeral-ttl",
 		"dmr" + o.Separator + "routing" + o.Separator + "transmit",
 		"dmr" + o.Separator + "routing" + o.Separator + "max-transmission",
 		"dmr" + o.Separator + "routing" + o.Separator + "contention",
@@ -2462,31 +2532,34 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.StringSlice(names[101], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
 	fs.Bool(names[102], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
 	fs.Duration(names[103], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
-	fs.String(names[104], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
-	fs.Duration(names[105], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
-	fs.String(names[106], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
-	fs.Var(impl.NewInt(100), names[107], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
-	fs.Var(impl.NewInt(25), names[108], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[109], false, "Enable SMTP support for sending emails")
-	fs.String(names[110], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[111], "SMTP server port")
-	fs.String(names[112], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[113], "", "SMTP server username")
-	fs.String(names[114], "", "SMTP server password")
-	fs.String(names[115], "", "Email address to use as the sender")
-	fs.String(names[116], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[117], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[118], false, "Enable metrics collection and export")
-	fs.String(names[119], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[120], "Metrics server port")
-	fs.StringSlice(names[121], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[122], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[123], false, "Enable PProf profiling and debugging support")
-	fs.String(names[124], "[::]", "PProf server listen address")
-	fs.StringSlice(names[125], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[126], "PProf server port")
-	fs.String(names[127], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[128], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.Bool(names[104], false, "Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call")
+	fs.Bool(names[105], false, "Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept")
+	fs.Duration(names[106], time.Duration(int64(86400000000000)), "Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h")
+	fs.String(names[107], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
+	fs.Duration(names[108], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
+	fs.String(names[109], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
+	fs.Var(impl.NewInt(100), names[110], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
+	fs.Var(impl.NewInt(25), names[111], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[112], false, "Enable SMTP support for sending emails")
+	fs.String(names[113], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[114], "SMTP server port")
+	fs.String(names[115], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[116], "", "SMTP server username")
+	fs.String(names[117], "", "SMTP server password")
+	fs.String(names[118], "", "Email address to use as the sender")
+	fs.String(names[119], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[120], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[121], false, "Enable metrics collection and export")
+	fs.String(names[122], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[123], "Metrics server port")
+	fs.StringSlice(names[124], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[125], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[126], false, "Enable PProf profiling and debugging support")
+	fs.String(names[127], "[::]", "PProf server listen address")
+	fs.StringSlice(names[128], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[129], "PProf server port")
+	fs.String(names[130], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[131], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
 	return nil
 }
 
@@ -3738,6 +3811,42 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Routing.DynamicTimeout = v
 		set("dmr.routing.dynamic-timeout", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "auto-create-talkgroups"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.auto-create-talkgroups",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.AutoCreate = v
+		set("dmr.routing.auto-create-talkgroups", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "ephemeral-talkgroups"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.ephemeral-talkgroups",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.Ephemeral = v
+		set("dmr.routing.ephemeral-talkgroups", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "ephemeral-ttl"; fs.Changed(n) {
+		v, err := fs.GetDuration(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.ephemeral-ttl",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.EphemeralTTL = v
+		set("dmr.routing.ephemeral-ttl", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "routing" + o.Separator + "transmit"; fs.Changed(n) {
 		v, err := fs.GetString(n)
@@ -6916,6 +7025,48 @@ func (s *routingShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 			default:
 				return configJSONError(path+".dynamic-timeout", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
 			}
+		case "auto-create-talkgroups":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.AutoCreate = &b
+			default:
+				return configJSONError(path+".auto-create-talkgroups", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "ephemeral-talkgroups":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.Ephemeral = &b
+			default:
+				return configJSONError(path+".ephemeral-talkgroups", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "ephemeral-ttl":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				var slot impl.Duration
+				if err := slot.UnmarshalText([]byte(v.String())); err != nil {
+					return configJSONError(path+".ephemeral-ttl", v, err)
+				}
+				s.EphemeralTTL = &slot
+			default:
+				return configJSONError(path+".ephemeral-ttl", v, fmt.Errorf("expected a text scalar (e.g. \"30s\"), got %v", v.Kind()))
+			}
 		case "transmit":
 			v, err := dec.ReadToken()
 			if err != nil {
@@ -7433,6 +7584,9 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.ip-lists.openbridge.allow = %v\n", c.DMR.IPLists.OpenBridge.Allow)
 	fmt.Fprintf(&b, "dmr.routing.disable-dynamic-links = %v\n", c.DMR.Routing.DisableDynamicLinks)
 	fmt.Fprintf(&b, "dmr.routing.dynamic-timeout = %v\n", c.DMR.Routing.DynamicTimeout)
+	fmt.Fprintf(&b, "dmr.routing.auto-create-talkgroups = %v\n", c.DMR.Routing.AutoCreate)
+	fmt.Fprintf(&b, "dmr.routing.ephemeral-talkgroups = %v\n", c.DMR.Routing.Ephemeral)
+	fmt.Fprintf(&b, "dmr.routing.ephemeral-ttl = %v\n", c.DMR.Routing.EphemeralTTL)
 	fmt.Fprintf(&b, "dmr.routing.transmit = %v\n", c.DMR.Routing.Transmit)
 	fmt.Fprintf(&b, "dmr.routing.max-transmission = %v\n", c.DMR.Routing.MaxTransmission)
 	fmt.Fprintf(&b, "dmr.routing.contention = %v\n", c.DMR.Routing.Contention)

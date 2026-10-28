@@ -17,18 +17,18 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Command screenshots runs a DMRHub on loopback with demo data and takes
-// the screenshots of the docs with headless Chromium. hack/screenshots.sh
-// runs it: first the setup phase inside a network namespace of its own,
-// as the setup wizard always listens on port 3005 of every address, then
-// the main phase.
+// Command screenshots makes the screenshots of the docs from the shot
+// list, hack/screenshots/shots.yaml. hack/screenshots.sh runs it: the
+// overlay phase writes the clock patch that the DMRHub build of the
+// screenshots uses, the setup phase takes the shots of the setup wizard
+// inside a network namespace of its own, the main phase seeds the demo
+// network and takes the other shots, and the check phase compares the
+// docs with the shot list.
 package main
 
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -50,9 +50,13 @@ const (
 	mmdvmPort      = 62951
 	openBridgePort = 62955
 	ipscPort       = 50951
-	wizardURL      = "http://localhost:3005"
+	pluginPort     = 62961
+	smtpPort       = 62925
+	wizardURL      = "http://127.0.0.1:3955"
 	startTimeout   = 60 * time.Second
 	stopTimeout    = 30 * time.Second
+	adminPassword  = "demo-admin-password"
+	userPassword   = "demo-user-password"
 )
 
 type options struct {
@@ -61,21 +65,25 @@ type options struct {
 	chromium string
 	work     string
 	out      string
-}
-
-// creds is the account that the setup phase makes, for the main phase.
-type creds struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	list     string
+	root     string
+	only     string
+	radio    string
+	ext      string
 }
 
 func main() {
 	var o options
-	flag.StringVar(&o.phase, "phase", "", "setup or main")
+	flag.StringVar(&o.phase, "phase", "", "overlay, setup, main or check")
 	flag.StringVar(&o.hub, "hub", "", "DMRHub binary")
 	flag.StringVar(&o.chromium, "chromium", "/usr/bin/chromium", "Chromium binary")
 	flag.StringVar(&o.work, "work", "", "work directory")
 	flag.StringVar(&o.out, "out", "", "directory of the screenshots")
+	flag.StringVar(&o.list, "list", "hack/screenshots/shots.yaml", "shot list")
+	flag.StringVar(&o.root, "root", ".", "root of the repository, for the check phase")
+	flag.StringVar(&o.only, "only", "", "take only the shots whose names contain this text")
+	flag.StringVar(&o.ext, "ext", "", "directory of the external programs that hack/external/setup.sh builds")
+	flag.StringVar(&o.radio, "radio", "", "directory of a built dmr-web, for the Browser Radio shots")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -88,43 +96,98 @@ func main() {
 }
 
 func run(ctx context.Context, o options) error {
+	if o.phase == "overlay" {
+		if o.work == "" {
+			return errors.New("-work is required")
+		}
+		goroot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
+		if err != nil {
+			return fmt.Errorf("could not find GOROOT: %w", err)
+		}
+		return writeOverlay(strings.TrimSpace(string(goroot)), o.work)
+	}
+	l, err := loadList(o.list)
+	if err != nil {
+		return err
+	}
+	if o.phase == "check" {
+		return checkDocs(o.root, l)
+	}
 	if o.hub == "" || o.work == "" || o.out == "" {
 		return errors.New("-hub, -work and -out are required")
 	}
 	if err := os.MkdirAll(o.out, 0o750); err != nil {
 		return fmt.Errorf("could not make %s: %w", o.out, err)
 	}
+	c, err := openClock(filepath.Join(o.work, "clock"))
+	if err != nil {
+		return err
+	}
+	defer c.close()
 	switch o.phase {
 	case "setup":
-		return runSetup(ctx, o)
+		return runSetup(ctx, o, l, c)
 	case "main":
-		return runMain(ctx, o)
+		return runMain(ctx, o, l, c)
 	default:
 		return fmt.Errorf("unknown phase %q", o.phase)
 	}
 }
 
-// hubProcess is a DMRHub that the harness started.
+func (l *shotList) status() ([]byte, error) {
+	b, err := json.Marshal(map[string]any{"key": l.Basemap.Key, "part_bytes": l.Basemap.PartBytes})
+	if err != nil {
+		return nil, fmt.Errorf("could not encode the basemap status: %w", err)
+	}
+	return b, nil
+}
+
+func (l *shotList) phase(name, only string) []shot {
+	var out []shot
+	for _, s := range l.Shots {
+		if s.Phase == name && (only == "" || strings.Contains(s.Name, only) || s.Keep) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 type hubProcess struct {
 	cmd    *exec.Cmd
-	token  chan string
 	exited chan struct{}
 }
 
 var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-var tokenLine = regexp.MustCompile(`/setup\?token=([A-Za-z0-9]+)`)
 
-// startHub starts DMRHub in the work directory, with its configuration in
-// the work directory only and no way to open a desktop browser.
-func startHub(ctx context.Context, o options, logName string) (*hubProcess, error) {
+func startHub(ctx context.Context, o options, l *shotList, logName string) (*hubProcess, error) {
 	cmd := exec.CommandContext(ctx, o.hub)
 	cmd.Dir = o.work
 	cmd.Env = []string{
 		"HOME=" + o.work,
 		"XDG_CONFIG_HOME=" + filepath.Join(o.work, "xdg"),
 		"PATH=" + filepath.Join(o.work, "bin") + ":/usr/bin:/bin",
-		"TZ=America/Chicago",
+		"TZ=" + l.TimeZone,
 		"NO_COLOR=1",
+		clockEnv + "=" + filepath.Join(o.work, "clock"),
+		"HTTP_BIND=127.0.0.1",
+		fmt.Sprintf("HTTP_PORT=%d", httpPort),
+		"DMR_MMDVM_BIND=127.0.0.1",
+		fmt.Sprintf("DMR_MMDVM_PORT=%d", mmdvmPort),
+		"DMR_OPENBRIDGE_ENABLED=true",
+		"DMR_OPENBRIDGE_BIND=127.0.0.1",
+		fmt.Sprintf("DMR_OPENBRIDGE_PORT=%d", openBridgePort),
+		"DMR_IPSC_ENABLED=true",
+		"DMR_IPSC_BIND=127.0.0.1",
+		fmt.Sprintf("DMR_IPSC_PORT=%d", ipscPort),
+		"DMR_PLUGINS_ENABLED=true",
+		"DMR_PLUGINS_BIND=127.0.0.1",
+		fmt.Sprintf("DMR_PLUGINS_PORT=%d", pluginPort),
+		"METRICS_BIND=127.0.0.1",
+		"PPROF_BIND=127.0.0.1",
+		"SMTP_ENABLED=true",
+		"SMTP_HOST=127.0.0.1",
+		fmt.Sprintf("SMTP_PORT=%d", smtpPort),
+		"SMTP_FROM=dmrhub@example.org",
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
@@ -138,19 +201,11 @@ func startHub(ctx context.Context, o options, logName string) (*hubProcess, erro
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start DMRHub: %w", err)
 	}
-	h := &hubProcess{cmd: cmd, token: make(chan string, 1), exited: make(chan struct{})}
+	h := &hubProcess{cmd: cmd, exited: make(chan struct{})}
 	go func() {
 		s := bufio.NewScanner(pr)
 		for s.Scan() {
-			line := ansi.ReplaceAllString(s.Text(), "")
-			if m := tokenLine.FindStringSubmatch(line); m != nil {
-				select {
-				case h.token <- m[1]:
-				default:
-				}
-				line = tokenLine.ReplaceAllString(line, "/setup?token=<token>")
-			}
-			_, _ = fmt.Fprintln(log, line)
+			_, _ = fmt.Fprintln(log, ansi.ReplaceAllString(s.Text(), ""))
 		}
 		_ = log.Close()
 	}()
@@ -162,7 +217,6 @@ func startHub(ctx context.Context, o options, logName string) (*hubProcess, erro
 	return h, nil
 }
 
-// stop ends DMRHub with SIGTERM and waits for it.
 func (h *hubProcess) stop() {
 	select {
 	case <-h.exited:
@@ -176,165 +230,4 @@ func (h *hubProcess) stop() {
 		_ = syscall.Kill(-h.cmd.Process.Pid, syscall.SIGKILL)
 		<-h.exited
 	}
-}
-
-func randomString(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("no randomness: %w", err)
-	}
-	return hex.EncodeToString(b), nil
-}
-
-func credsFile(o options) string {
-	return filepath.Join(o.work, "creds.json")
-}
-
-// runSetup takes the setup wizard screenshots and finishes the setup with
-// the configuration of the main phase and the first admin, N0CALL.
-func runSetup(ctx context.Context, o options) error {
-	hub, err := startHub(ctx, o, "setup.log")
-	if err != nil {
-		return err
-	}
-	defer hub.stop()
-	var token string
-	select {
-	case token = <-hub.token:
-	case <-hub.exited:
-		return errors.New("DMRHub stopped before its setup wizard started")
-	case <-time.After(startTimeout):
-		return fmt.Errorf("setup wizard: %w", errTimeout)
-	}
-	wizard := newAPI(wizardURL)
-	wizard.header = map[string]string{"X-SetupWizard-Token": token}
-	if err := wizard.waitUp(ctx); err != nil {
-		return err
-	}
-	b, err := startBrowser(ctx, o.chromium, o.work)
-	if err != nil {
-		return err
-	}
-	defer b.close()
-
-	if err := b.navigate(ctx, wizardURL+"/setup?token="+token); err != nil {
-		return err
-	}
-	if err := b.waitText(ctx, "General Settings"); err != nil {
-		return err
-	}
-	if err := b.shot(ctx, filepath.Join(o.out, "setup.png")); err != nil {
-		return err
-	}
-	if err := b.scrollTo(ctx, "DMR Settings"); err != nil {
-		return err
-	}
-	if err := b.shot(ctx, filepath.Join(o.out, "setup-dmr.png")); err != nil {
-		return err
-	}
-
-	if err := configure(ctx, wizard); err != nil {
-		return err
-	}
-	password, err := randomString(12)
-	if err != nil {
-		return err
-	}
-	c := creds{Username: "n0call", Password: password}
-	data, err := json.Marshal(c)
-	if err != nil {
-		return fmt.Errorf("could not encode the account: %w", err)
-	}
-	if err := os.WriteFile(credsFile(o), data, 0o600); err != nil {
-		return fmt.Errorf("could not save the account: %w", err)
-	}
-
-	if err := b.navigate(ctx, wizardURL+"/setup/user?token="+token); err != nil {
-		return err
-	}
-	for _, f := range [][2]string{{"#dmr_id", "3000001"}, {"#username", c.Username}, {"#callsign", "N0CALL"}, {"#password", password}, {"#confirmPassword", password}} {
-		if err := b.typeInto(ctx, f[0], f[1]); err != nil {
-			return err
-		}
-	}
-	if err := b.eval(ctx, "document.activeElement.blur()", nil); err != nil {
-		return err
-	}
-	if err := b.shot(ctx, filepath.Join(o.out, "setup-user.png")); err != nil {
-		return err
-	}
-	if err := b.click(ctx, "Create User"); err != nil {
-		return err
-	}
-	hub2 := newAPI(fmt.Sprintf("http://127.0.0.1:%d", httpPort))
-	if err := hub2.waitUp(ctx); err != nil {
-		return fmt.Errorf("DMRHub did not start after the setup: %w", err)
-	}
-	return nil
-}
-
-// configure saves the configuration of the demo network through the
-// setup wizard API: everything on loopback, SQLite, and no outside
-// services.
-func configure(ctx context.Context, wizard *api) error {
-	var cfg map[string]any
-	if err := wizard.do(ctx, "GET", "/api/v1/config", nil, &cfg); err != nil {
-		return err
-	}
-	delete(cfg, "secrets")
-	secret, err := randomString(24)
-	if err != nil {
-		return err
-	}
-	salt, err := randomString(24)
-	if err != nil {
-		return err
-	}
-	set := func(path string, v any) {
-		m := cfg
-		parts := strings.Split(path, ".")
-		for _, p := range parts[:len(parts)-1] {
-			next, ok := m[p].(map[string]any)
-			if !ok {
-				next = map[string]any{}
-				m[p] = next
-			}
-			m = next
-		}
-		m[parts[len(parts)-1]] = v
-	}
-	set("secret", secret)
-	set("password-salt", salt)
-	set("network-name", "DMRHub Demo")
-	set("http.bind", "127.0.0.1")
-	set("http.port", httpPort)
-	set("http.canonical-host", fmt.Sprintf("http://127.0.0.1:%d", httpPort))
-	set("dmr.mmdvm.bind", "127.0.0.1")
-	set("dmr.mmdvm.port", mmdvmPort)
-	set("dmr.openbridge.enabled", true)
-	set("dmr.openbridge.bind", "127.0.0.1")
-	set("dmr.openbridge.port", openBridgePort)
-	set("dmr.ipsc.enabled", true)
-	set("dmr.ipsc.bind", "127.0.0.1")
-	set("dmr.ipsc.port", ipscPort)
-	set("dmr.ipsc.network-id", 300099)
-	set("dmr.disable-radio-id-validation", true)
-	set("dmr.radio-id-url", "http://127.0.0.1:9/users.json")
-	set("dmr.repeater-id-url", "http://127.0.0.1:9/rptrs.json")
-	set("dmr.plugins.bind", "127.0.0.1")
-	set("metrics.bind", "127.0.0.1")
-	set("pprof.bind", "127.0.0.1")
-	return wizard.do(ctx, "PUT", "/api/v1/config", cfg, nil)
-}
-
-func readCreds(o options) (creds, error) {
-	var c creds
-	data, err := os.ReadFile(credsFile(o))
-	if err != nil {
-		return c, fmt.Errorf("run the setup phase first: %w", err)
-	}
-	if err := json.Unmarshal(data, &c); err != nil {
-		return c, fmt.Errorf("bad account file: %w", err)
-	}
-	return c, nil
 }

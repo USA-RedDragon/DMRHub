@@ -30,20 +30,19 @@ import (
 	"time"
 )
 
-// api is one user of the DMRHub API, with the session cookie of the user.
 type api struct {
-	base   string
-	client *http.Client
-	header map[string]string
+	base    string
+	client  *http.Client
+	header  map[string]string
+	secrets *secrets
+	before  func()
 }
 
-func newAPI(base string) *api {
+func newAPI(base string, sec *secrets) *api {
 	jar, _ := cookiejar.New(nil)
-	return &api{base: base, client: &http.Client{Jar: jar, Timeout: 30 * time.Second}}
+	return &api{base: base, client: &http.Client{Jar: jar, Timeout: 30 * time.Second}, secrets: sec}
 }
 
-// do sends body as JSON and decodes the answer into out when out is not
-// nil. An answer other than 2xx is an error.
 func (a *api) do(ctx context.Context, method, path string, body, out any) error {
 	var r io.Reader
 	if body != nil {
@@ -52,6 +51,9 @@ func (a *api) do(ctx context.Context, method, path string, body, out any) error 
 			return fmt.Errorf("%s %s: %w", method, path, err)
 		}
 		r = bytes.NewReader(b)
+	}
+	if a.before != nil {
+		a.before()
 	}
 	req, err := http.NewRequestWithContext(ctx, method, a.base+path, r)
 	if err != nil {
@@ -75,6 +77,10 @@ func (a *api) do(ctx context.Context, method, path string, body, out any) error 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, bytes.TrimSpace(data))
 	}
+	var all any
+	if json.Unmarshal(data, &all) == nil {
+		a.secrets.scan(all)
+	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
 			return fmt.Errorf("%s %s: bad answer: %w", method, path, err)
@@ -83,11 +89,14 @@ func (a *api) do(ctx context.Context, method, path string, body, out any) error 
 	return nil
 }
 
-// waitUp waits until the server answers its ping.
 func (a *api) waitUp(ctx context.Context) error {
+	return a.waitFor(ctx, "/api/v1/ping")
+}
+
+func (a *api) waitFor(ctx context.Context, path string) error {
 	deadline := time.Now().Add(startTimeout)
 	for time.Now().Before(deadline) {
-		if err := a.do(ctx, http.MethodGet, "/api/v1/ping", nil, nil); err == nil {
+		if err := a.do(ctx, http.MethodGet, path, nil, nil); err == nil {
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)

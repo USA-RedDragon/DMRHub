@@ -42,14 +42,12 @@ import (
 
 const (
 	burstGap    = 60 * time.Millisecond
+	steppedGap  = 250 * time.Millisecond
 	colorCode   = 1
 	handshake   = 10 * time.Second
-	pingEvery   = 5 * time.Second
 	readTimeout = 200 * time.Millisecond
 )
 
-// site is what a hotspot or repeater tells the hub about itself when it
-// logs in.
 type site struct {
 	callsign    string
 	rx, tx      uint32
@@ -59,8 +57,6 @@ type site struct {
 	slots       uint8
 }
 
-// peer is a hotspot or repeater that speaks the MMDVM network protocol to
-// the hub, as MMDVMHost does.
 type peer struct {
 	id   uint32
 	conn *net.UDPConn
@@ -69,8 +65,6 @@ type peer struct {
 	mu   sync.Mutex
 }
 
-// dialPeer logs in to the hub at addr as repeater id with password and
-// keeps the session up with pings until close.
 func dialPeer(addr string, id uint32, password string, s site) (*peer, error) {
 	raddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -86,7 +80,7 @@ func dialPeer(addr string, id uint32, password string, s site) (*peer, error) {
 		return nil, err
 	}
 	p.wg.Add(1)
-	go p.keepalive()
+	go p.drain()
 	return p, nil
 }
 
@@ -107,7 +101,6 @@ func (p *peer) write(b []byte) error {
 	return nil
 }
 
-// ack waits for the next RPTACK and returns it.
 func (p *peer) ack() (dmrd.Control, error) {
 	buf := make([]byte, 512)
 	deadline := time.Now().Add(handshake)
@@ -181,22 +174,22 @@ func (p *peer) login(password string, s site) error {
 	return err
 }
 
-func (p *peer) keepalive() {
+func (p *peer) drain() {
 	defer p.wg.Done()
-	t := time.NewTicker(pingEvery)
-	defer t.Stop()
 	buf := make([]byte, 512)
 	for {
 		select {
 		case <-p.done:
 			return
-		case <-t.C:
-			_ = p.control(dmrd.CommandRPTPING, [32]byte{})
 		default:
 			_ = p.conn.SetReadDeadline(time.Now().Add(readTimeout))
 			_, _ = p.conn.Read(buf)
 		}
 	}
+}
+
+func (p *peer) ping() error {
+	return p.control(dmrd.CommandRPTPING, [32]byte{})
 }
 
 func (p *peer) close() {
@@ -206,14 +199,12 @@ func (p *peer) close() {
 	_ = p.conn.Close()
 }
 
-// burst is one DMRD packet of a transmission.
 type burst struct {
 	frame dmrconst.FrameType
 	value uint
 	raw   layer2.RawBurst
 }
 
-// transmission is what one radio sends in one key-up.
 type transmission struct {
 	src, dst uint
 	group    bool
@@ -221,12 +212,20 @@ type transmission struct {
 	bursts   []burst
 }
 
-// play sends t at the pace of the air interface.
-func (p *peer) play(t transmission, stream uint) error {
+func (p *peer) play(t transmission, stream uint, at func(k int) error) error {
+	gap := burstGap
+	if at != nil {
+		gap = steppedGap
+	}
 	next := time.Now()
 	for k, b := range t.bursts {
 		time.Sleep(time.Until(next))
-		next = next.Add(burstGap)
+		if at != nil {
+			if err := at(k); err != nil {
+				return err
+			}
+		}
+		next = next.Add(gap)
 		pkt := models.Packet{
 			Signature: string(dmrconst.CommandDMRD), Seq: uint(k & 0xFF), Src: t.src, Dst: t.dst, Repeater: uint(p.id),
 			Slot: t.slot2, GroupCall: t.group, FrameType: b.frame, DTypeOrVSeq: b.value, StreamID: stream,
@@ -261,8 +260,6 @@ func voiceLC(group bool, dst, src uint, dt enums.DataType) (burst, error) {
 	return burst{frame: dmrconst.FrameDataSync, value: value, raw: raw}, nil
 }
 
-// voiceCall is a voice transmission of frames voice bursts of silence,
-// with its header and terminator.
 func voiceCall(group bool, dst, src uint, frames int) ([]burst, error) {
 	head, err := voiceLC(group, dst, src, enums.DataTypeVoiceLCHeader)
 	if err != nil {
@@ -334,7 +331,6 @@ func packetBursts(group bool, dst, src uint, p *packet.Packet) ([]burst, error) 
 	return out, nil
 }
 
-// textMessage is a text message in the IP format that most radios use.
 func textMessage(group bool, dst, src uint, body string) ([]burst, error) {
 	text := &sms.Text{Format: sms.FormatIP, Source: uint32(src), Destination: uint32(dst), Group: group, Body: []byte(body)}
 	var h sms.Header
@@ -349,8 +345,6 @@ func textMessage(group bool, dst, src uint, body string) ([]burst, error) {
 	return packetBursts(group, dst, src, &p)
 }
 
-// locationReport is an unconfirmed LRRP triggered report from radio to the
-// location service.
 func locationReport(radio, service uint, lat, lon float64, requestID uint32) ([]burst, error) {
 	m := lrrp.Message{Document: lrrp.DocumentTriggeredReport}
 	m.Report.RequestID = []byte{byte(requestID >> 24), byte(requestID >> 16), byte(requestID >> 8), byte(requestID)}

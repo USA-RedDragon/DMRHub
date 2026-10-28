@@ -106,6 +106,25 @@ make docs-site
 
 The page is `artifacts/docs-site/index.html`. Open it in a browser, or publish that one file. To build from another docs tree, run `python3 hack/docs-site/build.py <doc directory> <output file>`.
 
+## Make the screenshots of the docs
+
+Each image in `doc/Screenshots` comes from the screenshot harness. `hack/screenshots/shots.yaml` lists each shot: its file name, the page, the user that is logged in, the state of the demo network that it needs, and the clicks and text to enter before the capture. Run:
+
+```bash
+make screenshots
+```
+
+`hack/screenshots.sh` builds DMRHub, runs it on loopback with SQLite, fills it with a demo network (users, talkgroups, hotspots that log in over the MMDVM protocol, calls, text messages and positions), and takes each shot with headless Chromium. It needs Go, npm, TinyGo 0.43.0 or later, `unshare`, `pasta`, Chromium and `oxipng`. The top of the script lists its settings.
+
+The output does not change from run to run while the UI stays the same:
+
+- DMRHub and the browser run on a clock that the harness sets. The clock starts at `start` in `shots.yaml` and moves on by a fixed time for each shot, call and position.
+- The demo data, its IDs and the passwords are the same in each run. The harness replaces each password, token and key that DMRHub makes at random with a fixed example value before the capture.
+- The fonts come with the frontend. The map uses the basemap archive that `shots.yaml` names.
+- The browser turns off animations and transitions.
+
+To add a screenshot, add a shot to `shots.yaml` and refer to it from a doc as `Screenshots/<name>.png`. `go run ./hack/screenshots -phase check` fails when a doc refers to an image that the harness does not make, when a doc still has a screenshot placeholder comment, or when `doc/Screenshots` has a file that the harness does not make. The Screenshots workflow runs this check on each push and pull request, and makes the screenshots again on each release tag.
+
 ## Change the plugin protocol
 
 The plugin protocol is in `proto/dmrhub/plugin/v1/plugin.proto`. After you change it, run:

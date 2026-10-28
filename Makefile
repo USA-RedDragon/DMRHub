@@ -81,6 +81,11 @@ stress:
 	@./hack/stress.sh
 	@echo "--> Done"
 
+screenshots:
+	@echo "--> Making the screenshots of the docs (see hack/screenshots.sh for its settings)"
+	@./hack/screenshots.sh
+	@echo "--> Done"
+
 docs-site:
 	@echo "--> Building the docs site into artifacts/docs-site/index.html"
 	@mkdir -p artifacts/docs-site

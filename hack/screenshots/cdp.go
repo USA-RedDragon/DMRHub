@@ -50,8 +50,6 @@ const (
 
 var errTimeout = errors.New("timed out")
 
-// browser is a headless Chromium driven over the DevTools protocol, with
-// one page.
 type browser struct {
 	cmd       *exec.Cmd
 	conn      *websocket.Conn
@@ -59,6 +57,11 @@ type browser struct {
 	pending   map[string]string
 	requested []string
 	target    string
+	at        time.Time
+	timeZone  string
+	status    []byte
+	secrets   *secrets
+	scans     sync.WaitGroup
 
 	mu      sync.Mutex
 	nextID  int
@@ -80,10 +83,7 @@ type cdpMessage struct {
 	cdpReply
 }
 
-// startBrowser starts Chromium with its profile in dir and opens its one
-// page with the fixed viewport, in the light theme. It runs as root of a
-// user namespace, where Chromium has no sandbox of its own.
-func startBrowser(ctx context.Context, chromium, dir string) (*browser, error) {
+func startBrowser(ctx context.Context, chromium, dir, timeZone string, status []byte, sec *secrets) (*browser, error) {
 	profile := filepath.Join(dir, "chromium")
 	if err := os.RemoveAll(profile); err != nil {
 		return nil, fmt.Errorf("could not clear the profile: %w", err)
@@ -101,12 +101,12 @@ func startBrowser(ctx context.Context, chromium, dir string) (*browser, error) {
 		return nil, fmt.Errorf("could not make the Chromium log: %w", err)
 	}
 	cmd.Stdout, cmd.Stderr = log, log
-	cmd.Env = append(os.Environ(), "TZ=America/Chicago", "LANG=en_US.UTF-8")
+	cmd.Env = append(os.Environ(), "TZ="+timeZone, "LANG=en_US.UTF-8")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start Chromium: %w", err)
 	}
-	b := &browser{cmd: cmd}
+	b := &browser{cmd: cmd, timeZone: timeZone, status: status, secrets: sec}
 	port, err := devToolsPort(profile)
 	if err != nil {
 		b.close()
@@ -120,8 +120,6 @@ func startBrowser(ctx context.Context, chromium, dir string) (*browser, error) {
 	return b, nil
 }
 
-// openPage closes the page that the browser has open and opens a new one,
-// so that nothing of an earlier page can hold up the next.
 func (b *browser) openPage(ctx context.Context) error {
 	if b.conn != nil {
 		_ = b.conn.Close(websocket.StatusNormalClosure, "")
@@ -173,7 +171,6 @@ func (b *browser) devTools(ctx context.Context, method, path string) ([]byte, er
 	return data, nil
 }
 
-// devToolsPort waits for Chromium to write its DevTools port.
 func devToolsPort(profile string) (string, error) {
 	deadline := time.Now().Add(devToolsMax)
 	for time.Now().Before(deadline) {
@@ -197,9 +194,10 @@ func (b *browser) setup(ctx context.Context) error {
 		{"Network.setCacheDisabled", map[string]any{"cacheDisabled": true}},
 		{"Emulation.setDeviceMetricsOverride", map[string]any{"width": viewWidth, "height": viewHeight, "deviceScaleFactor": scale, "mobile": false}},
 		{"Emulation.setEmulatedMedia", map[string]any{"features": []map[string]string{{"name": "prefers-color-scheme", "value": "light"}}}},
-		{"Emulation.setTimezoneOverride", map[string]any{"timezoneId": "America/Chicago"}},
+		{"Emulation.setTimezoneOverride", map[string]any{"timezoneId": b.timeZone}},
 		{"Emulation.setLocaleOverride", map[string]any{"locale": "en-US"}},
-		{"Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": "try { localStorage.setItem('color-mode', 'light'); } catch (e) {}"}},
+		{"Fetch.enable", map[string]any{"patterns": []map[string]string{{"urlPattern": tilesStatus + "*"}}}},
+		{"Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": pageScript(b.at)}},
 	}
 	for _, s := range steps {
 		if _, err := b.call(ctx, s.method, s.params); err != nil {
@@ -244,10 +242,39 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		}
 		_ = json.Unmarshal(m.Params, &p)
 		b.mu.Lock()
-		b.pending[p.ID] = time.Now().Format("15:04:05.000") + " " + p.Request.URL
+		if !strings.Contains(p.Request.URL, "worker") {
+			b.pending[p.ID] = time.Now().Format("15:04:05.000") + " " + p.Request.URL
+		}
 		b.requested = append(b.requested, p.Request.URL)
 		b.mu.Unlock()
 	case "Network.responseReceived":
+		var p struct {
+			ID   string `json:"requestId"`
+			Type string `json:"type"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		if p.Type == "Document" {
+			b.mu.Lock()
+			delete(b.pending, p.ID)
+			b.mu.Unlock()
+		}
+	case "Network.loadingFinished":
+		var p struct {
+			ID string `json:"requestId"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		b.mu.Lock()
+		u := b.pending[p.ID]
+		delete(b.pending, p.ID)
+		b.mu.Unlock()
+		if strings.Contains(u, "/api/") {
+			b.scans.Add(1)
+			go func() {
+				defer b.scans.Done()
+				b.scanBody(ctx, p.ID)
+			}()
+		}
+	case "Network.loadingFailed":
 		var p struct {
 			ID string `json:"requestId"`
 		}
@@ -255,8 +282,26 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		b.mu.Lock()
 		delete(b.pending, p.ID)
 		b.mu.Unlock()
-	case "Network.loadingFailed":
 		slog.Debug("Request failed", "detail", string(m.Params))
+	case "Fetch.requestPaused":
+		var p struct {
+			ID string `json:"requestId"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		go func() {
+			_, err := b.call(ctx, "Fetch.fulfillRequest", map[string]any{
+				"requestId":    p.ID,
+				"responseCode": http.StatusOK,
+				"responseHeaders": []map[string]string{
+					{"name": "Content-Type", "value": "application/json"},
+					{"name": "Access-Control-Allow-Origin", "value": "*"},
+				},
+				"body": base64.StdEncoding.EncodeToString(b.status),
+			})
+			if err != nil {
+				slog.Warn("Could not answer the basemap status", "error", err)
+			}
+		}()
 	case "Runtime.exceptionThrown":
 		slog.Warn("Page error", "detail", string(m.Params))
 	case "Page.javascriptDialogOpening":
@@ -306,7 +351,6 @@ func (b *browser) call(ctx context.Context, method string, params any) (json.Raw
 	}
 }
 
-// navigate opens url and waits for its load event.
 func (b *browser) navigate(ctx context.Context, url string) error {
 	if err := b.openPage(ctx); err != nil {
 		return err
@@ -317,8 +361,6 @@ func (b *browser) navigate(ctx context.Context, url string) error {
 	return b.waitFor(ctx, "location.href !== 'about:blank' && document.readyState === 'complete'")
 }
 
-// eval runs expression in the page, waits for its promise, and decodes
-// its value into out when out is not nil.
 func (b *browser) eval(ctx context.Context, expression string, out any) error {
 	res, err := b.call(ctx, "Runtime.evaluate", map[string]any{"expression": expression, "awaitPromise": true, "returnByValue": true, "userGesture": true})
 	if err != nil {
@@ -349,7 +391,6 @@ func (b *browser) eval(ctx context.Context, expression string, out any) error {
 	return nil
 }
 
-// waitFor waits until expression is true in the page.
 func (b *browser) waitFor(ctx context.Context, expression string) error {
 	deadline := time.Now().Add(cdpTimeout)
 	for {
@@ -371,7 +412,6 @@ func (b *browser) waitFor(ctx context.Context, expression string) error {
 	}
 }
 
-// waitText waits until the page shows text.
 func (b *browser) waitText(ctx context.Context, text string) error {
 	q, err := json.Marshal(text)
 	if err != nil {
@@ -380,23 +420,6 @@ func (b *browser) waitText(ctx context.Context, text string) error {
 	return b.waitFor(ctx, "document.body && document.body.innerText.includes("+string(q)+")")
 }
 
-// typeInto focuses the element that selector finds and types text into it.
-func (b *browser) typeInto(ctx context.Context, selector, text string) error {
-	q, err := json.Marshal(selector)
-	if err != nil {
-		return fmt.Errorf("bad selector: %w", err)
-	}
-	if err := b.waitFor(ctx, "document.querySelector("+string(q)+")"); err != nil {
-		return err
-	}
-	if err := b.eval(ctx, "(() => { const e = document.querySelector("+string(q)+"); e.focus(); if (e.select) e.select(); })()", nil); err != nil {
-		return err
-	}
-	_, err = b.call(ctx, "Input.insertText", map[string]any{"text": text})
-	return err
-}
-
-// click clicks the first button whose text contains text.
 func (b *browser) click(ctx context.Context, text string) error {
 	t, err := json.Marshal(text)
 	if err != nil {
@@ -409,8 +432,6 @@ func (b *browser) click(ctx context.Context, text string) error {
 	return b.eval(ctx, "("+find+").click()", nil)
 }
 
-// scrollTo scrolls the card whose title is title to just under the
-// header.
 func (b *browser) scrollTo(ctx context.Context, title string) error {
 	t, err := json.Marshal(title)
 	if err != nil {
@@ -429,7 +450,6 @@ func (b *browser) scrollTo(ctx context.Context, title string) error {
 	})()`, nil)
 }
 
-// clickTest clicks the element whose data-test attribute is test.
 func (b *browser) clickTest(ctx context.Context, test string) error {
 	q, err := json.Marshal("[data-test=\"" + test + "\"]")
 	if err != nil {
@@ -441,9 +461,73 @@ func (b *browser) clickTest(ctx context.Context, test string) error {
 	return b.eval(ctx, "document.querySelector("+string(q)+").click()", nil)
 }
 
-// settle waits for the fonts and for the page to stop changing.
+const tilesStatus = "https://tiles.squallar.app/status/"
+
+const quietTime = 1500 * time.Millisecond
+
+func pageScript(at time.Time) string {
+	return fmt.Sprintf(`(() => {
+	try { localStorage.setItem('color-mode', 'light'); } catch (e) {}
+	const T = %d;
+	const D = Date;
+	function F(...a) {
+		if (!new.target) return new D(T).toString();
+		return a.length ? new D(...a) : new D(T);
+	}
+	F.prototype = D.prototype;
+	F.now = () => T;
+	F.parse = D.parse;
+	F.UTC = D.UTC;
+	Object.defineProperty(F, 'name', { value: 'Date' });
+	globalThis.Date = F;
+	let seed = 0x9e3779b9;
+	const next = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; };
+	Math.random = next;
+	if (globalThis.crypto) {
+		crypto.getRandomValues = (a) => { const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); for (let i = 0; i < b.length; i++) b[i] = Math.floor(next() * 256); return a; };
+		crypto.randomUUID = () => '00000000-0000-4000-8000-' + String(Math.floor(next() * 1e12)).padStart(12, '0');
+	}
+	const still = () => {
+		const s = document.createElement('style');
+		s.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }';
+		document.documentElement.appendChild(s);
+	};
+	if (document.documentElement) still(); else document.addEventListener('DOMContentLoaded', still);
+})()`, at.UnixMilli())
+}
+
+func (b *browser) idle(ctx context.Context) error {
+	deadline := time.Now().Add(cdpTimeout)
+	quiet := time.Now()
+	for time.Now().Before(deadline) {
+		b.mu.Lock()
+		n := len(b.pending)
+		b.mu.Unlock()
+		if n > 0 {
+			quiet = time.Now()
+		} else if time.Since(quiet) >= quietTime {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for the page: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	b.mu.Lock()
+	var urls []string
+	for _, u := range b.pending {
+		urls = append(urls, u)
+	}
+	b.mu.Unlock()
+	return fmt.Errorf("the page still loads %s: %w", strings.Join(urls, ", "), errTimeout)
+}
+
 func (b *browser) settle(ctx context.Context) error {
 	if err := b.eval(ctx, "document.fonts.ready.then(() => true)", nil); err != nil {
+		return err
+	}
+	if err := b.idle(ctx); err != nil {
 		return err
 	}
 	var last string
@@ -452,7 +536,7 @@ func (b *browser) settle(ctx context.Context) error {
 	for stable < 3 && time.Now().Before(deadline) {
 		time.Sleep(250 * time.Millisecond)
 		var now string
-		if err := b.eval(ctx, "document.body.innerText.length + ':' + document.querySelectorAll('*').length", &now); err != nil {
+		if err := b.eval(ctx, "document.body.innerText + ':' + document.querySelectorAll('*').length", &now); err != nil {
 			return err
 		}
 		if now == last {
@@ -462,15 +546,103 @@ func (b *browser) settle(ctx context.Context) error {
 		}
 		last = now
 	}
-	return nil
+	if err := b.eval(ctx, "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))", nil); err != nil {
+		return err
+	}
+	return b.idle(ctx)
 }
 
-// shot writes the viewport as a PNG file.
-func (b *browser) shot(ctx context.Context, file string) error {
+func (b *browser) scanBody(ctx context.Context, id string) {
+	res, err := b.call(ctx, "Network.getResponseBody", map[string]any{"requestId": id})
+	if err != nil {
+		return
+	}
+	var r struct {
+		Body   string `json:"body"`
+		Base64 bool   `json:"base64Encoded"`
+	}
+	if json.Unmarshal(res, &r) != nil || r.Base64 {
+		return
+	}
+	var v any
+	if json.Unmarshal([]byte(r.Body), &v) == nil {
+		b.secrets.scan(v)
+	}
+}
+
+func (b *browser) waitSecrets() {
+	b.scans.Wait()
+}
+
+func (b *browser) mask(ctx context.Context, secrets map[string]string) error {
+	if len(secrets) == 0 {
+		return nil
+	}
+	m, err := json.Marshal(secrets)
+	if err != nil {
+		return fmt.Errorf("bad mask: %w", err)
+	}
+	return b.eval(ctx, `(() => {
+		const m = `+string(m)+`;
+		const swap = (t) => { for (const [k, v] of Object.entries(m)) t = t.split(k).join(v); return t; };
+		const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+		for (let n = w.nextNode(); n; n = w.nextNode()) n.nodeValue = swap(n.nodeValue);
+		for (const e of document.querySelectorAll('input:not([type=file]), textarea')) { const v = swap(e.value); if (v !== e.value) e.value = v; }
+	})()`, nil)
+}
+
+func (b *browser) rect(ctx context.Context, clip string) (map[string]float64, error) {
+	kind, arg, _ := strings.Cut(clip, " ")
+	a, err := json.Marshal(arg)
+	if err != nil {
+		return nil, fmt.Errorf("bad clip: %w", err)
+	}
+	var find string
+	switch kind {
+	case "card":
+		find = "(() => { const t = [...document.querySelectorAll('[data-slot=card] *')].find((e) => e.children.length === 0 && e.textContent.trim() === " + string(a) + "); return t && t.closest('[data-slot=card]'); })()"
+	case "dialog":
+		find = "document.querySelector('[role=dialog], [role=alertdialog]')"
+	case "css":
+		find = "document.querySelector(" + string(a) + ")"
+	default:
+		return nil, fmt.Errorf("unknown clip %q", clip)
+	}
+	if err := b.waitFor(ctx, find); err != nil {
+		return nil, err
+	}
+	if err := b.eval(ctx, "("+find+").scrollIntoView({block: 'center'})", nil); err != nil {
+		return nil, err
+	}
+	if err := b.settle(ctx); err != nil {
+		return nil, err
+	}
+	var r map[string]float64
+	if err := b.eval(ctx, `(() => {
+		const r = (`+find+`).getBoundingClientRect();
+		const p = 8;
+		const x = Math.max(0, Math.floor(r.left + scrollX - p)), y = Math.max(0, Math.floor(r.top + scrollY - p));
+		return { x, y, width: Math.ceil(r.width + 2 * p), height: Math.ceil(r.height + 2 * p), scale: 1 };
+	})()`, &r); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (b *browser) shot(ctx context.Context, file, clip string) error {
 	if err := b.settle(ctx); err != nil {
 		return err
 	}
-	res, err := b.call(ctx, "Page.captureScreenshot", map[string]any{"format": "png"})
+	params := map[string]any{"format": "png"}
+	if clip != "" {
+		r, err := b.rect(ctx, clip)
+		if err != nil {
+			return err
+		}
+		params["clip"] = r
+		params["captureBeyondViewport"] = true
+	}
+	res, err := b.call(ctx, "Page.captureScreenshot", params)
 	if err != nil {
 		return err
 	}
@@ -491,8 +663,30 @@ func (b *browser) shot(ctx context.Context, file string) error {
 	return nil
 }
 
-// requestedURL returns the last URL that the page requested that starts
-// with prefix.
+func (b *browser) setFiles(ctx context.Context, selector, file string) error {
+	q, err := json.Marshal(selector)
+	if err != nil {
+		return fmt.Errorf("bad selector: %w", err)
+	}
+	if err := b.waitFor(ctx, "document.querySelector("+string(q)+")"); err != nil {
+		return err
+	}
+	res, err := b.call(ctx, "Runtime.evaluate", map[string]any{"expression": "document.querySelector(" + string(q) + ")"})
+	if err != nil {
+		return err
+	}
+	var r struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(res, &r); err != nil {
+		return fmt.Errorf("bad evaluate answer: %w", err)
+	}
+	_, err = b.call(ctx, "DOM.setFileInputFiles", map[string]any{"files": []string{file}, "objectId": r.Result.ObjectID})
+	return err
+}
+
 func (b *browser) requestedURL(prefix string) (string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -502,16 +696,6 @@ func (b *browser) requestedURL(prefix string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// takeDialogs returns the texts of the dialogs that the page opened since
-// the last call.
-func (b *browser) takeDialogs() []string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	d := b.dialogs
-	b.dialogs = nil
-	return d
 }
 
 func (b *browser) close() {

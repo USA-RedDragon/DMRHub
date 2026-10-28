@@ -99,3 +99,24 @@ export const useSettingsStore = defineStore('settings', {
     },
   },
 });
+
+interface AdminState {
+  unassignedRepeaters: number;
+}
+
+export const useAdminStore = defineStore('admin', {
+  state: (): AdminState => ({
+    unassignedRepeaters: 0,
+  }),
+  getters: {},
+  actions: {
+    async fetchUnassignedRepeaters() {
+      try {
+        const { getUnassignedRepeaters } = await import('@/services/repeater');
+        this.unassignedRepeaters = (await getUnassignedRepeaters(1, 1)).total;
+      } catch {
+        this.unassignedRepeaters = 0;
+      }
+    },
+  },
+});

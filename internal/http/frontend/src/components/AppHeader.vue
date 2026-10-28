@@ -199,6 +199,17 @@
                 Repeaters
               </router-link>
               <router-link
+                v-if="adminStore.unassignedRepeaters > 0"
+                to="/admin/repeaters/unassigned"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/repeaters/unassigned' }"
+                @click="mobileOpen = false"
+              >
+                <Antenna class="h-4 w-4" />
+                Unassigned
+                <span :class="badgeClass('warn')" data-test="unassigned-count">{{ adminStore.unassignedRepeaters }}</span>
+              </router-link>
+              <router-link
                 v-if="settingsStore.openBridgeEnabled"
                 to="/admin/peers"
                 class="mobile-nav-link"
@@ -509,6 +520,16 @@
                   Repeaters
                 </router-link>
               </DropdownMenuItem>
+              <DropdownMenuItem v-if="adminStore.unassignedRepeaters > 0" as-child>
+                <router-link
+                  to="/admin/repeaters/unassigned"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Unassigned
+                  <span :class="badgeClass('warn')">{{ adminStore.unassignedRepeaters }}</span>
+                </router-link>
+              </DropdownMenuItem>
               <DropdownMenuItem v-if="settingsStore.openBridgeEnabled" as-child>
                 <router-link
                   to="/admin/peers"
@@ -627,7 +648,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   DropdownMenuContent,
@@ -665,11 +686,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { badgeClass } from '@/lib/badge';
 import API from '@/services/API';
-import { useUserStore, useSettingsStore } from '@/store';
+import { useAdminStore, useUserStore, useSettingsStore } from '@/store';
 
 const userStore = useUserStore();
 const settingsStore = useSettingsStore();
+const adminStore = useAdminStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -752,6 +775,18 @@ const logout = () => {
       console.error(err);
     });
 };
+
+watch(
+  () => userStore.loggedIn && userStore.admin,
+  (admin) => {
+    if (admin) {
+      void adminStore.fetchUnassignedRepeaters();
+    } else {
+      adminStore.unassignedRepeaters = 0;
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   getTitle();

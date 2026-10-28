@@ -60,4 +60,12 @@ describe('AppHeader', () => {
     }
     expect([...source.matchAll(/to="\/admin\/message-access"/g)]).toHaveLength(2);
   });
+
+  it('shows Unassigned only while a repeater has no owner', () => {
+    const at = [...source.matchAll(/to="\/admin\/repeaters\/unassigned"/g)].map((m) => m.index!);
+    expect(at).toHaveLength(2);
+    for (const i of at) {
+      expect(source.slice(i - 160, i)).toContain('v-if="adminStore.unassignedRepeaters > 0"');
+    }
+  });
 });

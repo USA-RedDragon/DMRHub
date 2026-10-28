@@ -61,3 +61,54 @@ export function getRepeater(id: number): Promise<RepeaterData | null> {
   inflight.set(id, promise);
   return promise;
 }
+
+/** A repeater with no owner, from /repeaters/unassigned. */
+export interface UnassignedRepeater {
+  id: number;
+  type: string;
+  callsign: string;
+  rx_frequency: number;
+  tx_frequency: number;
+  color_code: number;
+  slots: number;
+  connected_time: string;
+  created_at: string;
+}
+
+export type UnassignedRepeaterList = {
+  total: number;
+  repeaters: UnassignedRepeater[];
+};
+
+export async function getUnassignedRepeaters(page: number, limit: number): Promise<UnassignedRepeaterList> {
+  const res = await API.get(`/repeaters/unassigned?page=${page}&limit=${limit}`);
+  return { total: res.data?.total ?? 0, repeaters: res.data?.repeaters ?? [] };
+}
+
+export async function assignRepeaterOwner(id: number, owner: number): Promise<void> {
+  await API.post(`/repeaters/${id}/owner`, { owner });
+}
+
+const mhz = (hz: number) => (hz / 1e6).toFixed(4);
+
+/** The frequencies of r in MHz: one for a simplex channel, RX and TX for a duplex one. */
+export function frequencyLabel(r: Pick<UnassignedRepeater, 'rx_frequency' | 'tx_frequency'>): string {
+  if (!r.rx_frequency && !r.tx_frequency) {
+    return '';
+  }
+  if (r.rx_frequency === r.tx_frequency || !r.tx_frequency || !r.rx_frequency) {
+    return `${mhz(r.rx_frequency || r.tx_frequency)} MHz`;
+  }
+  return `RX ${mhz(r.rx_frequency)} / TX ${mhz(r.tx_frequency)} MHz`;
+}
+
+const kinds: Record<string, string> = { modem: 'Modem', mmdvm: 'MMDVM', ipsc: 'IPSC' };
+
+/** The kind of r: its type and, for a modem, hotspot or repeater from its slots. */
+export function kindLabel(r: Pick<UnassignedRepeater, 'type' | 'slots'>): string {
+  const kind = kinds[r.type] ?? r.type.toUpperCase();
+  if (r.type !== 'modem') {
+    return kind;
+  }
+  return r.slots === 4 ? `${kind}, hotspot` : `${kind}, repeater`;
+}

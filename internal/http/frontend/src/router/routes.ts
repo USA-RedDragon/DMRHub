@@ -223,6 +223,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/RepeatersPage.vue'),
     },
     {
+      path: '/admin/repeaters/unassigned',
+      name: 'AdminUnassignedRepeaters',
+      component: () => import('@/views/admin/UnassignedRepeatersPage.vue'),
+    },
+    {
       path: '/admin/talkgroups',
       name: 'AdminTalkgroups',
       component: () => import('@/views/admin/TalkgroupsPage.vue'),

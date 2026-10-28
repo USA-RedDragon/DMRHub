@@ -86,6 +86,7 @@ func (s *Server) applyStatics(ctx context.Context, id uint, text []byte) bool {
 	if ts1 == nil && ts2 == nil {
 		return false
 	}
+	ts1, ts2 = s.approvedOnly(id, ts1), s.approvedOnly(id, ts2)
 	if err := models.SetRepeaterStaticTalkgroups(s.DB, id, ts1, ts2); err != nil {
 		slog.Error("Error saving the static talkgroups of the repeater options", "repeaterID", id, "error", err)
 		return false
@@ -288,4 +289,24 @@ func logIgnoredOptions(id uint, text []byte, o *dmrd.FreeDMROptions) {
 	if len(names) > 0 {
 		slog.Info("Ignoring repeater options that DMRHub has no feature for", "repeaterID", id, "options", names)
 	}
+}
+
+func (s *Server) approvedOnly(id uint, tgs []models.Talkgroup) []models.Talkgroup {
+	if tgs == nil {
+		return nil
+	}
+	out := make([]models.Talkgroup, 0, len(tgs))
+	for _, tg := range tgs {
+		refused, err := models.LinkRefused(s.DB, id, tg.ID)
+		if err != nil {
+			slog.Error("Error checking a restricted talkgroup of the repeater options", "repeaterID", id, "talkgroupID", tg.ID, "error", err)
+			continue
+		}
+		if refused != 0 {
+			slog.Info("Ignoring a restricted talkgroup of the repeater options", "repeaterID", id, "talkgroupID", tg.ID)
+			continue
+		}
+		out = append(out, tg)
+	}
+	return out
 }

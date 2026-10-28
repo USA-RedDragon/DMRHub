@@ -333,3 +333,15 @@ func TestOptionsDialLinksDynamicTalkgroup(t *testing.T) {
 		})
 	}
 }
+
+func TestOptionsLeaveOutRestrictedTalkgroupsThatDoNotApproveTheRepeater(t *testing.T) {
+	t.Parallel()
+	r := newOptionsRig(t)
+	require.NoError(t, models.SetTalkgroupAccess(r.db, 91, true, []uint{optionsRepeater}))
+	require.NoError(t, models.SetTalkgroupAccess(r.db, 2, true, []uint{otherRepeater}))
+	r.login(otherRepeater)
+	require.Equal(t, dmrd.CommandRPTACK, r.options(otherRepeater, "TS1=1,2;TS2=91;"))
+	ts1, ts2 := r.statics(otherRepeater)
+	require.ElementsMatch(t, []uint{1, 2}, ts1)
+	require.Empty(t, ts2)
+}

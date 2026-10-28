@@ -80,6 +80,8 @@ func (h *Hub) runDynamicTimeouts() {
 		case <-h.done:
 			return
 		case <-timer.C():
+		case <-h.dynamicSet:
+			timer.Stop()
 		}
 		timeout := h.routingConfig().DynamicTimeout
 		if timeout > 0 {

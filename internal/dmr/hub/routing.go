@@ -297,9 +297,11 @@ func (h *Hub) routeToUser(ctx context.Context, key sourceSlot, packet models.Pac
 // of the ephemeral talkgroups reads the new config at once.
 func (h *Hub) SetConfig(src config.Source) {
 	h.cfg.Store(&src)
-	select {
-	case h.configSet <- struct{}{}:
-	default:
+	for _, set := range []chan struct{}{h.configSet, h.dynamicSet} {
+		select {
+		case set <- struct{}{}:
+		default:
+		}
 	}
 }
 

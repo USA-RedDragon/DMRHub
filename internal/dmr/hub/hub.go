@@ -212,6 +212,7 @@ type Hub struct {
 	privateDropLogged *xsync.Map[uint, time.Time]
 	cfg               atomic.Pointer[config.Source]
 	configSet         chan struct{}
+	dynamicSet        chan struct{}
 	dynamicUses       *xsync.Map[repeaterSlot, dynamicUse]
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
 	slotRefused       *xsync.Map[slotStream, time.Time]
@@ -269,6 +270,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		done:          make(chan struct{}),
 		left:          make(chan struct{}, 1),
 		configSet:     make(chan struct{}, 1),
+		dynamicSet:    make(chan struct{}, 1),
 	}
 	for _, opt := range opts {
 		opt(h)

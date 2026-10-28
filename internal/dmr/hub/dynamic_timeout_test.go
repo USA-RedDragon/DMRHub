@@ -45,6 +45,7 @@ func dynamicTS1(t *testing.T, database *gorm.DB) *uint {
 func linkDynamic(t *testing.T, timeout time.Duration) (*hub.Hub, *gorm.DB) {
 	t.Helper()
 	h, database := makeTestHub(t)
+	synctest.Wait()
 	h.SetConfig(config.Config{DMR: config.DMR{Routing: config.Routing{DynamicTimeout: timeout}}})
 	seedUser(t, database, 1000001, "TESTUSER")
 	seedRepeater(t, database, 100001, 1000001)
@@ -104,5 +105,16 @@ func TestADynamicTalkgroupWithNoTimeoutStays(t *testing.T) {
 		time.Sleep(time.Minute + 2*time.Second)
 		synctest.Wait()
 		assert.Nil(t, dynamicTS1(t, database), "a timeout set while the hub runs applies to the links that exist")
+	})
+}
+
+func TestADynamicTimeoutTakesEffectWhenTheConfigIsSet(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 100 * time.Millisecond
+		_, database := linkDynamic(t, timeout)
+		time.Sleep(timeout + 200*time.Millisecond)
+		synctest.Wait()
+		assert.Nil(t, dynamicTS1(t, database), "a link past the timeout goes soon after the config sets the timeout")
 	})
 }

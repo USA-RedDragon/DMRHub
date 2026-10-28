@@ -94,6 +94,18 @@ go test -tags codec2wasm -timeout 30m -race ./...
 
 `make stress` runs the stress battery in `hack/stress.sh`. The top of that script lists its settings. See [Stress results](admin/stress-results.md) for the results.
 
+## Build the docs site
+
+The docs site is one HTML page with every page of `doc/` and its images in it. `hack/docs-site/build.py` makes it from the Markdown files, with `hack/docs-site/template.html` as the page around them. The `GROUPS` list at the top of `build.py` is the navigation. The build stops when the navigation names a page that `doc/` does not have.
+
+It needs Python 3 with the `markdown` package (`pip install markdown`). Run:
+
+```bash
+make docs-site
+```
+
+The page is `artifacts/docs-site/index.html`. Open it in a browser, or publish that one file. To build from another docs tree, run `python3 hack/docs-site/build.py <doc directory> <output file>`.
+
 ## Change the plugin protocol
 
 The plugin protocol is in `proto/dmrhub/plugin/v1/plugin.proto`. After you change it, run:

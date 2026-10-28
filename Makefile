@@ -81,6 +81,12 @@ stress:
 	@./hack/stress.sh
 	@echo "--> Done"
 
+docs-site:
+	@echo "--> Building the docs site into artifacts/docs-site/index.html"
+	@mkdir -p artifacts/docs-site
+	@python3 hack/docs-site/build.py doc artifacts/docs-site/index.html
+	@echo "--> Done"
+
 benchmark:
 	@echo "--> Running benchmarks"
 	@env CGO_ENABLED=0 go test -run ^$ -benchmem -bench=. ./...

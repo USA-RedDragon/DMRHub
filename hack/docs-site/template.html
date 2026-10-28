@@ -1,0 +1,150 @@
+<title>DMRHub</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="DMRHub is a free, open-source DMR master server. Run your own DMR network for hotspots, repeaters and browser radios from one binary.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;1,400&family=Inconsolata:wght@400;600&display=swap">
+<style>
+/* Layout: docs site; top bar, left nav of the doc tree, one reading column; the home page is the first "doc". */
+:root {
+  --h: 250;
+  --c: 0.15;
+  --bg: oklch(0.99 0.003 var(--h));
+  --ink: oklch(0.22 0.015 var(--h));
+  --soft: oklch(0.46 0.015 var(--h));
+  --line: oklch(0.87 0.008 var(--h));
+  --panel: oklch(0.965 0.006 var(--h));
+  --stripe: oklch(0.975 0.005 var(--h));
+  --accent: oklch(0.52 var(--c) var(--h));
+  --accent-ink: oklch(0.47 var(--c) var(--h));
+  --accent-fg: oklch(0.99 0 0);
+  --font-display: var(--font-body);
+  --font-body: "Nunito Sans", system-ui, sans-serif;
+  --font-mono: "Inconsolata", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; --bg: oklch(0.23 0.012 var(--h)); --ink: oklch(0.96 0.004 var(--h)); --soft: oklch(0.8 0.012 var(--h)); --line: oklch(0.4 0.012 var(--h)); --panel: oklch(0.28 0.014 var(--h)); --stripe: oklch(0.255 0.013 var(--h)); --accent: oklch(0.74 var(--c) var(--h)); --accent-ink: oklch(0.8 var(--c) var(--h)); --accent-fg: oklch(0.2 0.02 var(--h)); } }
+:root[data-theme="dark"] { color-scheme: dark; --bg: oklch(0.23 0.012 var(--h)); --ink: oklch(0.96 0.004 var(--h)); --soft: oklch(0.8 0.012 var(--h)); --line: oklch(0.4 0.012 var(--h)); --panel: oklch(0.28 0.014 var(--h)); --stripe: oklch(0.255 0.013 var(--h)); --accent: oklch(0.74 var(--c) var(--h)); --accent-ink: oklch(0.8 var(--c) var(--h)); --accent-fg: oklch(0.2 0.02 var(--h)); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.6; }
+a { color: var(--accent-ink); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+header { border-bottom: 1px solid var(--line); padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--ink); text-decoration: none; }
+header nav { display: flex; gap: 16px; flex-wrap: wrap; }
+header nav a { color: var(--soft); text-decoration: none; }
+header .mode { margin-left: auto; display: flex; border: 1px solid var(--line); }
+.mode button { font: inherit; font-size: 14px; background: none; color: var(--soft); border: 0; padding: 4px 10px; cursor: pointer; }
+.mode button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.mode button:focus-visible, .shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 36px; max-width: 1180px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+aside h4 { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); margin: 18px 0 6px; }
+aside h4:first-child { margin-top: 0; }
+aside h5, .zone h5 { font-size: 13px; font-weight: 700; color: var(--soft); margin: 8px 0 2px 8px; }
+.zone h5 { margin-left: 0; }
+aside ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+aside a { color: var(--ink); text-decoration: none; display: block; padding: 2px 8px; border-left: 3px solid transparent; }
+aside a.on { border-left-color: var(--accent); font-weight: 700; }
+main { min-width: 0; }
+.doc { display: none; max-width: 760px; }
+.doc.on { display: block; }
+.doc h1, .doc h2, .doc h3, .home h1, .home h2 { font-family: var(--font-display); font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; }
+.doc h1 { font-size: 38px; margin: 0 0 16px; }
+.doc h2 { font-size: 26px; margin: 36px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.doc h3 { font-size: 20px; margin: 26px 0 8px; }
+.doc p, .doc li { max-width: 68ch; }
+.doc img { max-width: 100%; border: 1px solid var(--line); }
+.doc img[data-dropped] { display: none; }
+code { font-family: var(--font-mono); font-size: 0.95em; background: var(--panel); padding: 1px 5px; }
+pre { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.table { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; font-size: 15px; }
+tbody tr:nth-child(even) { background: var(--stripe); }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { color: var(--soft); font-weight: 700; font-size: 13px; letter-spacing: 0.03em; text-transform: uppercase; }
+td { font-variant-numeric: tabular-nums; }
+blockquote { margin: 12px 0; border-left: 4px solid var(--accent); padding: 4px 14px; background: var(--panel); }
+.home { flex-direction: column; gap: 36px; max-width: 860px; }
+.home h1 { font-size: clamp(38px, 6vw, 58px); margin: 0; max-width: 18ch; }
+.home h2 { font-size: 28px; margin: 0 0 14px; border: 0; padding: 0; }
+.home.on { display: flex; }
+.home .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.home .lede { font-size: 20px; color: var(--soft); max-width: 62ch; margin: 12px 0 18px; }
+.btn { display: inline-block; border: 2px solid var(--ink); padding: 8px 16px; font-weight: 700; color: var(--ink); text-decoration: none;  }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.connects { display: flex; gap: 10px; flex-wrap: wrap; }
+.connects span { border: 1px solid var(--line); padding: 4px 12px; font-size: 15px; }
+.webradio { border-left: 4px solid var(--accent); background: var(--panel); padding: 18px 20px; }
+.webradio p, .webradio ul { margin: 0 0 12px; max-width: 64ch; }
+.home img { max-width: 100%; border: 1px solid var(--line); }
+.zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.zone { border-top: 4px solid var(--accent); background: var(--panel); padding: 14px 16px; }
+.zone h3 { margin: 0 0 6px; font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.zone ul { margin: 0; padding-left: 18px; }
+footer { border-top: 1px solid var(--line); color: var(--soft); font-size: 14px; padding-block: 18px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+@media (max-width: 760px) { .shell { grid-template-columns: 1fr; } aside { border-bottom: 1px solid var(--line); padding-bottom: 12px; } }
+</style>
+
+<header>
+  <a class="brand" href="#home">DMRHub</a>
+  <nav><a href="#getting-started">Get started</a><a href="#user-guide">Guides</a><a href="#external-index">External software</a><a href="#admin-configuration">Reference</a><a href="#plugins">Developers</a><a href="#faq">FAQ</a><a href="https://github.com/USA-RedDragon/DMRHub">GitHub</a></nav>
+  <div class="mode" role="group" aria-label="Color mode"><button type="button" data-mode="auto">Auto</button><button type="button" data-mode="light">Light</button><button type="button" data-mode="dark">Dark</button></div>
+  <a class="live" href="https://dmrhub.net">Try it on dmrhub.net</a>
+</header>
+<div class="shell">
+  <aside><h4>Home</h4><ul><li><a href="#home">Overview</a></li></ul>{{NAV}}</aside>
+  <main>
+    <article id="home" class="doc home on">
+      <section>
+        <h1>Run your own DMR network from one binary</h1>
+        <p class="lede">DMRHub is a free, open-source DMR master server. Hotspots, repeaters and other networks connect to it, and it routes private and group calls, texts and positions between them. Use it for a club, a net or an emergency deployment.</p>
+        <div class="cta"><a class="btn primary" href="#setup">Install and run</a><a class="btn" href="#user-guide">Read the guides</a></div>
+      </section>
+      <section><h2>Works with</h2><div class="connects"><span>Pi-Star / MMDVMHost</span><span>Motorola IPSC (XPR)</span><span>OpenBridge / FreeDMR</span><span>MMDVM modem over serial</span><span>APRS-IS</span></div></section>
+      <section class="webradio">
+        <div>
+          <h2>A DMR radio in your browser</h2>
+          <p>The DMRHub Browser Radio turns any phone or computer into a DMR radio on your DMRHub network. Sign in with your DMRHub account and it connects as its own hotspot. No radio, modem or codeplug needed.</p>
+          <ul>
+            <li>Key up on any talkgroup or private call, and see who is talking now</li>
+            <li>Send and read text messages to radios on the network</li>
+            <li>Share your position and see stations on a map</li>
+            <li>Send and receive raw DMR data from a console</li>
+          </ul>
+          <a class="btn primary" href="https://radio.mcswain.dev">Open the Browser Radio</a>
+        </div>
+      </section>
+      <img src="{{SHOT}}" alt="The Last Heard page of a DMRHub network">
+      <section><h2>Find what you need</h2><div class="zones">{{ZONES}}</div></section>
+    </article>
+    {{DOCS}}
+  </main>
+</div>
+<footer>Free software under the AGPL. Run it yourself, or request an account on the live network. Generated from the guides in the DMRHub repository.</footer>
+<script>
+function show(id) {
+  var target = id ? document.getElementById(id) : null;
+  var art = target ? target.closest(".doc") : null;
+  if (!art) { art = document.getElementById("home"); target = art; }
+  document.querySelectorAll(".doc").forEach(function (d) { d.classList.toggle("on", d === art); });
+  document.querySelectorAll("aside a").forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + art.id); });
+  if (target === art) { window.scrollTo(0, 0); } else { target.scrollIntoView(); }
+}
+document.addEventListener("click", function (e) {
+  var a = e.target.closest('a[href^="#"]');
+  if (!a) { return; }
+  e.preventDefault();
+  var id = decodeURIComponent(a.getAttribute("href").slice(1));
+  show(id);
+  try { history.pushState(null, "", "#" + id); } catch (err) {}
+});
+window.addEventListener("popstate", function () { show(decodeURIComponent(location.hash.slice(1))); });
+window.addEventListener("hashchange", function () { show(decodeURIComponent(location.hash.slice(1))); });
+show(decodeURIComponent(location.hash.slice(1)));
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function setMode(m) {
+  if (m === "auto") { document.documentElement.removeAttribute("data-theme"); } else { document.documentElement.setAttribute("data-theme", m); }
+  document.querySelectorAll(".mode button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.mode === m)); });
+  store("mode", m);
+}
+document.querySelectorAll(".mode button").forEach(function (b) { b.addEventListener("click", function () { setMode(b.dataset.mode); }); });
+setMode(load("mode") || document.documentElement.getAttribute("data-theme") || "auto");
+</script>

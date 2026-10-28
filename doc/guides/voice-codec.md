@@ -1,6 +1,6 @@
 # Use Codec2 radios
 
-Most DMR radios use the AMBE voice codec. Some radios and apps, such as dmr-web, can use Codec2 instead. DMRHub can convert calls between the two when the network has AMBE servers for transcoding. Ask your admin whether it does. Without transcoding, each call passes through in its own codec, and a radio hears only calls in the codec that it uses.
+Most DMR radios use the AMBE voice codec. Some radios and apps, such as the [DMRHub Browser Radio](browser-radio.md), can use Codec2 instead. DMRHub can convert calls between the two when the network has AMBE servers for transcoding. Ask your admin whether it does. Without transcoding, each call passes through in its own codec, and a radio hears only calls in the codec that it uses.
 
 ## Set the codec of a timeslot
 

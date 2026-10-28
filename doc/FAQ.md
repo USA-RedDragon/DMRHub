@@ -16,7 +16,7 @@ No. Each DMRHub network has its own accounts, talkgroups and hotspot passwords.
 - Repeaters that follow the published Homebrew repeater specification. See [Link a repeater](guides/link-repeater.md).
 - Motorola repeaters over IPSC, when the admin turned on IPSC. See [Link a repeater](guides/link-repeater.md#motorola-ipsc-repeaters).
 - DroidStar, as an MMDVM client.
-- dmr-web, in a browser, when the admin turned on WebTransport. See [Use dmr-web](guides/dmr-web.md).
+- The [DMRHub Browser Radio](https://radio.dmrhub.net), in a web browser, when the admin turned on WebTransport. See [Use the DMRHub Browser Radio](guides/browser-radio.md).
 
 ### Which talkgroups are special?
 

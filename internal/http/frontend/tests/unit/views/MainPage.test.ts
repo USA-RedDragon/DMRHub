@@ -40,4 +40,9 @@ describe('MainPage', () => {
     expect(hrefs).toContain('https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/overview.md');
     expect(hrefs.filter((h) => h?.includes('Admin-Guide.md'))).toEqual([]);
   });
+
+  it('links the DMRHub Browser Radio', () => {
+    const link = mount(MainPage).findAll('a').find((a) => a.attributes('href') === 'https://radio.dmrhub.net');
+    expect(link?.text()).toBe('DMRHub Browser Radio');
+  });
 });

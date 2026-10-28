@@ -33,7 +33,7 @@ See [Send and read text messages](text-messages.md#turn-on-sms-storage).
 
 ## Apps
 
-Some web apps, such as [dmr-web](dmr-web.md), can use your DMRHub account. The first time, DMRHub asks you on its own page, **Allow this app to use your DMRHub account?** The page shows the address of the app and a list of what it can do. Click **Allow** or **Don't allow**.
+Some web apps, such as the [DMRHub Browser Radio](browser-radio.md), can use your DMRHub account. The first time, DMRHub asks you on its own page, **Allow this app to use your DMRHub account?** The page shows the address of the app and a list of what it can do. Click **Allow** or **Don't allow**.
 
 An app can never change your password or account, and never gets admin access.
 

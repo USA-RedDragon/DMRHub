@@ -48,6 +48,9 @@
             <a href="https://github.com/USA-RedDragon/DMRHub/blob/main/doc/admin/overview.md" target="_blank">
               DMRHub Admin's Guide</a>
           </li>
+          <li>
+            <a href="https://radio.dmrhub.net" target="_blank">DMRHub Browser Radio</a>, a DMR radio in your web browser
+          </li>
         </ul>
       </CardContent>
     </Card>

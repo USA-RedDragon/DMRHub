@@ -264,3 +264,11 @@ describe('setup menu routing', () => {
     expect(field('dmr.routing.max-transmission').toggle).toEqual({ label: 'Limit transmission length', value: 180e9 });
   });
 });
+
+describe('setup menu browser radios', () => {
+  it('links the DMRHub Browser Radio from the help that names it', () => {
+    const f = field('dmr.mmdvm.webtransport.enabled');
+    expect(f.help).toContain('DMRHub Browser Radio');
+    expect(f.links).toEqual([{ text: 'Open the DMRHub Browser Radio.', href: 'https://radio.dmrhub.net' }]);
+  });
+});

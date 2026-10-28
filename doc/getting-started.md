@@ -15,7 +15,7 @@ A DMRHub network has:
 - **Talkgroups.** Your hotspot or repeater carries a talkgroup on a timeslot, and everyone on that talkgroup hears your call.
 - **Private calls and text messages.** DMRHub sends them to the hotspot or repeater where the other radio was last heard.
 - **A web site** at `<siteurl>`. On it you register, enroll your hotspots, pick your talkgroups, see who is on the air, read your text messages and see the positions of your radios.
-- **dmr-web**, a DMR radio that runs in a web browser, if your network offers it.
+- **The [DMRHub Browser Radio](https://radio.dmrhub.net)**, a DMR radio that runs in a web browser, if your network accepts browser radios.
 
 Each DMRHub network is separate. An account on one network does not work on another.
 
@@ -23,7 +23,7 @@ Each DMRHub network is separate. An account on one network does not work on anot
 
 - An amateur radio license.
 - A DMR ID from [RadioID.net](https://radioid.net/), registered to your callsign.
-- A DMR radio and a hotspot or repeater that uses the MMDVM network protocol (for example a Pi-Star hotspot), or a web browser for dmr-web.
+- A DMR radio and a hotspot or repeater that uses the MMDVM network protocol (for example a Pi-Star hotspot), or a web browser for the DMRHub Browser Radio.
 
 ## Step 1: Get an account
 
@@ -52,5 +52,5 @@ See [Connect a hotspot](guides/connect-hotspot.md) for the details, and [Test wi
 - [Make a private call](guides/private-calls.md)
 - [Send and read text messages](guides/text-messages.md)
 - [Share the position of your radio](guides/positions.md)
-- [Use dmr-web, the DMR radio in your browser](guides/dmr-web.md)
+- [Use the DMRHub Browser Radio](guides/browser-radio.md), the DMR radio in your browser
 - [All user guides](User-Guide.md)

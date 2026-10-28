@@ -1,6 +1,6 @@
 # Transcoding between Codec2 and AMBE
 
-Most DMR radios use the AMBE voice codec. Some radios and apps, such as dmr-web, use Codec2. DMRHub can convert each call between the two, so that both kinds of radio hear each other. For what users set, see [Use Codec2 radios](../guides/voice-codec.md).
+Most DMR radios use the AMBE voice codec. Some radios and apps, such as the [DMRHub Browser Radio](https://radio.dmrhub.net), use Codec2. DMRHub can convert each call between the two, so that both kinds of radio hear each other. For what users set, see [Use Codec2 radios](../guides/voice-codec.md).
 
 DMRHub has the Codec2 codec built in. For AMBE it needs one or more AMBE servers that speak the AMBEserver protocol, usually on UDP port 2460. Without an AMBE server, transcoding is off, and each call goes out in its own codec only.
 

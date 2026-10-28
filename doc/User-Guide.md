@@ -25,7 +25,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 - [Share the position of your radio](guides/positions.md)
 - [Run or join a net](guides/nets.md)
 - [See who is on the air](guides/last-heard.md)
-- [Use dmr-web, the DMR radio in your browser](guides/dmr-web.md)
+- [Use the DMRHub Browser Radio](guides/browser-radio.md), the DMR radio in your browser
 
 ## Reference
 

@@ -43,4 +43,4 @@ New messages appear while the page is open. Each box shows the 250 newest messag
 
 ## Read messages in an app
 
-An app that you allow with the `messages:read` scope can read your messages and get new ones as they arrive. dmr-web is such an app. See [Use dmr-web](dmr-web.md) and [Manage your account](account.md#apps).
+An app that you allow with the `messages:read` scope can read your messages and get new ones as they arrive. The DMRHub Browser Radio is such an app. See [Use the DMRHub Browser Radio](browser-radio.md) and [Manage your account](account.md#apps).

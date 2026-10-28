@@ -113,26 +113,21 @@ func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]t
 // all of them.
 func allBurstsArrive(t *testing.T, stream uint, send func(uint) []time.Time, targets ...<-chan models.Packet) {
 	t.Helper()
-	worstBursts(t, stream, 8, send, targets...)
+	burstsArrive(t, stream, 8, send, targets...)
 }
 
-func worstBursts(t *testing.T, stream uint, bursts int, send func(uint) []time.Time, targets ...<-chan models.Packet) []time.Duration {
+// burstsArrive sends the given number of bursts of stream and requires each target to
+// get all of them.
+func burstsArrive(t *testing.T, stream uint, bursts int, send func(uint) []time.Time, targets ...<-chan models.Packet) {
 	t.Helper()
 	watches := make([]<-chan map[uint]time.Time, len(targets))
 	for i, got := range targets {
 		watches[i] = watchStream(got, stream, bursts)
 	}
-	sent := send(stream)
-	require.Len(t, sent, bursts)
-	worst := make([]time.Duration, len(targets))
+	require.Len(t, send(stream), bursts)
 	for i, w := range watches {
-		arrived := <-w
-		require.Len(t, arrived, bursts, "stream %d, target %d", stream, i)
-		for seq, at := range arrived {
-			worst[i] = max(worst[i], at.Sub(sent[seq]))
-		}
+		require.Len(t, <-w, bursts, "stream %d, target %d", stream, i)
 	}
-	return worst
 }
 
 // TestOpenBridgeSlowDatabaseHoldsNoBurst sends calls from an OpenBridge

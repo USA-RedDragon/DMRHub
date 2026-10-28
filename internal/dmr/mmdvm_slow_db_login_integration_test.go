@@ -75,7 +75,7 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 				return sent
 			}
 		}
-		worstBursts(t, 8401, 16, send(16, nil), listener.ReceivedPackets())
+		burstsArrive(t, 8401, 16, send(16, nil), listener.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
 		db.hold()
@@ -94,7 +94,7 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 				})
 			}
 		}
-		worstBursts(t, 8402, 100, send(100, login), listener.ReceivedPackets())
+		burstsArrive(t, 8402, 100, send(100, login), listener.ReceivedPackets())
 		assert.Empty(t, ready, "a login passed while the database held its statements")
 		assert.Positive(t, db.held.Load(), "the logins ran no statement for the database to hold")
 		t.Logf("the call passed while the database held %d statements of %d logins", db.held.Load(), len(joiners))

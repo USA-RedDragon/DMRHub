@@ -36,14 +36,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const slowRedisCall = 500 * time.Millisecond
-
 // slowRedis makes the KV calls on the keys with prefix, unless it is
-// empty, and the publishes to topics take slowRedisCall each while on, or
-// wait for release while held, ignoring their contexts, as a hung Redis
-// does.
+// empty, and the publishes to topics wait for release while held, ignoring
+// their contexts, as a hung Redis does.
 type slowRedis struct {
-	on     atomic.Bool
 	prefix string
 	topics []string
 	mu     sync.Mutex
@@ -62,10 +58,6 @@ func (s *slowRedis) wait(slow bool) {
 		s.held.Add(1)
 		<-gate
 		s.held.Add(-1)
-		return
-	}
-	if s.on.Load() {
-		time.Sleep(slowRedisCall)
 	}
 }
 

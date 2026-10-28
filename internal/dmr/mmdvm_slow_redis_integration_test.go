@@ -33,11 +33,12 @@ import (
 )
 
 // TestMMDVMSlowRedisHoldsNoOtherRepeater streams a call from one repeater
-// to another while Redis takes 500 ms for each call on the records of the
-// repeaters. Meanwhile a third repeater pings, a fourth logs out, and an
-// unknown address sends a DMRD, which the server checks against the
-// records. No burst of the call may wait on Redis for them, and the
-// records must still follow the ping and the logout.
+// to another while Redis holds each call on the records of the repeaters
+// until the call ended. Meanwhile a third repeater pings, a fourth logs
+// out, and an unknown address sends a DMRD, which the server checks
+// against the records. No burst of the call may wait on Redis for them, so
+// the listener gets the whole call while Redis holds, and the records must
+// still follow the ping and the logout once Redis lets them go.
 func TestMMDVMSlowRedisHoldsNoOtherRepeater(t *testing.T) {
 	t.Parallel()
 	forAllSlowRedisBackends(t, "mmdvm:repeater:", nil, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
@@ -105,14 +106,14 @@ func TestMMDVMSlowRedisHoldsNoOtherRepeater(t *testing.T) {
 				return sent
 			}
 		}
-		worstBursts(t, 8301, bursts, send(false), listener.ReceivedPackets())
+		burstsArrive(t, 8301, bursts, send(false), listener.ReceivedPackets())
 		time.Sleep(200 * time.Millisecond)
 
-		slow.on.Store(true)
-		worst := worstBursts(t, 8302, bursts, send(true), listener.ReceivedPackets())
-		slow.on.Store(false)
-		t.Logf("worst delay of the call with %v per Redis call: %v", slowRedisCall, worst[0])
-		assert.Less(t, worst[0], slowRedisCall/2, "a burst of the call waited on Redis for another repeater")
+		slow.hold()
+		burstsArrive(t, 8302, bursts, send(true), listener.ReceivedPackets())
+		held := slow.held.Load()
+		slow.release()
+		assert.Positive(t, held, "no other repeater waited on Redis while the call went on")
 
 		assert.Eventually(t, func() bool {
 			r, err := records.GetRepeater(context.Background(), 100004)

@@ -29,9 +29,10 @@ import (
 )
 
 // TestIPSCSlowRedisHoldsNoOtherPeer streams a call from one IPSC peer to a
-// repeater while Redis takes 500 ms for each call on the ownership records
-// of the repeaters, and another IPSC peer registers meanwhile, which
-// claims its record. No burst of the call may wait on Redis for it.
+// repeater while Redis holds every call on the ownership records of the
+// repeaters until the call ended, and another IPSC peer registers
+// meanwhile, which claims its record. No burst of the call may wait on
+// Redis for it, so the repeater gets the whole call while Redis holds.
 func TestIPSCSlowRedisHoldsNoOtherPeer(t *testing.T) {
 	t.Parallel()
 	forAllSlowRedisBackends(t, "dmrhub:peer_owner:", nil, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
@@ -54,23 +55,8 @@ func TestIPSCSlowRedisHoldsNoOtherPeer(t *testing.T) {
 		require.NoError(t, talker.WaitReady(handshakeWait))
 		time.Sleep(settleDuration)
 
-		call := func(stream uint32, during func()) time.Duration {
-			const bursts = 16
-			arrived := make(chan time.Time, 64)
-			done := make(chan struct{})
-			go func() {
-				defer close(arrived)
-				for {
-					select {
-					case p := <-listener.ReceivedPackets():
-						if p.StreamID == uint(stream) || p.Src == 1000001 {
-							arrived <- time.Now()
-						}
-					case <-done:
-						return
-					}
-				}
-			}()
+		const bursts = 16
+		send := func(stream uint32, during func()) {
 			start := time.Now()
 			for i := range bursts {
 				time.Sleep(time.Until(start.Add(time.Duration(i) * burstPeriod)))
@@ -79,29 +65,34 @@ func TestIPSCSlowRedisHoldsNoOtherPeer(t *testing.T) {
 					go during()
 				}
 			}
-			time.Sleep(time.Until(start.Add(bursts*burstPeriod + slowRedisCall*3)))
-			close(done)
-			var worst time.Duration
-			last := start
-			n := 0
-			for at := range arrived {
-				worst = max(worst, at.Sub(last))
-				last = at
-				n++
-			}
-			require.Positive(t, n, "the call reached the repeater")
-			return worst
 		}
-		call(5301, nil)
-		time.Sleep(200 * time.Millisecond)
+		count := func() int {
+			n := 0
+			for {
+				got := listener.Drain(drainWait)
+				if len(got) == 0 {
+					return n
+				}
+				for _, p := range got {
+					if p.Src == 1000001 {
+						n++
+					}
+				}
+			}
+		}
+		send(5301, nil)
+		want := count()
+		require.Positive(t, want, "the call reached the repeater")
 
-		slow.on.Store(true)
-		defer slow.on.Store(false)
+		slow.hold()
 		joiner := testutils.NewIPSCClient(200002, ipscAuthKey)
 		t.Cleanup(joiner.Close)
-		gap := call(5302, func() { _ = joiner.Connect(stack.IPSCAddr) })
-		t.Logf("longest gap between bursts of the call with %v per Redis call: %v", slowRedisCall, gap)
-		assert.Less(t, gap, burstPeriod+slowRedisCall/2, "a burst of the call waited on Redis for another peer")
+		send(5302, func() { _ = joiner.Connect(stack.IPSCAddr) })
+		got := count()
+		held := slow.held.Load()
+		slow.release()
+		assert.Equal(t, want, got, "a burst of the call waited on Redis for another peer")
+		assert.Positive(t, held, "the other peer did not wait on Redis while the call went on")
 		assert.NoError(t, joiner.WaitReady(handshakeWait), "the other peer registered")
 	})
 }

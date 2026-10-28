@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,7 +39,7 @@ func TestStaleAnswerComesAtOnceAndIsReplaced(t *testing.T) {
 	answer.Store(1)
 	release := make(chan struct{})
 	var slow atomic.Bool
-	c := lookup.New("test", 20*time.Millisecond, func(int) (int64, error) {
+	c := lookup.New(clock.Real(), "test", 20*time.Millisecond, func(int) (int64, error) {
 		if slow.Load() {
 			<-release
 		}
@@ -68,7 +69,7 @@ func TestFailedReloadKeepsTheAnswer(t *testing.T) {
 	t.Parallel()
 	var down atomic.Bool
 	var loads atomic.Int64
-	c := lookup.New("test", 10*time.Millisecond, func(int) (string, error) {
+	c := lookup.New(clock.Real(), "test", 10*time.Millisecond, func(int) (string, error) {
 		loads.Add(1)
 		if down.Load() {
 			return "", errDown
@@ -93,7 +94,7 @@ func TestColdLoadErrorIsNotKept(t *testing.T) {
 	t.Parallel()
 	var down atomic.Bool
 	down.Store(true)
-	c := lookup.New("test", time.Minute, func(int) (bool, error) {
+	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (bool, error) {
 		if down.Load() {
 			return false, errDown
 		}
@@ -110,7 +111,7 @@ func TestColdLoadErrorIsNotKept(t *testing.T) {
 func TestDropAndPrune(t *testing.T) {
 	t.Parallel()
 	var loads atomic.Int64
-	c := lookup.New("test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
+	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
 	v, _ := c.Get(1)
 	assert.Equal(t, int64(1), v)
 	c.Drop(1)
@@ -124,7 +125,7 @@ func TestDropAndPrune(t *testing.T) {
 func TestReloadReplacesAFreshAnswerAndSkipsUnknownKeys(t *testing.T) {
 	t.Parallel()
 	var loads atomic.Int64
-	c := lookup.New("test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
+	c := lookup.New(clock.Real(), "test", time.Minute, func(int) (int64, error) { return loads.Add(1), nil })
 	c.Reload(1)
 	assert.Zero(t, loads.Load(), "a key nobody read is not loaded")
 	v, _ := c.Get(1)
@@ -138,7 +139,7 @@ func TestAStalledLoadHoldsReadsForWaitOnce(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
 	var loads atomic.Int64
-	c := lookup.New("test", time.Hour, func(int) (int, error) {
+	c := lookup.New(clock.Real(), "test", time.Hour, func(int) (int, error) {
 		loads.Add(1)
 		<-release
 		return 7, nil
@@ -166,7 +167,7 @@ func TestAStalledLoadHoldsReadsForWaitOnce(t *testing.T) {
 func TestHeldWaitsEndWithTheLoadOrTheirEnd(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
-	c := lookup.New("test", time.Hour, func(k int) (int, error) {
+	c := lookup.New(clock.Real(), "test", time.Hour, func(k int) (int, error) {
 		if k == 2 {
 			<-release
 		}

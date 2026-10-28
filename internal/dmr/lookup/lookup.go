@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 	"github.com/puzpuzpuz/xsync/v4"
 )
@@ -51,6 +52,7 @@ var ErrSlow = errors.New("the lookup is waiting on the database")
 // at once and starts a background load that replaces it, so a read waits
 // on load only for a key that nobody read before, and then at most Wait.
 type Cache[K comparable, V any] struct {
+	clock   clock.Clock
 	name    string
 	ttl     time.Duration
 	load    func(K) (V, error)
@@ -60,8 +62,9 @@ type Cache[K comparable, V any] struct {
 
 // Flights runs one load of each key at a time, in the background.
 type Flights[K comparable, V any] struct {
-	m    *xsync.Map[K, *flight[V]]
-	held atomic.Pointer[<-chan struct{}]
+	clock clock.Clock
+	m     *xsync.Map[K, *flight[V]]
+	held  atomic.Pointer[<-chan struct{}]
 }
 
 type flight[V any] struct {
@@ -71,9 +74,9 @@ type flight[V any] struct {
 	err   error
 }
 
-// NewFlights returns Flights with no load running.
-func NewFlights[K comparable, V any]() *Flights[K, V] {
-	return &Flights[K, V]{m: xsync.NewMap[K, *flight[V]]()}
+// NewFlights returns Flights with no load running, that wait on c.
+func NewFlights[K comparable, V any](c clock.Clock) *Flights[K, V] {
+	return &Flights[K, V]{clock: clock.Or(c), m: xsync.NewMap[K, *flight[V]]()}
 }
 
 // Do returns the answer of load for key. It starts load when no load of
@@ -95,12 +98,12 @@ func (f *Flights[K, V]) Do(key K, load func() (V, error)) (V, error) {
 			return zero, ErrSlow
 		}
 	}
-	t := time.NewTimer(time.Until(fl.until))
+	t := f.clock.NewTimer(f.clock.Until(fl.until))
 	defer t.Stop()
 	select {
 	case <-fl.done:
 		return fl.val, fl.err
-	case <-t.C:
+	case <-t.C():
 		var zero V
 		return zero, ErrSlow
 	}
@@ -122,7 +125,7 @@ func (f *Flights[K, V]) DoWait(key K, load func() (V, error)) (V, error) {
 
 func (f *Flights[K, V]) start(key K, load func() (V, error)) *flight[V] {
 	fl, loaded := f.m.LoadOrCompute(key, func() (*flight[V], bool) {
-		return &flight[V]{done: make(chan struct{}), until: time.Now().Add(Wait)}, false
+		return &flight[V]{done: make(chan struct{}), until: f.clock.Now().Add(Wait)}, false
 	})
 	if !loaded {
 		go func() {
@@ -142,16 +145,17 @@ type entry[V any] struct {
 }
 
 // New returns a Cache that loads an answer with load and keeps it fresh
-// for ttl. name names the cache in logs.
-func New[K comparable, V any](name string, ttl time.Duration, load func(K) (V, error)) *Cache[K, V] {
-	return &Cache[K, V]{name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V]()}
+// for ttl on the time of c. name names the cache in logs.
+func New[K comparable, V any](c clock.Clock, name string, ttl time.Duration, load func(K) (V, error)) *Cache[K, V] {
+	c = clock.Or(c)
+	return &Cache[K, V]{clock: c, name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V](c)}
 }
 
 // Get returns the answer for key. It calls load only when it has no
 // answer for key; an error of that load is returned and not kept. A Get
 // that waited Wait for the load returns ErrSlow.
 func (c *Cache[K, V]) Get(key K) (V, error) {
-	now := time.Now()
+	now := c.clock.Now()
 	if e, ok := c.entries.Load(key); ok {
 		e.read.Store(monotime.Of(now))
 		if now.Sub(e.at) >= c.ttl && e.refreshing.CompareAndSwap(false, true) {
@@ -162,7 +166,7 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 	return c.flights.Do(key, func() (V, error) {
 		v, err := c.load(key)
 		if err == nil {
-			c.entries.LoadOrStore(key, newEntry(v, time.Now()))
+			c.entries.LoadOrStore(key, newEntry(v, c.clock.Now()))
 		}
 		return v, err
 	})
@@ -186,7 +190,7 @@ func (c *Cache[K, V]) refresh(key K, old *entry[V]) {
 		slog.Error("Cannot reload a lookup, keeping the old answer", "lookup", c.name, "error", err)
 		v = old.val
 	}
-	next := newEntry(v, time.Now())
+	next := newEntry(v, c.clock.Now())
 	next.read.Store(old.read.Load())
 	c.entries.Compute(key, func(cur *entry[V], loaded bool) (*entry[V], xsync.ComputeOp) {
 		if loaded && cur == old {
@@ -209,7 +213,7 @@ func (c *Cache[K, V]) Reload(key K) {
 		c.entries.Delete(key)
 		return
 	}
-	c.entries.Store(key, newEntry(v, time.Now()))
+	c.entries.Store(key, newEntry(v, c.clock.Now()))
 }
 
 // Refresh loads the answer for key again when the Cache holds one, and
@@ -229,7 +233,7 @@ func (c *Cache[K, V]) Refresh(key K) error {
 
 // Put keeps v as the answer for key.
 func (c *Cache[K, V]) Put(key K, v V) {
-	c.entries.Store(key, newEntry(v, time.Now()))
+	c.entries.Store(key, newEntry(v, c.clock.Now()))
 }
 
 // Drop forgets the answer for key, so that the next Get loads it.

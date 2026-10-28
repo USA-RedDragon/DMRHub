@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/clockstep"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ import (
 
 func TestClockStepForwardKeepsAnAnswerReadJustNow(t *testing.T) { //nolint:paralleltest
 	var loads atomic.Int64
-	c := lookup.New("test", time.Hour, func(int) (int, error) {
+	c := lookup.New(clock.Real(), "test", time.Hour, func(int) (int, error) {
 		loads.Add(1)
 		return 1, nil
 	})
@@ -48,7 +49,7 @@ func TestClockStepForwardKeepsAnAnswerReadJustNow(t *testing.T) { //nolint:paral
 
 func TestClockStepBackStillPrunesAnIdleAnswer(t *testing.T) { //nolint:paralleltest
 	var loads atomic.Int64
-	c := lookup.New("test", time.Hour, func(int) (int, error) {
+	c := lookup.New(clock.Real(), "test", time.Hour, func(int) (int, error) {
 		loads.Add(1)
 		return 1, nil
 	})

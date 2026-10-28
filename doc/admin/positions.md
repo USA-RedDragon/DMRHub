@@ -4,7 +4,7 @@ The location server is a plugin that comes with DMRHub (see [The built-in plugin
 
 ## What the hub stores
 
-DMRHub stores positions only for the radios whose owners turn on position tracking, and only from that time. It stores at most one position of a radio each 30 seconds: the latitude and longitude, the accuracy, speed, heading and altitude when the radio sends them, the time of the fix and of its arrival, the repeater and timeslot, and the location service ID. When the owner turns tracking off, DMRHub deletes the positions of the radio.
+DMRHub stores positions from the location server, from the GPS that its modem hears in voice calls, and from the `DMRG` packets of hotspots and repeaters. It stores positions only for the radios whose owners turn on position tracking, and only from that time. It stores at most one position of a radio each 30 seconds from all sources together: the latitude and longitude, the accuracy, speed, heading and altitude when the radio sends them, the time of the fix and of its arrival, the repeater and timeslot, and the location service ID. When the owner turns tracking off, DMRHub deletes the positions of the radio.
 
 Admins see the same positions as everyone else: their own radios, and the radios of the users who share with them. Apps never get admin rights.
 

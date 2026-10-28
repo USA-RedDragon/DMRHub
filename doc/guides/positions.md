@@ -1,6 +1,6 @@
 # Share the position of your radio
 
-DMRHub can track where your radio is, show it on a map, share it with the other users of the network, and send it to APRS-IS. Your radio must have GPS, and your network must run the location server plugin.
+DMRHub can track where your radio is, show it on a map, share it with the other users of the network, and send it to APRS-IS. Your radio must have GPS. DMRHub gets the position from location reports to the location server plugin, and from the GPS that the radio sends in a voice call when the hotspot or repeater passes it on. See [Where positions come from](../positions.md#where-positions-come-from).
 
 For the facts behind each setting, see the [Positions reference](../positions.md).
 
@@ -9,6 +9,8 @@ For the facts behind each setting, see the [Positions reference](../positions.md
 1. In the radio programming software, turn on GPS.
 2. Set the radio to send its ARS registration and its location reports to one of the location server IDs, usually 5050 to 5059. Ask your admin for the IDs of your network. All ten IDs work the same way. The ID only picks the default APRS symbol (see the [table of symbols](../positions.md#location-server-ids)).
 3. Turn on ARS, so that the radio registers when it turns on.
+
+If the radio sends its GPS in voice calls instead, steps 2 and 3 are not necessary. DMRHub then gets a position each time you talk through a hotspot or repeater that passes the GPS on.
 
 ## Step 2: Turn on position tracking
 

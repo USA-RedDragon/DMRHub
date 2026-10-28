@@ -16,6 +16,16 @@ The location server is a plugin. It answers on the IDs that your admin gives it,
 
 The location server reads LRRP, NMEA and Hytera (HDAP) location reports, and answers the confirmed ones.
 
+## Where positions come from
+
+| Source | Format on the Positions page |
+| --- | --- |
+| A location report to a location server ID | LRRP, NMEA or HDAP |
+| The GPS that a radio sends in a voice call, heard by the modem of DMRHub | GPS |
+| The GPS that a hotspot or repeater sends to DMRHub as a `DMRG` packet, for example from MMDVMHost | GPS |
+
+All sources follow the same rules: tracking must be on, and DMRHub keeps at most one position of a radio each 30 seconds from all sources together. A GPS position has no speed, heading, altitude or fix time. Its accuracy is the position error that the radio sent, when the radio knows it.
+
 ## Which radios you can track
 
 The **Radios** list on the Positions page has your account ID and the radio IDs that you added on the Settings page. Only the owner of a radio ID can change its tracking.
@@ -35,7 +45,7 @@ The **Radios** list on the Positions page has your account ID and the radio IDs 
 
 ## What DMRHub stores
 
-- At most one position of a radio each 30 seconds.
+- At most one position of a radio each 30 seconds, from all sources together.
 - Only positions that arrived after you turned tracking on.
 - Each position for the retention time that you picked. Then DMRHub deletes it.
 - When you turn tracking off, DMRHub deletes all positions of that radio.

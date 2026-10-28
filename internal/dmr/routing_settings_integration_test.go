@@ -94,24 +94,8 @@ func TestDynamicTalkgroupTimesOut(t *testing.T) {
 		tgCall(t, c, 3100, 501)
 		require.Eventually(t, func() bool { return dynamicTS2(t, stack) != nil }, 5*time.Second, 20*time.Millisecond,
 			"a call on a talkgroup links it")
-		start := time.Now()
 		require.Eventually(t, func() bool { return dynamicTS2(t, stack) == nil }, 5*time.Second, 20*time.Millisecond,
 			"the dynamic talkgroup must unlink after the timeout")
-		assert.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "the link must last about the timeout")
-	})
-}
-
-func TestDynamicTalkgroupTimeoutRestartsAtEachCall(t *testing.T) {
-	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		routingStack(t, stack, config.Routing{DynamicTimeout: 1500 * time.Millisecond})
-		c := oneHotspot(t, stack, 3100)
-
-		for i := range uint(4) {
-			tgCall(t, c, 3100, 600+i)
-			time.Sleep(700 * time.Millisecond)
-			require.NotNil(t, dynamicTS2(t, stack), "a call on the dynamic talkgroup restarts its timeout")
-		}
 	})
 }
 

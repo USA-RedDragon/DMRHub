@@ -5,6 +5,8 @@
 # unshare -r -n, so the program reaches only loopback.
 # Usage: stress-ext.sh NAME WORKDIR HUB_MMDVM_PORT HUB_OB_PORT ID TG OB_ID OB_TG
 # NAME: dmrgateway hblink3 hblink4 mmdvm_bridge ysf2dmr
+# DMRHUB_EXT_CALLSIGN, DMRHUB_EXT_PASSWORD, DMRHUB_EXT_LOCATION and
+# DMRHUB_EXT_DESCRIPTION change what MMDVMHost and DMRGateway send.
 # hack/external/setup.sh builds the programs into the directory that
 # DMRHUB_STRESS_EXT_DIR names, by default the one that setup.sh uses.
 set -u
@@ -14,11 +16,13 @@ name=$1 W=$2 HUB=$3 OB=$4 ID=$5 TG=$6 OBID=$7 OBTG=$8
 mkdir -p "$W"
 cd "$W" || exit 1
 H4LAT='"30.26720"'; H4LON='"-97.74310"'
+CALL=${DMRHUB_EXT_CALLSIGN:-KI5VMF} PASS=${DMRHUB_EXT_PASSWORD:-passw0rd}
+LOC=${DMRHUB_EXT_LOCATION:-Austin} DESC=${DMRHUB_EXT_DESCRIPTION:-ext smoke}
 case $name in
 dmrgateway)
 	cat > MMDVM-Host.ini <<EOF
 [General]
-Callsign=KI5VMF
+Callsign=$CALL
 Id=3191868
 Timeout=180
 Duplex=1
@@ -32,8 +36,8 @@ Power=1
 Latitude=30.2672
 Longitude=-97.7431
 Height=0
-Location=Austin
-Description=ext smoke
+Location=$LOC
+Description=$DESC
 URL=https://example.org
 [Log]
 MQTTLevel=0
@@ -145,7 +149,7 @@ MQTTLevel=0
 [Voice]
 Enabled=0
 [Info]
-Callsign=KI5VMF
+Callsign=$CALL
 TXFrequency=438800000
 RXFrequency=438800000
 Power=1
@@ -156,8 +160,8 @@ Slot2=1
 Latitude=30.2672
 Longitude=-97.7431
 Height=0
-Location=Austin
-Description=ext smoke
+Location=$LOC
+Description=$DESC
 URL=https://example.org
 [XLX Network]
 Enabled=0
@@ -170,7 +174,7 @@ PassAllTG=1
 PassAllTG=2
 PassAllPC=1
 PassAllPC=2
-Password=passw0rd
+Password=$PASS
 Options=TS1=$TG;
 Location=1
 Debug=0

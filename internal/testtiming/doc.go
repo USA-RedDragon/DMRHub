@@ -22,5 +22,6 @@
 // bounds a wait with a wall-clock timeout, measures elapsed time or names
 // a port can fail on a loaded machine, so such a site is allowed only
 // where testdata/allowed.txt lists it with a reason. The list only
-// shrinks.
+// shrinks. A site in the func that synctest.Test runs does not count: in
+// its bubble the time is virtual.
 package testtiming

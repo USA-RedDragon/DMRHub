@@ -22,6 +22,9 @@ package testtiming_test
 import (
 	"bufio"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -85,27 +88,80 @@ func scan(t *testing.T, root string) map[site]int {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(rel, ".go") || strings.Contains(d.Name(), "_gen") || (!strings.HasSuffix(rel, "_test.go") && !strings.HasPrefix(rel, "internal/testutils/")) {
+		if !strings.HasSuffix(rel, ".go") || strings.Contains(d.Name(), "_gen") || strings.HasPrefix(rel, "internal/testtiming/") || (!strings.HasSuffix(rel, "_test.go") && !strings.HasPrefix(rel, "internal/testutils/")) {
 			return nil
 		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "//") {
-				continue
-			}
-			for _, c := range cs {
-				if c.re.MatchString(line) {
-					found[site{c.name, rel}]++
-				}
-			}
+		counts, err := scanFile(cs, rel, b)
+		if err != nil {
+			return err
+		}
+		for class, n := range counts {
+			found[site{class, rel}] += n
 		}
 		return nil
 	})
 	require.NoError(t, err)
 	return found
+}
+
+// scanFile counts the sites of each class in the Go source b, but not
+// those in the func that a synctest.Test call runs: in its bubble the time
+// is virtual, so a sleep or a timeout there does not depend on the load of
+// the machine.
+func scanFile(cs []class, name string, b []byte) (map[string]int, error) {
+	bubbled, err := bubbleLines(name, b)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{}
+	for i, line := range strings.Split(string(b), "\n") {
+		if bubbled[i+1] || strings.HasPrefix(strings.TrimSpace(line), "//") {
+			continue
+		}
+		for _, c := range cs {
+			if c.re.MatchString(line) {
+				counts[c.name]++
+			}
+		}
+	}
+	return counts, nil
+}
+
+// bubbleLines returns the lines of the bodies of the funcs that the
+// synctest.Test calls in b run.
+func bubbleLines(name string, b []byte) (map[int]bool, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, b, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", name, err)
+	}
+	lines := map[int]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Test" {
+			return true
+		}
+		if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "synctest" {
+			return true
+		}
+		lit, ok := call.Args[1].(*ast.FuncLit)
+		if !ok {
+			return true
+		}
+		for l := fset.Position(lit.Body.Lbrace).Line; l <= fset.Position(lit.Body.Rbrace).Line; l++ {
+			lines[l] = true
+		}
+		return true
+	})
+	return lines, nil
 }
 
 type allowance struct {
@@ -158,6 +214,25 @@ func writeAllowed(t *testing.T, found map[site]int, old map[site]allowance) {
 		fmt.Fprintf(&b, "%s\t%s\t%d\t%s\n", k.class, k.file, found[k], reason)
 	}
 	require.NoError(t, os.WriteFile(allowedFile, []byte(b.String()), 0o600))
+}
+
+// TestASiteInABubbleIsNotCounted counts the sites of a source with a sleep
+// in a synctest bubble and one outside it.
+func TestASiteInABubbleIsNotCounted(t *testing.T) {
+	t.Parallel()
+	src := []byte(`package x_test
+
+func TestX(t *testing.T) {
+	time.Sleep(time.Second)
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Second)
+		<-time.After(time.Second)
+	})
+}
+`)
+	counts, err := scanFile(classes(), "x_test.go", src)
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"sleep": 1}, counts)
 }
 
 // TestNoNewWallClockWaits fails on each site in a test, or in

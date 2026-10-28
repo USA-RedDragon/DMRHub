@@ -38,9 +38,14 @@ import { Toaster } from '@/components/ui/toast';
 import AppFooter from '@/components/AppFooter.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import API from '@/services/API';
-import { useUserStore } from '@/store';
+import { useRoute, useRouter } from 'vue-router';
+import { useSettingsStore, useUserStore } from '@/store';
 
 const userStore = useUserStore();
+const settingsStore = useSettingsStore();
+const route = useRoute();
+const router = useRouter();
+const authPages = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/oauth/authorize'];
 
 useHead({
   titleTemplate: `%s | ${localStorage.getItem('title') || 'DMRHub'}`,
@@ -64,8 +69,12 @@ const fetchData = () => {
       userStore.mustChangePassword = res.data.must_change_password === true;
       userStore.loggedIn = true;
     })
-    .catch(() => {
+    .catch(async () => {
       userStore.loggedIn = false;
+      await settingsStore.fetchConfig();
+      if (settingsStore.visibility === 'login' && !authPages.includes(route.path)) {
+        await router.push('/login');
+      }
     });
 };
 

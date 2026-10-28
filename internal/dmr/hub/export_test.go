@@ -178,3 +178,8 @@ func (h *Hub) OutboxDepth() int64 {
 func (h *Hub) StoreSighting(radio, repeater uint, at time.Time, vetted bool) error {
 	return h.storeSighting(sighting{src: radio, repeater: repeater, at: at}, lastHeardKey(radio), vetted)
 }
+
+// WaitBackground waits until the background work of the hub is done.
+func (h *Hub) WaitBackground() {
+	h.later.Wait()
+}

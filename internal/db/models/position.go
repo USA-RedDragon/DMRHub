@@ -35,6 +35,8 @@ const (
 	PositionFormatLRRP PositionFormat = "lrrp"
 	PositionFormatNMEA PositionFormat = "nmea"
 	PositionFormatHDAP PositionFormat = "hdap"
+	// PositionFormatGPS is the GPS Info LC embedded in a voice call.
+	PositionFormatGPS PositionFormat = "gps"
 )
 
 const (

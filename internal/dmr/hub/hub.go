@@ -205,7 +205,8 @@ type Hub struct {
 	origin    string
 	watchers  watchers
 
-	plugins atomic.Pointer[Plugins]
+	plugins        atomic.Pointer[Plugins]
+	positionNotify atomic.Pointer[PositionNotify]
 
 	ipListsMu sync.Mutex
 	ipLists   atomic.Pointer[ipLists]

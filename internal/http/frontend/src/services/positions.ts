@@ -18,7 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 import API from '@/services/API';
 
-export type PositionFormat = 'lrrp' | 'nmea' | 'hdap';
+export type PositionFormat = 'lrrp' | 'nmea' | 'hdap' | 'gps';
 
 export type Position = {
   radio_id: number;

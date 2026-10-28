@@ -560,8 +560,10 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 	sm.drift.Start(ctx)
 	sm.aprs = positions.NewGateway(database, current, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
+	positionPusher := positions.NewPusher(database, pubsubClient)
+	hub.SetPositionNotify(positionPusher.Push)
 	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) },
-		positions.NewPusher(database, pubsubClient).Push)
+		positionPusher.Push)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

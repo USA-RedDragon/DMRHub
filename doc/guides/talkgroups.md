@@ -66,3 +66,18 @@ Click the ID of your hotspot on the Repeaters page. The **Talkgroup Subscription
 ## Talkgroups you manage
 
 An admin can make you an admin of a talkgroup. Then **Talkgroups**, then **Owned** (`<siteurl>/talkgroups/owned`) lists it. There you can click **Edit** to change its name and description, and pick its net control operators (NCOs). NCOs and talkgroup admins can start, stop and schedule the nets of the talkgroup. See [Run or join a net](nets.md).
+
+## Restrict a talkgroup to approved repeaters
+
+A talkgroup admin, or an admin of the network, can restrict a talkgroup. A restricted talkgroup links only to the repeaters that it approves, static or dynamic. Every talkgroup is open by default.
+
+On a repeater that the talkgroup does not approve:
+
+- A call to the talkgroup stops at the repeater. Last Heard shows the reason "is not approved for that talkgroup".
+- The repeater does not get the calls of the talkgroup.
+- A call does not link the talkgroup as the dynamic talkgroup.
+- The Repeaters page refuses the talkgroup as a static or dynamic talkgroup, with "Talkgroup N links only to approved repeaters".
+- The options of a hotspot (see above) leave the talkgroup out.
+
+Until the talkgroup page shows this setting, use the API: `GET /api/v1/talkgroups/<id>/access` gives `mode` (`open` or `approved`) and `repeaters`, the approved repeaters. `PATCH` on the same address changes them, for example `{"mode": "approved", "repeaters": [311860, 311861]}`. A field that you leave out keeps its value.
+

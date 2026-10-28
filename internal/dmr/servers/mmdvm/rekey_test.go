@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -75,6 +76,7 @@ func (r *dialectRig) secondReplica(store kv.KV) *Server {
 	require.NoError(r.t, err)
 	r.t.Cleanup(func() { _ = conn.Close() })
 	return &Server{
+		clock:      clock.Real(),
 		DB:         r.s.DB,
 		Server:     conn,
 		kvClient:   servers.MakeKVClient(store),

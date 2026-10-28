@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -96,6 +97,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 		t:  t,
 		db: database,
 		s: &Server{
+			clock:     clock.Real(),
 			DB:        database,
 			Server:    conn,
 			kvClient:  servers.MakeKVClient(kvStore),

@@ -109,7 +109,7 @@ func (s *Server) DrainWebTransport(ctx context.Context) {
 		return
 	}
 	s.wt.draining.Store(true)
-	now := time.Now()
+	now := s.clock.Now()
 	type notice struct {
 		addr wtAddr
 		msg  wtDrain
@@ -179,7 +179,7 @@ func (s *Server) idleAt(ep endpoint) bool {
 // replica sent the hotspot since the notice, so the claim asks for all of
 // that, and the hotspot drops the copies of what it got.
 func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
-	now := time.Now()
+	now := s.clock.Now()
 	id, ok := s.checkResumeToken(token, now)
 	if !ok {
 		return wtResume{Reason: "bad token"}

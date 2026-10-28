@@ -32,6 +32,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -64,7 +65,7 @@ type link struct {
 	ep      endpoint
 	dialect dmrd.Dialect
 	m       *dmrdsession.Master
-	beacon  *time.Timer
+	beacon  clock.Timer
 	// looking reports that the password of a login of the link is being
 	// looked up, or its config saved.
 	looking bool
@@ -79,9 +80,9 @@ type link struct {
 
 func (s *Server) now() time.Duration {
 	if s.epoch.IsZero() {
-		s.epoch = time.Now()
+		s.epoch = s.clock.Now()
 	}
-	return time.Since(s.epoch)
+	return s.clock.Since(s.epoch)
 }
 
 // packetDialect returns the dialect of the packet p from a repeater: the
@@ -290,7 +291,7 @@ func (s *Server) forget(l *link) {
 // handlePacket handles the packet data from remoteAddr as the listener
 // does, and waits for the lookups and the repeater jobs that it started.
 func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
-	s.handleFrom(ctx, udpEndpoint(remoteAddr), data, time.Now())
+	s.handleFrom(ctx, udpEndpoint(remoteAddr), data, s.clock.Now())
 	s.lookups.Wait()
 	s.records.Wait()
 }
@@ -532,13 +533,13 @@ func (s *Server) loadKnown() error {
 
 func (s *Server) refreshKnown() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(knownRefresh)
+	ticker := s.clock.NewTicker(knownRefresh)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-s.done:
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 			if err := s.loadKnown(); err != nil {
 				slog.Error("Error loading the repeater IDs", "error", err)
 			}
@@ -625,7 +626,7 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 		slog.Error("Invalid RPTC packet", "repeaterID", repeaterID, "error", err)
 		return false
 	}
-	now := time.Now()
+	now := s.clock.Now()
 	repeater.IP, repeater.Port = ep.kvAddr()
 	repeater.Connected = now
 	repeater.LastPing = now
@@ -666,11 +667,11 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 	s.connected.Store(uint(id), l.ep)
 	s.stopBeacon(l)
 	ep, d := l.ep, l.dialect
-	l.beacon = time.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
+	l.beacon = s.clock.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
 	if s.hub != nil {
 		since := l.heard
 		if since.IsZero() {
-			since = time.Now()
+			since = s.clock.Now()
 		}
 		s.records.Do(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
 	}
@@ -705,7 +706,7 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	s.forgetSent(uint(o.ID))
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
-	downAt := time.Now()
+	downAt := s.clock.Now()
 	s.records.Do(uint(o.ID), func() {
 		owned := s.kvOwned(ctx, o, downAt)
 		deleted := owned && s.kvClient.DeleteRepeater(ctx, uint(o.ID))
@@ -734,7 +735,7 @@ func (s *Server) kvOwned(ctx context.Context, o dmrdsession.Output, downAt time.
 	if repeater.LastPing.After(downAt) {
 		return false
 	}
-	return o.Reason != dmrdsession.ReasonTimeout || time.Since(repeater.LastPing) >= dmrdsession.TimeoutDefault
+	return o.Reason != dmrdsession.ReasonTimeout || s.clock.Since(repeater.LastPing) >= dmrdsession.TimeoutDefault
 }
 
 func (s *Server) data(ctx context.Context, o dmrdsession.Output, at time.Time) {
@@ -784,7 +785,7 @@ func (s *Server) data(ctx context.Context, o dmrdsession.Output, at time.Time) {
 // other jobs of the repeater, and queues its time for the database.
 func (s *Server) ping(ctx context.Context, l *link) {
 	repeaterID := uint(l.m.ID())
-	now := time.Now()
+	now := s.clock.Now()
 	ip, port := l.ep.kvAddr()
 	s.records.Do(repeaterID, func() {
 		repeater, err := s.kvClient.GetRepeater(ctx, repeaterID)
@@ -1008,7 +1009,7 @@ func (s *Server) mayResumeForEgress(id uint) bool {
 		return false
 	}
 	at, ok := s.egressMiss.Load(id)
-	return !ok || time.Since(at) >= egressResumeRetry
+	return !ok || s.clock.Since(at) >= egressResumeRetry
 }
 
 // resumeForEgress resumes the session of a repeater that the hub has a
@@ -1031,7 +1032,7 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 	}
 	if err != nil || repeater.Connection != models.RepeaterStateConnected || repeater.Port == 0 ||
 		(s.hub != nil && !s.hub.OwnsRepeater(ctx, id)) || !s.loggedInWithCurrentSecret(id, repeater) {
-		s.egressMiss.Store(id, time.Now())
+		s.egressMiss.Store(id, s.clock.Now())
 		return endpoint{}, false
 	}
 	ep := udpEndpoint(net.UDPAddr{IP: net.ParseIP(repeater.IP), Port: repeater.Port})
@@ -1042,14 +1043,14 @@ func (s *Server) resumeForEgress(ctx context.Context, id uint) (endpoint, bool) 
 	}
 	l, err := s.linkAt(ep, storedDialect(repeater))
 	if err != nil || l.m.State() != dmrdsession.StateIdle || l.dialect != storedDialect(repeater) || rekeys != s.rekeys[uint32(id)] {
-		s.egressMiss.Store(id, time.Now())
+		s.egressMiss.Store(id, s.clock.Now())
 		return endpoint{}, false
 	}
 	s.resumeLink(ctx, s.now(), l, uint32(id))
 	s.forget(l)
 	a, ok := s.connected.Load(id)
 	if !ok {
-		s.egressMiss.Store(id, time.Now())
+		s.egressMiss.Store(id, s.clock.Now())
 	}
 	return a, ok
 }
@@ -1088,7 +1089,7 @@ func (s *Server) ownRecord(id uint) (models.Repeater, bool) {
 	s.ownMu.Lock()
 	defer s.ownMu.Unlock()
 	rec, ok := s.ownRecords[id]
-	if ok && time.Since(rec.LastPing) >= ownRecordTTL {
+	if ok && s.clock.Since(rec.LastPing) >= ownRecordTTL {
 		delete(s.ownRecords, id)
 		return models.Repeater{}, false
 	}

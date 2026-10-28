@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -63,7 +64,7 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 		_ = ps.Close()
 		_ = kvStore.Close()
 	})
-	s := Server{DB: database, hub: h}
+	s := Server{clock: clock.Real(), DB: database, hub: h}
 
 	lcs, err := pdu.EncodeTalkerAlias("KI5VMF", layer3.TalkerAliasSevenBit)
 	require.NoError(t, err)

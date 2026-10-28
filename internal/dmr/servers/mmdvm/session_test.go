@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -76,6 +77,7 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	s := Server{
+		clock:     clock.Real(),
 		DB:        database,
 		Server:    conn,
 		kvClient:  servers.MakeKVClient(kvStore),
@@ -130,6 +132,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 			t.Cleanup(func() { _ = peer.Close() })
 			from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
 			s := Server{
+				clock:     clock.Real(),
 				DB:        database,
 				Server:    conn,
 				kvClient:  servers.MakeKVClient(kvStore),

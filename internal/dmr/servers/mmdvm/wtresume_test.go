@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,7 @@ func TestResumeTokens(t *testing.T) {
 	_, ok = s.checkResumeToken("not a token", now)
 	assert.False(t, ok)
 
-	other := &Server{resumeKey: resumeKey([]byte("another secret"))}
+	other := &Server{clock: clock.Real(), resumeKey: resumeKey([]byte("another secret"))}
 	_, ok = other.checkResumeToken(token, now)
 	assert.False(t, ok, "a hub with another secret does not take the token")
 

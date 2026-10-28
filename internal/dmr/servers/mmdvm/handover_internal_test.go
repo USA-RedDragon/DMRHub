@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,7 @@ import (
 
 func queueServer() *Server {
 	s := &Server{
+		clock:        clock.Real(),
 		connected:    xsync.NewMap[uint, endpoint](),
 		transports:   xsync.NewMap[string, transport](),
 		outgoingChan: make(chan outgoing, 4),

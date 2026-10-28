@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -60,6 +61,7 @@ type Server struct {
 	// stamped reports that the kernel stamps the packets of Server with
 	// the time they came.
 	stamped      bool
+	clock        clock.Clock
 	DB           *gorm.DB
 	kvClient     *servers.KVClient
 	kv           kv.KV
@@ -176,6 +178,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		SocketAddress: socketAddr,
 		Server:        server,
 		stamped:       stamped,
+		clock:         hub.Clock(),
 		DB:            db,
 		pubsub:        pubsub,
 		kvClient:      servers.MakeKVClient(kv),
@@ -267,14 +270,14 @@ func (s *Server) Stop(ctx context.Context) error {
 
 func (s *Server) listen(ctx context.Context) {
 	defer s.wg.Done()
-	ticker := time.NewTicker(tickInterval)
+	ticker := s.clock.NewTicker(tickInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-s.done:
 			slog.Info("Stopping MMDVM server listener")
 			return
-		case <-ticker.C:
+		case <-ticker.C():
 			s.tick(ctx)
 		case packet := <-s.incomingChan:
 			s.handleFrom(ctx, endpointOf(packet), packet.Data, packet.ReceivedAt)
@@ -408,12 +411,12 @@ func (s *Server) readerFor(t transport) func([]byte) (int, net.Addr, time.Time, 
 	if !ok || c != s.Server {
 		return func(b []byte) (int, net.Addr, time.Time, error) {
 			n, addr, err := t.ReadFrom(b)
-			return n, addr, time.Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
+			return n, addr, s.clock.Now(), err //nolint:wrapcheck // the caller looks for net.ErrClosed
 		}
 	}
 	oob := make([]byte, servers.RxOOBLen)
 	return func(b []byte) (int, net.Addr, time.Time, error) {
-		n, addr, at, err := servers.ReadStamped(c, s.stamped, b, oob)
+		n, addr, at, err := servers.ReadStamped(c, s.clock, s.stamped, b, oob)
 		if err != nil {
 			return n, nil, at, err //nolint:wrapcheck // the caller looks for net.ErrClosed
 		}
@@ -554,7 +557,7 @@ func (s *Server) writeOut(o outgoing) {
 	s.write(endpointOf(o.raw), o.raw.Data)
 	if o.sent != nil {
 		s.sentMu.Lock()
-		o.sent.at = time.Now()
+		o.sent.at = s.clock.Now()
 		s.sentMu.Unlock()
 	}
 }

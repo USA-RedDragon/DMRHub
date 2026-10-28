@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -52,6 +53,7 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 	kvClient := servers.MakeKVClient(kvStore)
 
 	s := Server{
+		clock:        clock.Real(),
 		kvClient:     kvClient,
 		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
@@ -101,6 +103,7 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 	kvClient := servers.MakeKVClient(kvStore)
 
 	s := Server{
+		clock:        clock.Real(),
 		kvClient:     kvClient,
 		connected:    xsync.NewMap[uint, endpoint](),
 		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),

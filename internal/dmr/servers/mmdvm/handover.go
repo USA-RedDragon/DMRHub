@@ -218,12 +218,12 @@ func (s *Server) awaitHandover(ctx context.Context, id uint) {
 	s.movingMu.Unlock()
 	go func() {
 		defer func() { _ = sub.Close() }()
-		t := time.NewTimer(handoverWait)
+		t := s.clock.NewTimer(handoverWait)
 		defer t.Stop()
 		var lost []models.Packet
 		select {
 		case <-s.done:
-		case <-t.C:
+		case <-t.C():
 			slog.Warn("No handover came for a repeater that moved here", "repeaterID", id)
 		case b, ok := <-sub.Channel():
 			var h handover
@@ -271,7 +271,7 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 		}
 		s.movingMu.Lock()
 		if len(m.held) == 0 {
-			m.done, m.grace = true, time.Now().Add(handedGrace)
+			m.done, m.grace = true, s.clock.Now().Add(handedGrace)
 			s.movingMu.Unlock()
 			return
 		}
@@ -282,12 +282,12 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 
 // wait waits for d, and reports false when the server stops first.
 func (s *Server) wait(d time.Duration) bool {
-	t := time.NewTimer(d)
+	t := s.clock.NewTimer(d)
 	defer t.Stop()
 	select {
 	case <-s.done:
 		return false
-	case <-t.C:
+	case <-t.C():
 		return true
 	}
 }
@@ -368,7 +368,7 @@ func (s *Server) hold(id uint, pkt models.Packet) bool {
 		m.held = append(m.held, pkt)
 		return true
 	}
-	if time.Now().After(m.grace) {
+	if s.clock.Now().After(m.grace) {
 		delete(s.moving, id)
 		return false
 	}

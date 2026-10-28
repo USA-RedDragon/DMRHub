@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -181,6 +182,7 @@ func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 	return &dialectRig{
 		t: t,
 		s: &Server{
+			clock:      clock.Real(),
 			DB:         database,
 			Server:     conn,
 			kvClient:   kvc,

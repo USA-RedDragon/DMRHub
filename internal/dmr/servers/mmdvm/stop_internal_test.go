@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -82,6 +83,7 @@ func TestStopUnderAFlood(t *testing.T) {
 func TestSendPacketAfterStop(t *testing.T) {
 	t.Parallel()
 	s := Server{
+		clock:        clock.Real(),
 		connected:    xsync.NewMap[uint, endpoint](),
 		outgoingChan: make(chan outgoing, 1),
 		done:         make(chan struct{}),

@@ -35,19 +35,20 @@ import (
 // carry. They are stable: the undeliverable metric labels its counts with
 // them.
 const (
-	ReasonInvalidDataType  = "invalid_data_type"
-	ReasonNoIPSCForm       = "no_ipsc_form"
-	ReasonFrameType3       = "frame_type_3"
-	ReasonFEC              = "fec_uncorrectable"
-	ReasonSlotType         = "slot_type"
-	ReasonStreamID         = "stream_id_range"
-	ReasonBuild            = "build_failed"
-	ReasonEncode           = "encode_failed"
-	ReasonDataInVoice      = "data_in_voice"
-	ReasonUndecodable      = "undecodable"
-	ReasonSlotBusy         = "slot_busy"
-	ReasonSlotLocked       = "slot_locked"
-	ReasonTalkgroupRefused = "talkgroup_refused"
+	ReasonInvalidDataType     = "invalid_data_type"
+	ReasonNoIPSCForm          = "no_ipsc_form"
+	ReasonFrameType3          = "frame_type_3"
+	ReasonFEC                 = "fec_uncorrectable"
+	ReasonSlotType            = "slot_type"
+	ReasonStreamID            = "stream_id_range"
+	ReasonBuild               = "build_failed"
+	ReasonEncode              = "encode_failed"
+	ReasonDataInVoice         = "data_in_voice"
+	ReasonUndecodable         = "undecodable"
+	ReasonSlotBusy            = "slot_busy"
+	ReasonSlotLocked          = "slot_locked"
+	ReasonTalkgroupRefused    = "talkgroup_refused"
+	ReasonTalkgroupRestricted = "talkgroup_restricted"
 )
 
 func sentenceFormat(reason string) string {
@@ -78,6 +79,8 @@ func sentenceFormat(reason string) string {
 		return "%s keeps that slot for listed users."
 	case ReasonTalkgroupRefused:
 		return "%s does not carry that talkgroup."
+	case ReasonTalkgroupRestricted:
+		return "%s is not approved for that talkgroup."
 	default:
 		return "the burst could not be prepared for %s."
 	}
@@ -89,7 +92,7 @@ func Reasons() []string {
 		ReasonInvalidDataType, ReasonNoIPSCForm, ReasonFrameType3, ReasonFEC,
 		ReasonSlotType, ReasonStreamID, ReasonBuild, ReasonEncode,
 		ReasonDataInVoice, ReasonUndecodable, ReasonSlotBusy,
-		ReasonSlotLocked, ReasonTalkgroupRefused,
+		ReasonSlotLocked, ReasonTalkgroupRefused, ReasonTalkgroupRestricted,
 	}
 }
 

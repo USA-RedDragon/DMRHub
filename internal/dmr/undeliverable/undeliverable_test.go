@@ -29,19 +29,20 @@ import (
 func TestEveryReasonIsAPlainSentence(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
-		undeliverable.ReasonInvalidDataType:  "The burst for IPSC repeater 314926 had an invalid data type.",
-		undeliverable.ReasonNoIPSCForm:       "IPSC repeater 314926 cannot carry this kind of burst.",
-		undeliverable.ReasonFrameType3:       "The burst for IPSC repeater 314926 had an unknown frame type.",
-		undeliverable.ReasonFEC:              "The burst for IPSC repeater 314926 was too damaged to repair.",
-		undeliverable.ReasonSlotType:         "The burst could not be rebuilt for IPSC repeater 314926.",
-		undeliverable.ReasonStreamID:         "The call ID does not fit the link to IPSC repeater 314926.",
-		undeliverable.ReasonBuild:            "The burst could not be built for IPSC repeater 314926.",
-		undeliverable.ReasonEncode:           "The burst could not be encoded for IPSC repeater 314926.",
-		undeliverable.ReasonDataInVoice:      "A data burst for IPSC repeater 314926 came in the middle of a voice call.",
-		undeliverable.ReasonUndecodable:      "The burst for IPSC repeater 314926 could not be read.",
-		undeliverable.ReasonSlotBusy:         "IPSC repeater 314926 was busy on that slot.",
-		undeliverable.ReasonSlotLocked:       "IPSC repeater 314926 keeps that slot for listed users.",
-		undeliverable.ReasonTalkgroupRefused: "IPSC repeater 314926 does not carry that talkgroup.",
+		undeliverable.ReasonInvalidDataType:     "The burst for IPSC repeater 314926 had an invalid data type.",
+		undeliverable.ReasonNoIPSCForm:          "IPSC repeater 314926 cannot carry this kind of burst.",
+		undeliverable.ReasonFrameType3:          "The burst for IPSC repeater 314926 had an unknown frame type.",
+		undeliverable.ReasonFEC:                 "The burst for IPSC repeater 314926 was too damaged to repair.",
+		undeliverable.ReasonSlotType:            "The burst could not be rebuilt for IPSC repeater 314926.",
+		undeliverable.ReasonStreamID:            "The call ID does not fit the link to IPSC repeater 314926.",
+		undeliverable.ReasonBuild:               "The burst could not be built for IPSC repeater 314926.",
+		undeliverable.ReasonEncode:              "The burst could not be encoded for IPSC repeater 314926.",
+		undeliverable.ReasonDataInVoice:         "A data burst for IPSC repeater 314926 came in the middle of a voice call.",
+		undeliverable.ReasonUndecodable:         "The burst for IPSC repeater 314926 could not be read.",
+		undeliverable.ReasonSlotBusy:            "IPSC repeater 314926 was busy on that slot.",
+		undeliverable.ReasonSlotLocked:          "IPSC repeater 314926 keeps that slot for listed users.",
+		undeliverable.ReasonTalkgroupRefused:    "IPSC repeater 314926 does not carry that talkgroup.",
+		undeliverable.ReasonTalkgroupRestricted: "IPSC repeater 314926 is not approved for that talkgroup.",
 	}
 	assert.Len(t, undeliverable.Reasons(), len(want))
 	for _, reason := range undeliverable.Reasons() {

@@ -111,7 +111,40 @@ func (h *Hub) talkgroupRefused(r *repeaterRules, tg uint) bool {
 	return !ok
 }
 
+type talkgroupAccess struct {
+	restricted bool
+	approved   map[uint]struct{}
+}
+
+func (h *Hub) loadTalkgroupAccess(tg uint) (*talkgroupAccess, error) {
+	restricted, repeaters, err := models.TalkgroupAccess(h.db, tg)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // TalkgroupAccess wraps its errors
+	}
+	a := &talkgroupAccess{restricted: restricted}
+	for _, id := range repeaters {
+		addRule(&a.approved, id)
+	}
+	return a, nil
+}
+
+func (h *Hub) mayLink(repeaterID, tg uint) bool {
+	a, err := h.tgAccess.Get(tg)
+	if err != nil {
+		slog.Error("Cannot read the access of a talkgroup", "talkgroupID", tg, "error", err)
+		return true
+	}
+	if !a.restricted {
+		return true
+	}
+	_, ok := a.approved[repeaterID]
+	return ok
+}
+
 func (h *Hub) refusal(repeaterID uint, slot bool, packet models.Packet, out bool) string {
+	if packet.GroupCall && packet.Dst != unlinkTalkgroup && !h.mayLink(repeaterID, packet.Dst) {
+		return undeliverable.ReasonTalkgroupRestricted
+	}
 	r := h.rulesOf(repeaterID)
 	if r == nil {
 		return ""

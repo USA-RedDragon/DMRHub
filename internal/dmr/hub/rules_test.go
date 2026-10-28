@@ -301,3 +301,67 @@ func TestARuleEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
 		assert.False(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
 	})
 }
+
+func (e *rulesEnv) setAccess(t *testing.T, tg uint, restricted bool, repeaters ...uint) {
+	t.Helper()
+	require.NoError(t, models.SetTalkgroupAccess(e.db, tg, restricted, repeaters))
+	e.hub.TalkgroupChanged(tg)
+}
+
+func TestARestrictedTalkgroupReachesOnlyApprovedRepeaters(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		e.setAccess(t, 1, true, ruleSender)
+		assert.False(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}), "out")
+		e.setAccess(t, 1, true, ruleReceiver)
+		assert.False(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}), "in")
+		e.setAccess(t, 1, true, ruleSender, ruleReceiver)
+		assert.True(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
+		e.setAccess(t, 1, false)
+		assert.True(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}), "an open talkgroup")
+	})
+}
+
+func TestARestrictedTalkgroupLinksDynamicallyOnlyToApprovedRepeaters(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		e.setAccess(t, 2, true, ruleSender)
+		dynamic := func(rpt uint) *uint {
+			t.Helper()
+			var r models.Repeater
+			require.NoError(t, e.db.First(&r, rpt).Error)
+			return r.TS1DynamicTalkgroupID
+		}
+		e.hub.LinkDynamicTalkgroup(context.Background(), ruleReceiver, 2, false)
+		assert.Nil(t, dynamic(ruleReceiver))
+		e.hub.LinkDynamicTalkgroup(context.Background(), ruleSender, 2, false)
+		if assert.NotNil(t, dynamic(ruleSender)) {
+			assert.EqualValues(t, 2, *dynamic(ruleSender))
+		}
+	})
+}
+
+func TestATalkgroupAccessEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		other := newRulesHub(t, e.db, e.ps, e.kv)
+		assert.True(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
+		changed := make(chan struct{}, 1)
+		t.Cleanup(e.hub.OnTalkgroupChange(func(id uint) {
+			if id == 1 {
+				select {
+				case changed <- struct{}{}:
+				default:
+				}
+			}
+		}))
+		require.NoError(t, models.SetTalkgroupAccess(e.db, 1, true, []uint{ruleSender}))
+		other.TalkgroupChanged(1)
+		select {
+		case <-changed:
+		case <-time.After(failAfter):
+			require.FailNow(t, "the change notice did not arrive")
+		}
+		assert.False(t, e.carried(t, burst{from: ruleSender, src: otherUser, dst: 1}))
+	})
+}

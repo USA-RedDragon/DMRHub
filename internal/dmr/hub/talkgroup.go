@@ -119,6 +119,10 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 	if currentDynTGID != nil && *currentDynTGID == talkgroupID {
 		return
 	}
+	if !h.mayLink(repeaterID, talkgroupID) {
+		slog.Info("Not linking a restricted talkgroup to a repeater that it does not approve", "repeaterID", repeaterID, "talkgroupID", talkgroupID)
+		return
+	}
 
 	talkgroup, err := models.FindTalkgroupByID(h.db, talkgroupID)
 	if err != nil {

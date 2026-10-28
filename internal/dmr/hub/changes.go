@@ -147,6 +147,7 @@ func (h *Hub) announce(topic string, id uint) {
 func (h *Hub) applyChange(topic string, id uint) {
 	switch topic {
 	case talkgroupChangedTopic:
+		h.tgAccess.Reload(id)
 		h.noteTalkgroup(id)
 		h.watchers.call(talkgroupChangedTopic, id)
 	case userChangedTopic:

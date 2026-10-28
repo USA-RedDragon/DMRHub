@@ -36,6 +36,8 @@ interface SettingsState {
   openBridgeEnabled: boolean;
   passwordResetEnabled: boolean;
   radioIDValidation: boolean;
+  registration: string;
+  visibility: string;
   mmdvmPort: number;
   ipscPort: number;
   openBridgePort: number;
@@ -65,6 +67,8 @@ export const useSettingsStore = defineStore('settings', {
     openBridgeEnabled: false,
     passwordResetEnabled: false,
     radioIDValidation: false,
+    registration: 'open',
+    visibility: 'public',
     mmdvmPort: 62031,
     ipscPort: 50000,
     openBridgePort: 62035,
@@ -82,6 +86,8 @@ export const useSettingsStore = defineStore('settings', {
         this.openBridgeEnabled = res.data?.openbridge ?? false;
         this.passwordResetEnabled = res.data?.password_reset ?? false;
         this.radioIDValidation = res.data?.radio_id_validation ?? false;
+        this.registration = res.data?.registration ?? 'open';
+        this.visibility = res.data?.visibility ?? 'public';
         this.mmdvmPort = res.data?.mmdvm_port || 62031;
         this.ipscPort = res.data?.ipsc_port || 50000;
         this.openBridgePort = res.data?.openbridge_port || 62035;

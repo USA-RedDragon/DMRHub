@@ -21,7 +21,18 @@
 
 <template>
   <div>
+    <p v-if="settingsStore.registration === 'closed'" class="text-center text-muted-foreground" data-test="register-closed">
+      Registration is closed.
+    </p>
+    <p
+      v-else-if="settingsStore.registration === 'invite' && !invite"
+      class="text-center text-muted-foreground"
+      data-test="register-invite-only"
+    >
+      Registration needs an invite.
+    </p>
     <UserRegistrationCard
+      v-else
       :email-mode="settingsStore.passwordResetEnabled ? 'ask' : 'off'"
       @register="handleRegister"
     />
@@ -47,11 +58,12 @@ export default {
   data: function() {
     return {
       settingsStore: useSettingsStore(),
+      invite: new URLSearchParams(window.location.hash.replace(/^#/, '')).get('invite') ?? '',
     };
   },
   methods: {
     handleRegister(data: Record<string, unknown>) {
-      API.post('/users', data)
+      API.post('/users', this.invite ? { ...data, invite: this.invite } : data)
         .then((res) => {
           this.$toast.add({
             severity: 'success',

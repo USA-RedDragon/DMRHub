@@ -79,3 +79,46 @@ describe('RegisterPage email', () => {
     expect(add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'error', detail: 'Username is the callsign of another user' }));
   });
 });
+
+describe('RegisterPage modes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.location.hash = '';
+  });
+
+  const mountWith = async (registration: string) => {
+    mockAPI.get.mockResolvedValue({ data: { registration } });
+    mockAPI.post.mockResolvedValue({ data: { message: 'ok' } });
+    const wrapper = mount(RegisterPage, {
+      global: { plugins: [createPinia()], mocks: { $toast: { add: vi.fn() }, $router: { push: vi.fn() } } },
+    });
+    await flushPromises();
+    return wrapper;
+  };
+
+  it('shows no form while registration is closed', async () => {
+    const wrapper = await mountWith('closed');
+    expect(wrapper.find('[data-test="register-closed"]').text()).toBe('Registration is closed.');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it('shows no form without an invite while registration needs one', async () => {
+    const wrapper = await mountWith('invite');
+    expect(wrapper.find('[data-test="register-invite-only"]').text()).toBe('Registration needs an invite.');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it('sends the invite of the link', async () => {
+    window.location.hash = '#invite=4f1c0e9a7b2d43e8a1c5f60b9d7e2a13';
+    const wrapper = await mountWith('invite');
+    await wrapper.find('input#dmr_id').setValue('3100001');
+    await wrapper.find('input#username').setValue('n0call');
+    await wrapper.find('input#callsign').setValue('N0CALL');
+    await wrapper.find('input#password').setValue('a long unique password');
+    await wrapper.find('input#confirmPassword').setValue('a long unique password');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenCalledWith('/users', expect.objectContaining({ invite: '4f1c0e9a7b2d43e8a1c5f60b9d7e2a13' }));
+  });
+});
+

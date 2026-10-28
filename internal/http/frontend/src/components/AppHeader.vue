@@ -237,6 +237,16 @@
                 RadioID Drift
               </router-link>
               <router-link
+                v-if="settingsStore.registration === 'invite'"
+                to="/admin/invites"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/invites' }"
+                @click="mobileOpen = false"
+              >
+                <UserPlus class="h-4 w-4" />
+                Invites
+              </router-link>
+              <router-link
                 to="/admin/messages"
                 class="mobile-nav-link"
                 :class="{ active: route.path === '/admin/messages' }"
@@ -244,6 +254,15 @@
               >
                 <Mail class="h-4 w-4" />
                 Messages
+              </router-link>
+              <router-link
+                to="/admin/message-access"
+                class="mobile-nav-link"
+                :class="{ active: route.path === '/admin/message-access' }"
+                @click="mobileOpen = false"
+              >
+                <Mail class="h-4 w-4" />
+                Message access
               </router-link>
               <router-link
                 to="/admin/plugins"
@@ -269,6 +288,7 @@
             <Separator class="my-1" />
             <template v-if="!userStore.loggedIn">
               <router-link
+                v-if="settingsStore.registration !== 'closed'"
                 to="/register"
                 class="mobile-nav-link"
                 @click="mobileOpen = false"
@@ -525,6 +545,15 @@
                   RadioID Drift
                 </router-link>
               </DropdownMenuItem>
+              <DropdownMenuItem v-if="settingsStore.registration === 'invite'" as-child>
+                <router-link
+                  to="/admin/invites"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Invites
+                </router-link>
+              </DropdownMenuItem>
               <DropdownMenuItem as-child>
                 <router-link
                   to="/admin/messages"
@@ -532,6 +561,15 @@
                   @click="closeMenus"
                 >
                   Messages
+                </router-link>
+              </DropdownMenuItem>
+              <DropdownMenuItem as-child>
+                <router-link
+                  to="/admin/message-access"
+                  class="dropdown-link"
+                  @click="closeMenus"
+                >
+                  Message access
                 </router-link>
               </DropdownMenuItem>
               <DropdownMenuItem as-child>
@@ -560,7 +598,7 @@
       <!-- Right side: auth -->
       <div class="ml-auto hidden md:flex items-center gap-2">
         <template v-if="!userStore.loggedIn">
-          <router-link to="/register" class="desktop-nav-link">
+          <router-link v-if="settingsStore.registration !== 'closed'" to="/register" class="desktop-nav-link">
             Register
           </router-link>
           <router-link to="/login" class="desktop-nav-link">

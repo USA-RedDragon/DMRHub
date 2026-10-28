@@ -46,4 +46,18 @@ describe('AppHeader', () => {
       expect(source.slice(i - 160, i)).toContain('v-if="settingsStore.radioIDValidation"');
     }
   });
+
+  it('shows Invites only while registration is by invite, and Register only while it is not closed', () => {
+    const invites = [...source.matchAll(/to="\/admin\/invites"/g)].map((m) => m.index!);
+    expect(invites).toHaveLength(2);
+    for (const i of invites) {
+      expect(source.slice(i - 160, i)).toContain("settingsStore.registration === 'invite'");
+    }
+    const register = [...source.matchAll(/to="\/register"/g)].map((m) => m.index!);
+    expect(register).toHaveLength(2);
+    for (const i of register) {
+      expect(source.slice(i - 80, i)).toContain("settingsStore.registration !== 'closed'");
+    }
+    expect([...source.matchAll(/to="\/admin\/message-access"/g)]).toHaveLength(2);
+  });
 });

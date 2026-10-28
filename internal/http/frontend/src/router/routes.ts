@@ -263,6 +263,16 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/admin/RadioIDDriftPage.vue'),
     },
     {
+      path: '/admin/invites',
+      name: 'AdminInvites',
+      component: () => import('@/views/admin/InvitesPage.vue'),
+    },
+    {
+      path: '/admin/message-access',
+      name: 'AdminMessageAccess',
+      component: () => import('@/views/admin/MessageAccessPage.vue'),
+    },
+    {
       path: '/admin/messages',
       name: 'AdminMessages',
       component: () => import('@/views/admin/MessagesPage.vue'),

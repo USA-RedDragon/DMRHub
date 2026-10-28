@@ -36,7 +36,9 @@ When you log in as an admin, the navigation bar has an **Admin** menu with these
 | **Peers** | `<siteurl>/admin/peers` | Add OpenBridge peers. The item shows only when OpenBridge is on. See [OpenBridge peers](openbridge.md). |
 | **Users** | `<siteurl>/admin/users` | Edit, suspend and delete users. See [Users](users.md). |
 | **User Approvals** | `<siteurl>/admin/users/approval` | Approve new users. See [Users](users.md#approve-new-users). |
+| **Invites** | `<siteurl>/admin/invites` | Make invite links. It shows only while registration is by invite. See [Invite a user](users.md#invite-a-user). |
 | **Messages** | `<siteurl>/admin/messages` | Search all stored messages. See [Messages and retention](messages.md). |
+| **Message access** | `<siteurl>/admin/message-access` | See which admin saw whose messages, and when. See [Message access log](messages.md#message-access-log). |
 | **Plugins** | `<siteurl>/admin/plugins` | Add and change plugins. See [Plugins](../plugins.md). |
 | **Setup** | `<siteurl>/admin/setup` | Change the settings. See [The Setup page](configuration.md#the-setup-page). |
 

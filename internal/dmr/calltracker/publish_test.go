@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -52,29 +53,31 @@ func (p slowPubSub) Publish(topic string, message []byte) error {
 // still reach the other replicas.
 func TestMarksForOtherReplicasWaitOnNoPublish(t *testing.T) {
 	t.Parallel()
-	database, ps, kvStore := trackerDeps(t)
-	ct := calltracker.NewCallTracker(database, slowPubSub{ps}, kvStore)
-	t.Cleanup(ct.Stop)
-	undeliverable := ps.Subscribe("calltracker:undeliverable")
-	t.Cleanup(func() { _ = undeliverable.Close() })
-	converted := ps.Subscribe("calltracker:converted")
-	t.Cleanup(func() { _ = converted.Close() })
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		ct := calltracker.NewCallTracker(database, slowPubSub{ps}, kvStore)
+		t.Cleanup(ct.Stop)
+		undeliverable := ps.Subscribe("calltracker:undeliverable")
+		t.Cleanup(func() { _ = undeliverable.Close() })
+		converted := ps.Subscribe("calltracker:converted")
+		t.Cleanup(func() { _ = converted.Close() })
 
-	p := models.Packet{StreamID: 777, Src: userA, Dst: tgID, GroupCall: true}
-	start := time.Now()
-	ct.Undeliverable(p, "ipsc:311304200:slot_busy")
-	ct.Converted(p, "codec2", "repeater:311860")
-	waited := time.Since(start)
-	t.Logf("marking two bursts waited %v with %v per publish", waited, slowPublish)
-	assert.Less(t, waited, 20*time.Millisecond, "a mark waited on pubsub")
+		p := models.Packet{StreamID: 777, Src: userA, Dst: tgID, GroupCall: true}
+		start := time.Now()
+		ct.Undeliverable(p, "ipsc:311304200:slot_busy")
+		ct.Converted(p, "codec2", "repeater:311860")
+		waited := time.Since(start)
+		t.Logf("marking two bursts waited %v with %v per publish", waited, slowPublish)
+		assert.Less(t, waited, 20*time.Millisecond, "a mark waited on pubsub")
 
-	for name, sub := range map[string]pubsub.Subscription{"undeliverable": undeliverable, "converted": converted} {
-		select {
-		case <-sub.Channel():
-		case <-time.After(5 * time.Second):
-			require.Fail(t, "the mark did not reach the other replicas", name)
+		for name, sub := range map[string]pubsub.Subscription{"undeliverable": undeliverable, "converted": converted} {
+			select {
+			case <-sub.Channel():
+			case <-time.After(5 * time.Second):
+				require.Fail(t, "the mark did not reach the other replicas", name)
+			}
 		}
-	}
+	})
 }
 
 // pausedPubSub acts as a Redis that stops while paused is set. With
@@ -108,19 +111,23 @@ func (p *pausedPubSub) Publish(topic string, message []byte) error {
 // every call on it.
 func TestAPausedRedisHoldsNoCallTracking(t *testing.T) {
 	t.Parallel()
-	database, ps, kvStore := trackerDeps(t)
-	paused := &pausedPubSub{PubSub: ps}
-	ct := calltracker.NewCallTracker(database, paused, kvStore)
-	t.Cleanup(ct.Stop)
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		paused := &pausedPubSub{PubSub: ps}
+		ct := calltracker.NewCallTracker(database, paused, kvStore)
+		t.Cleanup(ct.Stop)
 
-	paused.paused.Store(true)
-	start := time.Now()
-	newSender(t, ct, userA, tgID, true, 801).voiceCall(1, true)
-	ct.Flush()
-	waited := time.Since(start)
-	t.Logf("tracking a call of 8 bursts took %v with %v per publish, %d publishes", waited, slowPublish, paused.calls.Load())
-	assert.Less(t, waited, slowPublish/2, "tracking waited on pubsub")
-	assert.Zero(t, ct.Dropped(), "the tracker dropped packets")
+		paused.paused.Store(true)
+		start := time.Now()
+		newSender(t, ct, userA, tgID, true, 801).voiceCall(1, true)
+		ct.Flush()
+		waited := time.Since(start)
+		t.Logf("tracking a call of 8 bursts took %v with %v per publish, %d publishes", waited, slowPublish, paused.calls.Load())
+		assert.Less(t, waited, slowPublish/2, "tracking waited on pubsub")
+		assert.Zero(t, ct.Dropped(), "the tracker dropped packets")
+		paused.paused.Store(false)
+		time.Sleep(slowPublish)
+	})
 }
 
 // TestCallUpdatesThatDidNotReachRedisAreSentAgain tracks a group call
@@ -129,61 +136,63 @@ func TestAPausedRedisHoldsNoCallTracking(t *testing.T) {
 // the call, in order.
 func TestCallUpdatesThatDidNotReachRedisAreSentAgain(t *testing.T) {
 	t.Parallel()
-	database, ps, kvStore := trackerDeps(t)
-	paused := &pausedPubSub{PubSub: ps}
-	ct := calltracker.NewCallTracker(database, paused, kvStore)
-	t.Cleanup(ct.Stop)
-	sub := ps.Subscribe("calls")
-	t.Cleanup(func() { _ = sub.Close() })
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		paused := &pausedPubSub{PubSub: ps}
+		ct := calltracker.NewCallTracker(database, paused, kvStore)
+		t.Cleanup(ct.Stop)
+		sub := ps.Subscribe("calls")
+		t.Cleanup(func() { _ = sub.Close() })
 
-	updates := func() []models.Call {
-		var got []models.Call
-		for {
-			select {
-			case msg := <-sub.Channel():
-				var c models.Call
-				require.NoError(t, json.Unmarshal(msg, &c))
-				got = append(got, c)
-				if !c.Active {
+		updates := func() []models.Call {
+			var got []models.Call
+			for {
+				select {
+				case msg := <-sub.Channel():
+					var c models.Call
+					require.NoError(t, json.Unmarshal(msg, &c))
+					got = append(got, c)
+					if !c.Active {
+						return got
+					}
+				case <-time.After(10 * time.Second):
 					return got
 				}
-			case <-time.After(10 * time.Second):
-				return got
 			}
 		}
-	}
-	call := func(stream uint) {
-		s := newSender(t, ct, userA, tgID, true, stream)
-		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
-		for v := uint(0); v <= 5; v++ {
+		call := func(stream uint) {
+			s := newSender(t, ct, userA, tgID, true, stream)
+			s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+			for v := uint(0); v <= 5; v++ {
+				time.Sleep(20 * time.Millisecond)
+				frame := dmrconst.FrameVoice
+				if v == 0 {
+					frame = dmrconst.FrameVoiceSync
+				}
+				s.send(frame, v, layer2.RawBurst{})
+			}
 			time.Sleep(20 * time.Millisecond)
-			frame := dmrconst.FrameVoice
-			if v == 0 {
-				frame = dmrconst.FrameVoiceSync
-			}
-			s.send(frame, v, layer2.RawBurst{})
+			s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+			ct.Flush()
 		}
-		time.Sleep(20 * time.Millisecond)
-		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
-		ct.Flush()
-	}
 
-	call(802)
-	want := updates()
-	require.NotEmpty(t, want)
+		call(802)
+		want := updates()
+		require.NotEmpty(t, want)
 
-	paused.notSent.Store(true)
-	paused.paused.Store(true)
-	call(803)
-	time.Sleep(300 * time.Millisecond)
-	paused.paused.Store(false)
-	got := updates()
-	t.Logf("the web clients got %d of %d updates after %d failed publishes", len(got), len(want), paused.calls.Load())
-	require.Len(t, got, len(want), "updates missing or twice")
-	durations := make([]time.Duration, len(got))
-	for i, c := range got {
-		durations[i] = c.Duration
-	}
-	assert.IsNonDecreasing(t, durations, "the updates came out of order")
-	assert.False(t, got[len(got)-1].Active, "the last update is not the end of the call")
+		paused.notSent.Store(true)
+		paused.paused.Store(true)
+		call(803)
+		time.Sleep(300 * time.Millisecond)
+		paused.paused.Store(false)
+		got := updates()
+		t.Logf("the web clients got %d of %d updates after %d failed publishes", len(got), len(want), paused.calls.Load())
+		require.Len(t, got, len(want), "updates missing or twice")
+		durations := make([]time.Duration, len(got))
+		for i, c := range got {
+			durations[i] = c.Duration
+		}
+		assert.IsNonDecreasing(t, durations, "the updates came out of order")
+		assert.False(t, got[len(got)-1].Active, "the last update is not the end of the call")
+	})
 }

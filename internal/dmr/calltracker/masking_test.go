@@ -22,11 +22,13 @@ package calltracker_test
 import (
 	"encoding/json"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -39,27 +41,29 @@ import (
 
 func TestMaskedSMSHidesItsResponseAndDuration(t *testing.T) {
 	t.Parallel()
-	ct, database, _ := newTracker(t)
-	store := messages.NewStore(database, memKV(t))
-	ct.SetDataObserver(store)
-	t.Cleanup(store.Stop)
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+		store := messages.NewStore(database, memKV(t))
+		ct.SetDataObserver(store)
+		t.Cleanup(store.Stop)
 
-	bursts := smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Confirmed: true, Body: []byte("secret")})
-	newSender(t, ct, userB, userA, false, 7101).data(bursts...)
-	newSender(t, ct, userA, userB, false, 7102).data(confirmedACK(t, bursts)...)
-	calls := waitDone(t, ct, database, 2)
-	store.Flush()
+		bursts := smsBursts(t, &sms.Text{Format: sms.FormatTMS, Source: uint32(userB), Destination: uint32(userA), Confirmed: true, Body: []byte("secret")})
+		newSender(t, ct, userB, userA, false, 7101).data(bursts...)
+		newSender(t, ct, userA, userB, false, 7102).data(confirmedACK(t, bursts)...)
+		calls := waitDone(t, ct, database, 2)
+		store.Flush()
 
-	var viewer models.User
-	require.NoError(t, database.First(&viewer, userB).Error)
-	require.False(t, viewer.SMSStorageEnabled)
-	rows, err := apimodels.NewWSCallResponsesFor(database, &viewer, models.CurrentSMSWindow(), calls)
-	require.NoError(t, err)
-	msg, resp := rows[0], rows[1]
-	assert.Empty(t, msg.SubKind, "the SMS row is masked")
-	assert.Zero(t, msg.Duration, "the duration of a masked row tells its size")
-	assert.Empty(t, resp.SubKind, "the response row tells that the masked row was answered")
-	assert.Equal(t, models.CallResponseNone, resp.Response, "the response row tells the response of the masked SMS")
+		var viewer models.User
+		require.NoError(t, database.First(&viewer, userB).Error)
+		require.False(t, viewer.SMSStorageEnabled)
+		rows, err := apimodels.NewWSCallResponsesFor(database, &viewer, models.CurrentSMSWindow(), calls)
+		require.NoError(t, err)
+		msg, resp := rows[0], rows[1]
+		assert.Empty(t, msg.SubKind, "the SMS row is masked")
+		assert.Zero(t, msg.Duration, "the duration of a masked row tells its size")
+		assert.Empty(t, resp.SubKind, "the response row tells that the masked row was answered")
+		assert.Equal(t, models.CallResponseNone, resp.Response, "the response row tells the response of the masked SMS")
+	})
 }
 
 type slowObserver struct {
@@ -97,39 +101,41 @@ func TestPublicDataRowIsMaskedBeforeItsMessageIsStored(t *testing.T) {
 	for _, delay := range []time.Duration{0, 1500 * time.Millisecond} {
 		t.Run(delay.String(), func(t *testing.T) {
 			t.Parallel()
-			ct, database, ps := newTracker(t)
-			store := messages.NewStore(database, memKV(t))
-			if delay == 0 {
-				ct.SetDataObserver(store)
-			} else {
-				ct.SetDataObserver(slowObserver{next: store, delay: delay})
-			}
-			t.Cleanup(store.Stop)
-			sub := ps.Subscribe("calls:public")
-			t.Cleanup(func() { _ = sub.Close() })
+			synctest.Test(t, func(t *testing.T) {
+				ct, database, ps := newTracker(t)
+				store := messages.NewStore(database, memKV(t))
+				if delay == 0 {
+					ct.SetDataObserver(store)
+				} else {
+					ct.SetDataObserver(slowObserver{next: store, delay: delay})
+				}
+				t.Cleanup(store.Stop)
+				sub := ps.Subscribe("calls:public")
+				t.Cleanup(func() { _ = sub.Close() })
 
-			newSender(t, ct, userB, tgID, true, 7103).data(groupShortData(t)...)
-			c := waitDone(t, ct, database, 1)[0]
-			require.Eventually(t, func() bool {
-				store.Flush()
-				var n int64
-				require.NoError(t, database.Model(&models.Message{}).Where("transmission_id = ?", c.ID).Count(&n).Error)
-				return n == 1
-			}, 5*time.Second, 20*time.Millisecond, "the hub stores the message of the row")
+				newSender(t, ct, userB, tgID, true, 7103).data(groupShortData(t)...)
+				c := waitDone(t, ct, database, 1)[0]
+				bubble.Eventually(t, func() bool {
+					store.Flush()
+					var n int64
+					require.NoError(t, database.Model(&models.Message{}).Where("transmission_id = ?", c.ID).Count(&n).Error)
+					return n == 1
+				}, 5*time.Second, 20*time.Millisecond, "the hub stores the message of the row")
 
-			select {
-			case raw := <-sub.Channel():
-				var row map[string]any
-				require.NoError(t, json.Unmarshal(raw, &row))
-				assert.Nil(t, row["sap"], "delay %v: a visitor sees the SAP of a row that carried a stored message", delay)
-				assert.InDelta(t, 0, row["octets"], 0, "delay %v: a visitor sees the size", delay)
-			case <-time.After(5 * time.Second):
-				t.Fatal("no public row")
-			}
+				select {
+				case raw := <-sub.Channel():
+					var row map[string]any
+					require.NoError(t, json.Unmarshal(raw, &row))
+					assert.Nil(t, row["sap"], "delay %v: a visitor sees the SAP of a row that carried a stored message", delay)
+					assert.InDelta(t, 0, row["octets"], 0, "delay %v: a visitor sees the size", delay)
+				case <-time.After(5 * time.Second):
+					t.Fatal("no public row")
+				}
 
-			rows, err := apimodels.NewWSCallResponsesFor(database, nil, models.CurrentSMSWindow(), []models.Call{c})
-			require.NoError(t, err)
-			assert.Nil(t, rows[0].SAP, "REST masks the row once the message is stored")
+				rows, err := apimodels.NewWSCallResponsesFor(database, nil, models.CurrentSMSWindow(), []models.Call{c})
+				require.NoError(t, err)
+				assert.Nil(t, rows[0].SAP, "REST masks the row once the message is stored")
+			})
 		})
 	}
 }
@@ -147,25 +153,27 @@ func confirmedShortData(t *testing.T) []layer2.RawBurst {
 
 func TestRetryRowOfAStoredMessageIsMasked(t *testing.T) {
 	t.Parallel()
-	ct, database, _ := newTracker(t)
-	store := messages.NewStore(database, memKV(t))
-	ct.SetDataObserver(store)
-	t.Cleanup(store.Stop)
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+		store := messages.NewStore(database, memKV(t))
+		ct.SetDataObserver(store)
+		t.Cleanup(store.Stop)
 
-	bursts := confirmedShortData(t)
-	newSender(t, ct, userB, userA, false, 7201).data(bursts...)
-	waitDone(t, ct, database, 1)
-	newSender(t, ct, userB, userA, false, 7202).data(bursts...)
-	calls := waitDone(t, ct, database, 2)
-	store.Flush()
+		bursts := confirmedShortData(t)
+		newSender(t, ct, userB, userA, false, 7201).data(bursts...)
+		waitDone(t, ct, database, 1)
+		newSender(t, ct, userB, userA, false, 7202).data(bursts...)
+		calls := waitDone(t, ct, database, 2)
+		store.Flush()
 
-	var viewer models.User
-	require.NoError(t, database.First(&viewer, userA).Error)
-	rows, err := apimodels.NewWSCallResponsesFor(database, &viewer, models.CurrentSMSWindow(), calls)
-	require.NoError(t, err)
-	for i, r := range rows {
-		assert.Nil(t, r.SAP, "row %d of the stored message shows its SAP", i)
-		assert.Zero(t, r.Octets, "row %d shows its size", i)
-		assert.False(t, r.Confirmed, "row %d shows its confirmed flag", i)
-	}
+		var viewer models.User
+		require.NoError(t, database.First(&viewer, userA).Error)
+		rows, err := apimodels.NewWSCallResponsesFor(database, &viewer, models.CurrentSMSWindow(), calls)
+		require.NoError(t, err)
+		for i, r := range rows {
+			assert.Nil(t, r.SAP, "row %d of the stored message shows its SAP", i)
+			assert.Zero(t, r.Octets, "row %d shows its size", i)
+			assert.False(t, r.Confirmed, "row %d shows its confirmed flag", i)
+		}
+	})
 }

@@ -22,6 +22,7 @@ package calltracker
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -38,34 +39,36 @@ import (
 
 func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 	t.Parallel()
-	defConfig, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	memdb.Use(&defConfig)
-	database, err := db.MakeDB(&defConfig)
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
-	require.NoError(t, err)
-	ct := NewCallTracker(database, ps, kvStore)
-	release := make(chan struct{})
-	t.Cleanup(func() {
-		ct.Stop()
-		sqlDB, _ := database.DB()
-		_ = sqlDB.Close()
-		_ = ps.Close()
-		_ = kvStore.Close()
+	synctest.Test(t, func(t *testing.T) {
+		defConfig, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(&defConfig)
+		database, err := db.MakeDB(&defConfig)
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+		require.NoError(t, err)
+		kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+		require.NoError(t, err)
+		ct := NewCallTracker(database, ps, kvStore)
+		release := make(chan struct{})
+		t.Cleanup(func() {
+			ct.Stop()
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+			_ = ps.Close()
+			_ = kvStore.Close()
+		})
+
+		p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
+		idx := chanKey{server: models.RepeaterTypeMMDVM, repeater: p.Repeater, slot: p.Slot}.shard()
+		ct.shards[idx].in <- task{fn: func(*shard) { <-release }}
+
+		start := time.Now()
+		for range shardDepth * 2 {
+			ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
+		}
+		assert.Less(t, time.Since(start), time.Second, "Track must not wait for a busy worker")
+		assert.GreaterOrEqual(t, ct.Dropped(), uint64(shardDepth-1))
+		close(release)
 	})
-
-	p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
-	idx := chanKey{server: models.RepeaterTypeMMDVM, repeater: p.Repeater, slot: p.Slot}.shard()
-	ct.shards[idx].in <- task{fn: func(*shard) { <-release }}
-
-	start := time.Now()
-	for range shardDepth * 2 {
-		ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
-	}
-	assert.Less(t, time.Since(start), time.Second, "Track must not wait for a busy worker")
-	assert.GreaterOrEqual(t, ct.Dropped(), uint64(shardDepth-1))
-	close(release)
 }

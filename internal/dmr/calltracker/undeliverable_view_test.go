@@ -22,6 +22,7 @@ package calltracker_test
 import (
 	"encoding/json"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	dmrconst "github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -36,28 +37,30 @@ import (
 // who is not signed in sees none of the repeaters it was not sent to.
 func TestPublicCallShowsNoUndeliverable(t *testing.T) {
 	t.Parallel()
-	ct, database, ps := newTracker(t)
-	sub := ps.Subscribe("calls:public")
-	t.Cleanup(func() { _ = sub.Close() })
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, ps := newTracker(t)
+		sub := ps.Subscribe("calls:public")
+		t.Cleanup(func() { _ = sub.Close() })
 
-	s := newSender(t, ct, userA, tgID, true, 7201)
-	p := s.send(dmrconst.FrameDataSync, uint(enums.DataTypeIdle), burstOf(t, &pdu.PRFill{}))
-	ct.Undeliverable(p, "IPSC repeater 314926 was busy on that slot.")
-	c := waitDone(t, ct, database, 1)[0]
-	require.Len(t, c.Undeliverable, 1, "the row keeps the repeater")
+		s := newSender(t, ct, userA, tgID, true, 7201)
+		p := s.send(dmrconst.FrameDataSync, uint(enums.DataTypeIdle), burstOf(t, &pdu.PRFill{}))
+		ct.Undeliverable(p, "IPSC repeater 314926 was busy on that slot.")
+		c := waitDone(t, ct, database, 1)[0]
+		require.Len(t, c.Undeliverable, 1, "the row keeps the repeater")
 
-	seen := 0
-	for {
-		select {
-		case raw := <-sub.Channel():
-			var row map[string]any
-			require.NoError(t, json.Unmarshal(raw, &row))
-			seen++
-			assert.Empty(t, row["undeliverable"], "a visitor sees where the call was not sent: %s", raw)
-			assert.Empty(t, row["undeliverable_scope"], "a visitor sees where the call was not sent: %s", raw)
-		case <-time.After(2 * time.Second):
-			require.NotZero(t, seen, "no public row")
-			return
+		seen := 0
+		for {
+			select {
+			case raw := <-sub.Channel():
+				var row map[string]any
+				require.NoError(t, json.Unmarshal(raw, &row))
+				seen++
+				assert.Empty(t, row["undeliverable"], "a visitor sees where the call was not sent: %s", raw)
+				assert.Empty(t, row["undeliverable_scope"], "a visitor sees where the call was not sent: %s", raw)
+			case <-time.After(2 * time.Second):
+				require.NotZero(t, seen, "no public row")
+				return
+			}
 		}
-	}
+	})
 }

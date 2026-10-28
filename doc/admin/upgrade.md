@@ -7,6 +7,10 @@ This page tells how to upgrade DMRHub, what DMRHub does to the database when it 
 1. Read the release notes of each release between your version and the new one, on [GitHub Releases](https://github.com/USA-RedDragon/DMRHub/releases). To see your version, look at the first line of the log, for example `DMRHub - 1.3.16 (77d9c9f9...)`, or open `<siteurl>/api/v1/version`.
 2. Make a backup. See [Back up and restore](backups.md).
 
+## Changes in behavior
+
+- Dynamic talkgroups now expire. A dynamic talkgroup that has no call from its repeater for 15 minutes unlinks from its timeslot. Before, it stayed linked until another call or talkgroup 4000. To keep the old behavior, set the timeout to 0 on the **Routing** tab of the Setup page, or set `dmr.routing.dynamic-timeout` to `0s`. See [Routing settings](routing.md).
+
 ## Docker
 
 1. Pull the new image:

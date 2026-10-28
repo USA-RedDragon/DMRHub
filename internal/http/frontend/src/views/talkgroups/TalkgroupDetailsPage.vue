@@ -117,6 +117,8 @@
         </Card>
       </div>
 
+      <TalkgroupAccessCard v-if="canManage" :talkgroup-id="talkgroup.id" />
+
       <!-- Net Control -->
       <Card>
         <CardHeader>
@@ -251,6 +253,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import TalkgroupAccessCard from '@/components/TalkgroupAccessCard.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import {
@@ -307,6 +310,7 @@ export default {
     ShadButton,
     ShadInput,
     RelativeTimestamp,
+    TalkgroupAccessCard,
     User,
   },
   head: {
@@ -385,6 +389,12 @@ export default {
       if (user.admin) return true;
       const tg = this.talkgroup;
       return !!tg && [...(tg.admins ?? []), ...(tg.ncos ?? [])].some((u) => u.id === user.id);
+    },
+    canManage(): boolean {
+      const user = useUserStore();
+      if (!user.loggedIn) return false;
+      if (user.admin) return true;
+      return !!this.talkgroup && (this.talkgroup.admins ?? []).some((u) => u.id === user.id);
     },
     columns() {
       void this.now;

@@ -56,6 +56,7 @@ const activeNet = {
   id: 7, talkgroup_id: 3100, active: true, description: '', check_in_count: 0,
   started_by_user: { id: 3100002, callsign: 'N0NCO' }, start_time: '2026-10-26T00:00:00Z',
 };
+const access = { mode: 'approved', repeaters: [{ id: 311860, callsign: 'KI5VMF' }] };
 const scheduled = { id: 9, name: 'Weekly', day_of_week: 3, time_of_day: '19:00', timezone: 'America/Chicago', enabled: true };
 
 async function page(user: { loggedIn: boolean; id?: number; admin?: boolean }, active: boolean) {
@@ -63,7 +64,7 @@ async function page(user: { loggedIn: boolean; id?: number; admin?: boolean }, a
   setActivePinia(pinia);
   Object.assign(useUserStore(), { id: 0, admin: false, ...user });
   mockAPI.get.mockImplementation((url: string) =>
-    Promise.resolve({ data: url.startsWith('/lastheard') ? { calls: [], total: 0 } : talkgroup }));
+    Promise.resolve({ data: url.startsWith('/lastheard') ? { calls: [], total: 0 } : url.endsWith('/access') ? access : talkgroup }));
   mockNet.getNets!.mockResolvedValue({ data: { nets: active ? [activeNet] : [], total: active ? 1 : 0 } });
   mockNet.getScheduledNets!.mockResolvedValue({ data: { scheduled_nets: [scheduled], total: 1 } });
   const wrapper = mount(TalkgroupDetailsPage, {
@@ -128,6 +129,35 @@ describe('TalkgroupDetailsPage details', () => {
     expect(lastText).toContain('N0OWN');
     expect(lastText).toContain('N0NCO');
   });
+});
+
+describe('TalkgroupDetailsPage access', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  for (const [who, user] of [
+    ['a visitor', { loggedIn: false }],
+    ['a user who is not an admin of the talkgroup', { loggedIn: true, id: 3100001 }],
+    ['an NCO', { loggedIn: true, id: 3100002 }],
+  ] as const) {
+    it(`shows no access card to ${who}`, async () => {
+      await page(user, false);
+      expect(lastText).not.toContain('Who can link');
+      expect(mockAPI.get).not.toHaveBeenCalledWith('/talkgroups/3100/access');
+    });
+  }
+
+  for (const [who, user] of [
+    ['an admin of the talkgroup', { loggedIn: true, id: 3100003 }],
+    ['an admin', { loggedIn: true, id: 3100009, admin: true }],
+  ] as const) {
+    it(`shows the access card to ${who}`, async () => {
+      await page(user, false);
+      expect(lastText).toContain('Who can link');
+      expect(lastText).toContain('KI5VMF');
+    });
+  }
 });
 
 describe('TalkgroupDetailsPage scheduled nets', () => {

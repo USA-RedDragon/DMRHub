@@ -136,7 +136,7 @@ describe('Admin Setup page tabs', () => {
     expect(wrapper.find('[data-test="tab-ipsc"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="menu-ipsc"]').attributes('aria-current')).toBe('page');
     expect(wrapper.find('[data-test="menu-general"]').attributes('aria-current')).toBeUndefined();
-    expect(wrapper.text()).toContain('/admin/setup#ipsc');
+    expect(wrapper.text()).not.toContain('/admin/setup#ipsc');
     wrapper.unmount();
   });
 

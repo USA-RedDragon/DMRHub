@@ -113,7 +113,6 @@
       <section :data-test="`tab-${tab.id}`" :aria-labelledby="`tab-title-${tab.id}`">
         <div class="mb-3.5 flex flex-wrap items-end justify-between gap-2">
           <h2 :id="`tab-title-${tab.id}`" class="text-[22px] leading-tight font-bold">{{ tab.name }}</h2>
-          <span class="text-xs text-muted-foreground">Link: <code class="font-mono">/admin/setup#{{ tab.id }}</code></span>
         </div>
         <p v-if="tab.intro.length > 0" class="mb-4 max-w-[70ch] text-muted-foreground">
           <template v-for="(part, i) in tab.intro" :key="i">

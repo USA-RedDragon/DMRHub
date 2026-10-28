@@ -33,3 +33,29 @@ type TalkgroupPatch struct {
 type TalkgroupAdminAction struct {
 	UserIDs []uint `json:"user_ids"`
 }
+
+// The modes of TalkgroupAccess.
+const (
+	TalkgroupAccessOpen     = "open"
+	TalkgroupAccessApproved = "approved"
+)
+
+// RepeaterRef is a repeater inside another model: its ID and callsign only.
+type RepeaterRef struct {
+	ID       uint   `json:"id"`
+	Callsign string `json:"callsign"`
+}
+
+// TalkgroupAccess is who may link a talkgroup. Mode is open (every
+// repeater) or approved (only Repeaters).
+type TalkgroupAccess struct {
+	Mode      string        `json:"mode"`
+	Repeaters []RepeaterRef `json:"repeaters"`
+}
+
+// TalkgroupAccessPatch changes who may link a talkgroup. A field that is
+// left out keeps its value.
+type TalkgroupAccessPatch struct {
+	Mode      *string `json:"mode"`
+	Repeaters *[]uint `json:"repeaters"`
+}

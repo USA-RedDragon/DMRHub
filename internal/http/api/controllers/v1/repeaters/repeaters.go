@@ -253,6 +253,9 @@ func POSTRepeaterTalkgroups(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: fmt.Sprintf("talkgroup %d does not exist", missing)})
 		return
 	}
+	if !linkAllowed(c, db, repeaterID, linkedTalkgroups(&json, setTS1Dynamic, setTS2Dynamic)...) {
+		return
+	}
 
 	err = db.Model(repeater).Association("TS1StaticTalkgroups").Replace(json.TS1StaticTalkgroups)
 	if err != nil {
@@ -650,6 +653,10 @@ func POSTRepeaterLink(c *gin.Context) {
 			slog.Error("Error validating talkgroup", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error finding talkgroup"})
 		}
+		return
+	}
+
+	if !linkAllowed(c, db, repeater.ID, talkgroup.ID) {
 		return
 	}
 
@@ -1096,4 +1103,35 @@ func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {
 		return false
 	}
 	return user.Admin && user.Approved && !user.Suspended
+}
+
+func linkedTalkgroups(post *apimodels.RepeaterTalkgroupsPost, ts1Dynamic, ts2Dynamic bool) []uint {
+	ids := make([]uint, 0, len(post.TS1StaticTalkgroups)+len(post.TS2StaticTalkgroups)+2)
+	for _, tg := range post.TS1StaticTalkgroups {
+		ids = append(ids, tg.ID)
+	}
+	for _, tg := range post.TS2StaticTalkgroups {
+		ids = append(ids, tg.ID)
+	}
+	if ts1Dynamic && post.TS1DynamicTalkgroup.ID != 0 {
+		ids = append(ids, post.TS1DynamicTalkgroup.ID)
+	}
+	if ts2Dynamic && post.TS2DynamicTalkgroup.ID != 0 {
+		ids = append(ids, post.TS2DynamicTalkgroup.ID)
+	}
+	return ids
+}
+
+func linkAllowed(c *gin.Context, db *gorm.DB, repeaterID uint, tgs ...uint) bool {
+	refused, err := models.LinkRefused(db, repeaterID, tgs...)
+	if err != nil {
+		slog.Error("Error checking restricted talkgroups", "repeaterID", repeaterID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return false
+	}
+	if refused != 0 {
+		c.JSON(http.StatusForbidden, gin.H{errorKey: fmt.Sprintf("Talkgroup %d links only to approved repeaters", refused)})
+		return false
+	}
+	return true
 }

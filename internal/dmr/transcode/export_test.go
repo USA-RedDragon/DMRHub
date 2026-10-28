@@ -19,17 +19,21 @@
 
 package transcode
 
-import "time"
+import (
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
+)
 
 // SetClock makes the streams that s opens later measure the time left in
-// the budget of a burst with now in place of time.Now.
-func SetClock(s *Service, now func() time.Time) {
+// the budget of a burst on c.
+func SetClock(s *Service, c clock.Clock) {
 	tm := *s.timing.Load()
-	tm.now = now
+	tm.clock = c
 	s.timing.Store(&tm)
 }
 
 // StreamNow returns the time on the clock of s.
 func StreamNow(s *Stream) time.Time {
-	return s.now()
+	return s.clock.Now()
 }

@@ -312,8 +312,8 @@ func TestCloseClearsLostFrame(t *testing.T) {
 	srv := testutils.StartFakeAMBEServer(t)
 	svc := newService(t, srv.Addr())
 	svc.SetTiming(patientAttempt+5*delay/2, patientAttempt)
-	clock := &modelClock{at: time.Now()}
-	transcode.SetClock(svc, clock.now)
+	clock := newModelClock(0)
+	transcode.SetClock(svc, clock)
 	slots := ambeFrames(6 * layer2.VoiceSlotsPerBurst)
 	in := without(seqCall(t, voiceLC(t, enums.FIDStandardized), slots), 1+1)
 

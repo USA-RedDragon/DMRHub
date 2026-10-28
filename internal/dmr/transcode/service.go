@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/monotime"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder/codec2"
@@ -79,6 +80,7 @@ type ServerStatus struct {
 // server is one AMBE server and when it last answered.
 type server struct {
 	ServerConfig
+	clock    clock.Clock
 	answered atomic.Int64
 	cancel   context.CancelFunc
 	leases   *leases
@@ -88,7 +90,7 @@ type server struct {
 }
 
 func (s *server) answer() {
-	s.answered.Store(monotime.Now())
+	s.answered.Store(monotime.Of(s.clock.Now()))
 }
 
 // Service converts calls with the AMBE servers that SetServers sets. Each
@@ -107,15 +109,16 @@ type Service struct {
 
 type timing struct {
 	budget, attempt time.Duration
-	now             func() time.Time
+	clock           clock.Clock
 }
 
 // NewService returns a Service without an AMBE server that shares the
 // calls that hold each server in store. A nil store counts the calls of
-// this process only. Its calls use Budget and AttemptTimeout.
-func NewService(store kv.KV) *Service {
+// this process only. Its calls use Budget and AttemptTimeout, and measure
+// the time left in the budget of a burst on c.
+func NewService(store kv.KV, c clock.Clock) *Service {
 	s := &Service{kv: store}
-	s.timing.Store(&timing{budget: Budget, attempt: AttemptTimeout, now: time.Now})
+	s.timing.Store(&timing{budget: Budget, attempt: AttemptTimeout, clock: clock.Or(c)})
 	return s
 }
 
@@ -124,7 +127,7 @@ func NewService(store kv.KV) *Service {
 // answer. A test that checks what a conversion makes, and not when, gives
 // them room on a slow machine.
 func (s *Service) SetTiming(budget, attempt time.Duration) {
-	s.timing.Store(&timing{budget: budget, attempt: attempt, now: s.timing.Load().now})
+	s.timing.Store(&timing{budget: budget, attempt: attempt, clock: s.timing.Load().clock})
 }
 
 // SetServers sets the AMBE servers, in the order a call tries them. An
@@ -152,7 +155,7 @@ func (s *Service) SetServers(list []ServerConfig) {
 			continue
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		srv := &server{ServerConfig: c, cancel: cancel, leases: newLeases(s.kv, c)}
+		srv := &server{ServerConfig: c, clock: s.timing.Load().clock, cancel: cancel, leases: newLeases(s.kv, c)}
 		next = append(next, srv)
 		s.wg.Add(1)
 		go func() {
@@ -243,7 +246,7 @@ func (s *Service) NewStream(from, to Codec, mode codec2.Mode) (*Stream, error) {
 		return nil, err //nolint:wrapcheck
 	}
 	tm := s.timing.Load()
-	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt, now: tm.now, refused: &s.refused}, nil
+	return &Stream{servers: list, from: from, to: to, c2: c2, emb: embeddedLC{fid: FIDOf(to)}, pcm: make([]int16, 0, dvsi.FrameSamples), budget: tm.budget, attempt: tm.attempt, clock: tm.clock, refused: &s.refused}, nil
 }
 
 func warmCodec2() {
@@ -256,7 +259,7 @@ func warmCodec2() {
 }
 
 func probe(ctx context.Context, srv *server) {
-	t := time.NewTicker(ProbeInterval)
+	t := srv.clock.NewTicker(ProbeInterval)
 	defer t.Stop()
 	var conn net.Conn
 	defer func() {
@@ -265,7 +268,7 @@ func probe(ctx context.Context, srv *server) {
 		}
 	}()
 	for {
-		if n := srv.answered.Load(); (n == 0 || time.Since(monotime.Time(n)) >= ProbeInterval) && srv.leases.count(ctx) == 0 {
+		if n := srv.answered.Load(); (n == 0 || srv.clock.Since(monotime.Time(n)) >= ProbeInterval) && srv.leases.count(ctx) == 0 {
 			if conn == nil {
 				var d net.Dialer
 				if c, err := d.DialContext(ctx, "udp", srv.Addr); err == nil {
@@ -286,7 +289,7 @@ func probe(ctx context.Context, srv *server) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-t.C():
 		}
 	}
 }

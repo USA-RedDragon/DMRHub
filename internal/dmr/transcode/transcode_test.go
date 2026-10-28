@@ -24,9 +24,11 @@ import (
 	"math"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -132,8 +134,7 @@ func newServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) *tran
 	t.Helper()
 	s := newRealServers(t, store, list...)
 	s.SetTiming(3*patientAttempt, patientAttempt)
-	at := time.Now()
-	transcode.SetClock(s, func() time.Time { return at })
+	transcode.SetClock(s, clock.NewFake(time.Now()))
 	return s
 }
 
@@ -146,7 +147,7 @@ func newRealService(t *testing.T, addr string) *transcode.Service {
 
 func newRealServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) *transcode.Service {
 	t.Helper()
-	s := transcode.NewService(store)
+	s := transcode.NewService(store, clock.Real())
 	t.Cleanup(s.Close)
 	s.SetServers(list)
 	return s
@@ -513,7 +514,7 @@ func TestUnreachableServerFailsFast(t *testing.T) {
 
 func TestServiceOff(t *testing.T) {
 	t.Parallel()
-	svc := transcode.NewService(nil)
+	svc := transcode.NewService(nil, clock.Real())
 	t.Cleanup(svc.Close)
 	assert.False(t, svc.Enabled())
 	_, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
@@ -636,35 +637,30 @@ func TestALateBurstDoesNotCountAgainstTheServer(t *testing.T) {
 // takes no time on it, so that the decisions of a stream do not depend on
 // how loaded the machine is.
 type modelClock struct {
-	mu      sync.Mutex
-	at      time.Time
+	*clock.Fake
 	attempt time.Duration
-	n       int
+	n       atomic.Int64
+}
+
+func newModelClock(attempt time.Duration) *modelClock {
+	return &modelClock{Fake: clock.NewFake(time.Now()), attempt: attempt}
 }
 
 func (c *modelClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.at
+	return c.Now()
 }
 
 func (c *modelClock) dropped() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.at = c.at.Add(c.attempt)
-	c.n++
+	c.Advance(c.attempt)
+	c.n.Add(1)
 }
 
 func (c *modelClock) advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.at = c.at.Add(d)
+	c.Advance(d)
 }
 
 func (c *modelClock) drops() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.n
+	return int(c.n.Load())
 }
 
 // modeledService returns a service for srv whose streams run on a
@@ -676,10 +672,10 @@ func modeledService(t *testing.T, srv *testutils.FakeAMBEServer) (*transcode.Ser
 	const scale = 25
 	svc := newService(t, srv.Addr())
 	svc.SetTiming(scale*transcode.Budget, scale*transcode.AttemptTimeout)
-	clock := &modelClock{at: time.Now(), attempt: scale * transcode.AttemptTimeout}
-	transcode.SetClock(svc, clock.now)
-	srv.SetDropHook(clock.dropped)
-	return svc, clock
+	mc := newModelClock(scale * transcode.AttemptTimeout)
+	transcode.SetClock(svc, mc)
+	srv.SetDropHook(mc.dropped)
+	return svc, mc
 }
 
 func memoryKV(t *testing.T) kv.KV {

@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -132,7 +133,7 @@ type Stream struct {
 	stale   bool
 	budget  time.Duration
 	attempt time.Duration
-	now     func() time.Time
+	clock   clock.Clock
 	refused *atomic.Uint64
 	pcm     []int16
 	epoch   time.Time
@@ -483,7 +484,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 			break
 		}
 		if s.ambe == nil {
-			if deadline.Sub(s.now()) < s.attempt {
+			if deadline.Sub(s.clock.Now()) < s.attempt {
 				break
 			}
 			tried = true
@@ -496,7 +497,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 		if s.stale {
 			need = 2 * s.attempt
 		}
-		if deadline.Sub(s.now()) < need {
+		if deadline.Sub(s.clock.Now()) < need {
 			break
 		}
 		tried = true
@@ -521,7 +522,7 @@ func (s *Stream) withAMBE(ctx context.Context, deadline time.Time, op func(*dvsi
 }
 
 func (s *Stream) open(ctx context.Context, deadline time.Time) error {
-	ctx, cancel := context.WithTimeout(ctx, deadline.Sub(s.now()))
+	ctx, cancel := context.WithTimeout(ctx, deadline.Sub(s.clock.Now()))
 	defer cancel()
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "udp", s.srv.Addr)

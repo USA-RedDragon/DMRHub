@@ -31,6 +31,8 @@ The repeater then shows in the repeater list of that user, and the user can set 
 
 DMRHub sends a private call or a text message to the repeater where the radio was last heard. For a radio ID that a user owns, it does this only when the user owns that repeater, or when an admin marked the repeater as trusted. Otherwise the private traffic does not follow the radio to that repeater. The `anyone` reach turns this check off. See [Private call routing](private-calls.md).
 
+The same rule decides which repeaters a radio's positions may come through (see [Positions and APRS-IS](positions.md#what-the-hub-stores)).
+
 Mark a repeater as trusted when it is a shared repeater of the network that users who do not own it use, for example a club repeater. To do this, click **Edit**, turn on the **Trusted** box, and click **Save**. Only an admin can change this box.
 
 ## Slot locks

@@ -10,6 +10,8 @@ For the facts behind each setting, see the [Positions reference](../positions.md
 2. Set the radio to send its ARS registration and its location reports to one of the location server IDs, usually 5050 to 5059. Ask your admin for the IDs of your network. All ten IDs work the same way. The ID only picks the default APRS symbol (see the [table of symbols](../positions.md#location-server-ids)).
 3. Turn on ARS, so that the radio registers when it turns on.
 
+DMRHub keeps a position only when it comes through a hotspot or repeater that you own, or a shared repeater that an admin trusts. Positions through the hotspots of other users are dropped.
+
 If the radio sends its GPS in voice calls instead, steps 2 and 3 are not necessary. DMRHub then gets a position each time you talk through a hotspot or repeater that passes the GPS on.
 
 ## Step 2: Turn on position tracking

@@ -24,7 +24,7 @@ The location server reads LRRP, NMEA and Hytera (HDAP) location reports, and ans
 | The GPS that a radio sends in a voice call, heard by the modem of DMRHub | GPS |
 | The GPS that a hotspot or repeater sends to DMRHub as a `DMRG` packet, for example from MMDVMHost | GPS |
 
-All sources follow the same rules: tracking must be on, and DMRHub keeps at most one position of a radio each 30 seconds from all sources together. A GPS position has no speed, heading, altitude or fix time. Its accuracy is the position error that the radio sent, when the radio knows it.
+All sources follow the same rules: tracking must be on, the position must come through a repeater or hotspot that you own or that an admin trusts, and DMRHub keeps at most one position of a radio each 30 seconds from all sources together. A GPS position has no speed, heading, altitude or fix time. Its accuracy is the position error that the radio sent, when the radio knows it.
 
 ## Which radios you can track
 
@@ -47,6 +47,7 @@ The **Radios** list on the Positions page has your account ID and the radio IDs 
 
 - At most one position of a radio each 30 seconds, from all sources together.
 - Only positions that arrived after you turned tracking on.
+- Only positions that came through a repeater or hotspot that you own, or that an admin marked as trusted. A position through any other hotspot is dropped, so that a hotspot that pretends to be your radio cannot move it on the map.
 - Each position for the retention time that you picked. Then DMRHub deletes it.
 - When you turn tracking off, DMRHub deletes all positions of that radio.
 

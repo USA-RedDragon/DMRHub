@@ -35,7 +35,7 @@ const stateWith = (settings: Record<string, Setting>): SetupState => ({ ...empty
 describe('setup menu tabs', () => {
   it('splits General and HTTP and keeps Metrics and PProf', () => {
     expect(TABS.map((t) => t.id)).toEqual([
-      'general', 'http', 'database', 'redis', 'smtp', 'metrics', 'dmr', 'ipsc', 'openbridge', 'webtransport', 'modem',
+      'general', 'accounts', 'http', 'database', 'redis', 'smtp', 'metrics', 'dmr', 'ipsc', 'openbridge', 'webtransport', 'modem',
       'transcoding', 'iplists', 'routing', 'positions', 'messages', 'plugins', 'pcroute',
     ]);
     expect(tabPaths(tab('general'))).toEqual(['network-name', 'log-level', 'auto-approve-users', 'secret', 'password-salt', 'hibp-api-key']);

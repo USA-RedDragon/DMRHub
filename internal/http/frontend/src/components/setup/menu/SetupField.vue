@@ -136,6 +136,29 @@
         :aria-invalid="shownError ? true : undefined"
         @update:model-value="(v: string | number) => set(String(v))"
       />
+      <div v-else-if="field.kind === 'duration'" class="flex flex-wrap items-center gap-2">
+        <ShadInput
+          :id="id"
+          :class="[boxClass, 'max-w-[120px]']"
+          type="number"
+          min="1"
+          :disabled="disabled"
+          :model-value="String(durationCount)"
+          :aria-invalid="error ? true : undefined"
+          @update:model-value="(v: string | number) => setDuration(Number(v), unit)"
+        />
+        <select
+          :class="[boxClass, 'h-9 max-w-[120px] bg-background']"
+          :disabled="disabled"
+          :value="String(unit)"
+          aria-label="Unit"
+          data-test="duration-unit"
+          @change="(e) => setDuration(durationCount, Number((e.target as HTMLSelectElement).value))"
+        >
+          <option :value="String(HOUR)">hours</option>
+          <option :value="String(DAY)">days</option>
+        </select>
+      </div>
       <ShadInput
         v-else
         :id="id"
@@ -167,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import SettingNote from '@/components/setup/SettingNote.vue';
 import ModemPortSelect from '@/components/setup/menu/ModemPortSelect.vue';
 import SourceChips from '@/components/setup/menu/SourceChips.vue';
@@ -175,7 +198,7 @@ import { Input as ShadInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  defaultNote, fieldLocked, fromInput, inputValue, normalize, type FieldDef, type Read,
+  DAY, HOUR, defaultNote, durationUnit, fieldLocked, fromInput, inputValue, normalize, type FieldDef, type Read,
 } from '@/lib/setupMenu';
 import type { Setting } from '@/lib/setupState';
 
@@ -235,4 +258,16 @@ const boxClass = 'w-full rounded-md border border-input px-3 py-1.5 disabled:cur
 const isDefault = (v: string | number) => props.setting?.default !== undefined && normalize(props.field, props.setting.default) === v;
 
 const set = (t: string) => emit('set', props.field.path, fromInput(props.field, t));
+
+const unit = ref(durationUnit(Number(normalized.value)));
+watch(normalized, (n) => {
+  if (Number(n) % unit.value !== 0) {
+    unit.value = durationUnit(Number(n));
+  }
+});
+const durationCount = computed(() => Number(normalized.value) / unit.value);
+const setDuration = (count: number, to: number) => {
+  unit.value = to;
+  emit('set', props.field.path, Math.max(0, Math.round((Number.isFinite(count) ? count : 0) * to)));
+};
 </script>

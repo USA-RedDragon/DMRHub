@@ -41,7 +41,8 @@ export type FieldKind =
   | 'mhz'
   | 'mode'
   | 'port'
-  | 'segment';
+  | 'segment'
+  | 'duration';
 
 export type Option = { value: string | number; label: string; description?: string };
 
@@ -94,7 +95,7 @@ export type CardDef = {
 
 export type IntroPart = string | { text: string; to: string };
 
-export type TabGroup = 'Server' | 'DMR' | 'Features';
+export type TabGroup = 'Server' | 'Users' | 'DMR' | 'Features';
 
 /** One tab of the Setup page, at /admin/setup#id. */
 export type TabDef = {
@@ -178,6 +179,27 @@ const ipListCard = (key: string, title: string, refused: string): CardDef => {
 };
 
 /** The tabs of the Setup page, in the order of the menu. */
+const registration: Option[] = [
+  { value: 'open', label: 'Anyone' },
+  { value: 'invite', label: 'Invite only' },
+  { value: 'closed', label: 'Nobody' },
+];
+
+const visibility: Option[] = [
+  { value: 'public', label: 'Everything' },
+  { value: 'hide-names', label: 'No names or positions' },
+  { value: 'login', label: 'Nothing' },
+];
+
+const checksOn = (read: Read) => read('dmr.disable-radio-id-validation') !== true;
+
+/** Nanoseconds in an hour and in a day, the units of a duration field. */
+export const HOUR = 3.6e12;
+export const DAY = 24 * HOUR;
+
+/** The unit that shows a duration of n nanoseconds as a whole number. */
+export const durationUnit = (n: number): number => (n !== 0 && n % DAY === 0 ? DAY : HOUR);
+
 export const TABS: TabDef[] = [
   {
     id: 'general',
@@ -206,6 +228,44 @@ export const TABS: TabDef[] = [
           { path: 'password-salt', label: 'Password salt', kind: 'secret', help: 'Salt for the password hashes of the users. Different from the secret.' },
           { path: 'hibp-api-key', label: 'Have I Been Pwned API key', kind: 'secret', help: 'Checks new passwords against known leaks. Empty turns the check off.' },
         ],
+      },
+    ],
+  },
+  {
+    id: 'accounts',
+    group: 'Users',
+    name: 'Accounts',
+    intro: [],
+    cards: [
+      {
+        title: 'Registration',
+        rows: [{ path: 'registration', label: 'Who can register', kind: 'segment', options: registration }],
+      },
+      {
+        title: 'RadioID checks',
+        rows: [
+          { path: 'dmr.disable-radio-id-validation', label: 'Turn off all checks', kind: 'bool' },
+          {
+            grid: [
+              { path: 'dmr.radio-id-checks.user-id', label: 'DMR ID has 7 digits', kind: 'bool', show: checksOn },
+              { path: 'dmr.radio-id-checks.callsign', label: 'Callsign matches DMR ID', kind: 'bool', show: checksOn },
+              { path: 'dmr.radio-id-checks.radio-ids', label: 'Added radio IDs', kind: 'bool', show: checksOn },
+              { path: 'dmr.radio-id-checks.repeater-ids', label: 'Repeater IDs', kind: 'bool', show: checksOn },
+              { path: 'dmr.radio-id-checks.hotspot-ids', label: 'Hotspot IDs start with owner ID', kind: 'bool', show: checksOn },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Logins',
+        rows: [
+          { path: 'login-backoff', label: 'Pause an account after 10 failed logins', kind: 'bool' },
+          { path: 'http.session-length', label: 'Login lasts', kind: 'duration' },
+        ],
+      },
+      {
+        title: 'Visibility',
+        rows: [{ path: 'visibility', label: 'Visitors who are not logged in see', kind: 'segment', options: visibility }],
       },
     ],
   },
@@ -375,10 +435,6 @@ export const TABS: TabDef[] = [
       {
         title: 'Radio IDs',
         rows: [
-          {
-            path: 'dmr.disable-radio-id-validation', label: 'Turn off the RadioID.net checks', kind: 'bool',
-            help: 'With the checks off, any ID of 7 to 9 digits can be used, and hotspot IDs need not start with the DMR ID of the owner.',
-          },
           { path: 'dmr.radio-id-url', label: 'Radio ID list', kind: 'text', help: 'In the format of RadioID.net.' },
           { path: 'dmr.repeater-id-url', label: 'Repeater ID list', kind: 'text', help: 'In the format of RadioID.net.' },
         ],
@@ -905,6 +961,7 @@ export const normalize = (f: FieldDef, v: unknown): unknown => {
     case 'minutes':
     case 'hours':
     case 'mhz':
+    case 'duration':
       return toNumber(v);
     case 'list':
       return Array.isArray(v) ? v.map((e) => String(e).trim()).filter((e) => e !== '') : [];
@@ -1045,6 +1102,11 @@ export const shownValue = (f: FieldDef, v: unknown): string => {
       return `${(n as number) / 3.6e12} hours`;
     case 'mhz':
       return `${((n as number) / 1e6).toFixed(4)} MHz`;
+    case 'duration': {
+      const unit = durationUnit(n as number);
+      const count = (n as number) / unit;
+      return `${count} ${unit === DAY ? 'days' : 'hours'}`;
+    }
     case 'mode':
       return n ? 'Repeater (duplex)' : 'Hotspot (simplex)';
     case 'select':

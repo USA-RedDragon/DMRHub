@@ -240,7 +240,7 @@ const showApplyError = (e: ApplyError, self: boolean): ShownApplyError => {
 
 const fieldsByPath: Record<string, FieldDef> = Object.fromEntries(TABS.flatMap(tabFields).map((f) => [f.path, f]));
 
-const groupNames: TabGroup[] = ['Server', 'DMR', 'Features'];
+const groupNames: TabGroup[] = ['Server', 'Users', 'DMR', 'Features'];
 
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 

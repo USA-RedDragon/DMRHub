@@ -20,29 +20,33 @@ The RadioID.net check shows that the DMR ID and the callsign go together. It doe
 
 ## Who can register
 
-`registration` sets who can register:
+Go to **Admin**, then **Setup**, then **Accounts** (`<siteurl>/admin/setup#accounts`). In the **Registration** card, **Who can register** is one of:
 
-- `open`: anyone. This is the default.
-- `invite`: only a person with an invite from an admin. A user who registers with an invite can log in at once.
-- `closed`: nobody. The register page refuses each registration.
+- **Anyone**: the default.
+- **Invite only**: only a person with an invite from an admin. A user who registers with an invite can log in at once.
+- **Nobody**: the register page shows "Registration is closed." and the Register link does not show.
 
-The first admin can register in any mode.
+The first admin can register in any mode. The config key is `registration` (`open`, `invite` or `closed`).
 
 ### Invite a user
 
-When `registration` is `invite`, an admin makes an invite with `POST /api/v1/admin/invites`. The answer has the invite link (`<siteurl>/register#invite=<code>`) and its code. DMRHub shows the code only this one time. Send the link to the person. The link works once, for 7 days.
+When **Who can register** is **Invite only**, **Admin** has an **Invites** page (`<siteurl>/admin/invites`).
 
-`GET /api/v1/admin/invites` lists each invite, who made it, and who used it. `DELETE /api/v1/admin/invites/<id>` stops an unused invite.
+1. Click **New invite**.
+2. DMRHub shows the invite link once. Click **Copy** and send the link to the person.
+3. The link works once, for 7 days.
+
+The list shows when each invite was made, by whom, when it expires, and who used it. Click **Delete** to stop an unused invite. Without an invite link, the register page shows "Registration needs an invite."
 
 ## What visitors see
 
-`visibility` sets what visitors who are not logged in see:
+In the **Visibility** card of the **Accounts** tab, **Visitors who are not logged in see** is one of:
 
-- `public`: the last heard calls, the talkgroups, the nets and the RadioID details of a radio. This is the default.
-- `login`: none of these. Visitors must log in first.
-- `hide-names`: the same as `public`, without the talker alias, the position and the grid square of each call, and without the name, city and state from RadioID. Callsigns and DMR IDs still show.
+- **Everything**: the last heard calls, the talkgroups, the nets and the RadioID details of a radio. This is the default.
+- **No names or positions**: the same, without the talker alias, the position and the grid square of each call, and without the name, city and state from RadioID. Callsigns and DMR IDs still show.
+- **Nothing**: visitors go to the login page first.
 
-A logged-in user sees the same in each mode. The login, register and password reset pages work in each mode.
+A logged-in user sees the same in each mode. The login, register and password reset pages work in each mode. The config key is `visibility` (`public`, `hide-names` or `login`).
 
 ## Edit a user
 
@@ -58,17 +62,17 @@ Usernames are the same in any case, so a user can log in as `alice` or `Alice`, 
 
 ## RadioID checks
 
-DMRHub has five checks of DMR IDs and callsigns, most of them against the RadioID.net data. Each one is on by default. Turn each on or off under `dmr.radio-id-checks`:
+The **RadioID checks** card of the **Accounts** tab has five checks of DMR IDs and callsigns, most of them against the RadioID.net data. Each one is on by default.
 
-| Key | When it is on |
-|-----|---------------|
-| `dmr.radio-id-checks.user-id` | DMRHub refuses a registration whose DMR ID does not have 7 digits. |
-| `dmr.radio-id-checks.callsign` | DMRHub refuses a registration or a callsign change whose callsign RadioID.net does not list under the DMR ID of the account. The RadioID drift check covers the DMR ID of each account. |
-| `dmr.radio-id-checks.radio-ids` | DMRHub refuses an added radio ID that RadioID.net does not list under the callsign of the user. The RadioID drift check covers the added radio IDs. |
-| `dmr.radio-id-checks.repeater-ids` | DMRHub refuses a 6-digit repeater ID that RadioID.net does not list under the callsign of its owner, and fills in the details of the repeater from RadioID.net. |
-| `dmr.radio-id-checks.hotspot-ids` | DMRHub refuses a 9-digit hotspot ID that does not start with the DMR ID of its owner. |
+| Switch | Config key | When it is on |
+|--------|------------|---------------|
+| **DMR ID has 7 digits** | `dmr.radio-id-checks.user-id` | DMRHub refuses a registration whose DMR ID does not have 7 digits. |
+| **Callsign matches DMR ID** | `dmr.radio-id-checks.callsign` | DMRHub refuses a registration or a callsign change whose callsign RadioID.net does not list under the DMR ID of the account. The RadioID drift check covers the DMR ID of each account. |
+| **Added radio IDs** | `dmr.radio-id-checks.radio-ids` | DMRHub refuses an added radio ID that RadioID.net does not list under the callsign of the user. The RadioID drift check covers the added radio IDs. |
+| **Repeater IDs** | `dmr.radio-id-checks.repeater-ids` | DMRHub refuses a 6-digit repeater ID that RadioID.net does not list under the callsign of its owner, and fills in the details of the repeater from RadioID.net. |
+| **Hotspot IDs start with owner ID** | `dmr.radio-id-checks.hotspot-ids` | DMRHub refuses a 9-digit hotspot ID that does not start with the DMR ID of its owner. |
 
-`dmr.disable-radio-id-validation` turns off all five checks, whatever they are set to. Older configs use it.
+**Turn off all checks** (`dmr.disable-radio-id-validation`) turns off all five, whatever they are set to. While it is on, the five switches do not show.
 
 ## Fix RadioID drift
 
@@ -82,9 +86,10 @@ When SMTP is on, DMRHub sends one email to a user with a confirmed address when 
 
 ## Logins
 
-A login lasts 30 days. Change this with `http.session-length` on the Setup page, such as `12h` or `2160h`. The new length applies to each new login at once. A shorter length also ends the older logins that are past it. A longer length does not make the older logins last longer.
+In the **Logins** card of the **Accounts** tab:
 
-`login-backoff` slows down password guessing. After 10 failed logins of one account in 15 minutes, DMRHub refuses each login of that account, even with the right password, until fewer than 10 failures are in the last 15 minutes. A login by the username and a login by the callsign count for the same account. A successful login clears the count. Other accounts are not affected. `login-backoff` is on by default.
+- **Login lasts** is how long a login lasts, in hours or days. The default is 30 days. The new length applies to each new login at once. A shorter length also ends the older logins that are past it. A longer length does not make the older logins last longer. The config key is `http.session-length`.
+- **Pause an account after 10 failed logins** slows down password guessing. It is on by default. After 10 failed logins of one account in 15 minutes, DMRHub refuses each login of that account, even with the right password, until fewer than 10 failures are in the last 15 minutes. A login by the username and a login by the callsign count for the same account. A successful login clears the count. Other accounts are not affected. The config key is `login-backoff`.
 
 ## Suspend a user
 

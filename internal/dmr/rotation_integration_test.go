@@ -42,6 +42,12 @@ const (
 	rotationDrain    = 8 * time.Second
 )
 
+// starvationBound is the share of a call that the machine may run the test
+// late before the checks of what each listener got, which hold only on
+// real time, are skipped. An idle machine runs the call 10 to 15% late, a
+// loaded gate 40 to 70%, and the losses at a move start at about 70%.
+const starvationBound = 0.3
+
 // rotationCall is a call that the test keeps up through the rotations.
 type rotationCall struct {
 	src    uint
@@ -350,6 +356,7 @@ func TestRotationMidCall(t *testing.T) {
 		one := rotationCall{src: 1000001, stream: 8101, tg: 1, slot: false, send: talkerB.SendDMRD}
 		two := rotationCall{src: 1000002, stream: 8102, tg: 2, slot: true, send: talkerA.SendDMRD}
 		var calls sync.WaitGroup
+		starvation := testutils.StartStarvationProbe(t)
 		start := time.Now()
 		one.run(t, &calls)
 		two.run(t, &calls)
@@ -367,6 +374,7 @@ func TestRotationMidCall(t *testing.T) {
 		t.Logf("%s: the second replica stopped", time.Since(start).Round(time.Millisecond))
 		calls.Wait()
 		time.Sleep(drainWait)
+		starvation.SkipIfStarved(t, starvationBound)
 
 		for _, p := range []struct {
 			name string

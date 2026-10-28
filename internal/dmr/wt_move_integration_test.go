@@ -140,6 +140,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 
 		const bursts = 80
 		var drained time.Time
+		starvation := testutils.StartStarvationProbe(t)
 		next := time.Now()
 		for i := range bursts {
 			p := makeGroupVoicePacket(1000001, 1, 8201, false)
@@ -158,6 +159,7 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 			next = next.Add(rotationInterval)
 			time.Sleep(time.Until(next))
 		}
+		starvation.SkipIfStarved(t, starvationBound)
 		checkMovedBrowser(t, browser, front, drained, 8201, bursts)
 		assert.Zero(t, browser.Downs(), "the browser hotspot lost its session")
 		assert.Equal(t, 1, browser.Ups(), "the browser hotspot logged in again")

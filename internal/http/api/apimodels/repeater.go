@@ -63,3 +63,36 @@ type RepeaterRotatePasswordResponse struct {
 	Password  string    `json:"password"`
 	RotatedAt time.Time `json:"rotated_at"`
 }
+
+// The talkgroup modes of RepeaterRules.
+const (
+	TalkgroupModeOff   = "off"
+	TalkgroupModeBlock = "block"
+	TalkgroupModeAllow = "allow"
+)
+
+// TalkgroupRef is a talkgroup inside another model: its ID and name only.
+type TalkgroupRef struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+// RepeaterRules are the routing rules of a repeater. TS1Users and TS2Users
+// list the only users whose radios a locked slot carries; an empty list
+// leaves the slot open. TalkgroupMode is off, block (the repeater carries
+// no traffic of Talkgroups) or allow (it carries only Talkgroups).
+type RepeaterRules struct {
+	TS1Users      []models.UserRef `json:"ts1_users"`
+	TS2Users      []models.UserRef `json:"ts2_users"`
+	TalkgroupMode string           `json:"talkgroup_mode"`
+	Talkgroups    []TalkgroupRef   `json:"talkgroups"`
+}
+
+// RepeaterRulesPatch changes the routing rules of a repeater. A field that
+// is left out keeps its value. Talkgroups goes with TalkgroupMode.
+type RepeaterRulesPatch struct {
+	TS1Users      *[]uint `json:"ts1_users"`
+	TS2Users      *[]uint `json:"ts2_users"`
+	TalkgroupMode *string `json:"talkgroup_mode"`
+	Talkgroups    *[]uint `json:"talkgroups"`
+}

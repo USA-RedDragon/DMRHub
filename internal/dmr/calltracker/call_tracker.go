@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
@@ -101,6 +102,7 @@ type DataObserver interface {
 // each packet on the worker of its logical channel, so tracking never
 // blocks routing, and one worker owns each data.Receiver.
 type CallTracker struct {
+	clock  clock.Clock
 	db     *gorm.DB
 	pubsub pubsub.PubSub
 	kv     kv.KV
@@ -158,15 +160,23 @@ type recentRow struct {
 	at        time.Time
 }
 
+// Option sets up a CallTracker in NewCallTracker.
+type Option func(*CallTracker)
+
+// WithClock makes the call tracker wait and measure on c.
+func WithClock(c clock.Clock) Option {
+	return func(ct *CallTracker) { ct.clock = clock.Or(c) }
+}
+
 // NewCallTracker creates a new CallTracker and starts its workers. The
 // replicas of the hub share kv and pubsub, so that an answer heard on one
 // replica is set on the row of the transmission that another one heard.
-func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
+func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option) *CallTracker {
 	ct := &CallTracker{
+		clock:      clock.Real(),
 		db:         db,
 		pubsub:     pubsub,
 		kv:         kv,
-		epoch:      time.Now(),
 		activeNets: xsync.NewMap[uint, uint](),
 		streams:    xsync.NewMap[uint, streamRef](),
 		sources:    xsync.NewMap[sourceKey, streamRef](),
@@ -176,6 +186,10 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV) *CallTracker {
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
 	}
+	for _, opt := range opts {
+		opt(ct)
+	}
+	ct.epoch = ct.clock.Now()
 	ct.out = outbox.New(pubsub, ct.done, "the messages of the call tracker", func(k outKey) []any {
 		return []any{"worker", k.shard, "topic", k.topic}
 	})
@@ -253,7 +267,7 @@ func (c *CallTracker) Dropped() uint64 {
 // packet is not recorded and Dropped counts it. It returns the ID of the
 // burst, for p.TrackID, or zero when it is stopped.
 func (c *CallTracker) Track(ctx context.Context, p models.Packet, server string, peer bool) uint64 {
-	return c.TrackAt(ctx, p, server, peer, time.Now())
+	return c.TrackAt(ctx, p, server, peer, c.clock.Now())
 }
 
 // TrackAt is Track for a packet that the server got at at, such as the
@@ -265,7 +279,7 @@ func (c *CallTracker) TrackAt(_ context.Context, p models.Packet, server string,
 	if c.stopped.Load() {
 		return 0
 	}
-	now := time.Now()
+	now := c.clock.Now()
 	if d := now.Sub(at); d > 0 {
 		now = now.Add(-d)
 	}
@@ -437,7 +451,7 @@ func (c *CallTracker) enqueue(idx int, t task) {
 }
 
 func (c *CallTracker) now() time.Duration {
-	return time.Since(c.epoch)
+	return c.clock.Since(c.epoch)
 }
 
 func (c *CallTracker) mono(at time.Time) time.Duration {
@@ -532,7 +546,7 @@ func (c *CallTracker) remember(s *shard, r *row) {
 		return
 	}
 	k := pair{src: r.call.SourceID, dst: r.call.DestinationID}
-	e := recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: time.Now()}
+	e := recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: c.clock.Now()}
 	c.recentMu.Lock()
 	cut := e.at.Add(-responseWindow)
 	keep := c.recent[k][:0]
@@ -712,7 +726,7 @@ func answerable(kind models.CallKind, sub string, confirmed bool) string {
 func (c *CallTracker) pruneRecent() {
 	c.recentMu.Lock()
 	defer c.recentMu.Unlock()
-	cut := time.Now().Add(-responseWindow)
+	cut := c.clock.Now().Add(-responseWindow)
 	for k, rows := range c.recent {
 		if len(rows) == 0 || !rows[len(rows)-1].at.After(cut) {
 			delete(c.recent, k)
@@ -736,7 +750,7 @@ func (c *CallTracker) answer(idx int, src, dst uint, resp models.CallResponse, w
 		return false
 	}
 	var sr sharedRow
-	if err := json.Unmarshal(b, &sr); err != nil || time.Since(sr.At) >= responseWindow {
+	if err := json.Unmarshal(b, &sr); err != nil || c.clock.Since(sr.At) >= responseWindow {
 		return false
 	}
 	msg, err := json.Marshal(remoteAnswer{ID: sr.ID, Src: k.src, Dst: k.dst, Response: resp})
@@ -751,7 +765,7 @@ func (c *CallTracker) answer(idx int, src, dst uint, resp models.CallResponse, w
 func (c *CallTracker) answerLocal(k pair, resp models.CallResponse, match func(*recentRow) bool) bool {
 	c.recentMu.Lock()
 	rows := c.recent[k]
-	cut := time.Now().Add(-responseWindow)
+	cut := c.clock.Now().Add(-responseWindow)
 	var found *recentRow
 	for i := len(rows) - 1; i >= 0; i-- {
 		if rows[i].at.After(cut) && match(&rows[i]) {
@@ -922,7 +936,7 @@ func newShard(t *CallTracker, idx int) *shard {
 
 func (s *shard) run() {
 	defer s.t.wg.Done()
-	ticker := time.NewTicker(sweepInterval)
+	ticker := s.t.clock.NewTicker(sweepInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -939,8 +953,8 @@ func (s *shard) run() {
 				}
 				s.handle(&t)
 			}
-		case <-ticker.C:
-			now := time.Now()
+		case <-ticker.C():
+			now := s.t.clock.Now()
 			if len(s.in) > 0 {
 				now = s.clock
 			}

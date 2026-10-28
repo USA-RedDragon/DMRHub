@@ -58,7 +58,7 @@ type sourceState struct {
 // form that DMRGateway sends makes a partial alias row.
 func (c *CallTracker) TalkerAlias(a dmrd.TalkerAlias, server string, repeater uint) {
 	key := sourceKey{server: server, repeater: repeater, src: uint(a.Source)}
-	c.enqueue(c.sourceShard(key), task{at: time.Now(), fn: func(s *shard) { s.alias(key, a) }})
+	c.enqueue(c.sourceShard(key), task{at: c.clock.Now(), fn: func(s *shard) { s.alias(key, a) }})
 }
 
 // Position records the GPS position p that the repeater with the ID
@@ -66,11 +66,11 @@ func (c *CallTracker) TalkerAlias(a dmrd.TalkerAlias, server string, repeater ui
 // that DMRGateway sends makes a partial row without coordinates.
 func (c *CallTracker) Position(p dmrd.Position, server string, repeater uint) {
 	key := sourceKey{server: server, repeater: repeater, src: uint(p.Source)}
-	c.enqueue(c.sourceShard(key), task{at: time.Now(), fn: func(s *shard) { s.position(key, p) }})
+	c.enqueue(c.sourceShard(key), task{at: c.clock.Now(), fn: func(s *shard) { s.position(key, p) }})
 }
 
 func (c *CallTracker) sourceShard(key sourceKey) int {
-	if ref, ok := c.sources.Load(key); ok && time.Since(ref.at) < sourceStateHold {
+	if ref, ok := c.sources.Load(key); ok && c.clock.Since(ref.at) < sourceStateHold {
 		return ref.shard
 	}
 	return chanKey{server: key.server, repeater: key.repeater}.shard()
@@ -79,7 +79,7 @@ func (c *CallTracker) sourceShard(key sourceKey) int {
 func (s *shard) source(key sourceKey) *sourceState {
 	st, ok := s.aliases[key]
 	if !ok {
-		st = &sourceState{at: time.Now()}
+		st = &sourceState{at: s.t.clock.Now()}
 		s.aliases[key] = st
 	}
 	return st
@@ -112,7 +112,7 @@ func (s *shard) sourceTask(key sourceKey, st *sourceState) *task {
 			Slot:      st.slot,
 			GroupCall: st.group,
 		},
-		at: time.Now(),
+		at: s.t.clock.Now(),
 	}
 }
 

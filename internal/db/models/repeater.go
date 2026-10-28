@@ -216,6 +216,10 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 			return fmt.Errorf("delete calls: %w", err)
 		}
 
+		if err := tx.Where("repeater_id = ?", id).Delete(&RoutingRule{}).Error; err != nil {
+			return fmt.Errorf("delete routing rules: %w", err)
+		}
+
 		repeater := Repeater{RepeaterConfiguration: RepeaterConfiguration{ID: id}}
 		if err := tx.Model(&repeater).Association("TS1StaticTalkgroups").Clear(); err != nil {
 			return fmt.Errorf("clear ts1 static talkgroups: %w", err)

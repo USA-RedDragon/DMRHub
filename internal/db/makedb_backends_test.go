@@ -155,8 +155,9 @@ var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 // generated secrets, the verified email addresses, the first admin, the
 // usernames unique in any case, the calls to a plugin, the callsigns
 // that an admin chose against RadioID, the RadioID drift list, the match
-// of the peer rules and the private call switches of the peers.
-var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private")
+// of the peer rules, the private call switches of the peers and the
+// routing rules.
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private|routing_rule")
 
 func (r *recorder) ddl() []string {
 	r.mu.Lock()

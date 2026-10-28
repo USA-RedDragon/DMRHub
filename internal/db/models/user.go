@@ -210,10 +210,10 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 }
 
 // DeleteUser deletes the user id and what they own in one transaction.
-// Their repeaters go with the calls through them, their peers with their
-// rules. Their sessions, app grants, password reset links and tracked
-// positions end. Their other calls, nets and scheduled nets stay without
-// the user.
+// Their repeaters go with the calls through them and their routing rules,
+// their peers with their rules, and the slots open to them close to them.
+// Their sessions, app grants, password reset links and tracked positions
+// end. Their other calls, nets and scheduled nets stay without the user.
 func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
@@ -224,6 +224,9 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			r := &repeaters[i]
 			if err := tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, r.ID, r.ID).Delete(&Call{}).Error; err != nil {
 				return fmt.Errorf("could not delete the calls of repeater %d: %w", r.ID, err)
+			}
+			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RoutingRule{}).Error; err != nil {
+				return fmt.Errorf("could not delete the routing rules of repeater %d: %w", r.ID, err)
 			}
 			if err := tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(r).Error; err != nil {
 				return fmt.Errorf("could not delete repeater %d: %w", r.ID, err)
@@ -263,6 +266,9 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			if err := tx.Where("user_id = ?", id).Delete(model).Error; err != nil {
 				return fmt.Errorf("could not delete the %T rows: %w", model, err)
 			}
+		}
+		if err := tx.Where("kind = ? AND subject_id = ?", RoutingRuleSlotUser, id).Delete(&RoutingRule{}).Error; err != nil {
+			return fmt.Errorf("could not delete the slot rules of the user: %w", err)
 		}
 		for _, table := range []string{"talkgroup_admins", "talkgroup_ncos", "user_radio_ids"} {
 			if err := tx.Exec("DELETE FROM "+table+" WHERE user_id = ?", id).Error; err != nil {

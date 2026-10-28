@@ -68,18 +68,20 @@ func oneHotspot(t *testing.T, stack *testutils.IntegrationStack, talkgroups ...u
 	return c
 }
 
-func dynamicTS2(t *testing.T, stack *testutils.IntegrationStack, id uint) *uint {
+// dynamicTS2 returns the dynamic talkgroup of TS2 of the hotspot 100001.
+func dynamicTS2(t *testing.T, stack *testutils.IntegrationStack) *uint {
 	t.Helper()
-	rpt, err := models.FindRepeaterByID(stack.DB, id)
+	rpt, err := models.FindRepeaterByID(stack.DB, 100001)
 	require.NoError(t, err)
 	return rpt.TS2DynamicTalkgroupID
 }
 
-func tgCall(t *testing.T, c *testutils.MMDVMClient, src, dst, stream uint) {
+// tgCall has c send a short call of radio 1000001 to dst on TS2.
+func tgCall(t *testing.T, c *testutils.MMDVMClient, dst, stream uint) {
 	t.Helper()
-	require.NoError(t, c.SendDMRD(makeGroupVoicePacket(src, dst, stream, true)))
+	require.NoError(t, c.SendDMRD(makeGroupVoicePacket(1000001, dst, stream, true)))
 	time.Sleep(50 * time.Millisecond)
-	require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(src, dst, stream, true)))
+	require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(1000001, dst, stream, true)))
 }
 
 func TestDynamicTalkgroupTimesOut(t *testing.T) {
@@ -88,11 +90,11 @@ func TestDynamicTalkgroupTimesOut(t *testing.T) {
 		routingStack(t, stack, config.Routing{DynamicTimeout: 600 * time.Millisecond})
 		c := oneHotspot(t, stack, 3100)
 
-		tgCall(t, c, 1000001, 3100, 501)
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack, 100001) != nil }, 5*time.Second, 20*time.Millisecond,
+		tgCall(t, c, 3100, 501)
+		require.Eventually(t, func() bool { return dynamicTS2(t, stack) != nil }, 5*time.Second, 20*time.Millisecond,
 			"a call on a talkgroup links it")
 		start := time.Now()
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack, 100001) == nil }, 5*time.Second, 20*time.Millisecond,
+		require.Eventually(t, func() bool { return dynamicTS2(t, stack) == nil }, 5*time.Second, 20*time.Millisecond,
 			"the dynamic talkgroup must unlink after the timeout")
 		assert.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "the link must last about the timeout")
 	})
@@ -105,9 +107,9 @@ func TestDynamicTalkgroupTimeoutRestartsAtEachCall(t *testing.T) {
 		c := oneHotspot(t, stack, 3100)
 
 		for i := range uint(4) {
-			tgCall(t, c, 1000001, 3100, 600+i)
+			tgCall(t, c, 3100, 600+i)
 			time.Sleep(700 * time.Millisecond)
-			require.NotNil(t, dynamicTS2(t, stack, 100001), "a call on the dynamic talkgroup restarts its timeout")
+			require.NotNil(t, dynamicTS2(t, stack), "a call on the dynamic talkgroup restarts its timeout")
 		}
 	})
 }
@@ -118,13 +120,13 @@ func TestDynamicTalkgroupWithNoTimeoutStays(t *testing.T) {
 		cur := routingStack(t, stack, config.Routing{DynamicTimeout: 0})
 		c := oneHotspot(t, stack, 3100)
 
-		tgCall(t, c, 1000001, 3100, 701)
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack, 100001) != nil }, 5*time.Second, 20*time.Millisecond)
+		tgCall(t, c, 3100, 701)
+		require.Eventually(t, func() bool { return dynamicTS2(t, stack) != nil }, 5*time.Second, 20*time.Millisecond)
 		time.Sleep(1500 * time.Millisecond)
-		require.NotNil(t, dynamicTS2(t, stack, 100001), "a timeout of 0 never unlinks")
+		require.NotNil(t, dynamicTS2(t, stack), "a timeout of 0 never unlinks")
 
 		setRouting(cur, config.Routing{DynamicTimeout: 500 * time.Millisecond})
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack, 100001) == nil }, 5*time.Second, 20*time.Millisecond,
+		require.Eventually(t, func() bool { return dynamicTS2(t, stack) == nil }, 5*time.Second, 20*time.Millisecond,
 			"a timeout that Setup sets while the hub runs applies to the links that exist")
 	})
 }
@@ -136,9 +138,9 @@ func TestDisabledDynamicLinksLinkNothing(t *testing.T) {
 		c := oneHotspot(t, stack, 3100, 91)
 		require.NoError(t, c.SendOptions("DIAL=91;"))
 
-		tgCall(t, c, 1000001, 3100, 801)
+		tgCall(t, c, 3100, 801)
 		time.Sleep(time.Second)
-		assert.Nil(t, dynamicTS2(t, stack, 100001), "with dynamic links off neither a call nor a default dial links a talkgroup")
+		assert.Nil(t, dynamicTS2(t, stack), "with dynamic links off neither a call nor a default dial links a talkgroup")
 	})
 }
 
@@ -161,9 +163,9 @@ func TestRoutingSettingsReachEveryReplica(t *testing.T) { //nolint:paralleltest 
 			t.Cleanup(c.Close)
 			require.NoError(t, c.WaitReady(handshakeWait))
 			time.Sleep(settleDuration)
-			tgCall(t, c, 1000001, 3100, 901)
+			tgCall(t, c, 3100, 901)
 			time.Sleep(time.Second)
-			assert.Nil(t, dynamicTS2(t, l.IntegrationStack, 100001), "the other replica must take the setting")
+			assert.Nil(t, dynamicTS2(t, l.IntegrationStack), "the other replica must take the setting")
 		})
 	}
 }
@@ -179,7 +181,7 @@ func listenerPair(t *testing.T, stack *testutils.IntegrationStack) (*testutils.M
 		stack.AssignTS1StaticTG(t, id, 3100)
 	}
 	stack.StartServers(t)
-	var out []*testutils.MMDVMClient
+	out := make([]*testutils.MMDVMClient, 0, 2)
 	for _, id := range []uint32{100001, 100002} {
 		c := testutils.NewMMDVMClient(id, "", testPassword)
 		require.NoError(t, c.Connect(stack.MMDVMAddr))
@@ -290,10 +292,11 @@ func TestNoMaxTransmissionKeepsALongCall(t *testing.T) {
 	})
 }
 
-func talkgroupOf(t *testing.T, stack *testutils.IntegrationStack, id uint) (models.Talkgroup, bool) {
+// talkgroupOf returns talkgroup 3999, and whether it exists.
+func talkgroupOf(t *testing.T, stack *testutils.IntegrationStack) (models.Talkgroup, bool) {
 	t.Helper()
 	var tgs []models.Talkgroup
-	require.NoError(t, stack.DB.Where("id = ?", id).Find(&tgs).Error)
+	require.NoError(t, stack.DB.Where("id = ?", 3999).Find(&tgs).Error)
 	if len(tgs) == 0 {
 		return models.Talkgroup{}, false
 	}
@@ -305,9 +308,9 @@ func TestUnknownTalkgroupIsDroppedByDefault(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{})
 		c := oneHotspot(t, stack)
-		tgCall(t, c, 1000001, 3999, 1601)
+		tgCall(t, c, 3999, 1601)
 		time.Sleep(time.Second)
-		_, ok := talkgroupOf(t, stack, 3999)
+		_, ok := talkgroupOf(t, stack)
 		assert.False(t, ok, "by default a call to an unknown talkgroup makes no talkgroup")
 	})
 }
@@ -321,7 +324,7 @@ func TestAutoCreateMakesTheTalkgroupOfACall(t *testing.T) {
 			stack.SeedMMDVMRepeater(t, id, 1000001, testPassword)
 		}
 		stack.StartServers(t)
-		var cs []*testutils.MMDVMClient
+		cs := make([]*testutils.MMDVMClient, 0, 2)
 		for _, id := range []uint32{100001, 100002} {
 			c := testutils.NewMMDVMClient(id, "", testPassword)
 			require.NoError(t, c.Connect(stack.MMDVMAddr))
@@ -331,16 +334,16 @@ func TestAutoCreateMakesTheTalkgroupOfACall(t *testing.T) {
 		}
 		time.Sleep(settleDuration)
 
-		tgCall(t, cs[0], 1000001, 3999, 1701)
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack, 3999); return ok }, 5*time.Second, 20*time.Millisecond,
+		tgCall(t, cs[0], 3999, 1701)
+		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return ok }, 5*time.Second, 20*time.Millisecond,
 			"a call to an unknown talkgroup makes it")
-		tg, _ := talkgroupOf(t, stack, 3999)
+		tg, _ := talkgroupOf(t, stack)
 		assert.True(t, tg.AutoCreated)
-		require.Eventually(t, func() bool { d := dynamicTS2(t, stack, 100001); return d != nil && *d == 3999 }, 5*time.Second, 20*time.Millisecond,
+		require.Eventually(t, func() bool { d := dynamicTS2(t, stack); return d != nil && *d == 3999 }, 5*time.Second, 20*time.Millisecond,
 			"the call links the new talkgroup as the dynamic talkgroup of its timeslot")
 		cs[0].Drain(100 * time.Millisecond)
 
-		tgCall(t, cs[1], 1000001, 3999, 1702)
+		tgCall(t, cs[1], 3999, 1702)
 		heard := false
 		for _, p := range cs[0].Drain(drainWait) {
 			heard = heard || p.StreamID == 1702
@@ -356,14 +359,14 @@ func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 		c := oneHotspot(t, stack)
 
 		for i := range uint(6) {
-			tgCall(t, c, 1000001, 3999, 1800+i)
+			tgCall(t, c, 3999, 1800+i)
 			time.Sleep(500 * time.Millisecond)
-			_, ok := talkgroupOf(t, stack, 3999)
+			_, ok := talkgroupOf(t, stack)
 			require.True(t, ok, "each call restarts the TTL of the talkgroup")
 		}
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack, 3999); return !ok }, 10*time.Second, 50*time.Millisecond,
+		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return !ok }, 10*time.Second, 50*time.Millisecond,
 			"the talkgroup goes after its TTL with no call")
-		assert.Nil(t, dynamicTS2(t, stack, 100001), "the deleted talkgroup is no longer linked")
+		assert.Nil(t, dynamicTS2(t, stack), "the deleted talkgroup is no longer linked")
 	})
 }
 
@@ -372,12 +375,12 @@ func TestEditedEphemeralTalkgroupStays(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: 500 * time.Millisecond})
 		c := oneHotspot(t, stack)
-		tgCall(t, c, 1000001, 3999, 1901)
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack, 3999); return ok }, 5*time.Second, 20*time.Millisecond)
+		tgCall(t, c, 3999, 1901)
+		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return ok }, 5*time.Second, 20*time.Millisecond)
 		require.NoError(t, stack.DB.Model(&models.Talkgroup{}).Where("id = ?", 3999).Update("auto_created", false).Error)
 		stack.Hub.TalkgroupChanged(3999)
 		time.Sleep(2 * time.Second)
-		_, ok := talkgroupOf(t, stack, 3999)
+		_, ok := talkgroupOf(t, stack)
 		assert.True(t, ok, "a talkgroup that an admin edited is no longer ephemeral")
 	})
 }

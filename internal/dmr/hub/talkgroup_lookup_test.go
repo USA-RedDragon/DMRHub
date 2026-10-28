@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -80,36 +81,40 @@ func startHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub) *hub.Hub {
 
 func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *testing.T) {
 	t.Parallel()
-	_, database, ps := makeTestHubWithPubSub(t)
-	slow := slowTalkgroupQueries(t, database)
-	seedListener(t, database, 7)
+	synctest.Test(t, func(t *testing.T) {
+		_, database, ps := makeTestHubWithPubSub(t)
+		slow := slowTalkgroupQueries(t, database)
+		seedListener(t, database, 7)
 
-	h := startHub(t, database, ps)
-	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-	h.ActivateRepeater(context.Background(), 100002)
+		h := startHub(t, database, ps)
+		srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.ActivateRepeater(context.Background(), 100002)
 
-	slow.Store(true)
-	h.RoutePacket(context.Background(), makeVoicePacket(7, 62001, true, false), models.RepeaterTypeMMDVM)
-	rp := receive(t, srv)
-	assert.Equal(t, uint(100002), rp.RepeaterID)
-	assert.Equal(t, uint(62001), rp.Packet.StreamID)
+		slow.Store(true)
+		h.RoutePacket(context.Background(), makeVoicePacket(7, 62001, true, false), models.RepeaterTypeMMDVM)
+		rp := receive(t, srv)
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+		assert.Equal(t, uint(62001), rp.Packet.StreamID)
+	})
 }
 
 func TestANewTalkgroupTakesItsFirstCallFromASlowDatabase(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	slow := slowTalkgroupQueries(t, database)
-	seedListener(t, database, 8)
-	h.TalkgroupChanged(8)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		slow := slowTalkgroupQueries(t, database)
+		seedListener(t, database, 8)
+		h.TalkgroupChanged(8)
 
-	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-	h.ActivateRepeater(context.Background(), 100002)
+		srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.ActivateRepeater(context.Background(), 100002)
 
-	slow.Store(true)
-	h.RoutePacket(context.Background(), makeVoicePacket(8, 62002, true, false), models.RepeaterTypeMMDVM)
-	rp := receive(t, srv)
-	assert.Equal(t, uint(100002), rp.RepeaterID)
-	assert.Equal(t, uint(62002), rp.Packet.StreamID)
+		slow.Store(true)
+		h.RoutePacket(context.Background(), makeVoicePacket(8, 62002, true, false), models.RepeaterTypeMMDVM)
+		rp := receive(t, srv)
+		assert.Equal(t, uint(100002), rp.RepeaterID)
+		assert.Equal(t, uint(62002), rp.Packet.StreamID)
+	})
 }

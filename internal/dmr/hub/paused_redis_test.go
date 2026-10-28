@@ -28,6 +28,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -35,6 +36,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -117,45 +119,47 @@ func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) er
 // written once Redis goes on.
 func TestAPausedRedisLosesNoSighting(t *testing.T) {
 	t.Parallel()
-	const radios, first, batch = 300, 1100000, 50
-	paused := &pausedKV{prefix: "dmrhub:lastheard:11"}
-	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		paused.KV = k
-		return paused
-	})
-	t.Cleanup(paused.resume)
-	t.Cleanup(h.HoldLookupWaits())
-	seedUser(t, database, 1000001, "OWNER")
-	seedRepeater(t, database, 100003, 1000001)
-	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100003).Error)
-	for i := range radios {
-		seedUser(t, database, first+uint(i), "R"+strconv.Itoa(i))
-	}
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	h.ActivateRepeater(context.Background(), 100003)
-	h.LiftSlotRate(true)
-	time.Sleep(100 * time.Millisecond)
-
-	paused.pause()
-	for i := range radios {
-		h.RoutePacket(context.Background(), dataHeader(first+uint(i), 1, 100003, 9000+uint(i)), models.RepeaterTypeMMDVM)
-		if i%batch == batch-1 {
-			require.Eventually(t, func() bool { return paused.held.Load() == int64(i+1) }, time.Minute, 10*time.Millisecond,
-				"the records of the first %d radios do not all wait on the paused Redis", i+1)
-		}
-	}
-	paused.resume()
-	missing := func() []uint {
-		var out []uint
+	synctest.Test(t, func(t *testing.T) {
+		const radios, first, batch = 300, 1100000, 50
+		paused := &pausedKV{prefix: "dmrhub:lastheard:11"}
+		h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+			paused.KV = k
+			return paused
+		})
+		t.Cleanup(paused.resume)
+		t.Cleanup(h.HoldLookupWaits())
+		seedUser(t, database, 1000001, "OWNER")
+		seedRepeater(t, database, 100003, 1000001)
+		require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100003).Error)
 		for i := range radios {
-			if h.HeardAt(context.Background(), first+uint(i)) != 100003 {
-				out = append(out, first+uint(i))
+			seedUser(t, database, first+uint(i), "R"+strconv.Itoa(i))
+		}
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		h.ActivateRepeater(context.Background(), 100003)
+		h.LiftSlotRate(true)
+		time.Sleep(100 * time.Millisecond)
+
+		paused.pause()
+		for i := range radios {
+			h.RoutePacket(context.Background(), dataHeader(first+uint(i), 1, 100003, 9000+uint(i)), models.RepeaterTypeMMDVM)
+			if i%batch == batch-1 {
+				bubble.Eventually(t, func() bool { return paused.held.Load() == int64(i+1) }, time.Minute, 10*time.Millisecond,
+					"the records of the first %d radios do not all wait on the paused Redis", i+1)
 			}
 		}
-		return out
-	}
-	assert.Eventually(t, func() bool { return len(missing()) == 0 }, time.Minute, 100*time.Millisecond, "where some radios were heard is not stored")
-	t.Logf("%d of %d records missing after %d paused KV calls", len(missing()), radios, paused.calls.Load())
+		paused.resume()
+		missing := func() []uint {
+			var out []uint
+			for i := range radios {
+				if h.HeardAt(context.Background(), first+uint(i)) != 100003 {
+					out = append(out, first+uint(i))
+				}
+			}
+			return out
+		}
+		bubble.Eventually(t, func() bool { return len(missing()) == 0 }, time.Minute, 100*time.Millisecond, "where some radios were heard is not stored")
+		t.Logf("%d of %d records missing after %d paused KV calls", len(missing()), radios, paused.calls.Load())
+	})
 }
 
 // TestAPausedRedisHoldsNoCodecChange announces the change of the codec of
@@ -167,45 +171,47 @@ func TestAPausedRedisLosesNoSighting(t *testing.T) {
 // other replicas must get each one once Redis is back.
 func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
 	t.Parallel()
-	stalled := &stalledPubSub{stalls: func(topic string) bool { return topic == "hub:repeaters:codec" }}
-	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
-		stalled.PubSub = ps
-		return stalled
-	}, func(k kv.KV) kv.KV { return k })
-	t.Cleanup(stalled.resume)
-	seedUser(t, database, 1000001, "OWNER")
-	seedRepeater(t, database, 100003, 1000001)
-	sub := ps.Subscribe("hub:repeaters:codec")
-	t.Cleanup(func() { _ = sub.Close() })
+	synctest.Test(t, func(t *testing.T) {
+		stalled := &stalledPubSub{stalls: func(topic string) bool { return topic == "hub:repeaters:codec" }}
+		h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
+			stalled.PubSub = ps
+			return stalled
+		}, func(k kv.KV) kv.KV { return k })
+		t.Cleanup(stalled.resume)
+		seedUser(t, database, 1000001, "OWNER")
+		seedRepeater(t, database, 100003, 1000001)
+		sub := ps.Subscribe("hub:repeaters:codec")
+		t.Cleanup(func() { _ = sub.Close() })
 
-	for _, mode := range []stallMode{stallTimeout, stallNotSent} {
-		before := stalled.calls.Load()
-		stalled.stall(mode)
-		announced := make(chan struct{})
-		go func() {
-			h.CodecChanged(100003)
-			close(announced)
-		}()
-		select {
-		case <-announced:
-		case <-time.After(time.Minute):
-			require.Fail(t, "the announcement waited on pubsub", "stall mode %d", mode)
+		for _, mode := range []stallMode{stallTimeout, stallNotSent} {
+			before := stalled.calls.Load()
+			stalled.stall(mode)
+			announced := make(chan struct{})
+			go func() {
+				h.CodecChanged(100003)
+				close(announced)
+			}()
+			select {
+			case <-announced:
+			case <-time.After(time.Minute):
+				require.Fail(t, "the announcement waited on pubsub", "stall mode %d", mode)
+			}
+			bubble.Eventually(t, func() bool { return stalled.calls.Load() > before }, time.Minute, 10*time.Millisecond,
+				"the announcement made no publish for pubsub to stall in stall mode %d", mode)
+			stalled.resume()
+			select {
+			case msg := <-sub.Channel():
+				assert.True(t, strings.HasSuffix(string(msg), ":100003"), "the announcement names the repeater: %s", msg)
+			case <-time.After(time.Minute):
+				assert.Fail(t, "the other replicas did not get the announcement", "stall mode %d", mode)
+			}
+			select {
+			case msg := <-sub.Channel():
+				assert.Fail(t, "the other replicas got the announcement twice", "%s", msg)
+			case <-time.After(300 * time.Millisecond):
+			}
 		}
-		require.Eventually(t, func() bool { return stalled.calls.Load() > before }, time.Minute, 10*time.Millisecond,
-			"the announcement made no publish for pubsub to stall in stall mode %d", mode)
-		stalled.resume()
-		select {
-		case msg := <-sub.Channel():
-			assert.True(t, strings.HasSuffix(string(msg), ":100003"), "the announcement names the repeater: %s", msg)
-		case <-time.After(time.Minute):
-			assert.Fail(t, "the other replicas did not get the announcement", "stall mode %d", mode)
-		}
-		select {
-		case msg := <-sub.Channel():
-			assert.Fail(t, "the other replicas got the announcement twice", "%s", msg)
-		case <-time.After(300 * time.Millisecond):
-		}
-	}
+	})
 }
 
 // TestOwnsRepeaterWaitsOnAPausedRedisNoLongerThanALookup asks whether the
@@ -217,33 +223,35 @@ func TestAPausedRedisHoldsNoCodecChange(t *testing.T) {
 // claimed it after that.
 func TestOwnsRepeaterWaitsOnAPausedRedisNoLongerThanALookup(t *testing.T) {
 	t.Parallel()
-	paused := &pausedKV{prefix: "dmrhub:peer_owner:"}
-	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		paused.KV = k
-		return paused
+	synctest.Test(t, func(t *testing.T) {
+		paused := &pausedKV{prefix: "dmrhub:peer_owner:"}
+		h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+			paused.KV = k
+			return paused
+		})
+		require.NoError(t, h.SetInstanceID("replica-a"))
+		seedUser(t, database, 1000001, "OWNER")
+		seedRepeater(t, database, 100003, 1000001)
+		seedRepeater(t, database, 100004, 1000001)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		h.ActivateRepeater(context.Background(), 100003)
+		h.ActivateRepeater(context.Background(), 100004)
+		time.Sleep(100 * time.Millisecond)
+		require.True(t, h.OwnsRepeater(context.Background(), 100003))
+		require.True(t, h.OwnsRepeater(context.Background(), 100004))
+
+		require.NoError(t, ps.Publish("hub:claimed", fmt.Appendf(nil, "100004 replica-b %d", time.Now().UnixNano())))
+		time.Sleep(100 * time.Millisecond)
+
+		t.Cleanup(paused.resume)
+		paused.pause()
+		for id, want := range map[uint]bool{100003: true, 100004: false} {
+			start := time.Now()
+			owns := h.OwnsRepeater(context.Background(), id)
+			waited := time.Since(start)
+			t.Logf("OwnsRepeater(%d) = %v after %v while the KV store holds its calls", id, owns, waited)
+			assert.Less(t, waited, lookup.Wait+200*time.Millisecond, "OwnsRepeater waited on a paused KV store")
+			assert.Equal(t, want, owns, "OwnsRepeater(%d) with a paused KV store", id)
+		}
 	})
-	require.NoError(t, h.SetInstanceID("replica-a"))
-	seedUser(t, database, 1000001, "OWNER")
-	seedRepeater(t, database, 100003, 1000001)
-	seedRepeater(t, database, 100004, 1000001)
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	h.ActivateRepeater(context.Background(), 100003)
-	h.ActivateRepeater(context.Background(), 100004)
-	time.Sleep(100 * time.Millisecond)
-	require.True(t, h.OwnsRepeater(context.Background(), 100003))
-	require.True(t, h.OwnsRepeater(context.Background(), 100004))
-
-	require.NoError(t, ps.Publish("hub:claimed", fmt.Appendf(nil, "100004 replica-b %d", time.Now().UnixNano())))
-	time.Sleep(100 * time.Millisecond)
-
-	t.Cleanup(paused.resume)
-	paused.pause()
-	for id, want := range map[uint]bool{100003: true, 100004: false} {
-		start := time.Now()
-		owns := h.OwnsRepeater(context.Background(), id)
-		waited := time.Since(start)
-		t.Logf("OwnsRepeater(%d) = %v after %v while the KV store holds its calls", id, owns, waited)
-		assert.Less(t, waited, lookup.Wait+200*time.Millisecond, "OwnsRepeater waited on a paused KV store")
-		assert.Equal(t, want, owns, "OwnsRepeater(%d) with a paused KV store", id)
-	}
 }

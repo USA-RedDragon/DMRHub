@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -40,37 +41,41 @@ func waitForCalls(h interface{ WaitForCalls() }) <-chan struct{} {
 
 func TestWaitForCallsWaitsForDataStreams(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedUser(t, database, 1000001, "CALLER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedUser(t, database, 1000001, "CALLER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	pkt := dataHeader(1000001, 1, 100001, 4242)
-	routed := time.Now()
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	settle(t, h, pkt, models.RepeaterTypeMMDVM)
-	done := waitForCalls(h)
-	select {
-	case <-done:
-		assert.GreaterOrEqual(t, time.Since(routed), hub.StreamIdle, "shutdown did not wait for a data call in progress")
-	case <-time.After(failAfter):
-		t.Fatal("shutdown waited for a data call that had ended")
-	}
+		pkt := dataHeader(1000001, 1, 100001, 4242)
+		routed := time.Now()
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		settle(t, h, pkt, models.RepeaterTypeMMDVM)
+		done := waitForCalls(h)
+		select {
+		case <-done:
+			assert.GreaterOrEqual(t, time.Since(routed), hub.StreamIdle, "shutdown did not wait for a data call in progress")
+		case <-time.After(failAfter):
+			t.Fatal("shutdown waited for a data call that had ended")
+		}
+	})
 }
 
 func TestWaitForCallsEndsVoiceWithoutTerminator(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedUser(t, database, 1000001, "CALLER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedUser(t, database, 1000001, "CALLER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	pkt := makeVoicePacket(1, 4343, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	settle(t, h, pkt, models.RepeaterTypeMMDVM)
-	select {
-	case <-waitForCalls(h):
-	case <-time.After(failAfter):
-		t.Fatal("shutdown waited for ever on a voice call that lost its terminator")
-	}
+		pkt := makeVoicePacket(1, 4343, true, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		settle(t, h, pkt, models.RepeaterTypeMMDVM)
+		select {
+		case <-waitForCalls(h):
+		case <-time.After(failAfter):
+			t.Fatal("shutdown waited for ever on a voice call that lost its terminator")
+		}
+	})
 }

@@ -22,11 +22,13 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,7 +74,7 @@ func privateVoice(src, dst, repeater, stream uint) models.Packet {
 // the test waits on the database for them.
 func loadLookups(t *testing.T, h *hub.Hub, talkgroups, radios []uint) {
 	t.Helper()
-	require.Eventually(t, func() bool { return h.LookupsLoaded(talkgroups, radios) }, 30*time.Second, 10*time.Millisecond, "the hub did not load talkgroups %v and the owners of radios %v", talkgroups, radios)
+	bubble.Eventually(t, func() bool { return h.LookupsLoaded(talkgroups, radios) }, 30*time.Second, 10*time.Millisecond, "the hub did not load talkgroups %v and the owners of radios %v", talkgroups, radios)
 }
 
 // hear routes a data header of radio on repeater, and waits until the
@@ -81,92 +83,106 @@ func hear(t *testing.T, h *hub.Hub, radio, repeater, stream uint) {
 	t.Helper()
 	loadLookups(t, h, nil, []uint{radio})
 	h.RoutePacket(context.Background(), dataHeader(radio, 1, repeater, stream), models.RepeaterTypeMMDVM)
-	require.Eventually(t, func() bool { return h.HeardLastOn(context.Background(), radio) == repeater }, 30*time.Second, 10*time.Millisecond, "the hub did not store that repeater %d heard radio %d", repeater, radio)
+	bubble.Eventually(t, func() bool { return h.HeardLastOn(context.Background(), radio) == repeater }, 30*time.Second, 10*time.Millisecond, "the hub did not store that repeater %d heard radio %d", repeater, radio)
 }
 
 func TestHybridReachesAVisitorWhereverItWasHeard(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{})
-	hear(t, h, pcVisitor, pcOtherHS, 1)
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{})
+		hear(t, h, pcVisitor, pcOtherHS, 1)
 
-	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, pcOtherHS, "a voice call to a radio with no account goes where it was heard")
-	h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, pcOtherHS, "data to a radio with no account goes where it was heard")
+		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, pcOtherHS, "a voice call to a radio with no account goes where it was heard")
+		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, pcOtherHS, "data to a radio with no account goes where it was heard")
+	})
 }
 
 func TestMembersReachDropsAVisitor(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}})
-	hear(t, h, pcVisitor, pcOtherHS, 1)
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}})
+		hear(t, h, pcVisitor, pcOtherHS, 1)
 
-	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "the members reach drops a call to a radio with no account")
+		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "the members reach drops a call to a radio with no account")
+	})
 }
 
 func TestHybridDoesNotFollowAnOwnedRadioToAnUntrustedHotspot(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{})
-	hear(t, h, pcOwner, pcOwnHS, 1)
-	hear(t, h, pcOwner, pcOtherHS, 2)
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{})
+		hear(t, h, pcOwner, pcOwnHS, 1)
+		hear(t, h, pcOwner, pcOtherHS, 2)
 
-	h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, pcOwnHS, "a spoofed ID on another user's hotspot must not pull the calls of an owned radio")
+		h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, pcOwnHS, "a spoofed ID on another user's hotspot must not pull the calls of an owned radio")
+	})
 }
 
 func TestAnyoneFollowsAnOwnedRadioToAnyHotspot(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
-	hear(t, h, pcOwner, pcOwnHS, 1)
-	hear(t, h, pcOwner, pcOtherHS, 2)
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
+		hear(t, h, pcOwner, pcOwnHS, 1)
+		hear(t, h, pcOwner, pcOtherHS, 2)
 
-	h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, pcOtherHS, "the anyone reach follows a radio to wherever it was last heard")
+		h.RoutePacket(context.Background(), privateVoice(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, pcOtherHS, "the anyone reach follows a radio to wherever it was last heard")
+	})
 }
 
 func TestUnknownTargetIsDroppedByDefault(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{})
-	loadLookups(t, h, nil, []uint{pcNever})
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{})
+		loadLookups(t, h, nil, []uint{pcNever})
 
-	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcNever, pcOwnHS, 1), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "a call to a radio that was never heard")
+		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcNever, pcOwnHS, 1), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "a call to a radio that was never heard")
+	})
 }
 
 func TestUnknownTargetFloodsEveryOtherRepeater(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Unknown: config.PrivateUnknownFlood}})
-	loadLookups(t, h, nil, []uint{pcNever})
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Unknown: config.PrivateUnknownFlood}})
+		loadLookups(t, h, nil, []uint{pcNever})
 
-	for seq := range uint(2) {
-		p := privateVoice(pcOwner, pcNever, pcOwnHS, 1)
-		p.Seq = seq
-		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-		got := map[uint]int{}
-		for range 2 {
-			select {
-			case rp := <-srv.Packets:
-				got[rp.RepeaterID]++
-			case <-time.After(deliveryWait):
-				t.Fatalf("burst %d reached only %v", seq, got)
+		for seq := range uint(2) {
+			p := privateVoice(pcOwner, pcNever, pcOwnHS, 1)
+			p.Seq = seq
+			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+			got := map[uint]int{}
+			for range 2 {
+				select {
+				case rp := <-srv.Packets:
+					got[rp.RepeaterID]++
+				case <-time.After(deliveryWait):
+					t.Fatalf("burst %d reached only %v", seq, got)
+				}
 			}
+			assert.Equal(t, map[uint]int{pcOtherHS: 1, pcThirdHS: 1}, got, "burst %d floods every repeater but its own", seq)
+			expectNone(t, srv, "the source repeater does not get its own burst back")
 		}
-		assert.Equal(t, map[uint]int{pcOtherHS: 1, pcThirdHS: 1}, got, "burst %d floods every repeater but its own", seq)
-		expectNone(t, srv, "the source repeater does not get its own burst back")
-	}
+	})
 }
 
 func TestMaxAgeDropsAStaleSighting(t *testing.T) {
 	t.Parallel()
-	h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{MaxAge: time.Hour}})
-	loadLookups(t, h, nil, []uint{pcVisitor, pcNever})
-	require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-30*time.Minute), true))
-	require.NoError(t, h.StoreSighting(pcNever, pcOtherHS, time.Now().Add(-2*time.Hour), true))
+	synctest.Test(t, func(t *testing.T) {
+		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{MaxAge: time.Hour}})
+		loadLookups(t, h, nil, []uint{pcVisitor, pcNever})
+		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-30*time.Minute), true))
+		require.NoError(t, h.StoreSighting(pcNever, pcOtherHS, time.Now().Add(-2*time.Hour), true))
 
-	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, pcOtherHS, "a sighting within the max age")
-	h.RoutePacket(context.Background(), privateVoice(pcOwner, pcNever, pcOwnHS, 3), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "a sighting older than the max age")
+		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, pcOtherHS, "a sighting within the max age")
+		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcNever, pcOwnHS, 3), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "a sighting older than the max age")
+	})
 }
 
 func TestDataTakesTheVoiceSettingsUnlessItHasItsOwn(t *testing.T) {
@@ -235,13 +251,15 @@ func TestTheLastingRecordLocatesARadioHeardLongAgo(t *testing.T) {
 
 func TestTheNewestSightingWins(t *testing.T) {
 	t.Parallel()
-	h, _ := privateHub(t, config.PrivateCalls{})
-	now := time.Now()
-	require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, now, true))
-	require.NoError(t, h.StoreSighting(pcVisitor, pcThirdHS, now.Add(-time.Minute), true))
-	assert.Equal(t, pcOtherHS, h.HeardAt(context.Background(), pcVisitor), "an older sighting that comes late")
-	require.NoError(t, h.StoreSighting(pcVisitor, pcThirdHS, now.Add(time.Minute), true))
-	assert.Equal(t, pcThirdHS, h.HeardAt(context.Background(), pcVisitor), "a newer sighting")
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := privateHub(t, config.PrivateCalls{})
+		now := time.Now()
+		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, now, true))
+		require.NoError(t, h.StoreSighting(pcVisitor, pcThirdHS, now.Add(-time.Minute), true))
+		assert.Equal(t, pcOtherHS, h.HeardAt(context.Background(), pcVisitor), "an older sighting that comes late")
+		require.NoError(t, h.StoreSighting(pcVisitor, pcThirdHS, now.Add(time.Minute), true))
+		assert.Equal(t, pcThirdHS, h.HeardAt(context.Background(), pcVisitor), "a newer sighting")
+	})
 }
 
 // TestTheResyncKeepsTheFloodSubscription checks that the resync of a
@@ -250,8 +268,10 @@ func TestTheNewestSightingWins(t *testing.T) {
 // lost bursts of the calls in progress.
 func TestTheResyncKeepsTheFloodSubscription(t *testing.T) {
 	t.Parallel()
-	h, _ := privateHub(t, config.PrivateCalls{})
-	for _, id := range []uint{pcOwnHS, pcOtherHS, pcThirdHS} {
-		assert.False(t, h.ResyncRepeater(id), "repeater %d", id)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := privateHub(t, config.PrivateCalls{})
+		for _, id := range []uint{pcOwnHS, pcOtherHS, pcThirdHS} {
+			assert.False(t, h.ResyncRepeater(id), "repeater %d", id)
+		}
+	})
 }

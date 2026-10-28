@@ -27,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -103,90 +104,92 @@ func (s *slowKV) SetNX(ctx context.Context, key string, value string, ttl time.D
 // ongoing stream renews its claim without waiting.
 func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 	t.Parallel()
-	slow := &slowKV{hang: make(chan struct{})}
-	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		slow.KV = k
-		return slow
-	})
+	synctest.Test(t, func(t *testing.T) {
+		slow := &slowKV{hang: make(chan struct{})}
+		h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+			slow.KV = k
+			return slow
+		})
 
-	seedUser(t, database, testSrcID, "CALLER")
-	seedUser(t, database, 1000002, "OTHER")
-	seedRepeater(t, database, testRepeaterID, testSrcID)
-	seedRepeater(t, database, 100002, 1000002)
-	seedTalkgroup(t, database, 1, "TG1")
-	var rpt2 models.Repeater
-	require.NoError(t, database.First(&rpt2, 100002).Error)
-	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
-	require.NoError(t, database.Model(&rpt2).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		seedUser(t, database, testSrcID, "CALLER")
+		seedUser(t, database, 1000002, "OTHER")
+		seedRepeater(t, database, testRepeaterID, testSrcID)
+		seedRepeater(t, database, 100002, 1000002)
+		seedTalkgroup(t, database, 1, "TG1")
+		var rpt2 models.Repeater
+		require.NoError(t, database.First(&rpt2, 100002).Error)
+		require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		require.NoError(t, database.Model(&rpt2).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
 
-	arrivals := collect(map[string]*hub.ServerHandle{
-		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
-	})
-	h.SetStreamClaimTiming(hub.StreamClaimHold, 150*time.Millisecond)
-	h.ActivateRepeater(context.Background(), testRepeaterID)
-	h.ActivateRepeater(context.Background(), 100002)
-	loadLookups(t, h, []uint{1}, nil)
+		arrivals := collect(t, map[string]*hub.ServerHandle{
+			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+		})
+		h.SetStreamClaimTiming(hub.StreamClaimHold, 150*time.Millisecond)
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		loadLookups(t, h, []uint{1}, nil)
 
-	burst := func(stream uint, slot bool, src uint, seq int) models.Packet {
-		p := makeVoicePacket(1, stream, true, slot)
-		p.Src = src
-		p.Seq = uint(seq)
-		return p
-	}
-	const ongoing, started = uint(70101), uint(70102)
-	worstDelay(t, arrivals, 70100, sendStream(h, 1, 70100, true, 4), "mmdvm:100002")
-	h.RoutePacket(context.Background(), burst(ongoing, false, testSrcID, 0), models.RepeaterTypeMMDVM)
-	worstDelay(t, arrivals, ongoing, []time.Time{time.Now()}, "mmdvm:100002")
-	time.Sleep(200 * time.Millisecond)
+		burst := func(stream uint, slot bool, src uint, seq int) models.Packet {
+			p := makeVoicePacket(1, stream, true, slot)
+			p.Src = src
+			p.Seq = uint(seq)
+			return p
+		}
+		const ongoing, started = uint(70101), uint(70102)
+		worstDelay(t, arrivals, 70100, sendStream(h, 1, 70100, true, 4), "mmdvm:100002")
+		h.RoutePacket(context.Background(), burst(ongoing, false, testSrcID, 0), models.RepeaterTypeMMDVM)
+		worstDelay(t, arrivals, ongoing, []time.Time{time.Now()}, "mmdvm:100002")
+		time.Sleep(200 * time.Millisecond)
 
-	slow.on.Store(true)
-	defer close(slow.hang)
-	const bursts = 8
-	routed := make(chan time.Duration, 1)
-	go func() {
-		var worstCall time.Duration
-		start := time.Now()
-		for i := range bursts {
-			time.Sleep(time.Until(start.Add(time.Duration(i) * burstPeriod)))
-			for _, p := range []models.Packet{burst(ongoing, false, testSrcID, i), burst(started, true, 1000002, i)} {
-				called := time.Now()
-				h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-				worstCall = max(worstCall, time.Since(called))
+		slow.on.Store(true)
+		defer close(slow.hang)
+		const bursts = 8
+		routed := make(chan time.Duration, 1)
+		go func() {
+			var worstCall time.Duration
+			start := time.Now()
+			for i := range bursts {
+				time.Sleep(time.Until(start.Add(time.Duration(i) * burstPeriod)))
+				for _, p := range []models.Packet{burst(ongoing, false, testSrcID, i), burst(started, true, 1000002, i)} {
+					called := time.Now()
+					h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+					worstCall = max(worstCall, time.Since(called))
+				}
+			}
+			routed <- worstCall
+		}()
+
+		seqs := map[uint][]uint{}
+		deadline := time.After(bursts*burstPeriod + 30*time.Second)
+		for len(seqs[ongoing]) < bursts || len(seqs[started]) < bursts {
+			select {
+			case a := <-arrivals:
+				s := a.rp.Packet.StreamID
+				if s == ongoing || s == started {
+					seqs[s] = append(seqs[s], a.rp.Packet.Seq)
+				}
+			case <-deadline:
+				t.Fatalf("deliveries %v while the KV store hangs, want %d of each stream", seqs, bursts)
 			}
 		}
-		routed <- worstCall
-	}()
-
-	seqs := map[uint][]uint{}
-	deadline := time.After(bursts*burstPeriod + 30*time.Second)
-	for len(seqs[ongoing]) < bursts || len(seqs[started]) < bursts {
 		select {
-		case a := <-arrivals:
-			s := a.rp.Packet.StreamID
-			if s == ongoing || s == started {
-				seqs[s] = append(seqs[s], a.rp.Packet.Seq)
-			}
+		case worstCall := <-routed:
+			assert.Less(t, worstCall, hub.StreamClaimWait, "the read loop waited on the claim of a stream")
 		case <-deadline:
-			t.Fatalf("deliveries %v while the KV store hangs, want %d of each stream", seqs, bursts)
+			t.Fatal("the read loop waited on the KV store")
 		}
-	}
-	select {
-	case worstCall := <-routed:
-		assert.Less(t, worstCall, hub.StreamClaimWait, "the read loop waited on the claim of a stream")
-	case <-deadline:
-		t.Fatal("the read loop waited on the KV store")
-	}
-	checks := 0
-	slow.mu.Lock()
-	for _, key := range slow.setNX {
-		if strings.Contains(key, fmt.Sprintf(":%d:", started)) {
-			checks++
+		checks := 0
+		slow.mu.Lock()
+		for _, key := range slow.setNX {
+			if strings.Contains(key, fmt.Sprintf(":%d:", started)) {
+				checks++
+			}
 		}
-	}
-	slow.mu.Unlock()
-	assert.Equal(t, 1, checks, "the held bursts of the new stream shared one check of its claim")
-	assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[ongoing], "the ongoing stream kept its order")
-	assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[started], "the held bursts of the new stream kept their order")
+		slow.mu.Unlock()
+		assert.Equal(t, 1, checks, "the held bursts of the new stream shared one check of its claim")
+		assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[ongoing], "the ongoing stream kept its order")
+		assert.Equal(t, []uint{0, 1, 2, 3, 4, 5, 6, 7}, seqs[started], "the held bursts of the new stream kept their order")
+	})
 }
 
 // TestAStreamStartedOnTwoReplicasAtOnceHasOneSource starts the same stream
@@ -195,34 +198,36 @@ func TestSlowClaimStoreHoldsNoReadLoop(t *testing.T) {
 // Exactly one source may own it.
 func TestAStreamStartedOnTwoReplicasAtOnceHasOneSource(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	inner, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	shared := &slowKV{KV: inner, delay: 10 * time.Millisecond}
-	shared.on.Store(true)
-	one, two := hub.NewHub(nil, shared, nil, nil), hub.NewHub(nil, shared, nil, nil)
-	t.Cleanup(func() {
-		one.Stop(context.Background())
-		two.Stop(context.Background())
-		_ = shared.Close()
-	})
-	t.Cleanup(one.HoldStreamClaimWaits())
-	t.Cleanup(two.HoldStreamClaimWaits())
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		inner, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		shared := &slowKV{KV: inner, delay: 10 * time.Millisecond}
+		shared.on.Store(true)
+		one, two := hub.NewHub(nil, shared, nil, nil), hub.NewHub(nil, shared, nil, nil)
+		t.Cleanup(func() {
+			one.Stop(context.Background())
+			two.Stop(context.Background())
+			_ = shared.Close()
+		})
+		t.Cleanup(one.HoldStreamClaimWaits())
+		t.Cleanup(two.HoldStreamClaimWaits())
 
-	for stream := uint(1); stream <= 20; stream++ {
-		var wg sync.WaitGroup
-		var admitted atomic.Int32
-		for i, h := range []*hub.Hub{one, two} {
-			wg.Go(func() {
-				p := makeVoicePacket(1, stream, true, false)
-				p.Repeater = 100001 + uint(i)
-				if h.AdmitStream(t.Context(), p, models.RepeaterTypeMMDVM) {
-					admitted.Add(1)
-				}
-			})
+		for stream := uint(1); stream <= 20; stream++ {
+			var wg sync.WaitGroup
+			var admitted atomic.Int32
+			for i, h := range []*hub.Hub{one, two} {
+				wg.Go(func() {
+					p := makeVoicePacket(1, stream, true, false)
+					p.Repeater = 100001 + uint(i)
+					if h.AdmitStream(t.Context(), p, models.RepeaterTypeMMDVM) {
+						admitted.Add(1)
+					}
+				})
+			}
+			wg.Wait()
+			assert.Equal(t, int32(1), admitted.Load(), "stream %d", stream)
 		}
-		wg.Wait()
-		assert.Equal(t, int32(1), admitted.Load(), "stream %d", stream)
-	}
+	})
 }

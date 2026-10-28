@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -61,46 +62,48 @@ func reaches(t *testing.T, h *hub.Hub, handle *hub.ServerHandle, tg, stream uint
 
 func TestLostNoticeHealsAfterTheCacheExpires(t *testing.T) {
 	t.Parallel()
-	hubB, database, ps := makeTestHubWithPubSub(t)
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	kvA, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	ctA := calltracker.NewCallTracker(database, ps, kvA)
-	hubA := hub.NewHub(database, kvA, noticeDropper{ps}, ctA)
-	t.Cleanup(func() {
-		hubA.Stop(context.Background())
-		ctA.Stop()
-		_ = kvA.Close()
-	})
+	synctest.Test(t, func(t *testing.T) {
+		hubB, database, ps := makeTestHubWithPubSub(t)
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		kvA, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		ctA := calltracker.NewCallTracker(database, ps, kvA)
+		hubA := hub.NewHub(database, kvA, noticeDropper{ps}, ctA)
+		t.Cleanup(func() {
+			hubA.Stop(context.Background())
+			ctA.Stop()
+			_ = kvA.Close()
+		})
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-	seedTalkgroup(t, database, 2, "TG2")
-	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 1}}))
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
+		seedTalkgroup(t, database, 2, "TG2")
+		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 1}}))
 
-	handle := hubB.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer hubB.UnregisterServer(models.RepeaterTypeMMDVM)
-	hubB.ActivateRepeater(context.Background(), 100002)
-	knowTalkgroups(t, hubA)
-	require.True(t, reaches(t, hubA, handle, 1, 50001))
+		handle := hubB.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer hubB.UnregisterServer(models.RepeaterTypeMMDVM)
+		hubB.ActivateRepeater(context.Background(), 100002)
+		knowTalkgroups(t, hubA)
+		require.True(t, reaches(t, hubA, handle, 1, 50001))
 
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 2}}))
-	hubA.ReloadRepeater(context.Background(), 100002)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 2}}))
+		hubA.ReloadRepeater(context.Background(), 100002)
 
-	deadline := time.After(hub.RepeaterCacheTTL + failAfter)
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-	for !hubB.Subscribes(100002, 2) || hubB.Subscribes(100002, 1) {
-		select {
-		case <-deadline:
-			t.Fatal("the talkgroups of the repeater did not change once the cache expired")
-		case <-tick.C:
+		deadline := time.After(hub.RepeaterCacheTTL + failAfter)
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
+		for !hubB.Subscribes(100002, 2) || hubB.Subscribes(100002, 1) {
+			select {
+			case <-deadline:
+				t.Fatal("the talkgroups of the repeater did not change once the cache expired")
+			case <-tick.C:
+			}
 		}
-	}
 
-	assert.False(t, reaches(t, hubA, handle, 1, 50002), "the removed talkgroup stops once the cache expires")
-	assert.True(t, reaches(t, hubA, handle, 2, 50003), "the added talkgroup reaches the repeater once the cache expires")
+		assert.False(t, reaches(t, hubA, handle, 1, 50002), "the removed talkgroup stops once the cache expires")
+		assert.True(t, reaches(t, hubA, handle, 2, 50003), "the added talkgroup reaches the repeater once the cache expires")
+	})
 }

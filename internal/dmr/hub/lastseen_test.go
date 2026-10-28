@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -32,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,45 +109,53 @@ func expectNone(t *testing.T, srv *hub.ServerHandle, what string) {
 
 func TestPrivateTrafficFindsRadioHeardOnlyThroughData(t *testing.T) {
 	t.Parallel()
-	h, _, srv := lastSeenHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := lastSeenHub(t)
 
-	hear(t, h, 1000002, 100003, 1)
+		hear(t, h, 1000002, 100003, 1)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "private data to a radio heard on its owner's repeater")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "private data to a radio heard on its owner's repeater")
+	})
 }
 
 func TestUntrustedSightingDoesNotMoveRadio(t *testing.T) {
 	t.Parallel()
-	h, _, srv := lastSeenHub(t)
-	hear(t, h, 1000002, 100003, 1)
-	hear(t, h, 1000002, 100004, 2)
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := lastSeenHub(t)
+		hear(t, h, 1000002, 100003, 1)
+		hear(t, h, 1000002, 100004, 2)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 3), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "a sighting on another user's hotspot must not move the radio")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 3), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "a sighting on another user's hotspot must not move the radio")
+	})
 }
 
 func TestTrustedRepeaterMovesRadio(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
-	h.ReloadRepeater(context.Background(), 100004)
-	hear(t, h, 1000002, 100003, 1)
-	hear(t, h, 1000002, 100004, 2)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+		h.ReloadRepeater(context.Background(), 100004)
+		hear(t, h, 1000002, 100003, 1)
+		hear(t, h, 1000002, 100004, 2)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 3), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100004, "a sighting on a trusted repeater moves the radio")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 3), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100004, "a sighting on a trusted repeater moves the radio")
+	})
 }
 
 func TestUntrustedCallRowDoesNotLocateRadio(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	userID, repeaterID := uint(1000002), uint(100004)
-	require.NoError(t, database.Create(&models.Call{UserID: &userID, RepeaterID: &repeaterID, IngressID: repeaterID, CreatedAt: time.Now()}).Error)
-	loadLookups(t, h, nil, []uint{1000002})
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		userID, repeaterID := uint(1000002), uint(100004)
+		require.NoError(t, database.Create(&models.Call{UserID: &userID, RepeaterID: &repeaterID, IngressID: repeaterID, CreatedAt: time.Now()}).Error)
+		loadLookups(t, h, nil, []uint{1000002})
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 1), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "a call on another user's untrusted hotspot must not locate the radio")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 1), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "a call on another user's untrusted hotspot must not locate the radio")
+	})
 }
 
 // TestPrivateTrafficFollowsASightingThatIsNotStoredYet answers a radio
@@ -153,16 +163,18 @@ func TestUntrustedCallRowDoesNotLocateRadio(t *testing.T) {
 // sighting.
 func TestPrivateTrafficFollowsASightingThatIsNotStoredYet(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	slow := slowDown(t, database)
-	loadLookups(t, h, nil, []uint{1000002})
-	slow.on.Store(true)
-	defer slow.on.Store(false)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		slow := slowDown(t, database)
+		loadLookups(t, h, nil, []uint{1000002})
+		slow.on.Store(true)
+		defer slow.on.Store(false)
 
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
-	require.Eventually(t, func() bool { return h.HeardHere(1000002) == 100003 }, deliveryWait, 10*time.Millisecond, "the hub did not hear the radio")
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "private traffic goes where the radio was just heard")
+		h.RoutePacket(context.Background(), dataHeader(1000002, 1, 100003, 1), models.RepeaterTypeMMDVM)
+		bubble.Eventually(t, func() bool { return h.HeardHere(1000002) == 100003 }, deliveryWait, 10*time.Millisecond, "the hub did not hear the radio")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "private traffic goes where the radio was just heard")
+	})
 }
 
 // TestASlowDatabaseLosesNoSighting hears a radio on its owner's hotspot,
@@ -173,78 +185,88 @@ func TestPrivateTrafficFollowsASightingThatIsNotStoredYet(t *testing.T) {
 // the second is only the last repeater that heard its radio.
 func TestASlowDatabaseLosesNoSighting(t *testing.T) {
 	t.Parallel()
-	h, database, _ := lastSeenHub(t)
-	slow := slowDownBy(t, database, lookup.Wait+200*time.Millisecond)
-	ctx := context.Background()
-	hearSlowly := func(radio, repeater, stream uint) {
-		slow.on.Store(true)
-		h.RoutePacket(ctx, dataHeader(radio, 1, repeater, stream), models.RepeaterTypeMMDVM)
-		time.Sleep(2 * lookup.Wait)
-		slow.on.Store(false)
-	}
-	heard := func(radio, vetted, last uint) func() bool {
-		return func() bool { return h.HeardAt(ctx, radio) == vetted && h.HeardLastOn(ctx, radio) == last }
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h, database, _ := lastSeenHub(t)
+		slow := slowDownBy(t, database, lookup.Wait+200*time.Millisecond)
+		ctx := context.Background()
+		hearSlowly := func(radio, repeater, stream uint) {
+			slow.on.Store(true)
+			h.RoutePacket(ctx, dataHeader(radio, 1, repeater, stream), models.RepeaterTypeMMDVM)
+			time.Sleep(2 * lookup.Wait)
+			slow.on.Store(false)
+		}
+		heard := func(radio, vetted, last uint) func() bool {
+			return func() bool { return h.HeardAt(ctx, radio) == vetted && h.HeardLastOn(ctx, radio) == last }
+		}
 
-	hearSlowly(1000002, 100003, 1)
-	require.Eventually(t, heard(1000002, 100003, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on the owner's hotspot was lost")
-	hearSlowly(1000001, 100003, 2)
-	require.Eventually(t, heard(1000001, 0, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on another user's hotspot was lost, or moved the radio")
+		hearSlowly(1000002, 100003, 1)
+		bubble.Eventually(t, heard(1000002, 100003, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on the owner's hotspot was lost")
+		hearSlowly(1000001, 100003, 2)
+		bubble.Eventually(t, heard(1000001, 0, 100003), 30*time.Second, 10*time.Millisecond, "the sighting on another user's hotspot was lost, or moved the radio")
+	})
 }
 
 func TestPrivateTrafficToUnregisteredRadioIsDroppedInTheMembersReach(t *testing.T) {
 	t.Parallel()
-	h, _, srv := lastSeenHub(t)
-	h.SetConfig(config.Config{DMR: config.DMR{PrivateCalls: config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}}}})
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := lastSeenHub(t)
+		h.SetConfig(config.Config{DMR: config.DMR{PrivateCalls: config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachMembers}}}})
 
-	hear(t, h, 1234567, 100003, 1)
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1234567, 100003, 2), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "private traffic to a radio that is not a user")
+		hear(t, h, 1234567, 100003, 1)
+		h.RoutePacket(context.Background(), dataHeader(1000002, 1234567, 100003, 2), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "private traffic to a radio that is not a user")
+	})
 }
 
 func TestUntrustingRepeaterStopsRouting(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
-	h.ReloadRepeater(context.Background(), 100004)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+		h.ReloadRepeater(context.Background(), 100004)
 
-	hear(t, h, 1000002, 100004, 1)
-	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", false, 100004).Error)
-	h.ReloadRepeater(context.Background(), 100004)
+		hear(t, h, 1000002, 100004, 1)
+		require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", false, 100004).Error)
+		h.ReloadRepeater(context.Background(), 100004)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 2), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "private traffic must not follow a sighting on a repeater that is no longer trusted")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100003, 2), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "private traffic must not follow a sighting on a repeater that is no longer trusted")
+	})
 }
 
 func TestSightingIsNotHiddenByAnotherSourceOnTheSameStream(t *testing.T) {
 	t.Parallel()
-	h, _, srv := lastSeenHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := lastSeenHub(t)
 
-	hear(t, h, 1000001, 100004, 7)
-	hear(t, h, 1000002, 100003, 7)
+		hear(t, h, 1000001, 100004, 7)
+		hear(t, h, 1000002, 100003, 7)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 8), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "a stream ID that another radio used first must not hide a sighting")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 8), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "a stream ID that another radio used first must not hide a sighting")
+	})
 }
 
 func TestPrivateStreamKeepsItsTargetWhenTheRadioMoves(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
-	h.ReloadRepeater(context.Background(), 100004)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, 100004).Error)
+		h.ReloadRepeater(context.Background(), 100004)
 
-	hear(t, h, 1000002, 100003, 1)
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "the first burst goes where the radio was heard")
+		hear(t, h, 1000002, 100003, 1)
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "the first burst goes where the radio was heard")
 
-	hear(t, h, 1000002, 100004, 3)
-	block := dataHeader(1000001, 1000002, 100004, 2)
-	block.DTypeOrVSeq = 7
-	h.RoutePacket(context.Background(), block, models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "the rest of the stream goes to the same repeater")
+		hear(t, h, 1000002, 100004, 3)
+		block := dataHeader(1000001, 1000002, 100004, 2)
+		block.DTypeOrVSeq = 7
+		h.RoutePacket(context.Background(), block, models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "the rest of the stream goes to the same repeater")
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 4), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100004, "a new stream goes where the radio is now")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000002, 100004, 4), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100004, "a new stream goes where the radio is now")
+	})
 }
 
 // queryCount counts the queries of a table from the time it was made.
@@ -308,78 +330,84 @@ func (c *countedGets) Get(ctx context.Context, key string) ([]byte, error) {
 // keeps the target of its first burst, so it reads neither again.
 func TestPrivateStreamLooksUpItsTargetOnce(t *testing.T) {
 	t.Parallel()
-	heardReads := &countedGets{key: "dmrhub:lastheard:1000002"}
-	h, database, _, srv := lastSeenHubWrappingKV(t, func(k kv.KV) kv.KV {
-		heardReads.KV = k
-		return heardReads
-	})
-	loadLookups(t, h, nil, []uint{1000001})
+	synctest.Test(t, func(t *testing.T) {
+		heardReads := &countedGets{key: "dmrhub:lastheard:1000002"}
+		h, database, _, srv := lastSeenHubWrappingKV(t, func(k kv.KV) kv.KV {
+			heardReads.KV = k
+			return heardReads
+		})
+		loadLookups(t, h, nil, []uint{1000001})
 
-	hear(t, h, 1000002, 100003, 1)
+		hear(t, h, 1000002, 100003, 1)
 
-	burst := dataHeader(1000001, 1000002, 100004, 2)
-	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "the first burst of the stream")
-	require.Eventually(t, func() bool {
-		return h.HeardAt(context.Background(), 1000002) == 100003 && h.HeardAt(context.Background(), 1000001) == 100004
-	}, 10*time.Second, 10*time.Millisecond, "the sightings of both streams are recorded")
-
-	users := countTableQueries(t, database, "users")
-	heard := heardReads.n.Load()
-	for seq := uint(1); seq < 10; seq++ {
-		burst.Seq = seq
+		burst := dataHeader(1000001, 1000002, 100004, 2)
 		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-		expectAt(t, srv, 100003, "a later burst of the stream")
-	}
-	assert.Zero(t, users.Load(), "user lookups after the first burst of a private stream")
-	assert.Equal(t, heard, heardReads.n.Load(), "reads of where the target was heard after the first burst of a private stream")
+		expectAt(t, srv, 100003, "the first burst of the stream")
+		bubble.Eventually(t, func() bool {
+			return h.HeardAt(context.Background(), 1000002) == 100003 && h.HeardAt(context.Background(), 1000001) == 100004
+		}, 10*time.Second, 10*time.Millisecond, "the sightings of both streams are recorded")
+
+		users := countTableQueries(t, database, "users")
+		heard := heardReads.n.Load()
+		for seq := uint(1); seq < 10; seq++ {
+			burst.Seq = seq
+			h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+			expectAt(t, srv, 100003, "a later burst of the stream")
+		}
+		assert.Zero(t, users.Load(), "user lookups after the first burst of a private stream")
+		assert.Equal(t, heard, heardReads.n.Load(), "reads of where the target was heard after the first burst of a private stream")
+	})
 }
 
 func TestGroupStreamChecksItsTalkgroupOnce(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-	var rpt models.Repeater
-	require.NoError(t, database.First(&rpt, 100002).Error)
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
-	srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
-	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
+		var rpt models.Repeater
+		require.NoError(t, database.First(&rpt, 100002).Error)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
+		h.ActivateRepeater(context.Background(), 100002)
+		time.Sleep(100 * time.Millisecond)
 
-	burst := makeVoicePacket(1, 55555, true, false)
-	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100002, "the first burst of the stream")
-
-	talkgroups := countTableQueries(t, database, "talkgroups")
-	for seq := uint(1); seq < 10; seq++ {
-		burst.Seq = seq
+		burst := makeVoicePacket(1, 55555, true, false)
 		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-		expectAt(t, srv, 100002, "a later burst of the stream")
-	}
-	assert.Zero(t, talkgroups.Load(), "talkgroup checks after the first burst of a group stream")
+		expectAt(t, srv, 100002, "the first burst of the stream")
+
+		talkgroups := countTableQueries(t, database, "talkgroups")
+		for seq := uint(1); seq < 10; seq++ {
+			burst.Seq = seq
+			h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+			expectAt(t, srv, 100002, "a later burst of the stream")
+		}
+		assert.Zero(t, talkgroups.Load(), "talkgroup checks after the first burst of a group stream")
+	})
 }
 
 func TestStreamListsPeersOnce(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedTalkgroup(t, database, 1, "TG1")
-	h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
-	t.Cleanup(func() { h.UnregisterServer("openbridge") })
-	peers := countTableQueries(t, database, "peers")
-	burst := makeVoicePacket(1, 55555, true, false)
-	h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-	require.Eventually(t, func() bool { return peers.Load() > 0 }, deliveryWait, 10*time.Millisecond)
-	time.Sleep(200 * time.Millisecond)
-	first := peers.Load()
-	for seq := uint(1); seq < 10; seq++ {
-		burst.Seq = seq
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedTalkgroup(t, database, 1, "TG1")
+		h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
+		t.Cleanup(func() { h.UnregisterServer("openbridge") })
+		peers := countTableQueries(t, database, "peers")
+		burst := makeVoicePacket(1, 55555, true, false)
 		h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
-	}
-	time.Sleep(500 * time.Millisecond)
-	assert.Equal(t, first, peers.Load(), "peer lookups after the first burst of a stream")
+		bubble.Eventually(t, func() bool { return peers.Load() > 0 }, deliveryWait, 10*time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
+		first := peers.Load()
+		for seq := uint(1); seq < 10; seq++ {
+			burst.Seq = seq
+			h.RoutePacket(context.Background(), burst, models.RepeaterTypeMMDVM)
+		}
+		time.Sleep(500 * time.Millisecond)
+		assert.Equal(t, first, peers.Load(), "peer lookups after the first burst of a stream")
+	})
 }
 
 func addRadioID(t *testing.T, database *gorm.DB, userID, radioID uint) {
@@ -389,22 +417,26 @@ func addRadioID(t *testing.T, database *gorm.DB, userID, radioID uint) {
 
 func TestPrivateTrafficReachesARadioIDThatAUserAdded(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	addRadioID(t, database, 1000002, 1000005)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		addRadioID(t, database, 1000002, 1000005)
 
-	hear(t, h, 1000005, 100003, 1)
+		hear(t, h, 1000005, 100003, 1)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100004, 2), models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100003, "private data to an added radio ID heard on its owner's hotspot")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100004, 2), models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100003, "private data to an added radio ID heard on its owner's hotspot")
+	})
 }
 
 func TestAddedRadioIDHeardOnAnotherUsersHotspotIsNotRouted(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	addRadioID(t, database, 1000002, 1000005)
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		addRadioID(t, database, 1000002, 1000005)
 
-	hear(t, h, 1000005, 100004, 1)
+		hear(t, h, 1000005, 100004, 1)
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100003, 2), models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "an added radio ID heard on a hotspot its owner does not own")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 1000005, 100003, 2), models.RepeaterTypeMMDVM)
+		expectNone(t, srv, "an added radio ID heard on a hotspot its owner does not own")
+	})
 }

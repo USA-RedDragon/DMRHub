@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -70,155 +71,163 @@ func (r *topicRecorder) packetTopics() []string {
 
 func TestGroupCallPublishesOnlyItsTalkgroupTopic(t *testing.T) {
 	t.Parallel()
-	_, database, ps := makeTestHubWithPubSub(t)
-	rec := &topicRecorder{PubSub: ps}
-	defConfig, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
-	require.NoError(t, err)
-	ct := calltracker.NewCallTracker(database, ps, kvStore)
-	h := hub.NewHub(database, kvStore, rec, ct)
-	t.Cleanup(func() {
-		h.Stop(context.Background())
-		ct.Stop()
-		_ = kvStore.Close()
+	synctest.Test(t, func(t *testing.T) {
+		_, database, ps := makeTestHubWithPubSub(t)
+		rec := &topicRecorder{PubSub: ps}
+		defConfig, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+		require.NoError(t, err)
+		ct := calltracker.NewCallTracker(database, ps, kvStore)
+		h := hub.NewHub(database, kvStore, rec, ct)
+		t.Cleanup(func() {
+			h.Stop(context.Background())
+			ct.Stop()
+			_ = kvStore.Close()
+		})
+
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
+
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+
+		sub := ps.Subscribe("hub:packets:talkgroup:1")
+		defer func() { _ = sub.Close() }()
+
+		knowTalkgroups(t, h)
+		pkt := makeVoicePacket(1, 44444, true, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		select {
+		case <-sub.Channel():
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for the talkgroup publish")
+		}
+		settle(t, h, pkt, models.RepeaterTypeMMDVM)
+
+		assert.Equal(t, []string{"hub:packets:talkgroup:1"}, rec.packetTopics())
 	})
-
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-
-	sub := ps.Subscribe("hub:packets:talkgroup:1")
-	defer func() { _ = sub.Close() }()
-
-	knowTalkgroups(t, h)
-	pkt := makeVoicePacket(1, 44444, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	select {
-	case <-sub.Channel():
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for the talkgroup publish")
-	}
-	settle(t, h, pkt, models.RepeaterTypeMMDVM)
-
-	assert.Equal(t, []string{"hub:packets:talkgroup:1"}, rec.packetTopics())
 }
 
 func TestPeerServerDoesNotForwardToSelf(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
-	defer h.UnregisterServer("peer-srv")
+		peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+		defer h.UnregisterServer("peer-srv")
 
-	// When a peer sends a packet, it should NOT be forwarded back to peers
-	pkt := makeVoicePacket(1, 55558, true, false)
-	h.RoutePacket(context.Background(), pkt, "peer-srv")
+		// When a peer sends a packet, it should NOT be forwarded back to peers
+		pkt := makeVoicePacket(1, 55558, true, false)
+		h.RoutePacket(context.Background(), pkt, "peer-srv")
 
-	// Peer channel should remain empty (no echo to peers)
-	select {
-	case <-peerHandle.Packets:
-		t.Fatal("Peer server should not receive packets it originates")
-	case <-time.After(500 * time.Millisecond):
-		// Expected
-	}
+		// Peer channel should remain empty (no echo to peers)
+		select {
+		case <-peerHandle.Packets:
+			t.Fatal("Peer server should not receive packets it originates")
+		case <-time.After(500 * time.Millisecond):
+			// Expected
+		}
+	})
 }
 
 func TestPeerPublishRespectsContextCancellation(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	// Create a peer with egress enabled and a rule that matches our packet source
-	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
-	require.NoError(t, database.Create(&owner).Error)
-	peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
-	require.NoError(t, database.Create(&peer).Error)
-	// Egress rule: direction=false (egress), covers source ID 1000001
-	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
-	require.NoError(t, database.Create(&rule).Error)
-	h.PeerChanged(peer.ID)
+		// Create a peer with egress enabled and a rule that matches our packet source
+		owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+		require.NoError(t, database.Create(&owner).Error)
+		peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
+		require.NoError(t, database.Create(&peer).Error)
+		// Egress rule: direction=false (egress), covers source ID 1000001
+		rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
+		require.NoError(t, database.Create(&rule).Error)
+		h.PeerChanged(peer.ID)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
-	defer h.UnregisterServer("peer-srv")
+		peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+		defer h.UnregisterServer("peer-srv")
 
-	// Cancel the context BEFORE routing — the peer publish goroutine should bail out
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+		// Cancel the context BEFORE routing — the peer publish goroutine should bail out
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
 
-	pkt := makeVoicePacket(1, 77777, true, false)
-	h.RoutePacket(ctx, pkt, models.RepeaterTypeMMDVM)
+		pkt := makeVoicePacket(1, 77777, true, false)
+		h.RoutePacket(ctx, pkt, models.RepeaterTypeMMDVM)
 
-	// The peer channel should remain empty because the context was already cancelled
-	select {
-	case <-peerHandle.Packets:
-		t.Fatal("Peer should not receive packet when context is cancelled")
-	case <-time.After(500 * time.Millisecond):
-		// Expected: no delivery because context was cancelled
-	}
+		// The peer channel should remain empty because the context was already cancelled
+		select {
+		case <-peerHandle.Packets:
+			t.Fatal("Peer should not receive packet when context is cancelled")
+		case <-time.After(500 * time.Millisecond):
+			// Expected: no delivery because context was cancelled
+		}
+	})
 }
 
 func TestPeerEgressKeepsStreamOrder(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
-	require.NoError(t, database.Create(&owner).Error)
-	peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
-	require.NoError(t, database.Create(&peer).Error)
-	rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
-	require.NoError(t, database.Create(&rule).Error)
-	h.PeerChanged(peer.ID)
+		owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+		require.NoError(t, database.Create(&owner).Error)
+		peer := models.Peer{ID: 200, OwnerID: owner.ID, Egress: true, Ingress: false}
+		require.NoError(t, database.Create(&peer).Error)
+		rule := models.PeerRule{PeerID: peer.ID, Direction: false, SubjectIDMin: 1000000, SubjectIDMax: 2000000}
+		require.NoError(t, database.Create(&rule).Error)
+		h.PeerChanged(peer.ID)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
-	defer h.UnregisterServer("peer-srv")
-	knowTalkgroups(t, h)
-	require.NoError(t, h.KnowPeers())
+		peerHandle := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+		defer h.UnregisterServer("peer-srv")
+		knowTalkgroups(t, h)
+		require.NoError(t, h.KnowPeers())
 
-	const count = 90
-	for i := range count {
-		pkt := makeVoicePacket(1, 88888, true, false)
-		pkt.Seq = uint(i)
-		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	}
-
-	got := make([]uint, 0, count)
-	for len(got) < count {
-		select {
-		case rp := <-peerHandle.Packets:
-			got = append(got, rp.Packet.Seq)
-		case <-time.After(failAfter):
-			t.Fatalf("got %d of %d peer packets", len(got), count)
+		const count = 90
+		for i := range count {
+			pkt := makeVoicePacket(1, 88888, true, false)
+			pkt.Seq = uint(i)
+			h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 		}
-	}
-	want := make([]uint, count)
-	for i := range want {
-		want[i] = uint(i)
-	}
-	assert.Equal(t, want, got)
+
+		got := make([]uint, 0, count)
+		for len(got) < count {
+			select {
+			case rp := <-peerHandle.Packets:
+				got = append(got, rp.Packet.Seq)
+			case <-time.After(failAfter):
+				t.Fatalf("got %d of %d peer packets", len(got), count)
+			}
+		}
+		want := make([]uint, count)
+		for i := range want {
+			want[i] = uint(i)
+		}
+		assert.Equal(t, want, got)
+	})
 }
 
 // --- Benchmarks ---

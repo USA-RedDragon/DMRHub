@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -31,43 +32,45 @@ import (
 
 func TestReloadedRepeaterGetsEachBurstOnce(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	gate := gateRepeaterLookups(t, database, 100002, 100002)
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 1}}))
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		gate := gateRepeaterLookups(t, database, 100002, 100002)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
+		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 1}}))
 
-	handle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-	h.ActivateRepeater(context.Background(), 100002)
-	h.ReloadRepeater(context.Background(), 100002)
-	knowTalkgroups(t, h)
+		handle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.ActivateRepeater(context.Background(), 100002)
+		h.ReloadRepeater(context.Background(), 100002)
+		knowTalkgroups(t, h)
 
-	h.ForgetCachedRepeater(100002)
-	gate.armed.Store(true)
-	held := makeVoicePacket(1, 60001, true, false)
-	held.Repeater = 999998
-	h.RoutePacket(context.Background(), held, models.RepeaterTypeMMDVM)
-	gate.waitHeld(t, 1)
-	gate.armed.Store(false)
-	h.ReloadRepeater(context.Background(), 100002)
-	gate.release()
-	gate.waitPassed(t, 1)
-	h.ReloadRepeater(context.Background(), 100002)
-	for len(handle.Packets) > 0 {
-		<-handle.Packets
-	}
-
-	pkt := makeVoicePacket(1, 60002, true, false)
-	pkt.Repeater = 999998
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
-	got := 0
-	for _, rp := range append([]hub.RoutedPacket{receive(t, handle)}, flush(t, h, handle, pkt, 100002)...) {
-		if rp.RepeaterID == 100002 && rp.Packet.StreamID == pkt.StreamID {
-			got++
+		h.ForgetCachedRepeater(100002)
+		gate.armed.Store(true)
+		held := makeVoicePacket(1, 60001, true, false)
+		held.Repeater = 999998
+		h.RoutePacket(context.Background(), held, models.RepeaterTypeMMDVM)
+		gate.waitHeld(t, 1)
+		gate.armed.Store(false)
+		h.ReloadRepeater(context.Background(), 100002)
+		gate.release()
+		gate.waitPassed(t, 1)
+		h.ReloadRepeater(context.Background(), 100002)
+		for len(handle.Packets) > 0 {
+			<-handle.Packets
 		}
-	}
-	assert.Equal(t, 1, got, "a reload must not leave an old subscription delivering")
+
+		pkt := makeVoicePacket(1, 60002, true, false)
+		pkt.Repeater = 999998
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		got := 0
+		for _, rp := range append([]hub.RoutedPacket{receive(t, handle)}, flush(t, h, handle, pkt, 100002)...) {
+			if rp.RepeaterID == 100002 && rp.Packet.StreamID == pkt.StreamID {
+				got++
+			}
+		}
+		assert.Equal(t, 1, got, "a reload must not leave an old subscription delivering")
+	})
 }

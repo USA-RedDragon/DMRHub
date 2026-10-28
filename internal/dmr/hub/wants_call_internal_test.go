@@ -21,6 +21,7 @@ package hub
 
 import (
 	"testing"
+	"testing/synctest"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/stretchr/testify/assert"
@@ -28,18 +29,20 @@ import (
 
 func TestWantsCallKeepsPrivateCallsPrivate(t *testing.T) {
 	t.Parallel()
-	user := &models.User{ID: 3191868, Repeaters: []models.Repeater{{
-		RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801},
-		OwnerID:               3191868,
-		TS1StaticTalkgroups:   []models.Talkgroup{{ID: 3140598}},
-	}}}
+	synctest.Test(t, func(t *testing.T) {
+		user := &models.User{ID: 3191868, Repeaters: []models.Repeater{{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801},
+			OwnerID:               3191868,
+			TS1StaticTalkgroups:   []models.Talkgroup{{ID: 3140598}},
+		}}}
 
-	assert.True(t, wantsCall(user, &models.Call{GroupCall: true, DestinationID: 3140598}), "a group call on a talkgroup of the user's repeater")
-	assert.False(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 3140598}),
-		"a private call to a radio whose ID is a talkgroup of the repeater is not the user's")
-	assert.True(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 3191868}))
-	assert.True(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 319186801}))
-	assert.True(t, wantsCall(&models.User{ID: 3191868}, &models.Call{GroupCall: true, SourceID: 3191868, DestinationID: 91}),
-		"a user without repeaters still sees their own calls")
-	assert.False(t, wantsCall(user, &models.Call{GroupCall: true, DestinationID: 91}))
+		assert.True(t, wantsCall(user, &models.Call{GroupCall: true, DestinationID: 3140598}), "a group call on a talkgroup of the user's repeater")
+		assert.False(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 3140598}),
+			"a private call to a radio whose ID is a talkgroup of the repeater is not the user's")
+		assert.True(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 3191868}))
+		assert.True(t, wantsCall(user, &models.Call{GroupCall: false, SourceID: 3113042, DestinationID: 319186801}))
+		assert.True(t, wantsCall(&models.User{ID: 3191868}, &models.Call{GroupCall: true, SourceID: 3191868, DestinationID: 91}),
+			"a user without repeaters still sees their own calls")
+		assert.False(t, wantsCall(user, &models.Call{GroupCall: true, DestinationID: 91}))
+	})
 }

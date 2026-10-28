@@ -22,6 +22,7 @@ package hub
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -30,33 +31,35 @@ import (
 // stops under traffic. UnregisterServer must not wait for that delivery.
 func TestUnregisterServerWithAFullChannel(t *testing.T) {
 	t.Parallel()
-	h := NewHub(nil, nil, nil, nil)
-	t.Cleanup(func() { h.Stop(context.Background()) })
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHub(nil, nil, nil, nil)
+		t.Cleanup(func() { h.Stop(context.Background()) })
 
-	h.RegisterServer(ServerConfig{Name: "stalled", Role: RoleRepeater})
-	for range serverChannelSize {
-		h.deliverToServer("stalled", RoutedPacket{RepeaterID: 1})
-	}
-	delivered := make(chan struct{})
-	go func() {
-		defer close(delivered)
-		h.deliverToServer("stalled", RoutedPacket{RepeaterID: 1})
-	}()
-	time.Sleep(50 * time.Millisecond)
+		h.RegisterServer(ServerConfig{Name: "stalled", Role: RoleRepeater})
+		for range serverChannelSize {
+			h.deliverToServer("stalled", RoutedPacket{RepeaterID: 1})
+		}
+		delivered := make(chan struct{})
+		go func() {
+			defer close(delivered)
+			h.deliverToServer("stalled", RoutedPacket{RepeaterID: 1})
+		}()
+		time.Sleep(50 * time.Millisecond)
 
-	unregistered := make(chan struct{})
-	go func() {
-		defer close(unregistered)
-		h.UnregisterServer("stalled")
-	}()
-	select {
-	case <-unregistered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("UnregisterServer waits for a delivery to a channel that nobody reads")
-	}
-	select {
-	case <-delivered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("the delivery to the unregistered server still waits")
-	}
+		unregistered := make(chan struct{})
+		go func() {
+			defer close(unregistered)
+			h.UnregisterServer("stalled")
+		}()
+		select {
+		case <-unregistered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("UnregisterServer waits for a delivery to a channel that nobody reads")
+		}
+		select {
+		case <-delivered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("the delivery to the unregistered server still waits")
+		}
+	})
 }

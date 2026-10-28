@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"testing/synctest"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -204,98 +205,114 @@ func seedUser(t testing.TB, database *gorm.DB, id uint, callsign string) {
 
 func TestNewHub(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
-	assert.NotNil(t, h)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
+		assert.NotNil(t, h)
+	})
 }
 
 func TestRegisterServer(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
 
-	handle := h.RegisterServer(hub.ServerConfig{
-		Name: "test-server",
-		Role: hub.RoleRepeater,
+		handle := h.RegisterServer(hub.ServerConfig{
+			Name: "test-server",
+			Role: hub.RoleRepeater,
+		})
+		defer h.UnregisterServer("test-server")
+
+		assert.NotNil(t, handle)
+		assert.Equal(t, "test-server", handle.Name)
+		assert.NotNil(t, handle.Packets)
 	})
-	defer h.UnregisterServer("test-server")
-
-	assert.NotNil(t, handle)
-	assert.Equal(t, "test-server", handle.Name)
-	assert.NotNil(t, handle.Packets)
 }
 
 func TestRegisterMultipleServers(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
 
-	h1 := h.RegisterServer(hub.ServerConfig{Name: "srv1", Role: hub.RoleRepeater})
-	h2 := h.RegisterServer(hub.ServerConfig{Name: "srv2", Role: hub.RolePeer})
-	defer h.UnregisterServer("srv1")
-	defer h.UnregisterServer("srv2")
+		h1 := h.RegisterServer(hub.ServerConfig{Name: "srv1", Role: hub.RoleRepeater})
+		h2 := h.RegisterServer(hub.ServerConfig{Name: "srv2", Role: hub.RolePeer})
+		defer h.UnregisterServer("srv1")
+		defer h.UnregisterServer("srv2")
 
-	assert.Equal(t, "srv1", h1.Name)
-	assert.Equal(t, "srv2", h2.Name)
+		assert.Equal(t, "srv1", h1.Name)
+		assert.Equal(t, "srv2", h2.Name)
+	})
 }
 
 func TestUnregisterServer(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
 
-	handle := h.RegisterServer(hub.ServerConfig{Name: "ephemeral", Role: hub.RoleRepeater})
-	h.UnregisterServer("ephemeral")
+		handle := h.RegisterServer(hub.ServerConfig{Name: "ephemeral", Role: hub.RoleRepeater})
+		h.UnregisterServer("ephemeral")
 
-	// Channel should be closed after unregister
-	_, ok := <-handle.Packets
-	assert.False(t, ok, "expected channel to be closed after UnregisterServer")
+		// Channel should be closed after unregister
+		_, ok := <-handle.Packets
+		assert.False(t, ok, "expected channel to be closed after UnregisterServer")
+	})
 }
 
 func TestUnregisterNonexistentServer(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
 
-	// Should not panic
-	assert.NotPanics(t, func() {
-		h.UnregisterServer("does-not-exist")
+		// Should not panic
+		assert.NotPanics(t, func() {
+			h.UnregisterServer("does-not-exist")
+		})
 	})
 }
 
 func TestStartAndStop(t *testing.T) {
 	t.Parallel()
-	h, _ := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, _ := makeTestHub(t)
 
-	assert.NotPanics(t, func() {
-		h.Stop(context.Background())
+		assert.NotPanics(t, func() {
+			h.Stop(context.Background())
+		})
 	})
 }
 
 func TestStartWithRepeaters(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	// Add a static talkgroup assignment
-	var rpt models.Repeater
-	require.NoError(t, database.First(&rpt, 100001).Error)
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		// Add a static talkgroup assignment
+		var rpt models.Repeater
+		require.NoError(t, database.First(&rpt, 100001).Error)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
 
-	assert.NotPanics(t, func() {
-		h.ActivateRepeater(context.Background(), 100001)
+		assert.NotPanics(t, func() {
+			h.ActivateRepeater(context.Background(), 100001)
+		})
 	})
 }
 
 func TestReloadRepeater(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
 
-	h.ActivateRepeater(context.Background(), 100001)
+		h.ActivateRepeater(context.Background(), 100001)
 
-	// Should not panic
-	assert.NotPanics(t, func() {
-		h.ReloadRepeater(context.Background(), 100001)
+		// Should not panic
+		assert.NotPanics(t, func() {
+			h.ReloadRepeater(context.Background(), 100001)
+		})
 	})
 }

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -89,131 +90,143 @@ func twoReplicas(t *testing.T) (*hub.Hub, *servers.InstanceRegistry, *hub.Hub, *
 
 func TestWaitMovedReturnsWhenAnotherReplicaClaims(t *testing.T) {
 	t.Parallel()
-	one, r1, two, database := twoReplicas(t)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 1000001)
-	ctx := context.Background()
-	one.ActivateRepeater(ctx, 100001)
-	one.ActivateRepeater(ctx, 100002)
-	r1.MarkDraining(ctx)
+	synctest.Test(t, func(t *testing.T) {
+		one, r1, two, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000001)
+		ctx := context.Background()
+		one.ActivateRepeater(ctx, 100001)
+		one.ActivateRepeater(ctx, 100002)
+		r1.MarkDraining(ctx)
 
-	assert.True(t, two.OwnerLeaving(ctx, 100001), "the owner drains")
-	assert.False(t, one.OwnerLeaving(ctx, 100001), "a replica does not leave itself")
+		assert.True(t, two.OwnerLeaving(ctx, 100001), "the owner drains")
+		assert.False(t, one.OwnerLeaving(ctx, 100001), "a replica does not leave itself")
 
-	left := make(chan int, 1)
-	go func() { left <- one.WaitMoved(ctx) }()
-	two.ActivateRepeater(ctx, 100001)
-	select {
-	case n := <-left:
-		t.Fatalf("WaitMoved returned with %d repeaters before the second moved", n)
-	case <-time.After(200 * time.Millisecond):
-	}
-	assert.False(t, one.OwnerLeaving(ctx, 100001), "the new owner serves")
-	two.ActivateRepeater(ctx, 100002)
-	select {
-	case n := <-left:
-		assert.Zero(t, n)
-	case <-time.After(failAfter):
-		t.Fatal("WaitMoved did not return after both repeaters moved")
-	}
+		left := make(chan int, 1)
+		go func() { left <- one.WaitMoved(ctx) }()
+		two.ActivateRepeater(ctx, 100001)
+		select {
+		case n := <-left:
+			t.Fatalf("WaitMoved returned with %d repeaters before the second moved", n)
+		case <-time.After(200 * time.Millisecond):
+		}
+		assert.False(t, one.OwnerLeaving(ctx, 100001), "the new owner serves")
+		two.ActivateRepeater(ctx, 100002)
+		select {
+		case n := <-left:
+			assert.Zero(t, n)
+		case <-time.After(failAfter):
+			t.Fatal("WaitMoved did not return after both repeaters moved")
+		}
+	})
 }
 
 func TestWaitMovedEndsWithItsContext(t *testing.T) {
 	t.Parallel()
-	one, _, _, database := twoReplicas(t)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	one.ActivateRepeater(context.Background(), 100001)
+	synctest.Test(t, func(t *testing.T) {
+		one, _, _, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		one.ActivateRepeater(context.Background(), 100001)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-	assert.Equal(t, 1, one.WaitMoved(ctx), "a repeater that never moved is still here")
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		assert.Equal(t, 1, one.WaitMoved(ctx), "a repeater that never moved is still here")
+	})
 }
 
 func TestWaitMovedReturnsWhenARepeaterLeaves(t *testing.T) {
 	t.Parallel()
-	one, _, _, database := twoReplicas(t)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	one.ActivateRepeater(ctx, 100001)
+	synctest.Test(t, func(t *testing.T) {
+		one, _, _, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		one.ActivateRepeater(ctx, 100001)
 
-	left := make(chan int, 1)
-	go func() { left <- one.WaitMoved(ctx) }()
-	time.Sleep(100 * time.Millisecond)
-	one.DeactivateRepeater(ctx, 100001)
-	select {
-	case n := <-left:
-		assert.Zero(t, n)
-	case <-time.After(failAfter):
-		t.Fatal("WaitMoved did not return after the repeater left")
-	}
+		left := make(chan int, 1)
+		go func() { left <- one.WaitMoved(ctx) }()
+		time.Sleep(100 * time.Millisecond)
+		one.DeactivateRepeater(ctx, 100001)
+		select {
+		case n := <-left:
+			assert.Zero(t, n)
+		case <-time.After(failAfter):
+			t.Fatal("WaitMoved did not return after the repeater left")
+		}
+	})
 }
 
 func TestTakeOverGoesToOneReplica(t *testing.T) {
 	t.Parallel()
-	r, database, _ := replicas(t, 3)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	r[0].hub.ActivateRepeater(ctx, 100001)
+	synctest.Test(t, func(t *testing.T) {
+		r, database, _ := replicas(t, 3)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		r[0].hub.ActivateRepeater(ctx, 100001)
 
-	assert.False(t, r[1].hub.TakeOver(ctx, 100001), "an owner that serves keeps the repeater")
-	r[0].reg.MarkDraining(ctx)
-	assert.True(t, r[1].hub.TakeOver(ctx, 100001), "the first replica takes the repeater of a draining owner")
-	assert.False(t, r[2].hub.TakeOver(ctx, 100001), "a second replica does not")
-	assert.False(t, r[0].hub.TakeOver(ctx, 100001), "nor does the owner")
+		assert.False(t, r[1].hub.TakeOver(ctx, 100001), "an owner that serves keeps the repeater")
+		r[0].reg.MarkDraining(ctx)
+		assert.True(t, r[1].hub.TakeOver(ctx, 100001), "the first replica takes the repeater of a draining owner")
+		assert.False(t, r[2].hub.TakeOver(ctx, 100001), "a second replica does not")
+		assert.False(t, r[0].hub.TakeOver(ctx, 100001), "nor does the owner")
 
-	r[0].reg.Deregister(ctx)
-	r[1].hub.DeactivateRepeater(ctx, 100001)
-	assert.False(t, r[2].hub.OwnerLeaving(ctx, 100001), "an owner that stopped hands nothing over")
+		r[0].reg.Deregister(ctx)
+		r[1].hub.DeactivateRepeater(ctx, 100001)
+		assert.False(t, r[2].hub.OwnerLeaving(ctx, 100001), "an owner that stopped hands nothing over")
+	})
 }
 
 func TestRenewOwnershipWritesTheClaimAgain(t *testing.T) {
 	t.Parallel()
-	r, database, store := replicas(t, 2)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	r[0].hub.ActivateRepeater(ctx, 100001)
-	r[0].reg.MarkDraining(ctx)
-	require.True(t, r[1].hub.OwnerLeaving(ctx, 100001))
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 2)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		r[0].hub.ActivateRepeater(ctx, 100001)
+		r[0].reg.MarkDraining(ctx)
+		require.True(t, r[1].hub.OwnerLeaving(ctx, 100001))
 
-	require.NoError(t, store.Delete(ctx, "dmrhub:peer_owner:100001"))
-	require.False(t, r[1].hub.OwnerLeaving(ctx, 100001), "a claim that expired names no owner")
-	r[0].hub.RenewOwnership(ctx, 100001)
-	assert.True(t, r[1].hub.OwnerLeaving(ctx, 100001), "a renewed claim names its owner")
+		require.NoError(t, store.Delete(ctx, "dmrhub:peer_owner:100001"))
+		require.False(t, r[1].hub.OwnerLeaving(ctx, 100001), "a claim that expired names no owner")
+		r[0].hub.RenewOwnership(ctx, 100001)
+		assert.True(t, r[1].hub.OwnerLeaving(ctx, 100001), "a renewed claim names its owner")
+	})
 }
 
 func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	t.Parallel()
-	one, _, two, database := twoReplicas(t)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 1000001)
-	ctx := context.Background()
-	gone := make(chan uint, 4)
-	one.OnClaimedElsewhere(func(id uint, _ time.Time) { gone <- id })
-	mine := make(chan uint, 4)
-	two.OnClaimedElsewhere(func(id uint, _ time.Time) { mine <- id })
-	one.ActivateRepeater(ctx, 100001)
+	synctest.Test(t, func(t *testing.T) {
+		one, _, two, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000001)
+		ctx := context.Background()
+		gone := make(chan uint, 4)
+		one.OnClaimedElsewhere(func(id uint, _ time.Time) { gone <- id })
+		mine := make(chan uint, 4)
+		two.OnClaimedElsewhere(func(id uint, _ time.Time) { mine <- id })
+		one.ActivateRepeater(ctx, 100001)
 
-	two.ActivateRepeater(ctx, 100002)
-	two.ActivateRepeater(ctx, 100001)
-	select {
-	case id := <-gone:
-		assert.Equal(t, uint(100001), id, "only a repeater that is active here is reported")
-	case <-time.After(failAfter):
-		t.Fatal("the old owner was not told")
-	}
-	select {
-	case id := <-mine:
-		t.Fatalf("a replica was told of its own claim of %d", id)
-	case id := <-gone:
-		t.Fatalf("the old owner was told of %d too", id)
-	case <-time.After(200 * time.Millisecond):
-	}
+		two.ActivateRepeater(ctx, 100002)
+		two.ActivateRepeater(ctx, 100001)
+		select {
+		case id := <-gone:
+			assert.Equal(t, uint(100001), id, "only a repeater that is active here is reported")
+		case <-time.After(failAfter):
+			t.Fatal("the old owner was not told")
+		}
+		select {
+		case id := <-mine:
+			t.Fatalf("a replica was told of its own claim of %d", id)
+		case id := <-gone:
+			t.Fatalf("the old owner was told of %d too", id)
+		case <-time.After(200 * time.Millisecond):
+		}
+	})
 }
 
 // TestAClaimOlderThanOurOwnEndsNothing claims a repeater, and then gets a
@@ -223,23 +236,25 @@ func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 // own. The claim is stale and must not end the new session here.
 func TestAClaimOlderThanOurOwnEndsNothing(t *testing.T) {
 	t.Parallel()
-	r, database, store := replicas(t, 2)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	two := r[1].hub
-	told := make(chan uint, 1)
-	two.OnClaimedElsewhere(func(id uint, _ time.Time) { told <- id })
-	at := time.Now()
-	two.ActivateRepeaterSince(ctx, 100001, at)
-	require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-1")))
-	msg := fmt.Sprintf("100001 replica-1 %d", at.Add(-time.Millisecond).UnixNano())
-	require.NoError(t, r[1].ps.Publish("hub:claimed", []byte(msg)))
-	select {
-	case id := <-told:
-		t.Fatalf("a claim older than this replica's own ended its session of %d", id)
-	case <-time.After(300 * time.Millisecond):
-	}
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 2)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		two := r[1].hub
+		told := make(chan uint, 1)
+		two.OnClaimedElsewhere(func(id uint, _ time.Time) { told <- id })
+		at := time.Now()
+		two.ActivateRepeaterSince(ctx, 100001, at)
+		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-1")))
+		msg := fmt.Sprintf("100001 replica-1 %d", at.Add(-time.Millisecond).UnixNano())
+		require.NoError(t, r[1].ps.Publish("hub:claimed", []byte(msg)))
+		select {
+		case id := <-told:
+			t.Fatalf("a claim older than this replica's own ended its session of %d", id)
+		case <-time.After(300 * time.Millisecond):
+		}
+	})
 }
 
 // TestWaitMovedWaitsForTheHandOverOfAClaimItMissed claims a repeater in the
@@ -248,62 +263,66 @@ func TestAClaimOlderThanOurOwnEndsNothing(t *testing.T) {
 // replica stops and the packets that it sent after the move are lost.
 func TestWaitMovedWaitsForTheHandOverOfAClaimItMissed(t *testing.T) {
 	t.Parallel()
-	r, database, store := replicas(t, 2)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	one := r[0].hub
-	handed := make(chan uint, 1)
-	one.OnClaimedElsewhere(func(id uint, _ time.Time) {
-		time.Sleep(100 * time.Millisecond)
-		handed <- id
-	})
-	one.ActivateRepeater(ctx, 100001)
-	r[0].reg.MarkDraining(ctx)
-	require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-2")))
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 2)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		one := r[0].hub
+		handed := make(chan uint, 1)
+		one.OnClaimedElsewhere(func(id uint, _ time.Time) {
+			time.Sleep(100 * time.Millisecond)
+			handed <- id
+		})
+		one.ActivateRepeater(ctx, 100001)
+		r[0].reg.MarkDraining(ctx)
+		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-2")))
 
-	wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	assert.Zero(t, one.WaitMoved(wctx))
-	select {
-	case id := <-handed:
-		assert.Equal(t, uint(100001), id)
-	default:
-		t.Fatal("WaitMoved returned before the repeater was handed over")
-	}
+		wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		assert.Zero(t, one.WaitMoved(wctx))
+		select {
+		case id := <-handed:
+			assert.Equal(t, uint(100001), id)
+		default:
+			t.Fatal("WaitMoved returned before the repeater was handed over")
+		}
+	})
 }
 
 // TestWaitMovedWaitsForTheHandOverOfAClaim claims a repeater on another
 // replica. WaitMoved must return only once the servers handed it over.
 func TestWaitMovedWaitsForTheHandOverOfAClaim(t *testing.T) {
 	t.Parallel()
-	one, r1, two, database := twoReplicas(t)
-	seedUser(t, database, 1000001, "N0CALL")
-	seedRepeater(t, database, 100001, 1000001)
-	ctx := context.Background()
-	handed := make(chan uint, 1)
-	one.OnClaimedElsewhere(func(id uint, _ time.Time) {
-		time.Sleep(100 * time.Millisecond)
-		handed <- id
-	})
-	one.ActivateRepeater(ctx, 100001)
-	r1.MarkDraining(ctx)
+	synctest.Test(t, func(t *testing.T) {
+		one, r1, two, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		handed := make(chan uint, 1)
+		one.OnClaimedElsewhere(func(id uint, _ time.Time) {
+			time.Sleep(100 * time.Millisecond)
+			handed <- id
+		})
+		one.ActivateRepeater(ctx, 100001)
+		r1.MarkDraining(ctx)
 
-	left := make(chan int, 1)
-	go func() { left <- one.WaitMoved(ctx) }()
-	time.Sleep(50 * time.Millisecond)
-	two.ActivateRepeater(ctx, 100001)
-	select {
-	case n := <-left:
-		assert.Zero(t, n)
-	case <-time.After(failAfter):
-		t.Fatal("WaitMoved did not return after the repeater moved")
-	}
-	select {
-	case <-handed:
-	default:
-		t.Fatal("WaitMoved returned before the repeater was handed over")
-	}
+		left := make(chan int, 1)
+		go func() { left <- one.WaitMoved(ctx) }()
+		time.Sleep(50 * time.Millisecond)
+		two.ActivateRepeater(ctx, 100001)
+		select {
+		case n := <-left:
+			assert.Zero(t, n)
+		case <-time.After(failAfter):
+			t.Fatal("WaitMoved did not return after the repeater moved")
+		}
+		select {
+		case <-handed:
+		default:
+			t.Fatal("WaitMoved returned before the repeater was handed over")
+		}
+	})
 }
 
 // TestSetInstanceIDFailsOnceAServerStarted sets the ID while a server
@@ -312,27 +331,29 @@ func TestWaitMovedWaitsForTheHandOverOfAClaim(t *testing.T) {
 // the server must never see the write.
 func TestSetInstanceIDFailsOnceAServerStarted(t *testing.T) {
 	t.Parallel()
-	h := hub.NewHub(nil, nil, nil, nil)
-	t.Cleanup(func() { h.Stop(context.Background()) })
-	require.NoError(t, h.SetInstanceID("replica-one"))
-	h.RegisterServer(hub.ServerConfig{Name: "mmdvm", Role: hub.RoleRepeater})
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-	read := make(chan bool)
-	go func() {
-		buf := make([]byte, 16)
-		_, _, _ = conn.ReadFromUDP(buf)
-		read <- h.OwnerLeaving(context.Background(), 1)
-	}()
-	require.ErrorIs(t, h.SetInstanceID("replica-two"), hub.ErrServersStarted)
-	addr, ok := conn.LocalAddr().(*net.UDPAddr)
-	require.True(t, ok)
-	out, err := net.DialUDP("udp", nil, addr)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-	_, err = out.Write([]byte("DMRD"))
-	require.NoError(t, err)
-	assert.False(t, <-read)
-	assert.Equal(t, "replica-one", h.InstanceID())
+	synctest.Test(t, func(t *testing.T) {
+		h := hub.NewHub(nil, nil, nil, nil)
+		t.Cleanup(func() { h.Stop(context.Background()) })
+		require.NoError(t, h.SetInstanceID("replica-one"))
+		h.RegisterServer(hub.ServerConfig{Name: "mmdvm", Role: hub.RoleRepeater})
+		conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+		read := make(chan bool)
+		go func() {
+			buf := make([]byte, 16)
+			_, _, _ = conn.ReadFromUDP(buf)
+			read <- h.OwnerLeaving(context.Background(), 1)
+		}()
+		require.ErrorIs(t, h.SetInstanceID("replica-two"), hub.ErrServersStarted)
+		addr, ok := conn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		out, err := net.DialUDP("udp", nil, addr)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = out.Close() })
+		_, err = out.Write([]byte("DMRD"))
+		require.NoError(t, err)
+		assert.False(t, <-read)
+		assert.Equal(t, "replica-one", h.InstanceID())
+	})
 }

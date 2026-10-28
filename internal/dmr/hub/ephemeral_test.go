@@ -21,24 +21,28 @@ package hub_test
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEphemeralTTLTakesEffectWhenTheConfigIsSet(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	time.Sleep(300 * time.Millisecond)
-	old := time.Now().Add(-time.Hour)
-	require.NoError(t, database.Create(&models.Talkgroup{ID: 3999, Name: "TG 3999", AutoCreated: true, LastCallAt: &old}).Error)
-	cfg := config.Config{}
-	cfg.DMR.Routing = config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Second}
-	h.SetConfig(config.NewCurrent(&cfg))
-	require.Eventually(t, func() bool {
-		exists, err := models.TalkgroupIDExists(database, 3999)
-		return err == nil && !exists
-	}, 5*time.Second, 20*time.Millisecond, "a talkgroup past the TTL goes soon after the config turns ephemeral talkgroups on")
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		time.Sleep(300 * time.Millisecond)
+		old := time.Now().Add(-time.Hour)
+		require.NoError(t, database.Create(&models.Talkgroup{ID: 3999, Name: "TG 3999", AutoCreated: true, LastCallAt: &old}).Error)
+		cfg := config.Config{}
+		cfg.DMR.Routing = config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Second}
+		h.SetConfig(config.NewCurrent(&cfg))
+		bubble.Eventually(t, func() bool {
+			exists, err := models.TalkgroupIDExists(database, 3999)
+			return err == nil && !exists
+		}, 5*time.Second, 20*time.Millisecond, "a talkgroup past the TTL goes soon after the config turns ephemeral talkgroups on")
+	})
 }

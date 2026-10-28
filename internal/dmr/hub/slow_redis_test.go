@@ -29,12 +29,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -132,7 +134,7 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 	t.Cleanup(stalled.resume)
 	t.Cleanup(h.HoldLookupWaits())
 	seedStalledRedisHub(t, h, database)
-	arrivals := collect(map[string]*hub.ServerHandle{
+	arrivals := collect(t, map[string]*hub.ServerHandle{
 		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
 		"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),
 	})
@@ -212,33 +214,35 @@ func assertAllInOrder(t *testing.T, d deliveries, key string, n int) {
 // repeater once and in order.
 func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 	t.Parallel()
-	h, stalled, arrivals := makeStalledRedisHub(t, func(topic string) bool { return topic == "hub:packets:talkgroup:1" })
+	synctest.Test(t, func(t *testing.T) {
+		h, stalled, arrivals := makeStalledRedisHub(t, func(topic string) bool { return topic == "hub:packets:talkgroup:1" })
 
-	const stream, other, bursts = 70201, 70211, 20
-	stalled.stall(stallTimeout)
-	sentOther := make(chan []time.Time, 1)
-	go func() { sentOther <- sendSlotStream(h, 2, other, true, bursts) }()
-	sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
-	sent[other] = <-sentOther
+		const stream, other, bursts = 70201, 70211, 20
+		stalled.stall(stallTimeout)
+		sentOther := make(chan []time.Time, 1)
+		go func() { sentOther <- sendSlotStream(h, 2, other, true, bursts) }()
+		sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
+		sent[other] = <-sentOther
 
-	held := gather(arrivals, sent, map[string]int{
-		"70201 peers:3100100": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3100100": bursts,
-	}, 0)
-	t.Logf("while Redis held %d publishes the targets got %v", stalled.held.Load(), held.seqs)
-	assert.Positive(t, stalled.held.Load(), "the call sent no publish for Redis to hold")
-	assert.Empty(t, held.seqs["70201 mmdvm:100002"], "a burst reached the repeater through a held publish")
-	for _, k := range []string{"70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
-		assert.Len(t, held.seqs[k], bursts, "%s: a burst waited on a held publish", k)
-	}
-	stalled.resume()
+		held := gather(arrivals, sent, map[string]int{
+			"70201 peers:3100100": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3100100": bursts,
+		}, 0)
+		t.Logf("while Redis held %d publishes the targets got %v", stalled.held.Load(), held.seqs)
+		assert.Positive(t, stalled.held.Load(), "the call sent no publish for Redis to hold")
+		assert.Empty(t, held.seqs["70201 mmdvm:100002"], "a burst reached the repeater through a held publish")
+		for _, k := range []string{"70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
+			assert.Len(t, held.seqs[k], bursts, "%s: a burst waited on a held publish", k)
+		}
+		stalled.resume()
 
-	d := gather(arrivals, sent, map[string]int{"70201 mmdvm:100002": bursts - len(held.seqs["70201 mmdvm:100002"])}, time.Second)
-	for k, seqs := range held.seqs {
-		d.seqs[k] = slices.Concat(seqs, d.seqs[k])
-	}
-	for _, k := range []string{"70201 mmdvm:100002", "70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
-		assertAllInOrder(t, d, k, bursts)
-	}
+		d := gather(arrivals, sent, map[string]int{"70201 mmdvm:100002": bursts - len(held.seqs["70201 mmdvm:100002"])}, time.Second)
+		for k, seqs := range held.seqs {
+			d.seqs[k] = slices.Concat(seqs, d.seqs[k])
+		}
+		for _, k := range []string{"70201 mmdvm:100002", "70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
+			assertAllInOrder(t, d, k, bursts)
+		}
+	})
 }
 
 // TestAPublishThatDidNotReachRedisIsSentAgain sends a group call while every
@@ -247,18 +251,20 @@ func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 // in order, after Redis is back.
 func TestAPublishThatDidNotReachRedisIsSentAgain(t *testing.T) {
 	t.Parallel()
-	h, stalled, arrivals := makeStalledRedisHub(t, func(topic string) bool { return strings.HasPrefix(topic, "hub:packets:") })
+	synctest.Test(t, func(t *testing.T) {
+		h, stalled, arrivals := makeStalledRedisHub(t, func(topic string) bool { return strings.HasPrefix(topic, "hub:packets:") })
 
-	const stream, bursts = 70202, 60
-	stalled.stall(stallNotSent)
-	time.AfterFunc(2*time.Second, stalled.resume)
-	sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
+		const stream, bursts = 70202, 60
+		stalled.stall(stallNotSent)
+		time.AfterFunc(2*time.Second, stalled.resume)
+		sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
 
-	d := gather(arrivals, sent, map[string]int{"70202 mmdvm:100002": bursts, "70202 peers:3100100": bursts}, time.Second)
-	t.Logf("the repeater got %d of %d bursts after %d failed publishes, worst delays %v", len(d.seqs["70202 mmdvm:100002"]), bursts, stalled.calls.Load(), d.worst)
-	assertAllInOrder(t, d, "70202 mmdvm:100002", bursts)
-	assertAllInOrder(t, d, "70202 peers:3100100", bursts)
-	assert.Less(t, d.worst["70202 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
+		d := gather(arrivals, sent, map[string]int{"70202 mmdvm:100002": bursts, "70202 peers:3100100": bursts}, time.Second)
+		t.Logf("the repeater got %d of %d bursts after %d failed publishes, worst delays %v", len(d.seqs["70202 mmdvm:100002"]), bursts, stalled.calls.Load(), d.worst)
+		assertAllInOrder(t, d, "70202 mmdvm:100002", bursts)
+		assertAllInOrder(t, d, "70202 peers:3100100", bursts)
+		assert.Less(t, d.worst["70202 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
+	})
 }
 
 // lastHeardReads counts the reads of the records of where radios were
@@ -283,35 +289,37 @@ func (r *lastHeardReads) Get(ctx context.Context, key string) ([]byte, error) {
 // store still hangs.
 func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 	t.Parallel()
-	slow := &slowKV{hang: make(chan struct{})}
-	reads := &lastHeardReads{KV: slow}
-	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
-		slow.KV = k
-		return reads
-	})
-	t.Cleanup(func() { close(slow.hang) })
-	t.Cleanup(h.HoldLookupWaits())
-	seedStalledRedisHub(t, h, database)
-	arrivals := collect(map[string]*hub.ServerHandle{
-		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
-	})
-	h.ActivateRepeater(context.Background(), testRepeaterID)
-	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		slow := &slowKV{hang: make(chan struct{})}
+		reads := &lastHeardReads{KV: slow}
+		h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
+			slow.KV = k
+			return reads
+		})
+		t.Cleanup(func() { close(slow.hang) })
+		t.Cleanup(h.HoldLookupWaits())
+		seedStalledRedisHub(t, h, database)
+		arrivals := collect(t, map[string]*hub.ServerHandle{
+			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+		})
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		time.Sleep(100 * time.Millisecond)
 
-	endClaims := h.HoldStreamClaimWaits()
-	endLookups := h.HoldLastSeenWaits()
-	slow.on.Store(true)
-	sent := sendStream(h, 1000002, 70300, false, 8)
-	endClaims()
-	endLookups()
-	worstDelay(t, arrivals, 70300, sent, "mmdvm:100002")
-	slow.mu.Lock()
-	claims := len(slow.setNX)
-	slow.mu.Unlock()
-	t.Logf("the call passed while the KV store held %d claims and %d reads of where the radio was heard", claims, reads.n.Load())
-	assert.Positive(t, claims, "the call made no claim for the KV store to hold")
-	assert.Positive(t, reads.n.Load(), "the call read no record of where the radio was heard for the KV store to hold")
+		endClaims := h.HoldStreamClaimWaits()
+		endLookups := h.HoldLastSeenWaits()
+		slow.on.Store(true)
+		sent := sendStream(h, 1000002, 70300, false, 8)
+		endClaims()
+		endLookups()
+		worstDelay(t, arrivals, 70300, sent, "mmdvm:100002")
+		slow.mu.Lock()
+		claims := len(slow.setNX)
+		slow.mu.Unlock()
+		t.Logf("the call passed while the KV store held %d claims and %d reads of where the radio was heard", claims, reads.n.Load())
+		assert.Positive(t, claims, "the call made no claim for the KV store to hold")
+		assert.Positive(t, reads.n.Load(), "the call read no record of where the radio was heard for the KV store to hold")
+	})
 }
 
 type stalledPlugins struct {
@@ -335,25 +343,27 @@ func (s *stalledPlugins) Deliver(uint, models.Packet) error {
 // plugin must get every burst.
 func TestAStalledPluginDeliveryHoldsNoBurst(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedStalledRedisHub(t, h, database)
-	arrivals := collect(map[string]*hub.ServerHandle{
-		"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
-		"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),
-	})
-	h.ActivateRepeater(context.Background(), testRepeaterID)
-	h.ActivateRepeater(context.Background(), 100002)
-	plugin := &stalledPlugins{}
-	h.SetPlugins(plugin)
-	time.Sleep(100 * time.Millisecond)
-	worstDelay(t, arrivals, 70400, sendStream(h, 1, 70400, true, 4), "mmdvm:100002", "peers:3100100")
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedStalledRedisHub(t, h, database)
+		arrivals := collect(t, map[string]*hub.ServerHandle{
+			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+			"peers": h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer}),
+		})
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		plugin := &stalledPlugins{}
+		h.SetPlugins(plugin)
+		time.Sleep(100 * time.Millisecond)
+		worstDelay(t, arrivals, 70400, sendStream(h, 1, 70400, true, 4), "mmdvm:100002", "peers:3100100")
 
-	plugin.on.Store(true)
-	worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 20), "peers:3100100")
-	plugin.on.Store(false)
-	t.Logf("worst delay to the peer %v with %v per hand-off to the plugin", worst, stalledRedisCall)
-	assert.Less(t, worst, stalledRedisCall/4, "a burst to the peer waited on the plugin")
-	assert.Eventually(t, func() bool { return plugin.delivered.Load() == 24 }, 30*time.Second, 50*time.Millisecond, "the plugin did not get every burst")
+		plugin.on.Store(true)
+		worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 20), "peers:3100100")
+		plugin.on.Store(false)
+		t.Logf("worst delay to the peer %v with %v per hand-off to the plugin", worst, stalledRedisCall)
+		assert.Less(t, worst, stalledRedisCall/4, "a burst to the peer waited on the plugin")
+		bubble.Eventually(t, func() bool { return plugin.delivered.Load() == 24 }, 30*time.Second, 50*time.Millisecond, "the plugin did not get every burst")
+	})
 }
 
 // blockedPubSub holds every publish to a burst topic until release, as a

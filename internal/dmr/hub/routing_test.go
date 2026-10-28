@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -33,186 +34,200 @@ import (
 
 func TestRoutePacketGroupVoice(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	// Add static talkgroup to second repeater
-	var rpt2 models.Repeater
-	require.NoError(t, database.First(&rpt2, 100002).Error)
-	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		// Add static talkgroup to second repeater
+		var rpt2 models.Repeater
+		require.NoError(t, database.First(&rpt2, 100002).Error)
+		require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Activate repeaters so subscriptions are created
-	h.ActivateRepeater(context.Background(), 100002)
+		// Activate repeaters so subscriptions are created
+		h.ActivateRepeater(context.Background(), 100002)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	pkt := makeVoicePacket(1, 55555, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		pkt := makeVoicePacket(1, 55555, true, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	// The packet should be published and delivered to the talkgroup subscriber
-	// Wait for delivery — it goes through pubsub async
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100002), rp.RepeaterID)
-		assert.Equal(t, uint(1), rp.Packet.Dst)
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for routed packet")
-	}
+		// The packet should be published and delivered to the talkgroup subscriber
+		// Wait for delivery — it goes through pubsub async
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(100002), rp.RepeaterID)
+			assert.Equal(t, uint(1), rp.Packet.Dst)
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for routed packet")
+		}
+	})
 }
 
 func TestRoutePacketPrivateCallToRepeater(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000001)
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Activate destination repeater so it has a subscription goroutine
-	h.ActivateRepeater(context.Background(), 100002)
+		// Activate destination repeater so it has a subscription goroutine
+		h.ActivateRepeater(context.Background(), 100002)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	// Private call to repeater 100002
-	pkt := makeVoicePacket(100002, 55556, false, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to repeater 100002
+		pkt := makeVoicePacket(100002, 55556, false, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100002), rp.RepeaterID)
-		assert.Equal(t, uint(100002), rp.Packet.Dst)
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for private call to repeater")
-	}
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(100002), rp.RepeaterID)
+			assert.Equal(t, uint(100002), rp.Packet.Dst)
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for private call to repeater")
+		}
+	})
 }
 
 func TestRoutePacketPrivateCallToUser(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "CALLER")
-	seedUser(t, database, 1000002, "TARGET")
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 1000002)
+		seedUser(t, database, 1000001, "CALLER")
+		seedUser(t, database, 1000002, "TARGET")
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 1000002)
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	// Private call to user 1000002 (7-digit = user ID)
-	pkt := makeVoicePacket(1000002, 55557, false, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to user 1000002 (7-digit = user ID)
+		pkt := makeVoicePacket(1000002, 55557, false, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	// No last-call repeater exists yet, so the call should be dropped
-	select {
-	case rp := <-srvHandle.Packets:
-		t.Fatalf("expected call to be dropped, but got packet for repeater %d", rp.RepeaterID)
-	case <-time.After(500 * time.Millisecond):
-		// success: nothing delivered
-	}
+		// No last-call repeater exists yet, so the call should be dropped
+		select {
+		case rp := <-srvHandle.Packets:
+			t.Fatalf("expected call to be dropped, but got packet for repeater %d", rp.RepeaterID)
+		case <-time.After(500 * time.Millisecond):
+			// success: nothing delivered
+		}
+	})
 }
 
 func TestRoutePacketPrivateCallToUserLastHeard(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "CALLER")
-	seedUser(t, database, 1000002, "TARGET")
-	seedRepeater(t, database, 100002, 1000002)
-	seedRepeater(t, database, 100003, 1000002)
+		seedUser(t, database, 1000001, "CALLER")
+		seedUser(t, database, 1000002, "TARGET")
+		seedRepeater(t, database, 100002, 1000002)
+		seedRepeater(t, database, 100003, 1000002)
 
-	// Record a last call for the target user on repeater 100003
-	userID, repeaterID := uint(1000002), uint(100003)
-	lastCall := models.Call{
-		UserID:     &userID,
-		RepeaterID: &repeaterID,
-		IngressID:  repeaterID,
-		CreatedAt:  time.Now(),
-	}
-	require.NoError(t, database.Create(&lastCall).Error)
+		// Record a last call for the target user on repeater 100003
+		userID, repeaterID := uint(1000002), uint(100003)
+		lastCall := models.Call{
+			UserID:     &userID,
+			RepeaterID: &repeaterID,
+			IngressID:  repeaterID,
+			CreatedAt:  time.Now(),
+		}
+		require.NoError(t, database.Create(&lastCall).Error)
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Activate destination repeater so it has a subscription goroutine
-	h.ActivateRepeater(context.Background(), 100003)
+		// Activate destination repeater so it has a subscription goroutine
+		h.ActivateRepeater(context.Background(), 100003)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	// Private call to user 1000002 should go to repeater 100003 (last heard)
-	pkt := makeVoicePacket(1000002, 55558, false, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to user 1000002 should go to repeater 100003 (last heard)
+		pkt := makeVoicePacket(1000002, 55558, false, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100003), rp.RepeaterID)
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for private call to last-heard repeater")
-	}
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(100003), rp.RepeaterID)
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for private call to last-heard repeater")
+		}
 
-	// Ensure nothing else was delivered
-	assert.Empty(t, flush(t, h, srvHandle, pkt, 100003), "unexpected extra packet delivered")
+		// Ensure nothing else was delivered
+		assert.Empty(t, flush(t, h, srvHandle, pkt, 100003), "unexpected extra packet delivered")
+	})
 }
 
 func TestRoutePacketNonexistentTalkgroup(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Group call to non-existent talkgroup
-	pkt := makeVoicePacket(9999, 11111, true, false)
-	assert.NotPanics(t, func() {
-		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Group call to non-existent talkgroup
+		pkt := makeVoicePacket(9999, 11111, true, false)
+		assert.NotPanics(t, func() {
+			h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		})
 	})
 }
 
 func TestRoutePacketNonexistentRepeaterDst(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Private call to non-existent repeater
-	pkt := makeVoicePacket(999999, 22222, false, false)
-	assert.NotPanics(t, func() {
-		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to non-existent repeater
+		pkt := makeVoicePacket(999999, 22222, false, false)
+		assert.NotPanics(t, func() {
+			h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		})
 	})
 }
 
 func TestRoutePacketNonexistentUserDst(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Private call to non-existent user (7-digit)
-	pkt := makeVoicePacket(9999999, 33333, false, false)
-	assert.NotPanics(t, func() {
-		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to non-existent user (7-digit)
+		pkt := makeVoicePacket(9999999, 33333, false, false)
+		assert.NotPanics(t, func() {
+			h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		})
 	})
 }
 
@@ -221,178 +236,188 @@ func TestRoutePacketNonexistentUserDst(t *testing.T) {
 // causing private calls to be silently dropped.
 func TestRoutePacketPrivateCallTo8DigitUserID(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "CALLER")
-	seedUser(t, database, 10000001, "TARGET8") // 8-digit user ID
-	seedRepeater(t, database, 100001, 1000001)
-	seedRepeater(t, database, 100002, 10000001)
+		seedUser(t, database, 1000001, "CALLER")
+		seedUser(t, database, 10000001, "TARGET8") // 8-digit user ID
+		seedRepeater(t, database, 100001, 1000001)
+		seedRepeater(t, database, 100002, 10000001)
 
-	// Record a last call for the 8-digit user on repeater 100002
-	userID, repeaterID := uint(10000001), uint(100002)
-	lastCall := models.Call{
-		UserID:     &userID,
-		RepeaterID: &repeaterID,
-		IngressID:  repeaterID,
-		CreatedAt:  time.Now(),
-	}
-	require.NoError(t, database.Create(&lastCall).Error)
+		// Record a last call for the 8-digit user on repeater 100002
+		userID, repeaterID := uint(10000001), uint(100002)
+		lastCall := models.Call{
+			UserID:     &userID,
+			RepeaterID: &repeaterID,
+			IngressID:  repeaterID,
+			CreatedAt:  time.Now(),
+		}
+		require.NoError(t, database.Create(&lastCall).Error)
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Activate destination repeater so it has a subscription goroutine
-	h.ActivateRepeater(context.Background(), 100002)
+		// Activate destination repeater so it has a subscription goroutine
+		h.ActivateRepeater(context.Background(), 100002)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	// Private call to 8-digit user ID — previously silently dropped
-	pkt := makeVoicePacket(10000001, 77777, false, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Private call to 8-digit user ID — previously silently dropped
+		pkt := makeVoicePacket(10000001, 77777, false, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100002), rp.RepeaterID)
-		assert.Equal(t, uint(10000001), rp.Packet.Dst)
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for private call to 8-digit user ID — call was silently dropped")
-	}
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(100002), rp.RepeaterID)
+			assert.Equal(t, uint(10000001), rp.Packet.Dst)
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for private call to 8-digit user ID — call was silently dropped")
+		}
+	})
 }
 
 func TestRoutePacketDataPacket(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Data packet (FrameDataSync with non-voice dtype)
-	dataPkt := models.Packet{
-		Signature:   string(dmrconst.CommandDMRD),
-		Src:         1000001,
-		Dst:         100002,
-		Repeater:    100001,
-		GroupCall:   false,
-		FrameType:   dmrconst.FrameDataSync,
-		DTypeOrVSeq: 5,
-		StreamID:    66666,
-		BER:         -1,
-		RSSI:        -1,
-	}
-	// Should not panic
-	assert.NotPanics(t, func() {
-		h.RoutePacket(context.Background(), dataPkt, models.RepeaterTypeMMDVM)
+		// Data packet (FrameDataSync with non-voice dtype)
+		dataPkt := models.Packet{
+			Signature:   string(dmrconst.CommandDMRD),
+			Src:         1000001,
+			Dst:         100002,
+			Repeater:    100001,
+			GroupCall:   false,
+			FrameType:   dmrconst.FrameDataSync,
+			DTypeOrVSeq: 5,
+			StreamID:    66666,
+			BER:         -1,
+			RSSI:        -1,
+		}
+		// Should not panic
+		assert.NotPanics(t, func() {
+			h.RoutePacket(context.Background(), dataPkt, models.RepeaterTypeMMDVM)
+		})
 	})
 }
 
 func TestMultipleRepeatersReceiveGroupCall(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001) // source repeater — no static TGs
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 10, "TG10")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001) // source repeater — no static TGs
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 10, "TG10")
 
-	// Only the destination repeater subscribes to TG10.
-	// The source repeater (100001) has no static TG for TG10, so its feed
-	// does not take this talkgroup.
-	var rpt2 models.Repeater
-	require.NoError(t, database.First(&rpt2, 100002).Error)
-	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 10}))
+		// Only the destination repeater subscribes to TG10.
+		// The source repeater (100001) has no static TG for TG10, so its feed
+		// does not take this talkgroup.
+		var rpt2 models.Repeater
+		require.NoError(t, database.First(&rpt2, 100002).Error)
+		require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 10}))
 
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Activate the destination repeater (it subscribes to TG10)
-	h.ActivateRepeater(context.Background(), 100002)
+		// Activate the destination repeater (it subscribes to TG10)
+		h.ActivateRepeater(context.Background(), 100002)
 
-	knowTalkgroups(t, h)
+		knowTalkgroups(t, h)
 
-	// Source repeater 100001 sends to TG10
-	pkt := makeVoicePacket(10, 55559, true, false)
-	h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
+		// Source repeater 100001 sends to TG10
+		pkt := makeVoicePacket(10, 55559, true, false)
+		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
-	// Repeater 100002 should receive it
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(100002), rp.RepeaterID)
-		assert.Equal(t, uint(10), rp.Packet.Dst)
-	case <-time.After(failAfter):
-		t.Fatal("Timed out waiting for group call delivery to repeater 100002")
-	}
+		// Repeater 100002 should receive it
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(100002), rp.RepeaterID)
+			assert.Equal(t, uint(10), rp.Packet.Dst)
+		case <-time.After(failAfter):
+			t.Fatal("Timed out waiting for group call delivery to repeater 100002")
+		}
+	})
 }
 
 func TestVoiceTerminatorEndsCall(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
 
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100001, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100001, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
 
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 
-	// Voice header
-	headerPkt := models.Packet{
-		Signature:   string(dmrconst.CommandDMRD),
-		Src:         1000001,
-		Dst:         1,
-		Repeater:    100001,
-		GroupCall:   true,
-		FrameType:   dmrconst.FrameDataSync,
-		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
-		StreamID:    12345,
-		BER:         -1,
-		RSSI:        -1,
-	}
-	h.RoutePacket(context.Background(), headerPkt, models.RepeaterTypeMMDVM)
+		// Voice header
+		headerPkt := models.Packet{
+			Signature:   string(dmrconst.CommandDMRD),
+			Src:         1000001,
+			Dst:         1,
+			Repeater:    100001,
+			GroupCall:   true,
+			FrameType:   dmrconst.FrameDataSync,
+			DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
+			StreamID:    12345,
+			BER:         -1,
+			RSSI:        -1,
+		}
+		h.RoutePacket(context.Background(), headerPkt, models.RepeaterTypeMMDVM)
 
-	// Voice terminator
-	termPkt := makeVoiceTermPacket(1, 12345, true, false)
-	assert.NotPanics(t, func() {
-		h.RoutePacket(context.Background(), termPkt, models.RepeaterTypeMMDVM)
+		// Voice terminator
+		termPkt := makeVoiceTermPacket(1, 12345, true, false)
+		assert.NotPanics(t, func() {
+			h.RoutePacket(context.Background(), termPkt, models.RepeaterTypeMMDVM)
+		})
 	})
 }
 
 func TestRoutePacketDoesNotWaitOnAnotherSourceSlot(t *testing.T) {
 	t.Parallel()
-	h, database := makeTestHub(t)
-	seedUser(t, database, 1000001, "TESTUSER")
-	seedRepeater(t, database, 100002, 1000001)
-	seedTalkgroup(t, database, 1, "TG1")
-	var rpt models.Repeater
-	require.NoError(t, database.First(&rpt, 100002).Error)
-	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
-	srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	defer h.UnregisterServer(models.RepeaterTypeMMDVM)
-	h.ActivateRepeater(context.Background(), 100002)
-	knowTalkgroups(t, h)
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedUser(t, database, 1000001, "TESTUSER")
+		seedRepeater(t, database, 100002, 1000001)
+		seedTalkgroup(t, database, 1, "TG1")
+		var rpt models.Repeater
+		require.NoError(t, database.First(&rpt, 100002).Error)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		srvHandle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
+		h.ActivateRepeater(context.Background(), 100002)
+		knowTalkgroups(t, h)
 
-	release := h.HoldSource(makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
-	defer release()
-	returned := make(chan struct{})
-	go func() {
-		for range 50 {
-			h.RoutePacket(context.Background(), makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
+		release := h.HoldSource(makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
+		defer release()
+		returned := make(chan struct{})
+		go func() {
+			for range 50 {
+				h.RoutePacket(context.Background(), makeVoicePacket(1, 7001, true, false), models.RepeaterTypeMMDVM)
+			}
+			close(returned)
+		}()
+		select {
+		case <-returned:
+		case <-time.After(failAfter):
+			t.Fatal("RoutePacket waited on a busy source slot")
 		}
-		close(returned)
-	}()
-	select {
-	case <-returned:
-	case <-time.After(failAfter):
-		t.Fatal("RoutePacket waited on a busy source slot")
-	}
 
-	h.RoutePacket(context.Background(), makeVoicePacket(1, 7002, true, true), models.RepeaterTypeMMDVM)
-	select {
-	case rp := <-srvHandle.Packets:
-		assert.Equal(t, uint(7002), rp.Packet.StreamID)
-	case <-time.After(failAfter):
-		t.Fatal("a source slot waited behind a busy one")
-	}
+		h.RoutePacket(context.Background(), makeVoicePacket(1, 7002, true, true), models.RepeaterTypeMMDVM)
+		select {
+		case rp := <-srvHandle.Packets:
+			assert.Equal(t, uint(7002), rp.Packet.StreamID)
+		case <-time.After(failAfter):
+			t.Fatal("a source slot waited behind a busy one")
+		}
+	})
 }

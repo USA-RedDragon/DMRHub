@@ -23,11 +23,13 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,125 +84,139 @@ func pluginHub(t *testing.T) (*hub.Hub, *fakePlugins, *hub.ServerHandle) {
 
 func TestAPrivateCallToAPluginGoesOnlyToThePlugin(t *testing.T) {
 	t.Parallel()
-	h, f, srv := pluginHub(t)
-	for i, p := range []models.Packet{makeVoicePacket(9990, 7001, false, true), makeVoiceTermPacket(9990, 7001, false, true)} {
-		p.Seq = uint(i)
-		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-	}
-	require.Eventually(t, func() bool { return len(f.got(parrotPlugin)) == 2 }, deliveryWait, 10*time.Millisecond)
-	assert.Equal(t, uint(9990), f.got(parrotPlugin)[0].Dst)
-	expectNone(t, srv, "the plugin's ID replaces the built-in parrot, which plays nothing back")
+	synctest.Test(t, func(t *testing.T) {
+		h, f, srv := pluginHub(t)
+		for i, p := range []models.Packet{makeVoicePacket(9990, 7001, false, true), makeVoiceTermPacket(9990, 7001, false, true)} {
+			p.Seq = uint(i)
+			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+		}
+		bubble.Eventually(t, func() bool { return len(f.got(parrotPlugin)) == 2 }, deliveryWait, 10*time.Millisecond)
+		assert.Equal(t, uint(9990), f.got(parrotPlugin)[0].Dst)
+		expectNone(t, srv, "the plugin's ID replaces the built-in parrot, which plays nothing back")
+	})
 }
 
 func TestAGroupCallToAPluginsTalkgroupAlsoReachesItsSubscribers(t *testing.T) {
 	t.Parallel()
-	h, f, srv := pluginHub(t)
-	p := makeVoicePacket(weatherTG, 7002, true, false)
-	p.Repeater = 100003
-	h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-	expectAt(t, srv, 100004, "the subscribers of the talkgroup")
-	require.Eventually(t, func() bool { return len(f.got(weatherPlugin)) == 1 }, deliveryWait, 10*time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		h, f, srv := pluginHub(t)
+		p := makeVoicePacket(weatherTG, 7002, true, false)
+		p.Repeater = 100003
+		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+		expectAt(t, srv, 100004, "the subscribers of the talkgroup")
+		bubble.Eventually(t, func() bool { return len(f.got(weatherPlugin)) == 1 }, deliveryWait, 10*time.Millisecond)
+	})
 }
 
 func TestAGroupCallToAPluginIDThatIsNoTalkgroupGoesOnlyToThePlugin(t *testing.T) {
 	t.Parallel()
-	h, f, srv := pluginHub(t)
-	h.RoutePacket(context.Background(), makeVoicePacket(310009, 7003, true, false), models.RepeaterTypeMMDVM)
-	require.Eventually(t, func() bool { return len(f.got(weatherPlugin)) == 1 }, deliveryWait, 10*time.Millisecond)
-	expectNone(t, srv, "no talkgroup, no subscribers")
+	synctest.Test(t, func(t *testing.T) {
+		h, f, srv := pluginHub(t)
+		h.RoutePacket(context.Background(), makeVoicePacket(310009, 7003, true, false), models.RepeaterTypeMMDVM)
+		bubble.Eventually(t, func() bool { return len(f.got(weatherPlugin)) == 1 }, deliveryWait, 10*time.Millisecond)
+		expectNone(t, srv, "no talkgroup, no subscribers")
+	})
 }
 
 func TestAPluginsPrivateCallReachesTheRadioWhereItIsHeard(t *testing.T) {
 	t.Parallel()
-	h, f, srv := pluginHub(t)
-	hear(t, h, 1000002, 100003, 1)
+	synctest.Test(t, func(t *testing.T) {
+		h, f, srv := pluginHub(t)
+		hear(t, h, 1000002, 100003, 1)
 
-	reply := makeVoicePacket(1000002, 7004, false, true)
-	reply.Src, reply.Repeater = 9990, 0
-	h.RoutePacket(context.Background(), reply, plugins.SourceName(parrotPlugin))
-	expectAt(t, srv, 100003, "the radio's last repeater")
-	assert.Empty(t, f.got(parrotPlugin))
+		reply := makeVoicePacket(1000002, 7004, false, true)
+		reply.Src, reply.Repeater = 9990, 0
+		h.RoutePacket(context.Background(), reply, plugins.SourceName(parrotPlugin))
+		expectAt(t, srv, 100003, "the radio's last repeater")
+		assert.Empty(t, f.got(parrotPlugin))
 
-	h.RoutePacket(context.Background(), dataHeader(1000001, 9990, 100004, 9), models.RepeaterTypeMMDVM)
-	require.Eventually(t, func() bool { return len(f.got(parrotPlugin)) == 1 }, deliveryWait, 10*time.Millisecond,
-		"the plugin's own call did not make its ID a radio heard on no repeater")
+		h.RoutePacket(context.Background(), dataHeader(1000001, 9990, 100004, 9), models.RepeaterTypeMMDVM)
+		bubble.Eventually(t, func() bool { return len(f.got(parrotPlugin)) == 1 }, deliveryWait, 10*time.Millisecond,
+			"the plugin's own call did not make its ID a radio heard on no repeater")
+	})
 }
 
 func TestAPluginDoesNotHearItsOwnGroupCall(t *testing.T) {
 	t.Parallel()
-	h, f, srv := pluginHub(t)
-	p := makeVoicePacket(weatherTG, 7005, true, false)
-	p.Src, p.Repeater = 310009, 0
-	h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
-	expectAt(t, srv, 100004, "the subscribers of the talkgroup")
-	assert.Empty(t, f.got(weatherPlugin), "no echo to the plugin that sent it")
+	synctest.Test(t, func(t *testing.T) {
+		h, f, srv := pluginHub(t)
+		p := makeVoicePacket(weatherTG, 7005, true, false)
+		p.Src, p.Repeater = 310009, 0
+		h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
+		expectAt(t, srv, 100004, "the subscribers of the talkgroup")
+		assert.Empty(t, f.got(weatherPlugin), "no echo to the plugin that sent it")
+	})
 }
 
 func TestAHeardRadioIsToldToThePlugins(t *testing.T) {
 	t.Parallel()
-	h, database, ps := makeTestHubWithPubSub(t)
-	seedUser(t, database, 1000002, "TARGET")
-	seedRepeater(t, database, 100003, 1000002)
-	require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100003).Update("color_code", 7).Error)
-	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
-	h.ActivateRepeater(context.Background(), 100003)
-	h.SetPlugins(newFakePlugins(nil))
-	sub := ps.Subscribe(plugins.HeardTopic)
-	t.Cleanup(func() { _ = sub.Close() })
-	loadLookups(t, h, nil, []uint{1000002})
-	p := dataHeader(1000002, 1, 100003, 1)
-	p.Slot = true
-	h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-	select {
-	case b := <-sub.Channel():
-		radio, repeater, slot, cc, ok := plugins.DecodeHeard(b)
-		require.True(t, ok)
-		assert.Equal(t, []uint{1000002, 100003}, []uint{radio, repeater})
-		assert.Equal(t, []uint8{2, 7}, []uint8{slot, cc})
-	case <-time.After(deliveryWait):
-		t.Fatal("the plugins were not told where the radio was heard")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h, database, ps := makeTestHubWithPubSub(t)
+		seedUser(t, database, 1000002, "TARGET")
+		seedRepeater(t, database, 100003, 1000002)
+		require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100003).Update("color_code", 7).Error)
+		h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		h.ActivateRepeater(context.Background(), 100003)
+		h.SetPlugins(newFakePlugins(nil))
+		sub := ps.Subscribe(plugins.HeardTopic)
+		t.Cleanup(func() { _ = sub.Close() })
+		loadLookups(t, h, nil, []uint{1000002})
+		p := dataHeader(1000002, 1, 100003, 1)
+		p.Slot = true
+		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+		select {
+		case b := <-sub.Channel():
+			radio, repeater, slot, cc, ok := plugins.DecodeHeard(b)
+			require.True(t, ok)
+			assert.Equal(t, []uint{1000002, 100003}, []uint{radio, repeater})
+			assert.Equal(t, []uint8{2, 7}, []uint8{slot, cc})
+		case <-time.After(deliveryWait):
+			t.Fatal("the plugins were not told where the radio was heard")
+		}
+	})
 }
 
 func TestAPluginsCallStaysOnThisHub(t *testing.T) {
 	t.Parallel()
-	h, database, srv := lastSeenHub(t)
-	f := newFakePlugins(map[uint]uint{9990: parrotPlugin})
-	h.SetPlugins(f)
-	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
-	require.NoError(t, database.Create(&owner).Error)
-	require.NoError(t, database.Create(&models.Peer{ID: 200, OwnerID: owner.ID, Egress: true}).Error)
-	require.NoError(t, database.Create(&models.PeerRule{PeerID: 200, Direction: false, SubjectIDMin: 1, SubjectIDMax: 16777215}).Error)
-	h.PeerChanged(200)
-	peer := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
-	t.Cleanup(func() { h.UnregisterServer("peer-srv") })
-	loadLookups(t, h, nil, []uint{1000001, 1000002})
+	synctest.Test(t, func(t *testing.T) {
+		h, database, srv := lastSeenHub(t)
+		f := newFakePlugins(map[uint]uint{9990: parrotPlugin})
+		h.SetPlugins(f)
+		owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
+		require.NoError(t, database.Create(&owner).Error)
+		require.NoError(t, database.Create(&models.Peer{ID: 200, OwnerID: owner.ID, Egress: true}).Error)
+		require.NoError(t, database.Create(&models.PeerRule{PeerID: 200, Direction: false, SubjectIDMin: 1, SubjectIDMax: 16777215}).Error)
+		h.PeerChanged(200)
+		peer := h.RegisterServer(hub.ServerConfig{Name: "peer-srv", Role: hub.RolePeer})
+		t.Cleanup(func() { h.UnregisterServer("peer-srv") })
+		loadLookups(t, h, nil, []uint{1000001, 1000002})
 
-	h.RoutePacket(context.Background(), dataHeader(1000002, 1000001, 100003, 1), models.RepeaterTypeMMDVM)
-	select {
-	case <-peer.Packets:
-	case <-time.After(deliveryWait):
-		t.Fatal("the peer does not get the private calls of a radio, so this test proves nothing")
-	}
-	for {
+		h.RoutePacket(context.Background(), dataHeader(1000002, 1000001, 100003, 1), models.RepeaterTypeMMDVM)
 		select {
-		case <-srv.Packets:
-			continue
-		case <-time.After(200 * time.Millisecond):
+		case <-peer.Packets:
+		case <-time.After(deliveryWait):
+			t.Fatal("the peer does not get the private calls of a radio, so this test proves nothing")
 		}
-		break
-	}
+		for {
+			select {
+			case <-srv.Packets:
+				continue
+			case <-time.After(200 * time.Millisecond):
+			}
+			break
+		}
 
-	reply := makeVoicePacket(1000002, 7006, false, true)
-	reply.Src, reply.Repeater = 9990, 0
-	h.RoutePacket(context.Background(), reply, plugins.SourceName(parrotPlugin))
-	expectAt(t, srv, 100003, "the radio's repeater")
-	select {
-	case rp := <-peer.Packets:
-		t.Fatalf("the peer got the plugin's call: %v", rp.Packet)
-	case <-time.After(500 * time.Millisecond):
-	}
-	assert.Empty(t, f.got(parrotPlugin))
+		reply := makeVoicePacket(1000002, 7006, false, true)
+		reply.Src, reply.Repeater = 9990, 0
+		h.RoutePacket(context.Background(), reply, plugins.SourceName(parrotPlugin))
+		expectAt(t, srv, 100003, "the radio's repeater")
+		select {
+		case rp := <-peer.Packets:
+			t.Fatalf("the peer got the plugin's call: %v", rp.Packet)
+		case <-time.After(500 * time.Millisecond):
+		}
+		assert.Empty(t, f.got(parrotPlugin))
+	})
 }
 
 // pluginPeerHub returns pluginHub with a peer whose egress takes every
@@ -223,30 +239,34 @@ func pluginPeerHub(t *testing.T) (*hub.Hub, *hub.ServerHandle, *hub.ServerHandle
 
 func TestAPluginsGroupCallReachesThePeers(t *testing.T) {
 	t.Parallel()
-	h, _, peer := pluginPeerHub(t)
-	p := makeVoicePacket(weatherTG, 7007, true, false)
-	p.Src, p.Repeater = 310009, 0
-	h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
-	select {
-	case rp := <-peer.Packets:
-		assert.Equal(t, uint(310009), rp.Packet.Src)
-	case <-time.After(deliveryWait):
-		t.Fatal("the peer did not get the plugin's group call")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h, _, peer := pluginPeerHub(t)
+		p := makeVoicePacket(weatherTG, 7007, true, false)
+		p.Src, p.Repeater = 310009, 0
+		h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
+		select {
+		case rp := <-peer.Packets:
+			assert.Equal(t, uint(310009), rp.Packet.Src)
+		case <-time.After(deliveryWait):
+			t.Fatal("the peer did not get the plugin's group call")
+		}
+	})
 }
 
 func TestAPluginsPrivateCallToARadioNotHereReachesThePeers(t *testing.T) {
 	t.Parallel()
-	h, srv, peer := pluginPeerHub(t)
-	loadLookups(t, h, nil, []uint{3999999})
-	p := makeVoicePacket(3999999, 7008, false, true)
-	p.Src, p.Repeater = 9990, 0
-	h.RoutePacket(context.Background(), p, plugins.SourceName(parrotPlugin))
-	select {
-	case rp := <-peer.Packets:
-		assert.Equal(t, uint(3999999), rp.Packet.Dst)
-	case <-time.After(deliveryWait):
-		t.Fatal("the peer did not get a private call the hub cannot deliver")
-	}
-	expectNone(t, srv, "the radio is not here")
+	synctest.Test(t, func(t *testing.T) {
+		h, srv, peer := pluginPeerHub(t)
+		loadLookups(t, h, nil, []uint{3999999})
+		p := makeVoicePacket(3999999, 7008, false, true)
+		p.Src, p.Repeater = 9990, 0
+		h.RoutePacket(context.Background(), p, plugins.SourceName(parrotPlugin))
+		select {
+		case rp := <-peer.Packets:
+			assert.Equal(t, uint(3999999), rp.Packet.Dst)
+		case <-time.After(deliveryWait):
+			t.Fatal("the peer did not get a private call the hub cannot deliver")
+		}
+		expectNone(t, srv, "the radio is not here")
+	})
 }

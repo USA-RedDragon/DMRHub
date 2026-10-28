@@ -118,6 +118,7 @@ func position(radio uint, service uint32) *pluginv1.ConnectRequest {
 func TestTheHubKeepsOnlyPositionsOfTrackedRadiosToThePluginsIDs(t *testing.T) {
 	t.Parallel()
 	r, s := trackingRig(t)
+	require.NoError(t, r.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002, Callsign: "KI5VMF"}, OwnerID: trackedRadio}).Error)
 	subscribe(t, s)
 	require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
 	_, err := recv(t, s)
@@ -143,4 +144,47 @@ func TestTheHubKeepsOnlyPositionsOfTrackedRadiosToThePluginsIDs(t *testing.T) {
 	var stored int64
 	require.NoError(t, r.db.Model(&models.Position{}).Count(&stored).Error)
 	assert.Equal(t, int64(1), stored)
+}
+
+func TestTheHubKeepsPositionsOnlyThroughTheOwnersOrTrustedRepeaters(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "KI5VMF", Username: "tracked", Approved: true}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "KD5SMP", Username: "untracked", Approved: true}).Error)
+	require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, true, time.Now().Add(-time.Minute)))
+	const own, spoof, trusted = uint(100002), uint(100009), uint(100010)
+	for _, rpt := range []models.Repeater{
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: own, Callsign: "KI5VMF"}, OwnerID: trackedRadio},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: spoof, Callsign: "KD5SMP"}, OwnerID: untrackedRadio},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: trusted, Callsign: "KD5SMP"}, OwnerID: untrackedRadio, Trusted: true},
+	} {
+		require.NoError(t, r.db.Create(&rpt).Error)
+	}
+	p, token := r.add("Location", rng(5050, 5059))
+	s := r.connect(token)
+	m, err := recv(t, s)
+	require.NoError(t, err)
+	require.NotNil(t, m.GetWelcome())
+	subscribe(t, s)
+
+	report := func(via uint, stream uint32) {
+		t.Helper()
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: trackedRadio, Dst: uint(locatorID), Repeater: via, Slot: true, StreamID: uint(stream)}))
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetBurst(), "got %v", m)
+		require.NoError(t, s.Send(position(trackedRadio, locatorID)))
+	}
+	report(spoof, 1)
+	time.Sleep(200 * time.Millisecond)
+	assert.Empty(t, r.positions(), "a location report through a hotspot of another user that no admin trusts")
+
+	report(trusted, 2)
+	require.Eventually(t, func() bool { return len(r.positions()) == 1 }, 3*time.Second, 10*time.Millisecond, "a location report through a trusted repeater")
+	assert.Equal(t, trusted, r.positions()[0].RepeaterID)
+	require.NoError(t, r.db.Where("radio_id = ?", trackedRadio).Delete(&models.Position{}).Error)
+
+	report(own, 3)
+	require.Eventually(t, func() bool { return len(r.positions()) == 2 }, 3*time.Second, 10*time.Millisecond, "a location report through a repeater of the owner")
+	assert.Equal(t, own, r.positions()[1].RepeaterID)
 }

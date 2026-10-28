@@ -80,3 +80,19 @@ func (p *Repeater) BeforeSave(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// RepeaterServes reports whether the radios of userID may use the repeater
+// repeaterID for private traffic and positions: the user owns the repeater
+// or an admin trusts it. It returns the repeater it found, with ID 0 when
+// there is none.
+func RepeaterServes(db *gorm.DB, userID, repeaterID uint) (Repeater, bool, error) {
+	var rpt Repeater
+	err := db.Select("id", "owner_id", "trusted", "color_code").First(&rpt, repeaterID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Repeater{}, false, nil
+	}
+	if err != nil {
+		return Repeater{}, false, fmt.Errorf("finding repeater %d: %w", repeaterID, err)
+	}
+	return rpt, rpt.OwnerID == userID || rpt.Trusted, nil
+}

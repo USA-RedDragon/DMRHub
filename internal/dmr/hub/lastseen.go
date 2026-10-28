@@ -34,7 +34,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
-	"gorm.io/gorm"
 )
 
 const (
@@ -359,13 +358,5 @@ func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {
 // follow it to repeaterID: the user owns the repeater or an admin trusts
 // it. It returns the repeater it found, with ID 0 when there is none.
 func (h *Hub) routableFor(userID, repeaterID uint) (models.Repeater, bool, error) {
-	var rpt models.Repeater
-	err := h.db.Select("id", "owner_id", "trusted", "color_code").First(&rpt, repeaterID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return models.Repeater{}, false, nil
-	}
-	if err != nil {
-		return models.Repeater{}, false, fmt.Errorf("finding repeater %d: %w", repeaterID, err)
-	}
-	return rpt, rpt.OwnerID == userID || rpt.Trusted, nil
+	return models.RepeaterServes(h.db, userID, repeaterID) //nolint:wrapcheck // RepeaterServes wraps its errors
 }

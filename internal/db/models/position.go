@@ -191,11 +191,16 @@ func SetSharePositions(db *gorm.DB, userID uint, share bool) error {
 }
 
 // StorePosition stores p when its radio is tracked, p arrived after
-// tracking started, and no position of the radio was stored in the
-// PositionStoreInterval before p. It reports whether it stored p.
+// tracking started, p came through a repeater that the owner of the radio
+// owns or an admin trusts (see RepeaterServes), and no position of the
+// radio was stored in the PositionStoreInterval before p. It reports
+// whether it stored p.
 func StorePosition(db *gorm.DB, p Position) (bool, error) {
 	s, ok, err := FindPositionSetting(db, p.RadioID)
 	if err != nil || !ok || !s.Tracking || s.TrackingSince == nil || p.ReceivedAt.Before(*s.TrackingSince) {
+		return false, err
+	}
+	if _, serves, err := RepeaterServes(db, s.UserID, p.RepeaterID); err != nil || !serves {
 		return false, err
 	}
 	var recent int64

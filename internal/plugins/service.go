@@ -45,6 +45,9 @@ import (
 // its bursts are dropped.
 const sendQueue = 256
 
+// maxSentFrom bounds the sources whose last repeater a stream keeps.
+const maxSentFrom = 4096
+
 // heartbeatEvery is how often a stream records that its plugin is still
 // there.
 const heartbeatEvery = 15 * time.Second
@@ -300,7 +303,7 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 			case <-ctx.Done():
 			}
 		},
-		subscribe: make(chan bool, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{},
+		subscribe: make(chan bool, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{}, sentFrom: map[uint32]uint{},
 	}
 	go w.watch(ctx)
 
@@ -383,6 +386,9 @@ type watcher struct {
 	// heardOn is the repeater where each radio with tracking on was heard
 	// last, when the plugin subscribed to tracking.
 	heardOn map[uint32]uint
+	// sentFrom is the repeater of the last burst of each radio that went
+	// to the plugin.
+	sentFrom map[uint32]uint
 }
 
 // watch forwards the bursts to the plugin, follows changes to it, and ends
@@ -429,6 +435,7 @@ func (w *watcher) watch(ctx context.Context) {
 				slog.Error("Plugins: cannot decode a burst", "error", err)
 				continue
 			}
+			w.sent(&pkt)
 			w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
 		case on := <-w.subscribe:
 			w.setTracking(on)
@@ -542,10 +549,25 @@ func (w *watcher) radioHeard(b []byte) {
 	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Heard{Heard: &pluginv1.Heard{Radio: h.radio, Slot: uint32(h.slot), ColorCode: uint32(h.cc)}}})
 }
 
+// sent notes the repeater of a burst that goes to the plugin, the repeater
+// that a report of its source came through.
+func (w *watcher) sent(pkt *models.Packet) {
+	if len(w.sentFrom) >= maxSentFrom {
+		clear(w.sentFrom)
+	}
+	w.sentFrom[uint32(pkt.Src)] = pkt.Repeater //nolint:gosec // DMR IDs are 24 bits
+}
+
 // store keeps a position that the plugin sent, when the radio has tracking
-// on and sent it to one of the plugin's IDs.
+// on and sent it to one of the plugin's IDs. The position came through the
+// repeater of the last burst of the radio to the plugin, or else the
+// repeater where the radio was heard last.
 func (w *watcher) store(p *pluginv1.Position, ranges []models.PluginRange) {
-	pos, ok := positionOf(p, ranges, w.heardOn[p.GetRadio()], w.s.now())
+	via, ok := w.sentFrom[p.GetRadio()]
+	if !ok {
+		via = w.heardOn[p.GetRadio()]
+	}
+	pos, ok := positionOf(p, ranges, via, w.s.now())
 	if !ok {
 		return
 	}

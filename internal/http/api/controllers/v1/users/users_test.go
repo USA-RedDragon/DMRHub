@@ -1174,7 +1174,8 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			_, err = models.CreatePasswordReset(database, user.DMRId, now)
 			require.NoError(t, err)
 			require.NoError(t, models.SetPositionTracking(database, user.DMRId, user.DMRId, true, now.Add(-time.Minute)))
-			stored, err := models.StorePosition(database, models.Position{RadioID: user.DMRId, Latitude: 32.7, Longitude: -96.8, Format: models.PositionFormatNMEA, ReceivedAt: now})
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801, Callsign: "KI5VMF"}, Trusted: true}).Error)
+			stored, err := models.StorePosition(database, models.Position{RadioID: user.DMRId, Latitude: 32.7, Longitude: -96.8, Format: models.PositionFormatNMEA, ReceivedAt: now, RepeaterID: 319186801})
 			require.NoError(t, err)
 			require.True(t, stored)
 

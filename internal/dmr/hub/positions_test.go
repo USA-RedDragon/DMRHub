@@ -78,7 +78,7 @@ func TestEmbeddedGPSFollowsTheTrackingRules(t *testing.T) {
 	seedRepeater(t, database, testRepeaterID, testSrcID)
 	require.NoError(t, models.SetPositionTracking(database, testSrcID, deduped, true, time.Now().Add(-time.Minute)))
 	require.NoError(t, models.SetPositionTracking(database, testSrcID, unknown, true, time.Now().Add(-time.Minute)))
-	lrrp, err := models.StorePosition(database, models.Position{RadioID: deduped, Latitude: 1, Longitude: 2, Format: models.PositionFormatLRRP, ReceivedAt: time.Now()})
+	lrrp, err := models.StorePosition(database, models.Position{RadioID: deduped, Latitude: 1, Longitude: 2, Format: models.PositionFormatLRRP, ReceivedAt: time.Now(), RepeaterID: testRepeaterID})
 	require.NoError(t, err)
 	require.True(t, lrrp)
 
@@ -128,4 +128,42 @@ func TestStoredEmbeddedGPSIsPushed(t *testing.T) {
 	require.Len(t, pushed, 1, "only the stored position goes to the users and APRS-IS")
 	assert.Equal(t, testSrcID, pushed[0].RadioID)
 	assert.InDelta(t, 32.75, pushed[0].Latitude, 0.001)
+}
+
+func TestPositionsComeOnlyThroughTheOwnersOrTrustedRepeaters(t *testing.T) {
+	t.Parallel()
+	h, database := makeTestHub(t)
+	const other, untrusted, trusted = uint(1000009), uint(100002), uint(100003)
+	seedUser(t, database, testSrcID, "CALLER")
+	seedUser(t, database, other, "OTHER")
+	seedRepeater(t, database, testRepeaterID, testSrcID)
+	seedRepeater(t, database, untrusted, other)
+	seedRepeater(t, database, trusted, other)
+	require.NoError(t, database.Exec("UPDATE repeaters SET trusted = ? WHERE id = ?", true, trusted).Error)
+
+	radio := uint(1000100)
+	for _, source := range []string{models.RepeaterTypeModem, models.RepeaterTypeMMDVM} {
+		for _, c := range []struct {
+			via    uint
+			stored bool
+			what   string
+		}{
+			{untrusted, false, "a hotspot of another user that no admin trusts"},
+			{testRepeaterID, true, "a repeater of the owner"},
+			{trusted, true, "a repeater that an admin trusts"},
+		} {
+			radio++
+			require.NoError(t, models.SetPositionTracking(database, testSrcID, radio, true, time.Now().Add(-time.Minute)))
+			p := gpsPosition(t, radio, 32.75, -97.25, layer3.PositionLessThan2M)
+			p.Repeater = uint32(c.via)
+			h.RecordPosition(p, source, c.via)
+			h.WaitBackground()
+			got := storedPositions(t, database, radio)
+			if c.stored {
+				assert.Len(t, got, 1, "%s: the position through %s", source, c.what)
+			} else {
+				assert.Empty(t, got, "%s: the position through %s", source, c.what)
+			}
+		}
+	}
 }

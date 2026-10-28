@@ -34,6 +34,7 @@ func seedPositionUsers(t *testing.T, database *gorm.DB) {
 	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
 	require.NoError(t, database.Create(&models.User{ID: 3140598, Callsign: "KD5SMP", Username: "b", Approved: true}).Error)
 	require.NoError(t, database.Create(&models.User{ID: 3100001, Callsign: "N0CALL", Username: "c", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801, Callsign: "KI5VMF"}, Trusted: true}).Error)
 }
 
 func fixAt(radio uint, at time.Time) models.Position {

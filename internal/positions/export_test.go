@@ -19,9 +19,13 @@
 
 package positions
 
-import "time"
+import (
+	"time"
 
-// SetClock sets how often g checks its lease and the clock that g reads.
-func SetClock(g *Gateway, every time.Duration, now func() time.Time) {
-	g.every, g.now = every, now
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
+)
+
+// SetClock sets how often g checks its lease and the clock of g.
+func SetClock(g *Gateway, every time.Duration, c clock.Clock) {
+	g.every, g.clock = every, c
 }

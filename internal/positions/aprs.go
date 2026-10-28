@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/aprs"
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -71,7 +72,7 @@ type Gateway struct {
 	version string
 	id      string
 	every   time.Duration
-	now     func() time.Time
+	clock   clock.Clock
 
 	mu     sync.Mutex
 	client *aprs.Client
@@ -90,7 +91,7 @@ func NewGateway(db *gorm.DB, cfg config.Source, kvStore kv.KV, ps pubsub.PubSub,
 	_, _ = rand.Read(id[:])
 	return &Gateway{
 		db: db, cfg: cfg, kv: kvStore, pubsub: ps, version: version, id: hex.EncodeToString(id[:]),
-		every: leaseEvery, now: time.Now, sent: map[uint]sentPosition{},
+		every: leaseEvery, clock: clock.Real(), sent: map[uint]sentPosition{},
 	}
 }
 
@@ -102,7 +103,7 @@ func (g *Gateway) Start(ctx context.Context) {
 	go func() {
 		defer close(g.done)
 		defer func() { _ = sub.Close() }()
-		ticker := time.NewTicker(g.every)
+		ticker := g.clock.NewTicker(g.every)
 		defer ticker.Stop()
 		g.refresh(ctx)
 		for {
@@ -110,7 +111,7 @@ func (g *Gateway) Start(ctx context.Context) {
 			case <-ctx.Done():
 				g.release(context.WithoutCancel(ctx))
 				return
-			case <-ticker.C:
+			case <-ticker.C():
 				g.refresh(ctx)
 			case b, ok := <-sub.Channel():
 				if !ok {
@@ -224,7 +225,7 @@ func (g *Gateway) line(p *models.Position) (string, string) {
 	if !owner.Approved || owner.Suspended || !aprs.Licensed(owner.Callsign) {
 		return "", "the owner has no licensed callsign"
 	}
-	now := g.now()
+	now := g.clock.Now()
 	if now.Sub(p.ReceivedAt) > maxAge || (p.FixTime != nil && p.ReceivedAt.Sub(*p.FixTime) > maxFixAge) {
 		return "", "stale"
 	}

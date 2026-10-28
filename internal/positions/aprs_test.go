@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/aprs/aprstest"
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -41,18 +42,20 @@ import (
 // passcode is the APRS-IS passcode of N0HUB, the login of the gateway.
 const passcode = "14215"
 
-type clock struct {
+// testClock reads a time that the test moves, and runs the real timers.
+type testClock struct {
+	clock.Clock
 	mu  sync.Mutex
 	now time.Time
 }
 
-func (c *clock) Now() time.Time {
+func (c *testClock) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.now
 }
 
-func (c *clock) Add(d time.Duration) {
+func (c *testClock) Add(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = c.now.Add(d)
@@ -66,7 +69,7 @@ type gateway struct {
 	cfg    *config.Config
 	srv    *aprstest.Server
 	pusher *positions.Pusher
-	clock  *clock
+	clock  *testClock
 }
 
 func newGateway(t *testing.T) *gateway {
@@ -84,13 +87,13 @@ func newGateway(t *testing.T) *gateway {
 	require.NoError(t, models.SetPositionOptions(database, owner, owner, models.PositionOptions{
 		Interval: 10 * time.Minute, Retention: 24 * time.Hour, APRS: true, APRSSSID: "9", APRSComment: "DMR 3191868",
 	}))
-	return &gateway{t: t, db: database, ps: ps, kv: kvStore, cfg: &cfg, srv: srv, pusher: pusher, clock: &clock{now: time.Now()}}
+	return &gateway{t: t, db: database, ps: ps, kv: kvStore, cfg: &cfg, srv: srv, pusher: pusher, clock: &testClock{Clock: clock.Real(), now: time.Now()}}
 }
 
 func (g *gateway) start() *positions.Gateway {
 	g.t.Helper()
 	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(gw, 50*time.Millisecond, g.clock.Now)
+	positions.SetClock(gw, 50*time.Millisecond, g.clock)
 	gw.Start(context.Background())
 	g.t.Cleanup(gw.Stop)
 	require.Eventually(g.t, func() bool { return len(g.srv.Logins()) >= 1 }, 3*time.Second, 10*time.Millisecond)
@@ -226,7 +229,7 @@ func TestOnlyOneReplicaLogsIn(t *testing.T) {
 	g := newGateway(t)
 	g.start()
 	second := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(second, 50*time.Millisecond, g.clock.Now)
+	positions.SetClock(second, 50*time.Millisecond, g.clock)
 	second.Start(context.Background())
 	defer second.Stop()
 	time.Sleep(300 * time.Millisecond)
@@ -241,7 +244,7 @@ func TestTheReplicaThatIsLeftTakesOverTheLogin(t *testing.T) {
 	g := newGateway(t)
 	first := g.start()
 	second := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(second, 50*time.Millisecond, g.clock.Now)
+	positions.SetClock(second, 50*time.Millisecond, g.clock)
 	second.Start(context.Background())
 	defer second.Stop()
 	first.Stop()
@@ -253,7 +256,7 @@ func TestWithoutALoginTheGatewayConnectsNowhere(t *testing.T) {
 	g := newGateway(t)
 	g.cfg.DMR.Positions.APRSIS.Callsign = ""
 	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(gw, 50*time.Millisecond, g.clock.Now)
+	positions.SetClock(gw, 50*time.Millisecond, g.clock)
 	gw.Start(context.Background())
 	defer gw.Stop()
 	time.Sleep(300 * time.Millisecond)

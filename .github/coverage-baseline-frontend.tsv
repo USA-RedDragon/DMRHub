@@ -7,11 +7,11 @@ src/components/ModeToggle.vue	13	10
 src/components/RelativeTimestamp.vue	7	3
 src/components/Repeater.vue	7	0
 src/components/RepeaterTable.vue	211	135
-src/components/Talkgroup.vue	5	4
+src/components/Talkgroup.vue	5	5
 src/components/TalkgroupTable.vue	165	100
 src/components/TransmissionType.vue	5	5
 src/components/TypeFilter.vue	7	5
-src/components/User.vue	9	5
+src/components/User.vue	9	6
 src/components/UserRegistrationCard.vue	15	11
 src/components/UserTable.vue	160	95
 src/components/enroll/ClientSteps.vue	23	15
@@ -105,8 +105,8 @@ src/services/password.ts	12	0
 src/services/radioid.ts	13	0
 src/services/repeater.ts	29	5
 src/services/settings.ts	16	0
-src/services/talkgroup.ts	15	8
-src/services/userdb.ts	15	8
+src/services/talkgroup.ts	15	11
+src/services/userdb.ts	15	11
 src/services/util.ts	7	6
 src/services/ws.ts	51	30
 src/store/index.ts	25	25

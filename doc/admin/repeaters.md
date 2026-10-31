@@ -25,7 +25,7 @@ When a modem connects with an ID that no repeater has, DMRHub makes the repeater
 
 The repeater then shows in the repeater list of that user, and the user can set its talkgroups and details. You can assign an owner only to a repeater that has none. When another admin assigned one first, the page shows "Repeater already has an owner".
 
-<!-- screenshot: admin-unassigned-repeaters.png | /admin/repeaters/unassigned with one modem hotspot 311860 and one modem repeater 311861 -->
+![The Unassigned Repeaters page under Admin, with a modem hotspot and a modem repeater](../Screenshots/admin-unassigned-repeaters.png)
 
 ## Trusted repeaters
 

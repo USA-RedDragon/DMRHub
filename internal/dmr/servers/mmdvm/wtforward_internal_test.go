@@ -23,6 +23,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -67,37 +68,40 @@ func TestWTConnNotesAPathMove(t *testing.T) {
 // more.
 func TestAPathMoveSendsAgainWhatTheBrowserMayHaveLost(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.outgoingChan = make(chan outgoing, 16)
-	ep := endpoint{transport: webTransportName, addr: wtAddr("a")}
-	s.connected.Store(1, ep)
-	now := time.Now()
-	for i := range 12 {
-		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: uint(i)})
-		s.writeOut(<-s.outgoingChan)
-	}
-	s.sentMu.Lock()
-	for i, p := range s.sent[1] {
-		p.at = now.Add(time.Duration(i-11)*60*time.Millisecond + 5*time.Millisecond)
-	}
-	s.sentMu.Unlock()
-	s.resendMoved(wtAddr("a"), now)
-	var got []uint
-	for range 9 {
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.outgoingChan = make(chan outgoing, 16)
+		ep := endpoint{transport: webTransportName, addr: wtAddr("a")}
+		s.connected.Store(1, ep)
+		now := time.Now()
+		for i := range 12 {
+			s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: uint(i)})
+			s.writeOut(<-s.outgoingChan)
+		}
+		s.sentMu.Lock()
+		for i, p := range s.sent[1] {
+			p.at = now.Add(time.Duration(i-11)*60*time.Millisecond + 5*time.Millisecond)
+		}
+		s.sentMu.Unlock()
+		s.resendMoved(wtAddr("a"), now)
+		var got []uint
+		for range 9 {
+			select {
+			case o := <-s.outgoingChan:
+				assert.Equal(t, ep, endpointOf(o.raw))
+				p, ok := models.UnpackPacket(o.raw.Data)
+				require.True(t, ok)
+				got = append(got, p.Seq)
+			case <-time.After(time.Second):
+				t.Fatalf("only %v were sent again", got)
+			}
+		}
+		assert.Equal(t, []uint{3, 4, 5, 6, 7, 8, 9, 10, 11}, got)
+		synctest.Wait()
 		select {
 		case o := <-s.outgoingChan:
-			assert.Equal(t, ep, endpointOf(o.raw))
-			p, ok := models.UnpackPacket(o.raw.Data)
-			require.True(t, ok)
-			got = append(got, p.Seq)
-		case <-time.After(time.Second):
-			t.Fatalf("only %v were sent again", got)
+			t.Fatalf("sent again a packet from before the window: %v", o.raw)
+		default:
 		}
-	}
-	assert.Equal(t, []uint{3, 4, 5, 6, 7, 8, 9, 10, 11}, got)
-	select {
-	case o := <-s.outgoingChan:
-		t.Fatalf("sent again a packet from before the window: %v", o.raw)
-	case <-time.After(50 * time.Millisecond):
-	}
+	})
 }

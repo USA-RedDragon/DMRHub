@@ -277,6 +277,36 @@ func TestAClaimOlderThanOurOwnEndsNothing(t *testing.T) {
 	})
 }
 
+// TestAMoveClaimOlderThanOurOwnHandsOver drains a replica that claimed a
+// repeater, and has another replica take the session over and claim it for
+// a time before that claim, as a browser hotspot that resumes with a drain
+// notice of the same second as its login does: the notice time is whole
+// seconds. The claim is not stale, since the move record names the
+// replica that took the session over, and the draining replica must hand
+// the repeater over.
+func TestAMoveClaimOlderThanOurOwnHandsOver(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, r1, two, database := twoReplicas(t)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		gone := make(chan uint, 1)
+		one.OnClaimedElsewhere(func(id uint, _ time.Time) { gone <- id })
+		at := time.Now()
+		one.ActivateRepeaterSince(ctx, 100001, at)
+		r1.MarkDraining(ctx)
+		require.True(t, two.TakeOver(ctx, 100001), "the other replica takes the session over")
+		two.ActivateRepeaterSince(ctx, 100001, at.Add(-500*time.Millisecond))
+		select {
+		case id := <-gone:
+			assert.Equal(t, uint(100001), id)
+		case <-time.After(failAfter):
+			t.Fatal("the draining replica did not hand over the repeater that moved")
+		}
+	})
+}
+
 // TestAClaimAtTheSameTimeAsOurOwnEndsOneSession has two replicas each
 // claim a repeater, and then get the claim of the other replica for it with
 // the same time as their own, as two replicas that stamp in the same tick

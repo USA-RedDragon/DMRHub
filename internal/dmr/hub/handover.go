@@ -97,6 +97,22 @@ func (h *Hub) leavingOwner(ctx context.Context, repeaterID uint) (string, bool) 
 	return owner, servers.InstanceDraining(ctx, h.kv, owner)
 }
 
+func moveKey(repeaterID uint, owner string) string {
+	return fmt.Sprintf("dmrhub:move:%d:%s", repeaterID, owner)
+}
+
+// movedTo reports whether the replica by took the session of the repeater
+// id over from this one with TakeOver. Its claim is then not stale even
+// when it is for a time before this replica's own, as the drain notice of
+// a browser hotspot is whole seconds.
+func (h *Hub) movedTo(ctx context.Context, id uint, by string) bool {
+	if h.kv == nil || h.instanceID == "" {
+		return false
+	}
+	v, err := h.kv.Get(ctx, moveKey(id, h.instanceID))
+	return err == nil && string(v) == by
+}
+
 // TakeOver reports whether this replica may take over the session of the
 // repeater from its owner, which drains, as OwnerLeaving does. Of the
 // replicas that ask about one owner, only the first gets true, so that
@@ -107,7 +123,7 @@ func (h *Hub) TakeOver(ctx context.Context, repeaterID uint) bool {
 	if !ok {
 		return false
 	}
-	key := fmt.Sprintf("dmrhub:move:%d:%s", repeaterID, owner)
+	key := moveKey(repeaterID, owner)
 	won, err := h.kv.SetNX(ctx, key, h.instanceID, moveTTL)
 	if err != nil {
 		slog.Warn("failed to record a takeover of a repeater", "repeaterID", repeaterID, "error", err)
@@ -171,7 +187,7 @@ func (h *Hub) handOff(ctx context.Context, id uint, by string, since time.Time) 
 	if _, active := h.subscriptionMgr.subscriptions.Load(id); !active {
 		return
 	}
-	if mine, ok := h.claimedAt.Load(id); ok && (since.Before(mine) || (since.Equal(mine) && by < h.instanceID)) {
+	if mine, ok := h.claimedAt.Load(id); ok && (since.Before(mine) || (since.Equal(mine) && by < h.instanceID)) && !h.movedTo(ctx, id, by) {
 		return
 	}
 	h.claimedMu.Lock()

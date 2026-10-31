@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -321,6 +322,12 @@ type heldReport struct {
 	pubsub.PubSub
 	topic   string
 	release chan struct{}
+	came    atomic.Bool
+}
+
+// arrived reports whether a message of the topic came and is held.
+func (h *heldReport) arrived() bool {
+	return h.came.Load()
 }
 
 type heldSubscription struct {
@@ -338,6 +345,7 @@ func (h *heldReport) Subscribe(topic string) pubsub.Subscription {
 	held := &heldSubscription{Subscription: sub, ch: make(chan []byte, 8), stop: make(chan struct{})}
 	go func() {
 		for msg := range sub.Channel() {
+			h.came.Store(true)
 			select {
 			case <-h.release:
 			case <-held.stop:

@@ -22,6 +22,7 @@ package cmd
 import (
 	"context"
 	"log/slog"
+	"net"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -46,10 +47,21 @@ func TestSetupTracing_EmptyEndpoint_ReturnsNoopCleanup(t *testing.T) {
 	}
 }
 
+func otlpEndpoint(t *testing.T) string {
+	t.Helper()
+	var lc net.ListenConfig
+	ln, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for the OTLP endpoint: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	return ln.Addr().String()
+}
+
 func TestInitTracer_ValidEndpoint_ReturnsCleanup(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{}
-	cfg.Metrics.OTLPEndpoint = "localhost:4317"
+	cfg.Metrics.OTLPEndpoint = otlpEndpoint(t)
 
 	// gRPC connections are lazy, so a well-formed endpoint won't fail at
 	// creation time. Verify that initTracer returns a non-nil cleanup
@@ -61,12 +73,13 @@ func TestInitTracer_ValidEndpoint_ReturnsCleanup(t *testing.T) {
 	if cleanup == nil {
 		t.Fatal("expected non-nil cleanup function for well-formed endpoint")
 	}
+	t.Cleanup(func() { _ = cleanup(context.Background()) })
 }
 
 func TestSetupTracing_WithEndpoint_ReturnsCleanupAndNoError(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{}
-	cfg.Metrics.OTLPEndpoint = "localhost:4317"
+	cfg.Metrics.OTLPEndpoint = otlpEndpoint(t)
 
 	cleanup, err := setupTracing(cfg)
 	if err != nil {
@@ -75,6 +88,7 @@ func TestSetupTracing_WithEndpoint_ReturnsCleanupAndNoError(t *testing.T) {
 	if cleanup == nil {
 		t.Fatal("expected non-nil cleanup function when OTLP endpoint is set")
 	}
+	t.Cleanup(func() { _ = cleanup(context.Background()) })
 }
 
 func TestLiveConfigAppliesTheLogLevel(t *testing.T) { //nolint:paralleltest // sets the default logger of the process

@@ -27,9 +27,9 @@ describe('safeNext', () => {
     );
   });
 
-  it('sends anything else home', () => {
+  it('sends anything else to Last Heard', () => {
     for (const next of [undefined, '', 'https://evil.example', '//evil.example', '/\\evil.example', 'javascript:alert(1)', ['/a', '/b']]) {
-      expect(safeNext(next)).toBe('/');
+      expect(safeNext(next)).toBe('/lastheard');
     }
   });
 });

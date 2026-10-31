@@ -53,12 +53,7 @@ export function routes(): DMRRoute[] {
   const ret: DMRRoute[] = [
     {
       path: '/',
-      name: 'Main',
-      sitemap: {
-        changefreq: 'daily',
-        priority: 1,
-      },
-      component: () => import('@/views/MainPage.vue'),
+      redirect: '/lastheard',
     },
     {
       path: '/lastheard',

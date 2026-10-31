@@ -22,7 +22,7 @@ describe('Auth Flow', () => {
     cy.stubCommonEndpoints();
   });
 
-  it('logs in with valid credentials and redirects to home', () => {
+  it('logs in with valid credentials and redirects to Last Heard', () => {
     // Start unauthenticated
     cy.intercept('GET', '/api/v1/users/me', { statusCode: 401, body: {} });
     cy.visit('/login');
@@ -34,8 +34,7 @@ describe('Auth Flow', () => {
     cy.get('#password').type('password123');
     cy.get('button[type="submit"]').click();
 
-    // After login, should redirect to /
-    cy.url().should('eq', Cypress.config().baseUrl + '/');
+    cy.url().should('eq', Cypress.config().baseUrl + '/lastheard');
 
     // Header should show Logout link (user is logged in)
     cy.get('header').should('contain.text', 'Logout');

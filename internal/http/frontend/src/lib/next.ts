@@ -17,10 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-/** safeNext returns next when it is a path on this site, and '/' otherwise. */
+/** safeNext returns next when it is a path on this site, and '/lastheard' otherwise. */
 export function safeNext(next: unknown): string {
   if (typeof next !== 'string' || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
-    return '/';
+    return '/lastheard';
   }
   return next;
 }

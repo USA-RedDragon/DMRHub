@@ -72,7 +72,7 @@ export default {
             life: 3000,
           });
           setTimeout(() => {
-            this.$router.push('/');
+            this.$router.push('/login');
           }, 3000);
         })
         .catch((err) => {

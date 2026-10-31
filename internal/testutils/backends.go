@@ -59,6 +59,19 @@ type Backend struct {
 	// HubOptions are the options of the hub of an integration stack, such
 	// as a test clock.
 	HubOptions []hub.Option
+	// BoundedWaits, when true, keeps the waits of the hubs of an
+	// integration stack for the database and the KV store bounded, as in
+	// production, so that a slow answer drops the burst. Without it, those
+	// waits last until the answer comes.
+	BoundedWaits bool
+}
+
+// BoundedWaits returns an option for SetupIntegrationStack and the stacks
+// built on it: the hubs drop a burst whose database lookup, stream claim
+// or last-heard read takes longer than the bound of the product, as in
+// production. A test of those drops passes it.
+func BoundedWaits() Backend {
+	return Backend{Name: "bounded-waits", Setup: func(*testing.T, *config.Config) {}, BoundedWaits: true}
 }
 
 // SQLiteMemoryBackend returns a backend using in-memory SQLite and in-memory pubsub/KV.

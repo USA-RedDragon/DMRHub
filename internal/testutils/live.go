@@ -199,6 +199,7 @@ func (l *LiveStack) SpawnLiveReplica(t *testing.T, opts LiveOptions) *LiveReplic
 		ct.Stop()
 		store.Stop()
 	})
+	holdWaits(t, h, l.bounded)
 
 	cfg := *l.first.Config
 	if opts.Locks == nil {

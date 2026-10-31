@@ -65,10 +65,39 @@ type IntegrationStack struct {
 	WebTransportAddr string
 
 	plugins *Plugins
+	bounded bool
+}
+
+type lookupHolder interface {
+	HoldLookupWaits() (end func())
+}
+
+func holdWaits(t *testing.T, h *hub.Hub, bounded bool, servers ...lookupHolder) {
+	if bounded {
+		return
+	}
+	t.Cleanup(h.HoldLookupWaits())
+	t.Cleanup(h.HoldStreamClaimWaits())
+	t.Cleanup(h.HoldLastSeenWaits())
+	for _, s := range servers {
+		t.Cleanup(s.HoldLookupWaits())
+	}
+}
+
+func boundedWaits(backends []Backend) bool {
+	for _, be := range backends {
+		if be.BoundedWaits {
+			return true
+		}
+	}
+	return false
 }
 
 // SetupIntegrationStack creates and starts a full integration test environment.
 // The hub is NOT started yet — call SeedAndStart() after seeding your DB data.
+// Its hubs wait for each database lookup, stream claim and last-heard read
+// until the answer comes, so that a slow machine drops no burst; pass
+// BoundedWaits to keep the bounds of production.
 func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack {
 	t.Helper()
 
@@ -164,6 +193,8 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		_ = ps.Close()
 		_ = kvStore.Close()
 	})
+	stack.bounded = boundedWaits(backends)
+	holdWaits(t, h, stack.bounded, ipscServer, &obServer)
 
 	return stack
 }
@@ -239,6 +270,7 @@ func (s *IntegrationStack) spawnReplica(t *testing.T, register bool) (Replica, *
 		ct2.Stop()
 		store2.Stop()
 	})
+	holdWaits(t, hub2, s.bounded, ipsc2, &ob2)
 
 	return Replica{
 		Hub:              hub2,

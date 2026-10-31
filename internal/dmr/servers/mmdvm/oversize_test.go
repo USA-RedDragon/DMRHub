@@ -45,8 +45,9 @@ func rpto(t *testing.T, id uint32, n int) []byte {
 
 // TestOversizePacketsAreDropped sends packets of the longest length that
 // the sessions take and one octet longer, on the UDP port and over
-// WebTransport. The server must handle the first and drop the second,
-// rather than handle its first MaxPacket octets.
+// WebTransport, the longer one first. The server must drop the longer
+// one, rather than handle its first MaxPacket octets, so its first answer
+// is to the other.
 func TestOversizePacketsAreDropped(t *testing.T) {
 	t.Parallel()
 	s, cfg := webTransportServer(t)
@@ -54,10 +55,13 @@ func TestOversizePacketsAreDropped(t *testing.T) {
 	udp, err := net.DialUDP("udp", nil, s.Addr().(*net.UDPAddr)) //nolint:forcetypeassert
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = udp.Close() })
-	udpReply := func(p []byte) []byte {
+	udpSend := func(p []byte) {
 		_, err := udp.Write(p)
 		require.NoError(t, err)
-		require.NoError(t, udp.SetReadDeadline(time.Now().Add(500*time.Millisecond)))
+	}
+	udpReply := func(p []byte) []byte {
+		udpSend(p)
+		require.NoError(t, udp.SetReadDeadline(time.Now().Add(answerWait)))
 		buf := make([]byte, 2*dmrdsession.MaxPacket)
 		n, err := udp.Read(buf)
 		if err != nil {
@@ -67,9 +71,10 @@ func TestOversizePacketsAreDropped(t *testing.T) {
 	}
 
 	sess := dialByHash(t, s, cfg)
+	wtSend := func(p []byte) { require.NoError(t, sess.SendDatagram(p)) }
 	wtReply := func(p []byte) []byte {
-		require.NoError(t, sess.SendDatagram(p))
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		wtSend(p)
+		ctx, cancel := context.WithTimeout(context.Background(), answerWait)
 		defer cancel()
 		b, err := sess.ReceiveDatagram(ctx)
 		if err != nil {
@@ -78,10 +83,14 @@ func TestOversizePacketsAreDropped(t *testing.T) {
 		return b
 	}
 
+	send := map[string]func([]byte){"udp": udpSend, "webtransport": wtSend}
 	for name, reply := range map[string]func([]byte) []byte{"udp": udpReply, "webtransport": wtReply} {
+		send[name](rpto(t, 311861, dmrdsession.MaxPacket+1))
 		got := reply(rpto(t, 311860, dmrdsession.MaxPacket))
 		require.NotNil(t, got, "%s: a packet of MaxPacket octets is handled", name)
-		assert.Equal(t, dmrd.CommandMSTNAK, dmrd.Classify(got, dmrd.DialectMMDVM), name)
-		assert.Nil(t, reply(rpto(t, 311860, dmrdsession.MaxPacket+1)), "%s: a longer packet is dropped", name)
+		k, err := dmrd.DecodeControl(got, dmrd.DialectMMDVM)
+		require.NoError(t, err, name)
+		assert.Equal(t, dmrd.CommandMSTNAK, k.Command, name)
+		assert.Equal(t, uint32(311860), k.ID, "%s: a longer packet is dropped, so the first answer is to the packet after it", name)
 	}
 }

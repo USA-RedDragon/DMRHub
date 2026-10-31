@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-describe('Last Heard & Main Page', () => {
+describe('Last Heard', () => {
   beforeEach(() => {
     cy.stubCommonEndpoints();
     cy.intercept('GET', '/api/v1/users/me', { statusCode: 401, body: {} });
@@ -106,17 +106,20 @@ describe('Last Heard & Main Page', () => {
     cy.wait('@page2');
   });
 
-  it('main page renders with network name and version', () => {
+  it('root redirects to Last Heard with network name and version', () => {
+    cy.intercept('GET', '/api/v1/lastheard*', {
+      statusCode: 200,
+      fixture: 'lastheard.json',
+    }).as('getLastHeard');
+
     cy.visit('/');
 
-    // Header should contain network name
-    cy.get('header').should('contain.text', 'TestNetwork');
+    cy.url().should('eq', Cypress.config().baseUrl + '/lastheard');
+    cy.wait('@getLastHeard');
+    cy.contains('h1', 'Last Heard').should('be.visible');
 
-    // Footer should contain version
-    cy.contains('Version 1.0.0-test').should('be.visible');
-
-    // Main content should show welcome
-    cy.contains('Welcome to DMRHub').should('be.visible');
+    cy.contains('header a[href="/"]', 'TestNetwork').should('be.visible');
+    cy.get('.footer #version').should('be.visible').and('have.text', 'Version 1.0.0-test');
   });
 
   it('shows the type of each transmission and filters by type', () => {

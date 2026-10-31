@@ -261,19 +261,17 @@ func (s *Server) releaseLease(ctx context.Context) {
 		return
 	}
 	s.roleMu.Lock()
-	role := s.role.Load()
 	s.setRole(roleFollower)
 	s.roleMu.Unlock()
-	if role == roleLeader || role == roleTaking {
-		s.deleteLease(ctx)
-	}
+	s.deleteLease(ctx)
 }
 
+// deleteLease deletes the egress lease when this replica holds it in the
+// KV store, whatever its role says, since a SetNX whose reply timed out may
+// have taken it.
 func (s *Server) deleteLease(ctx context.Context) {
-	if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && string(v) == s.id {
-		if err := s.kv.Delete(ctx, egressLeaseKey); err != nil {
-			slog.Error("Error giving up the OpenBridge egress lease", "error", err)
-		}
+	if _, err := s.kv.DeleteIfEqual(ctx, egressLeaseKey, []byte(s.id)); err != nil {
+		slog.Error("Error giving up the OpenBridge egress lease", "error", err)
 	}
 }
 

@@ -293,3 +293,36 @@ func TestAStoppedServerDoesNotTakeTheLeaseAgain(t *testing.T) {
 		assert.False(t, s.IsEgressLeader())
 	})
 }
+
+// TestAStopGivesUpALeaseThatAFollowerHolds stops a replica that holds the
+// egress lease in the KV store while its role says follower, as when the
+// reply of the SetNX that took the lease timed out after Redis ran it. The
+// stop must give the lease up, or no replica sends until it runs out. A
+// lease of another replica must stay.
+func TestAStopGivesUpALeaseThatAFollowerHolds(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		store, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		ctx := context.Background()
+
+		s := &Server{clock: clock.Real(), kv: store, id: "a", done: make(chan struct{})}
+		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte("a")))
+		require.Equal(t, roleFollower, s.role.Load())
+		close(s.done)
+		s.releaseLease(ctx)
+		_, err = store.Get(ctx, egressLeaseKey)
+		require.ErrorIs(t, err, kv.ErrNotFound, "the stop kept the lease that the replica holds")
+
+		other := &Server{clock: clock.Real(), kv: store, id: "b", done: make(chan struct{})}
+		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte("a")))
+		close(other.done)
+		other.releaseLease(ctx)
+		v, err := store.Get(ctx, egressLeaseKey)
+		require.NoError(t, err)
+		assert.Equal(t, "a", string(v), "the stop gave up the lease of another replica")
+	})
+}

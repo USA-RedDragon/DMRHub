@@ -233,15 +233,46 @@ func TestTheBuiltinPluginsRunWithTheirIDs(t *testing.T) {
 	assert.Equal(t, parrot.ID, owner)
 }
 
+func watchPasses(r *replica) <-chan time.Time {
+	ch := make(chan time.Time, 1024)
+	inside.OnReconcile(r.m, func(at time.Time) {
+		select {
+		case ch <- at:
+		default:
+		}
+	})
+	return ch
+}
+
+func passedSince(t *testing.T, passes <-chan time.Time, at time.Time) {
+	t.Helper()
+	wait := inside.DefaultTiming().Lease
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for {
+		select {
+		case got := <-passes:
+			if !got.Before(at) {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("no pass of the reconcile started at %v or later within the lease of %v", at, wait)
+		}
+	}
+}
+
 func TestNothingRunsInsideWhenItIsOff(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
 	r := c.replica(t, "a", engine, false)
+	passes := watchPasses(r)
 	list, err := models.ListPlugins(c.db)
 	require.NoError(t, err)
 	assert.Empty(t, list, "no built-in plugins are made")
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
-	time.Sleep(time.Second)
+	fake.Advance(fast().Renew)
+	passedSince(t, passes, fake.Now())
 	assert.Empty(t, r.m.Running())
 	assert.False(t, online(t, c, p.ID))
 	_, ok := r.registry.Owner(9100)
@@ -257,16 +288,21 @@ func TestNothingRunsInsideWhenItIsOff(t *testing.T) {
 
 func TestOnlyOneReplicaRunsAPlugin(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
 	a := c.replica(t, "a", engine, true)
 	b := c.replica(t, "b", engine, true)
+	passesA, passesB := watchPasses(a), watchPasses(b)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
 	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
-	for range 10 {
+	timing := fast()
+	for step := time.Duration(0); step < 3*timing.Lease; step += timing.Renew {
+		fake.Advance(timing.Renew)
+		passedSince(t, passesA, fake.Now())
+		passedSince(t, passesB, fake.Now())
 		_, onA := a.m.Running()[p.ID]
 		_, onB := b.m.Running()[p.ID]
-		require.True(t, onA != onB, "the plugin runs on exactly one replica: a %v, b %v", onA, onB)
-		time.Sleep(100 * time.Millisecond)
+		require.True(t, onA != onB, "the plugin runs on exactly one replica at %v: a %v, b %v", step, onA, onB)
 	}
 	first, other := a, b
 	if _, onB := b.m.Running()[p.ID]; onB {

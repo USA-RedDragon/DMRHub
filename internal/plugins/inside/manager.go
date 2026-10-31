@@ -106,11 +106,12 @@ type Manager struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 
-	on     atomic.Bool
-	mu     sync.Mutex
-	runs   map[uint]*run
-	starts map[uint]int
-	holds  map[uint]bool
+	on         atomic.Bool
+	reconciled atomic.Pointer[func(time.Time)]
+	mu         sync.Mutex
+	runs       map[uint]*run
+	starts     map[uint]int
+	holds      map[uint]bool
 }
 
 // run is a plugin that this replica runs, or starts. inst is set before
@@ -284,7 +285,11 @@ func (m *Manager) loop(ctx context.Context) {
 	waits := map[uint]time.Time{}
 	backoffs := map[uint]time.Duration{}
 	for {
+		start := m.d.Clock.Now()
 		m.reconcile(ctx, waits, backoffs)
+		if fn := m.reconciled.Load(); fn != nil {
+			(*fn)(start)
+		}
 		select {
 		case <-ctx.Done():
 			return

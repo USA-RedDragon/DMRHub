@@ -19,7 +19,15 @@
 
 package inside
 
+import "time"
+
 // LeaseKey is leaseKey for the tests.
 func LeaseKey(id uint) string {
 	return leaseKey(id)
+}
+
+// OnReconcile makes m call fn after each pass of its reconcile, with the
+// time on its clock at which the pass started.
+func OnReconcile(m *Manager, fn func(time.Time)) {
+	m.reconciled.Store(&fn)
 }

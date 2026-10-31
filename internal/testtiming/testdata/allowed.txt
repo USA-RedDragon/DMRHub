@@ -212,9 +212,9 @@ sleep	internal/testutils/starvation.go	1	measurement, not a wait: the starvation
 timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
 timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails
 deadline	internal/testutils/wt_peer.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/testutils/wt_peer.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/testutils/wt_peer.go	4	session clock and duplicate window, not a wait: the dmrdsession Peer takes the time since the start and has no clock option (a dmrgo finding)
+sleep	internal/testutils/wt_peer.go	1	pause between failed move tries, not a wait for an event; the count of tries and the life of the old session bound the move
+timer	internal/testutils/wt_peer.go	3	the 20 ms tick that drives the dmrdsession Peer, the overlap a moved browser keeps its old session, and the WaitReady bound that the caller sets
 sleep	plugins/locator/hub_test.go	2	radio pacing: the bursts go into a hub on the real clock 60 ms apart, as a radio sends them; the waits for the answers are events
 sleep	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (waitAnswers)
 timer	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (heardOften)

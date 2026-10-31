@@ -54,10 +54,11 @@ func WebTransportOn() Backend {
 }
 
 // moveRetry is how often a WebTransportPeer that was told to move tries
-// another session, and moveTries how many times.
+// another session, and moveFor how long it tries: the life of the resume
+// token of the drain notice, resumeTTL in internal/dmr/servers/mmdvm.
 const (
 	moveRetry = 100 * time.Millisecond
-	moveTries = 50
+	moveFor   = time.Minute
 	// moveOverlap is how long a WebTransportPeer keeps the old session
 	// after it moved.
 	moveOverlap = time.Second
@@ -159,8 +160,6 @@ func (p *WebTransportPeer) dial(ctx context.Context) (*webtransport.Session, err
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // a test client of a test hub
 		QUICConfig:      &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true},
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
 	rsp, sess, err := d.Dial(ctx, "https://"+p.addr+wtcert.Path, nil)
 	if err != nil {
 		_ = d.Close()
@@ -236,21 +235,23 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 // nobody reads.
 func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 	defer p.wg.Done()
-	for range moveTries {
+	ctx, cancel := context.WithTimeout(context.Background(), moveFor)
+	defer cancel()
+	for ctx.Err() == nil {
 		select {
 		case <-p.done:
 			return
 		default:
 		}
 		at := time.Now()
-		sess, err := p.dial(context.Background())
+		sess, err := p.dial(ctx)
 		if err == nil {
 			p.mu.Lock()
 			p.pending = sess
 			p.mu.Unlock()
 			p.serve(sess)
 		}
-		if err == nil && p.resume(sess, token) {
+		if err == nil && p.resume(ctx, sess, token) {
 			p.mu.Lock()
 			p.current, p.pending, p.stashed = sess, nil, nil
 			p.moves++
@@ -277,9 +278,10 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 	}
 }
 
-func (p *WebTransportPeer) resume(sess *webtransport.Session, token string) bool {
-	ctx, cancel := context.WithTimeout(sess.Context(), 2*time.Second)
+func (p *WebTransportPeer) resume(ctx context.Context, sess *webtransport.Session, token string) bool {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	defer context.AfterFunc(sess.Context(), cancel)()
 	str, err := sess.OpenStreamSync(ctx)
 	if err != nil {
 		return false
@@ -469,17 +471,13 @@ func (p *WebTransportPeer) SendDMRD(pkt models.Packet) error {
 
 // Drain collects the DMRD packets received within timeout.
 func (p *WebTransportPeer) Drain(timeout time.Duration) []models.Packet {
-	var result []models.Packet
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case pkt := <-p.packets:
-			result = append(result, pkt)
-		case <-timer.C:
-			return result
-		}
-	}
+	return Collect(p.packets, timeout, nil)
+}
+
+// Receive collects the DMRD packets received until done accepts them, or
+// until within passes, as Collect does.
+func (p *WebTransportPeer) Receive(within time.Duration, done func([]models.Packet) bool) []models.Packet {
+	return Collect(p.packets, within, done)
 }
 
 // Close ends the sessions.

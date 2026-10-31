@@ -102,7 +102,7 @@ func TestMMDVMMovesFromADrainingReplica(t *testing.T) {
 
 		require.NoError(t, r.peer.SendDMRD(makeGroupVoicePacket(1000001, 1, 7301, false)))
 		require.NoError(t, r.peer.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7301, false)))
-		assert.NotEmpty(t, r.listener.Drain(drainWait), "the other replica routes the calls of the repeater")
+		assert.NotEmpty(t, receiveCall(r.listener, 1), "the other replica routes the calls of the repeater")
 	})
 }
 
@@ -236,7 +236,7 @@ func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		sendGroupCall(t, talker.SendDMRD, 1, 7401, false)
-		assert.NotEmpty(t, fresh.Drain(drainWait), "the new session gets the call")
+		assert.NotEmpty(t, receiveCall(fresh, 1), "the new session gets the call")
 		assert.Empty(t, old.Drain(settleDuration), "the old session still got the call")
 	})
 }
@@ -286,7 +286,7 @@ func TestIPSCMovesFromADrainingReplica(t *testing.T) {
 		sendGroupCall(t, talker.SendDMRD, 1, 7501, false)
 		for _, c := range peers {
 			assert.Zero(t, c.Downs(), "peer %d lost its registration", c.PeerID)
-			assert.NotEmpty(t, c.Drain(drainWait), "peer %d got no call from the other replica", c.PeerID)
+			assert.NotEmpty(t, receiveIPSCCall(c, 1), "peer %d got no call from the other replica", c.PeerID)
 		}
 	})
 }

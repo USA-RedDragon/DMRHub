@@ -50,4 +50,3 @@ jobs:
       dockerfile: hack/docs-site/Dockerfile
       context: .
       version: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-      trivy: 'false'

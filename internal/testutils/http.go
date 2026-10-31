@@ -46,6 +46,8 @@ type TestDB struct {
 	pubsub   pubsub.PubSub
 	kv       kv.KV
 	hub      *hub.Hub
+	ct       *calltracker.CallTracker
+	stop     context.CancelFunc
 	config   *config.Config
 }
 
@@ -58,6 +60,12 @@ func (t *TestDB) CloseDB() {
 	if t.hub != nil {
 		t.hub.Stop(context.Background())
 		t.hub = nil
+	}
+	if t.ct != nil {
+		t.ct.Stop()
+	}
+	if t.stop != nil {
+		t.stop()
 	}
 	if t.database != nil {
 		sqlDB, _ := t.database.DB()
@@ -128,25 +136,28 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 		}
 	}
 
-	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.stop = cancel
+	ps, err := pubsub.MakePubSub(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 	t.pubsub = ps
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
 	t.kv = kvStore
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
+	t.ct = ct
 	t.hub = hub.NewHub(t.database, kvStore, ps, ct)
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
 	opts = append([]http.Option{http.WithKV(kvStore)}, opts...)
-	return http.CreateRouter(context.TODO(), &defConfig, t.hub, t.database, ps, ready, nil, "test", "deadbeef", opts...), &t, nil
+	return http.CreateRouter(ctx, &defConfig, t.hub, t.database, ps, ready, nil, "test", "deadbeef", opts...), &t, nil
 }
 
 // CreateTestDBRouterWithHub creates a test router with a hub. Its in-memory
@@ -192,25 +203,28 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		}
 	}
 
-	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.stop = cancel
+	ps, err := pubsub.MakePubSub(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
 
 	t.kv = kvStore
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
+	t.ct = ct
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 	t.hub = dmrHub
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
+	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
 }
 
 // ConfigOption is a function that mutates a config before the test router is created.
@@ -263,12 +277,14 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		}
 	}
 
-	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.stop = cancel
+	ps, err := pubsub.MakePubSub(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
@@ -277,13 +293,14 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	t.kv = kvStore
 	t.config = &defConfig
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
+	t.ct = ct
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
 	t.hub = dmrHub
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(context.TODO(), &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
+	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
 }
 
 // ReplicaRouter returns the router of a second copy of the app on the
@@ -294,14 +311,16 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 func (t *TestDB) ReplicaRouter(tb testing.TB) *gin.Engine {
 	tb.Helper()
 	require.NotNil(tb, t.config, "ReplicaRouter needs the router of CreateTestDBRouterWithOptions")
+	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
 	ps := t.pubsub
 	if t.config.Redis.Enabled {
 		var err error
-		ps, err = pubsub.MakePubSub(context.TODO(), t.config)
+		ps, err = pubsub.MakePubSub(ctx, t.config)
 		require.NoError(tb, err)
 		tb.Cleanup(func() { _ = ps.Close() })
 	}
-	kvStore, err := kv.MakeKV(context.TODO(), t.config)
+	kvStore, err := kv.MakeKV(ctx, t.config)
 	require.NoError(tb, err)
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)
@@ -312,5 +331,5 @@ func (t *TestDB) ReplicaRouter(tb testing.TB) *gin.Engine {
 	})
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	return http.CreateRouter(context.TODO(), t.config, dmrHub, t.database, ps, ready, nil, "test", "deadbeef")
+	return http.CreateRouter(ctx, t.config, dmrHub, t.database, ps, ready, nil, "test", "deadbeef")
 }

@@ -165,7 +165,6 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 		_, err = gw.Write(capture[6].p)
 		require.NoError(t, err)
 		require.Equal(t, capture[7].p, readUDPPacket(t, gw))
-		time.Sleep(settleDuration)
 
 		var call [][]byte
 		var ping, pong []byte
@@ -185,7 +184,7 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 			require.NoError(t, err)
 			time.Sleep(60 * time.Millisecond)
 		}
-		assertSameCall(t, call, mc.Drain(drainWait), true)
+		assertSameCall(t, call, testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](len(call))), true)
 
 		_, err = gw.Write(ping)
 		require.NoError(t, err)
@@ -215,7 +214,6 @@ func TestGoldenHBlink3OpenBridgeIngress(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		addr, err := net.ResolveUDPAddr("udp", stack.OpenBridgeAddr)
 		require.NoError(t, err)
@@ -230,7 +228,7 @@ func TestGoldenHBlink3OpenBridgeIngress(t *testing.T) {
 			require.NoError(t, err)
 			time.Sleep(60 * time.Millisecond)
 		}
-		assertSameCall(t, call, mc.Drain(drainWait), false)
+		assertSameCall(t, call, testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](len(call))), false)
 	})
 }
 
@@ -262,7 +260,6 @@ func TestGoldenHBlink3OpenBridgeEgress(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		for _, c := range capture {
 			pkt, ok := models.UnpackPacket(c.p[:53])
@@ -271,7 +268,7 @@ func TestGoldenHBlink3OpenBridgeEgress(t *testing.T) {
 			time.Sleep(60 * time.Millisecond)
 		}
 		for i, c := range capture {
-			require.NoError(t, peer.SetReadDeadline(time.Now().Add(drainWait)))
+			require.NoError(t, peer.SetReadDeadline(time.Now().Add(deliverWait)))
 			buf := make([]byte, 1500)
 			n, err := peer.Read(buf)
 			require.NoError(t, err, "packet %d", i)

@@ -11,8 +11,8 @@ eventually	internal/dmr/freedmr_test.go	1	baseline of 2026-10-28, not reviewed: 
 pickport	internal/dmr/freedmr_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/freedmr_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/golden_data_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/golden_data_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/golden_integration_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/golden_data_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/golden_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/handoff_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/handoff_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

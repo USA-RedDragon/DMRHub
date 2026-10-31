@@ -95,7 +95,6 @@ func newGoldenNet(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, i
 		require.NoError(t, c.WaitReady(handshakeWait))
 		n.rpt[radio] = c
 	}
-	time.Sleep(settleDuration)
 	keyUp(t, n.rpt[anyTone], anyTone, goldenTG, slot2, 0xA0001)
 	keyUp(t, n.rpt[otherRadio], otherRadio, goldenTG, slot2, 0xA0002)
 	n.drain(500 * time.Millisecond)
@@ -255,7 +254,6 @@ func TestGoldenIPSCDataToMMDVM(t *testing.T) {
 				t.Cleanup(ic.Close)
 				require.NoError(t, ic.Connect(stack.IPSCAddr))
 				require.NoError(t, ic.WaitReady(handshakeWait))
-				time.Sleep(settleDuration)
 
 				var want []layer2.RawBurst
 				for _, p := range call {
@@ -361,7 +359,6 @@ func TestGoldenParrotCall(t *testing.T) {
 		defer c.Close()
 		require.NoError(t, c.Connect(stack.MMDVMAddr))
 		require.NoError(t, c.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		var voice []models.Packet
 		start := time.Now()
@@ -380,7 +377,7 @@ func TestGoldenParrotCall(t *testing.T) {
 		}
 		require.Len(t, voice, 18)
 
-		reply := ofCall(c.Drain(8*time.Second), parrotID, anyTone)
+		reply := ofCall(receiveCall(c, anyTone), parrotID, anyTone)
 		require.Len(t, reply, len(voice)+2, "parrot reply packets")
 		for _, p := range reply {
 			assert.Equal(t, uint(repeaterID), p.Repeater)

@@ -40,7 +40,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
-	github.com/tetratelabs/wazero v1.11.0
+	github.com/tetratelabs/wazero v1.12.0
 	github.com/tinylib/msgp v1.6.5
 	github.com/ulikunitz/xz v0.5.17
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.4.0

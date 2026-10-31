@@ -24,11 +24,13 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,60 +84,60 @@ func drain(svc *plugins.Service, d time.Duration) <-chan int {
 
 func TestADrainingReplicaTellsItsPluginsToMoveAndRefusesNewStreams(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	_, token := r.add("Parrot", rng(9990, 9990))
-	old := r.replica(r.ps)
-	a := old.connect(token)
-	_, err := recv(t, a)
-	require.NoError(t, err)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		_, token := r.add("Parrot", rng(9990, 9990))
+		old := r.replica(r.ps)
+		a := old.connect(token)
+		_, err := recv(t, a)
+		require.NoError(t, err)
 
-	left := drain(old.svc, 10*time.Second)
-	m, err := recv(t, a)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetDraining(), "the plugin learns that the replica stops")
-	_, err = recv(t, old.connect(token))
-	assert.Equal(t, codes.Unavailable, status.Code(err), "a draining replica takes no new stream")
+		left := drain(old.svc, 10*time.Second)
+		m, err := recv(t, a)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetDraining(), "the plugin learns that the replica stops")
+		_, err = recv(t, old.connect(token))
+		assert.Equal(t, codes.Unavailable, status.Code(err), "a draining replica takes no new stream")
 
-	b := r.connect(token)
-	m, err = recv(t, b)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetWelcome())
-	for {
-		_, err = recv(t, a)
-		if err != nil {
-			break
+		b := r.connect(token)
+		m, err = recv(t, b)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetWelcome())
+		for {
+			_, err = recv(t, a)
+			if err != nil {
+				break
+			}
 		}
-	}
-	assert.Equal(t, codes.Aborted, status.Code(err), "the new stream ends the old one")
-	select {
-	case n := <-left:
-		assert.Equal(t, 0, n)
-	case <-time.After(5 * time.Second):
-		t.Fatal("the drain did not end when the stream moved")
-	}
+		assert.Equal(t, codes.Aborted, status.Code(err), "the new stream ends the old one")
+		assert.Equal(t, 0, bubble.Receive(t, left, 5*time.Second, "the drain did not end when the stream moved"))
+	})
 }
 
 func TestADrainEndsAtItsDeadlineWhenAPluginStays(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	a := r.connect(token)
-	_, err := recv(t, a)
-	require.NoError(t, err)
-	assert.Equal(t, 1, <-drain(r.svc, 300*time.Millisecond))
-	m, err := recv(t, a)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetDraining())
-	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 5}))
-	m, err = recv(t, a)
-	require.NoError(t, err)
-	assert.Equal(t, uint32(5), m.GetBurst().GetStreamId(), "the stream works until the replica stops")
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		a := r.connect(token)
+		_, err := recv(t, a)
+		require.NoError(t, err)
+		assert.Equal(t, 1, <-drain(r.svc, 300*time.Millisecond))
+		m, err := recv(t, a)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetDraining())
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 5}))
+		m, err = recv(t, a)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(5), m.GetBurst().GetStreamId(), "the stream works until the replica stops")
+	})
 }
 
-// slowIn delays the bursts to the plugins, as a busy subscription does.
+// slowIn delays the bursts to the plugins by wait, as a busy subscription
+// does.
 type slowIn struct {
 	pubsub.PubSub
-	delay time.Duration
+	wait func()
 }
 
 type slowSub struct {
@@ -156,7 +158,7 @@ func (s slowIn) Subscribe(topic string) pubsub.Subscription {
 	go func() {
 		defer close(out.ch)
 		for b := range sub.Channel() {
-			time.Sleep(s.delay)
+			s.wait()
 			out.ch <- b
 		}
 	}()
@@ -165,24 +167,26 @@ func (s slowIn) Subscribe(topic string) pubsub.Subscription {
 
 func TestAStreamOfADrainingReplicaSendsTheBurstsThatCameBeforeTheNewStream(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	old := r.replica(slowIn{PubSub: r.ps, delay: 300 * time.Millisecond})
-	a := old.connect(token)
-	_, err := recv(t, a)
-	require.NoError(t, err)
-	drain(old.svc, 10*time.Second)
-	m, err := recv(t, a)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetDraining())
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		old := r.replica(slowIn{PubSub: r.ps, wait: func() { time.Sleep(300 * time.Millisecond) }})
+		a := old.connect(token)
+		_, err := recv(t, a)
+		require.NoError(t, err)
+		drain(old.svc, 10*time.Second)
+		m, err := recv(t, a)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetDraining())
 
-	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 6}))
-	b := r.connect(token)
-	_, err = recv(t, b)
-	require.NoError(t, err)
-	m, err = recv(t, a)
-	require.NoError(t, err, "the old stream sends the burst before it ends")
-	assert.Equal(t, uint32(6), m.GetBurst().GetStreamId())
-	_, err = recv(t, a)
-	assert.Equal(t, codes.Aborted, status.Code(err))
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9990, StreamID: 6}))
+		b := r.connect(token)
+		_, err = recv(t, b)
+		require.NoError(t, err)
+		m, err = recv(t, a)
+		require.NoError(t, err, "the old stream sends the burst before it ends")
+		assert.Equal(t, uint32(6), m.GetBurst().GetStreamId())
+		_, err = recv(t, a)
+		assert.Equal(t, codes.Aborted, status.Code(err))
+	})
 }

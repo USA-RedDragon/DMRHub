@@ -21,10 +21,10 @@ package plugins_test
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -46,8 +47,6 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/gorm"
 )
-
-var errNoMessage = errors.New("no message from the hub")
 
 type routed struct {
 	mu   sync.Mutex
@@ -168,13 +167,8 @@ func recv(t *testing.T, s pluginv1.PluginService_ConnectClient) (*pluginv1.Conne
 		m, err := s.Recv()
 		ch <- res{m, err}
 	}()
-	select {
-	case r := <-ch:
-		return r.m, r.err
-	case <-time.After(3 * time.Second):
-		t.Fatal("no message from the hub")
-		return nil, errNoMessage
-	}
+	r := bubble.Receive(t, ch, 3*time.Second, "no message from the hub")
+	return r.m, r.err
 }
 
 func rng(first, last uint) models.PluginRange {
@@ -188,168 +182,182 @@ func burst(src, dst uint32, group bool) *pluginv1.Burst {
 
 func TestAPluginNeedsAValidTokenAndToBeOn(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	_, err := recv(t, r.connect("dmrhub_plg_nope"))
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-	_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", false, p.Ranges)
-	require.NoError(t, err)
-	_, err = recv(t, r.connect(token))
-	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		_, err := recv(t, r.connect("dmrhub_plg_nope"))
+		assert.Equal(t, codes.Unauthenticated, status.Code(err))
+		_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", false, p.Ranges)
+		require.NoError(t, err)
+		_, err = recv(t, r.connect(token))
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	})
 }
 
 func TestAPluginIsWelcomedWithItsNameAndIDs(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Weather", rng(310001, 310009), rng(9998, 9998))
-	m, err := recv(t, r.connect(token))
-	require.NoError(t, err)
-	w := m.GetWelcome()
-	require.NotNil(t, w)
-	assert.Equal(t, "Weather", w.GetName())
-	require.Len(t, w.GetRanges(), 2)
-	assert.Equal(t, uint32(9998), w.GetRanges()[0].GetFirst())
-	got, err := models.FindPlugin(r.db, p.ID)
-	require.NoError(t, err)
-	assert.NotNil(t, got.LastConnectedAt)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Weather", rng(310001, 310009), rng(9998, 9998))
+		m, err := recv(t, r.connect(token))
+		require.NoError(t, err)
+		w := m.GetWelcome()
+		require.NotNil(t, w)
+		assert.Equal(t, "Weather", w.GetName())
+		require.Len(t, w.GetRanges(), 2)
+		assert.Equal(t, uint32(9998), w.GetRanges()[0].GetFirst())
+		got, err := models.FindPlugin(r.db, p.ID)
+		require.NoError(t, err)
+		assert.NotNil(t, got.LastConnectedAt)
+	})
 }
 
 func TestTheBurstsToAPluginsIDsReachIt(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	s := r.connect(token)
-	_, err := recv(t, s)
-	require.NoError(t, err)
-	owner, ok := r.registry.Owner(9990)
-	require.True(t, ok)
-	assert.Equal(t, p.ID, owner)
-	_, ok = r.registry.Owner(9991)
-	assert.False(t, ok)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		s := r.connect(token)
+		_, err := recv(t, s)
+		require.NoError(t, err)
+		owner, ok := r.registry.Owner(9990)
+		require.True(t, ok)
+		assert.Equal(t, p.ID, owner)
+		_, ok = r.registry.Owner(9991)
+		assert.False(t, ok)
 
-	pkt := models.Packet{Src: 3191868, Dst: 9990, Slot: true, StreamID: 5, FrameType: dmrconst.FrameVoiceSync, DTypeOrVSeq: 0, Seq: 1, Repeater: 319186801}
-	pkt.DMRData[0] = 0xAB
-	require.NoError(t, r.registry.Deliver(p.ID, pkt))
-	m, err := recv(t, s)
-	require.NoError(t, err)
-	b := m.GetBurst()
-	require.NotNil(t, b)
-	assert.Equal(t, uint32(3191868), b.GetSource())
-	assert.Equal(t, uint32(9990), b.GetDestination())
-	assert.Equal(t, uint32(2), b.GetSlot())
-	assert.Equal(t, pluginv1.FrameType_FRAME_TYPE_VOICE_SYNC, b.GetFrameType())
-	assert.Equal(t, uint32(319186801), b.GetRepeater())
-	assert.Equal(t, byte(0xAB), b.GetPayload()[0])
+		pkt := models.Packet{Src: 3191868, Dst: 9990, Slot: true, StreamID: 5, FrameType: dmrconst.FrameVoiceSync, DTypeOrVSeq: 0, Seq: 1, Repeater: 319186801}
+		pkt.DMRData[0] = 0xAB
+		require.NoError(t, r.registry.Deliver(p.ID, pkt))
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		b := m.GetBurst()
+		require.NotNil(t, b)
+		assert.Equal(t, uint32(3191868), b.GetSource())
+		assert.Equal(t, uint32(9990), b.GetDestination())
+		assert.Equal(t, uint32(2), b.GetSlot())
+		assert.Equal(t, pluginv1.FrameType_FRAME_TYPE_VOICE_SYNC, b.GetFrameType())
+		assert.Equal(t, uint32(319186801), b.GetRepeater())
+		assert.Equal(t, byte(0xAB), b.GetPayload()[0])
+	})
 }
 
 func TestAPluginSendsOnlyFromItsIDsAndNeverToAnotherPlugin(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Weather", rng(310001, 310009))
-	r.add("Parrot", rng(9990, 9990))
-	s := r.connect(token)
-	_, err := recv(t, s)
-	require.NoError(t, err)
-
-	require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310001, 3191868, false)}}))
-	require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310002, 310009, true)}}))
-	require.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 2 }, 3*time.Second, 10*time.Millisecond)
-	pkts, srcs := r.router.all()
-	assert.Equal(t, uint(310001), pkts[0].Src)
-	assert.Equal(t, uint(3191868), pkts[0].Dst)
-	assert.True(t, pkts[0].Slot)
-	assert.Equal(t, dmrconst.FrameVoice, pkts[0].FrameType)
-	assert.Equal(t, string(dmrconst.CommandDMRD), pkts[0].Signature)
-	assert.Equal(t, plugins.SourceName(p.ID), srcs[0])
-	assert.True(t, pkts[1].GroupCall)
-
-	bad := map[pluginv1.RefusalReason]*pluginv1.Burst{
-		pluginv1.RefusalReason_REFUSAL_REASON_SOURCE:      burst(3191868, 3140598, false),
-		pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION: burst(310001, 91, true),
-	}
-	toParrot := burst(310001, 9990, false)
-	short := burst(310001, 3191868, false)
-	short.Payload = short.GetPayload()[:20]
-	noFrame := burst(310001, 3191868, false)
-	noFrame.FrameType = pluginv1.FrameType_FRAME_TYPE_UNSPECIFIED
-	slot3 := burst(310001, 3191868, false)
-	slot3.Slot = 3
-	for reason, b := range bad {
-		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}}))
-		m, err := recv(t, s)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Weather", rng(310001, 310009))
+		r.add("Parrot", rng(9990, 9990))
+		s := r.connect(token)
+		_, err := recv(t, s)
 		require.NoError(t, err)
-		assert.Equal(t, reason, m.GetRefusal().GetReason())
-	}
-	for want, b := range map[*pluginv1.Burst]pluginv1.RefusalReason{
-		toParrot: pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION,
-		short:    pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
-		noFrame:  pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
-		slot3:    pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
-	} {
-		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: want}}))
-		m, err := recv(t, s)
-		require.NoError(t, err)
-		assert.Equal(t, b, m.GetRefusal().GetReason())
-		assert.Equal(t, uint32(77), m.GetRefusal().GetStreamId())
-	}
-	pkts, _ = r.router.all()
-	assert.Len(t, pkts, 2, "nothing refused was routed")
+
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310001, 3191868, false)}}))
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310002, 310009, true)}}))
+		bubble.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 2 }, 3*time.Second, 10*time.Millisecond)
+		pkts, srcs := r.router.all()
+		assert.Equal(t, uint(310001), pkts[0].Src)
+		assert.Equal(t, uint(3191868), pkts[0].Dst)
+		assert.True(t, pkts[0].Slot)
+		assert.Equal(t, dmrconst.FrameVoice, pkts[0].FrameType)
+		assert.Equal(t, string(dmrconst.CommandDMRD), pkts[0].Signature)
+		assert.Equal(t, plugins.SourceName(p.ID), srcs[0])
+		assert.True(t, pkts[1].GroupCall)
+
+		bad := map[pluginv1.RefusalReason]*pluginv1.Burst{
+			pluginv1.RefusalReason_REFUSAL_REASON_SOURCE:      burst(3191868, 3140598, false),
+			pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION: burst(310001, 91, true),
+		}
+		toParrot := burst(310001, 9990, false)
+		short := burst(310001, 3191868, false)
+		short.Payload = short.GetPayload()[:20]
+		noFrame := burst(310001, 3191868, false)
+		noFrame.FrameType = pluginv1.FrameType_FRAME_TYPE_UNSPECIFIED
+		slot3 := burst(310001, 3191868, false)
+		slot3.Slot = 3
+		for reason, b := range bad {
+			require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}}))
+			m, err := recv(t, s)
+			require.NoError(t, err)
+			assert.Equal(t, reason, m.GetRefusal().GetReason())
+		}
+		for want, b := range map[*pluginv1.Burst]pluginv1.RefusalReason{
+			toParrot: pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION,
+			short:    pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
+			noFrame:  pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
+			slot3:    pluginv1.RefusalReason_REFUSAL_REASON_MALFORMED,
+		} {
+			require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: want}}))
+			m, err := recv(t, s)
+			require.NoError(t, err)
+			assert.Equal(t, b, m.GetRefusal().GetReason())
+			assert.Equal(t, uint32(77), m.GetRefusal().GetStreamId())
+		}
+		pkts, _ = r.router.all()
+		assert.Len(t, pkts, 2, "nothing refused was routed")
+	})
 }
 
 func TestANewerConnectionOfAPluginEndsTheOlder(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	_, token := r.add("Parrot", rng(9990, 9990))
-	old := r.connect(token)
-	_, err := recv(t, old)
-	require.NoError(t, err)
-	fresh := r.connect(token)
-	_, err = recv(t, fresh)
-	require.NoError(t, err)
-	_, err = recv(t, old)
-	assert.Equal(t, codes.Aborted, status.Code(err))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		_, token := r.add("Parrot", rng(9990, 9990))
+		old := r.connect(token)
+		_, err := recv(t, old)
+		require.NoError(t, err)
+		fresh := r.connect(token)
+		_, err = recv(t, fresh)
+		require.NoError(t, err)
+		_, err = recv(t, old)
+		assert.Equal(t, codes.Aborted, status.Code(err))
+	})
 }
 
 func TestAdminChangesReachAConnectedPlugin(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	s := r.connect(token)
-	_, err := recv(t, s)
-	require.NoError(t, err)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		s := r.connect(token)
+		_, err := recv(t, s)
+		require.NoError(t, err)
 
-	_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", true, []models.PluginRange{rng(9990, 9991)})
-	require.NoError(t, err)
-	r.changed()
-	m, err := recv(t, s)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetRanges())
-	assert.Equal(t, uint32(9991), m.GetRanges().GetRanges()[0].GetLast())
-	require.Eventually(t, func() bool { _, ok := r.registry.Owner(9991); return ok }, 3*time.Second, 10*time.Millisecond)
+		_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", true, []models.PluginRange{rng(9990, 9991)})
+		require.NoError(t, err)
+		r.changed()
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetRanges())
+		assert.Equal(t, uint32(9991), m.GetRanges().GetRanges()[0].GetLast())
+		bubble.Eventually(t, func() bool { _, ok := r.registry.Owner(9991); return ok }, 3*time.Second, 10*time.Millisecond)
 
-	require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(9991, 3191868, false)}}))
-	require.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 1 }, 3*time.Second, 10*time.Millisecond, "the new IDs are the plugin's")
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(9991, 3191868, false)}}))
+		bubble.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 1 }, 3*time.Second, 10*time.Millisecond, "the new IDs are the plugin's")
 
-	_, err = models.RotatePluginToken(r.db, p.ID, time.Now())
-	require.NoError(t, err)
-	r.changed()
-	_, err = recv(t, s)
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+		_, err = models.RotatePluginToken(r.db, p.ID, time.Now())
+		require.NoError(t, err)
+		r.changed()
+		_, err = recv(t, s)
+		assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
 }
 
 func TestTurningAPluginOffEndsItsStream(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	s := r.connect(token)
-	_, err := recv(t, s)
-	require.NoError(t, err)
-	_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", false, p.Ranges)
-	require.NoError(t, err)
-	r.changed()
-	_, err = recv(t, s)
-	assert.Equal(t, codes.PermissionDenied, status.Code(err))
-	require.Eventually(t, func() bool { _, ok := r.registry.Owner(9990); return !ok }, 3*time.Second, 10*time.Millisecond, "a plugin that is off owns no IDs")
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		s := r.connect(token)
+		_, err := recv(t, s)
+		require.NoError(t, err)
+		_, err = models.UpdatePlugin(r.db, p.ID, "Parrot", false, p.Ranges)
+		require.NoError(t, err)
+		r.changed()
+		_, err = recv(t, s)
+		assert.Equal(t, codes.PermissionDenied, status.Code(err))
+		bubble.Eventually(t, func() bool { _, ok := r.registry.Owner(9990); return !ok }, 3*time.Second, 10*time.Millisecond, "a plugin that is off owns no IDs")
+	})
 }
 
 func online(t *testing.T, r *rig, id uint) bool {
@@ -361,22 +369,24 @@ func online(t *testing.T, r *rig, id uint) bool {
 
 func TestAPluginIsOnlineWhileItsLatestStreamLasts(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Parrot", rng(9990, 9990))
-	assert.False(t, online(t, r, p.ID))
-	old := r.connect(token)
-	_, err := recv(t, old)
-	require.NoError(t, err)
-	assert.True(t, online(t, r, p.ID))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Parrot", rng(9990, 9990))
+		assert.False(t, online(t, r, p.ID))
+		old := r.connect(token)
+		_, err := recv(t, old)
+		require.NoError(t, err)
+		assert.True(t, online(t, r, p.ID))
 
-	fresh := r.connect(token)
-	_, err = recv(t, fresh)
-	require.NoError(t, err)
-	_, err = recv(t, old)
-	require.Equal(t, codes.Aborted, status.Code(err))
-	time.Sleep(200 * time.Millisecond)
-	assert.True(t, online(t, r, p.ID), "the stream that was replaced does not mark the newer one offline")
+		fresh := r.connect(token)
+		_, err = recv(t, fresh)
+		require.NoError(t, err)
+		_, err = recv(t, old)
+		require.Equal(t, codes.Aborted, status.Code(err))
+		time.Sleep(200 * time.Millisecond)
+		assert.True(t, online(t, r, p.ID), "the stream that was replaced does not mark the newer one offline")
 
-	require.NoError(t, fresh.CloseSend())
-	require.Eventually(t, func() bool { return !online(t, r, p.ID) }, 3*time.Second, 20*time.Millisecond)
+		require.NoError(t, fresh.CloseSend())
+		bubble.Eventually(t, func() bool { return !online(t, r, p.ID) }, 3*time.Second, 20*time.Millisecond)
+	})
 }

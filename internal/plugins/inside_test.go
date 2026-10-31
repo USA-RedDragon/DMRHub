@@ -23,6 +23,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -30,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -77,105 +79,117 @@ func uploaded(t *testing.T, r *rig, name string, ranges ...models.PluginRange) m
 
 func TestAPluginInsideDMRHubConnectsWithoutAToken(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p := uploaded(t, r, "Net check-in", rng(9100, 9100))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	s := newInnerStream(plugins.InProcess(ctx, p.ID))
-	done := make(chan error, 1)
-	go func() { done <- r.svc.Connect(s) }()
-	select {
-	case m := <-s.out:
-		require.NotNil(t, m.GetWelcome())
-		assert.Equal(t, "Net check-in", m.GetWelcome().GetName())
-		require.Len(t, m.GetWelcome().GetRanges(), 1)
-	case err := <-done:
-		t.Fatalf("Connect ended with %v before the Welcome", err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("no Welcome")
-	}
-	require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 4}))
-	select {
-	case m := <-s.out:
-		assert.Equal(t, uint32(9100), m.GetBurst().GetDestination())
-	case <-time.After(3 * time.Second):
-		t.Fatal("the burst did not reach the plugin")
-	}
-	cancel()
-	<-done
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p := uploaded(t, r, "Net check-in", rng(9100, 9100))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s := newInnerStream(plugins.InProcess(ctx, p.ID))
+		done := make(chan error, 1)
+		go func() { done <- r.svc.Connect(s) }()
+		select {
+		case m := <-s.out:
+			require.NotNil(t, m.GetWelcome())
+			assert.Equal(t, "Net check-in", m.GetWelcome().GetName())
+			require.Len(t, m.GetWelcome().GetRanges(), 1)
+		case err := <-done:
+			t.Fatalf("Connect ended with %v before the Welcome", err)
+		case <-time.After(3 * time.Second):
+			t.Fatal("no Welcome")
+		}
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 4}))
+		select {
+		case m := <-s.out:
+			assert.Equal(t, uint32(9100), m.GetBurst().GetDestination())
+		case <-time.After(3 * time.Second):
+			t.Fatal("the burst did not reach the plugin")
+		}
+		cancel()
+		<-done
+	})
 }
 
 func TestAnExternalPluginCannotConnectAsOneInside(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, _ := r.add("Weather", rng(310001, 310009))
-	s := newInnerStream(plugins.InProcess(context.Background(), p.ID))
-	err := r.svc.Connect(s)
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-	s = newInnerStream(plugins.InProcess(context.Background(), 999))
-	err = r.svc.Connect(s)
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, _ := r.add("Weather", rng(310001, 310009))
+		s := newInnerStream(plugins.InProcess(context.Background(), p.ID))
+		err := r.svc.Connect(s)
+		assert.Equal(t, codes.Unauthenticated, status.Code(err))
+		s = newInnerStream(plugins.InProcess(context.Background(), 999))
+		err = r.svc.Connect(s)
+		assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
 }
 
 func TestAPluginInsideDMRHubHasNoTokenToConnectWith(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	uploaded(t, r, "Net check-in", rng(9100, 9100))
-	_, err := recv(t, r.connect(""))
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		uploaded(t, r, "Net check-in", rng(9100, 9100))
+		_, err := recv(t, r.connect(""))
+		assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
 }
 
 func TestTheHubNotesTheVersionAnExternalPluginSays(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p, token := r.add("Weather", rng(310001, 310009))
-	s := r.connect(token)
-	_, err := recv(t, s)
-	require.NoError(t, err)
-	require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Hello{Hello: &pluginv1.Hello{Name: "ignored", Version: "2.0.0"}}}))
-	require.Eventually(t, func() bool {
-		got, err := models.FindPlugin(r.db, p.ID)
-		return err == nil && got.Version == "2.0.0" && got.Name == "Weather"
-	}, 3*time.Second, 10*time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p, token := r.add("Weather", rng(310001, 310009))
+		s := r.connect(token)
+		_, err := recv(t, s)
+		require.NoError(t, err)
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Hello{Hello: &pluginv1.Hello{Name: "ignored", Version: "2.0.0"}}}))
+		bubble.Eventually(t, func() bool {
+			got, err := models.FindPlugin(r.db, p.ID)
+			return err == nil && got.Version == "2.0.0" && got.Name == "Weather"
+		}, 3*time.Second, 10*time.Millisecond)
+	})
 }
 
 func TestTheRegistryLeavesOutThePluginsInsideWhenTheyAreOff(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	p := uploaded(t, r, "Net check-in", rng(9100, 9100))
-	ext, _ := r.add("Weather", rng(310001, 310009))
-	owner, ok := r.registry.Owner(9100)
-	require.True(t, ok, "plugins run inside DMRHub by default")
-	assert.Equal(t, p.ID, owner)
-	require.NoError(t, r.registry.SetInProcess(false))
-	_, ok = r.registry.Owner(9100)
-	assert.False(t, ok, "nobody runs the plugins inside DMRHub when they are off")
-	owner, ok = r.registry.Owner(310005)
-	assert.True(t, ok)
-	assert.Equal(t, ext.ID, owner)
-	require.NoError(t, r.registry.SetInProcess(true))
-	_, ok = r.registry.Owner(9100)
-	assert.True(t, ok)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		p := uploaded(t, r, "Net check-in", rng(9100, 9100))
+		ext, _ := r.add("Weather", rng(310001, 310009))
+		owner, ok := r.registry.Owner(9100)
+		require.True(t, ok, "plugins run inside DMRHub by default")
+		assert.Equal(t, p.ID, owner)
+		require.NoError(t, r.registry.SetInProcess(false))
+		_, ok = r.registry.Owner(9100)
+		assert.False(t, ok, "nobody runs the plugins inside DMRHub when they are off")
+		owner, ok = r.registry.Owner(310005)
+		assert.True(t, ok)
+		assert.Equal(t, ext.ID, owner)
+		require.NoError(t, r.registry.SetInProcess(true))
+		_, ok = r.registry.Owner(9100)
+		assert.True(t, ok)
+	})
 }
 
 func TestAWaitingBuiltinPluginOwnsNoneOfItsIDs(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	old, _ := r.add("Old locator", rng(5052, 5052))
-	b, err := models.EnsureBuiltinPlugin(r.db, "locator", "Location server", "v1.3.4", []models.PluginRange{rng(5050, 5059)}, time.Now())
-	require.NoError(t, err)
-	require.NoError(t, r.registry.Reload())
-	owner, ok := r.registry.Owner(5052)
-	require.True(t, ok)
-	assert.Equal(t, old.ID, owner)
-	_, ok = r.registry.Owner(5050)
-	assert.False(t, ok, "the built-in plugin waits for all its IDs")
-	_, err = models.UpdatePlugin(r.db, old.ID, old.Name, false, old.Ranges)
-	require.NoError(t, err)
-	require.NoError(t, r.registry.Reload())
-	owner, ok = r.registry.Owner(5052)
-	require.True(t, ok)
-	assert.Equal(t, b.ID, owner)
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		old, _ := r.add("Old locator", rng(5052, 5052))
+		b, err := models.EnsureBuiltinPlugin(r.db, "locator", "Location server", "v1.3.4", []models.PluginRange{rng(5050, 5059)}, time.Now())
+		require.NoError(t, err)
+		require.NoError(t, r.registry.Reload())
+		owner, ok := r.registry.Owner(5052)
+		require.True(t, ok)
+		assert.Equal(t, old.ID, owner)
+		_, ok = r.registry.Owner(5050)
+		assert.False(t, ok, "the built-in plugin waits for all its IDs")
+		_, err = models.UpdatePlugin(r.db, old.ID, old.Name, false, old.Ranges)
+		require.NoError(t, err)
+		require.NoError(t, r.registry.Reload())
+		owner, ok = r.registry.Owner(5052)
+		require.True(t, ok)
+		assert.Equal(t, b.ID, owner)
+	})
 }
 
 func TestPluginsInsideDMRHubNeedNoListener(t *testing.T) {

@@ -21,6 +21,7 @@ package plugins_test
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -64,46 +65,52 @@ func subscribe(t *testing.T, s pluginv1.PluginService_ConnectClient) []*pluginv1
 
 func TestAPluginThatSubscribesGetsOnlyTheTrackedRadios(t *testing.T) {
 	t.Parallel()
-	_, s := trackingRig(t)
-	radios := subscribe(t, s)
-	require.Len(t, radios, 1)
-	assert.Equal(t, uint32(trackedRadio), radios[0].GetRadio())
-	assert.True(t, radios[0].GetOn())
-	assert.Equal(t, uint32(600), radios[0].GetIntervalSeconds())
+	synctest.Test(t, func(t *testing.T) {
+		_, s := trackingRig(t)
+		radios := subscribe(t, s)
+		require.Len(t, radios, 1)
+		assert.Equal(t, uint32(trackedRadio), radios[0].GetRadio())
+		assert.True(t, radios[0].GetOn())
+		assert.Equal(t, uint32(600), radios[0].GetIntervalSeconds())
+	})
 }
 
 func TestAPluginHearsOnlyTrackedRadiosAndOnlyWhenSubscribed(t *testing.T) {
 	t.Parallel()
-	r, s := trackingRig(t)
-	require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100001, 2, 7))
-	subscribe(t, s)
-	require.NoError(t, plugins.PublishHeard(r.ps, untrackedRadio, 100001, 1, 1))
-	require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
-	m, err := recv(t, s)
-	require.NoError(t, err)
-	assert.True(t, proto.Equal(&pluginv1.Heard{Radio: uint32(trackedRadio), Slot: 2, ColorCode: 7}, m.GetHeard()), "got %v", m)
+	synctest.Test(t, func(t *testing.T) {
+		r, s := trackingRig(t)
+		require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100001, 2, 7))
+		subscribe(t, s)
+		require.NoError(t, plugins.PublishHeard(r.ps, untrackedRadio, 100001, 1, 1))
+		require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		assert.True(t, proto.Equal(&pluginv1.Heard{Radio: uint32(trackedRadio), Slot: 2, ColorCode: 7}, m.GetHeard()), "got %v", m)
+	})
 }
 
 func TestAPluginHearsWhenAnOwnerChangesTracking(t *testing.T) {
 	t.Parallel()
-	r, s := trackingRig(t)
-	subscribe(t, s)
-	require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, false, time.Now()))
-	require.NoError(t, plugins.PublishTracking(r.ps, trackedRadio))
-	m, err := recv(t, s)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetTracking(), "got %v", m)
-	assert.Equal(t, uint32(trackedRadio), m.GetTracking().GetRadio())
-	assert.False(t, m.GetTracking().GetOn())
+	synctest.Test(t, func(t *testing.T) {
+		r, s := trackingRig(t)
+		subscribe(t, s)
+		require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, false, time.Now()))
+		require.NoError(t, plugins.PublishTracking(r.ps, trackedRadio))
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetTracking(), "got %v", m)
+		assert.Equal(t, uint32(trackedRadio), m.GetTracking().GetRadio())
+		assert.False(t, m.GetTracking().GetOn())
 
-	require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100001, 1, 1))
-	require.NoError(t, models.SetPositionTracking(r.db, untrackedRadio, untrackedRadio, true, time.Now()))
-	require.NoError(t, plugins.PublishTracking(r.ps, untrackedRadio))
-	m, err = recv(t, s)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetTracking(), "a radio that is no longer tracked is not heard; got %v", m)
-	assert.Equal(t, uint32(untrackedRadio), m.GetTracking().GetRadio())
-	assert.True(t, m.GetTracking().GetOn())
+		require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100001, 1, 1))
+		require.NoError(t, models.SetPositionTracking(r.db, untrackedRadio, untrackedRadio, true, time.Now()))
+		require.NoError(t, plugins.PublishTracking(r.ps, untrackedRadio))
+		m, err = recv(t, s)
+		require.NoError(t, err)
+		require.NotNil(t, m.GetTracking(), "a radio that is no longer tracked is not heard; got %v", m)
+		assert.Equal(t, uint32(untrackedRadio), m.GetTracking().GetRadio())
+		assert.True(t, m.GetTracking().GetOn())
+	})
 }
 
 func position(radio uint, service uint32) *pluginv1.ConnectRequest {
@@ -117,82 +124,85 @@ func position(radio uint, service uint32) *pluginv1.ConnectRequest {
 
 func TestTheHubKeepsOnlyPositionsOfTrackedRadiosToThePluginsIDs(t *testing.T) {
 	t.Parallel()
-	r, s := trackingRig(t)
-	require.NoError(t, r.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002, Callsign: "KI5VMF"}, OwnerID: trackedRadio}).Error)
-	subscribe(t, s)
-	require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
-	_, err := recv(t, s)
-	require.NoError(t, err)
+	synctest.Test(t, func(t *testing.T) {
+		r, s := trackingRig(t)
+		require.NoError(t, r.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002, Callsign: "KI5VMF"}, OwnerID: trackedRadio}).Error)
+		subscribe(t, s)
+		require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
+		_, err := recv(t, s)
+		require.NoError(t, err)
 
-	require.NoError(t, s.Send(position(untrackedRadio, locatorID)))
-	require.NoError(t, s.Send(position(trackedRadio, 9990)))
-	require.NoError(t, s.Send(position(trackedRadio, locatorID)))
-	require.Eventually(t, func() bool { return len(r.positions()) == 1 }, 3*time.Second, 10*time.Millisecond)
-	time.Sleep(100 * time.Millisecond)
-	got := r.positions()
-	require.Len(t, got, 1)
-	p := got[0]
-	assert.Equal(t, trackedRadio, p.RadioID)
-	assert.Equal(t, uint(locatorID), p.ServiceID)
-	assert.Equal(t, uint(100002), p.RepeaterID, "the repeater where the radio was heard")
-	assert.Equal(t, uint8(2), p.Slot)
-	assert.Equal(t, models.PositionFormatLRRP, p.Format)
-	require.NotNil(t, p.AccuracyM)
-	assert.InDelta(t, 12.5, *p.AccuracyM, 0)
-	require.NotNil(t, p.FixTime)
-	assert.Equal(t, time.Date(2026, 10, 24, 1, 2, 3, 0, time.UTC), p.FixTime.UTC())
-	var stored int64
-	require.NoError(t, r.db.Model(&models.Position{}).Count(&stored).Error)
-	assert.Equal(t, int64(1), stored)
+		require.NoError(t, s.Send(position(untrackedRadio, locatorID)))
+		require.NoError(t, s.Send(position(trackedRadio, 9990)))
+		require.NoError(t, s.Send(position(trackedRadio, locatorID)))
+		synctest.Wait()
+		got := r.positions()
+		require.Len(t, got, 1)
+		p := got[0]
+		assert.Equal(t, trackedRadio, p.RadioID)
+		assert.Equal(t, uint(locatorID), p.ServiceID)
+		assert.Equal(t, uint(100002), p.RepeaterID, "the repeater where the radio was heard")
+		assert.Equal(t, uint8(2), p.Slot)
+		assert.Equal(t, models.PositionFormatLRRP, p.Format)
+		require.NotNil(t, p.AccuracyM)
+		assert.InDelta(t, 12.5, *p.AccuracyM, 0)
+		require.NotNil(t, p.FixTime)
+		assert.Equal(t, time.Date(2026, 10, 24, 1, 2, 3, 0, time.UTC), p.FixTime.UTC())
+		var stored int64
+		require.NoError(t, r.db.Model(&models.Position{}).Count(&stored).Error)
+		assert.Equal(t, int64(1), stored)
+	})
 }
 
 func TestTheHubKeepsPositionsOnlyThroughTheOwnersOrTrustedRepeaters(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	const witness = uint(3191870)
-	require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "KI5VMF", Username: "tracked", Approved: true}).Error)
-	require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "KD5SMP", Username: "untracked", Approved: true}).Error)
-	require.NoError(t, r.db.Create(&models.User{ID: witness, Callsign: "N5WIT", Username: "witness", Approved: true}).Error)
-	require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, true, time.Now().Add(-time.Minute)))
-	require.NoError(t, models.SetPositionTracking(r.db, witness, witness, true, time.Now().Add(-time.Minute)))
-	const own, spoof, trusted, witnessed = uint(100002), uint(100009), uint(100010), uint(100011)
-	for _, rpt := range []models.Repeater{
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: own, Callsign: "KI5VMF"}, OwnerID: trackedRadio},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: spoof, Callsign: "KD5SMP"}, OwnerID: untrackedRadio},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: trusted, Callsign: "KD5SMP"}, OwnerID: untrackedRadio, Trusted: true},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: witnessed, Callsign: "N5WIT"}, OwnerID: witness},
-	} {
-		require.NoError(t, r.db.Create(&rpt).Error)
-	}
-	p, token := r.add("Location", rng(5050, 5059))
-	s := r.connect(token)
-	m, err := recv(t, s)
-	require.NoError(t, err)
-	require.NotNil(t, m.GetWelcome())
-	subscribe(t, s)
-
-	report := func(radio, via uint, stream uint32) {
-		t.Helper()
-		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: radio, Dst: uint(locatorID), Repeater: via, Slot: true, StreamID: uint(stream)}))
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		const witness = uint(3191870)
+		require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "KI5VMF", Username: "tracked", Approved: true}).Error)
+		require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "KD5SMP", Username: "untracked", Approved: true}).Error)
+		require.NoError(t, r.db.Create(&models.User{ID: witness, Callsign: "N5WIT", Username: "witness", Approved: true}).Error)
+		require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, true, time.Now().Add(-time.Minute)))
+		require.NoError(t, models.SetPositionTracking(r.db, witness, witness, true, time.Now().Add(-time.Minute)))
+		const own, spoof, trusted, witnessed = uint(100002), uint(100009), uint(100010), uint(100011)
+		for _, rpt := range []models.Repeater{
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: own, Callsign: "KI5VMF"}, OwnerID: trackedRadio},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: spoof, Callsign: "KD5SMP"}, OwnerID: untrackedRadio},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: trusted, Callsign: "KD5SMP"}, OwnerID: untrackedRadio, Trusted: true},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: witnessed, Callsign: "N5WIT"}, OwnerID: witness},
+		} {
+			require.NoError(t, r.db.Create(&rpt).Error)
+		}
+		p, token := r.add("Location", rng(5050, 5059))
+		s := r.connect(token)
 		m, err := recv(t, s)
 		require.NoError(t, err)
-		require.NotNil(t, m.GetBurst(), "got %v", m)
-		require.NoError(t, s.Send(position(radio, locatorID)))
-	}
-	report(trackedRadio, spoof, 1)
-	report(witness, witnessed, 2)
-	got := r.nextPosition()
-	assert.Equal(t, witness, got.RadioID, "a location report through a hotspot of another user that no admin trusts")
+		require.NotNil(t, m.GetWelcome())
+		subscribe(t, s)
 
-	report(trackedRadio, trusted, 3)
-	got = r.nextPosition()
-	assert.Equal(t, trackedRadio, got.RadioID)
-	assert.Equal(t, trusted, got.RepeaterID, "a location report through a trusted repeater")
-	require.NoError(t, r.db.Where("radio_id = ?", trackedRadio).Delete(&models.Position{}).Error)
+		report := func(radio, via uint, stream uint32) {
+			t.Helper()
+			require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: radio, Dst: uint(locatorID), Repeater: via, Slot: true, StreamID: uint(stream)}))
+			m, err := recv(t, s)
+			require.NoError(t, err)
+			require.NotNil(t, m.GetBurst(), "got %v", m)
+			require.NoError(t, s.Send(position(radio, locatorID)))
+		}
+		report(trackedRadio, spoof, 1)
+		report(witness, witnessed, 2)
+		got := r.nextPosition()
+		assert.Equal(t, witness, got.RadioID, "a location report through a hotspot of another user that no admin trusts")
 
-	report(trackedRadio, own, 4)
-	got = r.nextPosition()
-	assert.Equal(t, trackedRadio, got.RadioID)
-	assert.Equal(t, own, got.RepeaterID, "a location report through a repeater of the owner")
-	assert.Len(t, r.positions(), 3)
+		report(trackedRadio, trusted, 3)
+		got = r.nextPosition()
+		assert.Equal(t, trackedRadio, got.RadioID)
+		assert.Equal(t, trusted, got.RepeaterID, "a location report through a trusted repeater")
+		require.NoError(t, r.db.Where("radio_id = ?", trackedRadio).Delete(&models.Position{}).Error)
+
+		report(trackedRadio, own, 4)
+		got = r.nextPosition()
+		assert.Equal(t, trackedRadio, got.RadioID)
+		assert.Equal(t, own, got.RepeaterID, "a location report through a repeater of the owner")
+		assert.Len(t, r.positions(), 3)
+	})
 }

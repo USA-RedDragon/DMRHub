@@ -325,3 +325,9 @@ shots:
     route: /repeaters/300000102
     wait: Package ID
     steps: ["scroll Software"]
+  - name: admin-unassigned-repeaters.png
+    phase: main
+    as: n0call
+    needs: [unassigned]
+    route: /admin/repeaters/unassigned
+    wait: "311861"

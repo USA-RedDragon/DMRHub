@@ -32,6 +32,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const (
@@ -60,6 +65,7 @@ func hooks() map[string]hook {
 		"rules":         repeaterRules,
 		"email":         setEmail,
 		"dmrgateway":    startDMRGateway,
+		"unassigned":    seedUnassigned,
 	}
 }
 
@@ -531,5 +537,45 @@ func startDMRGateway(ctx context.Context, r *runner) error {
 	r.cursor = start.Add(time.Minute)
 	r.c.freeze(r.cursor)
 	time.Sleep(12 * time.Second)
+	return nil
+}
+
+// seedUnassigned writes two modem repeaters with no owner, with the columns
+// that the modem server writes when a modem connects with an unknown ID.
+// The harness has no serial modems, so it writes them to the database.
+func seedUnassigned(_ context.Context, r *runner) error {
+	path := filepath.Join(r.o.work, "DMRHub.db")
+	dsn := "file:" + (&url.URL{Path: path}).EscapedPath() + "?mode=rw&_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		return fmt.Errorf("could not open the database of DMRHub: %w", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("could not open the database of DMRHub: %w", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+	pkg := "MMDVM_HS_Hat-v1.6.1 20231115 14.7456MHz"
+	rps := []struct {
+		id       uint
+		callsign string
+		rx, tx   uint
+		slots    uint
+		made     time.Duration
+		seen     time.Duration
+	}{
+		{311860, "N4CALL", 438800000, 438800000, 4, 26 * time.Hour, 3 * time.Minute},
+		{311861, "N2CALL", 442775000, 447775000, 3, 40 * time.Minute, 12 * time.Minute},
+	}
+	for _, rp := range rps {
+		made := r.cursor.Add(-rp.made)
+		seen := r.cursor.Add(-rp.seen)
+		row := models.Repeater{Type: models.RepeaterTypeModem, Connected: seen, LastPing: r.cursor, CreatedAt: made, UpdatedAt: seen,
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: rp.id, Callsign: rp.callsign, RXFrequency: rp.rx, TXFrequency: rp.tx,
+				ColorCode: colorCode, Slots: rp.slots, SoftwareID: "DMRHub", PackageID: pkg}}
+		if err := db.Create(&row).Error; err != nil {
+			return fmt.Errorf("could not write repeater %d: %w", rp.id, err)
+		}
+	}
 	return nil
 }

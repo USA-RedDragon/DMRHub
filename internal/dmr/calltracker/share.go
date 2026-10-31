@@ -22,6 +22,7 @@ package calltracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -36,7 +37,10 @@ const (
 	voiceRecordPrefix = "calltracker:voice:"
 	saveTries         = 3
 	saveHold          = 5 * time.Second
+	touchEvery        = voiceHang / 2
 )
+
+var errUnchanged = errors.New("the record stays as it is")
 
 type voiceRecord struct {
 	ID       uint                  `json:"id,omitempty"`
@@ -100,6 +104,7 @@ const (
 	finishDefer finishVerdict = iota
 	finishSave
 	finishDelete
+	finishDirect
 )
 
 func voiceRecordKey(k voiceKey) string {
@@ -219,8 +224,11 @@ type finishResult struct {
 }
 
 func finishRecord(rec *voiceRecord, me, ch string, id uint, seq uint, last time.Time, term, keyUp bool, mine voiceDelta, now time.Time) (*voiceRecord, finishResult) {
-	if rec == nil || rec.Chan != ch || rec.ID != id {
-		rec = &voiceRecord{ID: id, Chan: ch, Start: mine.First, Parts: map[string]*voicePart{}}
+	if rec != nil && rec.ID != id {
+		return nil, finishResult{verdict: finishDirect}
+	}
+	if rec == nil {
+		rec = &voiceRecord{ID: id, Chan: ch, Start: mine.First, Saved: true, Parts: map[string]*voicePart{}}
 	}
 	p := rec.Parts[me]
 	if p == nil {
@@ -275,10 +283,13 @@ func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRec
 	err := c.kv.Update(ctx, voiceRecordKey(key), streamIdle, func(old []byte) ([]byte, error) {
 		rec := fn(loadRecord(old))
 		if rec == nil {
-			return old, nil
+			return nil, errUnchanged
 		}
 		return json.Marshal(rec)
 	})
+	if errors.Is(err, errUnchanged) {
+		return nil
+	}
 	if err != nil {
 		c.metrics.IncrementTrackerShareFailed()
 		return fmt.Errorf("sharing a voice call: %w", err)
@@ -501,25 +512,24 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 		r.deferred = true
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
 		return true
+	case finishDirect:
+		if s.saveParts(r, true, []voiceDelta{mine}) {
+			r.markGiven()
+		}
+		return true
 	case finishSave:
 	}
 	parts := append(slices.Clip(res.held), mine)
 	r.markGiven()
 	gen, saved := res.gen, res.saved
 	for try := 1; ; try++ {
-		out, ok := s.saveMerged(call, res.start, saved, parts)
+		ok := s.saveParts(r, saved, parts)
 		var after savedResult
 		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
 			rec, after = savedRecord(rec, gen, ok, try, s.t.clock.Now())
 			return rec
 		}); err != nil {
 			slog.Warn("CallTracker: the end of a save of a voice call did not reach the other replicas", "error", err)
-		}
-		if ok {
-			s.adoptMerged(r, &out)
-			s.t.publishCall(s.idx, &out)
-			s.t.publishNetCheckIn(s.idx, &out)
-			slog.Info("Transmission ended", "kind", out.Kind, "sub", out.SubKind, "streamID", out.StreamID, "src", out.SourceID, "dst", out.DestinationID, "repeater", out.IngressID, "duration", out.Duration, "loss", out.Loss*pct, "ber", out.BER*pct, "rssi", out.RSSI, "jitter", out.Jitter)
 		}
 		if after.active {
 			s.markActive(call.ID)
@@ -531,7 +541,51 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 	}
 }
 
-func (s *shard) saveMerged(call *models.Call, start time.Time, saved bool, parts []voiceDelta) (models.Call, bool) {
+func (s *shard) saveParts(r *row, saved bool, parts []voiceDelta) bool {
+	out, ok := s.saveMerged(r.call, saved, parts)
+	if !ok {
+		return false
+	}
+	s.adoptMerged(r, &out)
+	s.t.publishCall(s.idx, &out)
+	s.t.publishNetCheckIn(s.idx, &out)
+	slog.Info("Transmission ended", "kind", out.Kind, "sub", out.SubKind, "streamID", out.StreamID, "src", out.SourceID, "dst", out.DestinationID, "repeater", out.IngressID, "duration", out.Duration, "loss", out.Loss*pct, "ber", out.BER*pct, "rssi", out.RSSI, "jitter", out.Jitter)
+	return true
+}
+
+func touchRecord(rec *voiceRecord, me, ch string, id uint, start time.Time, seq uint, last time.Time) *voiceRecord {
+	if rec == nil {
+		rec = &voiceRecord{ID: id, Chan: ch, Start: start, Saved: true, Parts: map[string]*voicePart{}}
+	}
+	if rec.ID != id {
+		return nil
+	}
+	p := rec.Parts[me]
+	if p == nil {
+		p = &voicePart{}
+		rec.Parts[me] = p
+	}
+	p.Active, p.Seq, p.Last = true, seq, last
+	return rec
+}
+
+func (s *shard) touchShared(now time.Time) {
+	for k, r := range s.rows {
+		key, ok := k.(voiceKey)
+		if !ok || !r.shared || r.finished || now.Sub(r.touched) < touchEvery {
+			continue
+		}
+		r.touched = now
+		me, name, call := s.t.replica, chanName(r.ch.key), r.call
+		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+			return touchRecord(rec, me, name, call.ID, call.StartTime, call.LastSeq, r.last)
+		}); err != nil {
+			slog.Warn("CallTracker: the voice call was not refreshed for the other replicas", "error", err)
+		}
+	}
+}
+
+func (s *shard) saveMerged(call *models.Call, saved bool, parts []voiceDelta) (models.Call, bool) {
 	var base *models.Call
 	if saved {
 		var b models.Call
@@ -540,6 +594,10 @@ func (s *shard) saveMerged(call *models.Call, start time.Time, saved bool, parts
 			return models.Call{}, false
 		}
 		base = &b
+	}
+	start := call.StartTime
+	if base != nil {
+		start = base.StartTime
 	}
 	out := mergeVoice(call, base, start, parts)
 	res := s.t.db.Model(&models.Call{}).Where("id = ? AND duration <= ?", out.ID, out.Duration).

@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -36,38 +37,60 @@ import (
 	"gorm.io/gorm"
 )
 
-func newSharedReplicas(t *testing.T) (*calltracker.CallTracker, *calltracker.CallTracker, *gorm.DB, pubsub.Subscription) {
+type callEvents struct {
+	mu   sync.Mutex
+	last map[uint]models.Call
+}
+
+func watchCalls(t *testing.T, ps pubsub.PubSub) *callEvents {
+	t.Helper()
+	sub := ps.Subscribe("calls")
+	ev := &callEvents{last: map[uint]models.Call{}}
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case msg := <-sub.Channel():
+				var c models.Call
+				if json.Unmarshal(msg, &c) == nil {
+					ev.mu.Lock()
+					ev.last[c.ID] = c
+					ev.mu.Unlock()
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		close(done)
+		_ = sub.Close()
+	})
+	return ev
+}
+
+func newSharedReplicas(t *testing.T) (*calltracker.CallTracker, *calltracker.CallTracker, *gorm.DB, *callEvents) {
 	t.Helper()
 	database, ps, kvStore := trackerDeps(t)
-	sub := ps.Subscribe("calls")
-	t.Cleanup(func() { _ = sub.Close() })
+	ev := watchCalls(t, ps)
 	one := calltracker.NewCallTracker(database, ps, kvStore)
 	t.Cleanup(one.Stop)
 	two := calltracker.NewCallTracker(database, ps, kvStore)
 	t.Cleanup(two.Stop)
-	return one, two, database, sub
+	return one, two, database, ev
 }
 
-func lastEvent(t *testing.T, sub pubsub.Subscription, id uint) models.Call {
+func lastEvent(t *testing.T, ev *callEvents, id uint) models.Call {
 	t.Helper()
 	synctest.Wait()
-	var last models.Call
-	for {
-		select {
-		case msg := <-sub.Channel():
-			var c models.Call
-			require.NoError(t, json.Unmarshal(msg, &c))
-			if c.ID == id {
-				last = c
-			}
-		default:
-			require.Equal(t, id, last.ID, "no event of the row")
-			return last
-		}
-	}
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
+	last, ok := ev.last[id]
+	require.True(t, ok, "no event of the row")
+	return last
 }
 
-func requireEventMatches(t *testing.T, sub pubsub.Subscription, row models.Call) {
+func requireEventMatches(t *testing.T, sub *callEvents, row models.Call) {
 	t.Helper()
 	ev := lastEvent(t, sub, row.ID)
 	assert.False(t, ev.Active, "the last event of the row is not its end")

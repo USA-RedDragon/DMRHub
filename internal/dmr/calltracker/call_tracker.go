@@ -1191,6 +1191,7 @@ type row struct {
 	shared    bool
 	deferred  bool
 	given     given
+	touched   time.Time
 }
 
 type channel struct {
@@ -1480,6 +1481,7 @@ func (s *shard) sweep(now time.Time) {
 			delete(s.streams, id)
 		}
 	}
+	s.touchShared(now)
 	s.pruneSources(now)
 	if s.idx == 0 {
 		s.t.homes.Range(func(id uint, h homeRow) bool {

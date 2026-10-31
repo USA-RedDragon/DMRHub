@@ -19,17 +19,14 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build the docs image
-    if: github.event_name == 'pull_request'
+  test:
+    name: Test the docs server
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -39,61 +36,18 @@ jobs:
       - name: Test the docs server
         run: go test ./hack/docs-site/server/
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Build
-        run: docker buildx build --platform linux/amd64,linux/arm64 -f hack/docs-site/Dockerfile .
-
-  publish:
-    name: Publish the docs image
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
+  docker:
+    name: Docs image
+    needs: test
     permissions:
       contents: read
       packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: jamcswain
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push
-        env:
-          TAG: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-        run: |
-          version=${TAG#v}
-          major=${version%%.*}
-          minor=${version#*.}
-          minor=${minor%%.*}
-          tags=()
-          for image in ghcr.io/usa-reddragon/dmrhub-docs docker.io/jamcswain/dmrhub-docs; do
-            for t in "$TAG" "v$major" "v$major.$minor" latest; do
-              tags+=(-t "$image:$t")
-            done
-          done
-          docker buildx build --push --platform linux/amd64,linux/arm64 -f hack/docs-site/Dockerfile \
-            "${tags[@]}" \
-            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --label org.opencontainers.image.title=dmrhub-docs \
-            --label "org.opencontainers.image.revision=$SHA" \
-            --label "org.opencontainers.image.version=$TAG" \
-            --label org.opencontainers.image.licenses=AGPL-3.0-or-later \
-            --label org.opencontainers.image.url=https://dmrhub.net/ \
-            --label org.opencontainers.image.source=https://github.com/USA-RedDragon/DMRHub \
-            .
+      security-events: write
+    uses: USA-RedDragon/reusable-actions/.github/workflows/docker-ci.yaml@c5ee15922a0ff4229b0f06a8d0551541b5cabfdc # v2.0.34
+    with:
+      push: ${{ github.event_name != 'pull_request' }}
+      image-name: usa-reddragon/dmrhub-docs
+      dockerfile: hack/docs-site/Dockerfile
+      context: .
+      version: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+      trivy: 'false'

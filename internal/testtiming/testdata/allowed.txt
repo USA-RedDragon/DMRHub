@@ -72,8 +72,7 @@ sleep	internal/dmr/move_integration_test.go	17	baseline of 2026-10-28, not revie
 timer	internal/dmr/move_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/net_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/openbridge_conform_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/openbridge_conform_integration_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_enhanced_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/openbridge_enhanced_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/openbridge_live_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

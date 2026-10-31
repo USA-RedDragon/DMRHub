@@ -71,8 +71,15 @@ func startConformStack(t *testing.T, stack *testutils.IntegrationStack, enhanced
 	t.Cleanup(mc.Close)
 	require.NoError(t, mc.Connect(stack.MMDVMAddr))
 	require.NoError(t, mc.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return conformStack{mc: mc, peer: peer}
+}
+
+func (s conformStack) receiveQuench(stream uint32) []dmrd.BridgeControl {
+	return s.peer.ReceiveControls(deliverWait, func(got []dmrd.BridgeControl) bool { return quenches(got[len(got)-1:], stream) > 0 })
+}
+
+func (s conformStack) receiveOne() []models.Packet {
+	return testutils.Collect(s.mc.ReceivedPackets(), deliverWait, gotN[models.Packet](1))
 }
 
 func quenches(controls []dmrd.BridgeControl, stream uint32) int {
@@ -107,10 +114,10 @@ func TestOpenBridgeDropsStaleEnhancedPackets(t *testing.T) {
 
 		send(9601, 6*time.Second)
 		assert.Empty(t, s.mc.Drain(drainWait), "a stale DMRE packet reached the repeater")
-		assert.Positive(t, quenches(s.peer.DrainControls(300*time.Millisecond), 9601), "the stale stream was not quenched")
+		assert.Positive(t, quenches(s.receiveQuench(9601), 9601), "the stale stream was not quenched")
 
 		send(9602, 0)
-		assert.Len(t, s.mc.Drain(drainWait), 1, "a fresh DMRE packet must reach the repeater")
+		assert.Len(t, s.receiveOne(), 1, "a fresh DMRE packet must reach the repeater")
 	})
 }
 
@@ -132,7 +139,7 @@ func TestOpenBridgeTakesAPrivateCallOnTimeslot2(t *testing.T) {
 		private.Slot = true
 		private.Repeater = conformPeer
 		require.NoError(t, s.peer.SendRawPacket(private))
-		got := s.mc.Drain(drainWait)
+		got := s.receiveOne()
 		if assert.Len(t, got, 1, "a private call on TS2 must reach the repeater") {
 			assert.Equal(t, uint(conformRepeater), got[0].Dst)
 			assert.False(t, got[0].GroupCall)
@@ -152,7 +159,7 @@ func TestOpenBridgeQuenchesAStreamItsRulesRefuse(t *testing.T) {
 		p.Repeater = conformPeer
 		require.NoError(t, s.peer.SendEnhancedPacket(p, 5))
 		assert.Empty(t, s.mc.Drain(drainWait), "a call the rules refuse reached the repeater")
-		assert.Positive(t, quenches(s.peer.DrainControls(300*time.Millisecond), 9621), "the refused stream was not quenched")
+		assert.Positive(t, quenches(s.receiveQuench(9621), 9621), "the refused stream was not quenched")
 	})
 }
 
@@ -164,13 +171,9 @@ func TestOpenBridgeSendsItsVersion(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		s := startConformStack(t, stack, true)
-		var versions []uint8
-		for _, c := range s.peer.DrainControls(3 * time.Second) {
-			if c.Command == dmrd.CommandBCVE {
-				versions = append(versions, c.Version)
-			}
-		}
-		assert.Contains(t, versions, uint8(5), "the hub sent no BCVE of version 5")
+		isBCVE5 := func(c dmrd.BridgeControl) bool { return c.Command == dmrd.CommandBCVE && c.Version == 5 }
+		got := s.peer.ReceiveControls(deliverWait, func(got []dmrd.BridgeControl) bool { return isBCVE5(got[len(got)-1]) })
+		assert.True(t, len(got) > 0 && isBCVE5(got[len(got)-1]), "the hub sent no BCVE of version 5")
 	})
 }
 
@@ -184,37 +187,29 @@ func TestOpenBridgeMovesALinkUpToThePeersVersion(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		s := startConformStack(t, stack, false)
-		send := func(stream uint) []testutils.ReceivedBridge {
-			require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
-			return s.peer.DrainBridges(drainWait)
-		}
-		got := send(9631)
-		require.Len(t, got, 1)
-		require.Equal(t, uint8(1), got[0].Version, "the link starts at version 1")
+		require.Equal(t, []uint8{1}, s.versionsOf(t, 9631), "the link starts at version 1")
 
-		require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: 5}))
-		time.Sleep(200 * time.Millisecond)
-		got = send(9632)
-		if assert.Len(t, got, 1) {
-			assert.Equal(t, uint8(5), got[0].Version, "the hub did not move the link up to version 5")
-		}
-		keepalives := 0
-		for _, c := range s.peer.DrainControls(2 * time.Second) {
-			if c.Command == dmrd.CommandBCKA {
-				keepalives++
-			}
-		}
-		assert.Positive(t, keepalives, "the hub sends no keepalives on the link that moved up")
+		s.moveUp(t, 9632)
+		got := s.peer.ReceiveControls(deliverWait, func(got []dmrd.BridgeControl) bool { return got[len(got)-1].Command == dmrd.CommandBCKA })
+		assert.True(t, len(got) > 0 && got[len(got)-1].Command == dmrd.CommandBCKA, "the hub sends no keepalives on the link that moved up")
 	})
 }
 
-// moveUp sends the hub a BCVE of version 5 from the peer of s, and checks
-// that the next call goes to the peer as DMRE of version 5.
+// moveUp sends the hub a BCVE of version 5 from the peer of s, and then
+// sends calls, from stream on in steps of 1000, until one goes to the peer
+// as DMRE of version 5. The hub takes the BCVE in off the path of the
+// calls, so a call sent right after it can still go out as version 1.
 func (s conformStack) moveUp(t *testing.T, stream uint) {
 	t.Helper()
 	require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: 5}))
-	time.Sleep(200 * time.Millisecond)
-	require.Equal(t, []uint8{5}, s.versionsOf(t, stream), "the hub moved the link up to version 5")
+	var got []uint8
+	for range deliverWait / drainWait {
+		if got = s.versionsOf(t, stream); len(got) == 1 && got[0] == 5 {
+			return
+		}
+		stream += 1000
+	}
+	require.Equal(t, []uint8{5}, got, "the hub moved the link up to version 5")
 }
 
 // versionsOf sends a call from the repeater of s and returns the version
@@ -222,7 +217,7 @@ func (s conformStack) moveUp(t *testing.T, stream uint) {
 func (s conformStack) versionsOf(t *testing.T, stream uint) []uint8 {
 	t.Helper()
 	require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
-	got := dataOf(s.peer.DrainBridges(drainWait), uint32(stream)) //nolint:gosec
+	got := dataOf(s.peer.ReceiveBridges(deliverWait, func(got []testutils.ReceivedBridge) bool { return got[len(got)-1].Data.Stream == uint32(stream) }), uint32(stream)) //nolint:gosec
 	out := make([]uint8, 0, len(got))
 	for _, b := range got {
 		out = append(out, b.Version)
@@ -242,7 +237,6 @@ func TestOpenBridgeForgetsTheVersionOfAChangedPeer(t *testing.T) {
 		s.moveUp(t, 9641)
 		require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", conformPeer).Update("enhanced", false).Error)
 		stack.Hub.PeerChanged(conformPeer)
-		time.Sleep(200 * time.Millisecond)
 		assert.Equal(t, []uint8{1}, s.versionsOf(t, 9642), "an edit of the peer keeps the version that the peer named before it")
 
 		s.moveUp(t, 9643)
@@ -252,7 +246,6 @@ func TestOpenBridgeForgetsTheVersionOfAChangedPeer(t *testing.T) {
 		stack.SeedPeer(t, conformPeer, conformUser, obPassword, addr.IP.String(), addr.Port, true, true)
 		stack.SeedPeerRule(t, conformPeer, false, 1, dmrconst.MaxDMRAddress)
 		stack.Hub.PeerChanged(conformPeer)
-		time.Sleep(200 * time.Millisecond)
 		assert.Equal(t, []uint8{1}, s.versionsOf(t, 9644), "a peer added again keeps the version of the deleted one")
 	})
 }

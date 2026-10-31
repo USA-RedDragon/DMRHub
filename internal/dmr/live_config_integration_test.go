@@ -194,7 +194,7 @@ func TestLiveOpenBridgeToggle(t *testing.T) { //nolint:paralleltest // FreeUDPPo
 
 	w = l.SetDMR(t, manager.OpenBridge, map[string]any{"enabled": false})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Nil(t, l.Manager.Server(manager.OpenBridge))
+	assert.True(t, l.Manager.Server(manager.OpenBridge) == nil, "OpenBridge must not run")
 	freed, err := net.ResolveUDPAddr("udp", obAddr)
 	require.NoError(t, err)
 	c, err := net.ListenUDP("udp", freed)
@@ -236,7 +236,7 @@ func TestLiveOpenBridgeEnableFailure(t *testing.T) { //nolint:paralleltest // Fr
 	require.Len(t, errs, 1)
 	assert.Equal(t, "openbridge", errs[0].Server)
 	assert.False(t, errs[0].Running)
-	assert.Nil(t, l.Manager.Server(manager.OpenBridge))
+	assert.True(t, l.Manager.Server(manager.OpenBridge) == nil, "OpenBridge must not run")
 	assert.Nil(t, l.DMRSetting(t, manager.OpenBridge, "enabled"), "OpenBridge must stay off")
 	assert.Equal(t, true, settingOf(t, l.GetConfig(t), "dmr.openbridge.enabled")["not_in_effect"])
 }

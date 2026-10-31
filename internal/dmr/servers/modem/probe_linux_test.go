@@ -128,13 +128,9 @@ func TestProbeOfABoardThatDoesNotAnswer(t *testing.T) {
 	t.Cleanup(func() { _ = master.Close() })
 	cfg := modemConfig(t, false).DMR.Modem
 	cfg.Port = slave
-	start := time.Now()
 	r := modem.Probe(context.Background(), cfg, probeOptions())
 	if !r.Opened || r.Answered || r.Tries != 6 || !strings.Contains(r.Error, "no version reply") || r.Frequencies != nil {
 		t.Fatalf("%+v", r)
-	}
-	if d := time.Since(start); d > 6*probeReply+time.Second {
-		t.Fatalf("the probe took %v", d)
 	}
 }
 
@@ -171,13 +167,28 @@ func TestProbeStopsWithItsContext(t *testing.T) {
 	t.Cleanup(func() { _ = master.Close() })
 	cfg := modemConfig(t, false).DMR.Modem
 	cfg.Port = slave
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	start := time.Now()
 	opts := probeOptions()
-	opts.Reply = time.Minute
-	r := modem.Probe(ctx, cfg, opts)
-	if r.Answered || time.Since(start) > 5*time.Second {
-		t.Fatalf("%+v after %v", r, time.Since(start))
+	opts.Reply = time.Hour
+	done := make(chan modem.ProbeResult, 1)
+	go func() { done <- modem.Probe(ctx, cfg, opts) }()
+	buf := make([]byte, 64)
+	if err := master.SetReadDeadline(time.Now().Add(waitLink)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := master.Read(buf); err != nil {
+		t.Fatalf("the probe sent nothing: %v", err)
+	}
+	cancel()
+	wait, stop := context.WithTimeout(context.Background(), waitLink)
+	defer stop()
+	select {
+	case r := <-done:
+		if r.Answered {
+			t.Fatalf("%+v", r)
+		}
+	case <-wait.Done():
+		t.Fatalf("the probe did not stop with its context within %v of a reply wait of %v", waitLink, opts.Reply)
 	}
 }

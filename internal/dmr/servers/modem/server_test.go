@@ -23,6 +23,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -87,12 +88,14 @@ func (f *fakes) open(string, int) (modem.Port, error) {
 
 func (f *fakes) next(t *testing.T) *modemtest.Fake {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), waitLink)
+	defer cancel()
 	select {
 	case m := <-f.opened:
 		t.Cleanup(m.Close)
 		return m
-	case <-time.After(waitLink):
-		t.Fatal("the server did not open the modem")
+	case <-ctx.Done():
+		t.Fatalf("the server did not open the modem in %v", waitLink)
 		return nil
 	}
 }
@@ -165,21 +168,23 @@ func TestServerTriesAgainAfterTheModemRefusesTheConfig(t *testing.T) {
 
 func TestServerOpensASilentModemAgain(t *testing.T) {
 	t.Parallel()
-	f := newFakes(t, 1)
-	s := startServer(t, modemConfig(t, false), f)
-	m := f.next(t)
-	if !m.WaitFor(waitLink, polled(2)) {
-		t.Fatal("no status requests")
-	}
-	m.SetSilent(true)
-	start := time.Now()
-	again := f.next(t)
-	if d := time.Since(start); d < 1500*time.Millisecond {
-		t.Fatalf("the server gave up on the modem after %s", d)
-	}
-	if !again.WaitFor(waitLink, polled(2)) || !s.Linked() {
-		t.Fatal("the server did not link the modem again")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFakes(t, 1)
+		s := startServer(t, modemConfig(t, false), f)
+		m := f.next(t)
+		if !m.WaitFor(waitLink, polled(2)) {
+			t.Fatal("no status requests")
+		}
+		m.SetSilent(true)
+		start := time.Now()
+		again := f.next(t)
+		if d := time.Since(start); d < 1500*time.Millisecond {
+			t.Fatalf("the server gave up on the modem after %s", d)
+		}
+		if !again.WaitFor(waitLink, polled(2)) || !s.Linked() {
+			t.Fatal("the server did not link the modem again")
+		}
+	})
 }
 
 func TestServerStopTurnsTheTransmitterOff(t *testing.T) {

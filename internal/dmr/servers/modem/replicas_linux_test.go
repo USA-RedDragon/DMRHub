@@ -24,6 +24,7 @@ package modem_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -76,18 +77,20 @@ func (c cluster) replica(t *testing.T, id string, ports ...modem.SerialPort) *mo
 
 func TestReplicasListThePortsOfEachReplica(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	a := c.replica(t, "a1", modem.SerialPort{Path: "/dev/ttyAMA0"})
-	c.replica(t, "b2", modem.SerialPort{Path: "/dev/serial/by-id/usb-MMDVM-if00", Device: "/dev/ttyACM0"})
-	start := time.Now()
-	got := a.AllPorts(context.Background())
-	if len(got) != 2 || got[0].Replica != "a1" || !got[0].Self || got[0].Ports[0].Path != "/dev/ttyAMA0" ||
-		got[1].Replica != "b2" || got[1].Self || got[1].Ports[0].Device != "/dev/ttyACM0" {
-		t.Fatalf("%+v", got)
-	}
-	if d := time.Since(start); d >= time.Second {
-		t.Fatalf("waited %v though every replica answered", d)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		a := c.replica(t, "a1", modem.SerialPort{Path: "/dev/ttyAMA0"})
+		c.replica(t, "b2", modem.SerialPort{Path: "/dev/serial/by-id/usb-MMDVM-if00", Device: "/dev/ttyACM0"})
+		start := time.Now()
+		got := a.AllPorts(context.Background())
+		if len(got) != 2 || got[0].Replica != "a1" || !got[0].Self || got[0].Ports[0].Path != "/dev/ttyAMA0" ||
+			got[1].Replica != "b2" || got[1].Self || got[1].Ports[0].Device != "/dev/ttyACM0" {
+			t.Fatalf("%+v", got)
+		}
+		if d := time.Since(start); d >= time.Second {
+			t.Fatalf("waited %v though every replica answered", d)
+		}
+	})
 }
 
 func TestReplicasTestOnTheReplicaOfThePort(t *testing.T) {
@@ -115,50 +118,54 @@ func TestReplicasTestOnTheReplicaOfThePort(t *testing.T) {
 
 func TestReplicasWhenTheOtherReplicaIsGone(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	a := c.replica(t, "a1", modem.SerialPort{Path: "/dev/ttyAMA0"})
-	b := c.replica(t, "b2", modem.SerialPort{Path: "/dev/ttyACM0"})
-	b.Stop()
-	got := a.AllPorts(context.Background())
-	if len(got) != 1 || got[0].Replica != "a1" {
-		t.Fatalf("ports: %+v", got)
-	}
-	cfg := modemConfig(t, false).DMR.Modem
-	cfg.Port = "/dev/ttyACM0"
-	start := time.Now()
-	ans, err := a.Test(context.Background(), cfg, "b2")
-	if err != nil || !ans.Unanswered || ans.Replica != "b2" || ans.Result != nil {
-		t.Fatalf("%+v %v", ans, err)
-	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Fatalf("the test took %v", d)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		a := c.replica(t, "a1", modem.SerialPort{Path: "/dev/ttyAMA0"})
+		b := c.replica(t, "b2", modem.SerialPort{Path: "/dev/ttyACM0"})
+		b.Stop()
+		got := a.AllPorts(context.Background())
+		if len(got) != 1 || got[0].Replica != "a1" {
+			t.Fatalf("ports: %+v", got)
+		}
+		cfg := modemConfig(t, false).DMR.Modem
+		cfg.Port = "/dev/ttyACM0"
+		start := time.Now()
+		ans, err := a.Test(context.Background(), cfg, "b2")
+		if err != nil || !ans.Unanswered || ans.Replica != "b2" || ans.Result != nil {
+			t.Fatalf("%+v %v", ans, err)
+		}
+		if d := time.Since(start); d > 5*time.Second {
+			t.Fatalf("the test took %v", d)
+		}
+	})
 }
 
 // TestReplicasShowTheModemOfAnotherReplica shows the live state of the
 // modem of another replica instead of a test of its port.
 func TestReplicasShowTheModemOfAnotherReplica(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	a := c.replica(t, "a1")
-	c.replica(t, "b2", modem.SerialPort{Path: "/dev/fake-modem"})
-	f := newFakes(t, 2)
-	srv := modem.NewServerWithOptions(modemConfig(t, false), nil, nil, "test", modem.Options{Open: f.open, Reply: 200 * time.Millisecond,
-		Reopen: time.Hour, Retry: time.Hour, KV: c.store, Replica: "b2"})
-	if err := srv.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = srv.Stop(context.Background()) })
-	deadline := time.Now().Add(waitLink)
-	for time.Now().Before(deadline) && (a.State(context.Background()).Status == nil || !a.State(context.Background()).Status.Linked) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	st := a.State(context.Background())
-	if st.Status == nil || !st.Status.Linked || st.Self || st.Status.Replica != "b2" {
-		t.Fatalf("state: %+v", st)
-	}
-	ans, err := a.Test(context.Background(), modemConfig(t, false).DMR.Modem, "")
-	if err != nil || !ans.Live || ans.Replica != "b2" || ans.Self || ans.State.Status.Firmware != "MMDVM fake 20261026" {
-		t.Fatalf("%+v %v", ans, err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		c := newCluster(t)
+		a := c.replica(t, "a1")
+		c.replica(t, "b2", modem.SerialPort{Path: "/dev/fake-modem"})
+		f := newFakes(t, 2)
+		srv := modem.NewServerWithOptions(modemConfig(t, false), nil, nil, "test", modem.Options{Open: f.open, Reply: 200 * time.Millisecond,
+			Reopen: time.Hour, Retry: time.Hour, KV: c.store, Replica: "b2"})
+		if err := srv.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = srv.Stop(context.Background()) })
+		deadline := time.Now().Add(waitLink)
+		for time.Now().Before(deadline) && (a.State(context.Background()).Status == nil || !a.State(context.Background()).Status.Linked) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		st := a.State(context.Background())
+		if st.Status == nil || !st.Status.Linked || st.Self || st.Status.Replica != "b2" {
+			t.Fatalf("state: %+v", st)
+		}
+		ans, err := a.Test(context.Background(), modemConfig(t, false).DMR.Modem, "")
+		if err != nil || !ans.Live || ans.Replica != "b2" || ans.Self || ans.State.Status.Firmware != "MMDVM fake 20261026" {
+			t.Fatalf("%+v %v", ans, err)
+		}
+	})
 }

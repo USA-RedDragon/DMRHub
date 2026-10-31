@@ -90,10 +90,12 @@ func TestServerOverAPseudoTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	ctx, cancel := context.WithTimeout(context.Background(), waitLink)
+	defer cancel()
 	select {
 	case <-opened:
-	case <-time.After(waitLink):
-		t.Fatal("OpenSerial failed on the pseudo terminal")
+	case <-ctx.Done():
+		t.Fatalf("OpenSerial failed on the pseudo terminal in %v", waitLink)
 	}
 	if !m.WaitFor(waitLink, polled(2)) || !s.Linked() {
 		t.Fatal("no link over the pseudo terminal")

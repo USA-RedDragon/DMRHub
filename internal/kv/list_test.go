@@ -200,3 +200,39 @@ func TestKVDeleteIfEqualKeepsASetNXValueOfAnotherWriter(t *testing.T) {
 		assert.True(t, ok, "the key stayed after its owner deleted it")
 	})
 }
+
+// TestKVAnExpiredKeyRemovalKeepsANewValue reads a key that expired while
+// another goroutine sets it again and reads it back. Removing the expired
+// value must never remove the new one.
+func TestKVAnExpiredKeyRemovalKeepsANewValue(t *testing.T) {
+	t.Parallel()
+	store := makeTestKV(t)
+	ctx := context.Background()
+	const rounds = 2000
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	wg.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = store.Get(ctx, "flip")
+				_, _ = store.Has(ctx, "flip")
+				_, _, _ = store.Scan(ctx, 0, "flip", 10)
+			}
+		}
+	})
+	lost := 0
+	for range rounds {
+		require.NoError(t, store.Set(ctx, "flip", []byte("old")))
+		require.NoError(t, store.Expire(ctx, "flip", time.Nanosecond))
+		require.NoError(t, store.Set(ctx, "flip", []byte("new")))
+		if _, err := store.Get(ctx, "flip"); err != nil {
+			lost++
+		}
+	}
+	close(stop)
+	wg.Wait()
+	assert.Zero(t, lost, "a removal of an expired value removed a value set after it")
+}

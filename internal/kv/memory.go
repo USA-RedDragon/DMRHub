@@ -73,7 +73,7 @@ func (kv inMemoryKV) Has(_ context.Context, key string) (bool, error) {
 		return false, nil
 	}
 	if !obj.ttl.IsZero() && obj.ttl.Before(kv.clock.Now()) {
-		kv.kv.Delete(key) // Remove expired key
+		kv.dropExpired(key)
 		return false, nil
 	}
 	return true, nil
@@ -93,7 +93,7 @@ func (kv inMemoryKV) Get(_ context.Context, key string) ([]byte, error) {
 		return nil, fmt.Errorf("key %s %w", key, ErrNotFound)
 	}
 	if !value.ttl.IsZero() && value.ttl.Before(kv.clock.Now()) {
-		kv.kv.Delete(key) // Remove expired key
+		kv.dropExpired(key)
 		status = "expired"
 		return nil, fmt.Errorf("key %s has expired: %w", key, ErrNotFound)
 	}
@@ -184,8 +184,8 @@ func (kv inMemoryKV) Scan(_ context.Context, cursor uint64, match string, count 
 
 		if matched {
 			if !value.ttl.IsZero() && value.ttl.Before(kv.clock.Now()) {
-				kv.kv.Delete(key) // Remove expired keys
-				return true       // continue iteration
+				kv.dropExpired(key)
+				return true // continue iteration
 			}
 			keys = append(keys, key)
 		}
@@ -318,6 +318,17 @@ func (kv inMemoryKV) DeleteIfEqual(_ context.Context, key string, value []byte) 
 	return deleted, nil
 }
 
+// dropExpired deletes key only if its value is still expired, so that a
+// value set after an expired one was read stays.
+func (kv inMemoryKV) dropExpired(key string) {
+	kv.kv.Compute(key, func(v kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		if loaded && !v.ttl.IsZero() && v.ttl.Before(kv.clock.Now()) {
+			return kvValue{}, xsync.DeleteOp
+		}
+		return v, xsync.CancelOp
+	})
+}
+
 // encodeListEntry encodes a single entry as [4-byte big-endian length][data].
 func encodeListEntry(data []byte) []byte {
 	l := len(data)
@@ -393,7 +404,7 @@ func (kv inMemoryKV) cleanupExpiredKeys(ctx context.Context) {
 
 			// Delete expired keys
 			for _, key := range keysToDelete {
-				kv.kv.Delete(key)
+				kv.dropExpired(key)
 			}
 
 			// Record metrics

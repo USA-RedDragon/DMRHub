@@ -115,36 +115,42 @@ type tcRow struct {
 // its codec and conversion.
 func requireCodecRow(t *testing.T, stack *testutils.IntegrationStack, stream uint, want tcRow) {
 	t.Helper()
-	var got tcRow
-	n := 0
+	type seen struct {
+		n   int
+		row tcRow
+	}
+	var last testutils.Latest[seen]
 	assert.Eventually(t, func() bool {
 		var calls []models.Call
 		if err := stack.DB.Where("stream_id = ? AND kind = ?", stream, models.CallKindVoice).Find(&calls).Error; err != nil || len(calls) != 1 {
-			n = len(calls)
+			last.Set(seen{n: len(calls)})
 			return false
 		}
-		n = 1
 		c := calls[0]
-		got = tcRow{codec: c.Codec, mode: c.Codec2Mode, sentAMBE: c.SentAMBE, sentCodec2: c.SentCodec2, missedMS: c.MissedMS}
-		return !c.Active && got == want
+		row := tcRow{codec: c.Codec, mode: c.Codec2Mode, sentAMBE: c.SentAMBE, sentCodec2: c.SentCodec2, missedMS: c.MissedMS}
+		last.Set(seen{n: 1, row: row})
+		return !c.Active && row == want
 	}, tcRowWait, 50*time.Millisecond, "call row of stream %d", stream)
-	require.Equal(t, 1, n, "voice rows of stream %d", stream)
-	require.Equal(t, want, got, "call row of stream %d", stream)
+	got := last.Get()
+	require.Equal(t, 1, got.n, "voice rows of stream %d", stream)
+	require.Equal(t, want, got.row, "call row of stream %d", stream)
 }
 
 // requireCallCodec waits for the finished voice row of stream and checks
 // its codec and Codec2 mode.
 func requireCallCodec(t *testing.T, stack *testutils.IntegrationStack, stream uint, codec string, mode int) {
 	t.Helper()
-	var c models.Call
+	var last testutils.Latest[models.Call]
 	assert.Eventually(t, func() bool {
 		var calls []models.Call
 		if err := stack.DB.Where("stream_id = ? AND kind = ?", stream, models.CallKindVoice).Find(&calls).Error; err != nil || len(calls) != 1 {
 			return false
 		}
-		c = calls[0]
+		c := calls[0]
+		last.Set(c)
 		return !c.Active && c.Codec == codec && c.Codec2Mode == mode
 	}, tcRowWait, 50*time.Millisecond, "call row of stream %d", stream)
+	c := last.Get()
 	require.Equal(t, codec, c.Codec, "codec of stream %d", stream)
 	require.Equal(t, mode, c.Codec2Mode, "Codec2 mode of stream %d", stream)
 }
@@ -160,19 +166,22 @@ func repeaterOf(t *testing.T, stack *testutils.IntegrationStack, id uint) models
 // TS2 for slot2, heard codec, in mode.
 func requireSlotHeard(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, codec string, mode int) models.Repeater {
 	t.Helper()
-	var r models.Repeater
-	heard := func() (string, int) {
+	heard := func(r models.Repeater) (string, int) {
 		if slot2 {
 			return r.TS2HeardCodec, r.TS2HeardCodec2Mode
 		}
 		return r.TS1HeardCodec, r.TS1HeardCodec2Mode
 	}
 	assert.Eventually(t, func() bool {
-		r = repeaterOf(t, stack, tcC2Rpt)
-		c, m := heard()
+		var r models.Repeater
+		if stack.DB.First(&r, tcC2Rpt).Error != nil {
+			return false
+		}
+		c, m := heard(r)
 		return c == codec && m == mode
 	}, tcRowWait, 20*time.Millisecond)
-	c, m := heard()
+	r := repeaterOf(t, stack, tcC2Rpt)
+	c, m := heard(r)
 	require.Equal(t, codec, c, "codec heard on TS2 %t", slot2)
 	require.Equal(t, mode, m, "Codec2 mode heard on TS2 %t", slot2)
 	return r

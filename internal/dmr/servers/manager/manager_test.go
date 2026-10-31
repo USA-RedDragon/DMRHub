@@ -105,17 +105,18 @@ func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest /
 	require.Empty(t, l.Manager.Apply(&next))
 	*l.Config = next
 
-	var grown map[string]int
+	var last testutils.Latest[map[string]int]
 	assert.Eventually(t, func() bool {
-		grown = map[string]int{}
+		grown := map[string]int{}
 		for creator, n := range goroutinesByCreator() {
 			if n > before[creator] {
 				grown[creator] = n - before[creator]
 			}
 		}
+		last.Set(grown)
 		return len(grown) == 0
 	}, 10*time.Second, 50*time.Millisecond)
-	assert.Empty(t, grown, "goroutines left over after the restarts, by the function that started them")
+	assert.Empty(t, last.Get(), "goroutines left over after the restarts, by the function that started them")
 	mc.Close()
 }
 
